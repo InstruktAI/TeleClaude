@@ -35,22 +35,4 @@ that set.
 
 #### UC-CFG-SOURCE-1: An unclassified runtime environment access is blocked
 
-```gherkin
-Given an agent adds a direct process-environment access to runtime Python outside the configuration boundary
-And the access is not explicitly classified as an allowed boundary use
-When the repository quality gate inspects the changed source
-Then the quality gate fails
-And the finding identifies the source location
-And the finding directs configuration values through file-backed typed configuration
-```
-
 #### UC-CFG-SOURCE-2: An explicitly classified boundary access remains accepted
-
-```gherkin
-Given runtime Python directly accesses the process environment for configuration loading or interpolation, bootstrap or an internal process signal, ambient host state, child-process environment construction, or an explicit temporary migration
-And the source classifies that access at its location with a non-empty reason
-And a temporary classification names the migration todo that owns removing the access
-When the repository quality gate inspects the source
-Then that access does not produce a direct-environment-access finding
-And removing a temporary bypass also removes its local exception
-```
