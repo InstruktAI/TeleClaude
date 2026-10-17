@@ -70,6 +70,8 @@ from tools.ci.workflow_prepared import (
     B4_CASE,
     B9_S_P_MESSAGE,
     B9_X_MESSAGE,
+    END_S_P,
+    END_X,
     SESSION_S_P,
     SESSION_X,
     caller_startup_body,
@@ -527,6 +529,159 @@ def _early_launches(value: JsonValue, root: str, case: str) -> list[JsonValue]:
             }
         )
     return result
+
+
+def _early_closed_record(value: JsonValue, actor: JsonObject, project: str) -> None:
+    session = text(actor, "session_id")
+    record = _public_session_command(value, [creation.TELEC, "sessions", "show", session, "--full"])
+    if (
+        not _public_closed(record, session)
+        or record.get("native_session_id") != text(actor, "native_session_id")
+        or record.get("project_path") != project
+    ):
+        raise ValueError(ERROR_REPORT)
+
+
+def _early_end_operation(value: JsonValue, operation: str | None = None) -> Mapping[str, object]:
+    record: Mapping[str, object]
+    if operation is None:
+        record = object_value(value)
+    else:
+        record = _public_session_command(value, [creation.TELEC, "operations", "get", operation])
+    identity = record.get("operation_id")
+    if (
+        not isinstance(identity, str)
+        or not identity
+        or (operation is not None and identity != operation)
+        or record.get("kind") != "session_close"
+        or record.get("state") not in ("queued", "running", "completed")
+        or record.get("error") not in (None, "")
+        or record.get("error_payload") is not None
+    ):
+        raise ValueError(ERROR_REPORT)
+    return record
+
+
+def _early_end_reads(packet: JsonObject, operation: str, outsider: bool) -> JsonValue:
+    reads, closed = packet["operation_reads"], packet["closed_reads"]
+    if not isinstance(reads, list) or not reads or not isinstance(closed, list) or len(closed) != 1:
+        raise ValueError(ERROR_REPORT)
+    terminal_seen = False
+    for read in reads:
+        state = _early_end_operation(read, operation)["state"]
+        if terminal_seen and state != "completed":
+            raise ValueError(ERROR_REPORT)
+        terminal_seen = state == "completed"
+    if not terminal_seen:
+        raise ValueError(ERROR_REPORT)
+    if outsider:
+        # await_terminal issues its retained terminal read after the poll that observes completion.
+        if len(reads) < 2:
+            raise ValueError(ERROR_REPORT)
+    elif _early_end_operation(packet["retained_terminal"], operation)["state"] != "completed":
+        raise ValueError(ERROR_REPORT)
+    return closed[0]
+
+
+def _early_end_inputs(
+    row: JsonObject, case: str, drivers: JsonObject, other_actors: JsonObject, ledger: JsonObject
+) -> JsonObject:
+    """Match every original end/read, including errors, without treating public closure as physical exit."""
+    actors = {name: object_value(value) for name, value in {**drivers, **other_actors}.items()}
+    by_session = {text(actor, "session_id"): actor for actor in actors.values()}
+    if len(by_session) != len(actors):
+        raise ValueError(ERROR_REPORT)
+    project = text(row, "project_path")
+    expected = ("first", "second", "dispatched", "owner") if case == "B3" else ("X", "S_P", "author", "worker")
+    values, closed_values = row["ends"], row["closed_reads"]
+    if not isinstance(values, list) or not isinstance(closed_values, list):
+        raise ValueError(ERROR_REPORT)
+    attempts = ledger.get("attempts", [])
+    if not isinstance(attempts, list):
+        raise ValueError(ERROR_REPORT)
+    labels = {text(object_value(value), "label"): object_value(value) for value in attempts}
+    proofs: JsonObject = {}
+    original_operations: dict[str, str] = {}
+    completed: set[str] = set()
+    previous_end = positive_integer(row, "started_ns")
+    for value in values:
+        packet = object_value(value)
+        session = text(packet, "session_id")
+        if session not in by_session:
+            raise ValueError(ERROR_REPORT)
+        name = next(name for name, actor in actors.items() if actor["session_id"] == session)
+        outsider = case == "B4" and name in ("X", "S_P")
+        fields = {
+            "kind",
+            "session_id",
+            "started_ns",
+            "finished_ns",
+            "command",
+            "operation_reads",
+            "closed_reads",
+            "error",
+        }
+        fields |= {"label", "attempt_id", "original_operation_id"} if outsider else {"retained_terminal"}
+        if (
+            set(packet) != fields
+            or name not in expected
+            or packet["kind"] != ("b4-outsider-end" if outsider else "foundation-end")
+            or packet["error"] is not None
+            or not previous_end
+            <= positive_integer(packet, "started_ns")
+            <= positive_integer(packet, "finished_ns")
+            <= positive_integer(row, "finished_ns")
+        ):
+            raise ValueError(ERROR_REPORT)
+        previous_end = positive_integer(packet, "finished_ns")
+        if packet["command"] is None:
+            if not outsider or name not in proofs:
+                raise ValueError(ERROR_REPORT)
+            operation = text(packet, "original_operation_id")
+            if original_operations.get(operation) != session:
+                raise ValueError(ERROR_REPORT)
+        else:
+            if name in proofs:
+                raise ValueError(ERROR_REPORT)
+            receipt = _public_session_command(packet["command"], [creation.TELEC, "sessions", "end", session])
+            operation = cast(str, _early_end_operation(cast(JsonValue, receipt))["operation_id"])
+            if operation in original_operations:
+                raise ValueError(ERROR_REPORT)
+            original_operations[operation] = session
+        if outsider:
+            label = END_X if name == "X" else END_S_P
+            attempt = labels.get(label)
+            if (
+                attempt is None
+                or packet["label"] != label
+                or packet["attempt_id"] != attempt.get("attempt_id")
+                or attempt.get("kind") != RECORD_OPERATION
+                or attempt.get("operation_id") != operation
+                or (packet["command"] is not None and packet["original_operation_id"] is not None)
+            ):
+                raise ValueError(ERROR_REPORT)
+        _early_closed_record(_early_end_reads(packet, operation, outsider), by_session[session], project)
+        proofs[name] = {"session_id": session, "operation_id": operation, "state": "original_public_end_inputs_matched"}
+        completed.add(session)
+    if tuple(proofs) != expected:
+        raise ValueError(ERROR_REPORT)
+    for value in closed_values:
+        packet = object_value(value)
+        session = text(packet, "session_id")
+        if (
+            set(packet) != {"session_id", "started_ns", "finished_ns", "command"}
+            or session not in by_session
+            or not positive_integer(row, "started_ns")
+            <= positive_integer(packet, "started_ns")
+            <= positive_integer(packet, "finished_ns")
+            <= positive_integer(row, "finished_ns")
+        ):
+            raise ValueError(ERROR_REPORT)
+        _early_closed_record(packet["command"], by_session[session], project)
+        completed.add(session)
+    if completed != set(by_session):
+        raise ValueError(ERROR_REPORT)
+    return {"ends": proofs, "public_closed_session_ids": list[JsonValue](sorted(completed)), "physical_P4": "unproven"}
 
 
 def _b4_ledger_inputs(row: JsonObject, root: str, case: str) -> JsonObject:
@@ -1199,6 +1354,8 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
         observed = (set(before) | set(after)) - baseline_ids
         launches = _early_launches(settlement["launches"], root, case)
         drivers = _early_driver_inputs(row, case, baseline_ids, observed, launches)
+        other_actors = _other_actor_inputs(row, case, baseline_ids, observed, launches, drivers)
+        ledger = _b4_ledger_inputs(row, root, case)
         result[case] = {
             "state": "captured_accounting_inputs_checked",
             "project_path": project,
@@ -1208,9 +1365,10 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
             "recorded_start_states": starts,
             "launch_inputs": launches,
             "driver_inputs": drivers,
-            "other_actor_inputs": _other_actor_inputs(row, case, baseline_ids, observed, launches, drivers),
+            "other_actor_inputs": other_actors,
+            "explicit_end_inputs": _early_end_inputs(row, case, drivers, other_actors, ledger),
             "originating_start_inputs": _early_start_inputs(row, case, drivers, starts),
-            "attempt_ledger_inputs": _b4_ledger_inputs(row, root, case),
+            "attempt_ledger_inputs": ledger,
             "semantic_settlement": "unproven",
             "creator_classification": "unproven",
             "physical_P4": "unproven",
