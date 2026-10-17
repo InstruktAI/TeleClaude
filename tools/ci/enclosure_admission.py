@@ -59,6 +59,7 @@ ERROR_PATH: Final = "privileged admission requires protected, explicitly declare
 REQUIRED_SOURCES: Final = frozenset(
     {
         "tools/ci/runtime_acceptance.py",
+        "tools/ci/acceptance_work.py",
         "tools/ci/enclosure_admission.py",
         "tools/ci/enclosure_contract.py",
         "tools/ci/enclosure_owner.py",

@@ -16,11 +16,11 @@ imports no application module and creates no record, identity or authentication 
 
 from __future__ import annotations
 
-import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
+from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_items as items
 from tools.ci.workflow_creation import Observer, SessionView
@@ -146,7 +146,7 @@ def _retained(observer: Observer, original: Mapping[str, object], baseline: Sess
                 output=refused.output[-300:],
             )
         )
-    time.sleep(items.SETTLE_SECONDS)
+    payload_work.sleep(items.SETTLE_SECONDS)
     later = items.show_removed(observer, SLUG)
     if later is None or creation.differences(shown, later):
         raise creation.platform_failure(

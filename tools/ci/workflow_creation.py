@@ -28,6 +28,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final, cast
 
+from tools.ci import acceptance_work as payload_work
 from tools.ci.terminal import TerminalFailureCause
 from tools.ci.workflow_foundation import FoundationHost, Outcome
 
@@ -715,12 +716,12 @@ class Observer:
     def wait(self, seconds: float) -> None:
         """Wait only within the optional B12 scenario deadline."""
         if self.deadline is None:
-            time.sleep(seconds)
+            payload_work.sleep(seconds)
             return
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
             self.require_time()
-        time.sleep(min(seconds, remaining))
+        payload_work.sleep(min(seconds, remaining))
         if time.monotonic() >= self.deadline:
             self.require_time()
 
@@ -886,7 +887,7 @@ def absence_window(observer: Observer, baseline: SessionView, slugs: Sequence[st
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
-        time.sleep(min(ABSENCE_POLL_SECONDS, remaining))
+        payload_work.sleep(min(ABSENCE_POLL_SECONDS, remaining))
     for session_id, slug in now.working.items():
         if slug in slugs:
             raise platform_failure(DETAIL_SESSION_FOR_SLUG.format(session=session_id, slug=slug))

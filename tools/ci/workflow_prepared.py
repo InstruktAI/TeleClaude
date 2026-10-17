@@ -40,6 +40,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Final, cast
 
+from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
@@ -329,7 +330,7 @@ class _Prepared:
             try:
                 launch_value = json.loads(launch_path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
-                time.sleep(POLL_SECONDS)
+                payload_work.sleep(POLL_SECONDS)
                 continue
             launch = launch_value if isinstance(launch_value, Mapping) else {}
             native = launch.get(foundation.FIELD_NATIVE)
@@ -338,7 +339,7 @@ class _Prepared:
                     record = self._record(session)
                     if record.get(foundation.FIELD_NATIVE) == native:
                         return session
-            time.sleep(POLL_SECONDS)
+            payload_work.sleep(POLL_SECONDS)
         raise creation.binding_failure(DETAIL_B9_SESSION.format(label=f"d{index}", record="no native launch mapping"))
 
     def _roleless_startup(self, session: str, index: int, message: str) -> None:
@@ -425,7 +426,7 @@ class _Prepared:
                 raise creation.platform_failure(
                     waiting.DETAIL_SESSIONS.format(when="discovery", found=found, expected="one")
                 )
-            time.sleep(POLL_SECONDS)
+            payload_work.sleep(POLL_SECONDS)
         raise creation.platform_failure(waiting.DETAIL_SESSIONS.format(when="discovery", found=found, expected="one"))
 
     def _require_pool(self, claimed: int) -> None:
@@ -985,7 +986,7 @@ class _Prepared:
     def snapshot(self) -> Json:
         """Two equal reads at least two seconds apart: nothing else is writing the item."""
         first = self._shown()
-        time.sleep(creation.QUIESCENCE_GAP_SECONDS)
+        payload_work.sleep(creation.QUIESCENCE_GAP_SECONDS)
         second = self._shown()
         changed = creation.differences(first, second)
         if changed:
@@ -995,7 +996,7 @@ class _Prepared:
     def require_snapshot(self, expected: Json, when: str) -> None:
         for label, pause in (("immediately", 0.0), ("five seconds later", items.SETTLE_SECONDS)):
             if pause:
-                time.sleep(pause)
+                payload_work.sleep(pause)
             changed = creation.differences(expected, self._shown())
             if changed:
                 raise creation.platform_failure(DETAIL_CHANGED.format(when=f"{when} {label}", paths=changed))
@@ -1074,7 +1075,7 @@ class _Prepared:
                 raise creation.binding_failure(
                     waiting.DETAIL_MAPPING.format(actor="child", session=session, recorded=recorded, launched=native)
                 )
-            time.sleep(POLL_SECONDS)
+            payload_work.sleep(POLL_SECONDS)
         raise creation.platform_failure(
             waiting.DETAIL_NOT_STARTED.format(
                 actor="child", session=session, seconds=int(waiting.START_CAP_SECONDS), record=record
@@ -1194,7 +1195,7 @@ class _Prepared:
         deadline = time.monotonic() + OBSERVATION_SECONDS
         while time.monotonic() < deadline:
             creation.require_sessions_equal(sessions, self.observer.sessions(retain=False), "after the refused work")
-            time.sleep(POLL_SECONDS)
+            payload_work.sleep(POLL_SECONDS)
         creation.require_value(ITEM, self._shown(), "state.lifecycle_phase", PREPARED_PHASE)
         return r2
 
@@ -1263,7 +1264,7 @@ class _Prepared:
             block = next((lines for lines in blocks if lines and lines[0] == f"worktree {expected}"), [])
             if block:
                 break
-            time.sleep(POLL_SECONDS)
+            payload_work.sleep(POLL_SECONDS)
         else:
             raise creation.platform_failure(
                 DETAIL_WORKTREE.format(what="worktree list", found=listing[-300:], expected=expected)

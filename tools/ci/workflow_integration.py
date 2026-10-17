@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final, cast
 
+from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_events
 from tools.ci import workflow_flow as flow_module
@@ -244,7 +244,7 @@ def _verify_retired_v1_and_cleanup(
         _fail(f"retired v1 act did not refuse through the delivered door: {refused_text[-400:]!r}")
     for label, pause in (("immediately", 0.0), ("five seconds later", 5.0)):
         if pause:
-            time.sleep(pause)
+            payload_work.sleep(pause)
         if flow.item() != delivered:
             _fail(f"retired v1 act changed the delivered item {label}")
     if _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}"):

@@ -31,6 +31,7 @@ from typing import Final, cast
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_claim as claim
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_events as events
@@ -908,7 +909,18 @@ def execute_profile(
             continue
         scenario_started = time.monotonic()
         try:
+            payload_work.check()
             result = action()
+            if (result is None or result.status is ScenarioStatus.PASSED) and payload_work.expired():
+                result = ScenarioResult(
+                    scenario_id=scenario_id,
+                    status=ScenarioStatus.FAILED,
+                    duration_seconds=time.monotonic() - scenario_started,
+                    commands=result.commands if result is not None else (),
+                    diagnostics=f"{result.diagnostics}\n{payload_work.EXPIRED}"
+                    if result is not None and result.diagnostics
+                    else payload_work.EXPIRED,
+                )
             outcomes.append(
                 ScenarioResult(
                     scenario_id=scenario_id,
@@ -951,7 +963,9 @@ def execute_profile(
             break
     cleanup_evidence: list[CommandEvidence] = []
     try:
+        payload_work.check()
         cleanup_action(cleanup_evidence)
+        payload_work.check()
         cleanup = CleanupResult(status=ScenarioStatus.PASSED)
     except Exception as exc:
         cleanup = CleanupResult(
@@ -1092,6 +1106,7 @@ def _run_bounded_process(
 ) -> ProcessExecution:
     """Run one command in an owned process group and retain bounded evidence."""
     started = time.monotonic()
+    command_end = payload_work.command_end(timeout_seconds)
     # A child process is required to exercise the checked public executable and uv as real boundaries.
     try:
         process = subprocess.Popen(
@@ -1114,7 +1129,8 @@ def _run_bounded_process(
         )
     try:
         try:
-            stdout_bytes, stderr_bytes = process.communicate(timeout=timeout_seconds)
+            # Startup may return late; retain its handle and spend no fresh allowance afterwards.
+            stdout_bytes, stderr_bytes = process.communicate(timeout=payload_work.remaining(command_end))
             diagnostics = _EMPTY
         except subprocess.TimeoutExpired:
             _stop_process_group(process)
@@ -1130,6 +1146,8 @@ def _run_bounded_process(
     output_exceeded = len(stdout_bytes) > output_limit_bytes or len(stderr_bytes) > output_limit_bytes
     if output_exceeded:
         diagnostics = _PROCESS_OUTPUT_LIMIT_DETAIL
+    if payload_work.expired():
+        diagnostics = f"{diagnostics}; {payload_work.EXPIRED}" if diagnostics else payload_work.EXPIRED
     return ProcessExecution(
         exit_status=process.returncode if process.returncode is not None else _PROCESS_FAILURE,
         stdout=stdout_bytes[:output_limit_bytes].decode(_UTF8, errors=_UTF8_REPLACEMENT),
@@ -2199,16 +2217,17 @@ def _run_readiness_check(resources: FullRuntimeResources, evidence: list[Command
         )
         if result.exit_status == _PROCESS_SUCCESS and not result.diagnostics:
             return
-        time.sleep(_READINESS_POLL_INTERVAL_SECONDS)
+        payload_work.sleep(_READINESS_POLL_INTERVAL_SECONDS)
     raise RuntimeError(_EXPECTED_READINESS_ERROR)
 
 
 def _read_health_body(socket_path: str, timeout_seconds: float) -> bytes | None:
     """Read bounded HTTP bytes with one deadline across connect, headers and body."""
+    command_end = payload_work.command_end(timeout_seconds)
     expired = threading.Event()
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-            connection.settimeout(timeout_seconds)
+            connection.settimeout(payload_work.remaining(command_end))
 
             def expire() -> None:
                 expired.set()
@@ -2218,7 +2237,7 @@ def _read_health_body(socket_path: str, timeout_seconds: float) -> bytes | None:
                     # Deadline expiry can race an unconnected or already-closed socket.
                     pass
 
-            timer = threading.Timer(timeout_seconds, expire)
+            timer = threading.Timer(payload_work.remaining(command_end), expire)
             timer.start()
             try:
                 connection.connect(socket_path)
@@ -2271,7 +2290,7 @@ def _await_config_restart(
             return
         remaining = deadline - time.monotonic()
         if remaining > 0:
-            time.sleep(min(_READINESS_POLL_INTERVAL_SECONDS, remaining))
+            payload_work.sleep(min(_READINESS_POLL_INTERVAL_SECONDS, remaining))
     raise RuntimeError(_HEALTH_INSTANCE_UNCHANGED)
 
 
@@ -3585,7 +3604,7 @@ def _await_archived_conversation(resources: FullRuntimeResources, evidence: list
             identity = row.get("tc_id") if row is not None else None
             if isinstance(identity, str) and identity:
                 return identity
-        time.sleep(_ARCHIVE_POLL_INTERVAL_SECONDS)
+        payload_work.sleep(_ARCHIVE_POLL_INTERVAL_SECONDS)
     raise ValueError(_ARCHIVE_ADOPTION_ERROR)
 
 
@@ -5151,6 +5170,29 @@ def run_profile(
         if payload_admission is None:
             return _unadmitted_full_report(source_revision, source_tree, selection)
         payload_admission.verify_request(source_root, source_revision, source_tree, selection)
+    end_ns = payload_admission.payload_deadline().effective_end() if payload_admission is not None else None
+    with payload_work.scope(end_ns):
+        return _run_profile(
+            profile,
+            source_root=source_root,
+            source_revision=source_revision,
+            source_tree=source_tree,
+            selection=selection,
+            report_path=report_path,
+        )
+
+
+def _run_profile(
+    profile: Profile,
+    *,
+    source_root: Path,
+    source_revision: str,
+    source_tree: str,
+    selection: frozenset[str],
+    report_path: Path | None,
+) -> AcceptanceReport:
+    """Execute the existing profile body inside its caller's admitted work scope."""
+    payload_work.check()
     resolved_root = source_root.expanduser().resolve()
     temporary_root = Path(tempfile.mkdtemp(prefix=_ENVIRONMENT_CACHE_DIRECTORY))
     resources: FullRuntimeResources | None = None

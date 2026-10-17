@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Final
 
+from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
 from tools.ci import workflow_foundation as foundation
@@ -291,7 +292,7 @@ class Handover:
             )
         items.require_only_changes("A4 release", held, shown, RELEASE_ALLOWED)
         self._invariant(pending, shown)
-        time.sleep(SETTLE_SECONDS)
+        payload_work.sleep(SETTLE_SECONDS)
         later = driver.shown_with_content(self.observer, item)
         changed = creation.differences(shown, later)
         if changed:
@@ -306,7 +307,7 @@ class Handover:
             now = self.observer.sessions(retain=False)
             if now.ids != expected.ids:
                 raise creation.platform_failure(DETAIL_SESSION.format(found=sorted(now.ids - expected.ids)))
-            time.sleep(POLL_SECONDS)
+            payload_work.sleep(POLL_SECONDS)
 
     def assert_start_unheld(self, item: str, what: str) -> None:
         """B4\'s restored start check: the previous case released, and nothing else holds the item."""

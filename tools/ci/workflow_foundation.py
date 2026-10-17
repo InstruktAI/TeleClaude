@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Protocol
 
+from tools.ci import acceptance_work as payload_work
+
 FIXTURE_SOURCE: Final = Path("tools") / "ci" / "native_claude_fixture.py"
 USER_BIN_RELATIVE: Final = Path(".local") / "bin"
 FIXTURE_NAME: Final = "claude"
@@ -484,7 +486,7 @@ class Journey:
                 DETAIL_WINDOW.format(detail="the composer marker arrived too late for a qualifying sample")
             )
         while time.monotonic() < sample_at:
-            time.sleep(0.1)
+            payload_work.sleep(0.1)
         remaining = deadline - time.monotonic()
         if remaining < MINIMUM_SAMPLE_SECONDS:
             raise binding_failure(DETAIL_WINDOW.format(detail="no time remained for the negative sample"))
@@ -528,7 +530,7 @@ class Journey:
             value = _read_number(path)
             if value is not None:
                 return value
-            time.sleep(0.1)
+            payload_work.sleep(0.1)
         raise binding_failure(DETAIL_WINDOW.format(detail=f"{path.name} never appeared"))
 
     def await_json(self, path: Path, timeout_seconds: float) -> Mapping[str, object]:
@@ -538,7 +540,7 @@ class Journey:
                 parsed = json_object(path.read_text(encoding="utf-8"))
                 if parsed is not None:
                     return parsed
-            time.sleep(0.1)
+            payload_work.sleep(0.1)
         raise binding_failure(DETAIL_WINDOW.format(detail=f"{path.name} never appeared"))
 
     def await_frame(self, name: str, deadline: float) -> Mapping[str, object]:
@@ -552,7 +554,7 @@ class Journey:
                 if parsed is None or not _frame_has_shape(name, parsed):
                     raise platform_failure(DETAIL_FRAME_INVALID.format(frame=name))
                 return parsed
-            time.sleep(POLL_SECONDS)
+            payload_work.sleep(POLL_SECONDS)
         raise platform_failure(DETAIL_NO_FRAME.format(frame=name, seconds=START_OBSERVATION_CAP_SECONDS))
 
     def require_hook(self, name: str, frame: Mapping[str, object]) -> None:
@@ -615,7 +617,7 @@ class Journey:
                 if self.started(confirmed, native):
                     return
                 last = confirmed if confirmed is not None else last
-            time.sleep(RECORD_POLL_SECONDS)
+            payload_work.sleep(RECORD_POLL_SECONDS)
         self.record()
         raise platform_failure(DETAIL_RECORD.format(seconds=START_OBSERVATION_CAP_SECONDS, record=last))
 
@@ -655,7 +657,7 @@ class Journey:
                 raise platform_failure(
                     DETAIL_END.format(detail=f"operation state {value!r}: {state_outcome.output[-300:]}")
                 )
-            time.sleep(RECORD_POLL_SECONDS)
+            payload_work.sleep(RECORD_POLL_SECONDS)
         record = self.record()
         if record is None or record.get(FIELD_CLOSED_AT) is None or record.get(FIELD_LIFECYCLE) != CLOSED:
             raise platform_failure(DETAIL_END.format(detail=f"retained record not closed: {record!r}"))

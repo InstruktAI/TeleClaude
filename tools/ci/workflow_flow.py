@@ -17,6 +17,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final, NotRequired, TypedDict, cast
 
+from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_events as events
@@ -956,7 +957,7 @@ class WorkflowFlow:
                     return setup, record, launch
             remaining = deadline - time.monotonic()
             if remaining > 0:
-                time.sleep(min(RECORD_POLL_SECONDS, remaining))
+                payload_work.sleep(min(RECORD_POLL_SECONDS, remaining))
         raise self._binding_failure_with_witness(
             "startup-native-public-join",
             "exactly one public/native launch join was not observed before the startup deadline",
@@ -1064,7 +1065,7 @@ class WorkflowFlow:
                 return unique[0]
             if len(unique) > 1:
                 raise creation.binding_failure(DETAIL_PLAN_ACTOR.format(procedure=procedure, index=index, role=role))
-            time.sleep(OPERATION_POLL_SECONDS)
+            payload_work.sleep(OPERATION_POLL_SECONDS)
         raise creation.binding_failure(DETAIL_PLAN_ACTOR.format(procedure=procedure, index=index, role=role))
 
     def message_actor(self, first_line: str, index: int, role: str | None = None, timeout_seconds: float = 0.0) -> str:
@@ -1094,7 +1095,7 @@ class WorkflowFlow:
                 return unique[0]
             if time.monotonic() >= deadline:
                 raise creation.binding_failure(DETAIL_PLAN_ACTOR.format(procedure=first_line, index=index, role=role))
-            time.sleep(OPERATION_POLL_SECONDS)
+            payload_work.sleep(OPERATION_POLL_SECONDS)
 
     def session_for_native(self, native: str, role: str | None = None) -> str | None:
         for session_id in self.observer.sessions(retain=False).ids:
@@ -1657,7 +1658,7 @@ class WorkflowFlow:
                 if attempt_id is not None:
                     self.require_ledger().discharge(attempt_id, "public end completed and retained record closed")
                 return record
-            time.sleep(RECORD_POLL_SECONDS)
+            payload_work.sleep(RECORD_POLL_SECONDS)
             record = self.session_record(session_id, retain=False)
         raise creation.platform_failure(DETAIL_CLOSED.format(session=session_id, record=record))
 
