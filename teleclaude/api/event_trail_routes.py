@@ -62,9 +62,10 @@ async def item_trail(
     home = home_for_project_path(project_root)
     if not isinstance(home, EventHomeRef):
         raise HTTPException(status_code=400, detail=NOT_REGISTERED.format(root=project_root))
-    producer = configured_producer()
-    if producer is None:
-        raise HTTPException(status_code=503, detail=UNAVAILABLE_DETAIL)
+    try:
+        producer = configured_producer()
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=UNAVAILABLE_DETAIL) from error
     selection = Selection(config.computer.name, home_token(home), f"{TODO_SUBJECT_PREFIX}{item}")
     reach = resolve_reach(caller_for_role_resolution(identity))
     try:
