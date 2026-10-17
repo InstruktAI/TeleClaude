@@ -408,8 +408,8 @@ async def collect_helper_startup(
                 _remaining(deadline.effective_end())
                 # receipt() already uses the journal's existing LOCK_NB path.
                 # A still-running helper's busy/unknown journal is preserved as an error, not waited on or repaired.
-                receipt_read = True
                 receipt = owner.journal.receipt(startup.action)
+                receipt_read = True
             except (OSError, ValueError, RuntimeError) as error:
                 errors.append(error)
     return HelperCollection(startup, receipt, tuple(errors), receipt_read)
