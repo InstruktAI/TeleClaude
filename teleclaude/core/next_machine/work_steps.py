@@ -586,7 +586,6 @@ async def _work_step_review_changes_requested(
         f"Review requested changes for {slug}. "
         f"Findings artifact: `review-findings`. Target: source code in the worktree. "
         f"Required read: sdlc/procedure/lifecycle/fix-review-findings "
-        f"(fetch with `telec docs get sdlc/procedure/lifecycle/fix-review-findings`). "
         f"Address every Requirement-Violation, Critical, and Important finding — "
         f"anything less keeps the verdict at REQUEST CHANGES per the severity schema "
         f"in lifecycle/work/review. Requirement-Violation findings in particular "
