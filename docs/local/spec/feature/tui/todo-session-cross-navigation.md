@@ -119,57 +119,35 @@ Then the TUI activates the Preparation tab
 And selects the todo whose slug matches the work slug
 ```
 
-#### UC-XNAV-14: Clicking a chip sets shared human focus without hiding open sessions
+#### UC-XNAV-14: An operator focuses the Preparation view on a person's work
 
 ```
-Given no human filter is active
-When the operator clicks a person chip in the active view
-Then the shared human filter is set to that person
-And the Preparation view shows only rows belonging to that person
-And the Sessions view continues to show every open session, including rows with no human
-And the clicked person's chip renders with inverted colors
+Scenario: The operator filters to a person's work
+  Given no human filter is active
+  When the operator chooses a person's owner chip
+  Then the Preparation view shows only rows belonging to that person
+  And the Sessions view continues to show every open session, including rows with no human
+
+Scenario: The operator clears the active person filter
+  Given a human filter is active
+  When the operator chooses the filtered person's owner chip again
+  Then the full set of Preparation rows is restored
+  And the Sessions view continues to show every open session
+
+Scenario: The operator's human focus is shared and retained
+  Given the operator has set a human filter in either view
+  When the operator switches views or restarts the TUI
+  Then the same focus is reflected in both views and remains selected
+  And each view retains its own visibility contract
 ```
 
 #### UC-XNAV-15: Clicking the active chip clears the filter
 
-```
-Given a human filter is active
-When the operator clicks the (inverted) chip of the filtered person
-Then the shared human filter is cleared
-And the full set of Preparation rows is restored
-And the Sessions view continues to show every open session
-And chips render in their normal (non-inverted) colors
-```
-
 #### UC-XNAV-16: The human filter is one shared, persisted setting
-
-```
-Given the operator set the human filter while in one view
-When the operator switches to the other participating view
-Then the same human focus is already reflected there
-And each view retains its own visibility contract
-And the setting is persisted once as a single source of truth across both views and process restarts
-```
 
 #### UC-XNAV-17: Chip weight tracks selection; highlight snaps to the extreme
 
-```
-Given a person chip on a row
-When the row is selected or previewed
-Then the chip renders bold
-And its text takes the row's selection pole (black in dark mode, white in light)
-And a neutral chip's background is the opposite pole while a custom chip keeps its hue
-And this holds even when the chip's person is also the live filter (selection dominates)
-```
-
 #### UC-XNAV-18: An active-filter chip takes the extreme without bold
-
-```
-Given the chip's person is the live filter and its row is not selected or previewed
-When the chip is rendered
-Then its text takes the row's selection pole (black in dark mode, white in light) over a pole/hue fill, identical to the highlighted chip's colors
-And its weight stays normal (weight is reserved for selection)
-```
 
 #### UC-XNAV-19: Autonomous marker renders only for no-human agent creation
 
