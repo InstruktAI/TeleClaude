@@ -375,14 +375,45 @@ class Publication:
         self.pending_bodies: dict[str, str] = {}
         self.candidate = ""
         self.copies = 0
+        self.inputs: creation.EvidenceObject | None = None
+
+    def retain_inputs(self, accounting: creation.EvidenceObject | None) -> None:
+        """Retain the original publication I/O only for an admitted early-case report."""
+        if accounting is not None:
+            self.inputs = {"source_root": str(self.source_root), "clone": str(self.clone), "events": []}
+            accounting["publication"] = self.inputs
+
+    def _input_record(self, kind: str, **fields: creation.EvidenceValue) -> creation.EvidenceObject | None:
+        if self.inputs is None:
+            return None
+        packet: creation.EvidenceObject = {
+            "kind": kind,
+            "started_ns": time.monotonic_ns(),
+            "finished_ns": None,
+            "error": None,
+            **fields,
+        }
+        cast(list[creation.EvidenceValue], self.inputs["events"]).append(packet)
+        return packet
 
     def _run(self, argv: Sequence[str], cwd: Path, timeout: float, *, what: str) -> Outcome:
-        outcome = self.host.process(argv, cwd, self.host.environment, timeout)
-        if outcome.exit_status != 0:
-            raise creation.binding_failure(
-                DETAIL_COMMAND.format(command=what, status=outcome.exit_status, output=outcome.output[-400:])
-            )
-        return outcome
+        packet = self._input_record("process", cwd=str(cwd), timeout_seconds=timeout, what=what, command=None)
+        try:
+            outcome = self.host.process(argv, cwd, self.host.environment, timeout)
+            if packet is not None:
+                packet["command"] = creation.command_evidence(argv, outcome)
+            if outcome.exit_status != 0:
+                raise creation.binding_failure(
+                    DETAIL_COMMAND.format(command=what, status=outcome.exit_status, output=outcome.output[-400:])
+                )
+            return outcome
+        except Exception as error:
+            if packet is not None:
+                packet["error"] = f"{type(error).__name__}: {error}"
+            raise
+        finally:
+            if packet is not None:
+                packet["finished_ns"] = time.monotonic_ns()
 
     def identity(self) -> str:
         head = self._run((GIT, "rev-parse", "HEAD"), self.source_root, CLONE_TIMEOUT_SECONDS, what="git rev-parse HEAD")
@@ -397,21 +428,48 @@ class Publication:
 
     def body_of(self, identity: str, *, pending: bool) -> str:
         """The body a public `telec docs get` prints for the identity, read from the candidate checkout."""
-        self.observer.run(("cd", str(self.source_root)))
-        argv = [TELEC, DOCS, GET, identity]
-        if pending:
-            argv.extend((TARGET_OPTION, PENDING_TARGET))
-        outcome = self.observer.run(argv, retain=False)
-        body = docs_body(outcome.output) if outcome.exit_status == 0 else None
-        if not body:
-            raise creation.binding_failure(DETAIL_NO_BODY.format(identity=identity, output=outcome.output[-300:]))
-        return body
+        packet = self._input_record(
+            "public_body", identity=identity, pending=pending, directory_command=None, command=None
+        )
+        try:
+            changed = self.observer.run(("cd", str(self.source_root)))
+            if packet is not None:
+                packet["directory_command"] = creation.command_evidence(("cd", str(self.source_root)), changed)
+            argv = [TELEC, DOCS, GET, identity]
+            if pending:
+                argv.extend((TARGET_OPTION, PENDING_TARGET))
+            outcome = self.observer.run(argv, retain=False)
+            if packet is not None:
+                packet["command"] = creation.command_evidence(argv, outcome)
+            body = docs_body(outcome.output) if outcome.exit_status == 0 else None
+            if not body:
+                raise creation.binding_failure(DETAIL_NO_BODY.format(identity=identity, output=outcome.output[-300:]))
+            return body
+        except Exception as error:
+            if packet is not None:
+                packet["error"] = f"{type(error).__name__}: {error}"
+            raise
+        finally:
+            if packet is not None:
+                packet["finished_ns"] = time.monotonic_ns()
 
     def _file_body(self, identity: str) -> str:
         """The body of a candidate live file: everything after its header block, line ends normalized."""
-        text = (self.source_root / DOCS_ROOT / f"{identity}{LIVE_SUFFIX}").read_text(encoding="utf-8")
-        parts = text.split("---", 2)
-        return _text(parts[2]).strip() if len(parts) == 3 else ""
+        path = self.source_root / DOCS_ROOT / f"{identity}{LIVE_SUFFIX}"
+        packet = self._input_record("candidate_file", identity=identity, path=str(path), text=None)
+        try:
+            text = path.read_text(encoding="utf-8")
+            if packet is not None:
+                packet["text"] = text
+            parts = text.split("---", 2)
+            return _text(parts[2]).strip() if len(parts) == 3 else ""
+        except Exception as error:
+            if packet is not None:
+                packet["error"] = f"{type(error).__name__}: {error}"
+            raise
+        finally:
+            if packet is not None:
+                packet["finished_ns"] = time.monotonic_ns()
 
     def classify_generation(self) -> tuple[str, str]:
         """The installed generation from public reads alone, and the evidence for it.
@@ -528,7 +586,21 @@ class Publication:
         for identity in FOLD_IDS:
             live = clone / DOCS_ROOT / f"{identity}{LIVE_SUFFIX}"
             companion = clone / DOCS_ROOT / f"{identity}{COMPANION_SUFFIX}"
-            live.write_bytes(companion.read_bytes())
+            packet = self._input_record(
+                "fold_copy", identity=identity, source=str(companion), target=str(live), data=None
+            )
+            try:
+                data = companion.read_bytes()
+                if packet is not None:
+                    packet["data"] = base64.b64encode(data).decode("ascii")
+                live.write_bytes(data)
+            except Exception as error:
+                if packet is not None:
+                    packet["error"] = f"{type(error).__name__}: {error}"
+                raise
+            finally:
+                if packet is not None:
+                    packet["finished_ns"] = time.monotonic_ns()
             self._run(
                 (GIT, "rm", "--quiet", str(companion.relative_to(clone))), clone, CLONE_TIMEOUT_SECONDS, what="git rm"
             )

@@ -2338,6 +2338,7 @@ def validate_early_inputs(report: JsonObject, *, owner_email: str, owner_slug: s
                 "closed_reads",
                 "effects",
                 "owner_auth",
+                "publication",
             }
             or type(row["schema_version"]) is not int
             or row["schema_version"] != 1

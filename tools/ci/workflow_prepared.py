@@ -1671,6 +1671,7 @@ def run_prepared(
     retain(f"B10 event evidence retained at {event_binding.carrier_root}")
     observer = prepared.observer
     prepared.accounting = accounting
+    prepared.publication.retain_inputs(accounting)
     failure: BaseException | None = None
     event_seal: start_ledger.JsonObject | None = None
     try:

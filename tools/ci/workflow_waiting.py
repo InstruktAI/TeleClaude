@@ -1731,6 +1731,7 @@ def run_waiting(
     )
     observer = waiting.observer
     waiting.accounting = accounting
+    waiting.publication.retain_inputs(accounting)
     failure: BaseException | None = None
     event_binding: events.EventWindowBinding | None = None
     try:
