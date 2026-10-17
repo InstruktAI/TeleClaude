@@ -25,6 +25,14 @@ companies remain separately addressable when their material covers the same
 subject. Discovery names each participating person or company tier with its
 contribution count, including an empty tier.
 
+Without a named tier, discovery offers the global tier, the caller's own person
+tier and every company they belong to, and the home where the invocation lands.
+A landed project also offers its declared owning company; a company help desk
+offers its company and every project it owns. Each offered tier is read at the
+depth identity grants. An unresolved caller adds no relationship-derived tiers;
+the global tier and any invocation-provided home remain at public-only depth. An
+invocation that lands in no home adds no home tier.
+
 ## Canonical fields
 
 ### Use cases
