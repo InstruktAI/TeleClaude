@@ -57,7 +57,8 @@ An agent-originated todo may also expose the session that created it in the
 expanded todo details. The creator-session row is a navigation affordance, not
 an authorship claim: it renders only when the todo creation lineage carries an
 acting TeleClaude session id, and it lets the operator jump to or revive that
-session from the Preparation view.
+session from the Preparation view. Provenance detail rows remain mouse-clickable
+but do not become keyboard selection stops in the Preparation tree.
 
 On a todo row, the state column contains the schedule badge, the
 autonomous-creation marker when present, the owner chip, and the hold glyph.
@@ -149,7 +150,7 @@ Scenario: The operator's human focus is shared and retained
 
 #### UC-XNAV-18: An active-filter chip takes the extreme without bold
 
-#### UC-XNAV-19: Autonomous marker renders only for no-human agent creation
+#### UC-XNAV-19: An operator recognizes work created without human involvement
 
 ```
 Given a todo whose creation record has entry_point="agent"
@@ -170,11 +171,11 @@ When the todo row is rendered
 Then the state column renders no autonomous-creation marker
 ```
 
-#### UC-XNAV-20: Creator-session row renders only from creation lineage
+#### UC-XNAV-20: An operator returns to the session that created a todo
 
 ```
 Given a todo whose creation lineage carries an acting TeleClaude session id
-When the todo is expanded in the Preparation view
+When the operator expands it to find the session that created it
 Then the first detail row reads "created in: <session_id>"
 And no native session id is rendered
 ```
@@ -185,124 +186,102 @@ When the todo is expanded in the Preparation view
 Then no creator-session detail row is rendered
 ```
 
-#### UC-XNAV-21: Live creator session jumps directly
+```gherkin
+Scenario: A live creator session opens directly
+  Given an expanded todo shows the session that created it
+  And that creator session is live in the TUI session cache
+  When the operator chooses its session id
+  Then the Sessions tab opens with that session selected and previewed
 
+Scenario: A retained closed creator session can be revived
+  Given an expanded todo shows the session that created it
+  And that creator session is closed but still retained
+  When the operator chooses its revive affordance
+  Then the TUI revives the TeleClaude session by its session id
+  And opens the Sessions tab and selects and previews it once attachable
+
+Scenario: An absent creator session has no revive action
+  Given an expanded todo shows the session that created it
+  And that creator session no longer exists in the session ledger
+  When the operator views its provenance row
+  Then the session id remains visible without a revive affordance or native-id fallback
+
+Scenario: A retained creator session remains revivable beyond the listing window
+  Given an expanded todo shows a creator session that closed before the closed-session listing window
+  And that session is still retained
+  When the operator views its provenance row
+  Then the row offers the same revive action as any retained closed session
 ```
-Given an expanded todo renders "created in: <session_id>"
-And the creator session is live in the TUI session cache
-When the detail row is rendered
-Then the session id is bold
-And clicking the session id activates the Sessions tab
-And selects and previews that session
-```
+
+#### UC-XNAV-21: Live creator session jumps directly
 
 #### UC-XNAV-22: Retained closed creator session offers revive
 
-```
-Given an expanded todo renders "created in: <session_id>"
-And the creator session is closed but still retained in the agent_runtime session ledger
-When the detail row is rendered
-Then the session id is normal weight
-And the row appends " - revive"
-And "revive" is bold and clickable
-When the operator clicks "revive"
-Then the TUI revives the TeleClaude session by that session id
-And activates the Sessions tab
-And waits until the revived session is attachable before selecting and previewing it
-```
-
 #### UC-XNAV-23: Hard-deleted creator session is inert
 
-```
-Given an expanded todo renders "created in: <session_id>"
-And the creator session no longer exists in the agent_runtime session ledger
-When the detail row is rendered
-Then the row renders only "created in: <session_id>"
-And no revive affordance is rendered
-And no native session id fallback is rendered
-```
-
-#### UC-XNAV-24: Prepared-session row renders from durable preparation provenance
+#### UC-XNAV-24: An operator returns to the session that prepared a todo
 
 ```gherkin
 Given a todo whose preparation provenance carries a TeleClaude session id
-When the todo is expanded in the Preparation view
+When the operator expands it to find the session that prepared it
 Then the detail row immediately after the creator-session row reads "prepped in: <session_id>"
 And no native session id is rendered
 
 Given a todo whose preparation provenance carries no TeleClaude session id
-When the todo is expanded in the Preparation view
+When the operator expands it to find the session that prepared it
 Then no prepared-session detail row is rendered
+```
+
+```gherkin
+Scenario: A preparation session can be reached according to its liveness
+  Given an expanded todo shows the session that prepared it
+  When that session is live, retained closed, or absent from the ledger
+  Then the row offers direct navigation, revive, or an inert session id, respectively
+  And its action matches the creator-session row for the same liveness state
+
+Scenario: Re-preparation identifies the latest completing session
+  Given a todo was prepared in one TeleClaude session
+  And later re-enters preparation because its prepared contract changed
+  When another TeleClaude session completes preparation
+  Then the prepared-session detail row identifies the later completing session
 ```
 
 #### UC-XNAV-25: Prepared-session navigation follows session liveness
 
-```gherkin
-Given an expanded todo renders "prepped in: <session_id>"
-When the preparation session is live, retained closed, or absent from the session ledger
-Then the row respectively offers direct jump, revive, or inert session-id presentation
-And the affordance matches the creator-session row for the same liveness state
-```
-
 #### UC-XNAV-26: Session metadata rows do not consume keyboard navigation
 
-```gherkin
-Given an expanded todo renders creator-session and prepared-session detail rows
-When the operator moves through the Preparation view with Up or Down
-Then neither session metadata row receives keyboard selection
-And one keypress moves directly to the nearest navigable tree row in that direction
-And the session metadata rows remain mouse-clickable
-```
-
-#### UC-XNAV-27: Artifact rows show their last edit time and remain navigable
+#### UC-XNAV-27: An operator checks an artifact's recency before opening it
 
 ```gherkin
-Given an expanded todo has a stored artifact with a last-edited timestamp
-When its artifact row is rendered in the Preparation view
-Then the row prefixes the artifact name with the local time and date as "[HH:MM:SS-DD/MM]"
-And the artifact row remains keyboard-selectable and openable
+Given an operator expands a todo with a stored artifact that has a last-edited timestamp
+When the operator reviews the artifact row in the Preparation view
+Then the row shows when the artifact was last edited in local time and date
+And the operator can select and open that artifact
 ```
 
 #### UC-XNAV-28: Re-preparation identifies the latest completing session
 
-```gherkin
-Given a todo was prepared in one TeleClaude session
-And later re-enters preparation because its prepared contract changed
-When another TeleClaude session completes preparation
-Then the prepared-session detail row identifies the later completing session
-```
-
-#### UC-XNAV-29: System lineage renders the system chip
+#### UC-XNAV-29: An operator recognizes work owned by the system
 
 ```
-Given a todo whose lineage roots at a system principal, or a session acting as a system principal
-And the ownership surface is shown
-When the row is rendered
+Given a human operator is viewing work whose lineage roots at a system principal
+When the ownership row appears
 Then a chip showing the single letter "S" is rendered in the chip's place
 And the chip carries no person's colors and does not act as a person filter
 ```
 
-#### UC-XNAV-30: A session row shows an attention status as a leading dot
+#### UC-XNAV-30: An operator spots sessions needing attention
 
 ```
-Given a session whose agent status is `blocked` or `stalled`
-When the session row title line is rendered
-Then a dot occupies the row's first column, the first of the two columns that precede the index
-And the dot is orange for `blocked` and red for `stalled`
-And a session whose status is `active`, `idle`, or `unknown` renders that column blank
-And no other column of the row shifts: every line reads the same with and without the dot
-And the rendered line reads: • [N] ▶ claude/med <chip> /work config-public-surface-contract
+Given a human operator is scanning session rows in the TUI
+And one session is blocked or stalled
+When the operator looks for sessions needing attention
+Then the blocked row has an orange leading marker and the stalled row has a red leading marker
+And active, idle, and unknown rows have no attention marker
+And the rest of each row stays aligned with or without the marker
 ```
 
 #### UC-XNAV-31: Provenance session state is resolved by id, independent of any listing window
-
-```
-Given an expanded todo renders "created in: <session_id>" or "prepped in: <session_id>"
-And that session closed before `CLOSED_SESSION_LISTING_WINDOW` but is still retained
-When the detail row is rendered
-Then the row offers revive as for any retained closed session
-And the TUI resolves the provenance sessions of its rendered todos by their session ids, never by reading the closed-session listing
-```
 
 #### UC-XNAV-32: Open the assigned GitHub issue from a session row
 
