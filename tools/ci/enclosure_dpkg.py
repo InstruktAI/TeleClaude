@@ -813,14 +813,16 @@ def _interest_instance(
 
 
 def interpret_registered_instances(
-    routes: JsonObject, explicit: JsonObject, host: HostSubstrateFacts, deadline: AdmittedDeadline
+    routes: JsonObject, explicit: JsonObject, deferred: JsonObject, host: HostSubstrateFacts, deadline: AdmittedDeadline
 ) -> JsonObject:
     """Join original native inventory to registrations; executable-recipient/source/deferred admission remains separate."""
     registrations: list[JsonValue] = []
     explicit_registrations: list[JsonValue] = []
+    deferred_requests: list[JsonValue] = []
     result: JsonObject = {
         "registrations": registrations,
         "explicit_registrations": explicit_registrations,
+        "deferred_requests": deferred_requests,
         "inventory_sha256": host.inventory_sha256,
         "deferred_and_pending_work": "unproven",
         "recipient_admission": "unproven",
@@ -874,13 +876,102 @@ def interpret_registered_instances(
                         "duplicate_identity": "resolved" if identity is not None else "unproven",
                     }
                 )
+        _deferred_instances(deferred, registrations, explicit_registrations, instances, deadline, deferred_requests)
         _before_cutoff(deadline)
         return result
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError(
-            {"routes": routes, "explicit": explicit, "inventory_base64": host.inventory_base64, "instances": result}
+            {
+                "routes": routes,
+                "explicit": explicit,
+                "deferred": deferred,
+                "inventory_base64": host.inventory_base64,
+                "instances": result,
+            }
         ) from error
+
+
+def _deferred_file_names(trigger: bytes, deadline: AdmittedDeadline) -> list[bytes]:
+    # trig_path_activate_byname first uses the complete name, then repeatedly truncates at the last slash.
+    # fsys lookup normalizes leading slash/dot-slash only, including the final empty prefix's root node.
+    names = [_fsys_name(trigger)]
+    path = trigger
+    while (slash := path.rfind(b"/")) >= 0:
+        _before_cutoff(deadline)
+        path = path[:slash]
+        names.append(_fsys_name(path))
+    return names
+
+
+def _deferred_instances(
+    deferred: JsonObject,
+    registrations: list[JsonValue],
+    explicit_registrations: list[JsonValue],
+    instances: dict[str, dict[str, JsonObject]],
+    deadline: AdmittedDeadline,
+    captured: list[JsonValue],
+) -> None:
+    entries = deferred["entries"]
+    if deferred["error"] is not None or not isinstance(entries, list):
+        raise ValueError(ERROR_INPUT)
+    files = {text(object_value(value), "path"): object_value(value) for value in explicit_registrations}
+    file_interests: dict[bytes, list[JsonValue]] = {}
+    for value in registrations:
+        _before_cutoff(deadline)
+        registration = object_value(value)
+        name = base64.b64decode(text(registration, "native_name_base64"), validate=True)
+        file_interests.setdefault(name, []).append(registration)
+    for value in entries:
+        _before_cutoff(deadline)
+        entry = object_value(value)
+        trigger = base64.b64decode(text(entry, "trigger_base64"), validate=True)
+        kind = _deferred_kind(trigger)
+        awaiters = entry["awaiters"]
+        if kind != entry["kind"] or not isinstance(awaiters, list):
+            raise ValueError(ERROR_INPUT)
+        resolved: list[JsonValue] = []
+        candidates: list[JsonValue] = []
+        request: JsonObject = {
+            "native_line": entry["native_line"],
+            "trigger_base64": entry["trigger_base64"],
+            "kind": kind,
+            "awaiters": resolved,
+            "candidate_interests": candidates,
+        }
+        captured.append(request)
+        for awaiter_value in awaiters:
+            _before_cutoff(deadline)
+            awaiter = object_value(awaiter_value)
+            specification = base64.b64decode(text(awaiter, "package_spec_base64"), validate=True)
+            null = specification == b"-"
+            if awaiter["null_awaiter"] is not null:
+                raise ValueError(ERROR_INPUT)
+            instance, identity = (None, None) if null else _registered_instance(specification, instances)
+            resolved.append(
+                {
+                    **awaiter,
+                    "instance": instance,
+                    "package_identity": "none" if null else "resolved" if identity else "unproven",
+                }
+            )
+        if not awaiters:
+            continue  # Native still calls activate_start, but no activation callback consumes interests.
+        if kind == "file":
+            for name in _deferred_file_names(trigger, deadline):
+                for registration_value in file_interests.get(name, []):
+                    _before_cutoff(deadline)
+                    registration = object_value(registration_value)
+                    candidates.append({**registration, "activated_name_base64": base64.b64encode(name).decode("ascii")})
+        elif kind == "explicit":
+            source = files[str(Path("/var/lib/dpkg/triggers") / trigger.decode("ascii"))]
+            interests = source["interests"]
+            if not isinstance(interests, list):
+                raise ValueError(ERROR_INPUT)
+            for interest in interests:
+                _before_cutoff(deadline)
+                candidates.append({**object_value(interest), "activated_name_base64": entry["trigger_base64"]})
+        # Unknown native kinds have no activation effect; their non-null awaiters were still parsed above.
 
 
 def _deferred_kind(trigger: bytes) -> str:
