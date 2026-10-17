@@ -827,18 +827,26 @@ def _interest_instance(
 
 
 def interpret_registered_instances(
-    routes: JsonObject, explicit: JsonObject, deferred: JsonObject, host: HostSubstrateFacts, deadline: AdmittedDeadline
+    routes: JsonObject,
+    explicit: JsonObject,
+    deferred: JsonObject,
+    prior: JsonObject,
+    host: HostSubstrateFacts,
+    deadline: AdmittedDeadline,
 ) -> JsonObject:
     """Join original native inventory to registrations; executable-recipient/source/deferred admission remains separate."""
     registrations: list[JsonValue] = []
     explicit_registrations: list[JsonValue] = []
     deferred_requests: list[JsonValue] = []
+    prior_requests: list[JsonValue] = []
     result: JsonObject = {
         "registrations": registrations,
         "explicit_registrations": explicit_registrations,
         "deferred_requests": deferred_requests,
+        "prior_control_requests": prior_requests,
         "inventory_sha256": host.inventory_sha256,
         "deferred_and_pending_work": "unproven",
+        "prior_control_effect_admission": "unproven",
         "recipient_admission": "unproven",
         "error": None,
     }
@@ -890,7 +898,7 @@ def interpret_registered_instances(
                         "duplicate_identity": "resolved" if identity is not None else "unproven",
                     }
                 )
-        _deferred_instances(deferred, registrations, explicit_registrations, instances, deadline, deferred_requests)
+        _activation_instances(deferred, prior, registrations, explicit_registrations, instances, deadline, result)
         _before_cutoff(deadline)
         return result
     except (KeyError, OSError, ValueError, RuntimeError) as error:
@@ -900,13 +908,14 @@ def interpret_registered_instances(
                 "routes": routes,
                 "explicit": explicit,
                 "deferred": deferred,
+                "prior_control": prior,
                 "inventory_base64": host.inventory_base64,
                 "instances": result,
             }
         ) from error
 
 
-def _deferred_file_names(trigger: bytes, deadline: AdmittedDeadline) -> list[bytes]:
+def _activation_file_names(trigger: bytes, deadline: AdmittedDeadline) -> list[bytes]:
     # trig_path_activate_byname first uses the complete name, then repeatedly truncates at the last slash.
     # fsys lookup normalizes leading slash/dot-slash only, including the final empty prefix's root node.
     names = [_fsys_name(trigger)]
@@ -918,16 +927,27 @@ def _deferred_file_names(trigger: bytes, deadline: AdmittedDeadline) -> list[byt
     return names
 
 
-def _deferred_instances(
+def _activation_instances(
     deferred: JsonObject,
+    prior: JsonObject,
     registrations: list[JsonValue],
     explicit_registrations: list[JsonValue],
     instances: dict[str, dict[str, JsonObject]],
     deadline: AdmittedDeadline,
-    captured: list[JsonValue],
+    captured: JsonObject,
 ) -> None:
     entries = deferred["entries"]
-    if deferred["error"] is not None or not isinstance(entries, list):
+    activations = prior["activation_requests"]
+    deferred_requests = captured["deferred_requests"]
+    prior_requests = captured["prior_control_requests"]
+    if (
+        deferred["error"] is not None
+        or prior["error"] is not None
+        or not isinstance(entries, list)
+        or not isinstance(activations, list)
+        or not isinstance(deferred_requests, list)
+        or not isinstance(prior_requests, list)
+    ):
         raise ValueError(ERROR_INPUT)
     files = {text(object_value(value), "path"): object_value(value) for value in explicit_registrations}
     file_interests: dict[bytes, list[JsonValue]] = {}
@@ -936,6 +956,25 @@ def _deferred_instances(
         registration = object_value(value)
         name = base64.b64decode(text(registration, "native_name_base64"), validate=True)
         file_interests.setdefault(name, []).append(registration)
+
+    def match_interests(trigger: bytes, kind: str, candidates: list[JsonValue]) -> None:
+        if kind == "file":
+            for name in _activation_file_names(trigger, deadline):
+                for registration_value in file_interests.get(name, []):
+                    _before_cutoff(deadline)
+                    registration = object_value(registration_value)
+                    candidates.append({**registration, "activated_name_base64": base64.b64encode(name).decode("ascii")})
+        elif kind == "explicit":
+            source = files[str(Path("/var/lib/dpkg/triggers") / trigger.decode("ascii"))]
+            interests = source["interests"]
+            if not isinstance(interests, list):
+                raise ValueError(ERROR_INPUT)
+            for interest in interests:
+                _before_cutoff(deadline)
+                candidates.append(
+                    {**object_value(interest), "activated_name_base64": base64.b64encode(trigger).decode("ascii")}
+                )
+
     for value in entries:
         _before_cutoff(deadline)
         entry = object_value(value)
@@ -953,7 +992,7 @@ def _deferred_instances(
             "awaiters": resolved,
             "candidate_interests": candidates,
         }
-        captured.append(request)
+        deferred_requests.append(request)
         for awaiter_value in awaiters:
             _before_cutoff(deadline)
             awaiter = object_value(awaiter_value)
@@ -971,21 +1010,25 @@ def _deferred_instances(
             )
         if not awaiters:
             continue  # Native still calls activate_start, but no activation callback consumes interests.
-        if kind == "file":
-            for name in _deferred_file_names(trigger, deadline):
-                for registration_value in file_interests.get(name, []):
-                    _before_cutoff(deadline)
-                    registration = object_value(registration_value)
-                    candidates.append({**registration, "activated_name_base64": base64.b64encode(name).decode("ascii")})
-        elif kind == "explicit":
-            source = files[str(Path("/var/lib/dpkg/triggers") / trigger.decode("ascii"))]
-            interests = source["interests"]
-            if not isinstance(interests, list):
-                raise ValueError(ERROR_INPUT)
-            for interest in interests:
-                _before_cutoff(deadline)
-                candidates.append({**object_value(interest), "activated_name_base64": entry["trigger_base64"]})
+        match_interests(trigger, kind, candidates)
         # Unknown native kinds have no activation effect; their non-null awaiters were still parsed above.
+    for value in activations:
+        _before_cutoff(deadline)
+        activation = object_value(value)
+        trigger = base64.b64decode(text(activation, "trigger_base64"), validate=True)
+        kind = _deferred_kind(trigger)
+        if kind != activation["kind"] or type(activation["await"]) is not bool:
+            raise ValueError(ERROR_INPUT)
+        candidates = []
+        prior_requests.append(
+            {
+                **activation,
+                "native_awaiter_mode": "container_processing_instance" if activation["await"] else "null",
+                "candidate_interests": candidates,
+            }
+        )
+        # The callback always runs once per actual directive invocation; this is no observed invocation count.
+        match_interests(trigger, kind, candidates)
 
 
 def _deferred_kind(trigger: bytes) -> str:
@@ -1082,12 +1125,14 @@ def parse_deferred_inputs(snapshot: JsonObject, deadline: AdmittedDeadline) -> J
         raise DpkgInputError({"inputs": snapshot, "deferred": result}) from error
 
 
-def read_explicit_interests(snapshot: JsonObject, deferred: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
-    """Read only interest bodies actually used by explicit deferred records; no initialization census or effect."""
+def read_explicit_interests(
+    snapshot: JsonObject, deferred: JsonObject, prior: JsonObject, deadline: AdmittedDeadline
+) -> JsonObject:
+    """Read the actual deferred/old-control explicit bodies once; no initialization census or effect."""
     files: list[JsonValue] = []
     requests: list[JsonValue] = []
     result: JsonObject = {
-        "scope": "deferred_explicit_records_only",
+        "scope": "deferred_and_prior_control_explicit_requests",
         "files": files,
         "requests": requests,
         "native_state": None,
@@ -1099,16 +1144,22 @@ def read_explicit_interests(snapshot: JsonObject, deferred: JsonObject, deadline
         result["native_state"] = deferred["native_state"]
         existing = _input_files(snapshot)
         entries = deferred["entries"]
-        if deferred["error"] is not None or not isinstance(entries, list):
+        activations = prior["activation_requests"]
+        if (
+            deferred["error"] is not None
+            or prior["error"] is not None
+            or not isinstance(entries, list)
+            or not isinstance(activations, list)
+        ):
             raise ValueError(ERROR_INPUT)
         indices: dict[str, int] = {}
-        for value in entries:
+
+        def capture(entry: JsonObject, consumes: bool, origin: str) -> None:
             _before_cutoff(deadline)
-            entry = object_value(value)
             if entry["kind"] != "explicit":
-                continue
+                return
             trigger = base64.b64decode(text(entry, "trigger_base64"), validate=True)
-            if _deferred_kind(trigger) != "explicit" or not isinstance(entry["awaiters"], list):
+            if _deferred_kind(trigger) != "explicit":
                 raise ValueError(ERROR_INPUT)
             path = Path("/var/lib/dpkg/triggers") / trigger.decode("ascii")
             address = str(path)
@@ -1116,12 +1167,13 @@ def read_explicit_interests(snapshot: JsonObject, deferred: JsonObject, deadline
                 "trigger_base64": entry["trigger_base64"],
                 "native_line": entry["native_line"],
                 "path": address,
+                "origin": origin,
             }
             requests.append(request)
-            if not entry["awaiters"]:
+            if not consumes:
                 # Native start can open the name, but no activate_awaiter callback consumes the body.
                 request["body_lookup"] = "not_consumed_no_awaiter"
-                continue
+                return
             if address not in indices:
                 indices[address] = len(files)
                 if address in existing:
@@ -1130,11 +1182,22 @@ def read_explicit_interests(snapshot: JsonObject, deferred: JsonObject, deadline
                     _file(path, deadline, files)
             request["body_lookup"] = "captured"
             request["file_index"] = indices[address]
+
+        for value in entries:
+            entry = object_value(value)
+            if not isinstance(entry["awaiters"], list):
+                raise ValueError(ERROR_INPUT)
+            capture(entry, bool(entry["awaiters"]), "preexisting_deferred")
+        for value in activations:
+            # A noawait control directive still makes one activate_awaiter(NULL) call and consumes its body.
+            capture(object_value(value), True, "prior_container_control")
         _before_cutoff(deadline)
         return result
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
-        raise DpkgInputError({"inputs": snapshot, "deferred": deferred, "explicit": result}) from error
+        raise DpkgInputError(
+            {"inputs": snapshot, "deferred": deferred, "prior_control": prior, "explicit": result}
+        ) from error
 
 
 def parse_explicit_interests(lookups: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
@@ -1416,11 +1479,12 @@ def collect_container_routes(
         result["archive_basis"] = basis
         routes = interpret_trigger_routes(inputs, basis, deadline)
         result["routes"] = routes
-        lookups = read_explicit_interests(inputs, deferred, deadline)
+        prior = object_value(initial["container_prior_control"])
+        lookups = read_explicit_interests(inputs, deferred, prior, deadline)
         result["explicit_lookups"] = lookups
         explicit = parse_explicit_interests(lookups, deadline)
         result["explicit_interests"] = explicit
-        instances = interpret_registered_instances(routes, explicit, deferred, host, deadline)
+        instances = interpret_registered_instances(routes, explicit, deferred, prior, host, deadline)
         result["instances"] = instances
         affected = classify_container_candidates(initial, instances, deadline)
         result["affected_candidates"] = affected
