@@ -45,15 +45,35 @@ runtime, respectively.
 
 ### Use cases
 
-#### UC-PI1: An invitation requested from a peer uses the master's endpoints
+#### UC-PI1: An administrator invites a registered person from another computer
 
 ```gherkin
-Given a registered person exists on the unique master
-And an administrator invokes person invite on another computer
-When the invitation succeeds
-Then the master issues the token in the store used for redemption
-And the returned links name the master's configured public endpoints
-And the caller's local invitation store and bot credentials are not used as substitutes
+Scenario: The invitation is issued by the person's master
+  Given a registered person exists on the unique master
+  And an administrator invokes person invite from another computer
+  When the invitation succeeds
+  Then the master's store issues the invitation
+  And the returned links name the master's configured public endpoints
+  And the caller's local invitation store and bot credentials are not used as substitutes
+
+Scenario: An unavailable or ambiguous master refuses issuance
+  Given no unique available master can execute the invitation
+  When the administrator requests an invite from a peer
+  Then the ownership failure is reported
+  And no computer issues or rotates a replacement token locally
+  And no invitation email is sent
+
+Scenario: A request addressed to a non-owner is refused
+  Given an administrator explicitly addresses the invite to a non-master
+  When the request is evaluated
+  Then it is refused with the authoritative destination or its unavailability
+  And the non-owner changes no invitation state
+
+Scenario: Email failure does not lose usable invitation links
+  Given the master issued an invitation with usable public links
+  When email delivery is unavailable or fails
+  Then the caller still receives the generated links and the email outcome
+  And the command does not claim successful email delivery
 ```
 
 #### UC-PI2: Issuance and redemption agree
@@ -66,33 +86,11 @@ Then the invitation resolves to that person from the issuing store
 
 #### UC-PI3: Missing ownership cannot rotate an invitation locally
 
-```gherkin
-Given no unique available master can execute the invitation
-When an administrator requests an invite from a peer
-Then the command reports the ownership failure
-And no computer issues or rotates a replacement token locally
-And no invitation email is sent
-```
-
 #### UC-PI4: Explicitly addressing a non-owner is refused
-
-```gherkin
-Given an administrator explicitly addresses person invite to a non-master
-When the request is evaluated
-Then it is refused with the authoritative destination or its unavailability
-And the non-owner changes no invitation state
-```
 
 #### UC-PI5: Optional email failure preserves generated links
 
-```gherkin
-Given the master issued an invitation with usable public links
-When its email delivery is unavailable or fails
-Then the caller receives the generated links and the email outcome
-And the command claims no successful email delivery
-```
-
-#### UC-PI6: Resending uses the same authority
+#### UC-PI6: An administrator resends a person's invitation through the master
 
 ```gherkin
 Given a person's current invitation was issued by the master
