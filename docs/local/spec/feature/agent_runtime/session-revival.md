@@ -102,6 +102,8 @@ And the agent receives it in the restored conversation
 
 ## Known caveats
 
+- For a freshly minted row, the earliest prior row bound to that native ID supplies both the project path and subdirectory; later rows cannot override either.
+
 - **Native-form revival without an existing binding always mints a new session row.** There is no "promote this orphan native id back into the original TeleClaude session" path — if the original row was deleted or was never created, revival creates a new row with a new session id.
 
 - **A freshly-minted revival row recovers the native session's project from the most authoritative source available.** Resolution runs in order: the earliest prior session row bound to <native_id> (a fast path that survives session closure), then the project the native transcript itself records (the transcript directory and its embedded working directory for Claude, the session-metadata working directory for Codex, the hash-identified project for Gemini), then — only for Gemini legacy storage keyed by a project-path hash — the caller's invocation directory when its hash matches the transcript's project hash. When none of those resolve, revival rejects with a clear error rather than silently rooting the session at the caller's invocation directory. The earliest prior row wins over later ones, so a project recorded by an earlier buggy revive cannot override the original recording.
