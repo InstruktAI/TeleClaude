@@ -26,13 +26,6 @@ failed refresh, and retries until the daemon is reachable again.
 
 #### UC-TDR1: A daemon connection dropped mid-request surfaces as a handled API failure
 
-```
-Given the TUI has a request to the daemon in flight
-When the daemon closes the connection before sending a response
-Then the request failure surfaces as the client's documented API error
-And the TUI keeps running and retries the refresh
-```
-
 #### UC-TDR2: A restarting daemon's refusal reads as a restart, not a failed action
 
 ```gherkin
