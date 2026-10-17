@@ -14,7 +14,7 @@ visibility: public
 
 Lazy MCP runtime gives agents access to configured MCP servers without loading every server into every agent process at startup. The TeleClaude daemon owns MCP server leases, starts or connects to a server only when a caller asks for its tools or invokes a tool, and exposes the capability through `telec mcp` and `/mcp` API endpoints.
 
-The TeleClaude MCP registry is the source of available servers. Server entries from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` are accumulated into the daemon's effective MCP catalog; those source files are inputs, not mutation targets. `mcp.json` and `mcp.local.json` are compatibility import inputs during the transition window only. Each server declares whether its credential owner is global or the verified person behind the caller. Secret placeholders resolve exclusively from that owner's TeleClaude environment file at lease start, and resolved secret values never appear in agent-facing output.
+The TeleClaude MCP registry is the source of available servers. Server entries from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` are accumulated into the daemon's effective MCP catalog; those source files are inputs, not mutation targets. `mcp.json` and `mcp.local.json` are compatibility import inputs during the transition window only. Each server declares whether its credential owner is global or the verified person behind the caller. Secret placeholders resolve exclusively from that owner's TeleClaude environment file at lease start; TeleClaude's registry listing and launch metadata retain placeholders rather than resolved values. MCP server tool metadata and call results remain server-controlled data and are returned unchanged.
 
 ## Canonical fields
 
@@ -55,7 +55,7 @@ metadata and referenced variable names, never resolved secret values.
 - The JSON Schema is available locally so editors can validate and complete registry properties without internet access. Committed registry files use a portable relative schema reference; generated machine-local examples may use an absolute `file://` reference to the installed schema.
 
 - Optional runtime behavior is defaulted by the runtime model and schema, not copied into every server entry. Defaults are: lazy enabled, serialized per-server calls, and 15 minute idle TTL. MCP operation budgets are fixed daemon defaults, not per-server or per-tool registry options: 10 second startup, 5 second `tools/list`, and 10 second `tools/call`.
-- When an idle lease expires, the runtime closes its stdio process or remote session and removes the lease. Resolved secret values do not enter cached catalogs or logs.
+- When an idle lease expires, the runtime closes its stdio process or remote session and removes the lease.
 
 - Server definitions may declare stdio commands or remote HTTP/SSE endpoints. Environment placeholders are retained as placeholders in the registry and resolved only at lease start.
 
@@ -163,14 +163,15 @@ Scenario: Use the rotated secret on the person's next request
   And the other person's and global server sessions remain available
 ```
 
-#### UC-LMCP-13: A person can use a remote server without exposing its secrets
+#### UC-LMCP-13: An operator can configure a remote server with environment-backed credentials
 
 ```gherkin
 Scenario: Use a remote service with environment-backed headers
   Given an operator has configured a remote MCP server with headers that refer to available environment secrets
   When their assistant lists the server's tools
   Then the remote server starts and returns its advertised tools
-  And resolved secret values are not exposed in the command arguments or agent-facing output
+  And resolved header values reach the server through its process environment, not its launch arguments
+  And server-provided tool metadata and results are returned unchanged rather than secret-redacted
 ```
 
 #### UC-LMCP-14: An operator can inspect configured services while the daemon is unavailable
@@ -245,6 +246,7 @@ Scenario: Keep a service out of default discovery without disabling it
 
 ## Known caveats
 
+- MCP tool catalogs and call results are returned as the server supplies them. If a server includes text matching one of its configured secrets, that text may reach the agent; the runtime does not redact server-controlled content.
 - Stdio MCP servers cannot be attached to directly after startup. The daemon must broker every interaction because it owns the only stdin/stdout channel.
 - Parallel tool calls are not assumed safe. Serialization is the default until a server is explicitly configured as parallel-safe.
 - Specialized procedures can exclude their server from generic discovery while still using the same runtime underneath.
