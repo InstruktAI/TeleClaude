@@ -28,7 +28,7 @@ Scenario: Read the session's saved conversation
   Given a person asks an agent authorized to inspect a session within their reach
   When the agent reads that session's transcript
   Then it receives one continuous conversation across the session's transcript chain
-  And the response includes the session metadata needed to identify its source
+  And the response includes the session id, active agent, last activity, last input, last agent stop, and computed agent status
 
 Scenario: A missing session is refused before reading transcript files
   Given no session carries the id the person named
@@ -43,6 +43,9 @@ Scenario: A missing session is refused before reading transcript files
 Given a person needs only recent or selected types of messages from a session
 When their agent requests transcript filters
 Then the returned transcript reflects those choices and retains source positions
+And excluding tool content omits tool-use and tool-result blocks
+And excluding thinking content omits reasoning blocks
+And the `since` cutoff omits earlier entries
 And the fallback text bound applies only when structured transcript content is unavailable
 ```
 
