@@ -127,98 +127,51 @@ the session stays inspectable.
 
 #### UC-SRM1: Mappable rows take one role
 
-```gherkin
-Given a session recorded with a system role and a job the mapping names
-When the migration runs
-Then the session carries the mapped role and the job field holds only its instance identity, or nothing
-And its persisted launch state carries the same role
-```
-
-#### UC-SRM2: Unmappable rows are kept, refused and reported
+#### UC-SRM2: An operator can diagnose an unmappable session without losing it
 
 ```gherkin
-Given a session recorded with a combination the mapping does not name
-When the migration runs
-Then the row keeps its recorded job and command and carries the reserved `unmapped` role
-And the migration's report names the session, every original recorded value and the reason
-And an agent reviving that session is refused every role-gated act with the not-permitted failure naming the recorded role
+Given an operator upgrades TeleClaude and a stored session has a combination the migration cannot map
+When the session-role migration completes
+Then the session's original record is preserved and reported as unmappable with its values and reason
+And role-gated actions on it are refused rather than assigned a valid role
 ```
 
 #### UC-SRM3: Historical attribution is provenance, not derivation
 
-```gherkin
-Given authored turns and queued inputs recorded with a job-role label before the migration
-When the migration runs
-Then each keeps its recorded label as the provenance of that occurrence
-And no label is rewritten from the session's migrated role
-```
-
 #### UC-SRM5: A migrated session continues from reconstructed evidence or is refused
 
 ```gherkin
-Given a session recorded before the migration whose row retains its command, working slug and instance identity
-When an agent restarts, revives or hands off that session
-Then the loader it receives is composed from the reconstructed invocation and directs it to its procedure's instructions
-And given a row whose required input is not retained
-When the same continuation is attempted
-Then it is refused naming the missing input and the row's migrated role is unchanged
+Given an operator asks a session recorded before the migration to continue from its retained work evidence
+When the session restarts, revives, or is handed off
+Then it resumes from the procedure and context the record supports
+And if required input is missing, continuation is refused with that input named and the migrated role unchanged
 ```
 
-#### UC-SRM4: The migration runs once and is observable
+#### UC-SRM4: An operator can inspect the one-time session migration result
 
 ```gherkin
-Given the runtime starts for the first time after the migration is deployed
-When it opens the session store
-Then the migration runs before any role-gated act is served
-And its inventory and report are written where an operator can read them before any row changes
-And an interrupted run leaves every row as it was recorded
-And a later start finds the migration recorded and does not run it again
+Given an operator upgrades TeleClaude to the catalog-role runtime
+When the runtime migrates stored sessions
+Then the operator can read which sessions were migrated before any row changes
+And an interrupted migration leaves the recorded rows unchanged
+And later starts do not rerun a completed migration
 ```
 
 #### UC-SRM6: A combination that disagrees with itself elevates nothing
 
-```gherkin
-Scenario Outline: Disagreeing recorded values are unmappable
-  Given a session recorded as <combination>
-  When the migration runs
-  Then the row carries the reserved `unmapped` role
-  And the report names the session, its recorded values and the reason
-  And no role-gated act is admitted for the session
-
-  Examples:
-    | combination                                                                      |
-    | a `job_runner` whose job is `integrator` and that no configured job carries      |
-    | a `worker` whose job is `builder` under a command that conferred `reviewer`      |
-    | no recorded system role, a working slug and no job                               |
-    | an adoption pair under a retired `general/run-job` whose job no declaration carries |
-```
-
 #### UC-SRM7: A declaration not yet folded maps as its delivery publishes it
 
-```gherkin
-Given a job or activation session whose procedure's role is declared only by a replacement pending in the delivery that ships the migration
-When the migration runs before that delivery's documentation folds
-Then the session carries the role that pending declaration names
-And the report records that the declaration was pending
-```
-
-#### UC-SRM8: An unreadable declaration source changes nothing
+#### UC-SRM8: An operator can diagnose a blocked session migration
 
 ```gherkin
-Given a declaration source the mapping needs cannot be read
-When the migration runs
-Then it stops with an error naming that source before the report or any row changes
-And every row keeps its recorded values
-And the next start runs the migration again
+Given an operator upgrades while a required job or role declaration source is unreadable
+When the session-role migration starts
+Then it stops before the report or any session row changes
+And the error names the unreadable source
+And a later start retries the migration
 ```
 
 #### UC-SRM9: A row recorded in a todo worktree resolves against the canonical checkout
-
-```gherkin
-Given a job or activation session recorded with a project path inside a linked todo worktree
-When the migration resolves the row's job and procedure
-Then it reads the job declarations and the entry declaration state of that repository's canonical checkout
-```
 
 ### Cross-context references
 
