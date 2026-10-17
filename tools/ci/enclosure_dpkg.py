@@ -1061,3 +1061,82 @@ def parse_explicit_interests(lookups: JsonObject, deadline: AdmittedDeadline) ->
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError({"lookups": lookups, "interests": result}) from error
+
+
+def inspect_initialization_compatibility(
+    snapshot: JsonObject, host: HostSubstrateFacts, package: StaticPackage, deadline: AdmittedDeadline
+) -> JsonObject:
+    """Capture one sufficient actual incompatibility witness; never infer compatibility from its absence."""
+    files: list[JsonValue] = []
+    result: JsonObject = {
+        "files": files,
+        "scope": "ordinary_writing_container_installation",
+        "initialization": "unproven",
+        "writing_initialization_compatibility": "unproven",
+        "error": None,
+    }
+    try:
+        _before_cutoff(deadline)
+        if host.container_installed:
+            result["scope"] = "no_container_installation"
+            return result
+        actual = _input_files(snapshot)
+        if _input_bytes(actual["/var/lib/dpkg/triggers/Unincorp"]) is not None:
+            result["initialization"] = "not_requested_by_unincorp"
+            return result
+        result["initialization"] = "absent_native_initialization"
+        lock = parse_object(package.lock_bytes)
+        scripts = lock["host_maintainer_scripts"]
+        final_packages = object_value(lock["host_closure"])["final_packages"]
+        if not isinstance(scripts, list) or not isinstance(final_packages, list):
+            raise ValueError(ERROR_INPUT)
+        controls = [
+            object_value(value)
+            for value in scripts
+            if object_value(value).get("package") == "ca-certificates" and object_value(value).get("file") == "triggers"
+        ]
+        required = [
+            object_value(value) for value in final_packages if object_value(value).get("name") == "ca-certificates"
+        ]
+        if len(controls) != 1 or len(required) != 1:
+            raise ValueError(ERROR_INPUT)
+        declared, final = controls[0], required[0]
+        instance, identity = _registered_instance(b"ca-certificates", _inventory_instances(host, deadline))
+        result["instance"] = instance
+        if (
+            identity is None
+            or instance["identity_state"] != "resolved"
+            or instance["version"] != text(declared, "version")
+            or instance["version"] != text(final, "version")
+            or instance["architecture"] != text(final, "architecture")
+            or instance["selection_state"] != "install"
+            or instance["error_flag"] != "ok"
+            or instance["lifecycle"] != "installed"
+        ):
+            raise ValueError(ERROR_INPUT)
+        # Locked ca-certificates is Multi-Arch: foreign; its native info filename is unqualified.
+        path = Path("/var/lib/dpkg/info/ca-certificates.triggers")
+        _file(path, deadline, files)
+        data = _input_bytes(object_value(files[0]))
+        matched = (
+            data is not None
+            and len(data) == positive_integer(declared, Field.BYTES)
+            and hashlib.sha256(data).hexdigest() == text(declared, Field.SHA256)
+        )
+        result["matches_declared_source"] = matched
+        if matched:
+            # This exact control declares two interests. Native transitional activation leaves this installed
+            # package pending. The permitted container install / named dbus pass cannot settle it.
+            result["writing_initialization_compatibility"] = "incompatible"
+            result["reason"] = (
+                "initialization leaves required ca-certificates pending outside the permitted named dbus pass"
+            )
+            result["required_status"] = "install ok installed"
+            result["predicted_pending_names"] = ["update-ca-certificates", "update-ca-certificates-fresh"]
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError(
+            {"inputs": snapshot, "inventory_base64": host.inventory_base64, "initialization": result}
+        ) from error
