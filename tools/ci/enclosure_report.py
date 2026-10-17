@@ -14,6 +14,7 @@ from typing import Final, cast
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_events as events
 from tools.ci import workflow_foundation as foundation
+from tools.ci import workflow_waiting as waiting
 from tools.ci.enclosure_contract import (
     NANOSECONDS,
     QUALIFICATION_DIGEST,
@@ -362,6 +363,15 @@ def _event_early_links(
         data = object_value(cast(JsonObject, record)[events.FIELD_DATA])
         inputs = object_value(early[case])
         if case == "B3":
+            effects = object_value(inputs["effect_inputs"])
+            if (
+                data.get("person") != effects["person"]
+                or data.get("wait_key") != effects["wait_key"]
+                or data.get("question") != waiting.QUESTION
+                or data.get("answer") != waiting.ANSWER
+                or data.get("waited_phase") != waiting.PHASE_PREPARATION
+            ):
+                raise ValueError(ERROR_REPORT)
             actors = tuple(text(data, key) for key in ("owner", "first_driver", "child", "dispatched", "second_driver"))
             driver_actors = {"first": data["first_driver"], "second": data["second_driver"]}
             expected_new = {"first": {text(data, "owner"), text(data, "first_driver")}, "second": set(actors)}
@@ -1268,6 +1278,331 @@ def _other_actor_inputs(
     return result
 
 
+def _b3_effect_packets(row: JsonObject, actors: dict[str, JsonObject]) -> dict[str, JsonObject]:
+    expected = {
+        "before-waiting": ("first", 0, 1, 1),
+        "waiting": ("first", 1, 3, 2),
+        "entry-refused": (None, 0, 1, 0),
+        "dispatched-decision-and-note": ("dispatched", 2, 4, 0),
+        "owner-decision": ("owner", 1, 2, 0),
+        "second-claim-context": ("second", 0, 0, 3),
+    }
+    values = row["effects"]
+    if not isinstance(values, list) or len(values) != len(expected):
+        raise ValueError(ERROR_REPORT)
+    result: dict[str, JsonObject] = {}
+    previous = positive_integer(row, "started_ns")
+    person: str | None = None
+    key: str | None = None
+    for name, value in zip(expected, values, strict=True):
+        packet = object_value(value)
+        actor, frames, shown, sessions = expected[name]
+        fields = {
+            "name",
+            "actor",
+            "person",
+            "wait_key",
+            "started_ns",
+            "finished_ns",
+            "frames",
+            "shown",
+            "session_reads",
+        }
+        if name in ("entry-refused", "dispatched-decision-and-note"):
+            fields.add("baseline")
+        if name == "entry-refused":
+            fields |= {"start_calls", "operation_reads", "lists"}
+        if (
+            set(packet) != fields
+            or packet["name"] != name
+            or packet["actor"] != (text(actors[actor], "session_id") if actor is not None else None)
+            or not previous
+            <= positive_integer(packet, "started_ns")
+            <= positive_integer(packet, "finished_ns")
+            <= positive_integer(row, "finished_ns")
+        ):
+            raise ValueError(ERROR_REPORT)
+        previous = positive_integer(packet, "finished_ns")
+        current_person = text(packet, "person")
+        if person is not None and current_person != person:
+            raise ValueError(ERROR_REPORT)
+        person = current_person
+        if name == "before-waiting":
+            if packet["wait_key"] != "":
+                raise ValueError(ERROR_REPORT)
+        else:
+            current_key = text(packet, "wait_key")
+            if key is not None and current_key != key:
+                raise ValueError(ERROR_REPORT)
+            key = current_key
+        for field, count in (("frames", frames), ("shown", shown), ("session_reads", sessions)):
+            entries = packet[field]
+            if not isinstance(entries, list) or len(entries) != count:
+                raise ValueError(ERROR_REPORT)
+        for item in cast(list[JsonValue], packet["shown"]):
+            if object_value(item).get("slug") != ITEM:
+                raise ValueError(ERROR_REPORT)
+        result[name] = packet
+    return result
+
+
+def _b3_effect_frame(packet: JsonObject, index: int, name: str, argv: list[str], *, successful: bool = True) -> str:
+    frame = object_value(cast(list[JsonValue], packet["frames"])[index])
+    if set(frame) != {"name", "frame"} or frame["name"] != name:
+        raise ValueError(ERROR_REPORT)
+    run = _pane_run(frame["frame"], argv, successful=successful)
+    stdout, stderr = run.get("stdout"), run.get("stderr")
+    if not isinstance(stdout, str) or not isinstance(stderr, str):
+        raise ValueError(ERROR_REPORT)
+    return stdout + stderr
+
+
+def _b3_effect_sessions(
+    packet: JsonObject, names: tuple[str, ...], actors: dict[str, JsonObject], project: str
+) -> list[Mapping[str, object]]:
+    result: list[Mapping[str, object]] = []
+    for value, name in zip(cast(list[JsonValue], packet["session_reads"]), names, strict=True):
+        actor = actors[name]
+        session = text(actor, "session_id")
+        record = _public_session_command(value, [creation.TELEC, "sessions", "show", session, "--full"])
+        if (
+            record.get("session_id") != session
+            or record.get("native_session_id") != text(actor, "native_session_id")
+            or record.get("project_path") != project
+        ):
+            raise ValueError(ERROR_REPORT)
+        result.append(record)
+    return result
+
+
+def _b3_effect_shown(packet: JsonObject) -> list[JsonObject]:
+    return [object_value(value) for value in cast(list[JsonValue], packet["shown"])]
+
+
+def _b3_effect_log(shown: JsonObject) -> str:
+    _, log = creation.dig(shown, "artifact_content.log")
+    return log if isinstance(log, str) else ""
+
+
+def _b3_wait_inputs(packets: dict[str, JsonObject], actors: dict[str, JsonObject], project: str) -> JsonObject:
+    before, packet = packets["before-waiting"], packets["waiting"]
+    first, child = text(actors["first"], "session_id"), text(actors["child"], "session_id")
+    record = _b3_effect_sessions(before, ("child",), actors, project)[0]
+    if record.get("closed_at") is not None or record.get("lifecycle_status") != foundation.ACTIVE:
+        raise ValueError(ERROR_REPORT)
+    creation.require_value(ITEM, _b3_effect_shown(before)[0], "state.active_runner", first)
+    person = text(packet, "person")
+    output = _b3_effect_frame(
+        packet,
+        0,
+        waiting.FRAME_WAITING,
+        ["telec", "todo", "act", ITEM, "waiting", "--person", person, waiting.QUESTION],
+    )
+    key = waiting.WAIT_KEY.search(output)
+    if (
+        waiting.PERFORMED.format(act="waiting", item=ITEM) not in output
+        or waiting.WAIT_COMPLETE.search(output.replace("\r\n", "\n")) is None
+        or key is None
+        or key.group("key") != packet["wait_key"]
+    ):
+        raise ValueError(ERROR_REPORT)
+    shown = _b3_effect_shown(packet)
+    for path, expected in (
+        ("state.lifecycle_phase", waiting.PHASE_WAITING),
+        ("standing.phase", waiting.PHASE_WAITING),
+        ("standing.waiting_on", person),
+    ):
+        creation.require_value(ITEM, shown[0], path, expected)
+    creation.require_unclaimed(ITEM, shown[0])
+    child_record, first_record = _b3_effect_sessions(packet, ("child", "first"), actors, project)
+    if not _public_closed(child_record, child) or first_record.get("closed_at") is not None:
+        raise ValueError(ERROR_REPORT)
+    entries = [entry for entry in waiting.log_entries(_b3_effect_log(shown[1])) if f" · waiting ({person})" in entry[0]]
+    if len(entries) != 1 or first not in entries[0][0] or entries[0][1] != waiting.QUESTION:
+        raise ValueError(ERROR_REPORT)
+    return shown[2]
+
+
+def _b3_entry_refusal(packet: JsonObject, baseline: JsonObject, row: JsonObject, actors: dict[str, JsonObject]) -> str:
+    calls, reads, lists = packet["start_calls"], packet["operation_reads"], packet["lists"]
+    if (
+        not isinstance(calls, list)
+        or len(calls) != 1
+        or not isinstance(reads, list)
+        or len(reads) < 2
+        or not isinstance(lists, list)
+        or len(lists) != 1
+        or packet["baseline"] != baseline
+        or creation.differences(baseline, _b3_effect_shown(packet)[0])
+    ):
+        raise ValueError(ERROR_REPORT)
+    call = object_value(calls[0])
+    if (
+        set(call) != {"label", "attempt_key", "started_ns", "finished_ns", "command", "operation_id", "error"}
+        or call["label"] != "refused-start"
+        or call["error"] is not None
+        or not positive_integer(packet, "started_ns")
+        <= positive_integer(call, "started_ns")
+        <= positive_integer(call, "finished_ns")
+        <= positive_integer(packet, "finished_ns")
+    ):
+        raise ValueError(ERROR_REPORT)
+    text(call, "attempt_key")
+    receipt = _public_session_command(call["command"], [creation.TELEC, "todo", "prepare", ITEM])
+    operation = receipt.get("operation_id")
+    if (
+        not isinstance(operation, str)
+        or not operation
+        or receipt.get("kind") != "todo_prepare"
+        or receipt.get("state") not in ("queued", "running", "failed")
+        or call["operation_id"] != operation
+        or object_value(object_value(row["settlement"])["starts"]).get(operation) != START_REFUSED
+    ):
+        raise ValueError(ERROR_REPORT)
+    failed = False
+    for value in reads:
+        state = _public_session_command(value, [creation.TELEC, "operations", "get", operation])
+        status = state.get("state")
+        if (
+            state.get("operation_id") != operation
+            or state.get("kind") != "todo_prepare"
+            or status not in ("queued", "running", "failed")
+            or (failed and status != "failed")
+        ):
+            raise ValueError(ERROR_REPORT)
+        if status == "failed":
+            error = state.get("error")
+            if not isinstance(error, str) or any(
+                needle.lower() not in error.lower() for needle in (ITEM, waiting.PHASE_WAITING, text(packet, "person"))
+            ):
+                raise ValueError(ERROR_REPORT)
+            failed = True
+        elif state.get("error") not in (None, "") or state.get("error_payload") is not None:
+            raise ValueError(ERROR_REPORT)
+    if not failed:
+        raise ValueError(ERROR_REPORT)
+    baseline_reads = cast(list[JsonValue], row["baseline"])
+    baseline_ids = set(_early_session_list(baseline_reads[0]))
+    if set(_early_session_list(lists[0])) - baseline_ids != {
+        text(actors[name], "session_id") for name in ("owner", "first", "child")
+    }:
+        raise ValueError(ERROR_REPORT)
+    return operation
+
+
+def _b3_decision_inputs(packets: dict[str, JsonObject], baseline: JsonObject) -> None:
+    dispatched, owner = packets["dispatched-decision-and-note"], packets["owner-decision"]
+    person, key = text(owner, "person"), text(owner, "wait_key")
+    refused = _b3_effect_frame(
+        dispatched,
+        0,
+        waiting.FRAME_REFUSED,
+        ["telec", "todo", "act", ITEM, "decision", "--wait", key, waiting.ANSWER_DISPATCHED],
+        successful=False,
+    )
+    shown = _b3_effect_shown(dispatched)
+    if (
+        waiting.PERFORMED.format(act="decision", item=ITEM) in refused
+        or "decision" not in refused.lower()
+        or person.lower() not in refused.lower()
+        or dispatched["baseline"] != baseline
+        or creation.differences(baseline, shown[0])
+        or any(" · decision (" in header for header, _ in waiting.log_entries(_b3_effect_log(shown[1])))
+    ):
+        raise ValueError(ERROR_REPORT)
+    noted = _b3_effect_frame(
+        dispatched, 1, waiting.FRAME_NOTE, ["telec", "todo", "act", ITEM, "note", waiting.NOTE_TEXT]
+    )
+    notes = [
+        entry
+        for entry in waiting.log_entries(_b3_effect_log(shown[2]))
+        if waiting.NOTE_HEADER.search(entry[0].rstrip())
+    ]
+    if (
+        waiting.PERFORMED.format(act="note", item=ITEM) not in noted
+        or len(notes) != 1
+        or text(dispatched, "actor") not in notes[0][0]
+        or notes[0][1] != waiting.NOTE_TEXT
+    ):
+        raise ValueError(ERROR_REPORT)
+    creation.require_value(ITEM, shown[3], "state.lifecycle_phase", waiting.PHASE_WAITING)
+    decided = _b3_effect_frame(
+        owner, 0, waiting.FRAME_DECISION, ["telec", "todo", "act", ITEM, "decision", "--wait", key, waiting.ANSWER]
+    )
+    owner_shown = _b3_effect_shown(owner)
+    decisions = [
+        entry for entry in waiting.log_entries(_b3_effect_log(owner_shown[0])) if f" · decision ({person})" in entry[0]
+    ]
+    if (
+        waiting.PERFORMED.format(act="decision", item=ITEM) not in decided
+        or len(decisions) != 1
+        or text(owner, "actor") not in decisions[0][0]
+        or decisions[0][1] != waiting.ANSWER
+    ):
+        raise ValueError(ERROR_REPORT)
+    creation.require_value(ITEM, owner_shown[1], "state.lifecycle_phase", waiting.PHASE_PREPARATION)
+    found, standing = creation.dig(owner_shown[1], "standing")
+    if found and isinstance(standing, Mapping) and "waiting_on" in standing:
+        raise ValueError(ERROR_REPORT)
+
+
+def _b3_effect_order(row: JsonObject, packets: dict[str, JsonObject], actors: dict[str, JsonObject]) -> None:
+    drivers = {
+        text(object_value(value), "name"): object_value(value) for value in cast(list[JsonValue], row["drivers"])
+    }
+    starts = {text(object_value(value), "name"): object_value(value) for value in cast(list[JsonValue], row["actors"])}
+    ends = {
+        text(object_value(value), "session_id"): object_value(value) for value in cast(list[JsonValue], row["ends"])
+    }
+    first_end = ends[text(actors["first"], "session_id")]
+    second_end = ends[text(actors["second"], "session_id")]
+    if (
+        positive_integer(object_value(drivers["first"]["claim"]), "observed_ns")
+        > positive_integer(packets["before-waiting"], "started_ns")
+        or positive_integer(starts["child"], "finished_ns") > positive_integer(packets["before-waiting"], "started_ns")
+        or positive_integer(packets["entry-refused"], "finished_ns")
+        > positive_integer(starts["dispatched"], "started_ns")
+        or positive_integer(starts["dispatched"], "finished_ns")
+        > positive_integer(packets["dispatched-decision-and-note"], "started_ns")
+        or positive_integer(packets["dispatched-decision-and-note"], "finished_ns")
+        > positive_integer(first_end, "started_ns")
+        or positive_integer(first_end, "finished_ns") > positive_integer(packets["owner-decision"], "started_ns")
+        or positive_integer(packets["owner-decision"], "finished_ns")
+        > positive_integer(object_value(drivers["second"]["startup"]), "started_ns")
+        or positive_integer(object_value(drivers["second"]["claim"]), "observed_ns")
+        > positive_integer(packets["second-claim-context"], "started_ns")
+        or positive_integer(packets["second-claim-context"], "finished_ns") > positive_integer(second_end, "started_ns")
+    ):
+        raise ValueError(ERROR_REPORT)
+
+
+def _early_effect_inputs(row: JsonObject, case: str, drivers: JsonObject, other_actors: JsonObject) -> JsonObject:
+    if case != "B3":
+        if row["effects"] != []:
+            raise ValueError(ERROR_REPORT)
+        return {"state": "effect_inputs_not_implemented", "semantic_settlement": "unproven"}
+    actors = {name: object_value(value) for name, value in {**drivers, **other_actors}.items()}
+    packets = _b3_effect_packets(row, actors)
+    baseline = _b3_wait_inputs(packets, actors, text(row, "project_path"))
+    operation = _b3_entry_refusal(packets["entry-refused"], baseline, row, actors)
+    _b3_decision_inputs(packets, baseline)
+    records = _b3_effect_sessions(
+        packets["second-claim-context"], ("owner", "child", "dispatched"), actors, text(row, "project_path")
+    )
+    if any(record.get("role") == waiting.DRIVER_ROLE for record in records):
+        raise ValueError(ERROR_REPORT)
+    _b3_effect_order(row, packets, actors)
+    return {
+        "state": "original_B3_effect_inputs_matched",
+        "person": packets["waiting"]["person"],
+        "wait_key": packets["waiting"]["wait_key"],
+        "entry_refused_operation_id": operation,
+        "observed_handoff_order": "matched",
+        "semantic_settlement": "unproven",
+        "physical_P4": "unproven",
+    }
+
+
 def validate_early_inputs(report: JsonObject) -> JsonObject:
     """Reparse original B3/B4 accounting inputs; listings/legacy labels/PIDs establish no physical closure or P2."""
     provisional = object_value(report["payload_provisional"])
@@ -1369,6 +1704,7 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
             "driver_inputs": drivers,
             "other_actor_inputs": other_actors,
             "explicit_end_inputs": _early_end_inputs(row, case, drivers, other_actors, ledger),
+            "effect_inputs": _early_effect_inputs(row, case, drivers, other_actors),
             "originating_start_inputs": _early_start_inputs(row, case, drivers, starts),
             "attempt_ledger_inputs": ledger,
             "semantic_settlement": "unproven",
