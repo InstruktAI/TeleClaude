@@ -66,6 +66,8 @@ PACKAGE_WORK_ARGUMENTS: Final = (
     "--admindir=/var/lib/dpkg",
     "--show",
     "--showformat=${Package}\t${Version}\t${Architecture}\t${Status}\t${Multi-Arch}\t${Triggers-Pending}\t${Triggers-Awaited}\n",
+    "--",
+    "*",  # Native pattern mode includes not-installed slots needed by the archive's old-control lookup.
 )
 VALUE_OPTIONS: Final = frozenset(
     {
@@ -1363,7 +1365,14 @@ def collect_install_inputs(
             result["reason"] = initialization["reason"]
             return result
         result["dbus_control_sources"] = bind_dbus_control_sources(inputs, package, deadline)
-        result["package_work"] = inspect_package_work(query, deadline, cap)
+        work = inspect_package_work(query, deadline, cap)
+        result["package_work"] = work
+        prior = inspect_container_prior_control(package, work, deadline)
+        result["container_prior_control"] = prior
+        if prior["state"] == "blocked":
+            result["state"] = "blocked"
+            result["reason"] = prior["reason"]
+            return result
         result["state"] = "inputs_collected_not_admitted"
         _before_cutoff(deadline)
         return result
@@ -1446,7 +1455,11 @@ def classify_container_candidates(initial: JsonObject, instances: JsonObject, de
             or not isinstance(requests, list)
         ):
             raise ValueError(ERROR_INPUT)
-        dbus = [object_value(value) for value in rows if object_value(value)["package_name"] == "dbus"]
+        dbus = [
+            object_value(value)
+            for value in rows
+            if object_value(value)["package_name"] == "dbus" and object_value(value)["lifecycle"] != "not-installed"
+        ]
 
         def classify(candidate: JsonObject, origin: str, name: JsonValue) -> None:
             _before_cutoff(deadline)
@@ -1516,3 +1529,57 @@ def classify_container_candidates(initial: JsonObject, instances: JsonObject, de
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError({"candidate_classification": result}) from error
+
+
+def inspect_container_prior_control(package: StaticPackage, work: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Read the old trigger control that native unpack can consume even for a not-installed package."""
+    files: list[JsonValue] = []
+    result: JsonObject = {"files": files, "state": "unproven", "old_activation_admission": "unproven", "error": None}
+    try:
+        _before_cutoff(deadline)
+        packages = object_value(parse_object(package.lock_bytes)["host_closure"])["final_packages"]
+        rows = work["rows"]
+        if work["error"] is not None or not isinstance(rows, list) or not isinstance(packages, list):
+            raise ValueError(ERROR_INPUT)
+        declarations = [object_value(value) for value in packages if object_value(value)["name"] == CONTAINER_PACKAGE]
+        if len(declarations) != 1:
+            raise ValueError(ERROR_INPUT)
+        architecture = text(declarations[0], "architecture")
+        slots: list[JsonObject] = []
+        for value in rows:
+            _before_cutoff(deadline)
+            row = object_value(value)
+            if row["package_name"] == CONTAINER_PACKAGE:
+                slots.append(row)
+        result["observed_slots"] = list[JsonValue](slots)
+        if any(row["lifecycle"] != "not-installed" for row in slots):
+            result["state"] = "blocked"
+            result["reason"] = "container state no longer satisfies the absent-only installation branch"
+            return result
+        matching = [row for row in slots if row["architecture"] == architecture]
+        if len(matching) > 1:
+            raise ValueError(ERROR_INPUT)
+        if matching:
+            old_multiarch = text(matching[0], "multi_arch")
+            result["slot_selection"] = "observed_matching_architecture"
+        elif len(slots) == 1 and slots[0]["architecture"] == "":
+            # pkg_hash_get_pkg fills the unused slot's arch, retaining its other installed fields.
+            old_multiarch = text(slots[0], "multi_arch")
+            result["slot_selection"] = "native_reuse_single_unused_slot"
+        else:
+            # pkg_blank initializes the new slot to PKG_MULTIARCH_NO; this is a prediction, not a fabricated row.
+            old_multiarch = "no"
+            result["slot_selection"] = "native_new_architecture_slot"
+        result["old_multi_arch"] = old_multiarch
+        # archivefiles upgrades the native info format before process_archive reads this old control.
+        name = f"{CONTAINER_PACKAGE}:{architecture}" if old_multiarch == "same" else CONTAINER_PACKAGE
+        _file(Path("/var/lib/dpkg/info") / f"{name}.triggers", deadline, files)
+        data = _input_bytes(object_value(files[0]))
+        result["state"] = "old_trigger_control_absent" if data is None else "old_trigger_control_present_uninterpreted"
+        # ensure_packagefiles_available deliberately blanks old .list data at PKG_STAT_NOTINSTALLED.
+        result["old_file_list_behavior"] = "native_not_installed_blank"
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"package_work": work, "container_prior_control": result}) from error
