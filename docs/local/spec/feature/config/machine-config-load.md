@@ -46,39 +46,9 @@ declaration in memory and writes nothing.
 
 #### UC-CFG-LOAD-16: A declared computer kind is an address, not a setting
 
-```gherkin
-Given a machine configuration declaring the computer kind
-When the machine configuration is validated and read through the computer configuration
-Then it validates as it does without the declaration
-And the computer configuration view carries no kind and reports the same revision as without the declaration
-And loading never adds, removes, or rewrites the declaration, and a configuration change never removes or rewrites it
-
-Given a machine configuration declaring any kind other than computer
-When the machine configuration loads
-Then the load fails naming the file and the declared kind
-```
-
 #### UC-CFG-LOAD-15: A stored machine configuration gains its declared kind
 
-```gherkin
-Given a machine configuration stored without a kind declaration
-When a configuration migration run stores it
-Then it declares the computer kind
-And its existing operator values are preserved
-And it resolves the same runtime configuration as before the run
-```
-
 #### UC-CFG-LOAD-1: Default config.yml path is the machine home
-
-```
-When the machine config loads at process start
-Then _config_path resolves to <RuntimeConfig.home>/config.yml, which defaults to ~/.teleclaude/config.yml
-And the current working directory does not participate in the resolution
-And no environment variable re-points that path; moving TELECLAUDE_HOME is the only way to move it
-And the file is opened and parsed as YAML
-And the resulting Config object is bound to the module-level `config` global
-And the module-level `config_path` global is set to the absolute path
-```
 
 #### UC-CFG-LOAD-1b: The bundled blueprint seeds and backfills the machine config
 
@@ -116,54 +86,13 @@ But a runtime consumer requesting the effective configuration still fails fast w
 
 #### UC-CFG-LOAD-14: Missing machine configuration fails runtime aggregate access
 
-```gherkin
-Given the machine configuration does not exist at <RuntimeConfig.home>/config.yml
-When a runtime consumer requests the effective machine configuration outside installation
-Then the request fails fast with a diagnostic naming the missing file and the creation surface
-And no effective configuration aggregate is bound
-```
-
 #### UC-CFG-LOAD-4: Environment variables in YAML values are expanded
-
-```
-Given config.yml contains a value like "${DISCORD_TOKEN}" or "${REDIS_URL:-redis://localhost:6379}"
-And .env at <_project_root>/.env has been sourced via load_dotenv
-When the machine config loads
-Then env-var expansion walks the parsed YAML dict and substitutes each ${VAR} reference
-And substituted values flow into the merged config used by config construction
-```
 
 #### UC-CFG-LOAD-5: Default-config values fill any gaps in user YAML
 
-```
-Given a user config.yml that omits keys such as redis.password, terminal.strip_ansi, or event_reliability.max_attempts
-When the user config is deep-merged onto the default config
-Then keys absent in the user file inherit the default-config value at every nesting level
-And keys present in the user file override the default scalar
-And mappings recurse: nested dicts are merged key-by-key, not replaced wholesale
-And the merged dict is passed to config construction to build the typed runtime config aggregate
-```
-
 #### UC-CFG-LOAD-6: experiments.yml side-file appends to experiments list
 
-```
-Given config.yml is at <dir>/config.yml
-And <dir>/experiments.yml exists and parses to a dict with an "experiments" key holding a list
-When the machine config loads the experiments side-file after the primary config
-Then env-var expansion runs against the experiments file too
-And the parsed experiments list is appended to the user config's experiments list
-And the combined list is deep-merged into the experiments list
-```
-
 #### UC-CFG-LOAD-7: Empty or non-dict YAML degrades into empty user config
-
-```
-Given config.yml exists but the YAML parser returns None or a non-dict value
-When the machine config loads
-Then the user config is coerced to an empty mapping
-And the deep-merge with the default config produces only default values
-And config construction raises a validation error downstream because the required `agents` section is missing
-```
 
 #### UC-CFG-LOAD-8: Env-backed credentials remain file-declared and service-available
 
