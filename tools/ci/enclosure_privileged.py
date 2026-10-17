@@ -19,7 +19,7 @@ from tools.ci.enclosure_guest import Record, Role, _append, _output, close_evide
 from tools.ci.enclosure_guest_manifest import read_guest_input
 from tools.ci.enclosure_journal import ActionResult
 from tools.ci.enclosure_native import NativeRead, execute_native, read_native_stdout
-from tools.ci.enclosure_owner import HelperOwner
+from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, HelperOwner
 
 COMMAND_JOURNAL: Final = "commands-{action}.jsonl"
 COMMAND_STDOUT: Final = "commands-{action}-{sequence}.stdout"
@@ -55,6 +55,7 @@ class Key(StrEnum):
     STDERR_DIAGNOSTIC = "stderr_diagnostic"
     STDOUT_COMPLETE = "stdout_complete"
     STDOUT_SHA256 = "stdout_sha256"
+    ENVIRONMENT = "environment"
 
 
 class PrivilegedCommands:
@@ -68,6 +69,12 @@ class PrivilegedCommands:
         self.journal_fd = -1
         self.sequence = 0
         self._processes: list[subprocess.Popen[bytes]] = []
+        self._environment = dict(OUTSIDE_ENVIRONMENT)
+        if action is Action.PROVISION:
+            # TMPDIR-aware host tools, including dpkg-deb's control reader, use the original run directory.
+            self._environment["TMPDIR"] = PARENT_DESCRIPTOR.format(
+                pid=owner.journal.binding.controller.pid, descriptor=owner.inherited_directory_fd
+            )
 
     @property
     def processes(self) -> tuple[subprocess.Popen[bytes], ...]:
@@ -94,6 +101,7 @@ class PrivilegedCommands:
                 Key.ACTION: self.action.value,
                 Key.RECORD: Record.INTENT.value,
                 Key.BINDING: self.owner.journal.owner_record,
+                Key.ENVIRONMENT: dict(self._environment),
                 Cutoff.OUTER_END_NS: self.deadline.outer_end_ns,
                 Cutoff.VECTOR_END_NS: self.deadline.vector_end_ns,
                 Cutoff.COMMAND_END_NS: self.deadline.command_end_ns,
@@ -162,7 +170,7 @@ class PrivilegedCommands:
                 status = execute_native(
                     argv,
                     cwd=self.source_root,
-                    environment=OUTSIDE_ENVIRONMENT,
+                    environment=self._environment,
                     stdout_fd=stdout_fd,
                     stderr_fd=stderr_fd,
                     end_ns=end,
