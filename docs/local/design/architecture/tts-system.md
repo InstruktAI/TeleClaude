@@ -98,6 +98,29 @@ VoxCPM rendered-audio cache identity includes the effective parameters of the
 selected voice. Changing those parameters produces a new artifact; another
 voice's overrides do not change that selection's effective configuration.
 
+### Runtime enablement and optional dependencies
+
+The config domain owns the accepted runtime `tts.enabled` value and its
+persisted state. TTS owns whether a configured service can honor that value and
+the optional dependency lifecycle, following `sdlc/policy/domain-ownership`
+and `local/projects/teleclaude/spec/feature/config/runtime-tts-toggle`.
+
+TTS enables speech only when a configured, supported service's dependencies are
+available. On a supported platform, missing dependencies are provisioned before
+an enable request succeeds. Unsupported services or failed provisioning leave
+the runtime setting off and return a failure. Startup does not install
+optional dependencies: if a persisted enabled value arrives without the
+required dependencies, TTS is gated off and the config runtime-settings owner
+persists off before exposing the setting. Muting alone does not provision or
+remove dependencies.
+
+Explicit deprovision is separate from muting. Configuration persists the off
+state before requesting TTS cleanup; TTS removes only TTS-exclusive optional
+dependencies and leaves packages shared with other features. If the off state
+cannot be persisted, cleanup is not requested. Cleanup remains available when
+TTS is already off, and failures return to the configuration route without
+implying that dependency state changed.
+
 1. One voice per session — once assigned, the voice is reused for the session's lifetime.
 2. Sequential playback — the in-process worker and file lock together prevent concurrent speech playback.
 3. Fallback promotion — if the primary service fails and a fallback succeeds, the DB is updated so subsequent calls use the working service.

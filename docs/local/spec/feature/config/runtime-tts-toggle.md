@@ -11,20 +11,17 @@ visibility: 'public'
 
 ## What it is
 
-The runtime-settings layer holds runtime-mutable operator toggles distinct
-from the YAML configuration surface. YAML files define the boot-time shape of
-the system and require a reload to take effect; the runtime-settings layer
-exists for the narrow case where an operator flips a switch and expects the
-next event to honour the new value immediately, with persistence as a
-best-effort side effect rather than the authoritative path.
+The runtime-settings layer holds operator toggles distinct from YAML
+configuration. YAML files define boot-time settings and require a reload to
+take effect; runtime settings let an operator change a live value without
+editing YAML. The runtime-settings layer owns that current value and its
+best-effort persistence.
 
 In v1 the entire surface is one field: `tts.enabled`. The patch protocol is
 namespaced (`tts` section, then field names) so a future section (e.g., `stt`,
 `notifications`) can be added without breaking the protocol — but today only
-TTS is mutable. The toggle is dual-written on every patch: the in-memory
-settings state AND the live TTS manager's enabled flag are updated
-synchronously before the persistence task is scheduled. A consumer reading the
-TTS manager's enabled flag after a patch is guaranteed to see the new value.
+TTS is mutable. An accepted patch updates the current runtime-settings value synchronously
+before persistence is scheduled. The TTS system owns consuming this value.
 
 Persistence is JSON, not YAML, and is debounced. Each patch schedules a
 background task that sleeps 0.5 seconds and then writes the JSON state file.
@@ -34,28 +31,23 @@ Flush failures are caught and logged, never re-raised. The principle is "the
 runtime state is the truth; the file is a best-effort cache so we survive a
 restart".
 
-On startup, the layer reads the JSON state file (if present) and replays the
-stored values back into both the in-memory settings state and the TTS manager.
-A missing or malformed file is treated as "no prior state" — the layer falls
-back to whatever the TTS manager was already initialised with.
+On startup, the layer reads the JSON state file (if present) and restores the
+stored value into runtime-settings state. A missing or malformed file is
+treated as "no prior state" — the runtime-settings value stays at its boot-time
+seed.
 
-The YAML `config.tts.enabled` value seeds the boot-time TTS choice; runtime
-settings owns the live choice. Provisioned state is determined by whether the
-required dependencies for a configured, supported TTS service are available,
-not by the YAML flag alone. Enabling TTS is accepted only when those dependencies
-are available; failed provisioning leaves TTS disabled. Muting never provisions
-or removes dependencies. If startup restores an enabled value but the
-dependencies are unavailable, TTS is disabled and the off state is persisted
-without installing dependencies at startup.
+The YAML `config.tts.enabled` value is the boot-time seed for runtime-settings;
+it does not own the live value after startup. If a requested update is refused
+by TTS, the runtime-settings value stays unchanged and the refusal is returned
+to the caller.
 
-Explicit deprovision is separate from muting: TTS is forced off and that state
-is persisted before TTS-exclusive dependencies are removed; dependencies shared
-with other features remain. If the off state cannot be persisted, removal does
-not start. The operation still removes TTS-exclusive dependencies if TTS was
-already off. The CLI requires explicit confirmation before calling the daemon;
-the settings route returns the disabled state on success, reports unavailable
-runtime settings as unavailable, and reports persistence or removal failures
-without presenting them as success.
+An explicit deprovision request first forces the runtime-settings value off and
+persists it before requesting TTS cleanup. If that off-state write fails,
+cleanup is not requested. The CLI requires explicit confirmation; the settings
+route returns the disabled value on success, 503 when runtime settings are
+unavailable, and 500 when persistence or downstream cleanup fails. TTS owns the
+dependency lifecycle and cleanup behavior
+(`local/projects/teleclaude/design/architecture/tts-system`).
 
 Patch payloads that are empty, malformed, contain unsupported keys, or give
 `enabled` a non-boolean value are refused without changing the live state or
@@ -66,38 +58,32 @@ serialization format remain outside the operator goal.
 
 ### Use cases
 
-#### UC-CFG-RUNTIME-1: Operator changes the live TTS choice
+#### UC-CFG-RUNTIME-1: Operator changes the live TTS setting
 
 ```gherkin
-Scenario Outline: An accepted TTS choice takes effect immediately
-  Given an operator changes the live TTS choice to <choice>
-  When the change is accepted
-  Then the next TTS event follows <choice> without a YAML reload
+Scenario Outline: An accepted change updates the live runtime setting
+  Given an operator requests the live TTS setting <choice>
+  When configuration accepts the update
+  Then the runtime-settings surface reports <choice> immediately
+  And the YAML configuration remains unchanged
 
   Examples:
     | choice |
     | enabled |
     | muted |
 
-Scenario: An invalid toggle request leaves the current choice intact
+Scenario: An invalid toggle request leaves the current setting intact
   Given an operator requests an empty or unsupported TTS patch
-  When the request is validated
+  When configuration validates the request
   Then it is refused with a useful validation explanation
-  And the live choice is unchanged
+  And the runtime-settings value is unchanged
   And no persistence is scheduled
 
-Scenario: TTS stays off when it cannot be enabled safely
-  Given an operator requests TTS and no configured service is supported or provisioning fails
-  When the request is applied
-  Then TTS remains disabled
-  And no TTS voice is emitted
-  And the operator receives a clear failure
-
-Scenario: Muting does not change installed dependencies
-  Given TTS is enabled and its dependencies are installed
-  When the operator mutes TTS
-  Then the live choice changes to muted immediately
-  And no dependency is installed or removed
+Scenario: A refused enable request leaves the setting off
+  Given runtime-settings is off and TTS refuses an enable request
+  When configuration handles the refusal
+  Then the runtime-settings value remains off
+  And the caller receives the refusal
 ```
 
 #### UC-CFG-RUNTIME-2: Empty patch raises a validation error
@@ -116,26 +102,26 @@ Scenario: Muting does not change installed dependencies
 
 #### UC-CFG-RUNTIME-9: Patch parser with tts.enabled absent produces a no-op patch
 
-#### UC-CFG-RUNTIME-10: Operator’s TTS choice is restored on restart
+#### UC-CFG-RUNTIME-10: Operator’s TTS setting is restored on restart
 
 ```gherkin
-Scenario: A persisted TTS choice is restored on startup
-  Given the operator's previously accepted TTS choice was persisted
-  When the runtime starts
-  Then that choice is restored for subsequent TTS events
-  And the YAML boot default does not overwrite it
+Scenario: A persisted TTS setting is restored on startup
+  Given the operator's previously accepted runtime setting was persisted
+  When the runtime-settings layer starts
+  Then its current value is restored from that persisted setting
+  And the YAML boot seed does not overwrite it
 
-Scenario: Startup continues when no usable persisted choice exists
+Scenario: Startup continues when no usable persisted setting exists
   Given the runtime settings file is missing or malformed
-  When the runtime starts
-  Then the TTS manager's initialized boot choice remains in effect
+  When the runtime-settings layer starts
+  Then its current value remains at the boot-time seed
   And startup continues
 
-Scenario: An enabled choice is disabled when its dependencies are unavailable
-  Given the persisted choice is enabled but required TTS dependencies are unavailable
-  When the runtime reconciles its startup state
-  Then TTS is forced off before settings are reported
-  And the off choice is persisted without installing dependencies at startup
+Scenario: An unusable enabled value is corrected before exposure
+  Given the persisted runtime setting is enabled but TTS reports that its dependencies are unavailable
+  When startup reconciles runtime settings
+  Then the runtime-settings value is forced off before settings are reported
+  And the off value is persisted
 ```
 
 #### UC-CFG-RUNTIME-11: Startup with missing state file leaves seeded state intact
@@ -148,13 +134,12 @@ Scenario: An enabled choice is disabled when its dependencies are unavailable
 
 #### UC-CFG-RUNTIME-15: Flush writes the full state shape, not a diff
 
-#### UC-CFG-RUNTIME-16: Operator’s live TTS choice survives a YAML reload
+#### UC-CFG-RUNTIME-16: Operator’s live TTS setting survives a YAML reload
 
 ```gherkin
-Given an operator has chosen to mute TTS at runtime while YAML enables it
-When the TTS configuration reloads other settings such as voices or services
-Then the operator's live mute remains in effect
-And no session-start voice is spoken while TTS is muted
+Given an operator has set the runtime TTS value to muted while YAML enables it
+When a TTS-section configuration reload occurs
+Then the runtime-settings value remains muted
 ```
 
 #### UC-CFG-RUNTIME-17: Enabling TTS provisions the optional deps before the flag flips
@@ -165,41 +150,40 @@ And no session-start voice is spoken while TTS is muted
 
 #### UC-CFG-RUNTIME-20: Startup with a replayed enabled=True but unprovisioned deps fails closed
 
-#### UC-CFG-RUNTIME-21: Operator removes TTS-exclusive dependencies
+#### UC-CFG-RUNTIME-21: Operator requests TTS deprovision
 
 ```gherkin
-Scenario: Confirmed deprovision removes only TTS-exclusive dependencies
+Scenario: A confirmed deprovision request reaches TTS after configuration stores off
   Given an operator explicitly confirms TTS deprovision
-  When deprovision succeeds
-  Then TTS is off and that state was persisted before dependency removal
-  And only TTS-exclusive dependencies are removed
-  And dependencies shared with other features remain installed
-  And the returned settings state reports TTS off
+  When configuration accepts the request
+  Then the runtime-settings value is off and persisted before cleanup is requested
+  And the caller receives the operation result
 
-Scenario: Deprovision still cleans up when TTS is already muted
-  Given TTS is already off and TTS-exclusive dependencies remain installed
-  When the operator confirms deprovision
-  Then the exclusive dependencies are removed
-  And shared dependencies remain installed
-
-Scenario: An unconfirmed deprovision request does not call the service
+Scenario: An unconfirmed deprovision request does not reach TTS
   Given the operator has not explicitly confirmed deprovision
   When the CLI request is made
   Then the CLI asks for confirmation
-  And no deprovision request is sent
+  And no cleanup request is sent
 
-Scenario: Persistence failure blocks deprovision
-  Given persisting the forced-off TTS state fails
+Scenario: Persistence failure prevents a cleanup request
+  Given persisting the forced-off runtime-settings value fails
   When the operator confirms deprovision
-  Then dependency removal does not begin
-  And the failure is reported to the operator
+  Then cleanup is not requested
+  And the in-memory runtime-settings value remains off
+  And the failure is reported to the caller
 
-Scenario: Removal failure does not present deprovision as successful
-  Given the TTS state is off and persisting it succeeded
-  And removing the exclusive dependencies fails or the runtime service is unavailable
+Scenario: TTS cleanup failure is returned with runtime settings still off
+  Given the runtime-settings value is off and persisted
+  And TTS cleanup fails
   When the operator confirms deprovision
-  Then the failure is reported to the operator
-  And no success result is returned
+  Then the route reports the downstream failure
+  And the runtime-settings value remains off
+
+Scenario: An unavailable runtime refuses deprovision
+  Given no runtime-settings layer is available to the settings route
+  When the operator confirms deprovision
+  Then the route reports that runtime settings are unavailable
+  And no cleanup request is sent
 ```
 
 #### UC-CFG-RUNTIME-22: A failed off-state persist blocks dependency removal
@@ -228,13 +212,12 @@ Scenario: Removal failure does not present deprovision as successful
 
 ### Cross-context references
 
-- **Cross-context write into the TTS context.** The runtime-settings
-  patcher reaches into a different bounded context — TTS — and mutates
-  its `enabled` flag directly. The relationship is "config owns the
-  toggle; TTS owns the consumption". The current coupling is a direct
-  in-process write held together by convention; the same coordination
-  would flow through an effective-configuration-updated event consumed by the
-  TTS context in the target model.
+- **TTS consumption and dependencies.** Configuration owns the accepted live
+  `tts.enabled` value and operator request. The TTS system owns how it consumes
+  that value and the optional dependency lifecycle
+  (`local/projects/teleclaude/design/architecture/tts-system`). The target
+  model coordinates these contexts through an effective-configuration-updated
+  event.
 - **Distinct from the YAML overlays.** The `tts` block in `teleclaude.yml`
   (and in machine `config.yml`) defines boot-time TTS shape — voices,
   services, event mappings, the initial `enabled` value seeded into the
