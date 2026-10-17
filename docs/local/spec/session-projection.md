@@ -135,6 +135,9 @@ Signals wake projection. They do not decide projection content.
 `terminal_origin_recorded` wakes projection for native terminal input that has no adapter receipt.
 Later activity signals may repeat freely. Signals never decide content or authorship: the bound native
 turn and each consumer's durable cursor remain authoritative, and an unbound post-cutover entry defers.
+For terminal-origin input, a native user turn newer than `last_projected_at` remains eligible even if a
+later control delivery replaced the accepted-input fingerprint. The transcript timestamp and projection
+watermark prevent replay; the mutable fingerprint does not suppress that newer turn.
 
 ### Adapter delivery mechanics
 

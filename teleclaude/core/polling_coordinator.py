@@ -317,18 +317,31 @@ def _preserved_visible_input(session: "Session", user_text: str) -> str | None:
     return session.last_input
 
 
-def has_fresh_origin_for_user(session: "Session", user_text: str) -> bool:
+def has_fresh_origin_for_user(
+    session: "Session",
+    user_text: str,
+    *,
+    transcript_at: datetime | None = None,
+) -> bool:
     """Return whether last_input_origin belongs to this unprojected user turn."""
 
     origin = (session.last_input_origin or "").strip()
     if not origin:
         return False
+    projected_at = _as_utc(session.last_projected_at)
+    if origin == InputOrigin.TERMINAL.value and transcript_at is not None:
+        # A later control wake can replace the terminal input fingerprint while
+        # leaving the user's transcript turn unprojected. The transcript's own
+        # timestamp is authoritative for pane-authored turns; the watermark
+        # still prevents replaying an older user entry.
+        transcript_time = _as_utc(transcript_at)
+        return transcript_time is not None and (projected_at is None or transcript_time > projected_at)
+
     user_text = _accepted_conversation_view(session, user_text)
     if not _stored_preview_matches(session, user_text, require_stored=origin != InputOrigin.TERMINAL.value):
         return False
 
     accepted_at = _as_utc(session.last_message_sent_at)
-    projected_at = _as_utc(session.last_projected_at)
     if projected_at is None:
         return accepted_at is not None or origin == InputOrigin.TERMINAL.value
     if accepted_at is None:
@@ -521,7 +534,7 @@ async def _project_user_reflection(
             platform_message_ids=platform_message_ids,
         )
 
-    if not has_fresh_origin_for_user(session, user_text):
+    if not has_fresh_origin_for_user(session, user_text, transcript_at=transcript_dt):
         logger.debug(
             _PROJECTION_DEFERRED_STALE_ORIGIN_EVENT,
             session_id=session.session_id,
