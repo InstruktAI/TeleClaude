@@ -179,11 +179,14 @@ def _command_failure(flow: flow_module.WorkflowFlow, session: str, name: str) ->
 
 
 def _operation_call(
-    flow: flow_module.WorkflowFlow, session: str, name: str, attempt_label: str
+    flow: flow_module.WorkflowFlow, session: str, name: str, attempt_label: str, evidence: flow_module.MutableJson
 ) -> Mapping[str, object]:
     attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B7, attempt_label, start_ledger.RECORD_OPERATION)
+    evidence["attempt_id"] = attempt
+    evidence["started_ns"] = time.monotonic_ns()
     flow.gate(session, f"go_{'r1' if attempt_label == 'reasonone' else 'r2'}")
     frame = _frame_success(flow, session, name)
+    evidence["frame"] = cast(flow_module.JsonValue, dict(frame))
     raw_run = frame.get("run")
     run = raw_run if isinstance(raw_run, Mapping) else {}
     stdout = run.get("stdout")
@@ -193,7 +196,9 @@ def _operation_call(
         flow.require_ledger().unknown(attempt)
         raise creation.binding_failure(f"{attempt_label} returned no operation id")
     flow.require_ledger().record_operation(attempt, operation)
-    return flow.operation(operation, START_SECONDS)
+    terminal = flow.operation(operation, START_SECONDS)
+    evidence["returned_ns"] = time.monotonic_ns()
+    return terminal
 
 
 def _note(flow: flow_module.WorkflowFlow, session: str, expected_text: str, expected_hash: str | None = None) -> str:
@@ -349,8 +354,11 @@ def _claim_held_ready(
     baseline: creation.SessionView,
     known_claims: int,
     pre_log: list[tuple[str, str]],
+    *,
+    before_item: Mapping[str, object],
 ) -> tuple[str, str, str, str, str, Mapping[str, object]]:
-    outcome = _operation_call(flow, first, "reasonone", "reasonone")
+    evidence = flow.reason_input(first, before_item, pre_log)
+    outcome = _operation_call(flow, first, "reasonone", "reasonone", evidence)
     result = str(outcome.get(FIELD_RESULT, ""))
     if outcome.get(FIELD_STATE) != STATE_COMPLETED:
         _fail(
@@ -400,6 +408,8 @@ def _claim_held_ready(
         _fail(DETAIL_KEY.format(text=instruction[-500:]))
     flow.require_ledger().discharge(attempt, "W4 claim and the reason note were observed")
     initial = flow.item()
+    evidence["after_item"] = cast(flow_module.JsonValue, dict(initial))
+    evidence["observed_ns"] = time.monotonic_ns()
     initial_log = _public_log(initial)
     added_log = initial_log[len(pre_log) :]
     first_digest = hashlib.sha256(REASON_ONE.encode("utf-8")).hexdigest()[:16]
@@ -458,7 +468,8 @@ def _refresh_reason_and_release_key(
     before_standing = before.get("standing")
     before_ready_since = before_standing.get("ready_since") if isinstance(before_standing, Mapping) else None
     before_log = _public_log(before)
-    outcome = _operation_call(flow, second, "reasontwo", "reasontwo")
+    evidence = flow.reason_input(second, before, before_log)
+    outcome = _operation_call(flow, second, "reasontwo", "reasontwo", evidence)
     error = outcome.get(FIELD_ERROR)
     if (
         outcome.get(FIELD_STATE) != STATE_FAILED
@@ -474,6 +485,8 @@ def _refresh_reason_and_release_key(
     if second_note == first_note:
         _fail("the second reason reused the first note key")
     after = flow.item()
+    evidence["after_item"] = cast(flow_module.JsonValue, dict(after))
+    evidence["observed_ns"] = time.monotonic_ns()
     standing = after.get("standing")
     reasons = standing.get("reasons") if isinstance(standing, Mapping) else None
     if (
@@ -533,7 +546,7 @@ def run_b7(flow: flow_module.WorkflowFlow) -> None:
         baseline, s_pre, k_pre, pre_log = _owner_preflight(flow)
         first, second, _w4_baseline = _roleless_pair(flow, baseline)
         w4, first_note, first_key, result, reasonone_credit, initial = _claim_held_ready(
-            flow, first, second, baseline, k_pre, pre_log
+            flow, first, second, baseline, k_pre, pre_log, before_item=s_pre
         )
         second_note, fresh_key = _refresh_reason_and_release_key(
             flow, first, second, w4, first_note, first_key, baseline

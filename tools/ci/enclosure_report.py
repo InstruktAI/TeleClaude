@@ -6,9 +6,10 @@ import base64
 import binascii
 import hashlib
 import math
+import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from tools.ci import workflow_events as events
 from tools.ci import workflow_foundation as foundation
@@ -50,7 +51,7 @@ from tools.ci.workflow_ledger import (
     StartLedger,
 )
 from tools.ci.workflow_publication import TERMINAL_STATES
-from tools.ci.workflow_ready import FINDING_DOOR, FINDING_WORK
+from tools.ci.workflow_ready import FINDING_DOOR, FINDING_WORK, REASON_ONE, REASON_TWO
 
 ERROR_REPORT: Final = "the new provisional report binding or original ledger evidence is inconsistent"
 LEDGER_ADDRESS: Final = Path("starts.jsonl")
@@ -490,6 +491,24 @@ def _claimed_holder(held: JsonObject, actor: str, phase: str) -> None:
         raise ValueError(ERROR_REPORT)
 
 
+def _pane_operation(value: JsonValue, argv: list[str]) -> str:
+    frame = object_value(value)
+    run = object_value(frame["run"])
+    if (
+        frame.get("argv") != argv
+        or type(run.get("exit_status")) is not int
+        or run["exit_status"] != 0
+        or run.get("timed_out") is True
+        or run.get("diagnostics") not in (None, "")
+    ):
+        raise ValueError(ERROR_REPORT)
+    receipt = foundation.json_object(text(run, "stdout"))
+    operation_id = receipt.get("operation_id") if receipt is not None else None
+    if not isinstance(operation_id, str) or not operation_id:
+        raise ValueError(ERROR_REPORT)
+    return operation_id
+
+
 def _claim_record(row: JsonObject, attempt: Attempt, created: int, public_finished: int) -> JsonObject:
     if set(row) != {"attempt_id", "actor", "phase", "startup_record", "launch_record", "claim"}:
         raise ValueError(ERROR_REPORT)
@@ -520,23 +539,10 @@ def _claim_record(row: JsonObject, attempt: Attempt, created: int, public_finish
         <= public_finished
     ):
         raise ValueError(ERROR_REPORT)
-    frame = object_value(claim["frame"])
-    run = object_value(frame["run"])
-    if (
-        frame.get("argv") != ["telec", "todo", "work", ITEM]
-        or type(run.get("exit_status")) is not int
-        or run["exit_status"] != 0
-        or run.get("timed_out") is True
-        or run.get("diagnostics") not in (None, "")
-    ):
-        raise ValueError(ERROR_REPORT)
-    receipt = foundation.json_object(text(run, "stdout"))
-    operation_id = receipt.get("operation_id") if receipt is not None else None
+    operation_id = _pane_operation(claim["frame"], ["telec", "todo", "work", ITEM])
     terminal = object_value(claim["terminal"])
     if (
-        not isinstance(operation_id, str)
-        or not operation_id
-        or operation_id == attempt.operation_id
+        operation_id == attempt.operation_id
         or terminal.get("operation_id") != operation_id
         or terminal.get("state") != "completed"
         or terminal.get("error") not in (None, "")
@@ -735,6 +741,207 @@ def _refusal_inputs(
     return matched
 
 
+def _note_rows(item: JsonObject, authors: tuple[str, ...]) -> tuple[str, ...]:
+    standing = object_value(item["standing"])
+    if "admitted" in standing or standing.get("phase") != "ready":
+        raise ValueError(ERROR_REPORT)
+    reasons = standing["reasons"]
+    if not isinstance(reasons, list) or len(reasons) != len(authors):
+        raise ValueError(ERROR_REPORT)
+    notes: list[str] = []
+    for value, author, reason in zip(reasons, authors, (REASON_ONE, REASON_TWO), strict=False):
+        row = object_value(value)
+        if row.get("session") != author or row.get("text") != reason:
+            raise ValueError(ERROR_REPORT)
+        notes.append(text(row, "note"))
+    if len(notes) != len(set(notes)):
+        raise ValueError(ERROR_REPORT)
+    return tuple(notes)
+
+
+def _reason_log(row: JsonObject, before: JsonObject, after: JsonObject, actor: str, label: str, holder: str) -> None:
+    before_log = text(object_value(before["artifact_content"]), "log")
+    before_entries = events.parse_log_entries(before_log)
+    pairs = [list[JsonValue]((entry.header, entry.body)) for entry in before_entries]
+    if row["before_log"] != pairs:
+        raise ValueError(ERROR_REPORT)
+    after_log = text(object_value(after["artifact_content"]), "log")
+    entries = events.parse_log_entries(after_log)
+    if entries[: len(before_entries)] != before_entries:
+        raise ValueError(ERROR_REPORT)
+    added = entries[len(before_entries) :]
+    first = label == "reasonone"
+    if len(added) != (2 if first else 1):
+        raise ValueError(ERROR_REPORT)
+    reason = REASON_ONE if first else REASON_TWO
+    digest = hashlib.sha256(reason.encode("utf-8")).hexdigest()[:16]
+    if (
+        added[0].act != "note"
+        or added[0].session != actor
+        or digest not in added[0].header
+        or reason not in added[0].body
+    ):
+        raise ValueError(ERROR_REPORT)
+    if first and (added[1].act != "claim" or added[1].session != holder or ITEM not in added[1].body):
+        raise ValueError(ERROR_REPORT)
+
+
+def _reason_record(
+    row: JsonObject,
+    attempt: Attempt,
+    terminals: list[JsonValue],
+    authors: tuple[str, str],
+    holder: str,
+    created: int,
+    public_finished: int,
+) -> JsonObject:
+    if set(row) != {
+        "attempt_id",
+        "actor",
+        "started_ns",
+        "returned_ns",
+        "observed_ns",
+        "frame",
+        "before_item",
+        "before_log",
+        "after_item",
+    } or not (
+        created
+        <= positive_integer(row, "started_ns")
+        <= positive_integer(row, "returned_ns")
+        <= positive_integer(row, "observed_ns")
+        <= public_finished
+    ):
+        raise ValueError(ERROR_REPORT)
+    first = attempt.label == "reasonone"
+    actor = authors[0 if first else 1]
+    reason = REASON_ONE if first else REASON_TWO
+    if (
+        row["actor"] != actor
+        or _pane_operation(row["frame"], ["telec", "todo", "work", ITEM, "--reason", reason]) != attempt.operation_id
+    ):
+        raise ValueError(ERROR_REPORT)
+    before = object_value(row["before_item"])
+    after = object_value(row["after_item"])
+    old = object_value(before["standing"])
+    current = object_value(after["standing"])
+    for key in ("ready_at_commit", "ready_since"):
+        if text(old, key) != text(current, key):
+            raise ValueError(ERROR_REPORT)
+    _claimed_holder(after, holder, "ready")
+    notes = _note_rows(after, authors[:1] if first else authors)
+    if not first:
+        previous_notes = _note_rows(before, authors[:1])
+        if (
+            notes[0] != previous_notes[0]
+            or cast(list[JsonValue], current["reasons"])[0] != cast(list[JsonValue], old["reasons"])[0]
+        ):
+            raise ValueError(ERROR_REPORT)
+    _reason_log(row, before, after, actor, attempt.label, holder)
+    credits: list[JsonValue] = []
+    for value in terminals:
+        terminal = object_value(value)
+        if terminal.get("state") != ("completed" if first else "failed"):
+            raise ValueError(ERROR_REPORT)
+        output = text(terminal, "result" if first else "error")
+        note = re.search(r"recorded as note\s+(\S+)", output)
+        if first and "has not claimed yet" in output:
+            credits.append("pending result; session and note clauses not evaluated")
+        elif (
+            (f"session {holder} holds the claim" in output if first else holder in output)
+            and note is not None
+            and note.group(1) == notes[-1]
+        ):
+            credits.append(
+                "result names matched session and public note" if first else "refusal names holder and written note"
+            )
+        else:
+            raise ValueError(ERROR_REPORT)
+    return {
+        "attempt_id": attempt.identifier,
+        "operation_id": attempt.operation_id,
+        "actor": actor,
+        "holder": holder,
+        "note": notes[-1],
+        "state": "public_note_matched",
+        "native_result_credit": credits,
+    }
+
+
+def _reason_inputs(
+    finalizer: JsonObject,
+    ledger: StartLedger,
+    operations: dict[str, list[JsonValue]],
+    claims: list[JsonValue],
+    created: int,
+    public_finished: int,
+) -> list[JsonValue]:
+    values = finalizer["public_reason_evidence"]
+    if not isinstance(values, list):
+        raise ValueError(ERROR_REPORT)
+    if "B7" not in ledger.closed_lists:
+        if values:
+            raise ValueError(ERROR_REPORT)
+        return []
+    reasons = [
+        attempt
+        for attempt in ledger.attempts.values()
+        if attempt.case == "B7" and attempt.label in ("reasonone", "reasontwo")
+    ]
+    if (
+        len(reasons) != 2
+        or {attempt.label for attempt in reasons} != {"reasonone", "reasontwo"}
+        or any(attempt.kind != RECORD_OPERATION or attempt.state != RECORD_DISCHARGED for attempt in reasons)
+        or len(values) != 2
+    ):
+        raise ValueError(ERROR_REPORT)
+    expected = {attempt.identifier: attempt for attempt in reasons}
+    reason_one = next(attempt for attempt in reasons if attempt.label == "reasonone")
+    holders = [
+        text(object_value(value), "actor")
+        for value in claims
+        if object_value(value)["attempt_id"] == reason_one.identifier
+    ]
+    if len(holders) != 1:
+        raise ValueError(ERROR_REPORT)
+    authors: list[str] = []
+    for label in ("session-S_R", "session-S2"):
+        actors = [attempt for attempt in ledger.attempts.values() if attempt.case == "B7" and attempt.label == label]
+        if (
+            len(actors) != 1
+            or actors[0].kind != RECORD_SESSION
+            or actors[0].state != RECORD_DISCHARGED
+            or actors[0].session_id is None
+        ):
+            raise ValueError(ERROR_REPORT)
+        authors.append(actors[0].session_id)
+    if authors[0] == authors[1]:
+        raise ValueError(ERROR_REPORT)
+    seen: set[str] = set()
+    matched: list[JsonValue] = []
+    for value in values:
+        row = object_value(value)
+        identifier = text(row, "attempt_id")
+        if identifier not in expected or identifier in seen:
+            raise ValueError(ERROR_REPORT)
+        attempt = expected[identifier]
+        if attempt.operation_id is None:
+            raise ValueError(ERROR_REPORT)
+        matched.append(
+            _reason_record(
+                row,
+                attempt,
+                operations[attempt.operation_id],
+                (authors[0], authors[1]),
+                holders[0],
+                created,
+                public_finished,
+            )
+        )
+        seen.add(identifier)
+    return matched
+
+
 def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
     """Join declared attempts to actual terminal operation data; receipts alone do not establish semantic settlement."""
     provisional = object_value(report["payload_provisional"])
@@ -778,6 +985,7 @@ def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
                     "recorded_evidence": attempt.evidence,
                 }
             )
+    claims = _claim_inputs(finalizer, after.ledger, operations, created, public_finished)
     return {
         "scope": "shared-workflow-flow",
         "state": "recorded_inputs_matched",
@@ -786,7 +994,8 @@ def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
         "operations": matched,
         "effects": effects,
         "pending_trigger_ids": list(after.pending_triggers),
-        "accepted_start_claims": _claim_inputs(finalizer, after.ledger, operations, created, public_finished),
+        "accepted_start_claims": claims,
         "refusals": _refusal_inputs(finalizer, after.ledger, operations, created, public_finished),
+        "reason_notes": _reason_inputs(finalizer, after.ledger, operations, claims, created, public_finished),
         "semantic_settlement": "unproven",
     }

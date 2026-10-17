@@ -486,6 +486,7 @@ class WorkflowFlow:
     public_operation_evidence: list[JsonValue] = field(default_factory=list)
     public_claim_evidence: list[JsonValue] = field(default_factory=list)
     public_refusal_evidence: list[JsonValue] = field(default_factory=list)
+    public_reason_evidence: list[JsonValue] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -1249,6 +1250,22 @@ class WorkflowFlow:
         self.public_refusal_evidence.append(evidence)
         return evidence
 
+    def reason_input(self, actor: str, before: Json, before_log: Sequence[tuple[str, str]]) -> MutableJson:
+        """Retain the two existing reason requests and their observed note effects without another public read."""
+        evidence: MutableJson = {
+            "attempt_id": None,
+            "actor": actor,
+            "started_ns": None,
+            "returned_ns": None,
+            "observed_ns": None,
+            "frame": None,
+            "before_item": cast(JsonValue, dict(before)),
+            "before_log": [list[JsonValue](entry) for entry in before_log],
+            "after_item": None,
+        }
+        self.public_reason_evidence.append(evidence)
+        return evidence
+
     def _read_object(self, path: Path) -> Json | None:
         try:
             value = json.loads(path.read_text(encoding=ENCODING))
@@ -1426,6 +1443,7 @@ class WorkflowFlow:
             "public_operation_evidence": self.public_operation_evidence,
             "public_claim_evidence": self.public_claim_evidence,
             "public_refusal_evidence": self.public_refusal_evidence,
+            "public_reason_evidence": self.public_reason_evidence,
             "integrators": cast(JsonValue, sorted(integrators)),
             "start_ledger": cast(JsonValue, starts),
             "open_attempt_ids": cast(JsonValue, open_ids),
