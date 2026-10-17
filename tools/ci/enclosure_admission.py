@@ -50,7 +50,7 @@ HEAD: Final = "HEAD"
 HEAD_TREE: Final = "HEAD^{tree}"
 REALIZATION_SCHEMA: Final = 1
 HARNESS_MODULE: Final = "tools.ci."
-HARNESS_NAMESPACES: Final = frozenset({"tools", "tools.ci"})
+HARNESS_PACKAGES: Final = frozenset({"tools", "tools.ci"})
 OBSERVER_MODULE: Final = "dbus_next"
 QUALIFICATION_SETUP_VECTOR: Final = "Q2"
 QUALIFICATION_SETUP_ACTIONS: Final = frozenset(
@@ -61,6 +61,8 @@ ERROR_DEADLINE: Final = "privileged source admission exhausted the original comm
 ERROR_PATH: Final = "privileged admission requires protected, explicitly declared source and runtime files: {path}"
 REQUIRED_SOURCES: Final = frozenset(
     {
+        "tools/__init__.py",
+        "tools/ci/__init__.py",
         "tools/ci/runtime_acceptance.py",
         "tools/ci/acceptance_work.py",
         "tools/ci/enclosure_inner.py",
@@ -183,19 +185,12 @@ def _loaded_inputs(root: Path) -> tuple[set[str], set[Path]]:
     # Native import state supplies the actual dependencies of this role. A snapshot
     # avoids iterating a dictionary that imports elsewhere could resize.
     for name in tuple(sys.modules):
-        harness = name in HARNESS_NAMESPACES or name.startswith(HARNESS_MODULE)
+        harness = name in HARNESS_PACKAGES or name.startswith(HARNESS_MODULE)
         library = name == OBSERVER_MODULE or name.startswith(OBSERVER_MODULE + ".")
         if not harness and not library:
             continue
         module = sys.modules.get(name)
-        if module is None:
-            raise ValueError(ERROR_SOURCE)
-        if name in HARNESS_NAMESPACES and module.__file__ is None:
-            # The checked tree uses namespace packages: there is no package file to hash.
-            if module.__spec__ is None or module.__spec__.origin is not None:
-                raise ValueError(ERROR_SOURCE)
-            continue
-        if not module.__file__:
+        if module is None or not module.__file__:
             raise ValueError(ERROR_SOURCE)
         path = Path(module.__file__).resolve(strict=True)
         if harness:
