@@ -21,8 +21,9 @@ particular tool happens at the boundary that launches it.
 The declaration is separate from the person's identity address, which is how a
 caller is resolved to a person and is not a mailbox. A person may hold several
 accounts across both connectors, or none at all, and neither says anything about
-who they are. An identity address becomes an account the assistant may act as
-only by being declared as one.
+who they are. Omitting mail accounts leaves the person resolvable by their
+identity address. An identity address becomes an account the assistant may act
+as only by being declared as one.
 
 **Business value:** an assistant that knows who it is acting for still has to
 know which mailbox it is acting in. Without a declared list there is nothing to
@@ -37,36 +38,23 @@ silently becoming a mailbox an agent may act in.
 
 #### UC-CFG-MAIL-1: A person with no declared mail accounts is valid
 
-```gherkin
-Given an operator configures a person's identity without declaring a mailbox
-When the person is resolved
-Then they remain resolvable by their identity address
-```
-
 #### UC-CFG-MAIL-2: An operator configures a person's mail accounts
 
 ```gherkin
-Scenario: Declare several supported accounts
-  Given an operator declares several mail accounts across the supported connectors
-  When the person's configuration is loaded
-  Then every account is preserved with its declared connector and address
+Scenario: Choose the mail accounts an assistant may use
+  Given an operator is configuring the mail accounts for a person
+  When they declare one or more accounts from the supported connectors
+  Then the assistant may act only as those declared connector and address pairs
 
 Scenario: Reject an unsupported connector
-  Given an operator declares a mail account using a connector outside the supported vocabulary
-  When the person's configuration is loaded
+  Given an operator declares an account using an unsupported connector
+  When the operator saves the person's mail account configuration
   Then the declaration is rejected with the offending account named
 ```
 
 #### UC-CFG-MAIL-3: An account naming a connector outside the vocabulary is rejected
 
 #### UC-CFG-MAIL-4: The identity address is not a mail account by itself
-
-```gherkin
-Given an operator configures a person's identity address without declaring it as a mail account
-When the person is resolved for identity
-Then the identity address identifies the person
-And it does not grant the assistant a mail account to act as
-```
 
 ## Known caveats
 
