@@ -21,30 +21,28 @@ administrative command surface, never by interacting with the TUI pills.
 
 ### Use cases
 
-#### UC-TAAV-1: An operator sees authoritative agent availability in the TUI
+#### UC-TAAV-1: An operator can see current agent availability in the TUI
 
 ```gherkin
-Scenario: One agent's status change leaves the others intact
-  Given a running TUI loaded availability for all configured agents
-  When a live availability event arrives for one agent
-  Then that agent's rendered status reflects the event
-  And every other agent's rendered status is unchanged
-  And no other agent renders the unknown marker
+Scenario: See one agent's availability change
+  Given an operator sees the availability of several configured agents
+  When one agent's availability changes
+  Then that agent is shown with its new availability
+  And the other agents retain their last known availability
 
-Scenario: Unrelated TUI refresh preserves known availability
+Scenario: Keep availability while other information refreshes
   Given an operator sees known availability for every configured agent
-  When the TUI refreshes information unrelated to agent availability
+  When unrelated information in the TUI refreshes
   Then every displayed agent availability remains unchanged
 
-Scenario: Unknown availability is not presented as available
-  Given an operator opens the TUI before agent availability has been learned
-  When the TUI displays the configured agents
-  Then each agent without known availability renders as unknown
-  And no agent without known availability is presented as available
+Scenario: Distinguish unknown availability from available
+  Given an operator opens the TUI before availability has been learned for some agents
+  When the configured agents are displayed
+  Then each agent without known availability is shown as unknown, not available
 
-Scenario: Reconnection restores current availability
-  Given the operator's TUI lost its daemon connection
-  When the TUI reconnects
+Scenario: See current availability after reconnecting
+  Given the operator's TUI was disconnected
+  When it reconnects
   Then the current availability of every configured agent appears without a manual refresh
 ```
 
