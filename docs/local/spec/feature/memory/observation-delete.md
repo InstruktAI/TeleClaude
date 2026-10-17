@@ -8,6 +8,7 @@ visibility: 'public'
 ## What it is
 
 A memory observation can be removed by id. The memory service deletes the observation and ensures the search index is kept in sync. Removal of a non-existent observation is signalled as a not-found error. No authorization is enforced; any caller able to reach the memory surface can delete any observation.
+The CLI requires an integer id, rejects invalid input before deletion, confirms a successful removal, and reports a missing observation as not found.
 
 ## Canonical fields
 
@@ -15,23 +16,17 @@ A memory observation can be removed by id. The memory service deletes the observ
 
 #### Delete via CLI
 
-```
-Given a human or agent runs `telec memories delete <id>`
-When the CLI parses arguments
-Then <id> must be parseable as an integer (otherwise the CLI prints "Invalid ID '<id>': must be a number." and exits 1)
-And the CLI asks the memory service to delete the observation
-And on success prints `Deleted observation #<id>`
-And on any error prints `Error: <detail>` and exits 1
-```
+```gherkin
+Scenario: An operator removes an observation
+  Given a human operator wants to remove a stored observation they can reach
+  When they delete it by its integer id
+  Then the observation is removed and the CLI confirms the deletion
 
-#### Delete
-
-```
-Given a caller asks the memory service to delete an observation by id
-When the request is processed
-Then on a match the observation is removed and the deletion is acknowledged
-And on no match a not-found signal is returned
-And the search index is kept in sync with the removal
+Scenario: Invalid or missing IDs do not claim a deletion
+  Given an operator enters an invalid ID or names no stored observation
+  When they request deletion
+  Then the CLI reports the input or not-found condition and returns failure
+  And no other observation is removed
 ```
 
 ### Cross-context references
