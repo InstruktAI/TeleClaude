@@ -98,6 +98,8 @@ changes; its pending edits are preserved and nothing is committed on their
 behalf. A document whose commit is refused is restored to its committed
 content. Untracked documents are written without a commit.
 
+<!-- planned-change:central-shared-configuration -->
+
 A migration that moves a value out of a document delivers it to its
 config-owned destination before the document drops it. Where the value's final
 owner is another bounded context, the destination is a config-owned hand-off
@@ -106,6 +108,16 @@ after the hand-off. Until a document is stored past the migration that moves a
 value out of it, the config-owned destination's published reader also finds the
 value the document still holds, through the migration list's in-transit query,
 reading without writing.
+<!-- change:central-shared-configuration -->
+
+A migration that moves a value delivers it to its config-owned destination
+before dropping it from the source. A destination owned by another bounded
+context uses a config-owned hand-off; the importing owner's contract governs
+the subsequent import. A local destination also serves values still in transit
+through the migration list's read-only query. A shared destination's reader and
+explicit source inventory follow the shared-authority distinction in
+`local/projects/teleclaude/policy/configuration-migrations`.
+<!-- /planned-change:central-shared-configuration -->
 
 Every migration run also removes the config-owned records the list declares obsolete,
 whatever the documents' versions, so the first run
@@ -117,6 +129,25 @@ The authoring rules every migration obeys are
 `local/projects/teleclaude/policy/configuration-migrations`.
 
 ## Canonical fields
+
+<!-- planned:central-shared-configuration -->
+
+### Shared destinations and records
+
+The shared runtime record is an owned configuration document with a shared
+subject and the same ordered configuration migration version authority. Its
+key-schema identity separately identifies supported key meaning. Pure
+read-time adaptation and persisted forward migration retain
+`local/projects/teleclaude/policy/configuration-migrations`.
+
+Shared source collection and destination import follow
+`local/projects/teleclaude/spec/feature/config/shared-runtime-settings` through
+the migration list's persisted-effect mechanism. The ordinary shared reader
+answers only from the initialized shared destination. A shared writer folds
+the record's pending pure transforms and its requested mutation into one
+validated conditional revision commit; it never publishes an intermediate
+candidate. Source-document cleanup keeps its ordinary per-document outcome.
+<!-- /planned:central-shared-configuration -->
 
 - **Version.** A non-negative integer each document carries at its top level.
   A document with no version is at version zero. The current version is the

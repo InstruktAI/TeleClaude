@@ -70,6 +70,25 @@ Existing declarations represent the same fact wherever it is produced;
 compatibility carriers do not create a second lifecycle occurrence. Current
 consumers execute through their bound consumer path throughout wire coexistence.
 
+<!-- planned:central-shared-configuration -->
+
+### Recorded occurrence publication
+
+A source owner with a durable handover stages a complete typed occurrence at
+the source boundary before storing its change record. The existing producer
+publishes that recorded occurrence without recomputing its identity, time,
+source, origin, subject or related caller facts. Encoding still follows the
+current source-stream wire compatibility contract. A repeated append retains
+the occurrence identity under
+`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`.
+
+The configuration owner's handover is
+`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
+Its store commit and delivery mark remain source-owned; stream acceptance and
+independent reaction execution retain the event runtime's existing boundary
+under `sdlc/policy/domain-ownership`.
+<!-- /planned:central-shared-configuration -->
+
 ### Source-stream exposure
 
 Public platform facts retain the platform stream and its existing consumers.
