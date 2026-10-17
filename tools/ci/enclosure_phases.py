@@ -64,6 +64,7 @@ from tools.ci.enclosure_payload_completion import (
     capture_payload_completion,
     validate_shutdown_journal,
 )
+from tools.ci.enclosure_payload_driver import PayloadDrive, drive_payload
 from tools.ci.enclosure_population import Invalidation, PopulationObserver
 
 UTF8: Final = "utf-8"
@@ -166,6 +167,10 @@ class BindingPhases:
     def startups(self) -> tuple[HelperStartup, ...]:
         """Expose the original startup collection for same-loop bounded closure/final reporting, without adopting a new task."""
         return tuple(self._startups)
+
+    async def run_payload(self, original: AdmittedDeadline) -> PayloadDrive:
+        """Drive the configured guest on this original loop; the result grants no P4 or release authority."""
+        return await drive_payload(self, original)
 
     async def perform(
         self,

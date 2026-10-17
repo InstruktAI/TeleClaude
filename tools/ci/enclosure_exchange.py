@@ -9,9 +9,10 @@ import os
 import select
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from tools.ci.enclosure_actions import NativeMutation, dispatch_action
 from tools.ci.enclosure_admission import ACTUAL_SOURCE_ROOT, ENTRY
@@ -20,6 +21,7 @@ from tools.ci.enclosure_contract import (
     AdmittedDeadline,
     Cutoff,
     JsonObject,
+    JsonValue,
     object_value,
     parse_object,
     positive_integer,
@@ -225,6 +227,11 @@ class HelperStartup:
         self.command_end_ns = end_ns
         self.process: asyncio.subprocess.Process | None = None
         self.identity: Controller | None = None
+        self.exit_task: asyncio.Task[int] | None = None
+        self.output_task: asyncio.Task[None] | None = None
+        self.output_prefix = bytearray()
+        self.output_bytes = 0
+        self.output_eof = False
         self.task = asyncio.create_task(self._start(owner, action, request, end_ns))
 
     def record(self) -> JsonObject:
@@ -301,6 +308,111 @@ class HelperStartup:
             return self.process
         finally:
             close_evidence_descriptors(stderr)
+
+
+@dataclass(frozen=True)
+class HelperCollection:
+    """Original-handle observations, never cancellation/absence relabelled as physical settlement."""
+
+    startup: HelperStartup
+    receipt: ActionResult | None
+    errors: tuple[BaseException, ...]
+    receipt_read: bool = False
+
+    def record(self) -> JsonObject:
+        return {
+            **self.startup.record(),
+            "remaining_stdout_observed_bytes": self.startup.output_bytes,
+            "remaining_stdout_retained_bytes": len(self.startup.output_prefix),
+            "remaining_stdout_prefix_sha256": hashlib.sha256(self.startup.output_prefix).hexdigest(),
+            "remaining_stdout_truncated": self.startup.output_bytes > len(self.startup.output_prefix),
+            "remaining_stdout_eof": self.startup.output_eof,
+            "receipt_read": self.receipt_read,
+            "collection_errors": list[JsonValue](type(error).__name__ for error in self.errors),
+            "receipt": self.receipt.record(self.startup.action) if self.receipt is not None else None,
+        }
+
+
+async def _collect_output(startup: HelperStartup, end_ns: int) -> None:
+    process = startup.process
+    if process is None or process.stdout is None:
+        raise ValueError(ERROR_EXCHANGE)
+    # The canonical helper emits at most the phase and final frames. Retain a
+    # bounded diagnostic prefix, keep draining, and never interpret it as an acknowledgment.
+    while True:
+        async with asyncio.timeout(_remaining(end_ns)):
+            chunk = await process.stdout.read(READ_BYTES)
+        if not chunk:
+            startup.output_eof = True
+            return
+        startup.output_bytes += len(chunk)
+        available = max(0, 2 * FRAME_LIMIT - len(startup.output_prefix))
+        startup.output_prefix.extend(chunk[:available])
+
+
+def _collection_done(task: asyncio.Task[None] | asyncio.Task[int]) -> None:
+    # Retrieve late native errors without discarding the original task's result.
+    if not task.cancelled():
+        task.exception()
+
+
+async def collect_helper_startup(
+    startup: HelperStartup, owner: RunOwner, deadline: AdmittedDeadline
+) -> HelperCollection:
+    """Collect one original startup/process on its original loop under the caller's remaining closure bound.
+
+    Pending operations stay owned in HelperStartup. Original startup/wait tasks
+    and native processes are never cancelled/killed, restarted or replaced;
+    the diagnostic output read has its own bounded end. Failure grants no new call.
+    """
+    errors: list[BaseException] = []
+    receipt = None
+    receipt_read = False
+    if (
+        startup.task.get_loop() is not asyncio.get_running_loop()
+        or deadline.outer_end_ns != owner.journal.deadline.end_ns
+    ):
+        return HelperCollection(startup, None, (ValueError(ERROR_EXCHANGE),))
+    startup.abandon_input()
+    try:
+        if not startup.task.done():
+            async with asyncio.timeout(_remaining(deadline.effective_end())):
+                await asyncio.shield(startup.task)
+        elif startup.task.cancelled():
+            raise asyncio.CancelledError()
+        elif startup.task.exception() is not None:
+            error = startup.task.exception()
+            if error is not None:
+                errors.append(error)
+    except BaseException as error:
+        errors.append(error)
+    process = startup.process
+    if process is not None:
+        if startup.output_task is None:
+            startup.output_task = asyncio.create_task(_collect_output(startup, deadline.effective_end()))
+            startup.output_task.add_done_callback(_collection_done)
+        if startup.exit_task is None:
+            startup.exit_task = asyncio.create_task(process.wait())
+            startup.exit_task.add_done_callback(_collection_done)
+        for task in (startup.exit_task, startup.output_task):
+            try:
+                if task.done():
+                    task.result()
+                else:
+                    async with asyncio.timeout(_remaining(deadline.effective_end())):
+                        await asyncio.shield(cast(Awaitable[object], task))
+            except BaseException as error:
+                errors.append(error)
+        if process.returncode is not None:
+            try:
+                _remaining(deadline.effective_end())
+                # receipt() already uses the journal's existing LOCK_NB path.
+                # A still-running helper's busy/unknown journal is preserved as an error, not waited on or repaired.
+                receipt_read = True
+                receipt = owner.journal.receipt(startup.action)
+            except (OSError, ValueError, RuntimeError) as error:
+                errors.append(error)
+    return HelperCollection(startup, receipt, tuple(errors), receipt_read)
 
 
 async def run_privileged(
