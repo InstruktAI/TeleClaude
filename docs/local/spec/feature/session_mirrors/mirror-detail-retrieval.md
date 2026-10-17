@@ -97,28 +97,6 @@ And the function reports "no mirror" without raising
 
 #### UC-MDR-1: CLI accepts a TeleClaude session id
 
-<!-- planned-change:mirror-archive-live-source-conflict -->
-
-```
-Given an operator runs `telec history show <session-id>` with a TeleClaude session id
-And no mirror matches that id directly
-And the session record for that id carries a native agent session id
-When the history detail capability resolves the lookup
-Then it repeats only the mirror lookup under the native agent session id
-And the on-disk transcript discovery is never repeated under a resolved id, because it applies no history scope
-And the session's mirror is rendered, whether the session is still running or already closed
-And `--raw` for a resolved id streams the transcript recorded on that mirror rather than a rediscovered file
-
-Given the caller's history scope excludes that session's mirror from the detail lookup
-Then the resolved native id opens neither the mirror nor the transcript
-And the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
-
-Given no session record carries the supplied id
-Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
-```
-
-<!-- change:mirror-archive-live-source-conflict -->
-
 ```gherkin
 Given an operator requests history using a retained TeleClaude session identity
 When history resolves that identity within the caller's existing history reach
@@ -126,8 +104,6 @@ Then only that session's own conversation mirror can answer the request
 And a missing or excluded mirror is reported as unavailable without substituting another session's mirror or transcript that shares its native source
 And raw retrieval uses the source recorded for the selected conversation
 ```
-
-<!-- /planned-change:mirror-archive-live-source-conflict -->
 
 #### UC-MDR-2: An id lookup takes a full UUID
 

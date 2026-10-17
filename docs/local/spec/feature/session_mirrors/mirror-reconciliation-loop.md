@@ -37,14 +37,11 @@ the next transcript.
 
 ### Conversation work and readiness
 
-<!-- planned:mirror-archive-live-source-conflict -->
-
 Freshness is evaluated for the retained conversation selected for the candidate
 and its source observation. An observation belonging to another session cannot
 skip a conversation whose mirror is missing or stale. Negative file tombstones
 remain file observations and establish no conversation coverage
 (`sdlc/policy/code-quality`).
-<!-- /planned:mirror-archive-live-source-conflict -->
 
 The existing timer and discovery select refresh work. One TeleClaude session is
 the work unit, and its complete lineage goes to the shared conversation

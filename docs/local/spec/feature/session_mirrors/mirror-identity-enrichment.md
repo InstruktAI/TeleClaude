@@ -31,8 +31,6 @@ and identifier compatibility follow
 
 ## Canonical fields
 
-<!-- planned:mirror-archive-live-source-conflict -->
-
 ### Session-owned source observations
 
 Retained sessions that reference the same native transcript keep independent
@@ -46,7 +44,6 @@ existing conversation reader. Another session's source observation supplies
 neither its content nor evidence that the requested conversation is current.
 Native-source addressing follows
 `local/projects/teleclaude/spec/feature/session_mirrors/session-id-namespaces`.
-<!-- /planned:mirror-archive-live-source-conflict -->
 
 ### Use cases
 
@@ -113,8 +110,6 @@ Then the conversation remains retrievable through its original source identity
 And no missing human attribution is inferred from its prose
 ```
 
-<!-- planned:mirror-archive-live-source-conflict -->
-
 #### UC-MIE-8:
 
 ```gherkin
@@ -125,8 +120,6 @@ Then the operator can retrieve the refreshed live conversation by its TeleClaude
 And the archived conversation remains retrievable by its own TeleClaude identity with its recorded content and attribution preserved
 And another refresh does not duplicate exchanges within either conversation
 ```
-
-<!-- /planned:mirror-archive-live-source-conflict -->
 
 ### Cross-context references
 
