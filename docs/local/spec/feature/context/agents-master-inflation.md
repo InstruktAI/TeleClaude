@@ -45,7 +45,9 @@ body and required reads; it never receives either project-wide section. Generate
 entrypoints omit the `LOCKED_FILE` sentinel comments found in source masters. The
 global agent configuration's Published Domains roster lists publisher-declared
 domains not already inlined by that configuration, with each publisher's
-declared trigger.
+declared trigger. Each Activatable Procedures entry shows its description and
+activation trigger; each Configured Responsibilities entry shows its description
+and subscribed events.
 
 ## Canonical fields
 
@@ -110,8 +112,8 @@ Scenario: Start Claude Code with project and ancestor instructions
   renders the manifest's curated entries; the "Activatable Procedures" section
   is auto-collected from `activation_trigger` declarations in the scope's index.
   A triggered procedure hand-listed in a `baseline-progressive.md` manifest is
-  dead weight — auto-inclusion already surfaces it — and sync flags it for
-  removal from the manifest.
+  dead weight — auto-inclusion already surfaces it — and sync blocks, even in
+  warn-only mode, with a finding naming the manifest and reference to remove.
 - `delivered_by` is the pending gate for the whole transpiler, applied once per
   surface: baseline index entries, activatable procedures, Published Domains
   counts, and inlined bodies all skip a snippet that declares it. The merged
