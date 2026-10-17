@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import os
 import stat
@@ -82,6 +83,7 @@ class HostSubstrateFacts:
     pid1_start_ticks: int
     uid: int
     inventory_sha256: str
+    inventory_base64: str
     container_installed: bool
     matched_packages: int
     activation_files: int
@@ -228,6 +230,7 @@ def inspect_host_substrate(
         pid1.start_ticks,
         os.geteuid(),
         hashlib.sha256(inventory).hexdigest(),
+        base64.b64encode(inventory).decode("ascii"),
         container_installed,
         matched_packages,
         activation_count,

@@ -561,3 +561,121 @@ def bind_dbus_control_sources(snapshot: JsonObject, package: StaticPackage, dead
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError({"inputs": snapshot, "sources": result}) from error
+
+
+def _metadata_lines(data: bytes | None, deadline: AdmittedDeadline) -> list[bytes]:
+    lines: list[bytes] = []
+    if data is None:
+        return lines
+    with io.BytesIO(data) as stream:
+        while chunk := stream.readline(1023):
+            _before_cutoff(deadline)
+            # Native fgets_checked(bufsz=1024), unlike config fgets, requires a terminating newline.
+            if not chunk.endswith(b"\n") or b"\x00" in chunk:
+                raise ValueError(ERROR_INPUT)
+            lines.append(chunk[:-1])
+    return lines
+
+
+def _fsys_name(name: bytes) -> bytes:
+    # fsys_hash_find_node/path_skip_slash_dotslash: no realpath, interior normalization or parent expansion.
+    while name.startswith(b"/") or name.startswith(b"./"):
+        name = name[1:]
+    return b"/" + name
+
+
+def _diversion_routes(
+    data: bytes | None, deadline: AdmittedDeadline, captured: list[JsonValue]
+) -> tuple[dict[bytes, tuple[bytes, bytes]], set[bytes]]:
+    lines = _metadata_lines(data, deadline)
+    if len(lines) % 3:
+        raise ValueError(ERROR_INPUT)
+    routes: dict[bytes, tuple[bytes, bytes]] = {}
+    occupied: set[bytes] = set()
+    destinations: set[bytes] = set()
+    for index in range(0, len(lines), 3):
+        _before_cutoff(deadline)
+        source, target, owner = _fsys_name(lines[index]), _fsys_name(lines[index + 1]), lines[index + 2]
+        if source in occupied or target in occupied:
+            # ensure_diversions rejects a node already participating in another diversion.
+            raise ValueError(ERROR_INPUT)
+        occupied.update((source, target))
+        destinations.add(target)
+        routes[source] = (target, owner)
+        captured.append(
+            {
+                "source_base64": base64.b64encode(source).decode("ascii"),
+                "target_base64": base64.b64encode(target).decode("ascii"),
+                "owner_base64": base64.b64encode(owner).decode("ascii"),
+                "local": owner == b":",
+            }
+        )
+    return routes, destinations
+
+
+def interpret_trigger_routes(snapshot: JsonObject, basis: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Interpret actual byte routing/registration inputs; package identity/lifecycle/deferred work remain unproven."""
+    diversions: list[JsonValue] = []
+    routes: list[JsonValue] = []
+    interests: list[JsonValue] = []
+    result: JsonObject = {
+        "diversions": diversions,
+        "new_member_routes": routes,
+        "file_interests": interests,
+        "package_identity_and_lifecycle": "unproven",
+        "deferred_and_pending_work": "unproven",
+        "recipient_admission": "unproven",
+        "error": None,
+    }
+    try:
+        _before_cutoff(deadline)
+        files = _input_files(snapshot)
+        result["diversions_present"] = files["/var/lib/dpkg/diversions"]["present"]
+        result["file_interests_present"] = files["/var/lib/dpkg/triggers/File"]["present"]
+        mapping, destinations = _diversion_routes(_input_bytes(files["/var/lib/dpkg/diversions"]), deadline, diversions)
+        members = basis["members"]
+        if basis["error"] is not None or not isinstance(members, list):
+            raise ValueError(ERROR_INPUT)
+        effective_paths: set[bytes] = set()
+        for value in members:
+            _before_cutoff(deadline)
+            member = object_value(value)
+            # Native tar_extractor removes trailing slashes before fsys_hash_find_node.
+            name = _fsys_name(text(member, "archive_name").encode("utf-8").rstrip(b"/"))
+            target, owner = mapping.get(name, (name, CONTAINER_PACKAGE.encode("ascii")))
+            effective = target if owner != CONTAINER_PACKAGE.encode("ascii") else name
+            collision = name in destinations
+            if not collision:
+                # New archive members use trig_file_activate of this one namenodetouse result.
+                effective_paths.add(effective)
+            routes.append(
+                {
+                    "archive_name": member["archive_name"],
+                    "native_name_base64": base64.b64encode(name).decode("ascii"),
+                    "effective_name_base64": base64.b64encode(effective).decode("ascii"),
+                    "native_diverted_destination_collision": collision,
+                }
+            )
+        raw = _input_bytes(files["/var/lib/dpkg/triggers/File"])
+        for line in _metadata_lines(raw, deadline):
+            _before_cutoff(deadline)
+            path, separator, specification = line.partition(b" ")
+            if not separator or not path.startswith(b"/"):
+                raise ValueError(ERROR_INPUT)
+            package, slash, qualifier = specification.partition(b"/")
+            native_name = _fsys_name(path)
+            interests.append(
+                {
+                    "native_name_base64": base64.b64encode(native_name).decode("ascii"),
+                    "package_spec_base64": base64.b64encode(package).decode("ascii"),
+                    "qualifier_base64": base64.b64encode(qualifier).decode("ascii") if slash else None,
+                    # Native unknown suffixes retain AWAIT; no invented qualifier-validity gate.
+                    "await": qualifier != b"noawait",
+                    "matches_new_member": native_name in effective_paths,
+                }
+            )
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"inputs": snapshot, "basis": basis, "routes": result}) from error
