@@ -58,7 +58,11 @@ from tools.ci.enclosure_inner import (
     PhysicalCleanupPending,
 )
 from tools.ci.enclosure_journal import Outcome as EnclosureOutcome
-from tools.ci.enclosure_report import validate_provisional_bindings, validate_provisional_cleanup
+from tools.ci.enclosure_report import (
+    validate_flow_session_closure,
+    validate_provisional_bindings,
+    validate_provisional_cleanup,
+)
 from tools.ci.enclosure_setup import run_guest_setup
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
@@ -6298,6 +6302,7 @@ def validate_provisional_payload_inputs(report_bytes: bytes, manifest: bytes, pa
         "functional_coverage": list(covered),
         "selected_run": bool(selected),
         "inner_cleanup": cleanup,
+        "shared_flow_sessions": validate_flow_session_closure(report),
     }
 
 

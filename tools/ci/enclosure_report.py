@@ -5,9 +5,12 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import math
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
+from tools.ci import workflow_foundation as foundation
 from tools.ci.enclosure_contract import (
     NANOSECONDS,
     QUALIFICATION_DIGEST,
@@ -28,6 +31,7 @@ from tools.ci.enclosure_guest import Key as GuestKey
 from tools.ci.enclosure_guest import Purpose
 from tools.ci.enclosure_inner import PROVISIONAL_REPORT_SCHEMA, PROVISIONAL_STAGE, LedgerEvidence, PendingReason
 from tools.ci.workflow_flow import declared_chain
+from tools.ci.workflow_ledger import RECORD_SESSION
 
 ERROR_REPORT: Final = "the new provisional report binding or original ledger evidence is inconsistent"
 LEDGER_ADDRESS: Final = Path("starts.jsonl")
@@ -242,4 +246,147 @@ def validate_provisional_cleanup(report: JsonObject) -> JsonObject:
         "work_end_ns": end,
         "supported_stop_outcome": "stopped",
         "physical_condition": PendingReason.P4_PENDING_OUTER.value,
+    }
+
+
+def _public_session_command(value: JsonValue, argv: list[str]) -> Mapping[str, object]:
+    command = object_value(value)
+    duration = command.get("duration_seconds")
+    if (
+        set(command) != {"argv", "exit_status", "duration_seconds", "stdout", "stderr", "diagnostics"}
+        or command["argv"] != argv
+        or type(command["exit_status"]) is not int
+        or command["exit_status"] != 0
+        or command["diagnostics"] != ""
+        or not isinstance(command["stdout"], str)
+        or not isinstance(command["stderr"], str)
+        or type(duration) not in (int, float)
+        or not isinstance(duration, (int, float))
+        or not math.isfinite(duration)
+        or duration < 0
+    ):
+        raise ValueError(ERROR_REPORT)
+    # Reuse the actual public CLI framing parser, without reading any report-supplied address.
+    record = foundation.json_object(command["stdout"])
+    if record is None:
+        raise ValueError(ERROR_REPORT)
+    return record
+
+
+def _public_closed(record: Mapping[str, object], session_id: str) -> bool:
+    closed_at = record.get("closed_at")
+    return (
+        record.get("session_id") == session_id
+        and isinstance(closed_at, str)
+        and bool(closed_at)
+        and record.get("lifecycle_status") == "closed"
+    )
+
+
+def _session_end_proof(proof: JsonObject, created: int, public_finished: int) -> tuple[str, str]:
+    if set(proof) != {"session_id", "started_ns", "finished_ns", "reads", "end_command", "operation", "error"}:
+        raise ValueError(ERROR_REPORT)
+    session_id = text(proof, "session_id")
+    if (
+        proof["error"] is not None
+        or not created
+        <= positive_integer(proof, "started_ns")
+        <= positive_integer(proof, "finished_ns")
+        <= public_finished
+    ):
+        raise ValueError(ERROR_REPORT)
+    reads = proof["reads"]
+    if not isinstance(reads, list) or not reads:
+        raise ValueError(ERROR_REPORT)
+    records = [_public_session_command(value, ["telec", "sessions", "show", session_id, "--full"]) for value in reads]
+    if any(record.get("session_id") != session_id for record in records) or not _public_closed(records[-1], session_id):
+        raise ValueError(ERROR_REPORT)
+    role = records[-1].get("role")
+    if not isinstance(role, str) or not role or role == "unknown":
+        raise ValueError(ERROR_REPORT)
+    end = proof["end_command"]
+    operation = proof["operation"]
+    if end is None:
+        # Already-closed public state is preserved as such; no end operation is invented.
+        if operation is not None or not _public_closed(records[0], session_id):
+            raise ValueError(ERROR_REPORT)
+    else:
+        receipt = _public_session_command(end, ["telec", "sessions", "end", session_id])
+        terminal = object_value(operation)
+        operation_id = receipt.get("operation_id")
+        if (
+            not isinstance(operation_id, str)
+            or not operation_id
+            or terminal.get("operation_id") != operation_id
+            or terminal.get("state") != "completed"
+            or terminal.get("error") not in (None, "")
+        ):
+            raise ValueError(ERROR_REPORT)
+    return session_id, role
+
+
+def validate_flow_session_closure(report: JsonObject) -> JsonObject:
+    """Validate the shared flow's actual public end/closed evidence, independently of its P1 label or P4."""
+    provisional = object_value(report["payload_provisional"])
+    binding = object_value(provisional["binding"])
+    observations = object_value(provisional["observations"])
+    selection = frozenset(_strings(binding[GuestKey.SELECTED_SCENARIOS]))
+    cases = declared_chain(selection)
+    flow = observations["flow_finalizer"]
+    if not cases:
+        if flow is not None:
+            raise ValueError(ERROR_REPORT)
+        return {"scope": "shared-workflow-flow", "state": "not_selected"}
+    finalizer = object_value(flow)
+    if (
+        not {
+            "failure",
+            "issues",
+            "sessions",
+            "owned_session_ids",
+            "public_session_end_evidence",
+            "start_ledger_before_closure",
+            "start_ledger_after_closure",
+        }
+        <= set(finalizer)
+        or finalizer["failure"] is not None
+        or finalizer["issues"] != []
+    ):
+        raise ValueError(ERROR_REPORT)
+    owned = _strings(finalizer["owned_session_ids"])
+    if not owned or owned != tuple(sorted(set(owned))) or any(not session for session in owned):
+        raise ValueError(ERROR_REPORT)
+    rows = object_value(finalizer["sessions"])
+    if set(rows) != set(owned):
+        raise ValueError(ERROR_REPORT)
+    proofs = finalizer["public_session_end_evidence"]
+    if not isinstance(proofs, list):
+        raise ValueError(ERROR_REPORT)
+    public_finished = positive_integer(object_value(observations["inner_cleanup"]), "public_cleanup_finished_ns")
+    created = positive_integer(binding, "created_ns")
+    observed: dict[str, str] = {}
+    for value in proofs:
+        session_id, role = _session_end_proof(object_value(value), created, public_finished)
+        if session_id not in owned or (session_id in observed and observed[session_id] != role):
+            raise ValueError(ERROR_REPORT)
+        observed[session_id] = role
+    if set(observed) != set(owned):
+        raise ValueError(ERROR_REPORT)
+    # Join actual explicit session answers, not an acknowledged-process count, to the public closed records.
+    for key in ("start_ledger_before_closure", "start_ledger_after_closure"):
+        snapshot = _ledger(finalizer.get(key), cases)
+        if snapshot is None or snapshot.ledger is None or snapshot.error is not None:
+            raise ValueError(ERROR_REPORT)
+        for attempt in snapshot.ledger.attempts.values():
+            if attempt.kind == RECORD_SESSION and (attempt.session_id is None or attempt.session_id not in observed):
+                raise ValueError(ERROR_REPORT)
+    for session_id, role in observed.items():
+        row = object_value(rows[session_id])
+        if set(row) != {"role", "closed"} or row["role"] != role or row["closed"] is not True:
+            raise ValueError(ERROR_REPORT)
+    return {
+        "scope": "shared-workflow-flow",
+        "state": "public_closed",
+        "session_ids": list(owned),
+        "end_evidence_count": len(proofs),
     }

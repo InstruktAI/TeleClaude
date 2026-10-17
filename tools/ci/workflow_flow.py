@@ -482,6 +482,7 @@ class WorkflowFlow:
     finalizer_ledger_error: str | None = None
     finalizer_start_ledger: LedgerEvidence | None = None
     finalizer_end_ledger: LedgerEvidence | None = None
+    public_session_end_evidence: list[JsonValue] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -628,10 +629,25 @@ class WorkflowFlow:
         if role == ROLE_INTEGRATOR:
             self.integrators.add(session_id)
 
-    def _session_record(self, session_id: str, *, retain: bool = False) -> Json | None:
+    def _session_record(
+        self, session_id: str, *, retain: bool = False, evidence: list[JsonValue] | None = None
+    ) -> Json | None:
         outcome = self.observer.run((TELEC, SESSIONS, SHOW, session_id, FULL_FLAG), retain=retain)
+        if evidence is not None:
+            evidence.append(self._session_command_evidence((TELEC, SESSIONS, SHOW, session_id, FULL_FLAG), outcome))
         record = foundation.json_object(outcome.output) if outcome.exit_status == 0 else None
         return record
+
+    @staticmethod
+    def _session_command_evidence(argv: Sequence[str], outcome: foundation.Outcome) -> MutableJson:
+        return {
+            "argv": list(argv),
+            "exit_status": outcome.exit_status,
+            "duration_seconds": outcome.duration_seconds,
+            "stdout": outcome.output,
+            "stderr": outcome.stderr,
+            "diagnostics": outcome.diagnostics,
+        }
 
     def _public_session_observation(
         self, session_id: str, timeout_seconds: float
@@ -973,8 +989,8 @@ class WorkflowFlow:
             native_history=native_history,
         )
 
-    def session_record(self, session_id: str, *, retain: bool = False) -> Json:
-        record = self._session_record(session_id, retain=retain)
+    def session_record(self, session_id: str, *, retain: bool = False, evidence: list[JsonValue] | None = None) -> Json:
+        record = self._session_record(session_id, retain=retain, evidence=evidence)
         if record is None:
             raise creation.binding_failure(DETAIL_NATIVE.format(session=session_id))
         return record
@@ -1345,6 +1361,8 @@ class WorkflowFlow:
             "failure": failure,
             "issues": cast(JsonValue, issues),
             "sessions": cast(JsonValue, session_rows),
+            "owned_session_ids": list[JsonValue](sorted(self.sessions)),
+            "public_session_end_evidence": self.public_session_end_evidence,
             "integrators": cast(JsonValue, sorted(integrators)),
             "start_ledger": cast(JsonValue, starts),
             "open_attempt_ids": cast(JsonValue, open_ids),
@@ -1650,9 +1668,32 @@ class WorkflowFlow:
 
     def end_session(self, session_id: str, attempt_id: str | None = None) -> Json:
         """Use the public end and operation surfaces, then require the retained record to show closure."""
-        current = self.session_record(session_id)
+        reads: list[JsonValue] = []
+        evidence: MutableJson = {
+            "session_id": session_id,
+            "started_ns": time.monotonic_ns(),
+            "finished_ns": None,
+            "reads": reads,
+            "end_command": None,
+            "operation": None,
+            "error": None,
+        }
+        self.public_session_end_evidence.append(evidence)
+        try:
+            return self._end_session(session_id, attempt_id, evidence, reads)
+        except BaseException as error:
+            evidence["error"] = f"{type(error).__name__}: {error}"
+            raise
+        finally:
+            evidence["finished_ns"] = time.monotonic_ns()
+
+    def _end_session(
+        self, session_id: str, attempt_id: str | None, evidence: MutableJson, reads: list[JsonValue]
+    ) -> Json:
+        current = self.session_record(session_id, evidence=reads)
         if current.get(FIELD_CLOSED_AT) is None and current.get(FIELD_LIFECYCLE) != "closed":
             outcome = self.observer.run((TELEC, SESSIONS, "end", session_id))
+            evidence["end_command"] = self._session_command_evidence((TELEC, SESSIONS, "end", session_id), outcome)
             receipt = foundation.json_object(outcome.output)
             operation_id = receipt.get(FIELD_OPERATION) if receipt is not None else None
             if outcome.exit_status != 0 or not isinstance(operation_id, str) or not operation_id:
@@ -1662,6 +1703,7 @@ class WorkflowFlow:
                     )
                 )
             terminal = self.operation(operation_id, START_RECORD_SECONDS)
+            evidence["operation"] = cast(JsonValue, dict(terminal))
             if terminal.get(FIELD_STATE) != STATE_COMPLETED:
                 raise creation.platform_failure(
                     DETAIL_OPERATION.format(
@@ -1669,14 +1711,14 @@ class WorkflowFlow:
                     )
                 )
         deadline = time.monotonic() + FLOW_COMMAND_SECONDS
-        record = self.session_record(session_id)
+        record = self.session_record(session_id, evidence=reads)
         while time.monotonic() < deadline:
             if record.get(FIELD_CLOSED_AT) is not None and record.get(FIELD_LIFECYCLE) == "closed":
                 if attempt_id is not None:
                     self.require_ledger().discharge(attempt_id, "public end completed and retained record closed")
                 return record
             payload_work.sleep(RECORD_POLL_SECONDS)
-            record = self.session_record(session_id, retain=False)
+            record = self.session_record(session_id, retain=False, evidence=reads)
         raise creation.platform_failure(DETAIL_CLOSED.format(session=session_id, record=record))
 
     def _record_sessions(self) -> dict[str, str]:
