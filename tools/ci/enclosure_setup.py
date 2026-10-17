@@ -9,7 +9,6 @@ import json
 import os
 import pwd
 import stat
-import subprocess
 import time
 from dataclasses import asdict, dataclass
 from enum import StrEnum
@@ -40,7 +39,6 @@ from tools.ci.enclosure_data import (
 from tools.ci.enclosure_guest import (
     ERROR_CONTEXT,
     MANIFEST,
-    NANOSECONDS,
     SOURCE_ROOT,
     GuestContext,
     Purpose,
@@ -52,7 +50,15 @@ from tools.ci.enclosure_guest import (
 )
 from tools.ci.enclosure_guest import Key as GuestKey
 from tools.ci.enclosure_journal import Controller
-from tools.ci.enclosure_native import INVENTORY_ARGUMENTS, NativeCommand, NativeQuery, NativeRead, query_native
+from tools.ci.enclosure_native import (
+    INVENTORY_ARGUMENTS,
+    NativeCommand,
+    NativeQuery,
+    NativeRead,
+    execute_native,
+    query_native,
+    read_native_stdout,
+)
 
 SETUP_UNIT: Final = "guest-setup.service"
 SETUP_JOURNAL: Final = "guest-setup.jsonl"
@@ -584,6 +590,18 @@ class _SetupCommands:
         """Execute the fixed producer's real command and retain its native status."""
         return self.query(argv, end_ns).status
 
+    def _started(self, pid: int) -> None:
+        _append(
+            self.journal_fd,
+            {
+                Key.SCOPE: Key.COMMAND.value,
+                GuestKey.RECORD: Record.STARTED.value,
+                Key.SEQUENCE: self.sequence,
+                GuestKey.PID: pid,
+                GuestKey.MONOTONIC_NS: time.monotonic_ns(),
+            },
+        )
+
     def query(self, argv: tuple[str, ...], end_ns: int) -> NativeRead:
         """Keep the exact admitted cutoff across journal creation, spawn and native wait."""
         end = min(end_ns, self.unit_end_ns)
@@ -620,33 +638,15 @@ class _SetupCommands:
             )
             os.fsync(self.directory_fd)
             try:
-                remaining = (end - time.monotonic_ns()) / NANOSECONDS
-                if remaining <= 0:
-                    raise TimeoutError(ERROR_BUDGET)
-                process = subprocess.Popen(
+                status = execute_native(
                     argv,
                     cwd=SOURCE_ROOT,
-                    env=SETUP_ENVIRONMENT,
-                    stdin=subprocess.DEVNULL,
-                    stdout=stdout_fd,
-                    stderr=stderr_fd,
-                    close_fds=True,
-                    umask=0o022,
+                    environment=SETUP_ENVIRONMENT,
+                    stdout_fd=stdout_fd,
+                    stderr_fd=stderr_fd,
+                    end_ns=end,
+                    started=self._started,
                 )
-                _append(
-                    self.journal_fd,
-                    {
-                        Key.SCOPE: Key.COMMAND.value,
-                        GuestKey.RECORD: Record.STARTED.value,
-                        Key.SEQUENCE: self.sequence,
-                        GuestKey.PID: process.pid,
-                        GuestKey.MONOTONIC_NS: time.monotonic_ns(),
-                    },
-                )
-                remaining = (end - time.monotonic_ns()) / NANOSECONDS
-                if remaining <= 0:
-                    raise TimeoutError(ERROR_BUDGET)
-                status = process.wait(timeout=remaining)
             except BaseException as error:
                 try:
                     _append(
@@ -662,15 +662,7 @@ class _SetupCommands:
                 except (OSError, ValueError) as secondary:
                     error.add_note(ERROR_JOURNAL.format(error_class=type(secondary).__name__))
                 raise
-            before = os.fstat(stdout_fd)
-            stdout = os.pread(stdout_fd, INVENTORY_LIMIT + 1, 0)
-            after = os.fstat(stdout_fd)
-            complete = (
-                len(stdout) <= INVENTORY_LIMIT
-                and len(stdout) == after.st_size
-                and (before.st_size, before.st_mtime_ns, before.st_ctime_ns)
-                == (after.st_size, after.st_mtime_ns, after.st_ctime_ns)
-            )
+            stdout, complete = read_native_stdout(stdout_fd)
             late = time.monotonic_ns() >= end
             outcome = Record.UNKNOWN if late else Record.ACKNOWLEDGED if status == 0 else Record.FAILED
             _append(

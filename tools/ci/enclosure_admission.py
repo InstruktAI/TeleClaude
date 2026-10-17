@@ -64,6 +64,7 @@ REQUIRED_SOURCES: Final = frozenset(
         "tools/ci/enclosure_owner.py",
         "tools/ci/enclosure_journal.py",
         "tools/ci/enclosure_native.py",
+        "tools/ci/enclosure_privileged.py",
         "tools/ci/acceptance_interpreter_metadata.py",
     }
 )

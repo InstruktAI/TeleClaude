@@ -14,7 +14,14 @@ from pathlib import Path
 from typing import Final
 
 from tools.ci.enclosure_contract import (
+    QUALIFICATION_DIGEST,
+    QUALIFICATION_FILE,
+    RECIPE_DIGEST,
+    RECIPE_FILE,
+    STATIC_DIGEST,
+    STATIC_FILE,
     Deadline,
+    Field,
     JsonObject,
     Parameter,
     StaticPackage,
@@ -30,6 +37,7 @@ from tools.ci.enclosure_journal import Key as JournalKey
 
 STATE_ROOT: Final = Path("/var/lib/teleclaude-runtime-acceptance")
 MANIFEST_NAME: Final = "manifest.json"
+REALIZATION_NAME: Final = "realization.json"
 UTF8: Final = "utf-8"
 JSON_SEPARATORS: Final = (",", ":")
 EXCLUSIVE_BINARY: Final = "wb"
@@ -42,6 +50,7 @@ PARENT_DESCRIPTOR: Final = "/proc/{pid}/fd/{descriptor}"
 ERROR_OWNER: Final = "outside ownership requires the original privileged controller and protected new run directory"
 ERROR_WORKFLOW: Final = "the immutable hosted workflow/run attempt identity or provider image assertion is unavailable"
 ERROR_MANIFEST: Final = "the initial protected run manifest could not be durably read back"
+ERROR_INPUT: Final = "protected run input {name} is missing, changed or could not be durably read back"
 ERROR_PREFIX: Final = "initial ownership did not complete at {path}; this step invoked no unit or guest creation"
 
 
@@ -70,6 +79,7 @@ class Key(StrEnum):
     GUEST_UNIT = "guest_unit"
     CREATED_NS = "created_ns"
     DIRECTORY_FD = "directory_fd"
+    INPUTS = "inputs"
 
 
 @dataclass(frozen=True)
@@ -139,6 +149,8 @@ class RunOwner:
         realization_digest: str,
         deadline: Deadline,
         purpose: Purpose,
+        *,
+        realization_bytes: bytes,
     ) -> RunOwner:
         """Reserve fresh run ownership and its safe recovery prefix under the original supplied deadline."""
         if os.geteuid() != 0:
@@ -151,6 +163,17 @@ class RunOwner:
         token = hashlib.sha256(nonce + _encode(workflow.record())).hexdigest()[:32]
         binding = Binding(token, candidate_commit, candidate_tree, realization_digest, controller)
         binding_record = binding.record(deadline)
+        inputs = (
+            (STATIC_FILE, package.lock_bytes, STATIC_DIGEST),
+            (RECIPE_FILE, package.recipe_bytes, RECIPE_DIGEST),
+            (QUALIFICATION_FILE, package.qualification_bytes, QUALIFICATION_DIGEST),
+            (REALIZATION_NAME, realization_bytes, realization_digest),
+        )
+        declarations: JsonObject = {}
+        for name, blob, digest in inputs:
+            if not blob or hashlib.sha256(blob).hexdigest() != digest:
+                raise ValueError(ERROR_MANIFEST)
+            declarations[name] = {Field.BYTES: len(blob), Field.SHA256: digest}
         if time.monotonic_ns() >= deadline.end_ns:
             raise TimeoutError(ERROR_OWNER)
         host = object_value(parse_object(package.recipe_bytes)[Key.HOST])
@@ -164,6 +187,7 @@ class RunOwner:
             Key.GUEST_UNIT: text(host, Key.INSTANCE_NAME).format_map(parameters),
             Key.ROOTFS: text(host, Key.ROOTFS).format_map(parameters),
             Key.CREATED_NS: time.monotonic_ns(),
+            Key.INPUTS: declarations,
         }
         # This synchronous ownership step has no concurrent producer or await across the temporary umask.
         previous_umask = os.umask(PRIVATE_UMASK)
@@ -171,9 +195,11 @@ class RunOwner:
         try:
             _require_state_root()
             journal = ActionJournal.create(STATE_ROOT, binding, deadline, package)
+            for name, blob, _ in inputs:
+                _write_private_file(journal.directory_fd, name, blob)
             record[Key.DIRECTORY_FD] = journal.directory_fd
             data = _encode(record)
-            _write_manifest(journal.directory_fd, data)
+            _write_private_file(journal.directory_fd, MANIFEST_NAME, data)
             controller.require_alive()
             if time.monotonic_ns() >= deadline.end_ns:
                 raise TimeoutError(ERROR_OWNER)
@@ -194,6 +220,8 @@ class HelperOwner:
     journal: ActionJournal
     manifest_bytes: bytes
     inherited_directory_fd: int
+    package: StaticPackage
+    realization_bytes: bytes
 
     def close(self) -> None:
         """Close only this child process's descriptors; the supervisor retains its original handle."""
@@ -213,9 +241,7 @@ class HelperOwner:
             raise ValueError(ERROR_OWNER)
 
     @classmethod
-    def load(
-        cls, manifest: Path, expected_digest: str, inherited_directory_fd: int, package: StaticPackage
-    ) -> HelperOwner:
+    def load(cls, manifest: Path, expected_digest: str, inherited_directory_fd: int, source_root: Path) -> HelperOwner:
         """Bind the protected header to the direct original supervisor and inherited directory capability."""
         require_hex(expected_digest, 64)
         if (
@@ -276,12 +302,15 @@ class HelperOwner:
             linked = os.stat(MANIFEST_NAME, dir_fd=inherited, follow_symlinks=False)
             if (linked.st_dev, linked.st_ino) != (before.st_dev, before.st_ino):
                 raise ValueError(ERROR_MANIFEST)
+            inputs = _read_inputs(inherited, record, binding)
+            package = StaticPackage(inputs[STATIC_FILE], inputs[RECIPE_FILE], inputs[QUALIFICATION_FILE])
+            package.validate_source(source_root)
             _require_addresses(record, package, token)
         finally:
             close_evidence_descriptors(descriptor, bootstrap_fd, root_fd)
         journal = ActionJournal.attach_inherited(inherited, binding, deadline, package)
         try:
-            context = cls(journal, data, inherited)
+            context = cls(journal, data, inherited, package, inputs[REALIZATION_NAME])
             context.require_original_parent()
             return context
         except BaseException:
@@ -333,6 +362,45 @@ def _require_private_directory(descriptor: int) -> None:
         raise ValueError(ERROR_OWNER)
 
 
+def _read_inputs(directory_fd: int, record: JsonObject, binding: Binding) -> dict[str, bytes]:
+    declarations = object_value(record[Key.INPUTS])
+    result: dict[str, bytes] = {}
+    for name, digest in (
+        (STATIC_FILE, STATIC_DIGEST),
+        (RECIPE_FILE, RECIPE_DIGEST),
+        (QUALIFICATION_FILE, QUALIFICATION_DIGEST),
+        (REALIZATION_NAME, binding.realization_digest),
+    ):
+        row = object_value(declarations[name])
+        size = positive_integer(row, Field.BYTES)
+        if text(row, Field.SHA256) != digest:
+            raise ValueError(ERROR_INPUT.format(name=name))
+        descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory_fd)
+        try:
+            before = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_uid != 0
+                or stat.S_IMODE(before.st_mode) != FILE_MODE
+                or before.st_nlink != 1
+                or before.st_size != size
+            ):
+                raise ValueError(ERROR_INPUT.format(name=name))
+            data = os.pread(descriptor, size + 1, 0)
+            after = os.fstat(descriptor)
+            if (
+                len(data) != size
+                or hashlib.sha256(data).hexdigest() != digest
+                or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+                != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+            ):
+                raise ValueError(ERROR_INPUT.format(name=name))
+            result[name] = data
+        finally:
+            close_evidence_descriptors(descriptor)
+    return result
+
+
 def _encode(record: JsonObject) -> bytes:
     return json.dumps(record, sort_keys=True, separators=JSON_SEPARATORS, allow_nan=False).encode(UTF8)
 
@@ -356,9 +424,9 @@ def _require_state_root() -> None:
         close_evidence_descriptors(root_fd, parent_fd)
 
 
-def _write_manifest(directory_fd: int, data: bytes) -> None:
+def _write_private_file(directory_fd: int, name: str, data: bytes) -> None:
     descriptor = os.open(
-        MANIFEST_NAME,
+        name,
         os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
         FILE_MODE,
         dir_fd=directory_fd,
@@ -366,12 +434,12 @@ def _write_manifest(directory_fd: int, data: bytes) -> None:
     try:
         with os.fdopen(os.dup(descriptor), mode=EXCLUSIVE_BINARY) as handle:
             if handle.write(data) != len(data):
-                raise OSError(ERROR_MANIFEST)
+                raise OSError(ERROR_INPUT.format(name=name))
             handle.flush()
             os.fsync(handle.fileno())
         os.fsync(directory_fd)
         os.lseek(descriptor, 0, os.SEEK_SET)
         if os.read(descriptor, len(data) + 1) != data:
-            raise OSError(ERROR_MANIFEST)
+            raise OSError(ERROR_INPUT.format(name=name))
     finally:
         close_evidence_descriptors(descriptor)
