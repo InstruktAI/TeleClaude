@@ -19,6 +19,9 @@ sessions may reach the door, but only one live session holds the role. A
 refused session receives the complete next action in the refusal response,
 while the incumbent remains untouched.
 
+The command help states that acquisition is human-directed and does not invite
+an agent to acquire the role autonomously.
+
 ## Canonical fields
 
 ### Use cases
@@ -53,13 +56,6 @@ Scenario: The incumbent re-enters the acquisition surface
 #### UC-CRA3: The incumbent may re-enter through the acquisition door
 
 #### UC-CRA4: An agent can tell when coordinator acquisition is allowed
-
-```gherkin
-Given a person has asked an agent to coordinate their project
-When the agent reads the coordinator-acquisition command help
-Then it learns that acquisition is human-directed and refuses while a coordinator is live
-And the help does not encourage an autonomous invocation
-```
 
 #### UC-CRA5: Coordination procedure entry always passes through acquisition
 
