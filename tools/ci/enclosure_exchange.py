@@ -333,7 +333,7 @@ async def run_privileged(
         Cutoff.VECTOR_END_NS: deadline.vector_end_ns,
         Cutoff.COMMAND_END_NS: deadline.command_end_ns,
     }
-    if action in (Action.GUEST_SETUP, Action.START_PAYLOAD):
+    if action in (Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF):
         if guest_root_fd is None or guest_root_fd <= 2 or guest_manifest_digest is None:
             raise ValueError(ERROR_EXCHANGE)
         request[Key.GUEST_ROOT_FD] = guest_root_fd

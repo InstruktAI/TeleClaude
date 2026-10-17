@@ -245,7 +245,7 @@ class PrivilegedAction:
                 qualification_vector,
             )
             guest_data = None
-            if action in (Action.GUEST_SETUP, Action.START_PAYLOAD):
+            if action in (Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF):
                 if guest_root_fd is None or guest_manifest_digest is None:
                     raise ValueError(ERROR_CONTEXT)
                 guest_data = read_guest_input(owner, guest_root_fd, guest_manifest_digest, action=action)

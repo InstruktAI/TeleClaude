@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from tools.ci.enclosure_contract import (
     NANOSECONDS,
@@ -20,8 +20,10 @@ from tools.ci.enclosure_contract import (
 )
 from tools.ci.enclosure_guest import POWER_COMMAND, GuestContext, Record
 from tools.ci.enclosure_guest import Key as GuestKey
-from tools.ci.enclosure_guest_binding import GuestBinding
 from tools.ci.enclosure_guest_evidence import EvidenceLeaf, GuestFileRead, read_guest_evidence
+
+if TYPE_CHECKING:
+    from tools.ci.enclosure_guest_binding import GuestBinding
 
 ERROR_COMPLETION: Final = "the captured payload report or normal cleanup evidence is incomplete or inconsistent"
 
@@ -60,7 +62,7 @@ def _outside_uid(raw_map: str, inside_uid: int) -> int:
     raise ValueError(ERROR_COMPLETION)
 
 
-def _shutdown(read: GuestFileRead, manifest: bytes, package: StaticPackage) -> None:
+def validate_shutdown_journal(read: GuestFileRead, manifest: bytes, package: StaticPackage) -> None:
     read.require_complete()
     if not read.data.endswith(b"\n"):
         raise ValueError(ERROR_COMPLETION)
@@ -158,7 +160,7 @@ def capture_payload_completion(
             EvidenceLeaf.POWEROFF,
             deadline,
         )
-        _shutdown(shutdown, manifest, package)
+        validate_shutdown_journal(shutdown, manifest, package)
     except (OSError, ValueError, RuntimeError, KeyError) as error:
         failures.append(error)
     try:

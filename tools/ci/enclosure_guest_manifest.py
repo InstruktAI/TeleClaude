@@ -175,7 +175,7 @@ def read_guest_input(
         parent_root.st_gid,
     ):
         raise ValueError(ERROR_MANIFEST)
-    names = {Action.GUEST_SETUP: INPUT_NAME, Action.START_PAYLOAD: PAYLOAD_INPUT}
+    names = {Action.GUEST_SETUP: INPUT_NAME, Action.START_PAYLOAD: PAYLOAD_INPUT, Action.POWEROFF: PAYLOAD_INPUT}
     if action not in names:
         raise ValueError(ERROR_MANIFEST)
     descriptor = os.open(names[action], READ_FLAGS, dir_fd=owner.journal.directory_fd)

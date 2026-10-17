@@ -46,7 +46,7 @@ from tools.ci.enclosure_guest_evidence import (
     validate_setup_journal,
 )
 from tools.ci.enclosure_guest_manifest import compose_payload_manifest, compose_setup_manifest, narrow_setup_manifest
-from tools.ci.enclosure_journal import ActionResult, Outcome
+from tools.ci.enclosure_journal import CLOSURE_ACTIONS, ActionResult, Outcome
 from tools.ci.enclosure_manager import (
     ACTIVE,
     AcceptedJob,
@@ -59,7 +59,11 @@ from tools.ci.enclosure_manager import (
 )
 from tools.ci.enclosure_owner import Key as OwnerKey
 from tools.ci.enclosure_owner import RunOwner
-from tools.ci.enclosure_payload_completion import PayloadCompletion, capture_payload_completion
+from tools.ci.enclosure_payload_completion import (
+    PayloadCompletion,
+    capture_payload_completion,
+    validate_shutdown_journal,
+)
 from tools.ci.enclosure_population import Invalidation, PopulationObserver
 
 UTF8: Final = "utf-8"
@@ -155,6 +159,8 @@ class BindingPhases:
         self.payload_start_receipt: NativeMutation | None = None
         self.payload_completions: list[PayloadCompletion] = []
         self.payload_observations: list[JsonObject] = []
+        self.automatic_cleanup_read: GuestFileRead | None = None
+        self.shutdown_requested: ActionResult | None = None
 
     @property
     def startups(self) -> tuple[HelperStartup, ...]:
@@ -177,8 +183,11 @@ class BindingPhases:
             Action.MASK_GUEST,
             Action.GUEST_SETUP,
             Action.START_PAYLOAD,
-        ) or ((action in (Action.GUEST_SETUP, Action.START_PAYLOAD)) != (self.seal is not None)):
+            Action.POWEROFF,
+        ) or ((action in (Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF)) != (self.seal is not None)):
             raise ValueError(ERROR_PHASE.format(action=action))
+        if action is Action.POWEROFF and (self.payload_started is None or self.automatic_cleanup_read is None):
+            raise ValueError(ERROR_BINDING)
         if self.uncertain is not None:
             raise self.uncertain
         if self.helper_failure is not None:
@@ -193,12 +202,13 @@ class BindingPhases:
             deadline.vector_end_ns,
             min(
                 deadline.effective_end(),
-                self.owner.journal.deadline.end_ns - self.owner.journal.deadline.reserve_ns,
+                self.owner.journal.deadline.end_ns
+                - (0 if action in CLOSURE_ACTIONS else self.owner.journal.deadline.reserve_ns),
             ),
         ).command_end(maximum_seconds)
         action_deadline = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
         await self.manager.check_identity(end_ns)
-        if action in (Action.MASK_GUEST, Action.GUEST_SETUP, Action.START_PAYLOAD):
+        if action in (Action.MASK_GUEST, Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF):
             self._helper_frontier(None)
             self._require_source_closure(masked=action is not Action.MASK_GUEST)
         else:
@@ -246,6 +256,8 @@ class BindingPhases:
                 self._expose_configured(result, action_deadline)
             if action is Action.START_PAYLOAD and result.status is Outcome.SUCCEEDED:
                 await self._expose_payload(result, action_deadline)
+            if action is Action.POWEROFF and result.status is Outcome.SUCCEEDED:
+                await self._expose_shutdown(result, action_deadline)
             return result
         except HelperUncertain as error:
             # Preserve the original startup/Process even if an outer caller only renders the raised diagnostic.
@@ -267,6 +279,11 @@ class BindingPhases:
         vector: str | None,
         selected: frozenset[str] | None,
     ) -> tuple[int | None, str | None, str | None]:
+        if action is Action.POWEROFF:
+            if self.guest_binding is None or self.prepared_payload_manifest is None:
+                raise ValueError(ERROR_BINDING)
+            self.guest_binding.require_root_view(admitted)
+            return self.guest_binding.root_fd, hashlib.sha256(self.prepared_payload_manifest).hexdigest(), None
         if action not in (Action.GUEST_SETUP, Action.START_PAYLOAD):
             return None, None, None
         try:
@@ -296,6 +313,42 @@ class BindingPhases:
         native = object_value(result.evidence[Evidence.NATIVE_RECEIPT])
         end = min(deadline.effective_end(), positive_integer(native, Key.COMMAND_END_NS))
         await self._payload_observation(AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end), None)
+
+    async def _expose_shutdown(self, result: ActionResult, deadline: AdmittedDeadline) -> None:
+        if result.evidence.get(Evidence.PHASE) != Phase.SHUTDOWN_REQUESTED:
+            raise ValueError(ERROR_BINDING)
+        self.shutdown_requested = result
+        await self._payload_observation(deadline, None)
+
+    async def wait_for_payload_exit(self, deadline: AdmittedDeadline) -> JsonObject:
+        """Wait on the original native stream; terminal state and any missing/failed evidence remain actual facts."""
+        if self.payload_started is None or deadline.outer_end_ns != self.owner.journal.deadline.end_ns:
+            raise ValueError(ERROR_BINDING)
+        budget = object_value(parse_object(self.package.recipe_bytes)[Field.BUDGET_SECONDS])
+        cap = positive_integer(budget, Field.NORMAL_COMMAND_MAX)
+        while True:
+            # Waiting from the pre-read position cannot lose a terminal event received during the read.
+            sequence = self.manager.sequence
+            end = deadline.command_end(cap)
+            observed = await self._payload_observation(
+                AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end), None
+            )
+            guest = object_value(object_value(observed[Evidence.GUEST])[Interface.UNIT.value])
+            if guest.get(Property.ACTIVE_STATE) in ("inactive", "failed"):
+                return observed
+            while True:
+                await self.manager.wait_for_change(sequence, deadline.effective_end())
+                self._helper_frontier(None)
+                self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
+                if self.guest is None:
+                    raise ValueError(ERROR_BINDING)
+                relevant = any(
+                    event.sequence > sequence and event.object_path == self.guest.object_path
+                    for event in self.manager.events
+                )
+                sequence = self.manager.sequence
+                if relevant:
+                    break
 
     def _expose_configured(self, result: ActionResult, deadline: AdmittedDeadline) -> None:
         self._guest_completion_frontier(result, deadline, Phase.GUEST_CONFIGURED)
@@ -412,7 +465,7 @@ class BindingPhases:
             raise ValueError(ERROR_BINDING)
         if current is not None and (
             current not in self._startups
-            or current.action not in (Action.MASK_GUEST, Action.GUEST_SETUP, Action.START_PAYLOAD)
+            or current.action not in (Action.MASK_GUEST, Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF)
         ):
             raise ValueError(ERROR_BINDING)
         facts: list[JsonValue] = []
@@ -598,6 +651,7 @@ class BindingPhases:
             Action.MASK_GUEST,
             Action.GUEST_SETUP,
             Action.START_PAYLOAD,
+            Action.POWEROFF,
         ):
             raise ValueError(ERROR_PHASE.format(action=mutation.action))
         if startup not in self._startups or startup.action is not mutation.action or startup.identity is None:
@@ -611,6 +665,8 @@ class BindingPhases:
             return await self._configured(mutation, end_ns, deadline, startup)
         if mutation.action is Action.START_PAYLOAD:
             return await self._payload_start(mutation, end_ns, deadline, startup)
+        if mutation.action is Action.POWEROFF:
+            return await self._shutdown_receipt(mutation, end_ns, deadline, startup)
         if mutation.action is Action.MASK_GUEST:
             self._helper_frontier(startup)
             evidence = await self.read_masked_sources(
@@ -865,6 +921,7 @@ class BindingPhases:
                 self.guest_binding, self.prepared_payload_manifest, self.package, deadline
             )
             self.payload_completions.append(completion)
+            self._retain_automatic_cleanup(completion)
             self.guest_binding.require_root_view(deadline)
         sample = self.population.sample(end)
         if sample.faults or sample.populated is None:
@@ -892,6 +949,47 @@ class BindingPhases:
         if time.monotonic_ns() >= end:
             raise TimeoutError(ERROR_BINDING)
         return evidence
+
+    def _retain_automatic_cleanup(self, completion: PayloadCompletion) -> None:
+        if completion.shutdown is None or self.prepared_payload_manifest is None:
+            return
+        try:
+            validate_shutdown_journal(completion.shutdown, self.prepared_payload_manifest, self.package)
+        except (OSError, ValueError, RuntimeError, KeyError):
+            # The original raw bytes/error remain in PayloadCompletion, separately from report validity.
+            return
+        if self.automatic_cleanup_read is None:
+            self.automatic_cleanup_read = completion.shutdown
+        elif self.automatic_cleanup_read.sha256 != completion.shutdown.sha256:
+            raise ValueError(ERROR_BINDING)
+
+    async def _shutdown_receipt(
+        self, mutation: NativeMutation, end_ns: int, deadline: AdmittedDeadline, startup: HelperStartup
+    ) -> ActionResult:
+        if self.automatic_cleanup_read is None or self.prepared_payload_manifest is None:
+            raise ValueError(ERROR_BINDING)
+        native = mutation.evidence
+        if (
+            native.get(Key.AUTHORITY) != Authority.GUEST
+            or native.get(Key.UNIT_NAME) != "tc-ra-poweroff.service"
+            or native.get("receipt_mode") != "consumed-automatic-cleanup"
+            or native.get("manifest_sha256") != hashlib.sha256(self.prepared_payload_manifest).hexdigest()
+            or native.get("shutdown_journal_sha256") != self.automatic_cleanup_read.sha256
+            or positive_integer(native, Key.COMMAND_END_NS) > end_ns
+        ):
+            raise ValueError(ERROR_BINDING)
+        observed = await self._payload_observation(
+            AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns), startup
+        )
+        return ActionResult(
+            Outcome.SUCCEEDED,
+            {
+                Evidence.PHASE: Phase.SHUTDOWN_REQUESTED.value,
+                Evidence.NATIVE_RECEIPT: dict(native),
+                "original_guest_request": [parse_object(row) for row in self.automatic_cleanup_read.data.splitlines()],
+                "payload_observation": observed,
+            },
+        )
 
     def close_population(self) -> None:
         """End observation explicitly; callers owe retention/release decisions separately."""

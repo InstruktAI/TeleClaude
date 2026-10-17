@@ -25,9 +25,11 @@ from tools.ci.enclosure_contract import (
     text,
 )
 from tools.ci.enclosure_guest import close_evidence_descriptors
+from tools.ci.enclosure_guest_evidence import EvidenceLeaf, read_guest_evidence
 from tools.ci.enclosure_guest_manifest import publish_guest_manifest
 from tools.ci.enclosure_journal import ActionResult
 from tools.ci.enclosure_owner import Key as OwnerKey
+from tools.ci.enclosure_payload_completion import validate_shutdown_journal
 from tools.ci.enclosure_privileged import PrivilegedAction
 
 BUSCTL: Final = "/usr/bin/busctl"
@@ -92,7 +94,6 @@ class Member(StrEnum):
     """Only the exact native mutation methods required by these producers."""
 
     RELOAD = "Reload"
-    START = "StartUnit"
     ENQUEUE = "EnqueueUnitJob"
     MASK = "MaskUnitFiles"
 
@@ -101,11 +102,9 @@ class Signature(StrEnum):
     """Native request/reply types, verified before any receipt is consumed."""
 
     EMPTY = ""
-    STRINGS = "ss"
     THREE_STRINGS = "sss"
     TRANSACTION = "uososa(uosos)"
     MASK_INPUT = "asbb"
-    OBJECT = "o"
     CHANGES = "a(sss)"
 
 
@@ -144,8 +143,6 @@ def _call(
     signature: Signature,
     arguments: tuple[str, ...],
     reply_signature: Signature,
-    *,
-    guest: bool = False,
 ) -> JsonObject:
     recipe = parse_object(context.owner.package.recipe_bytes)
     cap = positive_integer(object_value(recipe[Field.BUDGET_SECONDS]), Field.NORMAL_COMMAND_MAX)
@@ -153,15 +150,10 @@ def _call(
     remaining = (end - time.monotonic_ns()) / NANOSECONDS
     if remaining <= 0:
         raise TimeoutError(ERROR_NATIVE)
-    options: tuple[str, ...] = BUS_OPTIONS
-    if guest:
-        record = parse_object(context.owner.manifest_bytes)
-        machine = Path(text(record, OwnerKey.ROOTFS)).name
-        options = (*options, MACHINE.format(machine=machine))
     reply = context.commands.query(
         (
             BUSCTL,
-            *options,
+            *BUS_OPTIONS,
             TIMEOUT.format(seconds=remaining),
             CALL,
             SYSTEMD,
@@ -183,36 +175,6 @@ def _call(
     if result.get(Key.TYPE) != reply_signature or not isinstance(result.get(Key.DATA), list):
         raise ValueError(ERROR_NATIVE)
     return result
-
-
-def _start(context: PrivilegedAction, end_ns: int, unit: str, authority: Authority) -> JsonObject:
-    if authority is Authority.HOST:
-        return _enqueue_host_start(context, end_ns, unit)
-    reply = _call(
-        context,
-        end_ns,
-        Member.START,
-        Signature.STRINGS,
-        (unit, JOB_FAIL),
-        Signature.OBJECT,
-        guest=authority is Authority.GUEST,
-    )
-    body = reply.get(Key.DATA)
-    if not isinstance(body, list) or len(body) != 1 or not isinstance(body[0], str):
-        raise ValueError(ERROR_NATIVE)
-    path = body[0]
-    if not path.startswith(JOB_PREFIX):
-        raise ValueError(ERROR_NATIVE)
-    suffix = path[len(JOB_PREFIX) :]
-    if not suffix.isascii() or not suffix.isdecimal() or not 0 < int(suffix) <= 0xFFFFFFFF:
-        raise ValueError(ERROR_NATIVE)
-    return {
-        Key.AUTHORITY: authority.value,
-        Key.UNIT_NAME: unit,
-        Key.JOB_IDENTIFIER: int(suffix),
-        Key.JOB_PATH: path,
-        Key.RAW_REPLY: reply,
-    }
 
 
 def _transaction_job(value: list[JsonValue]) -> JsonObject:
@@ -354,7 +316,7 @@ def _create_parent(context: PrivilegedAction, end_ns: int) -> NativeMutation:
     file = _runtime_file(context, Template.PARENT, end_ns, new_parent=False)
     _reload(context, end_ns)
     unit = text(parse_object(context.owner.manifest_bytes), OwnerKey.PARENT_UNIT)
-    evidence = _start(context, end_ns, unit, Authority.HOST)
+    evidence = _enqueue_host_start(context, end_ns, unit)
     evidence[Key.RUNTIME_FILES] = [file]
     return NativeMutation(Action.CREATE_PARENT, evidence)
 
@@ -364,7 +326,7 @@ def _start_guest(context: PrivilegedAction, end_ns: int) -> NativeMutation:
     settings = _runtime_file(context, Template.SETTINGS, end_ns, new_parent=False)
     _reload(context, end_ns)
     unit = text(parse_object(context.owner.manifest_bytes), OwnerKey.GUEST_UNIT)
-    evidence = _start(context, end_ns, unit, Authority.HOST)
+    evidence = _enqueue_host_start(context, end_ns, unit)
     evidence[Key.RUNTIME_FILES] = [instance, settings]
     return NativeMutation(Action.START_GUEST, evidence)
 
@@ -455,7 +417,27 @@ def _start_payload(context: PrivilegedAction, end_ns: int) -> NativeMutation:
 
 
 def _poweroff(context: PrivilegedAction, end_ns: int) -> NativeMutation:
-    return NativeMutation(Action.POWEROFF, _start(context, end_ns, GUEST_POWEROFF, Authority.GUEST))
+    if context.guest_root_fd is None or context.guest_manifest_bytes is None:
+        raise ValueError(ERROR_NATIVE)
+    # Application cleanup is activated by the frozen payload unit. Consume its
+    # actual one-shot receipt; neither an absent journal nor a stopped unit admits another start.
+    root = os.fstat(context.guest_root_fd)
+    deadline = _deadline(context, end_ns)
+    read = read_guest_evidence(context.guest_root_fd, root.st_uid, root.st_uid, EvidenceLeaf.POWEROFF, deadline)
+    validate_shutdown_journal(read, context.guest_manifest_bytes, context.owner.package)
+    return NativeMutation(
+        Action.POWEROFF,
+        {
+            Key.AUTHORITY: Authority.GUEST.value,
+            Key.UNIT_NAME: GUEST_POWEROFF,
+            "receipt_mode": "consumed-automatic-cleanup",
+            "manifest_sha256": hashlib.sha256(context.guest_manifest_bytes).hexdigest(),
+            "shutdown_journal_sha256": read.sha256,
+            "read_started_ns": read.started_ns,
+            "read_finished_ns": read.finished_ns,
+            Key.COMMAND_END_NS: end_ns,
+        },
+    )
 
 
 NATIVE_PRODUCERS: Final[Mapping[Action, Callable[[PrivilegedAction, int], NativeMutation]]] = {
