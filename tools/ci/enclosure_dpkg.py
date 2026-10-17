@@ -1603,7 +1603,7 @@ def collect_container_routes(
 
 
 def classify_container_candidates(initial: JsonObject, instances: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
-    """Classify captured payload/deferred candidates only; this is not complete native transaction admission."""
+    """Classify captured payload/deferred/old-control candidates; this is not complete native transaction admission."""
     affected: list[JsonValue] = []
     blockers: list[JsonValue] = []
     result: JsonObject = {"affected": affected, "blockers": blockers, "complete_transaction_admission": "unproven"}
@@ -1613,12 +1613,14 @@ def classify_container_candidates(initial: JsonObject, instances: JsonObject, de
         rows = work["rows"]
         registrations = instances["registrations"]
         requests = instances["deferred_requests"]
+        prior_requests = instances["prior_control_requests"]
         if (
             work["error"] is not None
             or instances["error"] is not None
             or not isinstance(rows, list)
             or not isinstance(registrations, list)
             or not isinstance(requests, list)
+            or not isinstance(prior_requests, list)
         ):
             raise ValueError(ERROR_INPUT)
         dbus = [
@@ -1627,7 +1629,7 @@ def classify_container_candidates(initial: JsonObject, instances: JsonObject, de
             if object_value(value)["package_name"] == "dbus" and object_value(value)["lifecycle"] != "not-installed"
         ]
 
-        def classify(candidate: JsonObject, origin: str, name: JsonValue) -> None:
+        def classify(candidate: JsonObject, origin: str, name: JsonValue) -> JsonObject:
             _before_cutoff(deadline)
             instance = object_value(candidate["instance"])
             eligible = instance["activation_eligible"]
@@ -1642,7 +1644,7 @@ def classify_container_candidates(initial: JsonObject, instances: JsonObject, de
             reason = None
             if eligible is False:
                 item["classification"] = "native_inactive_recipient"
-                return
+                return item
             if eligible is not True or instance["identity_state"] != "resolved":
                 reason = "affected recipient identity or lifecycle is unproven"
             elif instance["package_name"] != "dbus":
@@ -1670,26 +1672,35 @@ def classify_container_candidates(initial: JsonObject, instances: JsonObject, de
                 elif object_value(initial["dbus_control_sources"])["state"] != "matched":
                     reason = "affected D-Bus installed executable controls do not match the reviewed source"
                 else:
-                    item["classification"] = "new_member_dbus_candidate_with_matched_capture_inputs"
-                    return
+                    item["classification"] = {
+                        "prior_container_control": "old_control_dbus_candidate_with_matched_capture_inputs",
+                        "new_archive_member": "new_member_dbus_candidate_with_matched_capture_inputs",
+                    }[origin]
+                    return item
             item["classification"] = "blocked"
             item["reason"] = reason
             blockers.append(item)
+            return item
 
         for value in registrations:
             _before_cutoff(deadline)
             registration = object_value(value)
             if registration["matches_new_member"] is True:
                 classify(registration, "new_archive_member", registration["native_name_base64"])
-        for value in requests:
-            _before_cutoff(deadline)
-            request = object_value(value)
-            candidates = request["candidate_interests"]
-            if not isinstance(candidates, list):
-                raise ValueError(ERROR_INPUT)
-            for candidate_value in candidates:
-                candidate = object_value(candidate_value)
-                classify(candidate, "preexisting_deferred", candidate["activated_name_base64"])
+        for cohort, origin in ((requests, "preexisting_deferred"), (prior_requests, "prior_container_control")):
+            for value in cohort:
+                _before_cutoff(deadline)
+                request = object_value(value)
+                candidates = request["candidate_interests"]
+                if not isinstance(candidates, list) or request.get("origin", "preexisting_deferred") != origin:
+                    raise ValueError(ERROR_INPUT)
+                for candidate_value in candidates:
+                    candidate = object_value(candidate_value)
+                    item = classify(candidate, origin, candidate["activated_name_base64"])
+                    if origin == "prior_container_control":
+                        # This is the callback argument, not an observed or surviving awaited edge.
+                        item["native_request_line"] = request["native_line"]
+                        item["native_awaiter_mode"] = candidate["native_awaiter_mode"]
         _before_cutoff(deadline)
         return result
     except (KeyError, OSError, ValueError, RuntimeError) as error:
