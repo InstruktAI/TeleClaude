@@ -99,6 +99,36 @@ For this invocation:
 For the tests lane, apply every `TQ-*` predicate triggered by the named diffs
 and record evidence or a reasoned `N/A`.
 
+### 3a. Review changes informed by an existing assessment
+
+Establish the named commits' scope and applicable contracts independently, then
+reconcile any supplied census, classification, plan or earlier assessment with
+that target (`sdlc/procedure/lifecycle/review`). Distinguish the governing
+contract from recommendations and from evidence. Reuse cited source evidence
+after checking that it supports the relevant claim at the reviewed revision;
+an earlier conclusion or approval alone supplies no proof
+(`general/principle/grounding`).
+
+Assess whether the actual edits carry the bounded decision correctly and
+preserve the affected requirements. Extend investigation to the dependencies
+needed to judge those edits; a commit review is not a new census of unchanged
+material. Record the evidence reused and any gap that required fresh grounding.
+Every applicable review lane and its proof obligations still apply
+(`sdlc/procedure/lifecycle/review`).
+
+For use-case cleanup, apply the classification owned by
+`sdlc/procedure/feature-spec-authoring` to each changed representation. Verify
+the retained stakeholder outcome or necessary invariant at its actual owner,
+together with affected identities, references, acceptance bindings and pending
+contracts. Requirement preservation does not mean copying implementation
+traces into prose (`general/policy/snippet-value-contract`).
+
+Challenge an assessed decision when the target, its sources or its governing
+contract establishes a concrete contradiction, missing requirement or invalid
+premise. State that evidence through the shared finding contract; a different
+preferred classification or design alone does not reopen the decision
+(`sdlc/procedure/lifecycle/review`).
+
 ### 4. Return the commit-review result
 
 Print the complete report the shared review procedure requires — every executed
