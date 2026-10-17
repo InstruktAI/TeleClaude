@@ -33,30 +33,6 @@ the procedure's.
 
 #### UC-SACD1:
 
-```gherkin
-Given a configured agent job is due
-When the scheduler dispatches the job
-Then the job starts through the procedure-entry contract
-And the created session carries the configured job identity and the role its procedure declares
-And session bootstrap issues the session's system-principal credential
-```
-
 #### UC-SACD2:
 
-```gherkin
-Given a configured agent job is dispatched to any enabled agent runtime
-When the new session receives its first instruction
-Then the loader identifies the configured job and its procedure assignment
-And directs the agent to retrieve that procedure's instructions
-And the runtime does not receive an unrecognized native command
-```
-
 #### UC-SACD3:
-
-```gherkin
-Given a scheduled job names no valid agent-job contract
-Or its procedure is not a published entry procedure declaring a role
-When dispatch is attempted
-Then dispatch is refused before a session is created
-And no alternate session-creation path or raw runtime command is used as fallback
-```
