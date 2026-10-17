@@ -223,23 +223,21 @@ paths taking precedence.
 
 ### Use cases
 
-#### UC-KAC1: An agent addresses every configuration subject by kind
+#### UC-KAC1: An operator can address a configuration subject by kind
 
 ```gherkin
-Given configuration subjects of every kind exist
-When an agent lists, reads, or changes one subject through the configuration CLI
-Then the command names that kind and the subject's stable instance when needed
-And an unqualified read or patch is refused without selecting a default subject
+Given an operator needs to manage a particular configuration subject
+When they address it by kind and stable instance when needed
+Then the command targets that subject without selecting an implicit default
 ```
 
-#### UC-KAC2: Initialization converges without side effects
+#### UC-KAC2: An operator can repair a home's missing configuration structure
 
 ```gherkin
-Given a configuration subject exists with operator values already set
-When an agent initializes that subject again
-Then missing required structure is added
-And existing values are preserved
-And no agent session or invitation is started
+Given an operator's configuration home is missing required structure
+When they initialize that home
+Then the required structure is added while existing values are preserved
+And initialization starts no agent session or invitation
 ```
 
 #### UC-KAC3: A new person has one identity and one home
@@ -265,31 +263,9 @@ And an unregistered or wrongly owned project is refused before persistence
 
 #### UC-KAC5: A person read reports organizational facts without owning them
 
-```gherkin
-Given a person belongs to more than one company
-When an authorized agent reads that person's configuration view
-Then the view identifies their resolved memberships as read-only facts
-And an attempt to patch those facts through the person subject is refused
-```
-
 #### UC-KAC6: A stale patch cannot discard another write
 
-```gherkin
-Given an agent read a configuration subject and obtained its revision
-And another writer changed the same subject afterward
-When the agent submits a patch based on the earlier revision
-Then the patch is refused as stale
-And the other writer's committed state remains unchanged
-```
-
 #### UC-KAC7: A patch replaces an array the caller supplies
-
-```gherkin
-Given a company roster entry contains project assignments
-When an administrator reads the current entry and patches its projects array with a new complete array
-Then that array replaces the earlier assignments
-And unrelated mapping keys and roster entries remain unchanged
-```
 
 #### UC-KAC8: Removing a person clears their roster references
 
@@ -310,24 +286,15 @@ Then the change is allowed if the agent's system role permits the operation
 But a patch to another person's configuration or a company roster is refused without the authority required for that target
 ```
 
-#### UC-KAC10: Machine configuration is explicit without joining overlay resolution
+#### UC-KAC10: An operator can change machine configuration explicitly
 
 ```gherkin
-Given a machine configuration exists in the machine home
-When an agent addresses computer configuration through the kind-based CLI
-Then the machine configuration the runtime loads is selected
-And the working directory selects no alternate machine file
-And overlay-tier resolution still recognizes only the overlay kinds
+Given an operator wants to change a setting used by the TeleClaude runtime
+When they patch the computer configuration through the kind-addressed CLI
+Then the machine configuration the runtime loads is updated
 ```
 
 #### UC-KAC11: Project adoption adopts the checkout the caller stands in
-
-```gherkin
-Given an agent standing in a subdirectory, or in a slug worktree, of a project's repository
-When it adopts the project
-Then the declaration, plumbing, and registration are those of the repository's owning checkout
-And no declaration or plumbing is written into the subdirectory or the worktree
-```
 
 #### UC-KAC12: Initializing a person or company scaffolds its home
 
@@ -340,14 +307,6 @@ And no help desk folder is created
 ```
 
 #### UC-KAC13: Initializing again keeps the master and the baselines
-
-```gherkin
-Given a person or company home whose AGENTS.master.md differs from its kind's template
-And whose local baseline manifests carry edits its owner made
-When an agent initializes that subject again
-Then the master keeps its content byte for byte
-And each local baseline manifest keeps its content byte for byte
-```
 
 #### UC-KAC14: A company help desk follows the company's declaration
 
