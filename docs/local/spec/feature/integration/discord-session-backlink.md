@@ -82,6 +82,10 @@ Scenario: Follow a message backlink to its session
 
 #### UC-DSB-2: Unconstructable backlink is observable, delivery proceeds
 
+#### UC-DSB-3: No origin, no decision
+
+#### UC-DSB-4: DM-scoped origin builds a direct-message link
+
 ## Known caveats
 
 - Construction does not verify viewer permission: Discord resolves the link
