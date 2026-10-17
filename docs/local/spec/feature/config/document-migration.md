@@ -111,6 +111,8 @@ Every migration run also removes the config-owned records the list declares obso
 whatever the documents' versions, so the first run
 on an installation removes them even when every document is already current.
 
+If the destination already holds a conflicting value, the migration leaves both the source value and existing destination unchanged and records a destination-conflict failure.
+
 The authoring rules every migration obeys are
 `local/projects/teleclaude/policy/configuration-migrations`.
 
@@ -140,164 +142,77 @@ The authoring rules every migration obeys are
 
 ### Use cases
 
-#### UC-CFG-MIG-1: An older document loads without being written
+#### UC-CFG-MIG-1: An operator can keep using an older configuration safely
 
 ```gherkin
-Given a configuration document at an older version carrying a shape a later migration retires
-And the tier registries name that document
-When an agent's operation loads that document
-Then the operation receives the document in its current shape
-And the stored document is byte-identical before and after the load
+Given an operator's saved configuration is from an older supported version
+When TeleClaude reads it for an operation
+Then the operation uses the current configuration shape
+And the saved document remains unchanged
 ```
 
-#### UC-CFG-MIG-2: A document newer than the installation fails loudly
+#### UC-CFG-MIG-2: An operator can diagnose a configuration newer than the installation
 
 ```gherkin
-Given a configuration document stating a version newer than the installation's migrations reach
-When an agent's operation loads that document
-Then the load fails naming the document, its version, and the installation's current version
-And the document is not loaded in any shape
+Given an operator uses a configuration written by a newer TeleClaude version
+When the installed version tries to load it
+Then loading is refused with the document and both schema versions identified
+And the saved document is unchanged
 ```
 
 #### UC-CFG-MIG-3: A change to the migration list persists every registered document while the daemon is stopped
 
-```gherkin
-Given canonical main advances with a change to the configuration migration list
-And documents the tier registries name are at older versions
-When commit-boundary maintenance runs
-Then each writable document is stored at the current version while the daemon is stopped, before it starts onto that list
-And an installed release declaration is evaluated without changing its stored source
-And an agent reading the structured records observes one outcome per document
-```
-
 #### UC-CFG-MIG-4: A clean tracked document gets one migration commit in its own repository
-
-```gherkin
-Given a migration run persists a document tracked in a git repository
-And that document had no uncommitted changes before the run
-When the run completes for that document
-Then that repository holds one new commit containing that document alone
-And the repository has no uncommitted change to that document
-```
 
 #### UC-CFG-MIG-5: A document with pending edits is migrated without committing them
 
-```gherkin
-Given a migration run reaches a tracked document that already carries uncommitted changes
-When the run persists that document
-Then the document is stored at the current version with those uncommitted changes preserved
-And no commit is made in that repository
-And an agent reading the structured records observes that the document was left uncommitted
-```
-
 #### UC-CFG-MIG-6: A refused migration commit leaves the document as it was
 
-```gherkin
-Given a migration run persists a clean tracked document
-And the repository refuses the migration commit
-When the run finishes with that document
-Then the document is restored to its committed content
-And an agent reading the structured records observes the refusal for that document
-And the other documents in the run are still migrated
-```
-
 #### UC-CFG-MIG-7: Registration migrates the root it adds
-
-```gherkin
-Given a project root that is not registered and whose configuration is at an older version
-When an operator or agent registers that project
-Then the root's configuration is stored at the current version
-And later loads of it perform no migration
-```
 
 #### UC-CFG-MIG-8: A write never loses a value still in transit
 
 ```gherkin
-Given a configuration document at an older version holding a value a migration moves to another config-owned store
-And the tier registries name that document
-When an agent's operation changes an unrelated setting in that document
-Then the moved value is present in its destination store
-And the document is stored at the current version with the agent's change applied
+Scenario: Keep the operator's data when changing configuration
+  Given an operator changes a configuration that still holds a value being moved to its destination
+  When the configuration change is saved
+  Then the value is present in its destination and the saved configuration includes the requested change
+
+Scenario: Preserve both values when migration finds a destination conflict
+  Given the destination already contains a different value for the migrating data
+  When the configuration migration reaches that value
+  Then the source value and existing destination remain unchanged
+  And the migration outcome reports the conflict
 ```
 
 #### UC-CFG-MIG-9: A moved value reaches its destination before the document drops it
 
-```gherkin
-Given a migration run reaches a document holding a value that moves to another store
-And that destination already holds a conflicting value
-When the run persists that document
-Then the document keeps the value and its stored version
-And the destination's conflicting value is unchanged
-And an agent reading the structured records observes the conflict for that document
-```
-
 #### UC-CFG-MIG-10: Installation brings its seeded configuration to the current version
 
 ```gherkin
-Given a machine being installed whose configuration is freshly seeded or already present at an older version
-And either no daemon listens, or the listening daemon answers with a migration reach at or above the current version
-When installation completes
-Then the machine configuration and the home's global configuration are stored at the current version
-And installation validates configuration only after they are
+Scenario: Install with a configuration from an older supported version
+  Given an operator installs or upgrades TeleClaude with saved configuration
+  When installation migrates and validates the configuration
+  Then the saved configuration is available in the current shape for the installation
+
+Scenario: Stop installation when a covered configuration cannot be migrated
+  Given a configuration covered by installation migration fails to migrate
+  When the migration step ends
+  Then installation names the document and failure reason
+  And it stops before validating configuration
 ```
 
 #### UC-CFG-MIG-11: A migrated document migrates no further
 
-```gherkin
-Given every registered document is stored at the current version
-When a migration run runs again
-Then the run writes no document and makes no commit
-And an agent reading the structured records observes each document as current
-```
-
 #### UC-CFG-MIG-12: The first migration run removes retired migration records
 
-```gherkin
-Given an installation still holding config-owned records the migration list declares obsolete
-And every configuration document on it is already at the current version
-When a migration run completes
-Then those records no longer exist
-And no configuration document was written
-```
-
 #### UC-CFG-MIG-13: A value in transit stays reachable until its migration is stored
-
-```gherkin
-Given a configuration document at an older version holding a value a migration moves to another config-owned store
-And no migration run or writer has yet stored that document past that migration
-When a consumer looks the value up in its destination store
-Then it finds the value the document holds
-And the document and the destination store are unchanged by the lookup
-
-Given a configuration document at an older version holding a value a migration moves to another config-owned store
-And that store already holds a different value for the same key
-When a consumer looks that key up in the store
-Then it is answered with neither value
-And the document and the destination store are unchanged by the lookup
-```
 
 #### UC-CFG-MIG-14: A writer does not stamp an unregistered older document as current
 
 #### UC-CFG-MIG-15: A declared unregistered project loads with tier-wide migrations
 
-```gherkin
-Given an older project configuration with a valid tier declaration that no registry names
-And it carries a recognized retired field and omits capability declarations
-When an agent's operation loads that configuration
-Then the loaded view no longer carries the retired field
-And the omitted capabilities remain unsubscribed
-And the stored document is unchanged
-```
-
 #### UC-CFG-MIG-16: A failed installation migration names what failed
-
-```gherkin
-Given a machine being installed
-And one configuration document the installation's migration run covers fails to migrate
-When the installation's migration step ends
-Then the installation's output names that document's subject and the reason it failed
-And installation stops before validating configuration
-```
 
 #### UC-CFG-MIG-17: Release maintenance preserves the installed declaration
 
@@ -329,32 +244,9 @@ Scenario Outline: A retained declaration receives ordinary validation
 
 #### UC-CFG-MIG-18: Repeated compatible reads stay quiet
 
-```gherkin
-Given an agent operates against an older configuration document the installed schema can adapt
-When its operations repeatedly read that document successfully
-Then each operation receives the current shape
-And the stored document remains byte-identical
-And production logs contain no per-read migration outcome for those successful reads
-```
-
 #### UC-CFG-MIG-19: A current document keeps its version when written
 
-```gherkin
-Given an agent has created or reconciled a configuration document into the installed current shape
-When the configuration owner writes that document
-Then the stored version identifies the shape that was written
-And reading it with the same installed schema requires no version conversion
-```
-
 #### UC-CFG-MIG-20: A migration run never stores a version the running daemon cannot read
-
-```gherkin
-Given the running daemon reports a migration reach below the current version
-And the machine configuration is at an older version
-When installation, or maintenance that does not replace the daemon, runs a migration run
-Then the stored machine configuration is byte-identical before and after the run
-And an agent reading the structured records observes it as withheld, naming the daemon's reach and the current version
-```
 
 ### Cross-context references
 
