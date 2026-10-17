@@ -40,14 +40,14 @@ Scenario: Pasting on the bare control surface does not trigger an operation
 
 Scenario: A rapid key burst does not trigger operations
   Given no modal, text field, or paste-safe widget is active
-  When raw key input arrives as a rapid burst
+  When more than two raw key events arrive inside the burst window
   Then the burst is rejected as paste-like input
   And the paste-ignored notification is shown
   And none of its keys triggers an operational binding
 
 Scenario: Ordinary manual command input remains available
   Given no modal, text field, or paste-safe widget is active
-  When the operator enters ordinary command keys without a rapid burst
+  When the operator enters one or two raw command keys inside the burst window
   Then the TUI processes them through its normal command behavior
 
 Scenario: Text-entry surfaces accept operator input
