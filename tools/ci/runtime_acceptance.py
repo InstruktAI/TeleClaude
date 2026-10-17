@@ -46,9 +46,9 @@ from tools.ci import workflow_ready as ready
 from tools.ci import workflow_removal as removal
 from tools.ci import workflow_review as review
 from tools.ci import workflow_waiting as waiting
-from tools.ci.enclosure_contract import Action, JsonObject, parse_object, positive_integer
+from tools.ci.enclosure_contract import Action, JsonObject, StaticPackage, parse_object, positive_integer
 from tools.ci.enclosure_exchange import run_helper
-from tools.ci.enclosure_guest import GuestContext, Role, request_guest_poweroff
+from tools.ci.enclosure_guest import GuestContext, Purpose, Role, request_guest_poweroff
 from tools.ci.enclosure_guest import Record as GuestShutdownRecord
 from tools.ci.enclosure_inner import (
     PROVISIONAL_REPORT_SCHEMA,
@@ -58,6 +58,7 @@ from tools.ci.enclosure_inner import (
     PhysicalCleanupPending,
 )
 from tools.ci.enclosure_journal import Outcome as EnclosureOutcome
+from tools.ci.enclosure_report import validate_provisional_bindings, validate_provisional_cleanup
 from tools.ci.enclosure_setup import run_guest_setup
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
@@ -5893,6 +5894,202 @@ def _validate_r4_snapshot_commands(scenario: Mapping[str, object]) -> None:
         raise ValueError
 
 
+def _validate_b12_report(report: Mapping[str, object], source_revision: str, source_tree: str) -> None:
+    """Apply the existing complete B12 evidence checks for either full or selected coverage."""
+    retired = report[creation.B12Field.RETIRED_ACT_EVIDENCE]
+    if not isinstance(retired, dict):
+        raise ValueError
+    retired_fields = {
+        creation.B12Field.SCHEMA_VERSION,
+        creation.B12Field.STATUS,
+        creation.B12Field.SELECTED_AMENDMENT,
+        creation.B12Field.ASSERTION_PATH,
+        creation.B12Field.ASSERTION_SHA256,
+        creation.B12Field.SOURCE_REVISION,
+        creation.B12Field.SOURCE_TREE,
+        creation.B12Field.ISSUE_REVISION,
+        creation.B12Field.ORDERED_CASES,
+        creation.B12Field.ORDERED_CASE_PLAN,
+        creation.B12Field.PREREQUISITES,
+        creation.B12Field.BASELINES,
+        creation.B12Field.CASES,
+        creation.B12Field.CARRIER,
+        creation.B12Field.DURATION_SECONDS,
+        creation.B12Field.PRIMARY_FAILURE,
+        creation.B12Field.EVIDENCE_FAILURE,
+    }
+    if (
+        set(retired) != retired_fields
+        or type(retired[creation.B12Field.SCHEMA_VERSION]) is not int
+        or retired[creation.B12Field.SCHEMA_VERSION] != creation.B12_JSON_SCHEMA
+        or retired[creation.B12Field.STATUS] != creation.B12_STATUS_COMPLETE
+        or retired[creation.B12Field.SELECTED_AMENDMENT] != creation.B12_AMENDMENT
+        or retired[creation.B12Field.ASSERTION_PATH] != creation.B12_ARTIFACT_PATH
+        or retired[creation.B12Field.ASSERTION_SHA256] != creation.B12_ARTIFACT_SHA
+        or retired[creation.B12Field.SOURCE_REVISION] != source_revision
+        or retired[creation.B12Field.SOURCE_TREE] != source_tree
+        or retired[creation.B12Field.ISSUE_REVISION] != creation.B12_ISSUE_REVISION
+        or retired[creation.B12Field.ORDERED_CASES] != [case_id for case_id, _, _ in creation.B12_CASES]
+        or retired[creation.B12Field.ORDERED_CASE_PLAN]
+        != [
+            {
+                creation.B12Field.CASE_ID: case_id,
+                creation.B12Field.ARGV: list(argv),
+                creation.B12Field.RETIRED_TYPE: retired_type,
+            }
+            for case_id, argv, retired_type in creation.B12_CASES
+        ]
+        or not isinstance(retired[creation.B12Field.PREREQUISITES], dict)
+        or not isinstance(retired[creation.B12Field.BASELINES], dict)
+        or not isinstance(retired[creation.B12Field.CARRIER], dict)
+        or retired[creation.B12Field.PRIMARY_FAILURE] != _EMPTY
+        or retired[creation.B12Field.EVIDENCE_FAILURE] != _EMPTY
+        or type(retired[creation.B12Field.DURATION_SECONDS]) not in (int, float)
+        or not math.isfinite(retired[creation.B12Field.DURATION_SECONDS])
+        or retired[creation.B12Field.DURATION_SECONDS] > creation.B12_SCENARIO_SECONDS
+        or retired[creation.B12Field.BASELINES].get(creation.B12Field.STABLE_SHOW_READS) != 2
+        or retired[creation.B12Field.BASELINES].get(creation.B12Field.SEPARATION_SECONDS)
+        != creation.B12_INITIAL_STABILITY_SECONDS
+        or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.S0), dict)
+        or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.B0), list)
+        or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.T0), list)
+        or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.INITIAL_SHOW_READS), list)
+        or len(retired[creation.B12Field.BASELINES][creation.B12Field.INITIAL_SHOW_READS]) != 2
+        or retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.MANUAL_RUNNER) is not True
+        or not isinstance(retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.PROJECT_CWD), str)
+        or not isinstance(retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.CLEARANCE), str)
+        or not isinstance(retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.OWNER_IDENTITY), dict)
+    ):
+        raise ValueError
+    if any(
+        show != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
+        for show in retired[creation.B12Field.BASELINES][creation.B12Field.INITIAL_SHOW_READS]
+    ):
+        raise ValueError
+    retired_cases = retired[creation.B12Field.CASES]
+    if not isinstance(retired_cases, list) or len(retired_cases) != len(creation.B12_CASES):
+        raise ValueError
+    for case, (expected_case_id, expected_argv, expected_type) in zip(retired_cases, creation.B12_CASES, strict=True):
+        if (
+            not isinstance(case, dict)
+            or case.get(creation.B12Field.CASE_ID) != expected_case_id
+            or case.get(creation.B12Field.ARGV) != list(expected_argv)
+            or case.get(creation.B12Field.RETIRED_TYPE) != expected_type
+            or case.get(creation.B12Field.CLASSIFICATION) != creation.B12_CLASS_VERIFIED
+            or case.get(creation.B12Field.OUTCOME) != creation.B12_OUTCOME_COMPLETED
+            or type(case.get(creation.B12Field.EXIT_STATUS)) is not int
+            or case.get(creation.B12Field.EXIT_STATUS) == 0
+            or type(case.get(creation.B12Field.DURATION_SECONDS)) not in (int, float)
+            or not math.isfinite(case[creation.B12Field.DURATION_SECONDS])
+            or case[creation.B12Field.DURATION_SECONDS] < 0
+            or not all(
+                isinstance(case.get(field), str)
+                for field in (creation.B12Field.STDOUT, creation.B12Field.STDERR, creation.B12Field.DIAGNOSTICS)
+            )
+            or case.get(creation.B12Field.OUTPUT_TRUNCATED) is not False
+            or creation.retired_snapshot_state(
+                f"{creation.B12_SNAPSHOT_ID_PREFIX}{expected_case_id}",
+                case.get(creation.B12Field.STDOUT, ""),
+            )
+            is not creation.RetiredSnapshotState.MATCH
+            or type(case.get(creation.B12Field.STDOUT_BYTE_COUNT)) is not int
+            or case.get(creation.B12Field.STDOUT_BYTE_COUNT) < 0
+            or not isinstance(case.get(creation.B12Field.STDOUT_SHA256), str)
+            or case.get(creation.B12Field.EMBEDDED_STDOUT_SHA256)
+            != hashlib.sha256(case[creation.B12Field.STDOUT].encode(_UTF8)).hexdigest()
+            or case.get(creation.B12Field.EMBEDDED_STDOUT_BYTE_COUNT)
+            != len(case[creation.B12Field.STDOUT].encode(_UTF8))
+            or case.get(creation.B12Field.STDERR_CAPTURE) != creation.B12_PTY_CAPTURE
+            or not isinstance(case.get(creation.B12Field.READBACKS), list)
+            or len(case[creation.B12Field.READBACKS]) != 2
+            or not isinstance(case.get(creation.B12Field.BEFORE), dict)
+            or case[creation.B12Field.BEFORE].get(creation.B12Field.ITEM)
+            != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
+            or case[creation.B12Field.BEFORE].get(creation.B12Field.BEFORE_SESSIONS)
+            != retired[creation.B12Field.BASELINES][creation.B12Field.B0]
+            or case[creation.B12Field.BEFORE].get(creation.B12Field.BEFORE_SLUGS)
+            != retired[creation.B12Field.BASELINES][creation.B12Field.T0]
+            or case[creation.B12Field.BEFORE].get(creation.B12Field.PRECALL_DIFFERENCES) != []
+            or not isinstance(case[creation.B12Field.BEFORE].get(creation.B12Field.BEFORE_SHOW_READS), list)
+            or len(case[creation.B12Field.BEFORE][creation.B12Field.BEFORE_SHOW_READS]) != 2
+            or case.get(creation.B12Field.UNCHANGED) is not True
+            or case.get(creation.B12Field.DIFFERENCES) != []
+            or case.get(creation.B12Field.OPERATION_ID) is not None
+            or case.get(creation.B12Field.OPERATION_STATUS) != creation.B12_OPERATION_NOT_APPLICABLE
+            or case.get(creation.B12Field.REFUSAL_FAILURE) != _EMPTY
+            or type(case.get(creation.B12Field.OUTPUT_TRUNCATED)) is not bool
+        ):
+            raise ValueError
+        if any(
+            show != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
+            for show in case[creation.B12Field.BEFORE][creation.B12Field.BEFORE_SHOW_READS]
+        ):
+            raise ValueError
+        for expected_when, readback in zip(
+            (creation.B12_CASE_IMMEDIATE, creation.B12_CASE_SETTLED), case[creation.B12Field.READBACKS], strict=True
+        ):
+            if (
+                not isinstance(readback, dict)
+                or readback.get(creation.B12Field.WHEN) != expected_when
+                or readback.get(creation.B12Field.ITEM) != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
+                or readback.get(creation.B12Field.SESSION_IDS)
+                != retired[creation.B12Field.BASELINES][creation.B12Field.B0]
+                or readback.get(creation.B12Field.SLUGS) != retired[creation.B12Field.BASELINES][creation.B12Field.T0]
+            ):
+                raise ValueError
+    carrier = retired[creation.B12Field.CARRIER]
+    embedded_b12 = json.dumps(
+        {
+            creation.B12Field.BASELINES: retired[creation.B12Field.BASELINES],
+            creation.B12Field.CASES: retired_cases,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=_JSON_SEPARATORS,
+    ).encode(_UTF8)
+    if (
+        carrier.get(creation.B12Field.FRAMING) != creation.B12_FRAMING_COMPLETE
+        or carrier.get(creation.B12Field.LINE_COUNT) != len(creation.B12_CASES) * 3
+        or type(carrier.get(creation.B12Field.ORIGINAL_BYTE_COUNT)) is not int
+        or carrier.get(creation.B12Field.ORIGINAL_BYTE_COUNT) <= 0
+        or not isinstance(carrier.get(creation.B12Field.ORIGINAL_SHA256), str)
+        or type(carrier.get(creation.B12Field.MARKER_BYTE_COUNT)) is not int
+        or carrier.get(creation.B12Field.MARKER_BYTE_COUNT) <= 0
+        or not isinstance(carrier.get(creation.B12Field.MARKER_SHA256), str)
+        or not isinstance(carrier.get(creation.B12Field.MARKER_PATH), str)
+        or type(carrier.get(creation.B12Field.COMPLETED_BYTE_COUNT)) is not int
+        or carrier.get(creation.B12Field.COMPLETED_BYTE_COUNT) <= 0
+        or not isinstance(carrier.get(creation.B12Field.COMPLETED_SHA256), str)
+        or not isinstance(carrier.get(creation.B12Field.COMPLETED_PATH), str)
+        or type(carrier.get(creation.B12Field.COMPLETED_RAW_TEXT_TRUNCATED)) is not bool
+        or carrier.get(creation.B12Field.COMPLETED_READ_ERROR) != _EMPTY
+        or carrier.get(creation.B12Field.EMBEDDED_SCOPE) != creation.B12_EMBEDDED_SCOPE
+        or carrier.get(creation.B12Field.EMBEDDED_SHA256) != hashlib.sha256(embedded_b12).hexdigest()
+        or carrier.get(creation.B12Field.EMBEDDED_BYTE_COUNT) != len(embedded_b12)
+        or carrier.get(creation.B12Field.READ_ERROR) != _EMPTY
+    ):
+        raise ValueError
+
+
+def _validate_report_commands(commands: object) -> None:
+    """Validate the existing command evidence shape without treating expected refusals as successes."""
+    if not isinstance(commands, list):
+        raise ValueError
+    for command in commands:
+        if (
+            not isinstance(command, dict)
+            or set(command) != {"argv", "exit_status", "duration_seconds", "stdout", "stderr", "diagnostics"}
+            or not isinstance(command["argv"], list)
+            or not all(isinstance(part, str) for part in command["argv"])
+            or (command["exit_status"] is not None and type(command["exit_status"]) is not int)
+            or type(command["duration_seconds"]) not in (int, float)
+            or not math.isfinite(command["duration_seconds"])
+            or command["duration_seconds"] < 0
+            or not all(isinstance(command[field], str) for field in ("stdout", "stderr", "diagnostics"))
+        ):
+            raise ValueError
+
+
 def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, source_tree: str) -> None:
     """Require complete, successful structured full-profile evidence for one exact source tree."""
     try:
@@ -5929,181 +6126,7 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             or not isinstance(report["workflow_waiting_retired_kickback_evidence"], dict)
         ):
             raise ValueError
-        retired = report[creation.B12Field.RETIRED_ACT_EVIDENCE]
-        retired_fields = {
-            creation.B12Field.SCHEMA_VERSION,
-            creation.B12Field.STATUS,
-            creation.B12Field.SELECTED_AMENDMENT,
-            creation.B12Field.ASSERTION_PATH,
-            creation.B12Field.ASSERTION_SHA256,
-            creation.B12Field.SOURCE_REVISION,
-            creation.B12Field.SOURCE_TREE,
-            creation.B12Field.ISSUE_REVISION,
-            creation.B12Field.ORDERED_CASES,
-            creation.B12Field.ORDERED_CASE_PLAN,
-            creation.B12Field.PREREQUISITES,
-            creation.B12Field.BASELINES,
-            creation.B12Field.CASES,
-            creation.B12Field.CARRIER,
-            creation.B12Field.DURATION_SECONDS,
-            creation.B12Field.PRIMARY_FAILURE,
-            creation.B12Field.EVIDENCE_FAILURE,
-        }
-        if (
-            set(retired) != retired_fields
-            or type(retired[creation.B12Field.SCHEMA_VERSION]) is not int
-            or retired[creation.B12Field.SCHEMA_VERSION] != creation.B12_JSON_SCHEMA
-            or retired[creation.B12Field.STATUS] != creation.B12_STATUS_COMPLETE
-            or retired[creation.B12Field.SELECTED_AMENDMENT] != creation.B12_AMENDMENT
-            or retired[creation.B12Field.ASSERTION_PATH] != creation.B12_ARTIFACT_PATH
-            or retired[creation.B12Field.ASSERTION_SHA256] != creation.B12_ARTIFACT_SHA
-            or retired[creation.B12Field.SOURCE_REVISION] != source_revision
-            or retired[creation.B12Field.SOURCE_TREE] != source_tree
-            or retired[creation.B12Field.ISSUE_REVISION] != creation.B12_ISSUE_REVISION
-            or retired[creation.B12Field.ORDERED_CASES] != [case_id for case_id, _, _ in creation.B12_CASES]
-            or retired[creation.B12Field.ORDERED_CASE_PLAN]
-            != [
-                {
-                    creation.B12Field.CASE_ID: case_id,
-                    creation.B12Field.ARGV: list(argv),
-                    creation.B12Field.RETIRED_TYPE: retired_type,
-                }
-                for case_id, argv, retired_type in creation.B12_CASES
-            ]
-            or not isinstance(retired[creation.B12Field.PREREQUISITES], dict)
-            or not isinstance(retired[creation.B12Field.BASELINES], dict)
-            or not isinstance(retired[creation.B12Field.CARRIER], dict)
-            or retired[creation.B12Field.PRIMARY_FAILURE] != _EMPTY
-            or retired[creation.B12Field.EVIDENCE_FAILURE] != _EMPTY
-            or type(retired[creation.B12Field.DURATION_SECONDS]) not in (int, float)
-            or not math.isfinite(retired[creation.B12Field.DURATION_SECONDS])
-            or retired[creation.B12Field.DURATION_SECONDS] > creation.B12_SCENARIO_SECONDS
-            or retired[creation.B12Field.BASELINES].get(creation.B12Field.STABLE_SHOW_READS) != 2
-            or retired[creation.B12Field.BASELINES].get(creation.B12Field.SEPARATION_SECONDS)
-            != creation.B12_INITIAL_STABILITY_SECONDS
-            or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.S0), dict)
-            or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.B0), list)
-            or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.T0), list)
-            or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.INITIAL_SHOW_READS), list)
-            or len(retired[creation.B12Field.BASELINES][creation.B12Field.INITIAL_SHOW_READS]) != 2
-            or retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.MANUAL_RUNNER) is not True
-            or not isinstance(retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.PROJECT_CWD), str)
-            or not isinstance(retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.CLEARANCE), str)
-            or not isinstance(retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.OWNER_IDENTITY), dict)
-        ):
-            raise ValueError
-        if any(
-            show != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
-            for show in retired[creation.B12Field.BASELINES][creation.B12Field.INITIAL_SHOW_READS]
-        ):
-            raise ValueError
-        retired_cases = retired[creation.B12Field.CASES]
-        if not isinstance(retired_cases, list) or len(retired_cases) != len(creation.B12_CASES):
-            raise ValueError
-        for case, (expected_case_id, expected_argv, expected_type) in zip(
-            retired_cases, creation.B12_CASES, strict=True
-        ):
-            if (
-                not isinstance(case, dict)
-                or case.get(creation.B12Field.CASE_ID) != expected_case_id
-                or case.get(creation.B12Field.ARGV) != list(expected_argv)
-                or case.get(creation.B12Field.RETIRED_TYPE) != expected_type
-                or case.get(creation.B12Field.CLASSIFICATION) != creation.B12_CLASS_VERIFIED
-                or case.get(creation.B12Field.OUTCOME) != creation.B12_OUTCOME_COMPLETED
-                or type(case.get(creation.B12Field.EXIT_STATUS)) is not int
-                or case.get(creation.B12Field.EXIT_STATUS) == 0
-                or type(case.get(creation.B12Field.DURATION_SECONDS)) not in (int, float)
-                or not math.isfinite(case[creation.B12Field.DURATION_SECONDS])
-                or case[creation.B12Field.DURATION_SECONDS] < 0
-                or not all(
-                    isinstance(case.get(field), str)
-                    for field in (creation.B12Field.STDOUT, creation.B12Field.STDERR, creation.B12Field.DIAGNOSTICS)
-                )
-                or case.get(creation.B12Field.OUTPUT_TRUNCATED) is not False
-                or creation.retired_snapshot_state(
-                    f"{creation.B12_SNAPSHOT_ID_PREFIX}{expected_case_id}",
-                    case.get(creation.B12Field.STDOUT, ""),
-                )
-                is not creation.RetiredSnapshotState.MATCH
-                or type(case.get(creation.B12Field.STDOUT_BYTE_COUNT)) is not int
-                or case.get(creation.B12Field.STDOUT_BYTE_COUNT) < 0
-                or not isinstance(case.get(creation.B12Field.STDOUT_SHA256), str)
-                or case.get(creation.B12Field.EMBEDDED_STDOUT_SHA256)
-                != hashlib.sha256(case[creation.B12Field.STDOUT].encode(_UTF8)).hexdigest()
-                or case.get(creation.B12Field.EMBEDDED_STDOUT_BYTE_COUNT)
-                != len(case[creation.B12Field.STDOUT].encode(_UTF8))
-                or case.get(creation.B12Field.STDERR_CAPTURE) != creation.B12_PTY_CAPTURE
-                or not isinstance(case.get(creation.B12Field.READBACKS), list)
-                or len(case[creation.B12Field.READBACKS]) != 2
-                or not isinstance(case.get(creation.B12Field.BEFORE), dict)
-                or case[creation.B12Field.BEFORE].get(creation.B12Field.ITEM)
-                != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
-                or case[creation.B12Field.BEFORE].get(creation.B12Field.BEFORE_SESSIONS)
-                != retired[creation.B12Field.BASELINES][creation.B12Field.B0]
-                or case[creation.B12Field.BEFORE].get(creation.B12Field.BEFORE_SLUGS)
-                != retired[creation.B12Field.BASELINES][creation.B12Field.T0]
-                or case[creation.B12Field.BEFORE].get(creation.B12Field.PRECALL_DIFFERENCES) != []
-                or not isinstance(case[creation.B12Field.BEFORE].get(creation.B12Field.BEFORE_SHOW_READS), list)
-                or len(case[creation.B12Field.BEFORE][creation.B12Field.BEFORE_SHOW_READS]) != 2
-                or case.get(creation.B12Field.UNCHANGED) is not True
-                or case.get(creation.B12Field.DIFFERENCES) != []
-                or case.get(creation.B12Field.OPERATION_ID) is not None
-                or case.get(creation.B12Field.OPERATION_STATUS) != creation.B12_OPERATION_NOT_APPLICABLE
-                or case.get(creation.B12Field.REFUSAL_FAILURE) != _EMPTY
-                or type(case.get(creation.B12Field.OUTPUT_TRUNCATED)) is not bool
-            ):
-                raise ValueError
-            if any(
-                show != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
-                for show in case[creation.B12Field.BEFORE][creation.B12Field.BEFORE_SHOW_READS]
-            ):
-                raise ValueError
-            for expected_when, readback in zip(
-                (creation.B12_CASE_IMMEDIATE, creation.B12_CASE_SETTLED), case[creation.B12Field.READBACKS], strict=True
-            ):
-                if (
-                    not isinstance(readback, dict)
-                    or readback.get(creation.B12Field.WHEN) != expected_when
-                    or readback.get(creation.B12Field.ITEM)
-                    != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
-                    or readback.get(creation.B12Field.SESSION_IDS)
-                    != retired[creation.B12Field.BASELINES][creation.B12Field.B0]
-                    or readback.get(creation.B12Field.SLUGS)
-                    != retired[creation.B12Field.BASELINES][creation.B12Field.T0]
-                ):
-                    raise ValueError
-        carrier = retired[creation.B12Field.CARRIER]
-        embedded_b12 = json.dumps(
-            {
-                creation.B12Field.BASELINES: retired[creation.B12Field.BASELINES],
-                creation.B12Field.CASES: retired_cases,
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=_JSON_SEPARATORS,
-        ).encode(_UTF8)
-        if (
-            carrier.get(creation.B12Field.FRAMING) != creation.B12_FRAMING_COMPLETE
-            or carrier.get(creation.B12Field.LINE_COUNT) != len(creation.B12_CASES) * 3
-            or type(carrier.get(creation.B12Field.ORIGINAL_BYTE_COUNT)) is not int
-            or carrier.get(creation.B12Field.ORIGINAL_BYTE_COUNT) <= 0
-            or not isinstance(carrier.get(creation.B12Field.ORIGINAL_SHA256), str)
-            or type(carrier.get(creation.B12Field.MARKER_BYTE_COUNT)) is not int
-            or carrier.get(creation.B12Field.MARKER_BYTE_COUNT) <= 0
-            or not isinstance(carrier.get(creation.B12Field.MARKER_SHA256), str)
-            or not isinstance(carrier.get(creation.B12Field.MARKER_PATH), str)
-            or type(carrier.get(creation.B12Field.COMPLETED_BYTE_COUNT)) is not int
-            or carrier.get(creation.B12Field.COMPLETED_BYTE_COUNT) <= 0
-            or not isinstance(carrier.get(creation.B12Field.COMPLETED_SHA256), str)
-            or not isinstance(carrier.get(creation.B12Field.COMPLETED_PATH), str)
-            or type(carrier.get(creation.B12Field.COMPLETED_RAW_TEXT_TRUNCATED)) is not bool
-            or carrier.get(creation.B12Field.COMPLETED_READ_ERROR) != _EMPTY
-            or carrier.get(creation.B12Field.EMBEDDED_SCOPE) != creation.B12_EMBEDDED_SCOPE
-            or carrier.get(creation.B12Field.EMBEDDED_SHA256) != hashlib.sha256(embedded_b12).hexdigest()
-            or carrier.get(creation.B12Field.EMBEDDED_BYTE_COUNT) != len(embedded_b12)
-            or carrier.get(creation.B12Field.READ_ERROR) != _EMPTY
-        ):
-            raise ValueError
+        _validate_b12_report(report, source_revision, source_tree)
         _validate_b13_report(report, source_revision, source_tree)
         scenarios = report["scenarios"]
         if not isinstance(scenarios, list) or len(scenarios) != len(_FULL_PROFILE_SCENARIOS):
@@ -6121,19 +6144,7 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
                 or scenario["diagnostics"] != _EMPTY
             ):
                 raise ValueError
-            for command in scenario["commands"]:
-                if (
-                    not isinstance(command, dict)
-                    or set(command) != {"argv", "exit_status", "duration_seconds", "stdout", "stderr", "diagnostics"}
-                    or not isinstance(command["argv"], list)
-                    or not all(isinstance(part, str) for part in command["argv"])
-                    or (command["exit_status"] is not None and type(command["exit_status"]) is not int)
-                    or type(command["duration_seconds"]) not in (int, float)
-                    or not math.isfinite(command["duration_seconds"])
-                    or command["duration_seconds"] < 0
-                    or not all(isinstance(command[field], str) for field in ("stdout", "stderr", "diagnostics"))
-                ):
-                    raise ValueError
+            _validate_report_commands(scenario["commands"])
             if expected_id == _SCENARIO_WORKFLOW_RETIRED_ACTS:
                 _validate_r4_snapshot_commands(scenario)
         cleanup = report["cleanup"]
@@ -6147,6 +6158,147 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             raise ValueError
     except (json.JSONDecodeError, UnicodeDecodeError, KeyError, OverflowError, TypeError, ValueError):
         raise ValueError(_FULL_REPORT_INVALID) from None
+
+
+def _validate_provisional_scenarios(report: JsonObject, selection: frozenset[str]) -> tuple[str, ...]:
+    """Require exact ordered coverage, including honest NOT_RUN entries for unselected journeys."""
+    if selection - set(_FULL_PROFILE_SCENARIOS) or any(
+        not set(_SCENARIO_PREREQUISITES.get(scenario_id, ())) <= selection for scenario_id in selection
+    ):
+        raise ValueError(_FULL_REPORT_INVALID)
+    scenarios = report["scenarios"]
+    if not isinstance(scenarios, list) or len(scenarios) != len(_FULL_PROFILE_SCENARIOS):
+        raise ValueError(_FULL_REPORT_INVALID)
+    covered: list[str] = []
+    for expected_id, value in zip(_FULL_PROFILE_SCENARIOS, scenarios, strict=True):
+        if not isinstance(value, dict) or set(value) != {
+            "scenario_id",
+            "status",
+            "duration_seconds",
+            "commands",
+            "diagnostics",
+        }:
+            raise ValueError(_FULL_REPORT_INVALID)
+        duration = value["duration_seconds"]
+        selected = not selection or expected_id in selection
+        if (
+            value["scenario_id"] != expected_id
+            or type(duration) not in (int, float)
+            or not isinstance(duration, (int, float))
+            or not math.isfinite(duration)
+            or duration < 0
+            or value["status"] != (ScenarioStatus.PASSED.value if selected else ScenarioStatus.NOT_RUN.value)
+            or value["diagnostics"] != (_EMPTY if selected else _SCENARIO_NOT_SELECTED)
+        ):
+            raise ValueError(_FULL_REPORT_INVALID)
+        _validate_report_commands(value["commands"])
+        if not selected:
+            if duration != 0 or value["commands"] != []:
+                raise ValueError(_FULL_REPORT_INVALID)
+            continue
+        covered.append(expected_id)
+        if expected_id == _SCENARIO_WORKFLOW_RETIRED_ACTS:
+            _validate_r4_snapshot_commands(value)
+    return tuple(covered)
+
+
+def _validate_provisional_cleanup_commands(report: JsonObject) -> None:
+    """Require successful recorded public cleanup and the single supported stop, in their actual order."""
+    cleanup = report["cleanup"]
+    if not isinstance(cleanup, dict):
+        raise ValueError(_FULL_REPORT_INVALID)
+    commands = cleanup["commands"]
+    _validate_report_commands(commands)
+    if not isinstance(commands, list) or not commands:
+        raise ValueError(_FULL_REPORT_INVALID)
+    stop_argv = [
+        *_SERVICE_STOP_COMMAND,
+        f"{_STOP_OUTCOME_VARIABLE}={_SYNTHETIC_RUNTIME_PLACEHOLDER}/{_STOP_OUTCOME_NAME}",
+    ]
+    stops: list[int] = []
+    for index, command in enumerate(commands):
+        if (
+            not isinstance(command, dict)
+            or type(command["exit_status"]) is not int
+            or command["exit_status"] != _PROCESS_SUCCESS
+            or command["diagnostics"] != _EMPTY
+        ):
+            raise ValueError(_FULL_REPORT_INVALID)
+        if command["argv"] == stop_argv:
+            stops.append(index)
+    if stops != [len(commands) - 1]:
+        raise ValueError(_FULL_REPORT_INVALID)
+
+
+def _validate_provisional_matrices(report: JsonObject, covered: tuple[str, ...]) -> None:
+    """Reuse the reviewed matrices only for actual coverage; unselected data must remain explicitly unexecuted."""
+    source_revision = report["source_revision"]
+    source_tree = report["source_tree"]
+    if not isinstance(source_revision, str) or not isinstance(source_tree, str):
+        raise ValueError(_FULL_REPORT_INVALID)
+    if _SCENARIO_WORKFLOW_RETIRED_ACTS_B12 in covered:
+        _validate_b12_report(report, source_revision, source_tree)
+    elif report[creation.B12Field.RETIRED_ACT_EVIDENCE] != asdict(
+        creation.empty_retired_act_evidence(source_revision=source_revision, source_tree=source_tree)
+    ):
+        raise ValueError(_FULL_REPORT_INVALID)
+    if _SCENARIO_WORKFLOW_WAITING in covered:
+        _validate_b13_report(report, source_revision, source_tree)
+    elif report["workflow_waiting_retired_kickback_evidence"] != asdict(
+        waiting.empty_b13_evidence(source_revision=source_revision, source_tree=source_tree)
+    ):
+        raise ValueError(_FULL_REPORT_INVALID)
+
+
+def validate_provisional_payload_inputs(report_bytes: bytes, manifest: bytes, package: StaticPackage) -> JsonObject:
+    """Check functional coverage and P3 inputs only; P1/P2, actual P4, retention/release and final acceptance remain separate."""
+    report = parse_object(report_bytes)
+    structure = validate_provisional_bindings(report, manifest, package)
+    if structure["purpose"] != Purpose.APPLICATION.value:
+        raise ValueError(_FULL_REPORT_INVALID)
+    expected_fields = {
+        "schema_version",
+        "source_revision",
+        "source_tree",
+        "profile",
+        "scenario_inventory",
+        "scenarios",
+        "cleanup",
+        "duration_seconds",
+        "selection",
+        "workflow_event_evidence",
+        creation.B12Field.RETIRED_ACT_EVIDENCE,
+        "workflow_waiting_retired_kickback_evidence",
+        "stage",
+        "payload_provisional",
+    }
+    duration = report.get("duration_seconds")
+    if (
+        set(report) != expected_fields
+        or report["scenario_inventory"] != list(_FULL_PROFILE_SCENARIOS)
+        or type(duration) not in (int, float)
+        or not isinstance(duration, (int, float))
+        or not math.isfinite(duration)
+        or duration < 0
+        or not isinstance(report["workflow_event_evidence"], dict)
+    ):
+        raise ValueError(_FULL_REPORT_INVALID)
+    selection = report["selection"]
+    if not isinstance(selection, list) or any(not isinstance(item, str) for item in selection):
+        raise ValueError(_FULL_REPORT_INVALID)
+    selected = frozenset(item for item in selection if isinstance(item, str))
+    if selection != sorted(selected):
+        raise ValueError(_FULL_REPORT_INVALID)
+    covered = _validate_provisional_scenarios(report, selected)
+    _validate_provisional_matrices(report, covered)
+    cleanup = validate_provisional_cleanup(report)
+    _validate_provisional_cleanup_commands(report)
+    return {
+        "binding_and_ledger_structure": structure,
+        "functional_coverage": list(covered),
+        "selected_run": bool(selected),
+        "inner_cleanup": cleanup,
+    }
 
 
 def _unadmitted_full_report(source_revision: str, source_tree: str, selection: frozenset[str]) -> AcceptanceReport:

@@ -187,3 +187,59 @@ def validate_provisional_bindings(report: JsonObject, manifest: bytes, package: 
         "purpose": binding[GuestKey.PURPOSE],
         "ledger_bytes": _ledger_pair(observations, frozenset(selected)),
     }
+
+
+def validate_provisional_cleanup(report: JsonObject) -> JsonObject:
+    """Recheck actual public-before-P3 facts; the producer's pending label cannot absorb another failure."""
+    provisional = object_value(report["payload_provisional"])
+    binding = object_value(provisional["binding"])
+    observations = object_value(provisional["observations"])
+    cleanup = object_value(report["cleanup"])
+    inner = object_value(observations["inner_cleanup"])
+    if (
+        set(inner)
+        != {
+            "classification",
+            "public_cleanup_finished_ns",
+            "stop_started_ns",
+            "stop_finished_ns",
+            "supported_stop_outcome",
+            "stop_exit_status",
+            "stop_diagnostics",
+            "stop_error",
+            "work_end_ns",
+            "independent_failures",
+            "unclassified_retention",
+        }
+        or set(cleanup) != {"status", "detail", "commands"}
+        or cleanup["status"] != PendingReason.P4_PENDING_OUTER.value
+        or cleanup["detail"] != ""
+        or inner["classification"] != PendingReason.P4_PENDING_OUTER.value
+        or inner["supported_stop_outcome"] != "stopped"
+        or observations["daemon_stop_outcome"] != "stopped"
+        or type(inner["stop_exit_status"]) is not int
+        or inner["stop_exit_status"] != 0
+        or inner["stop_diagnostics"] != ""
+        or inner["stop_error"] is not None
+        or inner["independent_failures"] != []
+        or inner["unclassified_retention"] != []
+        or observations["recorded_retention_reasons"] != []
+        or observations["recorded_retention_keys"] != {}
+        or observations["flow_finalizer_errors"] != []
+    ):
+        raise ValueError(ERROR_REPORT)
+    created = positive_integer(binding, "created_ns")
+    public = positive_integer(inner, "public_cleanup_finished_ns")
+    started = positive_integer(inner, "stop_started_ns")
+    finished = positive_integer(inner, "stop_finished_ns")
+    end = positive_integer(inner, "work_end_ns")
+    if not created <= public <= started <= finished <= end or end != positive_integer(binding, GuestKey.PAYLOAD_END_NS):
+        raise ValueError(ERROR_REPORT)
+    return {
+        "public_cleanup_finished_ns": public,
+        "stop_started_ns": started,
+        "stop_finished_ns": finished,
+        "work_end_ns": end,
+        "supported_stop_outcome": "stopped",
+        "physical_condition": PendingReason.P4_PENDING_OUTER.value,
+    }
