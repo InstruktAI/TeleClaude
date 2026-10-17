@@ -54,7 +54,7 @@ NANOSECONDS: Final = 1_000_000_000
 TIMEOUT: Final = "--timeout={seconds}s"
 ERROR_DATA: Final = "the native initial machine/job read is malformed, incomplete or late"
 ERROR_BLOCKED: Final = (
-    "initial owned-name collision or foreign machine/pending activation blocks this provisioning boundary"
+    "initial owned-name collision or absent-container machine activation precondition blocks this provisioning boundary"
 )
 
 
@@ -354,12 +354,8 @@ def inspect_initial_machines(
 
 def require_initial_machines(snapshot: InitialMachines, *, container_installed: bool) -> None:
     """Preserve the recipe's extra foreign-enabled/transient/target check specifically for an absent-container install."""
-    if (
-        snapshot.collisions
-        or snapshot.foreign_pending
-        or (
-            not container_installed
-            and (snapshot.foreign_enabled or snapshot.foreign_transient or snapshot.machines_pending)
-        )
+    if snapshot.collisions or (
+        not container_installed
+        and (snapshot.foreign_enabled or snapshot.foreign_transient or snapshot.machines_pending)
     ):
         raise InitialMachinesBlocked(snapshot)
