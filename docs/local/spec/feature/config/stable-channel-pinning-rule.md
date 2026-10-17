@@ -16,6 +16,8 @@ Explicit enrollment preserves the operator's update boundary
 (`general/policy/human-contract`). The declared series is independent of which
 computer performs development or owns an upstream contribution.
 
+When the machine configuration omits the deployment declaration, the configured channel defaults to alpha.
+
 ## Canonical fields
 
 ### Compatibility-series declaration
@@ -37,13 +39,13 @@ preserves the recorded selection.
 
 ### Use cases
 
-#### UC-CFG-PIN-1: Stable enrollment accepts an explicit compatibility series
+#### UC-CFG-PIN-1: An operator chooses a stable compatibility series
 
 ```gherkin
-Scenario Outline: An operator selects a stable compatibility series
-  Given an operator configures stable enrollment for <series>
-  When configuration is validated
-  Then the selected series is accepted unchanged
+Scenario Outline: An operator sets the stable update boundary
+  Given an operator wants stable enrollment to follow compatibility series <series>
+  When they configure that series
+  Then the installation accepts the selected update boundary
 
   Examples:
     | series |
@@ -51,47 +53,41 @@ Scenario Outline: An operator selects a stable compatibility series
     | 1      |
 ```
 
-#### UC-CFG-PIN-2: An invalid stable series is refused
+#### UC-CFG-PIN-2: An operator can correct an invalid stable series
 
 ```gherkin
-Given an operator supplies a missing, malformed or ambiguous stable series
+Given an operator configures stable enrollment with a missing, malformed or ambiguous series
 When configuration is validated
-Then the operator receives a diagnostic naming the invalid selection
+Then the operator receives an actionable diagnostic naming the invalid selection
 And the stored deployment configuration is unchanged
 ```
 
-#### UC-CFG-PIN-3: Alpha enrollment requires no compatibility series
+#### UC-CFG-PIN-3: An operator can choose a prerelease channel without a stable series
 
 ```gherkin
-Given an operator selects alpha without a compatibility series
-When configuration is validated
-Then the enrollment is accepted
+Scenario Outline: An operator chooses alpha or beta enrollment
+  Given an operator selects the <channel> channel without a compatibility series
+  When configuration is validated
+  Then the enrollment is accepted
+
+  Examples:
+    | channel |
+    | alpha   |
+    | beta    |
 ```
 
 #### UC-CFG-PIN-4: Beta enrollment requires no compatibility series
 
-```gherkin
-Given an operator selects beta without a compatibility series
-When configuration is validated
-Then the enrollment is accepted
-```
-
 #### UC-CFG-PIN-5: An omitted deployment declaration uses the configured default
-
-```gherkin
-Given an operator has supplied no deployment declaration
-When the machine configuration is loaded
-Then enrollment follows the deployment model's default
-```
 
 #### UC-CFG-PIN-6: Existing pins migrate to the selected compatibility boundary
 
 ```gherkin
-Scenario Outline: An operator's existing pin is brought forward
-  Given an installation has the existing minor pin <pin>
+Scenario Outline: An operator's stable installation keeps its series current
+  Given an operator has an existing stable deployment pin <pin>
   When its configuration migration completes
-  Then the operator can observe the effective compatibility series <series>
-  And another migration run preserves that series
+  Then the effective compatibility series is <series>
+  And a repeated migration leaves that selection unchanged
 
   Examples:
     | pin | series |
