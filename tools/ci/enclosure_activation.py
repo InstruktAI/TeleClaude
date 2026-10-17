@@ -29,6 +29,8 @@ from tools.ci.enclosure_manager import ManagerRead
 ROOT: Final = Path("/")
 LINK_SUFFIXES: Final = (".wants", ".requires", ".upholds")
 INSTANCE_SEPARATOR: Final = "@"
+DASH: Final = "-"
+DOT: Final = "."
 ERROR_CENSUS: Final = "native activation sources are unreadable, changed, unprotected or outside the original allowance"
 
 
@@ -186,12 +188,46 @@ def _targets_owned(path: Path, owned_names: frozenset[str], deadline: AdmittedDe
         path = target if target.is_absolute() else path.parent / target
 
 
+def _dependency_names(name: str) -> frozenset[str]:
+    """Follow v255 unit_file_find_dirs: instance/template, prefix hierarchy and common unit type."""
+    found: set[str] = set()
+    pending = [name]
+    while pending:
+        current = pending.pop()
+        if current in found:
+            continue
+        found.add(current)
+        stem, separator, unit_type = current.rpartition(DOT)
+        if not stem or not separator or not unit_type or Path(current).name != current:
+            raise ValueError(ERROR_CENSUS)
+        found.add(unit_type)
+        prefix, instance_separator, instance = stem.partition(INSTANCE_SEPARATOR)
+        is_instance = bool(instance_separator and instance)
+        if is_instance:
+            pending.append(prefix + INSTANCE_SEPARATOR + DOT + unit_type)
+        # Native lookup skips a trailing dash once before finding the next prefix boundary.
+        shortened = prefix[:-1] if prefix.endswith(DASH) else prefix
+        dash = shortened.rfind(DASH)
+        if dash > 0:
+            next_prefix = shortened[: dash + 1]
+            next_instance = INSTANCE_SEPARATOR + instance if is_instance else ""
+            pending.append(next_prefix + next_instance + DOT + unit_type)
+    return frozenset(found)
+
+
 def _scope(graph: DependencyGraph, owned_names: frozenset[str]) -> tuple[frozenset[str], frozenset[str]]:
     if not owned_names or any(Path(name).name != name for name in owned_names):
         raise ValueError(ERROR_CENSUS)
-    names = {node.read.name for node in graph.nodes}
+    names: set[str] = set()
     critical_names = set(owned_names)
     for node in graph.nodes:
+        aliases = node.read.unit.get(ConfigurationKey.NAMES)
+        if not isinstance(aliases, list) or any(not isinstance(alias, str) or not alias for alias in aliases):
+            raise ValueError(ERROR_CENSUS)
+        for name in (node.read.name, *aliases):
+            if not isinstance(name, str):
+                raise ValueError(ERROR_CENSUS)
+            names.update(_dependency_names(name))
         if node.read.name not in owned_names:
             continue
         fragment = node.read.unit.get(ConfigurationKey.FRAGMENT_PATH)
@@ -201,12 +237,6 @@ def _scope(graph: DependencyGraph, owned_names: frozenset[str]) -> tuple[frozens
         if not isinstance(mounts, list) or any(not isinstance(value, str) for value in mounts):
             raise ValueError(ERROR_CENSUS)
         critical_names.update(Path(value).name for value in mounts if isinstance(value, str))
-    for name in tuple(names):
-        if Path(name).name != name:
-            raise ValueError(ERROR_CENSUS)
-        if INSTANCE_SEPARATOR in name:
-            prefix, _ = name.split(INSTANCE_SEPARATOR, 1)
-            names.add(prefix + INSTANCE_SEPARATOR + Path(name).suffix)
     return frozenset(critical_names), frozenset(name + suffix for name in names for suffix in LINK_SUFFIXES)
 
 
