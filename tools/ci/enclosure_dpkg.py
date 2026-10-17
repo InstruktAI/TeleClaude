@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import ctypes
 import hashlib
 import io
 import os
@@ -1429,6 +1430,12 @@ def collect_install_inputs(
             result["state"] = "blocked"
             result["reason"] = initialization["reason"]
             return result
+        info_format = inspect_info_format(deadline)
+        result["info_format"] = info_format
+        if info_format["state"] == "native_invalid_format":
+            result["state"] = "blocked"
+            result["reason"] = "native info database format fails before the permitted archive action"
+            return result
         result["dbus_control_sources"] = bind_dbus_control_sources(inputs, package, deadline)
         work = inspect_package_work(query, deadline, cap)
         result["package_work"] = work
@@ -1697,3 +1704,72 @@ def _trigger_control(
             if command.startswith(b"activate"):
                 # The caller is the old package's processing callback, not an Unincorp record or observed event.
                 activations.append({"origin": "prior_container_control", **directive})
+
+
+def inspect_info_format(deadline: AdmittedDeadline) -> JsonObject:
+    """Capture the native info-format branch; migration/global effects and continuity remain unproven."""
+    files: list[JsonValue] = []
+    result: JsonObject = {
+        "started_ns": time.monotonic_ns(),
+        "finished_ns": None,
+        "files": files,
+        "state": "unproven",
+        "upgrade_effect_admission": "unproven",
+        "error": None,
+    }
+    try:
+        path = Path("/var/lib/dpkg/info/format")
+        _file(path, deadline, files)
+        data = _input_bytes(object_value(files[0]))
+        parsed = 0
+        if data is not None:
+            # dpkg uses C99 fscanf("%u"). Its matching/conversion rules belong to libc, not a parallel parser.
+            scan = ctypes.CDLL(None).__isoc99_sscanf
+            scan.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+            scan.restype = ctypes.c_int
+            value = ctypes.c_uint()
+            _before_cutoff(deadline)
+            matched = scan(data, b"%u", ctypes.byref(value))
+            _before_cutoff(deadline)
+            result["native_conversion_matches"] = matched
+            if matched != 1:
+                result["state"] = "native_invalid_format"
+                return result
+            result["native_unsigned_value"] = value.value
+            # The pinned amd64 native enum includes -1 and uses the signed-int representation.
+            parsed = ctypes.c_int(value.value).value
+        result["parsed_enum"] = parsed
+        new_path = Path("/var/lib/dpkg/info/format-new")
+        _before_cutoff(deadline)
+        marker: JsonObject = {"path": str(new_path), "stat_succeeded": False}
+        result["new_marker"] = marker
+        try:
+            native = new_path.stat()
+        except OSError as error:
+            # Native tests stat()==0, without reading marker contents; an error is not fabricated absence.
+            marker["errno"] = error.errno
+            marker["error_class"] = type(error).__name__
+        else:
+            marker["stat_succeeded"] = True
+            marker["identity"] = _identity(native)
+        interrupted = marker["stat_succeeded"] is True
+        result["interrupted_upgrade"] = interrupted
+        if interrupted and parsed == 2_147_483_647:
+            # Native enum increment can overflow signed int here; do not invent a successful conversion.
+            result["reason"] = "native signed-enum increment is not proven for this captured value"
+            return result
+        effective = parsed + int(interrupted)
+        result["effective_enum"] = effective
+        if effective not in (0, 1):
+            result["state"] = "native_invalid_format"
+        elif effective == 0 or interrupted:
+            result["state"] = "native_upgrade_required"
+        else:
+            result["state"] = "native_current_no_upgrade"
+        _before_cutoff(deadline)
+        return result
+    except (AttributeError, KeyError, OSError, ValueError, RuntimeError, ctypes.ArgumentError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"info_format": result}) from error
+    finally:
+        result["finished_ns"] = time.monotonic_ns()
