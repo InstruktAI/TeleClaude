@@ -12,55 +12,13 @@ visibility: 'public'
 
 ## What it is
 
-The v1 rule for turning a session record into the `(principal, role)` pair that downstream authorization uses. Every caller the client resolves from a session reaches this resolution: the principal the client carries on its requests is produced by this single capability. The capability answers "who is this session, and what authorization band does it carry?" with three deterministic rules — inherited principal wins, then human identity, then system identity — and raises a typed identity error when none apply.
+The v1 rule for turning a session record into the `(principal, role)` pair that downstream authorization uses. Every caller the client resolves from a session reaches this resolution: the principal the client carries on its requests is produced by this single capability. The capability answers "who is this session, and what authorization band does it carry?" with three deterministic rules — inherited principal wins, then human identity, then system identity — and raises a typed identity error when none apply. System-origin sessions resolve to the shared principal `system:daemon`, with their own session records remaining distinct. A principal-less help-desk session carrying `customer` may still be treated as a customer for role-only decisions; that fallback creates no principal and does not satisfy principal resolution.
 
 ## Canonical fields
 
 ### Use cases
 
-```
-Given a session whose `principal` is already set (parent-inherited identity)
-When principal resolution runs over the session
-Then the inherited principal is returned verbatim
-And the role is the session's human_role when present, else HUMAN_ROLE_CUSTOMER ("customer")
-```
-
-```
-Given a session with human_email set and no inherited principal
-When principal resolution runs over the session
-Then principal is "human:<email>" using the session's human_email
-And role is the session's human_role when present, else HUMAN_ROLE_CUSTOMER
-```
-
-```
-Given a session with system_role set (no human_email, no inherited principal)
-When principal resolution runs over the session
-Then principal is "system:daemon" — the platform's own principal, the origin of all work with no human origin
-And role is the session's system_role (e.g. "worker", "orchestrator", "integrator", "system")
-```
-
-```
-Given a session with no principal, no human_email, and no system_role
-When principal resolution runs over the session
-Then a session-identity error is raised with a diagnostic naming the session_id
-And the identity context surfaces this as an authentication-required failure
-```
-
 #### UC-PR-CUSTOMER-ROLE: A principal-less customer session still reads as a customer
-
-```gherkin
-Given a help-desk session with no principal, no human_email and no system_role, whose recorded human_role is customer
-When a decision asks for the person role that session acts under
-Then the answer is customer
-And principal resolution for that session still raises the session-identity error
-```
-
-```
-Given a child session started by a session whose principal is "system:daemon"
-When principal resolution runs over the child
-Then the child's principal is "system:daemon"
-And every session with no human origin shares that one principal, distinguished by its own session id
-```
 
 ### Cross-context references
 
