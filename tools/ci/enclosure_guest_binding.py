@@ -253,6 +253,29 @@ class GuestBinding:
             self.failure = error
             raise
 
+    def require_root_view(self, deadline: AdmittedDeadline) -> None:
+        """Retain the original admitted filesystem for readback after the original PID1's normal exit.
+
+        This proves only the held view. Original manager/invocation history and
+        positive shutdown/report evidence remain separate; no PID absence is success.
+        """
+        if self.failure is not None:
+            raise RuntimeError(ERROR_BINDING) from self.failure
+        try:
+            _before_cutoff(deadline)
+            current = os.fstat(self.root_fd)
+            if (
+                not stat.S_ISDIR(current.st_mode)
+                or current.st_mode & 0o022
+                or (current.st_dev, current.st_ino, current.st_uid, current.st_gid)
+                != (self.facts.root_device, self.facts.root_inode, self.facts.root_uid, self.facts.root_gid)
+            ):
+                raise ValueError(ERROR_BINDING)
+            _before_cutoff(deadline)
+        except BaseException as error:
+            self.failure = error
+            raise
+
     def close(self) -> None:
         """Close only retained guest evidence handles; this neither stops nor deletes the guest."""
         if self.failure is None:

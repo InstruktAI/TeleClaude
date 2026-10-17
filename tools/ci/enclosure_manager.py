@@ -29,6 +29,7 @@ SYSTEMD_NAME: Final = "org.freedesktop.systemd1"
 MACHINE_NAME: Final = "org.freedesktop.machine1"
 MACHINE_PATH: Final = "/org/freedesktop/machine1"
 ACTIVE: Final = "active"
+TERMINAL_STATES: Final = frozenset({"deactivating", "inactive", "failed"})
 JOB_DONE: Final = "done"
 PATH_SEPARATOR: Final = "/"
 BOOT_IDENTITY_ERROR: Final = "the original boot identity changed or is unavailable"
@@ -91,6 +92,7 @@ class Member(StrEnum):
     GET_JOB = "GetJob"
     GET_ALL = "GetAll"
     GET_MACHINE = "GetMachine"
+    REF = "Ref"
     OWNER_CHANGED = "NameOwnerChanged"
     PROPERTIES_CHANGED = "PropertiesChanged"
     UNIT_NEW = "UnitNew"
@@ -257,6 +259,7 @@ class ManagerObserver:
         self._population: PopulationObserver | None = None
         self._parent: UnitRead | None = None
         self._guest: UnitRead | None = None
+        self._guest_cgroup_release_sequence: int | None = None
         self._sequence = 0
         self._events: list[NativeEvent] = []
         self._event_bytes = 0
@@ -725,6 +728,10 @@ class ManagerObserver:
         ):
             raise ValueError(BINDING_ERROR)
         self._guest = guest
+        # Retain native terminal properties on this original connection; Ref does not keep the service running.
+        await self._call(
+            Interface.UNIT, guest.object_path, Member.REF, Signature.EMPTY, [], Signature.EMPTY, deadline_ns
+        )
         for event in self._events:
             if event.sequence > guest.begin_sequence:
                 self._check_bound_event(event, guest, False)
@@ -732,7 +739,9 @@ class ManagerObserver:
             raise RuntimeError(CONNECTION_ERROR)
         return guest
 
-    async def read_active_boundary(self, deadline_ns: int) -> tuple[UnitRead, UnitRead]:
+    async def read_active_boundary(
+        self, deadline_ns: int, *, allow_terminal: bool = False
+    ) -> tuple[UnitRead, UnitRead]:
         """Read the active originals at an explicit phase frontier, retaining the first binding as the comparison basis."""
         original_parent, original_guest = self._parent, self._guest
         if original_parent is None or original_guest is None or self._population is None:
@@ -740,20 +749,57 @@ class ManagerObserver:
         parent = await self.read_unit(
             original_parent.name, Interface.SLICE, deadline_ns, original_path=original_parent.object_path
         )
-        guest = await self.read_unit(
-            original_guest.name, Interface.SERVICE, deadline_ns, original_path=original_guest.object_path
-        )
+        if allow_terminal:
+            # v255 sd-bus GetAll("") returns the registered interfaces in one native reply.
+            # Separate Unit/Service reads can straddle normal teardown (active + released cgroup).
+            begin = self._sequence
+            reply = await self._call(
+                Interface.PROPERTIES,
+                original_guest.object_path,
+                Member.GET_ALL,
+                Signature.STRING,
+                [EMPTY],
+                Signature.PROPERTIES,
+                deadline_ns,
+            )
+            properties = _properties(reply)
+            if not (set(original_guest.unit) | set(original_guest.specific)) <= set(properties):
+                self.invalidate(Invalidation.MALFORMED_STREAM)
+                raise ValueError(BODY_ERROR)
+            guest = UnitRead(
+                original_guest.name,
+                original_guest.object_path,
+                {key: properties[key] for key in original_guest.unit},
+                {key: properties[key] for key in original_guest.specific},
+                begin,
+                self._sequence,
+                time.monotonic_ns(),
+            )
+        else:
+            guest = await self.read_unit(
+                original_guest.name, Interface.SERVICE, deadline_ns, original_path=original_guest.object_path
+            )
         if parent.unit.get(Property.ACTIVE_STATE) != ACTIVE:
             self.invalidate(Invalidation.PARENT_DEACTIVATED)
         if parent.specific.get(Property.CONTROL_GROUP) != self._population.control_group:
             self.invalidate(Invalidation.PARENT_REPLACED)
         if guest.unit.get(Property.INVOCATION_ID) != original_guest.unit.get(Property.INVOCATION_ID):
             self.invalidate(Invalidation.INVOCATION_CHANGED)
-        if guest.specific.get(Property.CONTROL_GROUP) != original_guest.specific.get(Property.CONTROL_GROUP):
+        current_group = guest.specific.get(Property.CONTROL_GROUP)
+        normal_release = current_group == EMPTY and guest.unit.get(Property.ACTIVE_STATE) in TERMINAL_STATES
+        if (current_group != original_guest.specific.get(Property.CONTROL_GROUP) and not normal_release) or (
+            self._guest_cgroup_release_sequence is not None
+            and self._guest_cgroup_release_sequence <= guest.begin_sequence
+            and current_group != EMPTY
+        ):
             self.invalidate(Invalidation.MOVED)
+        if normal_release and self._guest_cgroup_release_sequence is None:
+            self._guest_cgroup_release_sequence = guest.begin_sequence
         if self._faults:
             raise RuntimeError(CONNECTION_ERROR)
-        if guest.unit.get(Property.ACTIVE_STATE) != ACTIVE:
+        if guest.unit.get(Property.ACTIVE_STATE) != ACTIVE and not (
+            allow_terminal and guest.unit.get(Property.ACTIVE_STATE) in TERMINAL_STATES
+        ):
             raise ValueError(BINDING_ERROR)
         return parent, guest
 
@@ -854,10 +900,20 @@ class ManagerObserver:
             if key in invalidated:
                 self.invalidate(Invalidation.MALFORMED_STREAM)
         specific = Interface.SLICE if is_parent else Interface.SERVICE
+        if not is_parent and body[0] == specific and Property.CONTROL_GROUP in changed:
+            if changed[Property.CONTROL_GROUP] == EMPTY:
+                if self._guest_cgroup_release_sequence is None:
+                    self._guest_cgroup_release_sequence = message.sequence
+            elif (
+                self._guest_cgroup_release_sequence is not None
+                and message.sequence > self._guest_cgroup_release_sequence
+            ):
+                self.invalidate(Invalidation.MOVED)
         if (
             body[0] == specific
             and Property.CONTROL_GROUP in changed
             and changed[Property.CONTROL_GROUP] != bound.specific.get(Property.CONTROL_GROUP)
+            and (is_parent or changed[Property.CONTROL_GROUP] != EMPTY)
         ):
             self.invalidate(Invalidation.MOVED)
         if body[0] != Interface.UNIT:

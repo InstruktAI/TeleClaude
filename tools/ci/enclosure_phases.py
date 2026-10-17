@@ -39,9 +39,10 @@ from tools.ci.enclosure_graph import DependencyGraph, inspect_dependency_graph
 from tools.ci.enclosure_guest import GuestContext
 from tools.ci.enclosure_guest_binding import GuestBinding
 from tools.ci.enclosure_guest_evidence import (
+    EvidenceLeaf,
+    GuestFileRead,
     GuestSetupEvidence,
-    SetupJournalRead,
-    read_setup_journal,
+    read_guest_evidence,
     validate_setup_journal,
 )
 from tools.ci.enclosure_guest_manifest import compose_payload_manifest, compose_setup_manifest, narrow_setup_manifest
@@ -58,6 +59,7 @@ from tools.ci.enclosure_manager import (
 )
 from tools.ci.enclosure_owner import Key as OwnerKey
 from tools.ci.enclosure_owner import RunOwner
+from tools.ci.enclosure_payload_completion import PayloadCompletion, capture_payload_completion
 from tools.ci.enclosure_population import Invalidation, PopulationObserver
 
 UTF8: Final = "utf-8"
@@ -144,12 +146,15 @@ class BindingPhases:
         self.guest_binding: GuestBinding | None = None
         self.guest_admission: JsonObject | None = None
         self.prepared_guest_manifest: bytes | None = None
-        self.guest_setup_read: SetupJournalRead | None = None
+        self.guest_setup_read: GuestFileRead | None = None
         self.guest_setup_evidence: GuestSetupEvidence | None = None
         self.configured: ActionResult | None = None
         self.active_guest_manifest: bytes | None = None
         self.prepared_payload_manifest: bytes | None = None
         self.payload_started: ActionResult | None = None
+        self.payload_start_receipt: NativeMutation | None = None
+        self.payload_completions: list[PayloadCompletion] = []
+        self.payload_observations: list[JsonObject] = []
 
     @property
     def startups(self) -> tuple[HelperStartup, ...]:
@@ -240,7 +245,7 @@ class BindingPhases:
             if action is Action.GUEST_SETUP and result.status is Outcome.SUCCEEDED:
                 self._expose_configured(result, action_deadline)
             if action is Action.START_PAYLOAD and result.status is Outcome.SUCCEEDED:
-                self._expose_payload(result, action_deadline)
+                await self._expose_payload(result, action_deadline)
             return result
         except HelperUncertain as error:
             # Preserve the original startup/Process even if an outer caller only renders the raised diagnostic.
@@ -283,9 +288,14 @@ class BindingPhases:
             self.completion_failure = error
             raise
 
-    def _expose_payload(self, result: ActionResult, deadline: AdmittedDeadline) -> None:
-        self._guest_completion_frontier(result, deadline, Phase.PAYLOAD_STARTED)
+    async def _expose_payload(self, result: ActionResult, deadline: AdmittedDeadline) -> None:
+        if result.evidence.get(Evidence.PHASE) != Phase.PAYLOAD_STARTED:
+            raise ValueError(ERROR_BINDING)
+        # The known native start survives later observation/functional/shutdown failures.
         self.payload_started = result
+        native = object_value(result.evidence[Evidence.NATIVE_RECEIPT])
+        end = min(deadline.effective_end(), positive_integer(native, Key.COMMAND_END_NS))
+        await self._payload_observation(AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end), None)
 
     def _expose_configured(self, result: ActionResult, deadline: AdmittedDeadline) -> None:
         self._guest_completion_frontier(result, deadline, Phase.GUEST_CONFIGURED)
@@ -753,7 +763,13 @@ class BindingPhases:
         admitted = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, producer_end)
         manifest = narrow_setup_manifest(self.prepared_guest_manifest, producer_end)
         self.guest_binding.require_original(admitted)
-        read = read_setup_journal(self.guest_binding.root_fd, self.guest_binding.facts.root_uid, admitted)
+        read = read_guest_evidence(
+            self.guest_binding.root_fd,
+            self.guest_binding.facts.root_uid,
+            self.guest_binding.facts.root_uid,
+            EvidenceLeaf.SETUP,
+            admitted,
+        )
         self.guest_setup_read = read
         setup = validate_setup_journal(read, manifest, self.package)
         self.guest_setup_evidence = setup
@@ -817,19 +833,11 @@ class BindingPhases:
         ):
             raise ValueError(ERROR_BINDING)
         payload_end = GuestContext(self.prepared_payload_manifest, self.package).payload_deadline().effective_end()
-        if time.monotonic_ns() >= payload_end:
-            raise TimeoutError(ERROR_BINDING)
-        parent, guest = await self.manager.read_active_boundary(end_ns)
-        await self.manager.check_identity(end_ns)
-        self.guest_binding.require_original(deadline)
-        self._require_source_closure(masked=True)
-        sample = self.population.sample(end_ns)
-        if sample.faults or sample.populated is not True:
-            raise ValueError(ERROR_BINDING)
-        helpers = self._helper_frontier(startup)
-        boundary = self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
-        if time.monotonic_ns() >= end_ns:
-            raise TimeoutError(ERROR_BINDING)
+        self.payload_start_receipt = mutation
+        end = min(end_ns, deadline.effective_end(), positive_integer(native, Key.COMMAND_END_NS))
+        observation = await self._payload_observation(
+            AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end), startup
+        )
         self.active_guest_manifest = self.prepared_payload_manifest
         return ActionResult(
             Outcome.SUCCEEDED,
@@ -838,14 +846,52 @@ class BindingPhases:
                 Evidence.NATIVE_RECEIPT: dict(native),
                 "payload_manifest_sha256": digest,
                 "payload_end_ns": payload_end,
-                Evidence.PARENT: _unit(parent),
-                Evidence.GUEST: _unit(guest),
-                Evidence.HELPERS: helpers,
-                Evidence.SEQUENCE: boundary.sequence,
-                Evidence.OBSERVED_NS: boundary.observed_ns,
-                Evidence.POPULATION: {Evidence.RAW: sample.raw.decode(UTF8), Evidence.POPULATED: sample.populated},
+                "payload_observation": observation,
             },
         )
+
+    async def _payload_observation(self, deadline: AdmittedDeadline, startup: HelperStartup | None) -> JsonObject:
+        """Observe the original active-to-terminal lifecycle without requiring work to outlive its supervisor."""
+        if self.guest_binding is None or self.prepared_payload_manifest is None or self.population is None:
+            raise ValueError(ERROR_BINDING)
+        end = deadline.effective_end()
+        await self.manager.check_identity(end)
+        parent, guest = await self.manager.read_active_boundary(end, allow_terminal=True)
+        self.guest_binding.require_root_view(deadline)
+        self._require_source_closure(masked=True)
+        completion = None
+        if guest.unit.get(Property.ACTIVE_STATE) != ACTIVE:
+            completion = capture_payload_completion(
+                self.guest_binding, self.prepared_payload_manifest, self.package, deadline
+            )
+            self.payload_completions.append(completion)
+            self.guest_binding.require_root_view(deadline)
+        sample = self.population.sample(end)
+        if sample.faults or sample.populated is None:
+            raise ValueError(ERROR_BINDING)
+        helpers = self._helper_frontier(startup)
+        boundary = self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
+        evidence: JsonObject = {
+            Evidence.PARENT: _unit(parent),
+            Evidence.GUEST: _unit(guest),
+            Evidence.HELPERS: helpers,
+            Evidence.SEQUENCE: boundary.sequence,
+            Evidence.OBSERVED_NS: boundary.observed_ns,
+            Evidence.POPULATION: {Evidence.RAW: sample.raw.decode(UTF8), Evidence.POPULATED: sample.populated},
+            "completion_capture": completion.record() if completion is not None else None,
+            "normal_service_exit": guest.unit.get(Property.ACTIVE_STATE) == "inactive"
+            and guest.specific.get("Result") == "success"
+            and type(guest.specific.get("ExecMainCode")) is int
+            and guest.specific["ExecMainCode"] == 1
+            and type(guest.specific.get("ExecMainStatus")) is int
+            and guest.specific["ExecMainStatus"] == 0
+            and type(guest.specific.get("NRestarts")) is int
+            and guest.specific["NRestarts"] == 0,
+        }
+        self.payload_observations.append(evidence)
+        if time.monotonic_ns() >= end:
+            raise TimeoutError(ERROR_BINDING)
+        return evidence
 
     def close_population(self) -> None:
         """End observation explicitly; callers owe retention/release decisions separately."""

@@ -1,4 +1,4 @@
-"""Bounded setup-journal read through the caller's admitted guest mount view."""
+"""Named evidence reads through the original guest mount view, with setup semantics kept separate."""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from tools.ci.enclosure_contract import (
     text,
 )
 from tools.ci.enclosure_data import CONTROL_ROOT
+from tools.ci.enclosure_guest import JOURNAL as POWEROFF_JOURNAL
 from tools.ci.enclosure_guest import Key as GuestKey
 from tools.ci.enclosure_guest import Purpose, Record, Role, close_evidence_descriptors
 from tools.ci.enclosure_native import INVENTORY_ARGUMENTS, READ_LIMIT
@@ -37,8 +38,8 @@ from tools.ci.enclosure_setup import (
 )
 from tools.ci.enclosure_setup import Key as SetupKey
 
-ERROR_PROTECTION: Final = "the named guest setup evidence is not protected in the admitted mount view"
-ERROR_READ: Final = "the guest setup journal read is incomplete, changed or outside the original allowance"
+ERROR_PROTECTION: Final = "the named guest evidence is not protected in the admitted mount view"
+ERROR_READ: Final = "the guest evidence read is incomplete, changed or outside the original allowance"
 DIRECTORY_FLAGS: Final = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 FILE_FLAGS: Final = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
 SHARED_WRITE: Final = stat.S_IWGRP | stat.S_IWOTH
@@ -58,6 +59,14 @@ class FactKey(StrEnum):
     START_TICKS = "start_ticks"
     CGROUP = "cgroup"
     OBSERVED_NS = "observed_ns"
+
+
+class EvidenceLeaf(StrEnum):
+    """Only existing named setup, automatic cleanup and report artifacts may be read here."""
+
+    SETUP = SETUP_JOURNAL
+    POWEROFF = POWEROFF_JOURNAL
+    REPORT = "report.json"
 
 
 @dataclass(frozen=True)
@@ -89,7 +98,7 @@ class JournalFileIdentity:
 
 
 @dataclass(frozen=True)
-class SetupJournalRead:
+class GuestFileRead:
     """Raw evidence survives independently of its completeness or later semantic validation."""
 
     data: bytes
@@ -101,6 +110,7 @@ class SetupJournalRead:
     started_ns: int
     finished_ns: int
     end_ns: int
+    read_limit: int = READ_LIMIT
 
     def require_complete(self) -> None:
         """Reject partial, replaced, changed or late evidence before any setup-phase claim."""
@@ -108,7 +118,7 @@ class SetupJournalRead:
             self.read_error is not None
             or self.before != self.after
             or self.after != self.named_leaf
-            or not 0 < len(self.data) <= READ_LIMIT
+            or not 0 < len(self.data) <= self.read_limit
             or len(self.data) != self.before.size
             or self.finished_ns >= self.end_ns
         ):
@@ -119,7 +129,7 @@ class SetupJournalRead:
 class GuestSetupEvidence:
     """Validated setup evidence; original outside identity/continuity and phase admission remain separate."""
 
-    journal: SetupJournalRead
+    journal: GuestFileRead
     manifest_sha256: str
     unit_end_ns: int
     completed_ns: int
@@ -254,14 +264,12 @@ def _commands(rows: list[JsonObject], unit_end: int, cap: int) -> tuple[int, str
     return len(rows) // 3, inventory
 
 
-def validate_setup_journal(
-    read: SetupJournalRead, admitted_manifest: bytes, package: StaticPackage
-) -> GuestSetupEvidence:
+def validate_setup_journal(read: GuestFileRead, admitted_manifest: bytes, package: StaticPackage) -> GuestSetupEvidence:
     """Validate captured setup semantics against the caller's admitted manifest; perform no guest action.
 
     This does not admit a manifest, root descriptor or manager. The phase caller
     must already own those original bindings and still check their continuity.
-    Invalid data remains in the caller's separate SetupJournalRead on failure.
+    Invalid data remains in the caller's separate GuestFileRead on failure.
     """
     read.require_complete()
     _before_cutoff(read.end_ns)
@@ -328,15 +336,27 @@ def _before_cutoff(end_ns: int) -> None:
         raise TimeoutError(ERROR_READ)
 
 
-def read_setup_journal(guest_root_fd: int, outside_guest_root_uid: int, deadline: AdmittedDeadline) -> SetupJournalRead:
-    """Read only the fixed setup leaf; the caller retains guest-leader/mount/namespace admission.
+def read_guest_evidence(
+    guest_root_fd: int,
+    outside_guest_root_uid: int,
+    outside_file_uid: int,
+    leaf: EvidenceLeaf,
+    deadline: AdmittedDeadline,
+) -> GuestFileRead:
+    """Read only a declared evidence leaf; the caller retains guest-leader/mount/namespace admission.
 
     The supplied descriptor must refer to that admitted guest's root mount view.
     A host image-directory descriptor and a guessed UID-map offset do not establish
     this boundary: native stat ownership also depends on the mount's idmapping.
     No caller descriptor is closed or reopened by path, and this read grants no phase.
     """
-    if type(outside_guest_root_uid) is not int or not 0 < outside_guest_root_uid < UID_UNMAPPED:
+    if (
+        type(outside_guest_root_uid) is not int
+        or not 0 < outside_guest_root_uid < UID_UNMAPPED
+        or type(outside_file_uid) is not int
+        or not 0 < outside_file_uid < UID_UNMAPPED
+        or type(leaf) is not EvidenceLeaf
+    ):
         raise ValueError(ERROR_PROTECTION)
     started = time.monotonic_ns()
     end = deadline.effective_end()
@@ -352,23 +372,24 @@ def read_setup_journal(guest_root_fd: int, outside_guest_root_uid: int, deadline
             close_evidence_descriptors(previous_fd)
             _protected_directory(directory_fd, outside_guest_root_uid, control=component == CONTROL_ROOT.name)
         _before_cutoff(end)
-        leaf_fd = os.open(SETUP_JOURNAL, FILE_FLAGS, dir_fd=directory_fd)
+        leaf_fd = os.open(leaf, FILE_FLAGS, dir_fd=directory_fd)
         before = JournalFileIdentity.from_stat(os.fstat(leaf_fd))
-        if not stat.S_ISREG(before.mode) or before.uid != outside_guest_root_uid or before.mode & SHARED_WRITE:
+        if not stat.S_ISREG(before.mode) or before.uid != outside_file_uid or before.mode & SHARED_WRITE:
             raise ValueError(ERROR_PROTECTION)
         _before_cutoff(end)
-        data = os.pread(leaf_fd, READ_LIMIT + 1, 0)
+        # Journals retain the existing native limit; the report has its writer's actual finite size,
+        # not a new acceptance size limit imposed by this readback consumer.
+        read_limit = before.size if leaf is EvidenceLeaf.REPORT else READ_LIMIT
+        data = os.pread(leaf_fd, read_limit + 1, 0)
         after = None
         named_leaf = None
         read_error = None
         try:
             after = JournalFileIdentity.from_stat(os.fstat(leaf_fd))
-            named_leaf = JournalFileIdentity.from_stat(
-                os.stat(SETUP_JOURNAL, dir_fd=directory_fd, follow_symlinks=False)
-            )
+            named_leaf = JournalFileIdentity.from_stat(os.stat(leaf, dir_fd=directory_fd, follow_symlinks=False))
         except OSError as error:
             read_error = error
-        return SetupJournalRead(
+        return GuestFileRead(
             data,
             hashlib.sha256(data).hexdigest(),
             before,
@@ -378,6 +399,7 @@ def read_setup_journal(guest_root_fd: int, outside_guest_root_uid: int, deadline
             started,
             time.monotonic_ns(),
             end,
+            read_limit,
         )
     finally:
         close_evidence_descriptors(leaf_fd, directory_fd)

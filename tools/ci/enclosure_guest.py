@@ -322,6 +322,10 @@ class GuestContext:
 
     def command_end(self, unit_name: str = POWER_UNIT) -> int:
         """Intersect all admitted cutoffs with the selected static guest unit's own allowance."""
+        return self.admitted_deadline().command_end(self.unit_max_seconds(unit_name))
+
+    def unit_max_seconds(self, unit_name: str = POWER_UNIT) -> int:
+        """Read the unchanged declaration for execution and its later original-journal validation."""
         rendered = self.package.render(
             run_token=text(self.record, Key.RUN_TOKEN),
             candidate_sha=text(self.record, Key.SOURCE_COMMIT),
@@ -338,7 +342,7 @@ class GuestContext:
         seconds = int(declarations[0][: -len(SECONDS_SUFFIX)])
         if seconds <= 0:
             raise ValueError(ERROR_CONTEXT)
-        return self.admitted_deadline().command_end(seconds)
+        return seconds
 
 
 def _read_manifest() -> bytes:
