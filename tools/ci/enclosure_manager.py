@@ -26,6 +26,8 @@ NANOSECONDS: Final = 1_000_000_000
 BUS_PATH: Final = "/org/freedesktop/DBus"
 MANAGER_PATH: Final = "/org/freedesktop/systemd1"
 SYSTEMD_NAME: Final = "org.freedesktop.systemd1"
+MACHINE_NAME: Final = "org.freedesktop.machine1"
+MACHINE_PATH: Final = "/org/freedesktop/machine1"
 ACTIVE: Final = "active"
 JOB_DONE: Final = "done"
 PATH_SEPARATOR: Final = "/"
@@ -74,6 +76,8 @@ class Interface(StrEnum):
     SERVICE = "org.freedesktop.systemd1.Service"
     SLICE = "org.freedesktop.systemd1.Slice"
     JOB = "org.freedesktop.systemd1.Job"
+    MACHINE_MANAGER = "org.freedesktop.machine1.Manager"
+    MACHINE = "org.freedesktop.machine1.Machine"
 
 
 class Member(StrEnum):
@@ -86,6 +90,7 @@ class Member(StrEnum):
     GET_UNIT = "GetUnit"
     GET_JOB = "GetJob"
     GET_ALL = "GetAll"
+    GET_MACHINE = "GetMachine"
     OWNER_CHANGED = "NameOwnerChanged"
     PROPERTIES_CHANGED = "PropertiesChanged"
     UNIT_NEW = "UnitNew"
@@ -132,6 +137,18 @@ class ManagerRead:
     identity: ManagerIdentity
     version: str
     unit_paths: tuple[str, ...]
+    begin_sequence: int
+    sequence: int
+    observed_ns: int
+
+
+@dataclass(frozen=True)
+class MachineRead:
+    """Capture-point registration from a pinned native machined owner on the original bus."""
+
+    owner: str
+    object_path: str
+    properties: Mapping[str, JsonValue]
     begin_sequence: int
     sequence: int
     observed_ns: int
@@ -346,11 +363,17 @@ class ManagerObserver:
         body: list[JsonValue],
         expected: Signature,
         deadline_ns: int,
+        *,
+        machine_owner: str | None = None,
     ) -> Message:
         bus = self._bus
         if bus is None or self._faults:
             raise RuntimeError(CONNECTION_ERROR)
-        destination = Interface.BUS.value if interface is Interface.BUS else SYSTEMD_NAME
+        if machine_owner is not None and (
+            not machine_owner.startswith(":") or interface not in (Interface.MACHINE_MANAGER, Interface.PROPERTIES)
+        ):
+            raise ValueError(BINDING_ERROR)
+        destination = machine_owner or (Interface.BUS.value if interface is Interface.BUS else SYSTEMD_NAME)
         message = Message(
             destination=destination,
             path=path,
@@ -373,7 +396,7 @@ class ManagerObserver:
         if (
             self._identity is not None
             and interface is not Interface.BUS
-            and reply.sender != self.identity.manager_owner
+            and reply.sender != (machine_owner or self.identity.manager_owner)
         ):
             self.invalidate(Invalidation.MANAGER_CHANGED)
             raise ValueError(BINDING_ERROR)
@@ -440,6 +463,46 @@ class ManagerObserver:
         return ManagerRead(
             self.identity, version, tuple(cast(list[str], paths)), begin, self._sequence, time.monotonic_ns()
         )
+
+    async def read_machine(self, name: str, deadline_ns: int) -> MachineRead:
+        """Read one named registration without a new connection, observer, machine action or scan."""
+        if self._identity is None or self._faults or not name:
+            raise RuntimeError(CONNECTION_ERROR)
+        begin = self._sequence
+        owner = _single_text(
+            await self._call(
+                Interface.BUS,
+                BUS_PATH,
+                Member.GET_NAME_OWNER,
+                Signature.STRING,
+                [MACHINE_NAME],
+                Signature.STRING,
+                deadline_ns,
+            )
+        )
+        path = _single_text(
+            await self._call(
+                Interface.MACHINE_MANAGER,
+                MACHINE_PATH,
+                Member.GET_MACHINE,
+                Signature.STRING,
+                [name],
+                Signature.OBJECT,
+                deadline_ns,
+                machine_owner=owner,
+            )
+        )
+        reply = await self._call(
+            Interface.PROPERTIES,
+            path,
+            Member.GET_ALL,
+            Signature.STRING,
+            [Interface.MACHINE.value],
+            Signature.PROPERTIES,
+            deadline_ns,
+            machine_owner=owner,
+        )
+        return MachineRead(owner, path, _properties(reply), begin, self._sequence, time.monotonic_ns())
 
     def reconcile_jobs(self, units: frozenset[str], accepted: tuple[AcceptedJob, ...]) -> JobBoundary:
         """Match every scoped native activation to its original call receipt and ordered terminal signal."""

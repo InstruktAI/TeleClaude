@@ -33,6 +33,7 @@ from tools.ci.enclosure_contract import (
 )
 from tools.ci.enclosure_exchange import HelperExitFailed, HelperStartup, HelperUncertain, run_privileged
 from tools.ci.enclosure_graph import DependencyGraph, inspect_dependency_graph
+from tools.ci.enclosure_guest_binding import GuestBinding
 from tools.ci.enclosure_journal import ActionResult, Outcome
 from tools.ci.enclosure_manager import (
     ACTIVE,
@@ -129,6 +130,8 @@ class BindingPhases:
         self.seal: ActionResult | None = None
         self.seal_boundary: JobBoundary | None = None
         self.completion_failure: BaseException | None = None
+        self.guest_binding: GuestBinding | None = None
+        self.guest_admission: JsonObject | None = None
 
     @property
     def startups(self) -> tuple[HelperStartup, ...]:
@@ -218,6 +221,76 @@ class BindingPhases:
                 self.population.invalidate(Invalidation.DEADLINE_EXPIRED)
                 self._loop.remove_reader(self.population.fileno())
                 self._loop = None
+
+    async def admit_guest(self, deadline: AdmittedDeadline) -> GuestBinding:
+        """Bind the sealed guest's actual original leader/root view before composing its protected manifest."""
+        if self.uncertain is not None:
+            raise self.uncertain
+        if self.helper_failure is not None:
+            raise self.helper_failure
+        if self.completion_failure is not None:
+            raise self.completion_failure
+        if (
+            self.seal is None
+            or self.seal.status is not Outcome.SUCCEEDED
+            or self.seal.evidence.get(Evidence.PHASE) != Phase.ADMISSION_SEALED
+            or self.population is None
+            or self.masked_configuration is None
+            or deadline.outer_end_ns != self.owner.journal.deadline.end_ns
+        ):
+            raise ValueError(ERROR_BINDING)
+        budget = object_value(parse_object(self.package.recipe_bytes)[Field.BUDGET_SECONDS])
+        end_ns = AdmittedDeadline(
+            deadline.outer_end_ns,
+            deadline.vector_end_ns,
+            min(deadline.effective_end(), self.owner.journal.deadline.end_ns - self.owner.journal.deadline.reserve_ns),
+        ).command_end(positive_integer(budget, Field.NORMAL_COMMAND_MAX))
+        admitted = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
+        try:
+            self._helper_frontier(None)
+            self._require_source_closure(masked=True)
+            self.owner.journal.binding.controller.require_alive()
+            await self.manager.check_identity(end_ns)
+            _, guest = await self.manager.read_active_boundary(end_ns)
+            if self.guest_binding is None:
+                rootfs = Path(text(parse_object(self.owner.manifest_bytes), OwnerKey.ROOTFS))
+                registration = await self.manager.read_machine(rootfs.name, end_ns)
+                self.guest_binding = GuestBinding.capture(
+                    registration, guest, rootfs, self.manager.identity.boot_id, admitted
+                )
+            binding = self.guest_binding
+            parent, guest = await self.manager.read_active_boundary(end_ns)
+            await self.manager.check_identity(end_ns)
+            binding.require_original(admitted)
+            mask = read_runtime_mask(Path(text(self.masked_configuration.mask, Field.PATH)), admitted)
+            sample = self.population.sample(end_ns)
+            helpers = self._helper_frontier(None)
+            boundary = self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
+            if time.monotonic_ns() >= end_ns:
+                raise TimeoutError(ERROR_BINDING)
+            self.guest_admission = {
+                "guest_binding": binding.record(),
+                Evidence.PARENT: _unit(parent),
+                Evidence.GUEST: _unit(guest),
+                Evidence.MASK_TOMBSTONE: mask,
+                Evidence.HELPERS: helpers,
+                Evidence.SEQUENCE: boundary.sequence,
+                Evidence.OBSERVED_NS: boundary.observed_ns,
+                Evidence.POPULATION: {
+                    Evidence.RAW: sample.raw.decode(UTF8),
+                    Evidence.POPULATED: sample.populated,
+                    Evidence.READ_STARTED_NS: sample.read_started_ns,
+                    Evidence.READ_FINISHED_NS: sample.read_finished_ns,
+                    Evidence.SEQUENCE: sample.last_notification_sequence,
+                },
+            }
+            if time.monotonic_ns() >= end_ns:
+                raise TimeoutError(ERROR_BINDING)
+            # No await after the final original-stream reconciliation before exposing this binding.
+            return binding
+        except BaseException as error:
+            self.completion_failure = error
+            raise
 
     def _job_scope(self) -> frozenset[str]:
         record = parse_object(self.owner.manifest_bytes)
