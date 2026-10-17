@@ -63,13 +63,20 @@ Scenario: Leave a new repository to the operator's trust decision
 
 #### UC-WWT4
 
-#### UC-WWT5: A renamed worktree remains usable by Antigravity
+#### UC-WWT5: A renamed worktree follows the current trust decision
 
 ```gherkin
-Given an operator renames a todo whose slug worktree is trusted by Antigravity
-When worktree maintenance moves it to the new slug path
-Then an Antigravity session started there reaches its composer without a trust prompt
-And the former path is removed from Antigravity's trusted workspaces
+Scenario: Preserve trust while the main checkout remains trusted
+  Given Antigravity trusts a todo's slug worktree and still trusts its main checkout
+  When the operator renames the todo and worktree maintenance moves it to the new path
+  Then an Antigravity session started there reaches its composer without a trust prompt
+  And the former worktree path is removed from Antigravity's trusted workspaces
+
+Scenario: Do not extend trust after the main checkout is untrusted
+  Given Antigravity trusts the old worktree path but no longer trusts its main checkout
+  When the operator renames the todo and worktree maintenance moves it to the new path
+  Then the new path is not added to Antigravity's trusted workspaces
+  And an Antigravity session started there asks whether to trust the folder
 ```
 
 #### UC-WWT6: Maintenance removes trust whose worktree is gone
