@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Final, cast
 
+from tools.ci import workflow_creation as creation
 from tools.ci import workflow_events as events
 from tools.ci import workflow_foundation as foundation
 from tools.ci.enclosure_contract import (
@@ -60,8 +61,9 @@ from tools.ci.workflow_ledger import (
     Attempt,
     StartLedger,
 )
+from tools.ci.workflow_prepared import CONTROL_NAME as PREPARED_CONTROLS
 from tools.ci.workflow_prepared import text_capability_enabled
-from tools.ci.workflow_publication import TERMINAL_STATES
+from tools.ci.workflow_publication import START_CLAIMED, START_REFUSED, TERMINAL_STATES
 from tools.ci.workflow_ready import FINDING_DOOR, FINDING_WORK, REASON_ONE, REASON_TWO
 from tools.ci.workflow_review import (
     B11_BASE_FEATURE_BYTES,
@@ -81,6 +83,7 @@ from tools.ci.workflow_review import (
     REPLY_TEXT,
     WRONG_PERFORMER_TEXT,
 )
+from tools.ci.workflow_waiting import CONTROL_NAME as WAITING_CONTROLS
 
 ERROR_REPORT: Final = "the new provisional report binding or original ledger evidence is inconsistent"
 LEDGER_ADDRESS: Final = Path("starts.jsonl")
@@ -332,7 +335,237 @@ def _event_flow_links(
     return {"state": "shared_flow_inputs_linked", "matched": linked, "remaining_settlement": "unproven"}
 
 
-def validate_event_inputs(report: JsonObject, sessions: JsonObject, starts: JsonObject) -> JsonObject:
+def _event_early_links(
+    binding: events.EventWindowBinding, records: list[Mapping[str, object]], early: JsonObject
+) -> JsonObject:
+    matched: list[JsonValue] = []
+    for record in records:
+        case = str(record[events.FIELD_CASE])
+        if case not in ("B3", "B4"):
+            continue
+        data = object_value(cast(JsonObject, record)[events.FIELD_DATA])
+        if case == "B3":
+            actors = tuple(text(data, key) for key in ("owner", "first_driver", "child", "dispatched", "second_driver"))
+        else:
+            actors = _strings(data["sessions"])
+            outsiders = object_value(data["outsider_sessions"])
+            if (
+                set(outsiders) != {"S_P", "X"}
+                or len(actors) != 5
+                or set(actors)
+                != {text(data, key) for key in ("author", "child", "worker")} | set(_strings(list(outsiders.values())))
+            ):
+                raise ValueError(ERROR_REPORT)
+        inputs = object_value(early[case])
+        if (
+            len(actors) != len(set(actors))
+            or inputs["project_path"] != binding.project_path
+            or set(actors) != set(_strings(inputs["observed_new_session_ids"]))
+        ):
+            raise ValueError(ERROR_REPORT)
+        matched.append(case)
+    if set(early) != set(matched):
+        raise ValueError(ERROR_REPORT)
+    return {"cases": matched, "state": "early_actor_listing_inputs_matched", "creator_classification": "unproven"}
+
+
+def _early_session_list(value: JsonValue) -> dict[str, Mapping[str, object]]:
+    output = _command_output(value, [creation.TELEC, "sessions", "list", "--all", "--closed"])
+    values = creation.decode_array(output)
+    if values is None:
+        raise ValueError(ERROR_REPORT)
+    rows: dict[str, Mapping[str, object]] = {}
+    for entry in values:
+        if not isinstance(entry, Mapping):
+            raise ValueError(ERROR_REPORT)
+        session = entry.get("session_id")
+        if not isinstance(session, str) or not session or session in rows:
+            raise ValueError(ERROR_REPORT)
+        rows[session] = entry
+    return rows
+
+
+def _early_closures(value: JsonValue, expected: set[str]) -> list[JsonValue]:
+    if not isinstance(value, list) or len(value) != len(expected):
+        raise ValueError(ERROR_REPORT)
+    seen: set[str] = set()
+    operations: list[JsonValue] = []
+    for entry in value:
+        row = object_value(entry)
+        session = text(row, "session_id")
+        reads = row["reads"]
+        if (
+            set(row) != {"session_id", "command", "terminal", "reads", "error"}
+            or session not in expected
+            or session in seen
+            or row["error"] is not None
+            or not isinstance(reads, list)
+            or len(reads) != 1
+        ):
+            raise ValueError(ERROR_REPORT)
+        receipt = _public_session_command(row["command"], [creation.TELEC, "sessions", "end", session])
+        terminal = object_value(row["terminal"])
+        operation = receipt.get("operation_id")
+        closed = _public_session_command(reads[0], [creation.TELEC, "sessions", "show", session, "--full"])
+        if (
+            not isinstance(operation, str)
+            or not operation
+            or terminal.get("operation_id") != operation
+            or terminal.get("state") != "completed"
+            or terminal.get("error") not in (None, "")
+            or not _public_closed(closed, session)
+        ):
+            raise ValueError(ERROR_REPORT)
+        operations.append({"session_id": session, "operation_id": operation})
+        seen.add(session)
+    return operations
+
+
+def _early_launches(value: JsonValue, root: str, case: str) -> list[JsonValue]:
+    control, size = (WAITING_CONTROLS, 7) if case == "B3" else (PREPARED_CONTROLS, 5)
+    if not isinstance(value, list) or len(value) != size:
+        raise ValueError(ERROR_REPORT)
+    result: list[JsonValue] = []
+    for index, entry in enumerate(value):
+        row = object_value(entry)
+        path = f"{root}/{control}/d{index}"
+        if (
+            set(row) != {"control", "shown_exists", "launches_data", "shown_data", "read_error"}
+            or row["control"] != path
+            or type(row["shown_exists"]) is not bool
+            or row["read_error"] is not None
+        ):
+            raise ValueError(ERROR_REPORT)
+        if row["shown_exists"] is False:
+            if row["launches_data"] is not None or row["shown_data"] is not None:
+                raise ValueError(ERROR_REPORT)
+            result.append({"control": path, "state": "launch_not_observed"})
+            continue
+        try:
+            data = base64.b64decode(text(row, "launches_data"), validate=True)
+            shown_data = base64.b64decode(text(row, "shown_data"), validate=True)
+        except (ValueError, binascii.Error) as error:
+            raise ValueError(ERROR_REPORT) from error
+        shown = parse_object(shown_data)
+        records = [parse_object(line) for line in data.splitlines() if line.strip()]
+        if not records:
+            raise ValueError(ERROR_REPORT)
+        native, pid = text(shown, "native_session_id"), positive_integer(shown, "pid")
+        launches: list[JsonValue] = []
+        found = False
+        for record in records:
+            record_native = text(record, "native_session_id")
+            record_pid = positive_integer(record, "pid")
+            launches.append({"native_session_id": record_native, "pid": record_pid, "cwd": text(record, "cwd")})
+            if record_native == native and record_pid == pid:
+                found = True
+        if not found:
+            raise ValueError(ERROR_REPORT)
+        result.append(
+            {
+                "control": path,
+                "state": "recorded_launch_inputs",
+                "launches_sha256": hashlib.sha256(data).hexdigest(),
+                "shown_sha256": hashlib.sha256(shown_data).hexdigest(),
+                "launches": launches,
+            }
+        )
+    return result
+
+
+def validate_early_inputs(report: JsonObject) -> JsonObject:
+    """Reparse original B3/B4 accounting inputs; listings/legacy labels/PIDs establish no physical closure or P2."""
+    provisional = object_value(report["payload_provisional"])
+    binding, observations = object_value(provisional["binding"]), object_value(provisional["observations"])
+    selection = frozenset(_strings(binding[GuestKey.SELECTED_SCENARIOS]))
+    expected = tuple(case for case in ("B3", "B4") if not selection or f"UC-WF-{case}" in selection)
+    values = object_value(observations["early_workflow"])
+    if set(values) != set(expected):
+        raise ValueError(ERROR_REPORT)
+    created = positive_integer(binding, "created_ns")
+    public_finished = positive_integer(object_value(observations["inner_cleanup"]), "public_cleanup_finished_ns")
+    root = text(observations, "owned_profile_root")
+    result: JsonObject = {}
+    for case in expected:
+        row = object_value(values[case])
+        if (
+            set(row)
+            != {
+                "schema_version",
+                "case",
+                "project_path",
+                "started_ns",
+                "finished_ns",
+                "baseline",
+                "settlement",
+                "cleanup_problems",
+                "journey_error",
+                "cleanup_error",
+                "seal_error",
+            }
+            or type(row["schema_version"]) is not int
+            or row["schema_version"] != 1
+            or row["case"] != case
+            or row["cleanup_problems"] != []
+            or any(row[key] is not None for key in ("journey_error", "cleanup_error", "seal_error"))
+            or not created
+            <= positive_integer(row, "started_ns")
+            <= positive_integer(row, "finished_ns")
+            <= public_finished
+        ):
+            raise ValueError(ERROR_REPORT)
+        project = text(row, "project_path")
+        if not project.startswith(root.rstrip("/") + "/"):
+            raise ValueError(ERROR_REPORT)
+        baseline = row["baseline"]
+        settlement = object_value(row["settlement"])
+        if (
+            not isinstance(baseline, list)
+            or len(baseline) != 1
+            or set(settlement)
+            != {"baseline_ids", "starts", "lists", "closures", "launches", "read_error", "problems", "legacy_proven"}
+            or settlement["read_error"] is not None
+            or settlement["problems"] != []
+            or type(settlement["legacy_proven"]) is not bool
+        ):
+            raise ValueError(ERROR_REPORT)
+        baseline_ids = set(_early_session_list(baseline[0]))
+        if _identity_list(settlement["baseline_ids"]) != tuple(sorted(baseline_ids)):
+            raise ValueError(ERROR_REPORT)
+        lists = settlement["lists"]
+        if not isinstance(lists, list) or len(lists) != 2:
+            raise ValueError(ERROR_REPORT)
+        before, after = _early_session_list(lists[0]), _early_session_list(lists[1])
+        open_ids = {
+            session
+            for session, record in before.items()
+            if session not in baseline_ids and record.get("closed_at") is None
+        }
+        closures = _early_closures(settlement["closures"], open_ids)
+        if any(record.get("closed_at") is None for session, record in after.items() if session not in baseline_ids):
+            raise ValueError(ERROR_REPORT)
+        starts = object_value(settlement["starts"])
+        if any(not key or value not in (START_CLAIMED, START_REFUSED) for key, value in starts.items()):
+            raise ValueError(ERROR_REPORT)
+        observed = (set(before) | set(after)) - baseline_ids
+        result[case] = {
+            "state": "captured_accounting_inputs_checked",
+            "project_path": project,
+            "observed_new_session_ids": list[JsonValue](sorted(observed)),
+            "missing_after_session_ids": list[JsonValue](sorted(set(before) - set(after) - baseline_ids)),
+            "public_end_inputs": closures,
+            "recorded_start_states": starts,
+            "launch_inputs": _early_launches(settlement["launches"], root, case),
+            "semantic_settlement": "unproven",
+            "creator_classification": "unproven",
+            "physical_P4": "unproven",
+        }
+    return result
+
+
+def validate_event_inputs(
+    report: JsonObject, sessions: JsonObject, starts: JsonObject, early: JsonObject
+) -> JsonObject:
     """Check original prefix bytes and, only with B6 coverage, rerun the existing positive event/log oracle."""
     selection = frozenset(_strings(report["selection"]))
     expected = tuple(case for case in events.CASE_SEQUENCE if not selection or f"UC-WF-{case}" in selection)
@@ -358,6 +591,8 @@ def validate_event_inputs(report: JsonObject, sessions: JsonObject, starts: Json
             "cases": {},
             "input_capture": capture,
         }:
+            raise ValueError(ERROR_REPORT)
+        if early:
             raise ValueError(ERROR_REPORT)
         return {"state": "not_selected", "full_event_assertions": "not_covered"}
     if case_bytes is None or window_bytes is None or witness_bytes is None:
@@ -386,6 +621,7 @@ def validate_event_inputs(report: JsonObject, sessions: JsonObject, starts: Json
         raise ValueError(ERROR_REPORT)
     records = _event_records(witness_bytes, object_value(case_report["cases"]), expected, sha)
     links = _event_flow_links(binding, records, sessions, starts)
+    early_links = _event_early_links(binding, records, early)
     if expected == events.CASE_SEQUENCE:
         terminal = object_value(cast(JsonObject, records[-1])[events.FIELD_DATA])
         pages = terminal["pages"]
@@ -413,6 +649,7 @@ def validate_event_inputs(report: JsonObject, sessions: JsonObject, starts: Json
         "witness_sha256": hashlib.sha256(witness_bytes).hexdigest(),
         "full_event_assertions": "proven" if expected == events.CASE_SEQUENCE else "not_covered",
         "shared_flow_links": links,
+        "early_flow_links": early_links,
     }
 
 

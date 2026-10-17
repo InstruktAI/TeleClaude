@@ -59,6 +59,7 @@ from tools.ci.enclosure_inner import (
 )
 from tools.ci.enclosure_journal import Outcome as EnclosureOutcome
 from tools.ci.enclosure_report import (
+    validate_early_inputs,
     validate_event_inputs,
     validate_flow_session_closure,
     validate_flow_start_inputs,
@@ -6338,6 +6339,7 @@ def validate_provisional_payload_inputs(report_bytes: bytes, manifest: bytes, pa
     _validate_provisional_cleanup_commands(report)
     sessions = validate_flow_session_closure(report)
     starts = validate_flow_start_inputs(report)
+    early = validate_early_inputs(report)
     return {
         "binding_and_ledger_structure": structure,
         "functional_coverage": list(covered),
@@ -6345,7 +6347,8 @@ def validate_provisional_payload_inputs(report_bytes: bytes, manifest: bytes, pa
         "inner_cleanup": cleanup,
         "shared_flow_sessions": sessions,
         "shared_flow_starts": starts,
-        "public_event_inputs": validate_event_inputs(report, sessions, starts),
+        "early_workflow_inputs": early,
+        "public_event_inputs": validate_event_inputs(report, sessions, starts, early),
     }
 
 
