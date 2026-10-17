@@ -8,15 +8,14 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol, assert_never
 from uuid import uuid4
 
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import AgentHookEvents, SessionStatusContext, TeleClaudeEvents
+from teleclaude.core.events import AgentHookEvents
+from teleclaude.core.runtime_events import publish_session_status
 from teleclaude.core.session_status import (
     TERMINAL_LIFECYCLE_STATUSES,
     AgentStatusReason,
     AgentStatusValue,
 )
 from teleclaude.core.status_contract import serialize_status_event
-from teleclaude.events.envelope import EventVisibility
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -102,6 +101,7 @@ class AgentStatusStore(Protocol):
         session_id: str,
         *,
         expected_version: int,
+        expected_runtime_run_id: str | None,
         cause: AgentStatusCause,
         status: AgentStatusValue,
         reason: AgentStatusReason | None,
@@ -249,6 +249,7 @@ async def transition_agent_status(
     cause: AgentStatusCause,
     *,
     at: datetime,
+    expected_runtime_run_id: str | None = None,
 ) -> AgentStatusTransition | None:
     """Apply one normalized activity, run-start, or delivery-observed block through its owner."""
     if isinstance(cause, AgentRunStart) and cause.run_id is None:
@@ -284,6 +285,8 @@ async def transition_agent_status(
         session = await store.get_session(session_id)
         if session is None:
             raise AgentStatusIntegrityError(session_id, attempted_transition, 0)
+        if expected_runtime_run_id is not None and session.runtime_run_id != expected_runtime_run_id:
+            return None
         if session.closed_at is not None or session.lifecycle_status in TERMINAL_LIFECYCLE_STATUSES:
             return None
         if not initial_generation_loaded:
@@ -323,6 +326,7 @@ async def transition_agent_status(
         result = await store.commit_agent_status(
             session_id,
             expected_version=session.agent_status_version,
+            expected_runtime_run_id=expected_runtime_run_id,
             cause=cause,
             status=status,
             reason=reason,
@@ -337,14 +341,14 @@ async def transition_agent_status(
         if result is AgentStatusCommit.SESSION_TERMINAL:
             return None
         if session.agent_status is not status or session.agent_status_reason is not reason:
-            _publish_status(session_id, status, reason, at, runtime_activity_at)
+            await _publish_status(session_id, status, reason, at, runtime_activity_at)
             return AgentStatusTransition(previous=session.agent_status, entered=status)
         return None
 
     raise AgentStatusContentionError(session_id, attempted_transition)
 
 
-def _publish_status(
+async def _publish_status(
     session_id: str,
     status: AgentStatusValue,
     reason: AgentStatusReason | None,
@@ -364,16 +368,12 @@ def _publish_status(
     )
     if canonical is None:
         return
-    event_bus.emit(
-        TeleClaudeEvents.SESSION_STATUS,
-        SessionStatusContext(
-            session_id=session_id,
-            status=status.value,
-            reason=status_reason,
-            timestamp=timestamp,
-            last_activity_at=last_activity,
-            message_intent=canonical.message_intent,
-            delivery_scope=canonical.delivery_scope,
-        ),
-        visibility=EventVisibility.CLUSTER,
+    await publish_session_status(
+        session_id,
+        status.value,
+        status_reason,
+        timestamp,
+        last_activity_at=last_activity,
+        message_intent=canonical.message_intent,
+        delivery_scope=canonical.delivery_scope,
     )

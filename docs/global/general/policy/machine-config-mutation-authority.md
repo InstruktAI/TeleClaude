@@ -11,7 +11,8 @@ None.
 
 ## Rules
 
-- TeleClaude machine configuration is agent-operated. Agents inspect and mutate it through the `telec config` surface; they never read, edit, replace, or repair the backing file with shell editors, ad hoc scripts, or direct filesystem APIs.
+- TeleClaude machine configuration is agent-operated. Ordinary inspection and mutation use the `telec config` surface and its daemon-owned configuration operations. Direct agent file repair is the recovery exception below.
+
 - A missing `telec config` capability is a tooling gap, not permission to bypass the surface. The agent records or routes that gap and leaves the file untouched.
 - Runtime components outside the config context submit semantic configuration operations. They never receive write authority over the backing file or supply a previously read full-document replacement.
 - The config context holds the complete mutation transaction: acquire the file lock, read the latest committed document, parse it, apply the requested operation, validate the complete candidate, serialize it, and atomically replace the file before releasing the lock.
@@ -32,10 +33,12 @@ None.
 
 ## Enforcement
 
-- Reviewers reject direct machine-config file access by an agent or a runtime component outside the config context.
+- Reviewers distinguish an agent's direct recovery edit while the daemon is unavailable from ordinary client or runtime mutation, which remains with the config context.
+
 - Reviewers reject mutation APIs that accept a caller-owned full-document replacement or validate only after persistence.
-- Agent-facing procedures and command guidance route configuration work through `telec config` and never recommend direct file editing as recovery.
+
+- Agent-facing procedures route ordinary configuration work through `telec config` and describe direct agent file repair under the recovery exception.
 
 ## Exceptions
 
-- None.
+- When the daemon is unavailable, an agent acting within its existing authorization may inspect and edit the configuration files directly to recover it. The existing role band, configuration-subject standing, and repository file scope continue to apply to that recovery action. This is an agent-operated recovery action, not a fallback implemented in UI or CLI clients. It needs no additional recovery service or command.

@@ -206,6 +206,7 @@ class CommitEntry:
     transaction: FileTransaction
     committed_text: str
     candidate_text: str
+    creation_mode: int | None = None
 
 
 class PartialCommitFailure(RuntimeError):
@@ -236,7 +237,7 @@ def commit_documents(entries: Sequence[CommitEntry]) -> None:
     replaced: list[CommitEntry] = []
     try:
         for entry in entries:
-            entry.transaction.replace_text(entry.candidate_text)
+            entry.transaction.replace_text(entry.candidate_text, creation_mode=entry.creation_mode)
             replaced.append(entry)
     except BaseException as original:
         failed_paths: list[Path] = []

@@ -53,21 +53,13 @@ And it states when it happened
 
 #### UC-NM2: A message carries facts and no agent framing
 
-```gherkin
-Given a person is told about a platform event
-When the person reads the message on their channel
-Then it is readable markdown
-And it carries no bracketed envelope header
-And it tells the reader no action to take
-```
-
-#### UC-NM3: A new event type reads as well as a known one
+#### UC-NM3: A person can read alerts for newly introduced event types
 
 ```gherkin
-Given an event type introduced after the messages were built
-And nothing about composing or delivering messages has changed since
-When a person is told about an event of that type
-Then the message states what happened, the thing, the computer and the time as it does for every other type
+Scenario: Read a message for a newly introduced event type
+  Given the platform has introduced an event type since message composition was built
+  When a person reads a message about an event of that type
+  Then the message states in plain words what happened, to what, where and when
 ```
 
 #### UC-NM4: A message reaches the person on their own channel
@@ -79,11 +71,12 @@ Then the message arrives on that channel
 And it reaches no one else
 ```
 
-#### UC-NM5: An event relayed from an external system reads as well
+#### UC-NM5: A person can understand alerts for undeclared external event types
 
 ```gherkin
-Given an event relayed from an external system, whose type has no declaration in the event catalog
-When a person is told about it
-Then the message states in plain words what happened, read from the event's type name
-And it names the inbound source that received it, the computer it happened on and when it happened
+Scenario: Read a message for an undeclared relayed event
+  Given an external system has relayed an event whose type has no event-catalog declaration
+  When a person reads the event message
+  Then it states in plain words what happened, read from the event's type name
+  And it names the inbound source, the computer where it happened and when it happened
 ```

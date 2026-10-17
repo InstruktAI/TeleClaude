@@ -187,6 +187,8 @@ def validate_tier_candidate(
     kind: ConfigKind,
     candidate: Mapping[str, object],
     environment_updates: Mapping[str, str] | None = None,
+    *,
+    environment_override: Mapping[str, str] | None = None,
 ) -> TierDocument:  # guard: loose-dict - pydantic input from arbitrary YAML
     """Validate a tier document a writer is about to persist at ``path``, exactly as loading it will.
 
@@ -197,7 +199,9 @@ def validate_tier_candidate(
     document = {**candidate, _KIND_FIELD: kind.value}
     require_inbound_secret_references(path, document)
     environment: dict[str, str] = {}
-    if find_environment_references(document):
+    if environment_override is not None:
+        environment.update(environment_override)
+    elif find_environment_references(document):
         environment = read_environment_file(
             path.with_name(ConfigFileName.ENV), owner_only=kind in (ConfigKind.COMPANY, ConfigKind.PERSON)
         )

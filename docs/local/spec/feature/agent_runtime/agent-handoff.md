@@ -12,107 +12,52 @@ Handoff is neither restart nor revival. It never creates, reopens, adopts, or re
 
 The swap changes only runtime ownership, the current native binding, runtime-start evidence, and the transcript chain. Session lifecycle, host-pane identity, adapter channels, lineage, relationships, reminders, listeners, direct links, and workflow ownership remain unchanged.
 
+The predecessor transcript remains part of the session's continuity, and the successor receives one platform-classified continuation that identifies the predecessor and directs it to re-derive current state. This continuation is not human input and does not alter the session's last visible human input. Accepted input stays durable and ordered across the swap; terminal delivery waits until the successor and continuation are ready. Runtime ownership changes are serialized per session, and a failed swap leaves the session inspectable with its last truthful runtime binding.
+
+The initial request receipt names the selected successor; the durable operation record later reports whether the handoff completed or failed.
+
 ## Canonical fields
 
 ### Use cases
 
-#### UC-AH1: An open runnable session swaps agent CLIs in place
+#### UC-AH1: A person continues a session with a different supported agent
 
 ```gherkin
-Given an open TeleClaude session has a running agent on a managed execution surface
-When an authorized caller requests handoff
-Then the platform selects and fully prepares a fresh successor launch before terminating the predecessor
-And the predecessor agent process exits before the successor is launched
-And the successor is launched on the same managed execution surface
-And the TeleClaude session id, lifecycle status, closed marker, host-pane identity, and adapter channels do not change
+Given a person wants to continue an open TeleClaude session with a different supported agent
+When the handoff succeeds
+Then the same TeleClaude session continues with that agent
 ```
 
 #### UC-AH2: Session runnability remains outside handoff
 
-```gherkin
-Given an addressed session is closed or its ordinary runtime owner cannot supply a runnable managed execution surface
-When a caller attempts handoff
-Then the ordinary session-operation boundary refuses or defers the request before successor selection mutates the session
-And handoff does not create, reopen, revive, adopt, repair, or reclassify the session or host pane
-And no headless or initializing lifecycle transition is authored by handoff
-```
-
 #### UC-AH3: Selection reuses fresh-agent dispatch
-
-```gherkin
-Given a runnable session records a procedure and the caller omits a successor
-When handoff resolves the successor
-Then it uses the existing fresh-agent dispatch policy for that recorded procedure's declaration
-And a caller-supplied agent is treated through the existing explicit-preference rules
-And a refusal reaches the caller before the predecessor is terminated
-```
 
 #### UC-AH4: The native binding rotates without stale projection
 
-```gherkin
-Given the predecessor has a native session id and transcript path
-When its stop barrier succeeds
-Then the predecessor transcript is appended exactly once to the session transcript chain
-And the session records the selected successor as active
-And the predecessor native session id and current transcript path are cleared before successor launch
-And normal successor hooks install the new native session id and transcript path on the same TeleClaude session
-And projection never treats the predecessor transcript as the successor's current transcript
-```
-
 #### UC-AH5: The successor receives one classified continuation
-
-```gherkin
-Given the successor launch is ready to accept its first input
-When handoff continues the session
-Then it receives exactly one platform-authored handoff envelope through the canonical startup-message delivery path
-And the envelope carries the session's loader, rebuilt from the resolved invocation persisted at creation, when a recorded procedure exists
-And it names the predecessor agent, TeleClaude session id, predecessor transcript when present, and the need to inspect the working tree and re-derive state
-And it is classified as platform control rather than human input
-And it does not replace the session's last visible human input or reflect onto human conversation surfaces
-```
 
 #### UC-AH6: Accepted input waits behind the swap boundary
 
-```gherkin
-Given inbound session text is accepted while handoff owns the session runtime boundary
-When delivery reaches that session
-Then terminal delivery waits until the successor launch and continuation handoff have settled
-And accepted rows remain durable and ordered under the unchanged TeleClaude session id
-And no accepted input is pasted into the returned shell between predecessor exit and successor readiness
-```
-
 #### UC-AH7: Concurrent runtime mutations do not overlap
-
-```gherkin
-Given restart, handoff, or runtime restoration already owns one session's runtime boundary
-When another runtime mutation targets that session
-Then the operations do not overlap their terminal writes or process ownership mutations
-And one session never launches two successor agents from one predecessor state
-```
 
 #### UC-AH8: Completion and failure report actual progress
 
 ```gherkin
-Given successor selection succeeds
-When the handoff is accepted
-Then the caller receives a durable receipt naming the selected successor, the operation to read, and the success and failure events it will emit
-And the swap runs as that operation's work, so its terminal row and its outcome event are written together
-And completion is emitted only after the successor launch and continuation delivery succeed
-And a failure after predecessor termination emits the failure event rather than the success event, and never restores metadata that falsely claims the stopped predecessor is running
-And the caller recorded on the row is woken with the outcome and where to read it
-And the session remains inspectable with the last truthful runtime binding
+Scenario: The accepted request names its successor and operation
+  Given a person requests handoff of an open session
+  When the request is accepted
+  Then the initial receipt identifies the selected successor and the durable operation to inspect
+
+Scenario: The person can inspect the operation outcome
+  Given a person has a handoff operation
+  When it completes or fails
+  Then the operation record shows whether the handoff completed successfully
+  And on failure, the session record retains its last truthful runtime binding
 ```
 
 #### UC-AH9: Remote handoff negotiates capability before dispatch
 
 #### UC-AH10: Session-scoped relationships survive unchanged
-
-```gherkin
-Given a session participates in reminders, listeners, direct links, parent or child relationships, lineage, or workflow ownership
-When its running agent CLI is handed off
-Then every durable record remains addressed to the same TeleClaude session id
-And handoff reads or changes no todo, slug-holder, hold, relationship, lineage, reminder, listener, link, or adapter record
-```
 
 ### Cross-context references
 

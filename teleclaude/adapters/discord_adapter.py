@@ -36,22 +36,18 @@ from teleclaude.adapters.ui.threaded_output import OverflowContext
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config.declaration_changes import subscribe_declaration_changes, unsubscribe_declaration_changes
 from teleclaude.config.machine import config
-from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL, CacheEvent
 from teleclaude.core.command_dispatch import dispatch_command
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
-from teleclaude.core.event_bus import EventHandler, event_bus
 from teleclaude.core.events import (
-    AgentEventContext,
-    ProjectsChangedContext,
-    SessionStatusContext,
     SystemCommand,
     SystemCommandContext,
-    TeleClaudeEvents,
-    VoiceFocusSetContext,
 )
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import DiscordAdapterMetadata, DiscordMetadataField, MessageMetadata
+from teleclaude.events.schemas.system import RuntimeSessionStatusData
 from teleclaude.types.commands import SetVoiceFocusCommand
 from teleclaude.utils.markdown import (
     GFM_MARKDOWN_INITIAL_STATE,
@@ -69,6 +65,7 @@ if TYPE_CHECKING:
     from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
 
 logger = get_logger(__name__)
+_EMPTY_EVENT_NAME = ""
 
 DISCORD_TYPING_INTERVAL_S = 5.0
 _DESK_RECONCILE_TASK_NAME = "discord-desk-reconcile"
@@ -171,13 +168,10 @@ class DiscordAdapter(
         self._ready_event = asyncio.Event()
         self._client: DiscordClientLike | None = None
         self._voice_room: VoiceRoom | None = None
-        self._voice_focus_handler: EventHandler | None = None
-        self._voice_agent_event_handler: EventHandler | None = None
-        self._voice_system_command_handler: EventHandler | None = None
-        self._voice_session_status_handler: EventHandler | None = None
-        self._projects_changed_handler: EventHandler | None = None
+        self._projects_changed_handler: Callable[[str, object], None] | None = None
         self._project_reconcile_lock = asyncio.Lock()
         self._project_reconcile_pending = False
+        self._project_reconcile_task: asyncio.Task[object] | None = None
         self._desk_reconcile_lock = asyncio.Lock()
         self._desk_reconcile_pending = False
         self._desk_reconcile_task: asyncio.Task[object] | None = None
@@ -223,13 +217,11 @@ class DiscordAdapter(
 
         self._client = self._discord.Client(intents=intents)  # pyright: ignore[reportIncompatibleVariableOverride]
         self._voice_room = VoiceRoom(self.client, self._client)
-        self._voice_focus_handler = event_bus.subscribe("voice_focus_set", self._handle_voice_focus_set)
-        self._voice_agent_event_handler = event_bus.subscribe("agent_event", self._handle_voice_agent_event)
-        self._voice_system_command_handler = event_bus.subscribe("system_command", self._handle_voice_system_command)
-        self._voice_session_status_handler = event_bus.subscribe("session_status", self._handle_voice_session_status)
-        self._projects_changed_handler = event_bus.subscribe(
-            TeleClaudeEvents.PROJECTS_CHANGED, self._handle_projects_changed
-        )
+        get_command_service().set_voice_focus_handler(self._handle_voice_focus_changed)
+        if self.client.cache is not None:
+            self._projects_changed_handler = self._on_projects_snapshot
+            self.client.cache.subscribe(self._projects_changed_handler)
+            self._request_project_reconcile()
         subscribe_declaration_changes(self._request_desk_reconcile)
         self._register_cancel_slash_command()
         self._register_gateway_handlers()
@@ -259,21 +251,16 @@ class DiscordAdapter(
         self._tree = None
         self._registered_launcher_message_ids.clear()
         self._registered_listen_message_ids.clear()
-        if self._voice_focus_handler is not None:
-            event_bus.unsubscribe("voice_focus_set", self._voice_focus_handler)
-            self._voice_focus_handler = None
-        if self._voice_agent_event_handler is not None:
-            event_bus.unsubscribe("agent_event", self._voice_agent_event_handler)
-            self._voice_agent_event_handler = None
-        if self._voice_system_command_handler is not None:
-            event_bus.unsubscribe("system_command", self._voice_system_command_handler)
-            self._voice_system_command_handler = None
-        if self._voice_session_status_handler is not None:
-            event_bus.unsubscribe("session_status", self._voice_session_status_handler)
-            self._voice_session_status_handler = None
+        get_command_service().set_voice_focus_handler(None)
         if self._projects_changed_handler is not None:
-            event_bus.unsubscribe(TeleClaudeEvents.PROJECTS_CHANGED, self._projects_changed_handler)
+            if self.client.cache is not None:
+                self.client.cache.unsubscribe(self._projects_changed_handler)
             self._projects_changed_handler = None
+        if self._project_reconcile_task is not None and not self._project_reconcile_task.done():
+            self._project_reconcile_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._project_reconcile_task
+        self._project_reconcile_task = None
         if self._voice_room is not None:
             await self._voice_room.close()
             self._voice_room = None
@@ -287,13 +274,9 @@ class DiscordAdapter(
             with contextlib.suppress(asyncio.CancelledError):
                 await self._gateway_task
 
-    async def _handle_voice_focus_set(self, _event: str, context: VoiceFocusSetContext) -> None:
+    async def _handle_voice_focus_changed(self, session_id: str) -> None:
         if self._voice_room is not None:
-            await self._voice_room.focus_changed(context.session_id)
-
-    async def _handle_voice_agent_event(self, _event: str, context: AgentEventContext) -> None:
-        if context.event_type.value == "agent_stop" and self._voice_room is not None:
-            await self._voice_room.play_current(context.session_id)
+            await self._voice_room.focus_changed(session_id)
 
     async def _handle_voice_system_command(self, _event: str, context: SystemCommandContext) -> None:
         payload = context.payload
@@ -304,18 +287,51 @@ class DiscordAdapter(
         ):
             await self._voice_room.handle_observed_stop(payload.session_id)
 
-    async def _handle_voice_session_status(self, _event: str, context: SessionStatusContext) -> None:
+    async def handle_system_command(self, context: SystemCommandContext) -> None:
+        """Complete a voice-owned system command delivered by the runtime client."""
+        await self._handle_voice_system_command(_EMPTY_EVENT_NAME, context)
+
+    async def handle_runtime_session_status(self, context: RuntimeSessionStatusData) -> None:
         if self._voice_room is not None and context.status == "accepted" and context.reason == "user_prompt_accepted":
             await self._voice_room.input_accepted(context.session_id, context.timestamp)
 
-    async def _handle_projects_changed(self, _event: str, context: ProjectsChangedContext) -> None:
-        """Serialize live forum reconciliation, coalescing changes during a pass."""
-        _ = context
+    def _on_projects_snapshot(self, event: str, data: object) -> None:
+        """Route local project-cache changes to Discord's adapter-owned reconciler."""
+        if (
+            event != CacheEvent.PROJECTS_SNAPSHOT.value
+            or not isinstance(data, dict)
+            or data.get("computer") != config.computer.name
+        ):
+            return
         self._project_reconcile_pending = True
         self._request_desk_reconcile()
-        if not self._infrastructure_provisioned:
-            return
+        if self._infrastructure_provisioned and (
+            self._project_reconcile_task is None or self._project_reconcile_task.done()
+        ):
+            self._project_reconcile_task = self.task_registry.spawn(
+                self._drain_project_reconcile(), name="discord-project-reconcile"
+            )
 
+    def _request_project_reconcile(self) -> None:
+        """Queue a local project pass, retaining startup catch-up until Discord is ready."""
+        self._project_reconcile_pending = True
+        self._request_desk_reconcile()
+        if self._infrastructure_provisioned and (
+            self._project_reconcile_task is None or self._project_reconcile_task.done()
+        ):
+            self._project_reconcile_task = self.task_registry.spawn(
+                self._drain_project_reconcile(), name="discord-project-reconcile"
+            )
+
+    async def _handle_projects_changed(self, _event: str, context: object) -> None:
+        """Await the adapter-owned project pass during gateway startup catch-up."""
+        self._request_project_reconcile()
+        task = self._project_reconcile_task
+        if task is not None:
+            await task
+
+    async def _drain_project_reconcile(self) -> None:
+        """Serialize local project reconciliation and coalesce snapshot changes."""
         async with self._project_reconcile_lock:
             while self._project_reconcile_pending:
                 self._project_reconcile_pending = False

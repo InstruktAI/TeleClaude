@@ -26,7 +26,9 @@ Company automation started by an event runs under the platform's
 system-principal contract, with the company mapped from the configured event
 source; no human origin is fabricated for an event. A person with exactly one
 eligible company needs no selection for a tool to resolve that company, but the
-session carries no profile for it.
+session carries no profile for it. A human-lineage session's startup context
+lists the person's company memberships; this informs the agent but does not
+select a company for the session.
 
 Resolution happens once. A requested company resolves on the computer where
 the session would run
@@ -38,10 +40,13 @@ rather than re-deriving it.
 The company is recorded on the session record and nowhere else. A tool running
 inside the session reads the context through the session it belongs to: its
 session id names the record, and the context is resolved from that record when
-the tool asks. The per-session identity document carries no company fact.
+the tool asks. The per-session identity document carries no company fact. When
+required context is unresolved, the published answer distinguishes that state
+from a resolved company and exposes no company value.
 
-Company context is business scope alone. It grants no site-administration
-standing and confers no credential privilege.
+Company context is business scope alone. It changes neither caller identity nor
+role, grants no site-administration standing, and confers no credential
+privilege.
 
 ## Canonical fields
 
@@ -58,35 +63,33 @@ standing and confers no credential privilege.
 
 ### Use cases
 
-#### UC-CSC2: A company is selected explicitly on creation and dispatch
+#### UC-CSC2: A person chooses the company for work
 
 ```gherkin
-Given a person is a member of several companies
-When a session is created or work is dispatched with an explicit company selection
-Then the session operates under the selected company
-And the selection supplies business context only
-And it supplies no caller identity, role, or credential
+Scenario: Use an explicitly selected company
+  Given a person is a member of several companies
+  When they create a session or dispatch work with an explicit company selection
+  Then the work operates under the selected company
+  And the selection supplies business context only
+
+Scenario: Clarify an ambiguous company selection
+  Given work requires company context and the person is a member of several companies
+  And no company has been selected or established
+  When the work is invoked
+  Then the caller receives a correction naming eligible companies and how to select one
+  And no company is guessed
+
+Scenario: Refuse an ineligible company selection
+  Given a person is not a member of the selected company
+  When they create a session or dispatch work with that company
+  Then the request is refused as ineligible
+  And the refusal says the company is not among the person's eligible companies
+  And no session operates under that company
 ```
 
 #### UC-CSC4: An established company is carried forward
 
-```gherkin
-Given a session operates under an established company
-When it dispatches a delegated session or subsequent work
-Then that work operates under the same company
-And the caller repeats no company selection to preserve it
-```
-
 #### UC-CSC5: Ambiguity returns an actionable correction
-
-```gherkin
-Given work requires a company context
-And the requester is a member of several companies
-And no company has been selected or established
-When the work is invoked
-Then the invocation returns a correction naming the eligible companies and how to select one
-And no company is guessed
-```
 
 #### UC-CSC6: Generic sessions need no company
 
@@ -100,84 +103,19 @@ And no company membership was required for it to exist
 
 #### UC-CSC7: A requested company outside the requester's membership is refused
 
-```gherkin
-Given a person is not a member of a company
-When a session is created or work is dispatched selecting that company
-Then the request is refused
-And the refusal names that the company is not among the requester's eligible companies
-And no session operates under it
-```
-
 #### UC-CSC8: An event-started session carries the source's company under a system principal
-
-```gherkin
-Given an event arrives from a configured source associated with a company
-When a session is started to answer it
-Then the session operates under that company
-And it runs under the platform's system principal
-And no human principal is presented as its origin
-```
 
 #### UC-CSC9: A tool subprocess reads the resolved context
 
-```gherkin
-Given a session with a resolved company context
-When a tool running as a subprocess inside that session reads the session's published context
-Then it reads the resolved company
-And it reads the origin, distinguishing human-directed work and its human principal from system-principal company work
-And it reads a context that is already validated against the requester's membership
-```
-
 #### UC-CSC10: An unresolved context is distinguishable from a resolved one
-
-```gherkin
-Given a session whose company context is absent or ambiguous
-When a tool running as a subprocess inside that session reads the session's published context
-Then it observes the unresolved state
-And it can tell that state apart from a resolved company
-And it does not observe a company value
-```
 
 #### UC-CSC11: A human-lineage session starts knowing its memberships
 
-```gherkin
-Given a person is a member of one or more companies
-When a session carrying that person's lineage starts
-Then the agent's startup context lists that person's company memberships
-```
-
 #### UC-CSC12: Sole membership resolves for tools without a profile
-
-```gherkin
-Given a person is a member of exactly one company
-And a session carrying that person's lineage is created with no company selection
-When a tool running inside the session reads the session's published context
-Then it reads that one company as resolved
-And the agent's startup context carries no company profile
-```
 
 #### UC-CSC13: A company profile is present exactly when the session has a company
 
-```gherkin
-Scenario Outline: The profile follows the session's company, never its location
-  Given a session <how it was created>
-  When it starts
-  Then the agent's startup context <profile outcome>
-
-  Examples:
-    | how it was created                                              | profile outcome                   |
-    | was created with a company selection                            | carries that company's profile    |
-    | was started from a session that has a company                   | carries that company's profile    |
-    | stands in a company's project and was created without a company | carries no company profile        |
-```
-
 #### UC-CSC14: A company that does not exist is an error
-
-```gherkin
-Given a company selection that does not resolve on the computer where the session would run
-When a session is created or work is dispatched selecting it
-Then no session is started
-```
 
 ### Cross-context references
 

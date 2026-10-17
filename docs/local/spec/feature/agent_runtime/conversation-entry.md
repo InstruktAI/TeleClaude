@@ -143,6 +143,10 @@ object alone establishes no designation. Forum posts and explicitly started
 sessions keep their independently selected conversations
 (`general/policy/human-contract`).
 
+For a designated personal-assistant channel, the core accepts input only when
+the sender's verified identity matches the person the channel serves. A mismatch
+receives the neutral reply and creates or reaches no session.
+
 The adapter supplies the channel identity and designation to the core conversation
 resolver. The core resolves its endpoint and retains the TeleClaude session
 binding, open or closed. Text, audio and file input use that same resolution.
@@ -305,13 +309,6 @@ And no other computer creates a session or sends a reply
 
 #### UC-CE11: A secondary bot is not a conversation entry point
 
-```gherkin
-Given a computer is not the mesh master
-When it receives a private message or start-link token through a secondary bot
-Then it creates or revives no conversation and redeems no invitation
-And it sends no conversational reply and forwards no conversation input
-```
-
 #### UC-CE12: The links command renders a desk's entry links on the master
 
 ```gherkin
@@ -383,15 +380,15 @@ Scenario Outline: invitation on <adapter>
     | WhatsApp |
 ```
 
-#### UC-CE19: Conversations require one available master
+#### UC-CE19: An operator can diagnose unavailable conversation ownership
 
 ```gherkin
-Scenario Outline: master ownership is <condition>
-  Given the fleet resolver observes <condition>
-  When a designated channel receives conversation input
-  Then no computer independently accepts the conversation or redeems an invitation
+Scenario Outline: conversation ownership is unavailable because <condition>
+  Given an operator is responsible for a designated conversation adapter
+  When no unique live master is available because <condition>
+  Then the operator can see that conversation ownership is unavailable
+  And no computer accepts the input or redeems an invitation
   And non-master receivers send no fallback reply
-  And the unavailable ownership is observable to operators
 
   Examples:
     | condition                            |
@@ -445,14 +442,14 @@ And no new session is created
 And it becomes the conversation's session
 ```
 
-#### UC-CE25: A desk has one host whatever computers hold its repository
+#### UC-CE25: A person can enter a desk even when its repository is on several computers
 
 ```gherkin
 Given a project whose help desk is enabled
-And the project's repository is checked out on several computers, the master included
-When people enter with that desk's identifier on any adapter
-Then every session at the desk runs on the master
-And no other computer hosts the desk or refuses entry because of another host
+And its repository is present on several computers, including the master
+When a person enters that desk from a configured adapter
+Then their session runs on the master
+And another repository copy neither rejects entry nor creates a competing session
 ```
 
 #### UC-CE26: Discord carries no desk entry
@@ -484,11 +481,11 @@ And the separate conversation remains independently selectable
 #### UC-CE28:
 
 ```gherkin
-Given several historical conversations match one human's adapter identity and selected endpoint
+Given a person has more than one retained conversation matching their identity and endpoint
 And no current conversation binding selects one
-When the human enters that endpoint
-Then the most recently created eligible matching conversation is continued
-And unrelated endpoints, worker runs and soft-deleted conversations are not selected
+When they return to that endpoint
+Then the most recently created eligible session resumes as the conversation
+And unrelated or soft-deleted sessions remain outside it
 ```
 
 #### UC-CE29: A designated channel continues its assistant
@@ -513,15 +510,6 @@ And its response returns to the originating channel
 
 #### UC-CE31: Existing channel conversations retain their identity
 
-```gherkin
-Given a designated conversation channel has an eligible retained session with no endpoint stamp
-And its recorded participant and purpose agree with the channel's verified designation
-When channel reconciliation or entry resolves the conversation
-Then the resolved endpoint is recorded on that session
-And its TeleClaude id and native transcript lineage are retained
-And closed state alone does not require a replacement session
-```
-
 #### UC-CE32: Channel designation preserves independent conversations
 
 ```gherkin
@@ -534,22 +522,14 @@ And the other conversations retain their bindings and lifecycle
 
 #### UC-CE33: Unresolved channel associations remain unclaimed
 
-```gherkin
-Given a retained session's participant or purpose cannot be verified against a designated channel
-When reconciliation considers that session for adoption
-Then the session receives no inferred assistant endpoint
-And the unresolved association is observable for recovery
-```
-
 #### UC-CE34: A shared designated channel has one conversation owner
 
 ```gherkin
-Given several computers receive input for one shared designated assistant channel
-And exactly one live computer is the mesh master and runs the adapter
-When the person sends conversation input
-Then the master alone resolves and hosts the channel's continuing conversation
-And every other receiver performs no independent session creation or input delivery
-And retained records on other computers do not become competing channel bindings
+Given a person has a designated assistant channel whose input reaches several computers
+And one live computer is the mesh master
+When they send conversation input through that channel
+Then one continuing session on the master receives it
+And other receivers do not create a competing session or deliver the input elsewhere
 ```
 
 #### UC-CE35: Telegram ownership is independent of fan-out
@@ -563,13 +543,6 @@ And receipt by only one provider connection does not change ownership
 ```
 
 #### UC-CE36: A recorded peer session cannot bypass ownership
-
-```gherkin
-Given a non-master retains a historical conversation session for an adapter identity
-When it receives further conversational input for that identity
-Then the retained record grants no authority to deliver the input or answer
-And its history and extraction provenance remain retained
-```
 
 ### Cross-context references
 

@@ -15,59 +15,14 @@ Only current memories are returned: a retired memory or a business prospect is n
 
 ### Use cases
 
-#### Search via CLI
+#### Search memories for a phrase
 
-```
-Given a human or agent runs `telec memories search "<query>" [--limit N] [--type <obs_type>] [--project <slug>]`
-When the CLI builds the request
-Then it joins the positional arguments into a single space-separated query string
-And asks the memory service to search with that query, the limit (default 20), and any supplied filters
-And renders the returned rows in the standard observation table (or prints "No memories found for '<query>'" when the response is empty)
-```
-
-#### Primary structured-index path
-
-```
-Given the memory service receives a non-empty query
-When it issues its search
-Then it consults the structured full-text index first
-And returns the matching observations ordered newest-first, bounded by the requested limit
-```
-
-#### Substring fallback
-
-```
-Given the structured-index attempt raises any error (malformed query, empty query, missing index module)
-When the search path catches the error
-Then it logs a debug-level message naming the query
-And falls through to a substring search over the live observation text fields
-And applies the same optional project, type, and identity-scope filters as the primary branch
-And returns the matching observations ordered newest-first, bounded by the requested limit
-```
-
-#### Project filter
-
-```
-Given the caller supplies a project slug
-When either search branch builds its result set
-Then only observations belonging to that project appear in the response
-```
-
-#### Type filter for progressive disclosure
-
-```
-Given the caller supplies an observation type (one of the values defined in `observation-type-taxonomy`)
-When either search branch builds its result set
-Then only observations whose type matches appear in the response
-```
-
-#### Identity-scoped search
-
-```
-Given the caller supplies an identity scope (programmatic callers only)
-When either search branch builds its result set
-Then the response contains observations tagged with that scope PLUS observations with no scope
-And observations tagged with any other scope are excluded
+```gherkin
+Given a human operator wants to find stored memories matching a phrase
+And may narrow the results by type or project
+When they search for that phrase with an optional result limit
+Then matching current observations are shown newest first within the limit
+And an empty result is reported clearly
 ```
 
 ### Cross-context references

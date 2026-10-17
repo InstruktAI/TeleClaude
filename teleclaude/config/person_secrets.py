@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 from collections.abc import Mapping
@@ -11,10 +12,13 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 from teleclaude.config._environment import mutate_environment_value
-from teleclaude.paths import PEOPLE_DIR, ConfigFileName
+from teleclaude.mcp.registry import load_effective_registry
+from teleclaude.paths import PEOPLE_DIR, REPO_ROOT, ConfigFileName
 from teleclaude.slug import validate_slug
 
 _OWNER_ONLY_MODE = 0o600
+_EMPTY_TEXT = ""
+_UTF8_ENCODING = "utf-8"
 
 
 class PersonSecretStorageError(ValueError):
@@ -57,6 +61,26 @@ def person_secret_store_path(person_slug: str, *, people_dir: Path = PEOPLE_DIR)
     except ValueError as exc:
         raise PersonSecretStorageError("Personal secret store is unavailable") from exc
     return candidate
+
+
+def person_secret_store_creation_mode(path: Path, *, allow_absent: bool = True) -> int:
+    """Validate a personal secret path and return its required creation mode."""
+    _require_safe_person_secret_store(path, allow_absent=allow_absent)
+    return _OWNER_ONLY_MODE
+
+
+def person_secret_store_revision(person_slug: str, *, content: str | None = None) -> str:
+    """Return an opaque revision of the owner-only personal secret store, never its values."""
+    path = person_secret_store_path(person_slug)
+    _require_safe_person_secret_store(path, allow_absent=True)
+    source = path.read_bytes() if content is None and path.exists() else (content or _EMPTY_TEXT).encode(_UTF8_ENCODING)
+    return hashlib.sha256(source).hexdigest()
+
+
+def list_person_mcp_secret_inventory(person_slug: str) -> list[PersonMcpSecretStatus]:
+    """Return registry-derived personal secret status without exposing values."""
+    requirements = load_effective_registry(REPO_ROOT).person_secret_requirements()
+    return list_person_mcp_secret_statuses(person_slug, requirements)
 
 
 def list_person_mcp_secret_statuses(

@@ -24,8 +24,6 @@ from teleclaude.core.command_dispatch import invoke_command_handler
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import OperationFailedContext, OperationSucceededContext
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.models._types import JsonDict
 from teleclaude.core.next_machine.create import next_create
@@ -60,6 +58,8 @@ from teleclaude.core.operations._delivery import (
     DeliveryOutcome,
     deliver_operation_outcome,
     deliver_recovered_operations,
+    emit_and_deliver_operation_outcome,
+    emit_operation_outcome,
 )
 from teleclaude.core.operations._kinds import (
     _COMMAND_TYPE_TO_OPERATION_KIND,
@@ -90,7 +90,6 @@ from teleclaude.core.shutdown_drain import OwnedUnit, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db._exceptions import ClaimConflict, OperationErrorPayload, OperationFailure
 from teleclaude.core.workflow_store.store import get_workflow_store
-from teleclaude.events.envelope import EventVisibility
 from teleclaude.identity_reach import resolve_reach
 from teleclaude.types.command_wire import command_from_dict
 from teleclaude.types.commands import CallerProvenance, InternalCommand
@@ -181,7 +180,7 @@ class OperationsService:
     async def deliver_startup_recovery(self) -> None:
         """Emit and deliver each operation `start` retained, containing per-row faults."""
         pending, self._pending_startup_recovery = self._pending_startup_recovery, []
-        await deliver_recovered_operations(pending, emit=self._emit_outcome_event, deliver=self._deliver_outcome)
+        await deliver_recovered_operations(pending, emit=emit_operation_outcome, deliver=deliver_operation_outcome)
 
     async def expire_stale_operations(self) -> None:
         """Mark long-silent running operations stale and deliver each one's outcome."""
@@ -191,9 +190,13 @@ class OperationsService:
             error_text="operation heartbeat expired",
         )
         for operation in staled:
-            self._emit_outcome_event(operation.kind, operation.operation_id, error=operation.error_text)
-            await self._deliver_outcome(
-                operation, outcome=DeliveryOutcome.STALE, occurred_at=parse_iso_datetime(operation.completed_at)
+            await emit_and_deliver_operation_outcome(
+                operation,
+                outcome=DeliveryOutcome.STALE,
+                occurred_at=parse_iso_datetime(operation.completed_at),
+                emit=emit_operation_outcome,
+                deliver=deliver_operation_outcome,
+                error=operation.error_text,
             )
 
     async def submit_todo_work(
@@ -727,8 +730,13 @@ class OperationsService:
                 completed_at.isoformat(),
                 work_feedback=completion.work_feedback,
             ):
-                self._emit_outcome_event(kind, operation_id)
-                await self._deliver_outcome(operation, outcome=DeliveryOutcome.COMPLETED, occurred_at=completed_at)
+                await emit_and_deliver_operation_outcome(
+                    operation,
+                    outcome=DeliveryOutcome.COMPLETED,
+                    occurred_at=completed_at,
+                    emit=emit_operation_outcome,
+                    deliver=deliver_operation_outcome,
+                )
             for follow_through in follow_throughs:
                 follow_through_unit = get_shutdown_drain().register(_FOLLOW_THROUGH_WORK)
                 self._task_registry.spawn(
@@ -745,8 +753,14 @@ class OperationsService:
                 state="stale",
             )
             if transitioned and operation is not None:
-                self._emit_outcome_event(kind, operation_id, error=error_text)
-                await self._deliver_outcome(operation, outcome=DeliveryOutcome.STALE, occurred_at=cancelled_at)
+                await emit_and_deliver_operation_outcome(
+                    operation,
+                    outcome=DeliveryOutcome.STALE,
+                    occurred_at=cancelled_at,
+                    emit=emit_operation_outcome,
+                    deliver=deliver_operation_outcome,
+                    error=error_text,
+                )
             raise
         except Exception as exc:
             error_text = f"{type(exc).__name__}: {exc}"
@@ -763,8 +777,14 @@ class OperationsService:
                 work_feedback=exc.work_feedback if isinstance(exc, OperationFailure) else None,
             )
             if transitioned and operation is not None:
-                self._emit_outcome_event(kind, operation_id, error=error_text)
-                await self._deliver_outcome(operation, outcome=DeliveryOutcome.FAILED, occurred_at=failed_at)
+                await emit_and_deliver_operation_outcome(
+                    operation,
+                    outcome=DeliveryOutcome.FAILED,
+                    occurred_at=failed_at,
+                    emit=emit_operation_outcome,
+                    deliver=deliver_operation_outcome,
+                    error=error_text,
+                )
             logger.exception(
                 "Background operation failed",
                 operation_id=operation_id,
@@ -936,27 +956,6 @@ class OperationsService:
             return
         phase, decision, reason = latest_progress
         await self._record_progress(operation_id, phase, decision, reason)
-
-    def _emit_outcome_event(self, kind: str, operation_id: str, *, error: str | None = None) -> None:
-        events = outcome_events_for(kind)
-        if events is None:
-            return
-        success_event, failure_event = events
-        if error is None:
-            event_bus.emit(
-                success_event, OperationSucceededContext(operation_id=operation_id), visibility=EventVisibility.CLUSTER
-            )
-        else:
-            event_bus.emit(
-                failure_event,
-                OperationFailedContext(operation_id=operation_id, error=error),
-                visibility=EventVisibility.CLUSTER,
-            )
-
-    async def _deliver_outcome(
-        self, operation: Operation, *, outcome: DeliveryOutcome, occurred_at: datetime | None
-    ) -> None:
-        await deliver_operation_outcome(operation, outcome=outcome, occurred_at=occurred_at)
 
     def _serialize_operation(self, operation: Operation) -> SerializedOperation:
         payload: SerializedOperation = {

@@ -44,68 +44,15 @@ then fills the value during registration.
 
 #### UC-CFG-SLUG-1: Well-formed slug accepted and stripped
 
-```
-Given a project config under load with project_slug = "  my-project  "
-When the project overlay's slug validator runs
-Then the value is stripped to "my-project"
-And validate_slug("my-project") matches SLUG_PATTERN and returns without error
-And the project overlay's project_slug is set to "my-project"
-```
-
 #### UC-CFG-SLUG-2: None passes through unchanged
-
-```
-Given a project config under load that omits the project_slug key
-When the project overlay's slug validator receives value = None
-Then the validator returns None immediately
-And no slug format check runs
-And the project overlay's project_slug remains None
-```
 
 #### UC-CFG-SLUG-3: Empty string normalizes to None (legacy compatibility)
 
-```
-Given a legacy project config under load with project_slug = ""
-When the project overlay's slug validator runs
-Then trimming the value yields ""
-And the validator returns None (not a validation error)
-And the project overlay's project_slug is None
-And the project is accepted so it can be registered by telec config project adopt
-```
-
 #### UC-CFG-SLUG-4: Whitespace-only string normalizes to None
-
-```
-Given a project config under load with project_slug = "   "
-When the project overlay's slug validator runs
-Then trimming the value yields ""
-And the validator returns None
-And the project overlay's project_slug is None
-```
 
 #### UC-CFG-SLUG-5: Invalid slug format rejected
 
-```
-Given a project config under load with project_slug = "My_Project"
-When the project overlay's slug validator runs
-Then trimming the value yields "My_Project"
-And validate_slug("My_Project") fails SLUG_PATTERN.match
-And the slug validator raises a validation error: "Invalid slug. Use lowercase letters, numbers, and hyphens only"
-And the schema layer surfaces the validation failure on the project_slug field
-And the project overlay loader raises before the app config is returned
-```
-
 #### UC-CFG-SLUG-6: Project adoption fills missing slug
-
-```
-Given a project root /repos/my-project whose teleclaude.yml has no project_slug
-And the project overlay loader returns an overlay instance with project_slug = None
-When the operator runs `telec config project adopt` inside /repos/my-project
-Then adoption computes a slug from the project (typically via normalize_slug on the directory name)
-And writes the slug into the project's teleclaude.yml
-And appends the absolute path to ~/.teleclaude/projects.yaml
-And subsequent loads return the project overlay's project_slug = "<computed-slug>"
-```
 
 ### Cross-context references
 

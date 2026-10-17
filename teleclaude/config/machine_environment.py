@@ -37,3 +37,12 @@ def machine_runtime_environment() -> Mapping[str, str]:
     _dotenv_managed_keys.clear()
     _dotenv_managed_keys.update(current)
     return os.environ
+
+
+def machine_runtime_environment_snapshot(env_file_values: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Resolve the immutable machine environment with the same shell-over-file precedence as runtime refresh."""
+    values = dict(read_environment_file(PROJECT_ENV_PATH) if env_file_values is None else env_file_values)
+    return {
+        **values,
+        **{key: os.environ[key] for key in _PRE_DOTENV_ENV_KEYS if key in os.environ},
+    }

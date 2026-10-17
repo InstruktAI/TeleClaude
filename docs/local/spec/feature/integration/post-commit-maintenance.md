@@ -277,6 +277,14 @@ same boundary. The installed release's maintenance executor can act on a
 development target only through its supported development operation; unsupported
 source requirements are reported rather than widening execution into live state.
 
+Purpose selection precedes action selection and restart-window derivation. A
+development activation owes only development preparation and publication; it
+opens no installed-daemon window. Installed activations retain the
+stopped-daemon window, advancement registration and verified-start contracts
+above. An installation run inside that window can establish development
+readiness through the development operation without opening a nested window or
+acquiring another installed-root drain.
+
 The complete association, root resolution and effect selection become available
 together before eager companion provisioning is reported ready. This preserves
 state ownership under `sdlc/policy/code-quality-practices`.

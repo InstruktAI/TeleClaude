@@ -17,6 +17,7 @@ dispatch:
 - @~/.teleclaude/docs/sdlc/concept/intake-frameworks.md
 - @~/.teleclaude/docs/sdlc/principle/architectural-defaults.md
 - @~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
+- @~/.teleclaude/docs/sdlc/procedure/feature-spec-authoring.md
 
 ## Goal
 
@@ -48,11 +49,12 @@ to prepare routing instead of producing feature-lane artifacts.
 - **Feature spec snippet (durable contract, hub)** — author or enrich the
   feature spec(s) at
   `docs/local/spec/feature/<context>/<concept-name>.md`. Concept-named,
-  NEVER slug-named. Contains the business value summary and the Gherkin
-  acceptance scenarios. Author new and changed feature-spec material through
+  NEVER slug-named. Contains business value and the prose behavioral contract;
+  user goals admitted by `sdlc/procedure/feature-spec-authoring` are written in
+  Gherkin. Author new and changed feature-spec material through
   the pending carriers prescribed by `general/procedure/doc-snippet-authoring`.
-  The Gherkin is authored here during intake — there is no separate
-  test-specs phase.
+  Use-case classification happens here before scenario drafting; a feature spec
+  can require no Gherkin additions. There is no separate test-specs phase.
   **Produced for every confirmed behavioral feature**, including behavior
   observed through agent-facing and operator-facing CLI, event, or structured
   runtime surfaces.
@@ -72,8 +74,8 @@ anything in between) and produce:
 1. A **PRD (Product Requirements Document)** workflow.artifact — structured
    work guidance, ready for human approval, for every confirmed feature.
 2. An authored or enriched **feature spec snippet** at the concept-named path
-   above, containing the business-value framing and initial Gherkin acceptance
-   scenarios. Human-facing and agent/operator-facing behavioral features both
+   above, containing business-value framing, the prose contract and any admitted
+   Gherkin use cases. Human-facing and agent/operator-facing behavioral features both
    produce this durable hub. A non-behavioral kind mismatch exits intake before
    either feature-lane artifact is authored.
 3. If the input touches MULTIPLE pillars (bounded contexts) with
@@ -177,6 +179,11 @@ Silence is not a classification. Ground the observer and changed outcome from
 the input and current contract; if the residue is genuinely intent-owned, ask
 one focused question. Never default to skipping the feature spec merely because
 the observer is an agent or operator.
+
+This classifies the need for a behavioral contract, not the need for a use case.
+Before drafting Gherkin, apply `sdlc/procedure/feature-spec-authoring` to the
+stakeholder's goal. An observable validation result, default or event can belong
+in the prose contract without creating a separate acceptance scenario.
 
 **Concept-name derivation (behavioral features only).** The `<concept-name>` in the
 feature-spec path is the durable domain noun for the capability. NOT the todo

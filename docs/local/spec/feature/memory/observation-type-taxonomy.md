@@ -11,44 +11,6 @@ Every memory observation carries a `type` tag drawn from a closed set. Memories 
 
 ## Canonical fields
 
-### Use cases
-
-#### Default type on save
-
-```
-Given a save request omits type
-When the memory service persists the observation
-Then the persisted type is the literal string `discovery` (the default)
-```
-
-#### Validated type on save (memory surface)
-
-```
-Given a save request supplies a type value
-When the memory service validates the request
-Then the value must be a member of the closed set (preference, decision, discovery, gotcha, pattern, friction, context, request, complaint, sentiment, competitor)
-And any other value is rejected with a validation error
-And on success the observation is persisted with the supplied type
-```
-
-#### Validated type on save (CLI)
-
-```
-Given a CLI invocation includes `--type <value>`
-When the CLI parses the option
-Then <value> is checked against the same closed set
-And if absent from the set, the CLI prints `Invalid type '<value>'. Valid types: <sorted list>` and exits 1
-And on success the value is forwarded to the save request
-```
-
-#### Type as search/list filter
-
-```
-Given a `--type <obs_type>` filter is supplied to `telec memories list` or `telec memories search`
-When the request reaches the memory service
-Then only observations whose type matches the filter are returned (across both the primary search path and the substring fallback)
-```
-
 ### Cross-context references
 
 - None. The taxonomy lives entirely inside the `memory` context.

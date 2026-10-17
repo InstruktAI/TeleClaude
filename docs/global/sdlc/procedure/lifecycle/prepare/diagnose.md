@@ -346,24 +346,25 @@ agent owner. Settlement is never reached by conversational exhaustion, and the
 driver's lifecycle authority breaks no evidentiary tie.
 
 The peer records in `diagnosis` what it verified, what remains contested, and which
-observation would separate the rival mechanisms; its Status reads `Unresolved`. The driving
-session stamps the outcome — `telec todo stamp {slug} --diagnosis-unresolved --reason "<why>"`
-— which holds the todo with an audited `diagnosis_unresolved` source and leaves no settled
-stamp, so the artifact cannot be mistaken for a conclusion the plan may consume. The hold is
-what stops the phase from dispatching another peer indefinitely: without it the driving
-session would call the state machine again into the same phase and re-derive the same
-dispatch.
+observation would separate the rival mechanisms; its Status reads `Unresolved`.
+The driving session applies the actionable-continuation and retirement rules of
+`sdlc/policy/todo-creation-discipline` before choosing a hold.
 
-The driving session records the missing observation and the agent responsible
-for its next contribution. The todo stays held until new evidence, a narrowed
-frontier, or a grounded disposition makes another attempt materially different.
-For agent-owned recovery, the driving session records that reason and releases
-the hold through `telec todo update {slug} --release`; it does not ask the human
-to authorize another diagnosis attempt. The independent peer still owns every
-diagnosis revision, and the settlement standard is unchanged. A decision in
-the closed human lane is routed under `general/policy/human-contract` with
-the specific input required. The `diagnosis` carries the unresolved positions
-and recovery evidence; no substitute approval artifact is created.
+For a justified hold, record the concrete next contribution, its owner, and
+the condition and evidence that release it. Stamp
+`telec todo stamp {slug} --diagnosis-unresolved --reason "<condition and next contribution>"`.
+This records an audited `diagnosis_unresolved` hold without a settled stamp.
+When no actionable continuation remains, preserve the unresolved diagnosis and
+retire through the governing cleanup and removal path instead of keeping the
+phase available for another identical dispatch.
+
+When a justified hold's condition is satisfied, the driving session records
+the new evidence and releases it through `telec todo update {slug} --release`.
+The independent peer still owns every diagnosis revision, and the settlement
+standard is unchanged. A decision in the closed human lane is routed under
+`general/policy/human-contract` with the specific input required. The
+`diagnosis` carries the unresolved positions and recovery evidence; no
+substitute approval artifact is created.
 
 ### The reported behavior is correct
 

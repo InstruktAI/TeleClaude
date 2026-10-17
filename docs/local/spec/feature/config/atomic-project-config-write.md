@@ -36,6 +36,9 @@ guarantees:
    capability is claimed or declined only by an explicit value
    (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`).
 
+Reloading the written file rebuilds the same effective project overlay,
+including each `code`, `docs`, and `agents` enabled value.
+
 The helper is sync, takes a path and a validated project overlay instance,
 and returns on success. There is no read-modify-write helper at this
 layer; callers that need to edit a value first load the overlay,
@@ -47,62 +50,13 @@ mutate the returned instance, then call the writer.
 
 #### UC-CFG-WRITE-1: Successful write replaces target file atomically
 
-```
-Given a valid project overlay instance and target path /repos/my-project/teleclaude.yml
-And the target path may or may not already exist
-When the project-config writer runs
-Then the overlay is serialised to a minimal JSON-compatible dict with defaults excluded
-And a sibling tmp path /repos/my-project/teleclaude.tmp is derived from the target path
-And the YAML payload is written to the tmp file
-And the output is flushed and durably synced at the kernel level
-And the tmp file is atomically renamed into place at the target path
-And no concurrent reader observes a partially-written teleclaude.yml
-```
-
 #### UC-CFG-WRITE-2: Failure mid-write cleans up tmp and re-raises
-
-```
-Given the project-config writer has opened the tmp file and started writing
-And an exception occurs (disk full during write, fsync failure, etc.)
-When an exception occurs mid-write
-Then the temp file's presence is checked
-And the partial temp file is removed if present
-And the original exception is re-raised unchanged
-And the target path is unchanged from its prior state
-```
 
 #### UC-CFG-WRITE-3: Defaults are stripped from the on-disk file, capability declarations are kept
 
-```
-Given a project overlay whose code capability is disabled and whose docs and agents capabilities are enabled
-And whose only other value differing from its default is the project name the operator set
-When the project-config writer runs
-Then the written file omits every other block whose values match their defaults
-And it declares each of the code, docs, and agents capabilities with its enabled value
-And re-loading the file via the project overlay loader rebuilds the same effective overlay
-```
-
 #### UC-CFG-WRITE-4: JSON-mode dump produces YAML-safe primitives
 
-```
-Given a project overlay that contains fields backed by non-native types (e.g., paths, enums)
-When the JSON-mode serialization runs
-Then path values are serialised as strings
-And enum values are serialised as their string representation
-And the resulting dict is composed entirely of JSON-native primitives (str, int, float, bool, list, dict, None)
-And the YAML serializer accepts the dict without raising on unsupported types
-```
-
 #### UC-CFG-WRITE-5: Caller controls validation; save assumes input is valid
-
-```
-Given a caller passes a project overlay instance that has not been re-validated since mutation
-When the project-config writer runs
-Then the writer does NOT re-run overlay validation
-And the instance is serialised as-is; the on-disk file reflects exactly the in-memory state
-And the responsibility for invariants (e.g., stable-channel pinning) lies with the caller
-  before invoking the writer
-```
 
 ### Cross-context references
 

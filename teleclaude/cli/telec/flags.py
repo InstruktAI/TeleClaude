@@ -635,6 +635,11 @@ FLAG_COMMIT_ONLY = Flag(
     ),
     arity=GREEDY,
 )
+FLAG_COMMIT_TODO = Flag(
+    "--todo",
+    desc="Associate this commit with a recorded or planned todo slug",
+    arity=VALUE,
+)
 FLAG_HUMAN_INVOLVED_COMMIT = FLAG_HUMAN_INVOLVED
 FLAG_CODE_STAMP_VERDICT = Flag(
     "--verdict",

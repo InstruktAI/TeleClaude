@@ -60,116 +60,27 @@ by, so a scoped caller cannot obtain through the file what the store withheld.
 
 #### UC-RSHA-1: A platform administrator sees all
 
-```
-Given the caller holds the admin platform role
-When the role filter is applied to a search or detail query
-Then no clause is added and no parameters are bound for the role filter
-And the query returns every mirror that matches the other filters
-```
-
 #### UC-RSHA-2: A caller that cannot be identified is refused
-
-```
-Given a human at a terminal or an agent in a session whose identity resolves to no person and no system principal
-When that caller searches history, requests a session's conversation, or requests its raw transcript
-Then the request is refused
-And no conversation is returned and no on-disk transcript is consulted
-```
 
 #### UC-RSHA-5: The service capabilities scope their caller
 
-```
-Given a caller invokes the search, detail, or raw-transcript capability of the session_mirrors service
-When the capability runs
-Then it identifies the caller as every authenticated operation does
-And it answers within that caller's scope
-And a mirror outside that scope is reported exactly as an absent one
-And a caller it cannot identify is refused before any mirror is read
-```
-
 #### UC-RSHA-6: A filtered miss does not fall through to the transcript
-
-```
-Given a caller whose reach excludes a mirror from the detail lookup
-When the caller requests that session through the CLI
-Then the on-disk transcript discovery is not consulted for that session
-And the caller receives the same not-found outcome as for a session that does not exist
-And the filtered mirror's transcript is not rendered
-```
 
 #### UC-RSHA-7: A system principal sees every mirror
 
-```
-Given an agent in a session whose lineage roots at the platform's principal — a standing role, or a session one started
-When it searches history or requests a session's conversation
-Then every mirror on the host is eligible, including mirrors recorded against no person
-```
-
 #### UC-RSHA-8: Reads that serve no caller are unscoped
-
-```
-Given the mirror generator checks for an existing mirror of a transcript it is processing
-Or memory extraction reads a session's transcript through that session's mirror
-When the lookup runs
-Then it considers every mirror, whoever it is recorded against
-And its result reaches no caller
-```
 
 #### UC-RSHA-9: A company administrator sees their company's history
 
-```
-Given the caller holds no platform role and the admin role in one company
-When the caller searches history or requests a session's conversation
-Then mirrors recorded in any project that company owns, and in that company's home, are returned, whoever they are recorded against
-And mirrors recorded in a project owned by another company are returned only when recorded under the caller's own principal
-```
-
 #### UC-RSHA-10: A member sees the sessions their own chain spawned
-
-```
-Given the caller is a person whose role is member
-And an orchestrator or worker session was spawned in a chain that person started
-When the caller searches history with dispatched workers included
-Then that spawned session's conversation is returned, wherever it ran
-And a session spawned in another person's chain is returned only when the caller's reach admits the subject it ran in
-```
 
 #### UC-RSHA-11: A mirror with no subject stays at platform scope
 
-```
-Given a mirror recorded in a directory no registered home governs
-When a company administrator who is not the person it is recorded under searches history
-Then that mirror is not returned
-And a platform administrator's search returns it
-```
-
-#### UC-RSHA-12: A mirror linked to no session stays with the person its record names
-
-```
-Given a mirror linked to no session attribution, recorded with a person's email
-When that person searches history or requests that session's conversation
-Then that mirror is returned
-And a company administrator who is not that person does not receive it
-```
+#### UC-RSHA-12: A person can find a conversation archived under their identity
 
 #### UC-RSHA-13: A member reads the conversations of the projects they are assigned to
 
-```
-Given a person who is a member of a company and is assigned to one of its projects
-And a colleague's session ran in that project
-When the person searches history or requests that session's conversation
-Then the colleague's conversation is returned
-And a conversation in a project of that company they are not assigned to is returned only when recorded under their own principal
-```
-
 #### UC-RSHA-14: A person's own conversations stay visible outside their reach
-
-```
-Given a person's session ran in a project their reach does not admit
-When the person searches history or requests that session's conversation
-Then the conversation is returned to them
-And another person sees it only when their own reach admits that project
-```
 
 ## Known caveats
 

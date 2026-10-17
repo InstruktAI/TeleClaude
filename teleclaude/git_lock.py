@@ -6,11 +6,12 @@ to prevent push races and index.lock conflicts on origin/main.
 
 from __future__ import annotations
 
+import asyncio
 import fcntl
 import subprocess
 import time
-from collections.abc import Generator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Generator
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -141,3 +142,25 @@ def main_branch_lock() -> Generator[None, None, None]:
     finally:
         fd.close()
         logger.debug("Main-branch lock released")
+
+
+@asynccontextmanager
+async def main_branch_lock_async() -> AsyncIterator[None]:
+    """Hold the shared Git mutation lock without blocking the event loop."""
+    lock_context = main_branch_lock()
+    acquire_task = asyncio.create_task(asyncio.to_thread(lock_context.__enter__))
+    try:
+        await asyncio.shield(acquire_task)
+    except asyncio.CancelledError:
+        try:
+            await asyncio.shield(acquire_task)
+        except BaseException:
+            raise
+        release_task = asyncio.create_task(asyncio.to_thread(lock_context.__exit__, None, None, None))
+        await asyncio.shield(release_task)
+        raise
+    try:
+        yield
+    finally:
+        release_task = asyncio.create_task(asyncio.to_thread(lock_context.__exit__, None, None, None))
+        await asyncio.shield(release_task)

@@ -8,7 +8,7 @@ parameters:
     required: true
 dispatch:
   agent: [codex, claude, gemini, deepseek]
-  thinking_mode: med
+  thinking_mode: slow
 ---
 
 # Work Overview — Procedure

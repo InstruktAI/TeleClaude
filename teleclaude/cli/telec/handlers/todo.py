@@ -26,7 +26,7 @@ from teleclaude.constants import (
 from teleclaude.slug import validate_slug
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import ArtifactWritersRow
+    from teleclaude.core.todos_db._rows import ArtifactWritersRow
     from teleclaude.core.workflow_store.store import WorkflowStore
     from teleclaude.services.work.slug_actions import SlugActionResult
 
@@ -759,7 +759,9 @@ def _handle_artifacts_diff(args: list[str]) -> None:
     from teleclaude.cli.telec.handlers._todo_read import (  # noqa: PLC0415 - command boundary: local workflow-store read.
         run_todo_read,
     )
-    from teleclaude.core.todos_db import malformed_digest_detail  # noqa: PLC0415 - command boundary: digest check.
+    from teleclaude.core.todos_db._artifacts import (  # noqa: PLC0415 - command boundary: digest check.
+        malformed_digest_detail,
+    )
 
     if len(args) < 4:
         print("Usage: telec todo artifacts diff <slug> <name> <old-digest> <new-digest>")

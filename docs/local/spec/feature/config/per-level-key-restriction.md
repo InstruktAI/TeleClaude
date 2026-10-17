@@ -41,91 +41,19 @@ accepted.
 
 #### UC-CFG-KEYREJECT-1: Project file rejects `people`
 
-```
-Given a project teleclaude.yml that contains a top-level `people:` list
-When the project overlay loader parses the file
-Then the project overlay's before-validation restriction check runs
-And the disallowed set for the project level is {"people", "ops", "creds", "notifications", "timezone"}
-And the present disallowed keys are {"people"}
-And a validation error is raised with message "Keys not allowed at project level: people"
-And the project overlay does not load
-```
-
 #### UC-CFG-KEYREJECT-2: Project file rejects multiple misplaced keys
-
-```
-Given a project teleclaude.yml that contains both `creds:` and `notifications:`
-When the project overlay's restriction check runs
-Then the present disallowed keys are {"creds", "notifications"}
-And a validation error is raised with a message naming both keys, comma-separated
-And the project does not load
-```
 
 #### UC-CFG-KEYREJECT-3: Global file rejects `creds`
 
-```
-Given ~/.teleclaude/teleclaude.yml that contains a top-level `creds:` block
-When the global overlay loader parses the file
-Then the global overlay's restriction check runs
-And the disallowed set for the global level is {"creds", "notifications", "timezone"}
-And the present disallowed keys are {"creds"}
-And a validation error is raised with message "Keys not allowed at global level: creds"
-And the global layer does not load
-```
-
 #### UC-CFG-KEYREJECT-4: Global file accepts allowed keys
-
-```
-Given ~/.teleclaude/teleclaude.yml that contains only `people:`, `subscriptions:`, `interests:`
-When the global overlay's restriction check runs
-Then the disallowed and present sets have no intersection
-And the validator passes the data through unchanged
-And the global overlay loads normally
-```
 
 #### UC-CFG-KEYREJECT-5: Person file rejects `business`
 
-```
-Given ~/.teleclaude/people/alice/teleclaude.yml that contains a `business:` block
-When the per-person overlay loader parses the file
-Then the per-person overlay's restriction check runs
-And the disallowed set for the person level is {"people", "ops", "business", "timezone"}
-And the present disallowed keys are {"business"}
-And a validation error is raised with message "Keys not allowed at per-person level: business"
-And the person layer does not load
-```
-
 #### UC-CFG-KEYREJECT-6: Legacy config.yml rejects computer.tmux_binary
-
-```
-Given a machine config.yml whose `computer:` mapping contains a `tmux_binary:` key
-When the loader runs the disallowed-runtime-keys check
-Then the disallowed list includes "computer.tmux_binary"
-And a validation error is raised with message:
-  "config.yml contains disallowed runtime keys: computer.tmux_binary.
-   Agent and tmux binaries are now hardcoded runtime policy and cannot be configured."
-And the machine config does not load
-```
 
 #### UC-CFG-KEYREJECT-7: Legacy config.yml accepts a clean computer block
 
-```
-Given a machine config.yml whose `computer:` mapping contains only allowed keys (no tmux_binary)
-When the disallowed-runtime-keys check runs
-Then the disallowed list is empty
-And the function returns without raising
-And the legacy config loads normally
-```
-
 #### UC-CFG-KEYREJECT-8: Non-dict input short-circuits silently
-
-```
-Given a YAML file whose top-level node is a scalar or list (not a mapping)
-When any overlay's restriction check receives the data
-Then the input is detected as a non-dict
-And the validator returns data unchanged
-And subsequent schema parsing produces its own type error against the actual schema
-```
 
 ### Cross-context references
 

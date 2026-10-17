@@ -200,9 +200,8 @@ list {slug}` names each artifact's writers. Read every writer that is not
 7. If the input changes later in the prepare flow, repeat this audit before
    deriving from the revision.
 
-Retire only a confirmed duplicate, work whose owning project cannot be repaired
-in place, process intent defensible from neither authorized intent nor
-applicable principles, or a todo for which no defensible intent remains.
+Apply the actionable-continuation and retirement rules in
+`sdlc/policy/todo-creation-discipline` to decide whether the work continues.
 Classify only the underlying consequence under the human contract; process
 mechanics themselves remain agent-owned. `hold` and scheduling are not changed
 by this audit. A task performs the same bounded audit before entering its

@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -26,15 +27,10 @@ from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import assert_agent_enabled, get_agent_command
 from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handoff_control_payload
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import (
-    AgentReadyContext,
-    ErrorEventContext,
-    SessionLifecycleContext,
-    TeleClaudeEvents,
-)
 from teleclaude.core.injected_text import EnvelopeName, InjectedTextSourceFeature, semantic_envelope
 from teleclaude.core.models import HumanActionIntent, Session, SessionField
+from teleclaude.core.runtime_events import publish_runtime_error
+from teleclaude.core.runtime_readiness import RuntimeReadinessKey
 from teleclaude.core.session_continuation import ContinuationRefused, rebuild_continuation_loader
 from teleclaude.core.session_launch_profile import resolve_session_launch_profile
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
@@ -47,6 +43,7 @@ from teleclaude.events.producer import publish_event
 from teleclaude.events.references import SessionRef
 from teleclaude.events.schemas.system import SessionRestartFailed, SessionRestartFailedData
 from teleclaude.events.wire import LegacyFacts
+from teleclaude.runtime.environment import runtime_run_command
 from teleclaude.types.commands import RestartAgentCommand, RestartAgentResult, ReviveAgentCommand
 
 from ._keys import _bind_host_pane
@@ -280,22 +277,14 @@ async def _restart_agent(
     if not target_agent:
         error = "Cannot restart agent: no active agent for this session."
         logger.error("agent_restart blocked (session=%s): %s", session.session_id, error)
-        event_bus.emit(
-            TeleClaudeEvents.ERROR,
-            ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
-            visibility=EventVisibility.CLUSTER,
-        )
+        await publish_runtime_error(source="agent_restart", message=error, session_id=session.session_id)
         await client.send_message(session, f"❌ {error}")
         return False, error
 
     if not native_session_id:
         error = "Cannot restart agent: no native session ID stored. Start the agent first."
         logger.error("agent_restart blocked (session=%s): %s", session.session_id, error)
-        event_bus.emit(
-            TeleClaudeEvents.ERROR,
-            ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
-            visibility=EventVisibility.CLUSTER,
-        )
+        await publish_runtime_error(source="agent_restart", message=error, session_id=session.session_id)
         await client.send_message(session, f"❌ {error}")
         return False, error
 
@@ -304,11 +293,7 @@ async def _restart_agent(
     except ContinuationRefused as exc:
         error = _CONTINUATION_REFUSED_TEMPLATE.format(detail=exc.detail)
         logger.error("agent_restart blocked (session=%s): %s", session.session_id, error)
-        event_bus.emit(
-            TeleClaudeEvents.ERROR,
-            ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
-            visibility=EventVisibility.CLUSTER,
-        )
+        await publish_runtime_error(source="agent_restart", message=error, session_id=session.session_id)
         await client.send_message(session, f"❌ {error}")
         return False, error
 
@@ -341,11 +326,7 @@ async def _restart_agent(
     except ValueError as exc:
         error = str(exc)
         logger.error("agent_restart blocked (session=%s): %s", session.session_id, error)
-        event_bus.emit(
-            TeleClaudeEvents.ERROR,
-            ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
-            visibility=EventVisibility.CLUSTER,
-        )
+        await publish_runtime_error(source="agent_restart", message=error, session_id=session.session_id)
         await client.send_message(session, f"❌ {error}")
         await _emit_restart_failed(session, reason=error, phase=RestartFailurePhase.AGENT_DISABLED)
         return False, error
@@ -367,11 +348,7 @@ async def _restart_agent(
             stop_attempt=stop_attempt,
             elapsed_ms=stop_elapsed_ms,
         )
-        event_bus.emit(
-            TeleClaudeEvents.ERROR,
-            ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
-            visibility=EventVisibility.CLUSTER,
-        )
+        await publish_runtime_error(source="agent_restart", message=error, session_id=session.session_id)
         await client.send_message(session, f"❌ {error}")
         await _emit_restart_failed(session, reason=error, phase=RestartFailurePhase.STOP_TIMEOUT)
         return False, error
@@ -404,24 +381,14 @@ async def _restart_agent(
         launch_flags=launch_profile.flags,
         resolved_flags=launch.flags,
     )
+    runtime_run_id = str(uuid4())
+    if not await db.install_runtime_run(session.session_id, runtime_run_id):
+        return False, None
+    restart_cmd = runtime_run_command(restart_cmd, runtime_run_id)
 
     if cmd.self_restart:
-        # Subscribe BEFORE the restart paste — the agent's SessionStart hook
-        # can race execute_terminal_command and emit AGENT_READY before the
-        # wait task runs. event_bus has no replay; subscribing after the
-        # launch loses the event.
-        loop = asyncio.get_running_loop()
-        ready_future: asyncio.Future[None] = loop.create_future()
-
-        async def _on_ready(_event_type: str, ctx: AgentReadyContext) -> None:
-            if (
-                ctx.session_id == session.session_id
-                and ctx.compaction_launch_context is None
-                and not ready_future.done()
-            ):
-                ready_future.set_result(None)
-
-        ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
+        readiness_key = RuntimeReadinessKey.ordinary(session.session_id, runtime_run_id)
+        ready_future = client.runtime_readiness.register(readiness_key)
 
         mark_relaunch_awaiting_readiness(session.session_id)
         await execute_terminal_command(session.session_id, restart_cmd, None, True)
@@ -445,17 +412,13 @@ async def _restart_agent(
                         ready_future=ready_future,
                         quiet_s=RELAUNCH_QUIET_S,
                         timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
+                        readiness=client.runtime_readiness,
                     )
                 except TimeoutError:
                     logger.warning(
                         "agent_restart readiness timeout: session=%s timeout_s=%.1f — continuation stimulus not sent",
                         session.session_id,
                         AGENT_PROMPT_READY_TIMEOUT_S,
-                    )
-                    event_bus.emit(
-                        TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
-                        SessionLifecycleContext(session_id=session.session_id),
-                        visibility=EventVisibility.LOCAL,
                     )
                     await client.send_message(
                         session,
@@ -468,7 +431,7 @@ async def _restart_agent(
                     )
                     return
             finally:
-                event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
+                client.runtime_readiness.release(readiness_key, ready_future)
 
             # Start-path parity: confirm the process is live before injecting.
             if not await tmux_io.is_process_running(session):

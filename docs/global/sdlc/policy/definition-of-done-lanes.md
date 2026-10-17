@@ -516,6 +516,13 @@ pre-existing narration outside the change is not this change's finding. A
 delivered planned, planned-change, or companion body is fully in scope, because
 delivery touches it.
 
+**Use-case changes.** Apply `sdlc/procedure/feature-spec-authoring` to each
+changed representation, including a retirement. Verify the retained stakeholder
+outcome or necessary invariant at its actual owner, together with affected
+identities, references, acceptance bindings and pending contracts. Preserving a
+requirement does not mean copying implementation traces into prose
+(`general/policy/snippet-value-contract`).
+
 **Co-tenant edits.** A diff may change a region enclosed by a different slug's
 pending marker — a structural fact tooling may route on. Judge which edit it is.
 _Aligning_ that slug's text with its own moved intent is legitimate: read that

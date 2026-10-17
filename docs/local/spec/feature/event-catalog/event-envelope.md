@@ -11,7 +11,9 @@ Every event on the platform event stream describes itself with a small set of
 attributes, set by its producer where the event happens:
 
 - **id** — the event's own identity. A producer that can emit one occurrence
-  more than once states the same id each time.
+  more than once states the same id each time. Distinct occurrences never
+  share an id, so consumers distinguish a replay from a new event
+  (`local/projects/teleclaude/spec/feature/event-catalog/event-consumers`).
 - **type** — what happened, as a dotted name whose first segment says who owns
   the type: `teleclaude` for what the platform itself emits, or the name of a
   published domain, such as `sdlc`, for that domain's events. An event from an
@@ -90,186 +92,33 @@ running different versions, the fleet's interoperability contract governs
 
 #### UC-EE1: Every event states its core facts
 
-```gherkin
-Given a producer on a computer emits a platform event
-When an agent consuming platform events receives it
-Then it sees the event's id, its type, the computer that emitted it and its origin there, its subject, and when it happened
-```
-
 #### UC-EE2: An event's type says who owns it
-
-```gherkin
-Scenario Outline: The first segment of the type name is its owner
-  Given <producer> emits an event
-  When an agent consuming platform events reads its type
-  Then the type name begins with "<first segment>"
-
-  Examples:
-    | producer                                                          | first segment |
-    | the platform, about its own operation                             | teleclaude    |
-    | the platform, about the sdlc domain it publishes                  | sdlc          |
-    | an inbound endpoint, relaying a request whose source declares erp | erp           |
-```
 
 #### UC-EE3: The subject names the thing and the origin names where it happened
 
-```gherkin
-Scenario Outline: Subject and origin are separate facts
-  Given <act> happens
-  When the producer emits a platform event about it
-  Then the event's subject is <subject>
-  And its origin is <origin>
-
-  Examples:
-    | act                                                        | subject                 | origin       |
-    | a todo of a registered project changes phase               | that todo               | that project |
-    | a session working in a registered person's folder ends     | that session            | that person  |
-    | a run of a job executing for a registered project fails    | that job                | that project |
-    | the event stream's processor detects a failure cascade     | the computer it runs on | none         |
-    | a session working in a folder no registration governs ends | that session            | none         |
-```
-
 #### UC-EE4: A project origin carries its owner as known where the event happened
-
-```gherkin
-Scenario Outline: The owner travels with the project origin
-  Given a platform event whose origin is a registered project
-  And that project is declared as owned by <declared owner>
-  When an agent consuming platform events receives it
-  Then the event names <owner on the event> as the project's owner
-
-  Examples:
-    | declared owner                                  | owner on the event         |
-    | a company                                       | that company               |
-    | a person                                        | that person                |
-    | no one                                          | no owner                   |
-    | a declaration the emitting computer cannot read | unresolved, never no owner |
-```
 
 #### UC-EE5: An event that cannot establish its origin says so
 
-```gherkin
-Given a producer reports an act whose record was kept before the project, person or company it happened in was recorded with it
-When the producer emits a platform event about that act
-Then an agent consuming platform events sees that the event's origin is unknown
-And the event states neither none nor a guessed origin
-```
-
 #### UC-EE6: An event carries facts and never instructions
-
-```gherkin
-Given a producer emits a platform event about an act that someone may want to respond to
-When an agent consuming platform events reads it
-Then it sees what happened and the status the event reports
-And none of the event's attributes states a notification rule, an action to take, an audience or a routing scope
-And the event type's declaration in the catalog states none of these either
-```
 
 #### UC-EE7: The emitting session and the causing event are references
 
-```gherkin
-Given an agent session emits a platform event while acting on an earlier event
-When an agent consuming platform events reads it
-Then the event's related references name that session
-And its causation id is the id of the earlier event
-And an event emitted by platform automation names no session among its related references
-```
-
 #### UC-EE8: Emission decides nothing about consumers
-
-```gherkin
-Given a producer emits a platform event whose origin names a project some computers do not know
-When the event is emitted
-Then it is published as stated, without being refused, altered, or narrowed
-And nothing about who may later receive it, or which computers it concerns, is decided at emission
-```
 
 #### UC-EE9: Every attribute arrives unchanged on every computer
 
-```gherkin
-Given a platform event emitted on one computer reaches another computer
-When an agent on the receiving computer consumes it
-Then it sees the same id, type, source, origin and owner, subject, time, related references, causation id and data the producer stated
-And this holds when the receiving computer does not know the named origin or the named thing
-```
-
 #### UC-EE10: The catalog shows what producers emit
-
-```gherkin
-Given an event type is declared as the type its producers construct
-When an agent reads that type in the event catalog
-Then it sees the type's name, what its events are about and their subject kind, the origin kinds their origin can take or that their acts happen in no registered project, person or company, the data fields they carry with each field's value kind, and the kinds of thing their related references name
-And for a platform type that reports a state, it sees the type's family and whether the state is failing or ok
-And every event a producer emits of that type carries attributes and data consistent with that declaration
-```
 
 #### UC-EE11: A type evolves additively within its version
 
-```gherkin
-Scenario Outline: Readers keep working as a type evolves
-  Given a consumer reads events of a type
-  When <change> to that type
-  Then <outcome>
-
-  Examples:
-    | change                                    | outcome                                                                 |
-    | a data field is added                     | the consumer ignores the field it does not know and processes the event |
-    | an optional data field is absent          | the consumer processes the event without it                             |
-    | a field is removed or its meaning changes | the event is emitted as a new version of the type                       |
-```
-
 #### UC-EE12: Computers on different versions keep exchanging events
-
-```gherkin
-Given computers in the fleet run versions from before and after events carried subject, origin, related references and causation ids as described here
-When a computer that predates them receives an event carrying them
-Then it processes the event as it did before, ignoring what it does not know
-But when a computer that knows them receives an event from a computer that predates them
-Then it reads the event's origin from what that computer stated, and reads the event as naming no subject, no related references and no causation id, without error
-```
 
 #### UC-EE13: One occurrence emitted twice carries one id
 
-```gherkin
-Given a producer reports one occurrence
-And it emits the event for that occurrence a second time, such as after an interrupted publish
-When an agent consuming platform events receives both
-Then both carry the same id
-And two distinct occurrences never share an id
-```
-
 #### UC-EE14: A platform event's type names the state it reports
 
-```gherkin
-Scenario Outline: The state is read from the type alone
-  Given the platform emits an event about <act>
-  When an agent consuming platform events reads its type
-  Then <what the type tells>
-
-  Examples:
-    | act                                          | what the type tells                                                      |
-    | a run of a job that failed                   | a failing state of the job's run family, about that job                  |
-    | a run of the same job that succeeded         | an ok state of the same family, about the same job                       |
-    | a session that ended                         | no state                                                                 |
-    | a stream entry that was dead-lettered        | no state                                                                 |
-    | a todo of the sdlc domain that changed phase | nothing about state: domain events do not follow the platform convention |
-```
-
 #### UC-EE15: Everything reported broken has a reported way back
-
-```gherkin
-Scenario Outline: A failing lifecycle reports when it is over
-  Given the platform reported <thing> in a failing state
-  When <recovery>
-  Then the platform emits an event reporting an ok state of the same family about the same thing with the same origin
-
-  Examples:
-    | thing                                                   | recovery                                                                                     |
-    | a job whose run failed                                  | a later run of that job succeeds                                                             |
-    | a burst of one event type                               | that type's events no longer reach the burst threshold within the detection window           |
-    | a thing degraded by repeated failures                   | none of its failing event types reaches the degradation threshold within the window any more |
-    | a burst that began before the event processor restarted | after the restart, that type's events no longer reach the burst threshold within the window  |
-```
 
 ## Known caveats
 

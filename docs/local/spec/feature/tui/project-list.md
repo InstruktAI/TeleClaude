@@ -47,24 +47,23 @@ fails is decided by `local/projects/teleclaude/spec/feature/presentation/work-fe
 
 ### Use cases
 
-#### UC-TUI-PL1: A newly listed project with no sessions appears in the Sessions view
+#### UC-TUI-PL1: An operator sees each computer's current project list
 
 ```gherkin
-Given an operator is viewing the TUI Sessions view
-And a project with no sessions is added to that computer's project listing
-When the daemon pushes the updated listing
-Then the operator sees that project under its computer within seconds
-And nothing else had to change for it to appear
+Scenario: A newly listed project appears even without sessions
+  Given an operator is viewing the TUI Sessions view
+  When a project with no sessions is added to that computer's project listing
+  Then the operator sees the project under its computer
+  And nothing else has to change for it to appear
+
+Scenario: A removed or renamed project matches the current listing
+  Given an operator is viewing the TUI Sessions view showing a project
+  When that project leaves the computer's listing or is listed under a new display name
+  Then the operator no longer sees the former row
+  And a renamed project appears under its new display name
 ```
 
 #### UC-TUI-PL2: A project the listing drops or renames is redrawn as it now is
-
-```gherkin
-Given an operator is viewing the TUI Sessions view showing a project
-When that project leaves the computer's listing or is listed under a new display name
-Then the operator no longer sees the project's former row
-And a renamed project is shown under its new display name
-```
 
 #### UC-TUI-PL3: Adding a project asks only for its folder and shows it everywhere
 
@@ -78,10 +77,3 @@ And the operator sees the project in both views under the name its folder gives 
 #### UC-TUI-PL4: A failed add tells the operator why
 
 #### UC-TUI-PL5: Another computer's header offers no new-project action
-
-```gherkin
-Given an operator selects a remote computer's header in the Sessions or Preparation view
-When the operator invokes the new-project action
-Then no new-project input opens
-And the operator is told that a project is added on its own computer
-```

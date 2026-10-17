@@ -48,63 +48,44 @@ It performs no periodic session polling or fleet discovery.
 
 #### UC-SVIS-1: A session missed by live delivery becomes visible from the reconnect snapshot
 
-```gherkin
-Given a human operator viewing sessions they may access
-And an eligible open session absent from that view after a connection interruption
-When the view reconnects to the daemon
-Then the session appears from the daemon's complete session snapshot
-And the operator does not need to restart the TUI
-```
-
-#### UC-SVIS-2: Every eligible open lifecycle state is included at startup
+#### UC-SVIS-2: An operator sees every session included in their current reach
 
 ```gherkin
-Given a human operator whose reach includes local and remote projects
-And attended open sessions in those projects spanning active, initializing, headless, closing, and escalated states
-And sessions that are closed, unattended, or outside the operator's reach
-When the operator opens the TUI Sessions view
-Then the view contains every eligible open session regardless of agent activity or human ownership
-And the ineligible sessions remain outside the view
+Scenario: The initial view contains every eligible open session
+  Given a human operator whose reach includes local and remote projects
+  And attended open sessions in those projects span active, initializing, headless, closing, and escalated states
+  And other sessions are closed, unattended, or outside the operator's reach
+  When the operator opens the TUI Sessions view
+  Then every eligible open session appears regardless of agent activity or human ownership
+  And ineligible sessions remain outside the view
+
+Scenario: A session missed while disconnected appears after reconnect
+  Given an eligible open session was absent from the view after a connection interruption
+  When the view reconnects to the daemon
+  Then the session appears in the view without restarting the TUI
+
+Scenario: Newly discovered peers contribute their eligible sessions
+  Given another computer has eligible open sessions whose agents are idle
+  When the daemon discovers that computer and receives its session state
+  Then those sessions appear in the running view
+  And the operator does not need to configure the peer or restart the TUI
+
+Scenario: A session omitted after a reach change is not treated as closed
+  Given an operator was viewing a live session they may access
+  When their reach changes and a complete snapshot omits that session
+  Then the session leaves the view
+  And its absence does not mark it closed or create a closure in pane or provenance state
 ```
 
 #### UC-SVIS-3: A lifecycle failure reconciles the view from the daemon
 
-```gherkin
-Given a human operator whose session view needs reconciliation after a reported lifecycle failure
-When the daemon reports the failure
-Then the daemon supplies its current eligible session set to the view
-And the view reflects that set without a separate session read
-```
-
 #### UC-SVIS-4: A session left out of a snapshot is not recorded as closed
-
-```gherkin
-Given a human operator viewing a live session they may access
-When the operator's reach changes and the daemon supplies a complete snapshot without that session
-Then the session leaves the view
-And its absence does not mark the session closed or create a closure in pane or provenance state
-```
 
 #### UC-SVIS-5: An unattended procedure agent never enters the normal view
 
 #### UC-SVIS-6: A newly discovered peer's idle sessions enter the running view
 
-```gherkin
-Given a human operator viewing sessions on a running TUI
-And another computer with eligible open sessions whose agents are idle
-When the daemon discovers that computer and receives its session state
-Then those sessions appear in the running view
-And the operator does not need to configure the peer or restart the TUI
-```
-
 #### UC-SVIS-7: A resource refresh cannot replace newer session state
-
-```gherkin
-Given a human operator's session view has received current session state from the daemon
-And an earlier HTTP request or a refresh of another resource is still completing
-When that response reaches the TUI
-Then the session collection continues to reflect the current session stream
-```
 
 ## Known caveats
 

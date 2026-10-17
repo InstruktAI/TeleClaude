@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -41,6 +42,7 @@ from teleclaude.core.session_continuation import ContinuationLoader, rebuild_con
 from teleclaude.core.session_launch_profile import resolve_session_launch_profile
 from teleclaude.core.session_runtime_gate import acquire_session_runtime_lease
 from teleclaude.paths import REPO_ROOT, session_tmp_dir
+from teleclaude.runtime.environment import runtime_run_command
 from teleclaude.types.commands import HandoffAgentCommand, ResumeAgentCommand, RunAgentCommand, StartAgentCommand
 
 from ._handoff import execute_handoff
@@ -272,11 +274,15 @@ async def start_agent(
         updates["last_input_origin"] = cmd.origin
     await db.update_session(session.session_id, **updates)
 
+    runtime_run_id = cmd.runtime_run_id or str(uuid4())
+    if not await db.install_runtime_run(session.session_id, runtime_run_id):
+        return
+    command_str = runtime_run_command(command_str, runtime_run_id)
     run_started_at = datetime.now(UTC)
     await transition_agent_status(
         db,
         session.session_id,
-        AgentRunStart(startup_work_expected=initial_prompt is not None),
+        AgentRunStart(startup_work_expected=initial_prompt is not None, run_id=runtime_run_id),
         at=run_started_at,
     )
     await execute_terminal_command(session.session_id, command_str, None, True)
@@ -362,8 +368,17 @@ async def resume_agent(
     else:
         await db.update_session(session.session_id, active_agent=agent_name)
 
+    runtime_run_id = str(uuid4())
+    if not await db.install_runtime_run(session.session_id, runtime_run_id):
+        return
+    command_str = runtime_run_command(command_str, runtime_run_id)
     run_started_at = datetime.now(UTC)
-    await transition_agent_status(db, session.session_id, AgentRunStart(), at=run_started_at)
+    await transition_agent_status(
+        db,
+        session.session_id,
+        AgentRunStart(run_id=runtime_run_id),
+        at=run_started_at,
+    )
     await execute_terminal_command(session.session_id, command_str, None, True)
 
 

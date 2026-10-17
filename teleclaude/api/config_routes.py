@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends
 
 from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, carried_caller
 from teleclaude.config.operation_answers import CONFIG_API_PREFIX, CONFIG_OPERATIONS_ROUTE
-from teleclaude.config.subject_operations import ConfigOutcome, ConfigRequest, run_config_operation
+from teleclaude.config.operation_requests import ConfigOutcome, ConfigRequest
+from teleclaude.config.subject_operations import run_config_operation
 from teleclaude.core.configuration_clearance import standing_for_caller
 
 router = APIRouter(prefix=CONFIG_API_PREFIX, tags=["config"])

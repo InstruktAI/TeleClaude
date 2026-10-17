@@ -20,8 +20,6 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import db
 from teleclaude.core.endpoints import DeskIdentifier
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionEscalatedPayload
 from teleclaude.core.identity import derive_identity_key, session_person_role
 from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
 from teleclaude.core.models import (
@@ -42,7 +40,6 @@ from teleclaude.core.protocols import EscalationThreadAdapter
 from teleclaude.core.relay_context import compile_relay_context
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_status import SessionLifecycleStatus
-from teleclaude.events.envelope import EventVisibility
 
 logger = get_logger(__name__)
 
@@ -84,8 +81,6 @@ _ESCALATION_SECTION_SEPARATOR = "\n"
 _FILE_NOTICE_TEMPLATE = "sent a file: {filename}"
 _PERSON_ANSWER_TEMPLATE = "{name}: {text}"
 
-_ESCALATED_EVENT = "session.escalation_started"
-_ESCALATION_ENDED_EVENT = "session.escalation_ended"
 _RECIPIENT_FAILED_EVENT = "help_desk_escalation_recipient_failed"
 _ESCALATED_LOG_EVENT = "help_desk_escalated"
 _THREAD_POST_FAILED_EVENT = "help_desk_relay_thread_post_failed"
@@ -286,11 +281,6 @@ async def _open_relay(session_id: str, env: RelayEnvironment) -> None:
         await transition_session(
             db, session_id, LifecycleTransition(SessionLifecycleStatus.ESCALATED, LifecycleTransitionReason.ESCALATED)
         )
-    event_bus.emit(
-        _ESCALATED_EVENT,  # type: ignore[arg-type]
-        SessionEscalatedPayload(session_id=session_id),
-        visibility=EventVisibility.CLUSTER,
-    )
 
 
 async def _end_relay(session_id: str, env: RelayEnvironment) -> None:
@@ -303,11 +293,6 @@ async def _end_relay(session_id: str, env: RelayEnvironment) -> None:
         await transition_session(
             db, session_id, LifecycleTransition(SessionLifecycleStatus.ACTIVE, LifecycleTransitionReason.HANDBACK)
         )
-    event_bus.emit(
-        _ESCALATION_ENDED_EVENT,  # type: ignore[arg-type]
-        SessionEscalatedPayload(session_id=session_id),
-        visibility=EventVisibility.CLUSTER,
-    )
 
 
 async def escalate(
@@ -518,11 +503,6 @@ async def hand_back(session: Session, env: RelayEnvironment | None = None) -> No
             current.session_id,
             LifecycleTransition(SessionLifecycleStatus.ACTIVE, LifecycleTransitionReason.HANDBACK),
         )
-    event_bus.emit(
-        _ESCALATION_ENDED_EVENT,  # type: ignore[arg-type]
-        SessionEscalatedPayload(session_id=session.session_id),
-        visibility=EventVisibility.CLUSTER,
-    )
     logger.info(_HANDED_BACK_EVENT, session_id=session.session_id, exchange=len(current.relay_exchange))
 
 

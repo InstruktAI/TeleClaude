@@ -163,295 +163,124 @@ Derivation rules:
 
 ### Use cases
 
-#### UC-CFG-CAP-1: Omitted capability blocks resolve to unsubscribed
+#### UC-CFG-CAP-1: An operator can leave a project without capability automation
 
 ```
-Given a project overlay at the current configuration version that declares no capability blocks
-When the project configuration is loaded
-Then the code, docs, and agents capabilities each resolve to disabled
-And no capability-gated mechanism activates for the project
+Given an operator wants TeleClaude tooling to stay inactive for a project
+When no project capabilities are declared
+Then code, docs, and agent-artifact mechanisms remain unsubscribed for that project
 ```
 
-#### UC-CFG-CAP-2: An explicitly disabled capability is honored
+#### UC-CFG-CAP-2: An operator selects the project capabilities
 
 ```
-Given a project overlay declaring the code capability disabled and the docs and agents capabilities enabled
-When the project configuration is loaded
-Then the code capability resolves to disabled
-And the docs and agents capabilities resolve to enabled
+Given an operator wants docs and agent-artifact tooling but no code toolchain for a project
+When they declare docs and agents enabled and code disabled
+Then the project subscribes to docs and agents but not code
+And the selected capabilities take effect on their next invocation
 ```
 
-#### UC-CFG-CAP-3: An unreadable declaration on an adopted project surfaces the failure
+#### UC-CFG-CAP-3: An operator can diagnose unreadable capability configuration
 
-```
-Given a project carrying a teleclaude.yml that cannot be read
-When the capabilities are resolved for that project
-Then the read failure surfaces
-And no capability state is substituted for the unreadable declaration
+```gherkin
+Scenario: An unreadable project manifest does not invent capability state
+  Given an adopted project has a `teleclaude.yml` the runtime cannot read
+  When the project capabilities are needed
+  Then the read failure is surfaced without substituting capability state
+
+Scenario: An unreadable capability block refuses a git invocation
+  Given an adopted project has a capability block whose `enabled` value is not a boolean
+  When installed plumbing resolves the project capabilities
+  Then the git invocation is refused with a diagnostic naming the manifest and block
+  And no capability state is substituted
 ```
 
 #### UC-CFG-CAP-4: A subscribed capability activates the checkpoint engine
 
-```
-Given a project subscribing at least one of code, docs, or agents
-When an agent turn ends
-Then the checkpoint engine evaluates the turn
-```
-
 #### UC-CFG-CAP-5: No subscription and no declared binding yields silence
-
-```
-Given a project subscribing none of code, docs, or agents
-And declaring no checkpoint binding of its own
-When an agent turn ends
-Then the checkpoint engine evaluates nothing for that turn
-And no checkpoint is emitted
-And no commit obligation is raised
-```
 
 #### UC-CFG-CAP-6: A declared path binding alone activates the engine
 
-```
-Given a project subscribing none of code, docs, or agents
-And declaring at least one checkpoint path binding of its own
-When an agent turn ends
-Then the checkpoint engine evaluates the turn
-```
-
 #### UC-CFG-CAP-7: Base bindings attach per subscribed capability
-
-```
-Given a project subscribing docs but neither code nor agents
-When the effective checkpoint action set is resolved for a changed docs file
-Then the docs maintenance action is owed
-And no agent-artifact maintenance action is owed
-And no toolchain or test maintenance action is owed
-```
 
 #### UC-CFG-CAP-8: A project subscribing neither code nor docs raises no commit obligation
 
-```
-Given a project subscribing neither code nor docs
-When a commit is made in that project
-Then it is made through ordinary git rather than the sealed-commit surface
-And no commit obligation is recorded for that project
-```
-
-#### UC-CFG-CAP-9: Lint follows code or docs; the other toolchain verbs follow code
+#### UC-CFG-CAP-9: An operator can lint docs in a docs-only project
 
 ```
-Given a project that subscribes docs but not code
-When an operator invokes telec code lint
-Then snippet validation runs over the changed files
-And no code check runs, neither the native toolchain nor TeleClaude's code rules
-And telec code test, format, and install refuse with a message naming the code capability
-And telec code commit and telec code add remain available because docs is subscribed
+Given a project subscribes to docs but not code
+When an operator runs `telec code lint` for a changed docs file
+Then the documentation is validated without running code-toolchain checks
 ```
 
 #### UC-CFG-CAP-10:
 
 #### UC-CFG-CAP-11:
 
-#### UC-CFG-CAP-12: A capability toggle never edits a project-tracked file
+#### UC-CFG-CAP-12: An operator can change a capability without changing project files
 
 ```
-Given a project with git-tracked files
-When an agent changes any capability toggle
-Then no file the project tracks is edited, removed from, or truncated apart from the declaration carrying the toggle
-And no capability state is written anywhere outside that declaration
+Given an operator changes a project's capability selection
+When the declaration is saved and the plumbing next runs
+Then no project-tracked file other than the declaration is changed
+And capability state remains in that declaration
 ```
 
 #### UC-CFG-CAP-13:
 
 #### UC-CFG-CAP-14: A non-adopting path never touches a manifest-less repository
 
-```
-Given a repository that carries no teleclaude.yml
-And a non-adopting path acts on it — a sync, the checkpoint engine, or the git wrapper
-Then no hook, marker, or filter is written or read for it
-And the repository is left byte-for-byte unchanged
-```
-
 #### UC-CFG-CAP-15: A changed declaration takes effect with no projection pass
-
-```
-Given a project whose assessment changes a capability from subscribed to unsubscribed
-When that assessment writes the new toggle
-Then the installed plumbing resolves the new value on its next invocation
-And no separate pass is required to make the change take effect
-```
 
 #### UC-CFG-CAP-16: The installed plumbing answers a repeated read without an interpreter
 
-```
-Given the installed plumbing has kept its answer for a project's declaration
-And since then no file that answer was read from has changed and the installation's code has not advanced
-When the git wrapper runs on a git invocation
-Then it decides from the capability subscriptions the runtime resolves for that declaration
-And it spawns no interpreter to read them
-```
-
 #### UC-CFG-CAP-17: An unsubscribed docs capability leaves the snippet pipeline idle
-
-```
-Given a project that does not subscribe the docs capability
-And that carries snippet sources under docs/
-When an agent invokes the sync pipeline for that project
-Then no snippet is validated, indexed, or published for it
-And its subscribed agent artifacts are still deployed
-```
 
 #### UC-CFG-CAP-18: An unsubscribed agents capability leaves artifact distribution idle
 
-```
-Given a project that does not subscribe the agents capability
-And that carries agent artifact sources
-When an agent invokes the sync pipeline for that project
-Then no agent artifact is transpiled or deployed for it
-And its subscribed snippets are still validated, indexed, and published
-```
-
 #### UC-CFG-CAP-19:
 
-#### UC-CFG-CAP-20: A fresh clone honors the declaration before any TeleClaude command runs
+#### UC-CFG-CAP-20: An operator's clone honors the project's capability selection
 
 ```
-Given a repository whose tracked teleclaude.yml declares code and docs unsubscribed
-And a clone of it on which no publication has ever run
-When the git wrapper runs on a git invocation inside that clone
-Then both capabilities resolve to unsubscribed
-And the wrapper execs the real git binary without intercepting the invocation
+Given an operator clones a project whose declaration leaves code and docs unsubscribed
+When they invoke git inside the clone before any TeleClaude command has run there
+Then the clone honors those capability choices
 ```
 
 #### UC-CFG-CAP-21: The plumbing reads a hand-authored inline declaration
-
-```
-Given a project whose teleclaude.yml disables the code capability in inline-flow form
-When the installed plumbing resolves that project's capabilities
-Then the code capability resolves to unsubscribed
-And it resolves identically to the same declaration written in block form
-```
 
 #### UC-CFG-CAP-22:
 
 #### UC-CFG-CAP-24: An unreadable capability block refuses the git invocation
 
-```
-Given a project whose teleclaude.yml carries a code capability block whose enabled value the runtime cannot read as a boolean
-When an agent session invokes git inside that project and the installed plumbing resolves its capabilities
-Then the invocation aborts with a message naming teleclaude.yml and the code block
-And no capability state is substituted for the unreadable block
-```
-
 #### UC-CFG-CAP-25: A capability block without an enabled value resolves to unsubscribed
-
-```
-Given a project whose teleclaude.yml, at the current configuration version, carries a code capability block that declares no enabled value
-When the capabilities are resolved by the runtime or by the installed plumbing
-Then the code capability resolves to unsubscribed on both readers
-```
 
 #### UC-CFG-CAP-26: A registered project keeps its subscriptions across the unsubscribed default
 
-```
-Given a registered project whose configuration was written while an omitted block still meant subscribed
-And that configuration declares no capability blocks
-When the project configuration is loaded
-Then the code, docs, and agents capabilities each resolve to enabled
-And once a configuration migration run stores the document, it declares each of them enabled
-```
-
 #### UC-CFG-CAP-27: A linked worktree of a registered project resolves as its project
-
-```
-Given a registered project whose configuration was written while an omitted block still meant subscribed
-And that configuration declares no capability blocks
-And a linked worktree of that project whose copy of the configuration is equally old
-When the capabilities are resolved inside that worktree by the runtime or by the installed plumbing
-Then the code, docs, and agents capabilities each resolve to enabled
-```
 
 #### UC-CFG-CAP-28: A declaration the registries do not name claims nothing by omission
 
-```
-Given a repository whose teleclaude.yml declares the project tier and no capability blocks
-And that declaration was written while an omitted block still meant subscribed
-And the repository's root is not registered
-When the capabilities are resolved by the runtime or by the installed plumbing
-Then the code, docs, and agents capabilities each resolve to unsubscribed
-And the git wrapper execs the real git binary without intercepting an agent session's invocation
-```
-
 #### UC-CFG-CAP-29: The plumbing resolves a registered declaration the migration list has not yet stored
 
-```
-Given a registered project whose stored teleclaude.yml carries no tier declaration
-And that document has not passed the declaring migration
-When an agent session invokes git inside that project
-Then the installed plumbing resolves the project tier and the subscriptions the runtime resolves
-And the invocation is not refused for a missing declaration
-```
-
-#### UC-CFG-CAP-30: Registration declares the subscriptions a document leaves undeclared
+#### UC-CFG-CAP-30: An operator onboards a project with inferred capabilities
 
 ```
-Given a project root that is not registered
-And its configuration declares the code capability and neither the docs nor the agents capability
-When an operator or agent registers that project
-Then the code capability keeps its declared value
-And the docs and agents capabilities are declared with values inferred from the repository's shape
+Given an operator onboards a project whose configuration declares only the code capability
+When the project is registered
+Then the code selection is preserved and undeclared capabilities are inferred from repository shape
 ```
 
 #### UC-CFG-CAP-31: An installation advance makes the plumbing resolve again
 
-```
-Given the installed plumbing has kept its answer for a project's declaration
-When canonical main advances with a change to the installation's code, or installation runs
-Then the next git invocation in that project resolves the declaration through the runtime
-```
-
 #### UC-CFG-CAP-32: A slug worktree's plumbing answers from the worktree's own declaration
-
-```
-Given a slug worktree whose copy of teleclaude.yml declares capability subscriptions that differ from the owning checkout's
-When an agent session invokes git inside that worktree
-Then the installed plumbing decides from the worktree's own copy
-
-Given a slug worktree that carries no teleclaude.yml
-When an agent session invokes git inside that worktree
-Then the git wrapper execs the real git binary without intercepting the invocation
-```
 
 #### UC-CFG-CAP-33: A capability resolved from the project's environment file resolves alike on both readers
 
-```
-Given a project whose code capability block takes its enabled value from a variable in the declaration's sibling .env
-When the capabilities are resolved by the runtime or by the installed plumbing
-Then both readers resolve the code capability to the value the .env holds
-And after that value changes in the .env, the next git invocation decides from the new value
-```
-
 #### UC-CFG-CAP-34: A staged declaration that fails validation refuses the commit
 
-```
-Given a home of any kind whose commit-gate hooks are installed, whatever capabilities it subscribes
-And a commit that stages its teleclaude.yml
-When that staged file fails validation against its own declaration schema
-Then the commit is refused with that file's findings
-And no other configuration is validated
-And this holds for a raw git commit and for telec code commit alike
-And a home subscribing neither code nor docs runs no other check and raises no commit obligation
-```
-
 #### UC-CFG-CAP-35: An event binding alone leaves the engine silent
-
-```
-Given a project subscribing none of code, docs, or agents
-And declaring checkpoint bindings of its own that all name events
-When an agent turn ends
-Then the checkpoint engine evaluates nothing for that turn
-And no checkpoint is emitted
-```
 
 ## Known caveats
 

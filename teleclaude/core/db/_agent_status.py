@@ -22,9 +22,8 @@ from teleclaude.core.agent_status import (
     AgentStatusIntegrityError,
     _attempted_transition,
 )
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents
 from teleclaude.core.models import SessionField
+from teleclaude.core.runtime_events import publish_session_source_change
 from teleclaude.core.session_status import (
     TERMINAL_LIFECYCLE_STATUSES,
     AgentStatusReason,
@@ -37,7 +36,7 @@ from teleclaude.core.supervisory_silence import (
     SilenceObservationKind,
     SilenceRule,
 )
-from teleclaude.events.envelope import EventVisibility
+from teleclaude.events.schemas.system import RuntimeSessionChange
 
 _INVALID_OPEN_TOOL_CALLS_ERROR = "Invalid open_tool_calls for session %s"
 _INVALID_TURN_NOTIFICATIONS_ERROR = "Invalid turn_notifications_sent for session %s"
@@ -114,18 +113,15 @@ class _AgentStatusUpdatedFields(TypedDict):
     runtime_turn_id: str | None
 
 
-def _emit_turn_notifications_updated(session_id: str, records: frozenset[TurnNotificationRecord]) -> None:
-    event_bus.emit(
-        TeleClaudeEvents.SESSION_UPDATED,
-        SessionUpdatedContext(
-            session_id=session_id,
-            updated_fields={SessionField.TURN_NOTIFICATIONS_SENT.value: sorted(record.value for record in records)},
-        ),
-        visibility=EventVisibility.CLUSTER,
+async def _emit_turn_notifications_updated(session_id: str, records: frozenset[TurnNotificationRecord]) -> None:
+    await publish_session_source_change(
+        session_id,
+        RuntimeSessionChange.UPDATED,
+        changed_fields=(SessionField.TURN_NOTIFICATIONS_SENT.value,),
     )
 
 
-def _emit_agent_status_updated(
+async def _emit_agent_status_updated(
     session_id: str,
     *,
     status: AgentStatusValue,
@@ -145,10 +141,10 @@ def _emit_agent_status_updated(
         runtime_run_id=runtime_run_id,
         runtime_turn_id=runtime_turn_id,
     )
-    event_bus.emit(
-        TeleClaudeEvents.SESSION_UPDATED,
-        SessionUpdatedContext(session_id=session_id, updated_fields=updated_fields),
-        visibility=EventVisibility.CLUSTER,
+    await publish_session_source_change(
+        session_id,
+        RuntimeSessionChange.UPDATED,
+        changed_fields=tuple(updated_fields),
     )
 
 
@@ -243,7 +239,7 @@ class AgentStatusPersistenceMixin:
                 raise AgentStatusIntegrityError(session_id, record.value, len(rows))
             if rows:
                 records = decode_turn_notifications(rows[0][0], session_id=session_id)
-                _emit_turn_notifications_updated(session_id, records)
+                await _emit_turn_notifications_updated(session_id, records)
                 return True, records
             result = await db_session.execute(
                 text(_SELECT_TURN_NOTIFICATIONS_SQL),
@@ -254,11 +250,33 @@ class AgentStatusPersistenceMixin:
                 raise AgentStatusIntegrityError(session_id, record.value, 0)
             return False, decode_turn_notifications(stored[0], session_id=session_id)
 
+    async def install_runtime_run(self, session_id: str, runtime_run_id: str) -> bool:
+        """Install one launch identity and clear its predecessor's start evidence atomically."""
+        statement = (
+            update(db_models.Session)
+            .where(db_models.Session.session_id == session_id, _session_open())
+            .values(
+                runtime_run_id=runtime_run_id,
+                runtime_start_observed=False,
+                agent_status_version=db_models.Session.agent_status_version + 1,
+            )
+            .returning(db_models.Session.session_id)
+        )
+        async with cast(_AgentStatusDatabase, self)._session() as db_session:
+            result = await db_session.exec(statement)
+            rows = result.all()
+            await db_session.commit()
+        if len(rows) > 1:
+            attempted = _attempted_transition(AgentRunStart(run_id=runtime_run_id), AgentStatusValue.UNKNOWN)
+            raise AgentStatusIntegrityError(session_id, attempted, len(rows))
+        return bool(rows)
+
     async def commit_agent_status(
         self,
         session_id: str,
         *,
         expected_version: int,
+        expected_runtime_run_id: str | None,
         cause: AgentStatusCause,
         status: AgentStatusValue,
         reason: AgentStatusReason | None,
@@ -273,13 +291,16 @@ class AgentStatusPersistenceMixin:
         reset_notifications = isinstance(cause, AgentRunStart) or (
             isinstance(cause, AgentEventCause) and cause.new_turn
         )
+        conditions = [
+            db_models.Session.session_id == session_id,
+            db_models.Session.agent_status_version == expected_version,
+            _session_open(),
+        ]
+        if expected_runtime_run_id is not None:
+            conditions.append(db_models.Session.runtime_run_id == expected_runtime_run_id)
         statement = (
             update(db_models.Session)
-            .where(
-                db_models.Session.session_id == session_id,
-                db_models.Session.agent_status_version == expected_version,
-                _session_open(),
-            )
+            .where(*conditions)
             .values(
                 agent_status=status.value,
                 agent_status_reason=reason.value if reason else _EMPTY_TEXT,
@@ -312,8 +333,8 @@ class AgentStatusPersistenceMixin:
                 raise AgentStatusIntegrityError(session_id, attempted_transition, len(rows))
             if rows:
                 if reset_notifications:
-                    _emit_turn_notifications_updated(session_id, frozenset())
-                _emit_agent_status_updated(
+                    await _emit_turn_notifications_updated(session_id, frozenset())
+                await _emit_agent_status_updated(
                     session_id,
                     status=status,
                     reason=reason,
@@ -406,7 +427,7 @@ class AgentStatusPersistenceMixin:
             clock_evidence_at = clock_evidence_at.replace(tzinfo=UTC)
         else:
             clock_evidence_at = clock_evidence_at.astimezone(UTC)
-        _emit_turn_notifications_updated(
+        await _emit_turn_notifications_updated(
             session_id,
             decode_turn_notifications(raw_notifications, session_id=session_id),
         )

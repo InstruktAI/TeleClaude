@@ -21,8 +21,9 @@ holds the project's history establish nothing about who owns it.
 
 A project inside a person's or a company's home declares that home's owner.
 Creating or adopting a project there records it, and a configuration inside a
-home that declares any other owner, or none, is refused. Outside every home the
-declaration is free: a company, a person, or no owner.
+home that declares any other owner, or none, is refused with an error naming
+the home and its owner. Outside every home the declaration is free: a company,
+a person, or no owner.
 
 An owner is a company or a person. The two are alternatives, not layers — a
 project has at most one owner, and a declaration naming both is refused rather
@@ -54,37 +55,33 @@ recorded, and no fallback owner is inferred from the project's surroundings.
 #### UC-POWN-1: A declared person owner is the project's owner
 
 ```gherkin
-Given a project whose configuration declares a registered person as its owner
-When the project's owner is resolved
-Then the owner is that person
-And no part of the answer is derived from the directory containing the project
+Given an operator wants a registered person to own a project
+When they declare that person as the project's owner
+Then the project belongs to that person regardless of its containing directory
 ```
 
 #### UC-POWN-2: A declared company owner keeps working
 
 ```gherkin
-Given a project whose configuration declares a registered company as its owner
-When the project's owner is resolved
-Then the owner is that company
-And the project composes that company's configuration
+Given an operator wants a registered company to own a project
+When they declare that company as the project's owner
+Then the project belongs to that company and composes its configuration
 ```
 
 #### UC-POWN-3: An ownerless project stays ownerless
 
 ```gherkin
-Given a project outside every home whose configuration declares no owner
-When the project's owner is resolved
-Then the project has no owner
-And no owner is inferred from the root that contains it
-And the project composes no company configuration
+Given an operator wants a project outside every home to have no owner
+When they leave its ownership declaration unset
+Then the project remains ownerless and composes no company configuration
 ```
 
 #### UC-POWN-4: Two simultaneous owners are not a valid declaration
 
 ```gherkin
-Given a project configuration declaring both a company owner and a person owner
-When that configuration is loaded
-Then loading fails with a clear result naming the conflicting declaration
+Given an operator declares both a company and a person as one project's owner
+When the project configuration is loaded
+Then the conflicting declaration is rejected with a diagnostic naming both owner fields
 And neither owner is selected
 ```
 
@@ -92,22 +89,7 @@ And neither owner is selected
 
 #### UC-POWN-6: A project inside a home is owned by that home
 
-```gherkin
-Given a project created or adopted inside a person's home
-When the project's owner is resolved
-Then the owner is that person
-And the project's configuration declares that person
-```
-
 #### UC-POWN-7: A home refuses a project that names another owner
-
-```gherkin
-Given a project inside a company's home
-And its configuration declares a different company, a person, or no owner
-When that configuration is loaded
-Then loading fails with a clear result naming the home and its owner
-And no owner is selected
-```
 
 ## Known caveats
 

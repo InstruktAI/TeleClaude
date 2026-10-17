@@ -26,75 +26,26 @@ file; one declaring a project configuration loads the project file; the global
 file is always loaded. The tier declaration itself is specified in
 `local/projects/teleclaude/spec/feature/config/tier-declaration.md`.
 
+A present empty overlay is loaded as that tier's schema defaults. An existing
+overlay that cannot be read or parsed is logged and fails with a
+path-naming configuration error that preserves the original cause; it is not
+silently replaced by an empty overlay.
+
 ## Canonical fields
 
 ### Use cases
 
 #### UC-CFG-OVERLAY-1: Project context composes global plus project
 
-```
-Given a context root at /repos/my-project
-And ~/.teleclaude/teleclaude.yml exists with a global config
-And /repos/my-project/teleclaude.yml exists with a project config declaring itself a project configuration
-When the config loading API is invoked for that context root
-Then the global overlay is read from ~/.teleclaude/teleclaude.yml
-And the project overlay is read from /repos/my-project/teleclaude.yml
-And the per-person layer is left as None
-And the returned app config holds the global overlay, the project overlay, and no person overlay
-```
-
 #### UC-CFG-OVERLAY-2: Person context composes global plus per-person
-
-```
-Given a context root at ~/.teleclaude/people/alice
-And ~/.teleclaude/teleclaude.yml exists with a global config
-And ~/.teleclaude/people/alice/teleclaude.yml exists with a per-person config declaring itself a person configuration
-When the config loading API is invoked for that context root
-Then the file's declared tier identifies the person overlay
-And the per-person overlay is read from that context root
-And the project layer is left as None
-And the returned app config holds the global overlay, no project overlay, and the per-person overlay
-```
 
 #### UC-CFG-OVERLAY-3: Missing optional layer yields None
 
-```
-Given a context root whose declared tier is the global tier
-When the config loading API is invoked for that context root
-Then neither the project overlay loader nor the per-person overlay loader is called for that context
-And the returned app config's project and person fields are both None (not default-constructed overlays)
-```
-
 #### UC-CFG-OVERLAY-4: Missing config file in overlay loader yields default instance
-
-```
-Given the config overlay loader is called for a path that does not exist on disk
-When the loader runs
-Then it returns a default-constructed overlay instance
-And no exception is raised
-```
 
 #### UC-CFG-OVERLAY-5: YAML read failure surfaces as an error
 
-```
-Given the config overlay loader is called for an existing path
-And the YAML parser raises (malformed YAML, IO failure, permission denied)
-When the loader runs
-Then the error is logged
-And the loader raises a configuration error chained to the original exception
-And the message names the path that failed
-```
-
 #### UC-CFG-OVERLAY-6: Empty YAML yields default overlay instance
-
-```
-Given the config overlay loader is called for an existing path
-And the file is empty or contains only `---`
-When the loader runs
-Then the raw value is coerced to an empty dict
-And the overlay schema returns a default-constructed instance
-And the result is returned without warning
-```
 
 ### Cross-context references
 

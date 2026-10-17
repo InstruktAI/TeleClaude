@@ -45,7 +45,7 @@ gesture, so fast-closing a headless session behaves identically to the keyboard
 
 ### Use cases
 
-#### UC-SACT-1: Fast-closing a headless session closes it without reviving
+#### UC-SACT-1: An operator closes a headless session without reopening it
 
 ```
 Given a headless session row in the TUI Sessions view
@@ -69,7 +69,7 @@ A new session remains listed while its host pane is being created. A pending
 selection is retained until the pane is bound; it does not trigger headless
 revival or wait for the agent's first runtime event.
 
-#### UC-SACT-3: Plain-clicking a headless session revives it
+#### UC-SACT-3: An operator returns to a headless session
 
 ```
 Given a headless session row in the TUI Sessions view
@@ -79,7 +79,7 @@ And the view requests no preview for that session
 And the view requests no close for that session
 ```
 
-#### UC-SACT-4: Pressing `o` on a session row hands the session off automatically
+#### UC-SACT-4: An operator hands an open session to an automatic successor
 
 ```gherkin
 Given a human operator selects an open session row in the TUI Sessions view
@@ -90,7 +90,7 @@ And the operator is told which successor was selected and that handoff started
 And a closed session row receives no handoff request
 ```
 
-#### UC-SACT-5: Pressing `o` on a project header hands off every live session on a chosen agent
+#### UC-SACT-5: An operator hands off a project's live sessions from a chosen agent
 
 ```gherkin
 Given a human operator selects a project header in the TUI Sessions view
@@ -101,7 +101,7 @@ And sessions running on other agents and closed sessions receive no request
 And dismissing the choice sends no request
 ```
 
-#### UC-SACT-6: Pressing `O` on a session row opens the start-session modal for an explicit successor
+#### UC-SACT-6: An operator directs a handoff to a chosen successor
 
 ```gherkin
 Given a human operator selects an open session row in the TUI Sessions view
@@ -112,17 +112,17 @@ And dismissing the modal sends no request
 And a closed session row opens no handoff form
 ```
 
-#### UC-SACT-7: A handoff refreshes the visible session row without another gesture
+#### UC-SACT-7: An operator sees the new successor after handoff
 
 ```gherkin
-Given the TUI displays a session row and its attached or sticky pane
-When a session update reports that a handoff successor is now the active agent
+Given an operator has handed off a session displayed in the TUI
+When the successor takes over that session
 Then the row displays the successor and the session's current thinking mode
-And every attached or sticky pane reapplies the successor's agent palette
-And the operator does not need to reselect the row or reload the TUI
+And any attached or sticky pane uses the successor's agent palette
+And the operator sees the updated session without reselecting the row or reloading the TUI
 ```
 
-#### UC-SACT-8: Pressing `R` on a project header restarts that computer's sessions of the project
+#### UC-SACT-8: An operator restarts a project's sessions on one computer
 
 ```gherkin
 Given a human operator selects a project header under one computer in the TUI Sessions view
@@ -133,7 +133,7 @@ And on confirmation the view requests one restart for each of those sessions, ad
 And sessions on any other computer receive no request
 ```
 
-#### UC-SACT-9: Starting a session by path on another computer leaves the path to that computer
+#### UC-SACT-9: An operator starts a session by path on another computer
 
 ```gherkin
 Given a human operator opens the start-session form in path mode for a computer other than the one running the TUI

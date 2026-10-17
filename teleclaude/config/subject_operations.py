@@ -14,14 +14,12 @@ import asyncio
 import json
 import os
 from collections.abc import Awaitable, Callable, Mapping
-from enum import StrEnum
 from pathlib import Path
 from typing import Final, cast
 
-from pydantic import BaseModel, ConfigDict, Field
 from redis.exceptions import RedisError
 
-from teleclaude.cli.config_handlers import check_env_vars, get_person_mcp_secret_statuses, validate_all
+from teleclaude.cli.config_handlers import check_env_vars, validate_all
 from teleclaude.closed_model import MASKED_INPUT
 from teleclaude.config._environment import (
     CompanyCredentialsError,
@@ -29,23 +27,51 @@ from teleclaude.config._environment import (
     mutate_environment_value,
     write_environment_value,
 )
+from teleclaude.config.editor_view import (
+    current_machine_environment,
+    editor_fields,
+    editor_revision,
+    person_secret_editor_fields,
+)
 from teleclaude.config.effective_view import (
     InvalidEffectiveValue,
     effective_sections,
     environment_references,
     without_masked_values,
 )
+from teleclaude.config.field_edit import apply_reference_edit, compile_field_edit
 from teleclaude.config.jobs import plan_job_subscription
 from teleclaude.config.loader import load_global_config
 from teleclaude.config.machine import config
-from teleclaude.config.operation_answers import EnvironmentChangeAnswer, PersonSecretRow, PersonSecretsAnswer
+from teleclaude.config.operation_answers import (
+    EditorFieldAnswer,
+    EditorInputKind,
+    EditorViewAnswer,
+    EnvironmentChangeAnswer,
+    PersonSecretRow,
+    PersonSecretsAnswer,
+)
+from teleclaude.config.operation_requests import (
+    ENVIRONMENT_REFERENCES_KEY,
+    INVITE_EMAIL_ENABLED_KEY,
+    INVITE_UNAVAILABLE_PROVIDERS_KEY,
+    VALIDATE_NOTES_KEY,
+    ConfigEditIntent,
+    ConfigFailure,
+    ConfigFailureKind,
+    ConfigOutcome,
+    ConfigRequest,
+    ConfigVerb,
+    Payload,
+)
 from teleclaude.config.person_secrets import (
     PersonSecretStorageError,
     clear_person_mcp_secret,
+    list_person_mcp_secret_inventory,
     replace_person_mcp_secret,
 )
 from teleclaude.config.person_voice import configure_person_discord_voice_bot
-from teleclaude.config.project_subject_init import create_project_subject
+from teleclaude.config.project_subject_init import adopt_project_subject, create_project_subject
 from teleclaude.config.resource_contract import (
     InvalidCandidate,
     PartialCommitFailure,
@@ -81,16 +107,21 @@ from teleclaude.core.endpoints import (
 from teleclaude.core.inbound.fleet import observe_fleet_from_heartbeats
 from teleclaude.core.models import HelpDeskKind
 from teleclaude.core.organization import person_roles
-from teleclaude.invite import InvitationOwnerUnavailable, admit_invitation_here, invite_person, render_help_desk_links
+from teleclaude.invite import (
+    InvitationOwnerUnavailable,
+    admit_invitation_here,
+    invitation_owner,
+    invite_person,
+    render_help_desk_links,
+)
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, ConfigFileName
+from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.project_setup.init_flow import (
     CompanyHomeDestination,
     PersonHomeDestination,
     PlatformPathDestination,
     ProjectDestination,
 )
-
-type Payload = dict[str, object]  # guard: loose-dict - heterogeneous per-operation config payload
 
 _DESK_KIND_BY_SUBJECT: Final = {
     ConfigSubjectKind.COMPANY: HelpDeskKind.COMPANY,
@@ -108,14 +139,6 @@ _FLEET_LAGGING = "help-desk entry is not served until every computer runs it; la
 _LIST_SEPARATOR = ", "
 _DISCORD_SECTION = "discord"
 _DISCORD_NOT_ENABLED = "Discord is not enabled on this computer, so there is no bot to bind a voice bot to."
-# The invitation answer's field naming each configured provider whose endpoint could not be resolved.
-INVITE_UNAVAILABLE_PROVIDERS_KEY = "unavailable_providers"
-# The invitation answer's field saying whether email is enabled on the computer that issued it.
-INVITE_EMAIL_ENABLED_KEY = "email_enabled"
-# The validation answer's field carrying a result row's informational notes.
-VALIDATE_NOTES_KEY = "notes"
-# The `get` answer's read-only projection naming each field whose stored value is an environment reference.
-ENVIRONMENT_REFERENCES_KEY = "environment_references"
 _REFERENCE_KINDS = frozenset({ConfigSubjectKind.COMPUTER, ConfigSubjectKind.GLOBAL, ConfigSubjectKind.PERSON})
 # The subject that owns each environment; an environment request is cleared as a patch of it.
 _ENVIRONMENT_OWNER: Final = {
@@ -128,85 +151,22 @@ _INSTANCE_REQUIRED = "this operation names one {kind} instance"
 _ENVIRONMENT_PERSON_REQUIRED = "a person's environment request names the person"
 _PROJECT_SECTION = "project"
 _JOBS_SECTION = "jobs"
+_MASTER_SCOPED_KEY = "master_scoped_not_applicable"
 _INVALID_PROJECT_SECTION = "Project subject has no writable project section"
 _INVALID_JOBS_ARRAY = "Project subject has an invalid jobs array"
-
-
-class ConfigVerb(StrEnum):
-    """The closed vocabulary of configuration operations a request can ask for."""
-
-    LIST = "list"
-    GET = "get"
-    INIT = "init"
-    PATCH = "patch"
-    REMOVE = "remove"
-    CREATE = "create"
-    INVITE = "invite"
-    DISCORD_VOICE_BOT = "discord-voice-bot"
-    HELP_DESK_LINKS = "help-desk-links"
-    VALIDATE = "validate"
-    ENV_LIST = "env-list"
-    ENV_SET = "env-set"
-    PERSON_SECRETS = "person-secrets"
-    JOB_SUBSCRIPTION = "job-subscription"
-
-
-class ConfigFailureKind(StrEnum):
-    """Why a configuration operation did not happen."""
-
-    REFUSED = "refused"
-    STALE_REVISION = "stale_revision"
-    NOT_FOUND = "not_found"
-    INVALID = "invalid"
-    PARTIAL_COMMIT = "partial_commit"
-
-
-class ConfigRequest(BaseModel):
-    """One configuration operation asked of the computer that owns the configuration."""
-
-    model_config = ConfigDict(frozen=True)
-
-    verb: ConfigVerb
-    kind: ConfigSubjectKind | None = None
-    instance: str | None = None
-    request_id: str
-    fields: Payload | None = None
-    patch: Payload | None = None
-    revision: str | None = None
-    delete_dir: bool = False
-    name: str | None = None
-    company: str | None = None
-    path: str | None = None
-    env_pairs: list[list[str]] = Field(default_factory=list)
-    # The environment an `env-set` request changes; the machine's when absent. A person's names that person in `instance`.
-    environment: ConfigEnvironment | None = None
-    # Variables an `env-set` request clears; a pair with an empty value leaves its variable as it is.
-    env_clear: list[str] = Field(default_factory=list)
-    job: str | None = None
-    enabled: bool = True
-    # The project the command acts on, which the computer answering judges the caller's role at.
-    project: str | None = None
-
-
-class ConfigFailure(BaseModel):
-    """A configuration operation that did not happen, with what its presentation needs."""
-
-    model_config = ConfigDict(frozen=True)
-
-    kind: ConfigFailureKind
-    message: str
-    required_standing: str | None = None
-    expected: str | None = None
-    actual: str | None = None
-
-
-class ConfigOutcome(BaseModel):
-    """The structured answer of one configuration operation."""
-
-    model_config = ConfigDict(frozen=True)
-
-    payload: Payload | None = None
-    failure: ConfigFailure | None = None
+_INVOCATION_DIRECTORY_REQUIRED = "project adoption requires the client's invocation directory"
+_FIELD_ID_REQUIRED = "a configuration field edit requires its field identity"
+_FIELD_REVISION_REQUIRED = "a configuration field edit requires the revision it was built from"
+_EDITOR_REVISION_REQUIRED = "a reference-backed field edit requires its editor revision"
+_FIELD_EDIT_SUBJECT_REQUIRED = "field edits currently support computer and person configuration subjects"
+_FIELD_EDIT_ACTION_REQUIRED = "the field edit intent did not produce an owner action"
+_STALE_REVISION_MESSAGE = "the configuration changed since the editor view was read"
+_PERSON_SECRET_STORE_UNAVAILABLE = "Personal secret storage is unavailable."
+_REQUEST_PATCH_KEY = "patch"
+_REQUEST_KIND_KEY = "kind"
+_SECRET_UNAVAILABLE_IDENTITY = "secrets.unavailable"
+_SECRET_FIELD_LABEL = "Personal MCP secrets"
+_SECRET_SECTION_LABEL = "Secrets"
 
 
 def _done(payload: Payload) -> ConfigOutcome:
@@ -290,16 +250,167 @@ async def _get(standing: ConfigurationStanding, request: ConfigRequest) -> Confi
         read_only = dict(view.read_only)
         if request.kind is ConfigSubjectKind.PERSON and request.instance is not None:
             read_only[_ROLES_FIELD] = person_roles(request.instance)
-        sections = effective_sections(view)
+        machine_environment = current_machine_environment() if view.ref.kind is ConfigSubjectKind.COMPUTER else None
+        sections = effective_sections(view, machine_environment=machine_environment)
         if view.ref.kind in _REFERENCE_KINDS:
             read_only[ENVIRONMENT_REFERENCES_KEY] = [
-                entry.model_dump(mode=_JSON_MODE) for entry in environment_references(view)
+                entry.model_dump(mode=_JSON_MODE)
+                for entry in environment_references(view, machine_environment=machine_environment)
             ]
     except SubjectNotFound as error:
         return _failed(ConfigFailureKind.NOT_FOUND, error)
     except (InvalidEffectiveValue, InvalidEnvironmentReferenceError, CompanyCredentialsError) as error:
         return _failed(ConfigFailureKind.INVALID, error)
     return _done({"view": {**sections, **read_only}, "revision": view.revision})
+
+
+async def _editor_get(standing: ConfigurationStanding, request: ConfigRequest) -> ConfigOutcome:
+    """Return the schema-derived editor projection after the ordinary subject clearance check."""
+    refused = _refusal(standing, request, ConfigurationOperation.GET, instance=request.instance)
+    if refused is not None:
+        return refused
+    try:
+        view = await asyncio.to_thread(read_subject, _subject_ref(request))
+        machine_environment = current_machine_environment() if view.ref.kind is ConfigSubjectKind.COMPUTER else None
+        sections = effective_sections(view, machine_environment=machine_environment)
+        read_only = dict(view.read_only)
+        outside = read_only.get(_MASTER_SCOPED_KEY, [])
+        outside_scope = tuple(str(item) for item in outside) if isinstance(outside, list) else ()
+        references = environment_references(view, machine_environment=machine_environment)
+        fields = editor_fields(
+            view.ref.kind,
+            sections,
+            outside_scope,
+            source_sections=view.sections,
+            references=references,
+        )
+        revision = editor_revision(view, machine_environment=machine_environment)
+        secret_store_available: bool | None = None
+        if view.ref.kind is ConfigSubjectKind.PERSON and request.instance is not None:
+            secrets = await asyncio.to_thread(_person_editor_secret_fields, request.instance)
+            secret_store_available = secrets[0]
+            fields.extend(secrets[1])
+    except SubjectNotFound as error:
+        return _failed(ConfigFailureKind.NOT_FOUND, error)
+    except (InvalidEffectiveValue, InvalidEnvironmentReferenceError, CompanyCredentialsError) as error:
+        return _failed(ConfigFailureKind.INVALID, error)
+    answer = EditorViewAnswer(
+        fields=fields,
+        revision=view.revision,
+        editor_revision=revision,
+        outside_scope=list(outside_scope),
+        secret_store_available=secret_store_available,
+    )
+    return _done(answer.model_dump(mode=_JSON_MODE))
+
+
+async def _field_edit(standing: ConfigurationStanding, request: ConfigRequest) -> ConfigOutcome:
+    """Apply one schema-addressed editor action through the owning subject operation."""
+    if request.kind not in (ConfigSubjectKind.COMPUTER, ConfigSubjectKind.PERSON):
+        return _invalid(_FIELD_EDIT_SUBJECT_REQUIRED)
+    if request.field_id is None:
+        return _invalid(_FIELD_ID_REQUIRED)
+    if request.revision is None:
+        return _invalid(_FIELD_REVISION_REQUIRED)
+    if request.kind is ConfigSubjectKind.PERSON and request.instance is None:
+        return _invalid(_INSTANCE_REQUIRED.format(kind=ConfigSubjectKind.PERSON.value))
+    refused = _refusal(standing, request, ConfigurationOperation.PATCH, instance=request.instance)
+    if refused is not None:
+        return refused
+    try:
+        view = await asyncio.to_thread(read_subject, _subject_ref(request))
+        machine_environment = current_machine_environment() if view.ref.kind is ConfigSubjectKind.COMPUTER else None
+        references = environment_references(view, machine_environment=machine_environment)
+        outside = view.read_only.get(_MASTER_SCOPED_KEY, [])
+        outside_scope = tuple(str(item) for item in outside) if isinstance(outside, list) else ()
+        fields = editor_fields(
+            view.ref.kind,
+            effective_sections(view, machine_environment=machine_environment),
+            outside_scope,
+            source_sections=view.sections,
+            references=references,
+        )
+        if view.ref.kind is ConfigSubjectKind.PERSON and request.instance is not None:
+            fields.extend(_person_editor_secret_fields(request.instance)[1])
+        plan = compile_field_edit(
+            view,
+            fields,
+            references,
+            request.field_id,
+            request.edit_intent,
+            request.value,
+        )
+        if plan.reference is not None:
+            if request.editor_revision is None:
+                return _invalid(_EDITOR_REVISION_REQUIRED)
+            if request.edit_intent is None:
+                return _invalid(_FIELD_EDIT_ACTION_REQUIRED)
+            await asyncio.to_thread(
+                apply_reference_edit,
+                view.ref,
+                request.field_id,
+                request.edit_intent,
+                request.value,
+                request.editor_revision,
+            )
+        elif plan.unchanged or request.edit_intent is ConfigEditIntent.KEEP:
+            if request.revision != view.revision:
+                return _stale_revision(request.revision, view.revision)
+        else:
+            if plan.patch is None:
+                return _invalid(_FIELD_EDIT_ACTION_REQUIRED)
+            outcome = await _patch(
+                standing,
+                request.model_copy(update={_REQUEST_PATCH_KEY: plan.patch}),
+            )
+            if outcome.failure is not None:
+                return outcome
+        return await _editor_get(
+            standing,
+            ConfigRequest(
+                verb=ConfigVerb.EDITOR_GET,
+                kind=request.kind,
+                instance=request.instance,
+                request_id=request.request_id,
+            ),
+        )
+    except StaleRevision as error:
+        return _stale_revision(str(error.expected), str(error.actual))
+    except SubjectNotFound as error:
+        return _failed(ConfigFailureKind.NOT_FOUND, error)
+    except (InvalidCandidate, ReadOnlyProjection, PersonSecretStorageError, OSError, ValueError) as error:
+        return _failed(ConfigFailureKind.INVALID, error)
+
+
+def _stale_revision(expected: str, actual: str) -> ConfigOutcome:
+    return ConfigOutcome(
+        failure=ConfigFailure(
+            kind=ConfigFailureKind.STALE_REVISION,
+            message=_STALE_REVISION_MESSAGE,
+            expected=expected,
+            actual=actual,
+        )
+    )
+
+
+def _person_editor_secret_fields(instance: str) -> tuple[bool, list[EditorFieldAnswer]]:
+    """Project the existing registry-derived secret inventory into editor rows."""
+    try:
+        inventory = list_person_mcp_secret_inventory(instance)
+    except (OSError, PersonSecretStorageError):
+        return False, [
+            EditorFieldAnswer(
+                identity=_SECRET_UNAVAILABLE_IDENTITY,
+                label=_SECRET_FIELD_LABEL,
+                value=None,
+                input_kind=EditorInputKind.STRING,
+                section=_SECRET_SECTION_LABEL,
+                editable=False,
+                available=False,
+                description=_PERSON_SECRET_STORE_UNAVAILABLE,
+            )
+        ]
+    return True, person_secret_editor_fields(inventory)
 
 
 async def _init(standing: ConfigurationStanding, request: ConfigRequest) -> ConfigOutcome:
@@ -424,6 +535,42 @@ async def _create(standing: ConfigurationStanding, request: ConfigRequest) -> Co
     except (InvalidCandidate, ValueError) as error:
         return _failed(ConfigFailureKind.INVALID, error)
     return _done(_view_payload(view))
+
+
+async def _project_adopt(standing: ConfigurationStanding, request: ConfigRequest) -> ConfigOutcome:
+    """Adopt the project rooted at the invocation directory under target clearance."""
+    if request.invocation_cwd is None:
+        return _invalid(_INVOCATION_DIRECTORY_REQUIRED)
+    refused = _refusal(standing, request, ConfigurationOperation.ADOPT, instance=None)
+    if refused is not None:
+        return refused
+    try:
+        adoption_root = resolve_invocation_roots(request.invocation_cwd).adoption_root()
+        view = await asyncio.to_thread(adopt_project_subject, adoption_root, request_id=request.request_id)
+    except PartialCommitFailure as error:
+        return _failed(ConfigFailureKind.PARTIAL_COMMIT, error)
+    except SubjectNotFound as error:
+        return _failed(ConfigFailureKind.NOT_FOUND, error)
+    except (InvalidCandidate, ValueError, FileNotFoundError) as error:
+        return _failed(ConfigFailureKind.INVALID, error)
+    return _done(_view_payload(view))
+
+
+async def _invitation_destination(standing: ConfigurationStanding, request: ConfigRequest) -> ConfigOutcome:
+    """Ask the invitation owner for the unique live master after clearance for the person invite."""
+    if request.instance is None:
+        return _invalid(_INSTANCE_REQUIRED.format(kind=ConfigSubjectKind.PERSON.value))
+    owner_request = request.model_copy(update={_REQUEST_KIND_KEY: ConfigSubjectKind.PERSON})
+    refused = _refusal(standing, owner_request, ConfigurationOperation.INVITE, instance=request.instance)
+    if refused is not None:
+        return refused
+    try:
+        owner = invitation_owner(await observe_fleet_from_heartbeats())
+    except InvitationOwnerUnavailable as error:
+        return _failed(ConfigFailureKind.REFUSED, error)
+    except (OSError, RedisError) as error:
+        return _invalid(_FLEET_UNOBSERVABLE.format(error=error))
+    return _done({ConfigSubjectKind.COMPUTER.value: owner})
 
 
 async def _invite(standing: ConfigurationStanding, request: ConfigRequest) -> ConfigOutcome:
@@ -602,7 +749,7 @@ async def _person_secrets(standing: ConfigurationStanding, request: ConfigReques
         return refused
     try:
         await asyncio.to_thread(read_subject, SubjectRef(ConfigSubjectKind.PERSON, request.instance))
-        statuses = await asyncio.to_thread(get_person_mcp_secret_statuses, request.instance)
+        statuses = await asyncio.to_thread(list_person_mcp_secret_inventory, request.instance)
     except SubjectNotFound as error:
         return _failed(ConfigFailureKind.NOT_FOUND, error)
     except PersonSecretStorageError:
@@ -678,6 +825,10 @@ async def _job_subscription(standing: ConfigurationStanding, request: ConfigRequ
 _OPERATIONS: Final[Mapping[ConfigVerb, Callable[[ConfigurationStanding, ConfigRequest], Awaitable[ConfigOutcome]]]] = {
     ConfigVerb.LIST: _list,
     ConfigVerb.GET: _get,
+    ConfigVerb.EDITOR_GET: _editor_get,
+    ConfigVerb.FIELD_EDIT: _field_edit,
+    ConfigVerb.PROJECT_ADOPT: _project_adopt,
+    ConfigVerb.INVITATION_DESTINATION: _invitation_destination,
     ConfigVerb.INIT: _init,
     ConfigVerb.PATCH: _patch,
     ConfigVerb.REMOVE: _remove,

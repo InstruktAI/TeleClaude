@@ -40,46 +40,13 @@ references remain usable (`sdlc/policy/backward-compatibility-hygiene`).
 
 #### UC-SIN-1:
 
-```gherkin
-Given an operator has a TeleClaude conversation containing native agent transcripts
-When the operator inspects its identity
-Then the conversation identity is distinct from the identities of its transcript sources
-```
-
 #### UC-SIN-2:
-
-```gherkin
-Given an operator's TeleClaude conversation spans several native transcripts
-When the conversation is mirrored
-Then it has one durable mirror addressed by its TeleClaude identity
-And every source remains traceable within that mirror's provenance
-```
 
 #### UC-SIN-3:
 
-```gherkin
-Given an authorized caller supplies a full conversation or source identifier
-When history resolves that identifier
-Then a TeleClaude identifier addresses the complete conversation
-And an explicit native identifier addresses its recorded source without bypassing history access rules
-```
-
 #### UC-SIN-4:
 
-```gherkin
-Given an agent supplies a malformed identity to historical retrieval
-When the request is resolved
-Then the identity is refused explicitly rather than matched by prefix or guessed recency
-```
-
 #### UC-SIN-5:
-
-```gherkin
-Given a runtime produced a subagent transcript
-When the mirror producer encounters that source
-Then the existing subagent exclusion applies
-And no independent conversation mirror is created for it
-```
 
 #### UC-SIN-6:
 

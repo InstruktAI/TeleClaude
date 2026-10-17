@@ -21,8 +21,8 @@ _ERR_NO_VERDICT = "telec code stamp requires --verdict approve|request_changes"
 _ERR_BAD_VERDICT = "--verdict must be one of: {allowed}; got {given!r}"
 _VERDICT_SEPARATOR = ", "
 _OUTCOME_TEMPLATE = "Stamped {verdict} on {count} commit(s); {target}"
-_TARGET_TODO_TEMPLATE = "recorded on todo {slug}"
-_TARGET_NO_TODO = "no todo claimed by this session chain, nothing recorded on a todo"
+_TARGET_TODO_TEMPLATE = "repository evidence for todo {slug}"
+_TARGET_NO_TODO = "repository commit-review evidence"
 _DISCHARGED_TEMPLATE = "Discharged the post-commit review prompt of session {session_id}"
 
 

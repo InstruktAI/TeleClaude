@@ -80,28 +80,29 @@ Then no entry is mutated
 And the command reports "Slug not found in todo list: missing-slug" and exits non-zero
 ```
 
-#### UC-ICE-FRZ-WARN: Freezing a todo with open dependents warns naming the dependents it strands
+#### UC-ICE-FRZ-WARN: An operator can see which open work a freeze will block
 
 Freezing never cascades and is never refused for graph reasons — freezing a subtree is an explicit per-todo act. The freeze surface warns, naming each open (active) dependent that points at the newly frozen todo, so the operator knows which open work is now blocked behind the freezer.
 
 ```gherkin
-Given an active todo "dependent" with an "after" edge on active todo "parent"
-When the operator runs "telec todo freeze parent"
-Then "parent" moves to icebox
-And the response carries a warning naming "dependent" as an open dependent that will not dispatch while "parent" is frozen
-And freezing a todo with no open dependents produces no warning
+Scenario: See work that a freeze will strand
+  Given open todos depend on a todo the operator intends to freeze
+  When the operator freezes that todo
+  Then the operator is warned about each open dependent that will be blocked from dispatch
+  And no warning appears when there are no open dependents
 ```
 
-#### UC-ICE-THAW-WARN: Unfreezing a todo with still-frozen dependencies warns naming them
+#### UC-ICE-THAW-WARN: An operator can see why resumed work remains blocked
 
 Thaw order is the operator's to sequence; the tool does not refuse an out-of-order thaw. The unfreeze surface warns, naming each dependency still in the icebox, so root-first thawing is visible rather than enforced.
 
 ```gherkin
-Given iceboxed todos "parent" and "child" where "child" has an "after" edge on "parent"
-When the operator runs "telec todo unfreeze child" while "parent" remains iceboxed
-Then "child" returns to active
-And the response carries a warning naming "parent" as a still-frozen dependency that blocks dispatch of "child"
-And unfreezing a todo whose dependencies are all live or delivered produces no warning
+Scenario: Resume work with a frozen prerequisite
+  Given a todo has one or more prerequisites that are still frozen
+  When the operator resumes it
+  Then it becomes active and the operator is warned about each frozen prerequisite that blocks dispatch
+  And resuming succeeds regardless of thaw order
+  And no warning appears when every prerequisite is active or delivered
 ```
 
 ### Cross-context references

@@ -21,58 +21,46 @@ This is the _on-demand_ live read. It is NOT the background polling-and-delivery
 
 ### Use cases
 
-#### UC-STR3: Default transcript retrieval
+#### UC-STR3: A caller can read one continuous conversation transcript
 
 ```
-Given an authenticated caller asks the agent_runtime service for the session's transcript
-And the session exists in the agent_runtime ledger
-And at least one transcript file in (transcript-files chain ∪ {native transcript file}) is present on disk
-When the transcript-retrieval flow runs
-Then the message-chain builder assembles the chain from the session's transcript-files list plus the session's native transcript file if not already present
-And the projection step calls the conversation projector with:
-  - the chain (in order)
-  - the parser agent resolved from the session's active agent
-  - a visibility policy (include tools, include tool results, include thinking) honoring the query flags
-  - the since cutoff
-And each projected block is serialized into a message entry carrying {role, type, text, timestamp, entry index, file index}
-And the service returns the session messages payload including session id, active agent, last activity, last input at, last agent stop at, agent status (computed by the status helper), and the messages list
+Scenario: Read the session's saved conversation
+  Given a person asks an agent authorized to inspect a session within their reach
+  When the agent reads that session's transcript
+  Then it receives one continuous conversation across the session's transcript chain
+  And the response includes the session id, active agent, last activity, last input, last agent stop, and computed agent status
+
+Scenario: A missing session is refused before reading transcript files
+  Given no session carries the id the person named
+  When the agent requests that transcript
+  Then the person receives a not-found result distinct from an out-of-reach refusal
+  And no transcript file is read
 ```
 
-#### UC-STR4: Transcript filtering knobs
+#### UC-STR4: A caller can focus a transcript on relevant messages
 
 ```
-Given the caller sets query parameters on the request
-When the query is parsed
-Then `since`: an ISO 8601 UTC timestamp; the projector drops entries strictly before it
-And `include_tools`: when false, tool-use / tool-result blocks are excluded from the projection AND from the output
-And `include_thinking`: when false, thinking / reasoning blocks are excluded
-And `tail_chars`: bounds the FALLBACK pane/session output character budget only (default 10000); has no effect on the structured-transcript path or the pane-capture line window
-And entry index + file index on each message entry identify the source position (which file in the chain, which entry within it) so downstream callers can dedupe across reads
+Given a person needs only recent or selected types of messages from a session
+When their agent requests transcript filters
+Then the returned transcript reflects those choices and retains source positions
+And excluding tool content omits tool-use and tool-result blocks
+And excluding thinking content omits reasoning blocks
+And the `since` cutoff omits earlier entries
+And the fallback text bound applies only when structured transcript content is unavailable
 ```
 
-#### UC-STR5: Transcript files missing or yield nothing
+#### UC-STR5: A caller can read available session conversation without transcript files
 
 ```
-Given the chain is empty OR every file in the chain is missing on disk OR parsing produces zero structured blocks
-When the transcript-retrieval flow discovers the empty result
-Then it dispatches a get-session-data command (session id, since timestamp = since, tail chars = supplied positive value, otherwise default 10000) through the command service
-And if the resulting payload's messages field is a non-empty string, packages it as a SINGLE message entry (role="assistant", type="text", text=<that string>, timestamp=None, entry index=0, file index=0)
-And otherwise returns an empty messages list
-And status/timestamp/agent-status fields are still populated from session-ledger metadata
+Given a person asks an agent to read a session whose transcript files are missing or contain no readable messages
+When the agent retrieves that conversation
+Then it returns any available live session output or an empty result
+And current session metadata remains available
 ```
 
 The fallback is the "pane tail" path — for sessions whose transcript has not yet appeared (agent just started, native file not flushed) or has been removed (e.g., the agent CLI rotated logs), the service scrapes a bounded live host-pane window through the get-session-data command and returns the raw assistant-side text as one block.
 
 #### UC-STR1: Terminal session agent status
-
-```
-Given the session ledger row is in a terminal lifecycle state (`closing` or `closed`)
-Or the row carries a `closed_at` marker
-When the transcript-retrieval flow computes the response's `agent_status`
-Then the terminal lifecycle marker is authoritative over activity timestamps
-And the response reports `agent_status="idle"` even when `last_agent_stop_at` is missing
-And the message projection still returns any transcript or fallback content available for that session
-```
 
 #### Role inference
 
@@ -87,13 +75,6 @@ And the resulting message entry's role reflects the projected block's role verba
 A slash-command-prefix heuristic exists adjacent to this flow for run-session dispatch — it is NOT used to label transcript reads. Transcript role inference lives inside the conversation projector and the per-agent parsers.
 
 #### UC-STR6: Session not found
-
-```
-Given the caller asks for the transcript of a session that does not exist
-When the storage lookup returns nothing
-Then the service refuses with "Session not found"
-And no transcript I/O is attempted
-```
 
 #### UC-STR2: An agent can inspect the live terminal independently of transcript progress
 

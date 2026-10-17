@@ -196,7 +196,7 @@ def _computer_read_only(raw: Mapping[object, object]) -> dict[str, object]:  # g
     return {_MASTER_SCOPED_NOT_APPLICABLE: list(outside)} if outside else {}
 
 
-def _computer_view_from(raw: Mapping[object, object], revision: str) -> SubjectView:
+def computer_view_from(raw: Mapping[object, object], revision: str) -> SubjectView:
     sections: dict[str, object] = {  # guard: loose-dict - raw YAML config
         str(key): value for key, value in raw.items() if key not in {_KIND_KEY, _SCHEMA_VERSION_KEY}
     }
@@ -210,7 +210,7 @@ def _computer_view_from(raw: Mapping[object, object], revision: str) -> SubjectV
 
 
 def _computer_view(inspection: MachineConfigInspection | MachineConfigMutationResult) -> SubjectView:
-    return _computer_view_from(inspection.raw, inspection.revision)
+    return computer_view_from(inspection.raw, inspection.revision)
 
 
 # --- person helpers ---

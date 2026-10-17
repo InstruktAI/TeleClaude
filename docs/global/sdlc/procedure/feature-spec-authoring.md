@@ -40,6 +40,21 @@ and readable at the level of behavior rather than implementation.
    invariants, refusal conditions, tables) and get no use case. A failure or
    refusal that threatens a goal is an extension of that goal's use case.
 
+   Establish the stakeholder and completed outcome before writing Gherkin.
+   A capability's usefulness does not make each step supporting it a user goal.
+   Configuration tasks can qualify; individual fields, parser branches and
+   validation examples do not qualify merely because they support those tasks
+   (`sdlc/principle/documentation-first-development`). Code inventory establishes
+   what the implementation does, not which of its branches deserves a use case
+   (`general/principle/intent-first-documentation`). Write admitted use cases
+   in Gherkin under step 4.
+
+   Apply the same classification before repairing an existing scenario. Retain
+   a valid goal and repair its wording; retire a subfunction or duplicate under
+   step 5, preserving any necessary requirement at its actual owner. Distinguish
+   that requirement from incidental implementation detail before moving text
+   into prose (`general/policy/snippet-value-contract`).
+
 1a. **Select the owning context.** Place the feature spec under the bounded
 context that owns the behavioral decision, as governed by
 `sdlc/policy/domain-ownership`. The observer, entry
@@ -70,8 +85,8 @@ of every context whose outcome its `Then` clauses assert —
    `### Use cases` heading. Each identified scenario is a `#### UC-<area><n>:`
    subsection containing exactly one fenced Gherkin block; ids are unique
    within the spec. A Gherkin block not yet under a `#### UC-` header is an
-   anonymous scenario — the id-assignment backlog, worked down as scenarios
-   acquire bindings.
+   anonymous scenario. Classify it under step 1 before assigning an id; only
+   admitted goals enter the id-assignment backlog and acquire bindings.
 
 5. **Honor identity immutability.**
    - An id, once assigned, is never renumbered and never reused.
@@ -85,7 +100,7 @@ of every context whose outcome its `Then` clauses assert —
    - A retired id stays retired: its header remains with no Gherkin block, and
      the id is never reassigned.
 
-6. **Gate volume by falsifiability, not by count.** One use case states one
+6. **Gate volume by falsifiability, not by count.** One admitted use case states one
    falsifiable behavioral rule with one facing and one trigger class. Data
    variations are examples or a scenario outline inside that use case, never
    sibling use cases. Duplicate predicates collapse into one — across the
@@ -117,9 +132,11 @@ of every context whose outcome its `Then` clauses assert —
 
 ## Recovery
 
-- An existing spec whose Gherkin blocks share one `#### UC-` header: split into
-  one header per falsifiable scenario on first touch, assigning fresh ids to
-  the split-out blocks; never reuse or renumber the original.
+- An existing spec whose Gherkin blocks share one `#### UC-` header: classify
+  each body under step 1 before changing its structure. Consolidate variations
+  of one goal and retire mechanics while preserving necessary requirements.
+  Only distinct admitted goals receive additional fresh ids; preserve the
+  original identity and revalidate affected bindings under step 5.
 - A collision between an established lineage and a later pending identity claim:
   the established lineage retains the identity. The later carrier's owner
   assigns a fresh identity in the intended semantic family, updates every
@@ -143,9 +160,10 @@ of every context whose outcome its `Then` clauses assert —
 The failure mode this procedure guards is implementation language leaking into
 scenario text and unstable ids breaking every binding downstream. When editing
 a spec, never renumber to "clean up" — identity outlives tidiness. When a
-scenario names a function, an event, or a field, remove that implementation
-detail and restate the sentence in behavior terms. When unsure whether a
-change is semantic or merely wording, ask whether
+scenario names a function, an event, or a field, first establish whether its
+predicate is a user goal under step 1. Repair the wording only for an admitted
+goal; changing the vocabulary does not promote a subfunction into one. When
+unsure whether a change is semantic or merely wording, ask whether
 anything bound to the old sentence would now judge differently; if yes, it is
 semantic.
 

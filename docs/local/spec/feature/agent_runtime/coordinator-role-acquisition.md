@@ -19,62 +19,45 @@ sessions may reach the door, but only one live session holds the role. A
 refused session receives the complete next action in the refusal response,
 while the incumbent remains untouched.
 
+The command help states that acquisition is human-directed and does not invite
+an agent to acquire the role autonomously.
+
 ## Canonical fields
 
 ### Use cases
 
-#### UC-CRA1: An agent session acquires the coordinator role
+#### UC-CRA1: A person establishes the project's coordinator
 
 ```gherkin
-Given a live agent session is acting on human direction for a project instance
-And no live session coordinates that project instance
-When the agent asks to acquire the coordinator role
-Then that agent becomes the sole live coordinator for the project instance
-And the session fleet shows that agent with the coordinator role and coordinator title
-And the response directs the agent to read and follow the coordination procedure with all of its required reads
+Scenario: Establish the coordinator for an uncoordinated project
+  Given an agent acts on a person's direction for a project instance with no live coordinator
+  When the agent acquires the coordinator role
+  Then it becomes the sole live coordinator for that project
+  And the session fleet shows its coordinator role and title
+  And the response directs it to the coordination procedure with its required reads
+
+Scenario: Refuse a second coordinator without disturbing the incumbent
+  Given one live agent session coordinates a project instance
+  And another session acting on human direction does not hold that role
+  When the second session attempts to acquire the role
+  Then it is refused with the sanctioned instruction to end itself if started only for coordination
+  And its existing role and title remain unchanged
+  And the incumbent session is untouched
+
+Scenario: The incumbent re-enters the acquisition surface
+  Given a live agent session already coordinates a project instance
+  When that same session acquires the role again
+  Then the request succeeds idempotently and one live coordinator remains
+  And the response directs the agent to the coordination procedure
 ```
 
 #### UC-CRA2: A second agent session is refused without disturbing the incumbent
 
-```gherkin
-Given one live agent session coordinates a project instance
-And another live agent session for that project instance has not acquired the coordinator role
-When the second agent asks to acquire the coordinator role
-Then the request is refused
-And the response directs a session started solely for coordination to end itself
-And the second session's existing role and title remain unchanged
-And the incumbent session is not changed, messaged, or assessed
-```
-
 #### UC-CRA3: The incumbent may re-enter through the acquisition door
 
-```gherkin
-Given a live agent session already coordinates a project instance
-When that same agent asks to acquire the coordinator role again
-Then the request succeeds idempotently
-And the project instance still has exactly one live coordinator
-And the response again directs the agent to the coordination procedure
-```
-
-#### UC-CRA4: The agent-facing command advertises only the guarded acquisition
-
-```gherkin
-Given an agent inspects the available session commands
-When the agent reads the coordinator-acquisition command help
-Then the command is described as human-directed adoption of the project's single coordinator
-And the description states that acquisition refuses while a coordinator is live
-And no notes or examples encourage autonomous invocation
-```
+#### UC-CRA4: An agent can tell when coordinator acquisition is allowed
 
 #### UC-CRA5: Coordination procedure entry always passes through acquisition
-
-```gherkin
-Given a live agent session begins the coordination procedure on human direction
-When the agent performs the procedure's first step
-Then it asks to acquire the coordinator role before observing the fleet
-And a refused agent ends itself without disturbing the incumbent
-And an adopted agent continues with the remainder of the procedure
-```
 
 ### Cross-context references
 

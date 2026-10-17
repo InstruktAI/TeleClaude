@@ -33,24 +33,7 @@ clients consume the provided answer.
 
 #### UC-VAP1: Session reads and streams agree on attachment facts
 
-```gherkin
-Given an agent may read a session through the daemon API
-When it receives that session through an HTTP read, a connection snapshot, or a subsequent state change
-Then the answer carries the runtime's current fresh-viewer admission
-And it carries the runtime-owned selection disposition
-And a known attachment destination is resolved relative to the daemon serving the agent
-And a destination whose connection inputs are unknown remains unresolved
-```
-
 #### UC-VAP2: Resolved destination changes reach the existing session stream
-
-```gherkin
-Given an agent consumes an eligible peer session on an established session stream
-And that session's connection inputs are unresolved or have changed
-When the daemon's computer registry supplies the current connection inputs
-Then the agent receives the affected session's current attachment projection through that stream
-And it does not need unrelated session activity or a separate computer lookup to obtain it
-```
 
 ## Known caveats
 

@@ -67,164 +67,31 @@ indexes; neither performs lifecycle-driven reconciliation.
 
 #### UC-LMR1: Delivery resolves only the candidate's planned-change block
 
-```gherkin
-Given a live parent snippet contains a planned-change block for the current candidate
-And the same parent contains a planned-change block for another slug
-When delivery reconciliation runs for the current candidate
-Then the current candidate's block is replaced by its replacement content
-And all three marker lines for the current candidate are removed
-And the other slug's planned-change block is left unchanged
-And a second reconciliation run makes no further change
-```
-
 #### UC-LMR2: Fate resolution promotes every pending carrier for delivery
-
-```gherkin
-Given an active todo owns planned additions, planned changes, companion files, or delivered_by entries
-When a lifecycle caller delivers that todo
-Then each planned addition becomes live content
-And each planned change selects its replacement content
-And each companion replaces its parent
-And the delivered slug is cleared from delivered_by
-And pending material owned by other slugs remains byte-identical
-```
 
 #### UC-LMR3: Fate resolution abandons every pending carrier
 
-```gherkin
-Given an active todo owns planned additions, planned changes, companion files, or delivered_by entries
-When a lifecycle caller abandons that todo
-Then each owned planned addition is removed with its content
-And each owned planned change keeps its current content
-And each owned companion is discarded without replacing its parent
-And the abandoned slug is cleared from delivered_by
-And pending material owned by other slugs remains byte-identical
-```
-
 #### UC-LMR4: Identity movement carries pending ownership atomically
-
-```gherkin
-Given pending documentation material is owned by a todo slug
-When a lifecycle caller renames that todo or reassigns its material through a split or regroup
-Then every delivered_by entry and in-body marker follows the resulting owner
-And every companion filename follows the resulting owner
-And no pending material remains addressable only through the prior owner
-And the identity movement is not made durable when ownership reconciliation fails
-```
 
 #### UC-LMR5: Fate reversal restores or preserves pending material
 
-```gherkin
-Given a todo's pending documentation material has been captured with its retained lifecycle state
-When the todo is reactivated after abandonment
-Then the exact captured material is restored as pending under the reactivated slug
-And no captured material is promoted to the live contract
-But when a todo is retracted or kicked back without abandonment
-Then its existing pending material remains unchanged
-```
-
 #### UC-LMR6: Reconciliation failure faults the lifecycle caller
-
-```gherkin
-Given a lifecycle movement requires pending documentation reconciliation
-And an affected source cannot be resolved or written safely
-When the caller attempts the lifecycle movement
-Then the caller receives a fault naming the slug, source path, line, and reason
-And the movement does not report successful reconciliation
-And the fault remains owned by the intelligence driving that lifecycle moment
-```
 
 #### UC-LMR7: The integrator finds settled material outside delivery candidates
 
-```gherkin
-Given a settled todo still has live pending markers or ownership metadata in documentation sources
-And the material may live outside every integration candidate branch
-When the integrator enters integration and checks for state and marker divergence
-Then it detects the settled slug wherever the material lives
-And holds the divergence with the slug, source path, line, and reason
-And when the faulted slug is delivered and repository-root main is synchronized and safe to mutate, the integrator runs a new slug-scoped delivery reconciliation as a recovery operation
-And it commits and publishes only that recovery result without changing the settled todo's recorded delivery commit
-And a failed recovery leaves the divergence fault active with its failure evidence
-And unrelated live and pending material is not rewritten
-```
-
 #### UC-LMR8: Integration pre-applies candidate delivery before bookkeeping
-
-```gherkin
-Given repository-root main contains pending material owned by an integration candidate
-And the candidate commit has been published from the integration worktree and confirmed on origin/main
-When the integrator finalizes the candidate on repository-root main
-Then it synchronizes repository-root main with the confirmed candidate
-And it reconciles that slug against the repository-root documentation set
-And it publishes and confirms the folded repository-root head before delivery is recorded
-```
 
 #### UC-LMR9: Partial ownership remains pending after delivery
 
-```gherkin
-Given pending material is owned by the current candidate and at least one other active slug
-When reconciliation delivers the current candidate
-Then the current candidate is removed from the ownership metadata
-And the remaining active owners stay pending
-And the material does not become current until its remaining owners resolve
-```
-
 #### UC-LMR10: Conflict resolution repeats candidate-scoped reconciliation
-
-```gherkin
-Given an integration candidate required conflict resolution before its commit was published
-And the resolved candidate commit is confirmed on origin/main
-When repository-root main synchronizes that candidate for finalization
-Then candidate-scoped reconciliation runs against repository-root main
-And unrelated pending material remains unchanged
-And the folded repository-root head is published and confirmed before delivery is recorded
-```
 
 #### UC-LMR11: A recorded reconciliation commit stands when its commit command reports failure
 
-```gherkin
-Given a lifecycle movement requires pending documentation reconciliation
-And the reconciliation commit is recorded in the repository
-But the command that created it reports failure after recording it
-And the repository can still be read to confirm that commit
-When the agent driving that lifecycle movement attempts it
-Then that agent receives a succeeding reconciliation outcome identifying the recorded commit
-And the affected sources in the working tree match the recorded commit
-And the lifecycle movement proceeds as after any successful reconciliation
-And a repeated reconciliation for the same slug makes no further change
-```
-
 #### UC-LMR12: Delivery retires a whole file through its empty companion
-
-```gherkin
-Given a live snippet or command artifact has an empty companion naming an integration candidate
-And no other slug owns pending material in that file
-When the integrator delivers the candidate
-Then the integrator's folded repository root carries neither the file nor its companion
-And once the maintenance that fold commit owes completes successfully, an agent reading documentation or dispatching commands no longer finds the file
-And a repeated reconciliation for the same slug makes no further change
-```
 
 #### UC-LMR13: Retirement refuses to delete another slug's pending material
 
-```gherkin
-Given a live file has an empty companion naming an integration candidate
-And the file also carries pending material owned by another active slug
-When the integrator delivers the candidate
-Then the integrator receives a fault naming the slug, source path, line, and reason
-And the file, its companion, and the other slug's pending material remain unchanged
-```
-
 #### UC-LMR14: Reconciled snippets satisfy the project's own formatter
-
-```gherkin
-Given every snippet holding a todo's pending material matches the project's formatter as committed
-When a lifecycle caller delivers, abandons, renames, or splits that todo, or reactivates it from removal
-Then the reconciliation commit passes the project's commit gate
-And every snippet the reconciliation writes matches the project's formatter, including a snippet that still carries another slug's pending material
-And the reconciled wording is unchanged
-And pending material owned by other slugs remains byte-identical
-```
 
 ### Cross-context references
 

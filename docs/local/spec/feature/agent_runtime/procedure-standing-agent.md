@@ -21,7 +21,9 @@ activation for the same identity is queued for that agent and delivered at the
 boundaries its procedure declares under
 `local/projects/teleclaude/spec/feature/agent_runtime/procedure-event-delivery`.
 A subject-bound agent whose session has closed is
-revived with its own context before the activation is delivered to it.
+revived with its own context before the activation is delivered to it. If its
+transcript cannot be resumed, a later activation starts a new agent for that
+same subject and home.
 
 The procedure's ID is the procedure's part of that identity. Its declared
 subscription patterns are its event membership and nothing more — there is no separate group identifier and no
@@ -62,6 +64,11 @@ An activation carries the identity of the event that produced it. An activation
 that repeats one already delivered for the same event, procedure, and home
 reaches the agent no second time, within the records the platform retains.
 
+Existing sessions are reused only when they already run the same procedure for
+the home under the system principal; a human-lineage session is never adopted
+as a standing agent. Concurrent first activations for one agent identity still
+establish one continuing session.
+
 A standing agent is an ordinary scoped session. Standing confers no platform
 role authority: it is not the integrator, the project coordinator, or a job
 runner, and acquires none of their powers by continuing. An agent working in a
@@ -96,297 +103,59 @@ person's folder carries no human identity and acts as no person.
 
 #### UC-PSA1:
 
-```gherkin
-Given no standing agent continues a procedure for a home on the computer that emitted the event
-When an activation for that procedure and home arrives there
-Then a standing agent is started in that home under the system principal through the procedure-entry contract
-And it carries the role the procedure declares from its creation
-And it receives the loader carrying its home and delivery facts and directing it to its procedure's instructions, including the event-handling instructions the procedure declares
-And its initial event is delivered as hook context under the procedure event-delivery contract
-```
-
 #### UC-PSA2:
-
-```gherkin
-Given a standing agent continues a procedure for a home
-When a further activation for that procedure and home arrives
-Then that activation is queued for the same agent
-And it reaches the agent at an eligible boundary under the procedure's delivery declaration
-And no second agent is started
-```
 
 #### UC-PSA3: Every declared event reaches the one standing agent
 
-```gherkin
-Given a procedure declares several event types as activating it
-And a standing agent continues that procedure for a home
-When an activation arrives for any one of those event types
-Then it reaches that one standing agent
-```
-
 #### UC-PSA4: Editing the event list does not change the continuing agent
-
-```gherkin
-Given a standing agent continues a procedure for a home
-When an event type is added to or removed from that procedure's declared subscriptions
-Then the same agent continues the procedure
-And no additional standing agent is started for it
-And the agent listens to the amended set of event types
-```
 
 #### UC-PSA5: Overlapping subscriptions do not merge responsibilities
 
-```gherkin
-Given two distinct procedures each declare the same event type as activating them
-And both answer the same home
-When an activation for that event type arrives
-Then each procedure's standing agent is activated
-And neither procedure's responsibility is absorbed into the other
-```
-
 #### UC-PSA6: Procedure and home each identify a distinct agent
-
-```gherkin
-Scenario Outline: A difference on either identity dimension yields a separate agent
-  Given two continuing responsibilities that differ in <dimension> and agree on the rest
-  When an activation arrives for each of them
-  Then each is continued by its own standing agent
-  And an activation for one never reaches the other
-
-  Examples:
-    | dimension                                   |
-    | procedure                                   |
-    | home                                        |
-    | home kind, for homes sharing one slug |
-```
 
 #### UC-PSA7: Concurrent activations produce one standing agent
 
-```gherkin
-Given no standing agent continues a procedure for a home
-When two activations for that procedure and home arrive concurrently
-Then exactly one standing agent continues it afterwards
-And both activations reach that agent
-```
-
 #### UC-PSA8: The company and system origin survive every continuation
-
-```gherkin
-Scenario Outline: Continuing the work preserves the company and origin it was bound to
-  Given a standing agent operating a company under the system principal
-  When the agent <continuation>
-  Then the same company and system origin still govern the work
-  And the activation's own data does not replace them
-  And the agent does not act as any person the activation refers to
-
-  Examples:
-    | continuation                   |
-    | is woken by a later activation |
-    | is restarted                   |
-    | dispatches a worker            |
-```
 
 #### UC-PSA9: An activation that cannot be fulfilled is observable as a failure
 
-```gherkin
-Given an activation for a procedure and home arrives
-And it cannot be fulfilled
-When the platform records the outcome
-Then an agent inspecting the activation record observes a failure
-And the record does not present the activation as completed
-And the procedure's responsibility is not transferred to another agent
-```
-
 #### UC-PSA10: A system-origin session already running the procedure for the company counts as standing
-
-```gherkin
-Given a session under the system principal was started by hand to run a procedure for a company on a computer
-When an activation for that procedure and company arrives on that computer
-Then the activation is delivered to that session
-And no further agent is started
-```
 
 #### UC-PSA11: Starting an agent by hand is never refused
 
-```gherkin
-Given a standing agent runs a procedure for a company on a computer
-When an operator or agent starts another session for that procedure and company by hand
-Then that session starts
-And the activation runner raises no objection to it
-```
-
 #### UC-PSA12: A human-lineage session running the procedure is not adopted
-
-```gherkin
-Given a session carrying human lineage runs a procedure for a home on a computer
-And no session under the system principal runs that procedure for that home there
-When an activation for that procedure and home arrives on that computer
-Then a standing agent is started under the system principal
-And the activation is not delivered to the human-lineage session
-```
 
 #### UC-PSA13: A person, project, or platform activation starts its agent in that home without a company
 
-```gherkin
-Scenario Outline: The home is where the agent works
-  Given no standing agent continues a procedure for <home> on the computer that emitted the event
-  When an activation for that procedure and <home> arrives there
-  Then a standing agent is started in <folder> under the system principal
-  And an agent inspecting the session sees no company set on it
-
-  Examples:
-    | home         | folder                                 |
-    | a person     | that person's folder                   |
-    | a project    | that project's checkout                |
-    | the platform | the platform's own checkout            |
-```
-
 #### UC-PSA14: A home absent on the emitting computer fails the activation
-
-```gherkin
-Given an activation for a procedure arrives naming a company, person, or project that is not registered on this computer
-When the activation runner looks for that home's folder
-Then no standing agent is started or woken
-And an agent inspecting the activation record observes a failure naming the absent home
-And no other home or computer takes the activation
-```
 
 #### UC-PSA15: A repeated activation reaches the agent once
 
-```gherkin
-Given a standing agent has received an event through an activation for a procedure and home
-When an activation for the same event, procedure, and home arrives again
-Then the agent does not receive the event a second time
-And no second agent is started
-```
-
 #### UC-PSA16: A procedure declaring subject identity starts one agent per subject
-
-```gherkin
-Given a procedure declaring subject identity answers events of a home
-And no agent of that procedure is bound to a subject in that home
-When activations arrive there for events about two different subjects
-Then two agents are started in that home under the system principal, one bound to each subject
-And each receives only the activation about its own subject
-```
 
 #### UC-PSA17: A later event about the same subject reaches that subject's open agent
 
-```gherkin
-Given a procedure declaring subject identity keeps an open agent bound to a subject in a home
-When an activation arrives for a further event about that subject
-Then the activation is delivered to that agent
-And no further agent is started
-```
-
 #### UC-PSA18: A later event about a subject revives that subject's closed agent with its own context
-
-```gherkin
-Given a procedure declaring subject identity started an agent bound to a subject in a home
-And that agent's session has closed
-When an activation arrives for a further event about that subject
-Then that same session is revived and resumes its own transcript
-And the activation is delivered to it
-And no further agent is started
-```
 
 #### UC-PSA19: A closed subject-bound session that cannot resume is succeeded by a new agent
 
-```gherkin
-Given a procedure declaring subject identity started a session bound to a subject in a home
-And that session closed without a transcript it could resume
-When an activation arrives for a further event about that subject
-Then a new agent bound to that subject is started in that home
-And the activation is delivered to it
-```
-
 #### UC-PSA20: Concurrent activations about one subject produce one agent
-
-```gherkin
-Given a procedure declaring subject identity keeps no agent bound to a subject in a home
-When two activations about that subject arrive concurrently
-Then exactly one agent bound to that subject continues it afterwards
-And both activations reach that agent
-```
 
 #### UC-PSA21: A subject-identity activation whose event names no subject fails
 
-```gherkin
-Given a procedure declaring subject identity answers events of a home
-When an activation arrives for an event that names no subject
-Then no agent is started or woken
-And an agent inspecting the activation record observes a failure stating that the event names no subject
-```
-
 #### UC-PSA22: A procedure declaring home identity keeps one agent for the home
 
-```gherkin
-Scenario Outline: The default identity is unchanged by events about different subjects
-  Given a procedure that <declaration> keeps a standing agent for a home
-  When activations arrive for events about two different subjects in that home
-  Then both are delivered to that one standing agent
-  And no further agent is started
-
-  Examples:
-    | declaration                        |
-    | declares no agent identity         |
-    | declares the home agent identity   |
-```
-
 #### UC-PSA23: An unattended agent stays out of the places people look at sessions
-
-```gherkin
-Scenario Outline: A person's ordinary view of sessions leaves an unattended agent out
-  Given a procedure declaring itself unattended
-  And an activation has started its agent
-  When a person whose reach admits that agent's session <view>
-  Then the agent's session is not shown
-
-  Examples:
-    | view                                            |
-    | lists sessions without asking for every session |
-    | opens the TUI sessions view                     |
-    | looks for the session's thread in Discord       |
-```
 
 #### UC-PSA24: An unattended agent is shown when asked for
 
 #### UC-PSA25: An open unattended agent answers as an attended one would
 
-```gherkin
-Given a procedure declaring itself unattended keeps a running agent for a home
-When a later activation for that procedure and home arrives
-Then it reaches that same agent, as it would for an attended procedure
-And that agent is still left out of the places people look at sessions
-```
-
 #### UC-PSA27: A closed unattended agent is not brought back
-
-```gherkin
-Given a procedure declaring itself unattended and subject identity started an agent bound to a subject in a home
-And that agent's session has closed
-When an activation arrives for a further event about that subject
-Then the closed session is not revived
-And a new unattended agent bound to that subject is started in that home
-And the activation is delivered to it
-```
 
 #### UC-PSA29: A procedure declaring no role starts no agent
 
-```gherkin
-Given a subscribed procedure whose publication declares no role
-When an activation for it arrives, or an operator starts it by hand
-Then no agent is started
-And the activation record, or the operator, observes a failure naming the missing role
-```
-
 #### UC-PSA26: An agent started by hand is attended
-
-```gherkin
-Given a procedure declaring itself unattended answers company events
-When an operator starts a session for that procedure and a company by hand
-Then that session is shown wherever sessions are shown
-```
 
 ### Cross-context references
 

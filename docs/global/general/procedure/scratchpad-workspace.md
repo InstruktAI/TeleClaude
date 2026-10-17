@@ -12,10 +12,12 @@ visibility: public
 
 ## Goal
 
-Shared working material is reachable by the participants who need it. A cold
-reader opens one directory, reads `index.md`, and knows what the activity is
-for, who contributed, which files are current, what was settled and by whom,
-what is still open, and where agreed material went.
+Shared knowledge of the subject is reachable by the participants who need it.
+A cold reader opens one directory, reads `index.md`, and finds the purpose,
+current findings and designs, supporting evidence, material decisions, open
+questions and any promoted results. Attribution identifies the sources and
+contributors; the index is a map to the work, not a session diary
+(`general/spec/scratchpad-workspaces`).
 
 ## Preconditions
 
@@ -32,7 +34,11 @@ what is still open, and where agreed material went.
    one shared workspace. Otherwise create the directory the spec names. Publish
    the material that collaboration or handoff needs; local working material
    keeps its own environment (`general/spec/scratchpad-workspaces`).
-2. **Write `index.md` first**, before any other file, with these sections:
+2. **Write `index.md` first**, before any other file. Keep it a concise map to
+   the subject and its useful material. Organize the information below where
+   it exists; omit empty sections and link detailed findings rather than
+   duplicating them. Apply the subject-knowledge boundary in
+   `general/spec/scratchpad-workspaces` to both the index and its files:
    - **Status** — one line: `active`, `converged`, `closed`, or `abandoned`.
    - **Purpose** — the question the activity answers and the outcome it serves.
    - **Grounding** — the sources the activity rests on: what was read for
@@ -47,13 +53,18 @@ what is still open, and where agreed material went.
      retrieves the reasoning behind each file.
    - **Files** — every file and subdirectory, a one-line purpose, and a status:
      `forming`, `converged`, `superseded by <file>`, or `promoted to <target>`.
-   - **Stated by the human** — the human's words, verbatim or near-verbatim,
-     dated. Nothing an agent inferred goes here; relayed direction is carried as
-     said, never reframed (`general/policy/human-contract`).
+   - **Stated by the human** — relevant intent and constraints, verbatim or
+     near-verbatim, dated and retaining their qualifications. Preserve whether
+     a statement is exploration, a suggestion or a decision; a technical idea
+     is evaluated on its merits, not promoted to a requirement by attribution
+     (`general/policy/human-contract`).
    - **Derived by agents** — conclusions agents reached, with the file that holds
-     each. These are open to challenge; the stated section outranks them.
-   - **Decisions** — date, decision, and who agreed, by session id or name. A
-     decision is settled only when every active participant agreed
+     each. Distinguish findings, recommendations and settled decisions;
+     evidence supports technical conclusions, while authorized intent bounds
+     the outcome (`general/policy/human-contract`).
+   - **Decisions** — material choices about the subject, their grounds and
+     status, date, and who agreed, by session id or name. A decision is settled
+     only when every active participant agreed
      (`general/principle/attunement`).
    - **Withdrawn** — conclusions retracted, by whom, and why, so no later agent
      re-proposes them.
@@ -61,9 +72,13 @@ what is still open, and where agreed material went.
    - **Promoted** — where agreed material landed: snippet ids, commit SHAs, todo
      slugs, published artifact URLs.
    - **Related** — relative paths to earlier workspaces this one builds on.
-3. **Keep the index true as you go.** Update it in the same turn as the change it
-   records: a file added or superseded, a decision, a participant joining, a
-   promotion. A session that ends abruptly then leaves a true index behind.
+3. **Keep the subject's current state clear.** Update the index when useful
+   material, a substantive conclusion, contributor attribution or a promotion
+   changes. Revise the current account in place. Dispatches, retries,
+   acknowledgements, session closure or revival, and the agent's corrections
+   to its own conduct belong in session or workflow records; retain only a
+   resulting design constraint, finding or concrete handoff dependency here
+   (`general/spec/scratchpad-workspaces`).
 4. **Name files for what they hold, never for their version.** Revise in place.
    When a rework must keep its predecessor, give the new file a descriptive name
    and mark the old one `superseded by <file>` in the index.
@@ -79,7 +94,8 @@ what is still open, and where agreed material went.
 
 ### Examples
 
-A minimal index skeleton:
+A minimal index can start with the fields below; add the other information
+from Step 2 when it exists:
 
 ```markdown
 # <Topic> — index
@@ -87,8 +103,6 @@ A minimal index skeleton:
 Status: active
 
 ## Purpose
-
-## Grounding
 
 ## Participants
 
@@ -100,30 +114,27 @@ Status: active
 | File | Purpose | Status |
 | ---- | ------- | ------ |
 
-## Stated by the human
-
-## Derived by agents
-
-## Decisions
-
-| Date | Decision | Agreed by |
-| ---- | -------- | --------- |
-
-## Withdrawn
-
 ## Open
 
-## Promoted
-
-## Related
+## Sources
 ```
 
 ## Outputs
 
 - One workspace directory under the project's `scratchpad/` whose `index.md`
-  describes every file in it and reflects the activity's current state.
+  points to reusable subject knowledge and identifies current and superseded
+  material.
 
 ## Recovery
+
+- **Process diary displaces shared knowledge.** The workspace accumulates
+  dispatch updates, closure/revival stories, acknowledgements or explanations
+  of the agent's own mistakes. Reassess each entry against the future reader's
+  question about the subject. Keep the findings, evidence, design implications
+  and unresolved dependencies; remove the coordination narrative from the
+  shared material and use the existing session/workflow record for it. A
+  participant row supplies provenance without a lifecycle log
+  (`general/spec/scratchpad-workspaces`).
 
 - **Needed shared material is still in a local working directory.** Publish
   the material the collaborator or handoff recipient needs and index it, using
@@ -139,7 +150,7 @@ Status: active
 
 ## Discipline
 
-Keep shared material reachable and its index true. The participants who need
-to inspect or resume it can identify its authors, current files, settled
-decisions and open work through the workspace. Apply this procedure to that
-shared material under `general/spec/scratchpad-workspaces`.
+Keep the workspace useful to the next reader of the subject: current
+understanding, supporting evidence, choices and open questions, with clear
+provenance and links. Apply this procedure to shared material under
+`general/spec/scratchpad-workspaces`.

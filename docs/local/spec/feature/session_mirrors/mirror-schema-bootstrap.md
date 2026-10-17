@@ -11,13 +11,14 @@ visibility: 'public'
 
 ## What it is
 
-The session_mirrors service owns its own store with five logical
-objects: the mirrors record table, the session attributions table that
-mirrors link to (`mirror-identity-enrichment`), the tombstones table for
-empty-transcript memory, retained-after-shrink observations keyed by
-source identity, and a full-text index over the mirrors' conversation
-text. Sync triggers keep the full-text index aligned with the row table
-on insert, delete, and update.
+The session_mirrors service owns conversation mirrors, session attribution,
+conversation-owned source observations and messages, negative file observations,
+and a full-text index. Each conversation retains its source observations
+independently when another session records the same native source. Shrink
+refusals and unreprojectable observations belong to that conversation's source;
+tombstones describe the native file. Sync triggers keep the full-text index
+aligned with conversation inserts, deletes and updates
+(`sdlc/policy/code-quality`).
 
 Schema bootstrap is lazy on first use and guarded so a given store path
 runs through the create-if-missing flow only once per process. A store that
@@ -72,6 +73,12 @@ because the session record belongs to agent runtime (`local/projects/teleclaude/
 ## Canonical fields
 
 ### Session-owned conversation convergence
+
+Structural migrations required by the current source-observation model complete
+before bootstrap publishes or caches that schema as ready. A failed structural
+migration preserves the pre-migration store and leaves its revision pending;
+domain operations consume the current shape
+(`sdlc/policy/backward-compatibility-hygiene`).
 
 The mirror is keyed by retained TeleClaude session identity. Source associations
 preserve native provenance beneath that identity. Convergence consolidates the

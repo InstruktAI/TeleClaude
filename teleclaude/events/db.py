@@ -287,6 +287,22 @@ class EventDB:
         cursor = await self._db().execute(_SELECT_HANDLED_EVENT_SQL, (consumer, event_id))
         return (await cursor.fetchone()) is not None
 
+    async def handled_event_ids(self, consumer: str, event_ids: Sequence[str]) -> frozenset[str]:
+        """Return the supplied ids this consumer already handled, in bounded SQLite parameter pages."""
+        if not event_ids:
+            return frozenset()
+        found: set[str] = set()
+        page_size = 500
+        for offset in range(0, len(event_ids), page_size):
+            page = event_ids[offset : offset + page_size]
+            placeholders = ", ".join("?" for _ in page)
+            cursor = await self._db().execute(
+                f"SELECT event_id FROM {HANDLED_EVENTS_TABLE} WHERE consumer = ? AND event_id IN ({placeholders})",
+                (consumer, *page),
+            )
+            found.update(str(row[0]) for row in await cursor.fetchall())
+        return frozenset(found)
+
     async def record_handled_event(self, consumer: str, event_id: str, handled_at: datetime) -> None:
         """Record that the consumer handled the event id; recording again changes nothing."""
         await self._db().execute(_INSERT_HANDLED_EVENT_SQL, (consumer, event_id, handled_at.isoformat()))

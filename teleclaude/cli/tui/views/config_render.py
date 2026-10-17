@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 from rich.style import Style
 from rich.text import Text
 
-from teleclaude.cli.config_handlers import EnvVarStatus
 from teleclaude.cli.tui.views._config_constants import (
     _DIM,
     _FAIL,
@@ -19,14 +18,32 @@ from teleclaude.cli.tui.views._config_constants import (
     _SUBTABS,
     _TAB_ACTIVE,
     _TAB_INACTIVE,
+    ConfigTuiRowAction,
     Subtab,
     _normal_style,
 )
-from teleclaude.cli.tui.views.reflection import ReflectedField
+from teleclaude.cli.tui.views.config_operations import EnvVarStatus
 from teleclaude.closed_model import MASKED_INPUT
+from teleclaude.config.operation_answers import EditorFieldAnswer, EditorInputKind, EditorValueState
+from teleclaude.config.operation_requests import ConfigEditIntent
 
 if TYPE_CHECKING:
-    from teleclaude.config.identity_schema import PersonEntry
+    from teleclaude.cli.tui.views.config import PersonRow
+
+
+_SECRET_PREFIX = "secrets."
+_LIST_RENDER_SEPARATOR = ", "
+_FIELD_PATH_SEPARATOR = "."
+_REQUIRED_LABEL_SUFFIX = " *"
+_MASKED_MARKER = "✔"
+_UNSET_MARKER = "○"
+_LIST_COUNT_TEMPLATE = "[{count}]"
+_ROW_MARKER_TEMPLATE = "{pad}{prefix} {marker} "
+_FIELD_LABEL_TEMPLATE = "{label}: "
+_FIELD_LABEL_COMPACT_TEMPLATE = "{label}:"
+_SUMMARY_PART_TEMPLATE = "{label}={value}"
+_LIST_ITEMS_TEMPLATE = " {items}\n"
+_EMPTY_TEXT = ""
 
 
 class _SecretState(StrEnum):
@@ -37,10 +54,10 @@ class _SecretState(StrEnum):
     UNSET = "unset"
 
 
-def _secret_state(field: ReflectedField) -> _SecretState:
-    if not field.secret_available:
+def _secret_state(field: EditorFieldAnswer) -> _SecretState:
+    if not field.available:
         return _SecretState.UNAVAILABLE
-    return _SecretState.SET if field.secret_is_set else _SecretState.UNSET
+    return _SecretState.SET if field.value_state is EditorValueState.MASKED else _SecretState.UNSET
 
 
 def _segment_label(segment: str) -> str:
@@ -48,10 +65,10 @@ def _segment_label(segment: str) -> str:
     return f"[{segment}]" if segment.isdigit() else segment.replace("_", " ").title()
 
 
-def _root_label(fields: list[ReflectedField], root: str) -> str:
+def _root_label(fields: list[EditorFieldAnswer], root: str) -> str:
     """Label for a top-level group, taken from the shallowest field's section."""
-    members = [f for f in fields if f.key.split(".", 1)[0] == root]
-    shallowest = min(members, key=lambda f: f.key.count("."))
+    members = [f for f in fields if f.identity.split(_FIELD_PATH_SEPARATOR, 1)[0] == root]
+    shallowest = min(members, key=lambda f: f.identity.count(_FIELD_PATH_SEPARATOR))
     return shallowest.section
 
 
@@ -61,7 +78,7 @@ class ConfigContentRenderMixin:
     if TYPE_CHECKING:
         _env_data: list[EnvVarStatus]
         _guided_step_index: int
-        _people_data: list[PersonEntry]
+        _people_data: list[PersonRow]
         _editing_var_name: str | None
         _edit_buffer: str
 
@@ -113,7 +130,7 @@ class ConfigContentRenderMixin:
 
             row = result.plain.count("\n")
             person_key = person.slug or person.name
-            self._row_click_map[row] = ("person_select", person_key)  # type: ignore[attr-defined]
+            self._row_click_map[row] = (ConfigTuiRowAction.PERSON_SELECT, person_key)  # type: ignore[attr-defined]
 
             result.append(f"  {prefix} {person.name}", style=row_style)
             if person.role is not None:
@@ -130,17 +147,17 @@ class ConfigContentRenderMixin:
                 printed: set[str] = set()
                 current_root: str | None = None
                 for f in person_fields:
-                    root = f.key.split(".", 1)[0]
+                    root = f.identity.split(_FIELD_PATH_SEPARATOR, 1)[0]
                     if root != current_root:
                         current_root = root
                         result.append(f"  ▼ {_root_label(person_fields, root)}\n", style=Style(bold=True))
-                    self._emit_branch_headers(result, f.key, printed)
+                    self._emit_branch_headers(result, f.identity, printed)
                     f_idx = person_fields.index(f)
                     field_selected = f_idx == self._person_field_cursor  # type: ignore[attr-defined]
                     field_prefix = "▶" if field_selected else " "
                     field_row_style = Style(reverse=True) if field_selected else _normal_style()
                     field_row = result.plain.count("\n")
-                    self._row_click_map[field_row] = ("person_reflected_row", f.key)  # type: ignore[attr-defined]
+                    self._row_click_map[field_row] = (ConfigTuiRowAction.PERSON_FIELD, f.identity)  # type: ignore[attr-defined]
                     self._render_reflected_field(
                         result, f, selected=field_selected, prefix=field_prefix, row_style=field_row_style
                     )
@@ -161,7 +178,7 @@ class ConfigContentRenderMixin:
             prefix = "▶" if selected else " "
 
             row = result.plain.count("\n")
-            self._row_click_map[row] = ("env_row", status.info.name)  # type: ignore[attr-defined]
+            self._row_click_map[row] = (ConfigTuiRowAction.ENVIRONMENT, status.info.name)  # type: ignore[attr-defined]
 
             if self._editing_var_name == status.info.name:  # type: ignore[attr-defined]
                 result.append(
@@ -178,36 +195,41 @@ class ConfigContentRenderMixin:
             result.append(f" ({status.info.adapter})\n", style=_DIM)
 
     def _render_reflected_field(
-        self, result: Text, f: ReflectedField, *, selected: bool, prefix: str, row_style: Style
+        self, result: Text, f: EditorFieldAnswer, *, selected: bool, prefix: str, row_style: Style
     ) -> None:
         """Render one reflected field row: bool toggle, list, enum, or text.
 
         Leaf rows are indented to their depth in the dotted key so they sit beneath
         the branch headers emitted by the caller.
         """
-        label = f"{f.name}{' *' if f.required else ''}"
-        depth = max(0, f.key.count(".") - 1)
+        label = f"{f.label}{_REQUIRED_LABEL_SUFFIX if f.required else _EMPTY_TEXT}"
+        depth = max(0, f.identity.count(_FIELD_PATH_SEPARATOR) - 1)
         pad = "  " * (2 + depth)
         subpad = pad + "    "
-        if self._editing_var_name == f.key:  # type: ignore[attr-defined]
-            edit_value = MASKED_INPUT if f.write_only else self._edit_buffer  # type: ignore[attr-defined]
+        if self._editing_var_name == f.identity:  # type: ignore[attr-defined]
+            edit_value = MASKED_INPUT if (f.sensitive or f.identity.startswith(_SECRET_PREFIX)) else self._edit_buffer  # type: ignore[attr-defined]
             result.append(f"{pad}{prefix} {label} = {edit_value}█\n", style=row_style)
             instruction = (
                 "Enter replace/keep  Esc cancel  Ctrl+U clear"
-                if f.write_only
+                if (f.sensitive or f.identity.startswith(_SECRET_PREFIX))
                 else "Enter save  Esc cancel  Ctrl+U clear"
             )
             result.append(f"{subpad}{instruction}\n", style=_DIM)
             return
 
-        if f.write_only:
+        if f.sensitive or f.identity.startswith(_SECRET_PREFIX):
             status = _secret_state(f)
+            display_value = str(f.value) if f.available and f.value is not None else status
             result.append(
-                f"{pad}{prefix} {'✔' if f.secret_is_set else '○'} ",
-                style=_OK if f.secret_is_set and f.secret_available else _DIM,
+                _ROW_MARKER_TEMPLATE.format(
+                    pad=pad,
+                    prefix=prefix,
+                    marker=_MASKED_MARKER if f.value_state is EditorValueState.MASKED else _UNSET_MARKER,
+                ),
+                style=_OK if f.value_state is EditorValueState.MASKED and f.available else _DIM,
             )
-            result.append(f"{label}: ", style=_DIM)
-            result.append(status, style=row_style)
+            result.append(_FIELD_LABEL_TEMPLATE.format(label=label), style=_DIM)
+            result.append(display_value, style=row_style)
             if f.requiring_services:
                 result.append(f" ({', '.join(f.requiring_services)})", style=_DIM)
             result.append("\n")
@@ -215,19 +237,22 @@ class ConfigContentRenderMixin:
                 result.append(f"{subpad}{f.description}\n", style=_DIM)
             return
 
-        if f.field_type is bool:
+        if f.input_kind is EditorInputKind.BOOLEAN:
             # A boolean is always a valid state (true or false), so it is always "set".
-            result.append(f"{pad}{prefix} ✔ ", style=_OK)
-            result.append(f"{f.name}: ", style=_DIM)
+            result.append(_ROW_MARKER_TEMPLATE.format(pad=pad, prefix=prefix, marker=_MASKED_MARKER), style=_OK)
+            result.append(_FIELD_LABEL_TEMPLATE.format(label=f.label), style=_DIM)
             result.append(" TRUE ", style=Style(bold=True, reverse=True) if f.value else _DIM)
             result.append(" ", style=row_style)
             result.append(" FALSE ", style=Style(bold=True, reverse=True) if not f.value else _DIM)
             result.append("  (← → toggle)\n" if selected else "\n", style=_DIM)
 
-        elif f.field_type in (list[str], list):
-            items = f.value or []
-            result.append(f"{pad}{prefix} {'✔' if items else '○'} ", style=_OK if items else _DIM)
-            result.append(f"{f.name}:", style=_DIM)
+        elif f.input_kind in (EditorInputKind.STRING_LIST, EditorInputKind.VALUE_LIST):
+            items = f.value if isinstance(f.value, list) else []
+            result.append(
+                _ROW_MARKER_TEMPLATE.format(pad=pad, prefix=prefix, marker=_MASKED_MARKER if items else _UNSET_MARKER),
+                style=_OK if items else _DIM,
+            )
+            result.append(_FIELD_LABEL_COMPACT_TEMPLATE.format(label=f.label), style=_DIM)
             if selected and items:
                 self._list_element_idx = max(0, min(self._list_element_idx, len(items) - 1))  # type: ignore[attr-defined]
                 result.append("  (← → select · [ ] reorder)\n", style=_DIM)
@@ -238,21 +263,32 @@ class ConfigContentRenderMixin:
                         f"{subpad}{marker} {item}\n", style=Style(bold=True, reverse=True) if active else row_style
                     )
             elif items:
-                result.append(f" {', '.join(items)}\n", style=row_style)
+                result.append(
+                    _LIST_ITEMS_TEMPLATE.format(items=_LIST_RENDER_SEPARATOR.join(str(item) for item in items)),
+                    style=row_style,
+                )
             else:
                 result.append(" (empty)\n", style=_DIM)
 
         elif f.choices:
-            result.append(f"{pad}{prefix} {'✔' if f.value else '○'} ", style=_OK if f.value else _DIM)
-            result.append(f"{f.name}: ", style=_DIM)
+            result.append(
+                _ROW_MARKER_TEMPLATE.format(
+                    pad=pad, prefix=prefix, marker=_MASKED_MARKER if f.value else _UNSET_MARKER
+                ),
+                style=_OK if f.value else _DIM,
+            )
+            result.append(_FIELD_LABEL_TEMPLATE.format(label=f.label), style=_DIM)
             result.append(f"{f.value or '(not set)'}", style=row_style)
             result.append("  (← → cycle)\n" if selected else "\n", style=_DIM)
 
         else:
             value = str(f.value if f.value is not None else "")
             display = value or "(not set)"
-            result.append(f"{pad}{prefix} {'✔' if value else '○'} ", style=_OK if value else _DIM)
-            result.append(f"{f.name}: ", style=_DIM)
+            result.append(
+                _ROW_MARKER_TEMPLATE.format(pad=pad, prefix=prefix, marker=_MASKED_MARKER if value else _UNSET_MARKER),
+                style=_OK if value else _DIM,
+            )
+            result.append(_FIELD_LABEL_TEMPLATE.format(label=f.label), style=_DIM)
             result.append(f"{display}\n", style=row_style)
 
         if f.description:
@@ -267,21 +303,22 @@ class ConfigContentRenderMixin:
                 printed.add(path)
                 result.append("  " * (1 + depth) + _segment_label(segments[depth]) + "\n", style=Style(bold=True))
 
-    def _group_summary(self, group_fields: list[ReflectedField]) -> str:
+    def _group_summary(self, group_fields: list[EditorFieldAnswer]) -> str:
         """One-line collapsed summary of a group's leaf values."""
         parts: list[str] = []
         for f in group_fields:
-            if f.field_type is bool:
+            if f.input_kind is EditorInputKind.BOOLEAN:
                 val_str = "yes" if f.value else "no"
-            elif f.field_type in (list[str], list):
-                val_str = f"[{len(f.value or [])}]"
-            elif f.write_only:
-                val_str = _secret_state(f)
+            elif f.input_kind in (EditorInputKind.STRING_LIST, EditorInputKind.VALUE_LIST):
+                values = f.value if isinstance(f.value, list) else []
+                val_str = _LIST_COUNT_TEMPLATE.format(count=len(values))
+            elif f.sensitive or f.identity.startswith(_SECRET_PREFIX):
+                val_str = str(f.value) if f.available and f.value is not None else _secret_state(f)
             else:
                 val_str = str(f.value if f.value is not None else "")
                 if len(val_str) > 15:
                     val_str = val_str[:12] + "..."
-            parts.append(f"{f.name}={val_str}")
+            parts.append(_SUMMARY_PART_TEMPLATE.format(label=f.label, value=val_str))
         summary = ", ".join(parts)
         return summary[:47] + "..." if len(summary) > 50 else summary
 
@@ -294,13 +331,13 @@ class ConfigContentRenderMixin:
 
         cursor = self._current_cursor()  # type: ignore[attr-defined]
         active_field = fields[max(0, min(cursor, len(fields) - 1))]
-        active_root = active_field.key.split(".", 1)[0]
+        active_root = active_field.identity.split(_FIELD_PATH_SEPARATOR, 1)[0]
 
         # Group fields by top-level key segment, preserving order, so nested
         # structures render as a tree rather than colliding into flat sections.
-        groups: dict[str, list[ReflectedField]] = {}
+        groups: dict[str, list[EditorFieldAnswer]] = {}
         for f in fields:
-            groups.setdefault(f.key.split(".", 1)[0], []).append(f)
+            groups.setdefault(f.identity.split(_FIELD_PATH_SEPARATOR, 1)[0], []).append(f)
 
         for root, group_fields in groups.items():
             result.append("\n")
@@ -312,13 +349,13 @@ class ConfigContentRenderMixin:
             result.append(f"  ▼ {label}\n", style=Style(bold=True))
             printed: set[str] = set()
             for f in group_fields:
-                self._emit_branch_headers(result, f.key, printed)
+                self._emit_branch_headers(result, f.identity, printed)
                 f_idx = fields.index(f)
                 selected = f_idx == cursor
                 prefix = "▶" if selected else " "
                 row_style = Style(reverse=True) if selected else _normal_style()
                 row = result.plain.count("\n")
-                self._row_click_map[row] = ("reflected_row", f.key)  # type: ignore[attr-defined]
+                self._row_click_map[row] = (ConfigTuiRowAction.REFLECTED_FIELD, f.identity)  # type: ignore[attr-defined]
                 self._render_reflected_field(result, f, selected=selected, prefix=prefix, row_style=row_style)
 
     def render(self) -> Text:
@@ -356,16 +393,16 @@ class ConfigContentRenderMixin:
             return
 
         action_type = action[0]
-        if action_type == "reflected_row":
+        if action_type is ConfigTuiRowAction.REFLECTED_FIELD:
             field_key = action[1]
             fields = self.reflected_fields  # type: ignore[attr-defined]
             for i, f in enumerate(fields):
-                if f.key == field_key:
+                if f.identity == field_key:
                     self._set_current_cursor(i)  # type: ignore[attr-defined]
                     # Same as Enter: toggle bool, cycle enum, or edit text.
                     self.activate_current()  # type: ignore[attr-defined]
                     break
-        elif action_type == "env_row":
+        elif action_type is ConfigTuiRowAction.ENVIRONMENT:
             env_name = action[1]
             rows = self._selectable_env_rows()  # type: ignore[attr-defined]
             for i, status in enumerate(rows):
@@ -373,7 +410,7 @@ class ConfigContentRenderMixin:
                     self._set_current_cursor(i)  # type: ignore[attr-defined]
                     self._begin_edit(status)  # type: ignore[attr-defined]
                     break
-        elif action_type == "person_select":
+        elif action_type is ConfigTuiRowAction.PERSON_SELECT:
             person_key = action[1]
             for i, p in enumerate(self._people_data):  # type: ignore[attr-defined]
                 if (p.slug or p.name) == person_key:
@@ -385,14 +422,14 @@ class ConfigContentRenderMixin:
                         self._person_field_cursor = 0  # type: ignore[attr-defined]
                     self.refresh(layout=True)  # type: ignore[attr-defined]
                     break
-        elif action_type == "person_reflected_row":
+        elif action_type is ConfigTuiRowAction.PERSON_FIELD:
             field_key = action[1]
             fields = self.person_reflected_fields  # type: ignore[attr-defined]
             for idx, f in enumerate(fields):
-                if f.key == field_key:
+                if f.identity == field_key:
                     self._person_field_cursor = idx  # type: ignore[attr-defined]
-                    if f.field_type is bool:
-                        self._save_reflected_field(f.key, not f.value)  # type: ignore[attr-defined]
+                    if f.input_kind is EditorInputKind.BOOLEAN:
+                        self._save_editor_field(f.identity, ConfigEditIntent.REPLACE, not bool(f.value))  # type: ignore[attr-defined]
                     elif f.choices:
                         self.cycle_enum_field(1)  # type: ignore[attr-defined]
                     else:

@@ -540,7 +540,7 @@ A park and the reset of an abandoned checkpoint (a phantom or foreign candidate)
 ### Contribution delivery boundary
 
 The mainline state machine described above serves upstream-authoring delivery.
-A contributor checkout's finalize-ready handoff is consumed by
+A contributor checkout's ready-item handoff is consumed by
 `local/projects/teleclaude/spec/feature/workflow/contribution-export`, which
 records a PR proposal rather than entering the candidate-push/root-fold path.
 PR creation neither records upstream delivery nor releases its sole recoverable

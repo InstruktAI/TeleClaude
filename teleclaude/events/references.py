@@ -23,6 +23,7 @@ class ReferenceKind(StrEnum):
 
     TODO = "todo"
     SESSION = "session"
+    OPERATION = "operation"
     JOB = "job"
     EVENT_TYPE = "event_type"
     COMPUTER = "computer"
@@ -98,6 +99,13 @@ class SessionRef(TypedRef):
     """An agent session, by session id."""
 
     KIND: ClassVar[ReferenceKind] = ReferenceKind.SESSION
+
+
+@dataclass(frozen=True)
+class OperationRef(TypedRef):
+    """A durable operation, by its persisted operation id."""
+
+    KIND: ClassVar[ReferenceKind] = ReferenceKind.OPERATION
 
 
 @dataclass(frozen=True)

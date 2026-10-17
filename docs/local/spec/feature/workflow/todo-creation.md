@@ -54,6 +54,42 @@ The Todo aggregate's invariants — unique kebab-case slug, a canonical kind pre
 
 ## Canonical fields
 
+### Reviewed documentation evidence
+
+Before creation admits work that declares pending documentation into its
+lifecycle, the owning boundary verifies the documentation evidence required by
+`sdlc/policy/todo-creation-discipline`. It resolves the intended slug's associated
+documentation commits from both inferred footer names under
+`general/policy/commits`, checks repository-owned independent review verdicts for
+the referenced revisions, and confirms that the pending documentation entering
+the lifecycle matches the reviewed content. Evidence survives without an
+existing todo and without a current session claim.
+
+Every declared pending document is covered by a matching footer-associated
+commit. A missing association blocks entry even when the associated-commit
+lookup returns no commits; it does not classify the work as having no
+documentation delta. Independent approval is established from the verified
+stamp and producing-session provenance required by `general/policy/commits`.
+
+For first-child grouping, the admission inventory includes the parent's pending
+documents that the grouping operation transfers to the child. The parent's
+associated reviewed revision covers the transferred contract only through
+workflow-owned evidence binding that revision to the exact pending-identity
+rewrite and its resulting paths and content. That evidence persists with the
+successful grouping, including parked children, and remains available when the
+child enters the lifecycle. It supplies association continuity, never a review
+verdict. Content outside that exact transformation requires its own current
+associated independent approval under `sdlc/policy/todo-creation-discipline`.
+
+Refusal precedes todo state, artifact creation and dispatch, and identifies the
+missing, stale or unresolved evidence with its commit reference and the existing
+review path. A transcript assertion, an author's discard, or the creation
+command's `--approved` acknowledgment supplies no independent review approval.
+The check keeps the existing classification of no-documentation work and the
+icebox entry rules; it does not classify prose or infer documentation impact.
+Unfreezing performs the same evidence check when parked work enters the
+lifecycle (`general/principle/trust-and-guardrails`).
+
 ### Todo-created event payload (partial shape)
 
 The workflow service emits the event with this payload:
@@ -363,12 +399,18 @@ And the surface verifies the decisions were faced, never that the answers are tr
 #### UC-WTC28: Todo creation interrogates before creating
 
 ```gherkin
-Given an agent invokes `telec todo create <slug> <content>` without the acknowledgment flag
-When the command runs
-Then it prints the pre-creation decisions to stderr: the five-minute rule, doc-only routing, an existing home to amend, and ownership plus process-change authority
-And exits 0 without creating a todo — serving the interrogation is the successful outcome of that invocation
-And only that output names how to complete the creation
-And the surface verifies the decisions were faced, never that the answers are true — judging the answers stays with intelligence
+Given an agent is creating a todo through `telec todo create <slug> <content>`
+When the agent invokes the command without the acknowledgment flag
+Then the command presents the pre-creation decisions and creates no todo
+And it names how to acknowledge those decisions
+When the agent acknowledges them and requests lifecycle entry with declared pending documentation
+But any declared pending document lacks a matching commit association, independent approval, or a current reviewed version
+Then creation is refused before any todo state, artifact or dispatch is produced
+And the refusal identifies the missing, unresolved or stale evidence and the commit or review action required
+When the documentation evidence is independently approved and current and the agent submits a new acknowledged creation request
+Then that new request passes the documentation evidence check and proceeds through the existing remaining creation checks
+And work genuinely declaring no documentation delta keeps its existing creation route
+And icebox filing keeps its parking route with the evidence check at lifecycle entry
 ```
 
 #### UC-WTC8: Direct human filing records the human root alone

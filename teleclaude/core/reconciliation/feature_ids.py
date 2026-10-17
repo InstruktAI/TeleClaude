@@ -18,6 +18,7 @@ CONVERSATION_ENTRY_FEATURE_ID = "projects/teleclaude/spec/feature/agent_runtime/
 INCIDENT_ALERTS_FEATURE_ID = "projects/teleclaude/spec/feature/integration/incident-alerts"
 RELAY_REQUEST_FEATURE_ID = "projects/teleclaude/spec/feature/integration/computer-addressed-execution"
 PROCEDURE_ENTRY_FEATURE_ID = "projects/teleclaude/spec/feature/agent_runtime/procedure-entry"
+DOMAIN_EVENT_DELIVERY_FEATURE_ID = "projects/teleclaude/spec/feature/event-catalog/event-consumers"
 
 
 class FeatureMark(StrEnum):
@@ -96,57 +97,63 @@ class FeatureIDRegistry:
         return carried
 
 
+_FEATURES = (
+    FeatureID(
+        identifier=FLEET_CROSS_VERSION_INTEROP_FEATURE_ID,
+        mark=FeatureMark.MUST_NEGOTIATE,
+    ),
+    FeatureID(
+        identifier=WEBHOOK_INGRESS_FEATURE_ID,
+        mark=FeatureMark.IGNORABLE,
+    ),
+    FeatureID(
+        identifier=DETERMINISTIC_AGENT_ROUTING_FEATURE_ID,
+        mark=FeatureMark.MUST_NEGOTIATE,
+    ),
+    FeatureID(
+        identifier=INTERACTIVE_COMMAND_INPUT_FEATURE_ID,
+        mark=FeatureMark.MUST_NEGOTIATE,
+    ),
+    FeatureID(
+        identifier=HANDOFF_AGENT_FEATURE_ID,
+        mark=FeatureMark.MUST_NEGOTIATE,
+    ),
+    FeatureID(
+        identifier=SESSION_OBSERVED_STOP_FEATURE_ID,
+        mark=FeatureMark.IGNORABLE,
+    ),
+    FeatureID(
+        identifier=STORED_AGENT_STATUS_FEATURE_ID,
+        mark=FeatureMark.IGNORABLE,
+    ),
+    FeatureID(
+        identifier=SUPERVISORY_SILENCE_OBSERVATIONS_FEATURE_ID,
+        mark=FeatureMark.MUST_NEGOTIATE,
+    ),
+    FeatureID(
+        identifier=CONVERSATION_ENTRY_FEATURE_ID,
+        mark=FeatureMark.MUST_NEGOTIATE,
+    ),
+    FeatureID(
+        identifier=INCIDENT_ALERTS_FEATURE_ID,
+        mark=FeatureMark.IGNORABLE,
+    ),
+    FeatureID(
+        identifier=RELAY_REQUEST_FEATURE_ID,
+        mark=FeatureMark.IGNORABLE,
+    ),
+    FeatureID(
+        identifier=PROCEDURE_ENTRY_FEATURE_ID,
+        mark=FeatureMark.MUST_NEGOTIATE,
+    ),
+    FeatureID(
+        identifier=DOMAIN_EVENT_DELIVERY_FEATURE_ID,
+        mark=FeatureMark.MUST_NEGOTIATE,
+    ),
+)
+
 DEFAULT_FEATURE_ID_REGISTRY = FeatureIDRegistry.from_entries(
-    (
-        FeatureID(
-            identifier=FLEET_CROSS_VERSION_INTEROP_FEATURE_ID,
-            mark=FeatureMark.MUST_NEGOTIATE,
-        ),
-        FeatureID(
-            identifier=WEBHOOK_INGRESS_FEATURE_ID,
-            mark=FeatureMark.IGNORABLE,
-        ),
-        FeatureID(
-            identifier=DETERMINISTIC_AGENT_ROUTING_FEATURE_ID,
-            mark=FeatureMark.MUST_NEGOTIATE,
-        ),
-        FeatureID(
-            identifier=INTERACTIVE_COMMAND_INPUT_FEATURE_ID,
-            mark=FeatureMark.MUST_NEGOTIATE,
-        ),
-        FeatureID(
-            identifier=HANDOFF_AGENT_FEATURE_ID,
-            mark=FeatureMark.MUST_NEGOTIATE,
-        ),
-        FeatureID(
-            identifier=SESSION_OBSERVED_STOP_FEATURE_ID,
-            mark=FeatureMark.IGNORABLE,
-        ),
-        FeatureID(
-            identifier=STORED_AGENT_STATUS_FEATURE_ID,
-            mark=FeatureMark.IGNORABLE,
-        ),
-        FeatureID(
-            identifier=SUPERVISORY_SILENCE_OBSERVATIONS_FEATURE_ID,
-            mark=FeatureMark.MUST_NEGOTIATE,
-        ),
-        FeatureID(
-            identifier=CONVERSATION_ENTRY_FEATURE_ID,
-            mark=FeatureMark.MUST_NEGOTIATE,
-        ),
-        FeatureID(
-            identifier=INCIDENT_ALERTS_FEATURE_ID,
-            mark=FeatureMark.IGNORABLE,
-        ),
-        FeatureID(
-            identifier=RELAY_REQUEST_FEATURE_ID,
-            mark=FeatureMark.IGNORABLE,
-        ),
-        FeatureID(
-            identifier=PROCEDURE_ENTRY_FEATURE_ID,
-            mark=FeatureMark.MUST_NEGOTIATE,
-        ),
-    )
+    _FEATURES,
 )
 
 

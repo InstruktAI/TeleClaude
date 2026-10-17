@@ -37,24 +37,15 @@ surface, not an implicit target of a resource command.
 
 ### Use cases
 
-#### UC-CFG-CLI-1: `get` reads the machine config the runtime loads
+#### UC-CFG-CLI-1: An operator can inspect effective machine settings
 
 ```gherkin
-Given machine configuration contains a declared value
-And an unrelated configuration file exists in the current working directory
-When an agent reads the computer kind
-Then the reported value comes from the machine configuration the runtime loads
-And the working-directory file is not read
+Given an operator wants to inspect a machine setting
+When they read the computer configuration
+Then they see the effective value and the source that supplies it
 ```
 
 #### UC-CFG-CLI-2: `get` names the source and revision it resolved
-
-```gherkin
-Given an agent reads the computer kind
-When the command reports the requested configuration
-Then it names the resolved machine-configuration source
-And it supplies a revision that identifies the committed state read
-```
 
 #### UC-CFG-CLI-3: A schema-invalid patch is refused before replacement
 
@@ -71,56 +62,38 @@ And the committed machine configuration is unchanged
 #### UC-CFG-CLI-4: A valid patch commits through one transaction
 
 ```gherkin
-Given an agent read the current machine configuration and obtained its revision
-And the agent submits a schema-valid patch with that revision
-When the config owner applies the mutation
-Then it reads the latest committed document under its lock
-And it refuses the patch if the revision is stale
-And otherwise applies and validates the complete candidate before replacement
-And atomically replaces the machine configuration and reports the committed result
+Given an operator wants to change a machine setting
+When they submit a valid change through the computer configuration command
+Then the new setting is saved and the command reports the committed result
 ```
 
 #### UC-CFG-CLI-5: The working directory never selects the mutation target
 
-```gherkin
-Given an unrelated configuration file exists in the current working directory
-When an authorized agent patches the computer kind
-Then the resolved machine configuration is the only file mutated
-And the working-directory file is unchanged
-```
-
 #### UC-CFG-CLI-6: `validate` diagnoses existing state independently
 
 ```gherkin
-Given an agent needs to diagnose existing configuration
-When the agent invokes explicit configuration validation
-Then the configured subjects are evaluated through their typed schemas
-And each invalid subject is identified
-And no configuration mutation occurs
+Given an operator wants to check configured subjects for invalid settings
+When they invoke explicit configuration validation
+Then each invalid subject is identified
+And configuration remains unchanged
 ```
 
 #### UC-CFG-CLI-7: Repair commands remain reachable when current configuration is invalid
 
 ```gherkin
-Given the committed machine configuration violates its typed schema
-When an agent invokes machine-config validation
-Then the command surface starts without requiring a valid runtime aggregate
-And reports the invalid state through the config context
-When an authorized agent removes the offending field through a computer patch
-Then the config context validates the corrected candidate before persisting it
-And direct file editing is not required
+Given an operator's saved machine configuration is invalid
+When they use the configuration command to remove or correct the offending setting
+Then the corrected configuration is validated before it is saved
 ```
 
-#### UC-CFG-CLI-8: Agents never mutate the backing file directly
-
-```gherkin
-Given an agent needs to change machine configuration
-When the agent follows the supported configuration workflow
-Then the mutation is expressed through `telec config computer`
-And no shell editor, ad hoc script, or direct filesystem write targets the backing file
-```
+#### UC-CFG-CLI-8: Ordinary configuration edits use daemon-owned operations
 
 ## Known caveats
+
+- Configuration commands require the addressed daemon. When it is unavailable,
+  an agent may repair configuration files directly as recovery under
+  `general/policy/machine-config-mutation-authority`; ordinary client execution
+  remains daemon-owned.
 
 - A candidate may depend on environment-backed values available during
   mutation but absent in a later runtime environment. Validation uses the

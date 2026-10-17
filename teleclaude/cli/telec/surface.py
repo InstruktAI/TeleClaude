@@ -642,6 +642,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Creates the todo entry, canonical state, and stores content as the input artifact.",
+                    "Active creation with declared pending documentation requires an associated commit and current "
+                    "independent approval. A refusal writes no todo; submit a fresh create request after review.",
+                    "Icebox creation remains available while work is forming; unfreeze checks the same documentation "
+                    "evidence before lifecycle entry.",
                     "--human-involved requires a non-empty reason and resolves the record from observed recency: "
                     "a stale declaration records false and the todo is still created. The reason is never "
                     "stored; omission records false and does not affect later actions.",
@@ -739,6 +743,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Promote todo from icebox",
                 args="<slug>",
                 flags=[F.FLAG_HELP],
+                notes=[
+                    "Pending documentation must have current associated independent approval before the todo leaves the icebox.",
+                ],
                 auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
             ),
             "deliver": CommandDef(
@@ -1952,16 +1959,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "commit": CommandDef(
                 desc="Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)",
-                args='"<message>" [--approved] [--human-involved <reason>] [--include <path> ...] [--only <path> ...]',
+                args='"<message>" [--approved] [--todo <slug>] [--human-involved <reason>] [--include <path> ...] [--only <path> ...]',
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_COMMIT_APPROVED,
                     F.FLAG_COMMIT_INCLUDE,
                     F.FLAG_COMMIT_ONLY,
+                    F.FLAG_COMMIT_TODO,
                     F.FLAG_HUMAN_INVOLVED_COMMIT,
                 ],
                 notes=[
-                    "Accepts only: one quoted message, --approved, --human-involved <reason>, --include <path> ..., and --only <path> ... .",
+                    "Accepts one quoted message, --approved, --todo <slug>, --human-involved <reason>, --include <path> ..., and --only <path> ... .",
+                    "--todo appends Planned-Todo when the slug is not recorded yet, otherwise Todo; it never creates or reserves a todo.",
                     "Modified-tracked files in scope are auto-committed via pathspec straight from the working tree — no staging needed.",
                     "NEW (untracked) files in scope are NOT auto-committed by default; declare them via `telec code add`, `--include`, or `--only` (safety net against incidental temp/scratch artifacts).",
                     "--only commits exactly the declared paths and is mutually exclusive with --include.",
@@ -1982,9 +1991,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_CODE_STAMP_REASON,
                 ],
                 notes=[
-                    "A commit reviewer stamps its verdict on exactly the SHAs it reviewed. The author stamps approve with a reason on a review candidate that owes no review; discarding is not reviewing.",
-                    "The stamp lands in the review state of the todo whose lifecycle claim the stamping session, or the session that started it, holds; with no claim in that chain it lands on no todo.",
-                    "The record names the stamping session and the reason, so a discard stays distinguishable from a reviewer's verdict. A later stamp on a SHA supersedes the earlier one.",
+                    "Every accepted stamp is durably recorded by repository and full SHA, including when neither reviewer nor parent holds a todo claim.",
+                    "A reviewer stamps only the SHAs reviewed. The author may stamp approve for an item that owes no review; that discard discharges the ordinary checkpoint only and never supplies independent documentation approval.",
+                    "Independent approval requires authenticated reviewer and verified commit-producer provenance. Missing provenance is insufficient for documentation admission.",
+                    "The latest independent review outcome is effective for admission; request_changes remains unresolved until a later independent approval.",
                     "A stamp covering a session's commits discharges that session's post-commit review prompt, whether the reviewer or the author gave it.",
                     "Every SHA must be a commit reachable from main; otherwise nothing is recorded.",
                 ],

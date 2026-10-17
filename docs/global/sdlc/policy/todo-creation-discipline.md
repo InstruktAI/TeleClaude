@@ -11,7 +11,62 @@ description: Decide whether a todo should exist, audit that decision at preparat
 
 ## Rules
 
+### Progress, hold, or retire
+
+- **Keep active work actionable.** Each active todo has an authorized outcome,
+  a concrete next contribution, and an owner able to make it. Judge progress
+  by changed evidence, artifacts, or outcomes, not by repeated status checks
+  or renewed attempts with the same premise.
+- **Hold for a specific unblock condition.** Record the condition, who owns
+  satisfying it, and the evidence that releases the hold. A named dependency
+  delivery, a scheduled gate, or a specific decision from its responsible
+  person can qualify. Naming an owner for hypothetical future evidence does
+  not make that evidence an actionable dependency.
+- **Bound investigation by an obtainable next observation.** Missing evidence
+  can justify a concrete, bounded acquisition step. When the available inquiry
+  is exhausted and no such step or admissible unblock condition remains,
+  record the findings and limits and retire the investigation. Hoping that a
+  failure recurs or that useful diagnostics arrive someday is not a hold
+  condition. A later occurrence is assessed afresh against its actual evidence.
+- **Preserve evidence without preserving speculative work.** Retain findings
+  and necessary work products through the supported retirement path. An
+  exhausted investigation does not become an icebox item, reminder, or new
+  diagnostic project merely to remain available. Additional machinery must
+  independently earn its scope against a current authorized need.
+- **Keep retirement distinct from success and abandonment.** An unresolved
+  item may retire as unresolved; retirement supplies no diagnosis, approval,
+  or delivery verdict. Concrete review, remediation, or delivery work already
+  owed keeps its owner and gates. Withdrawing a human-owned outcome follows
+  `general/policy/human-contract`; lack of a technical path does not confer
+  that authority on the agent.
+- **Reassess a hold when its basis changes.** Resume when its condition is
+  satisfied, complete work whose outcome is delivered, and retire work with
+  no actionable continuation under these rules. The existing state label is
+  evidence to reconcile, never a reason to preserve the state.
+
 ### Decide before creating
+
+- **Documentation evidence precedes lifecycle entry.** Pending contracts are
+  authored, committed under their intended todo slug, and independently reviewed
+  with all required changes resolved before that todo enters its lifecycle.
+  Both `Planned-Todo` and `Todo` commit footers identify the association under
+  `general/policy/commits`. The creation boundary checks the associated pending
+  documentation against committed, independently approved revisions; an author's
+  `--approved` declaration supplies no review evidence. A missing approval,
+  unresolved review or changed documentation is refused before creation, naming
+  the missing evidence and the existing commit/review path that supplies it.
+  Every declared pending document must be covered by a matching commit
+  association; a declared document without one is missing evidence and blocks
+  entry, rather than being treated as work with no documentation delta.
+  The check protects the contract downstream preparation consumes
+  (`general/principle/trust-and-guardrails`).
+- **The evidence check does not judge documentation impact.** Whether work needs
+  new documentation remains the existing agent-owned classification. The check
+  validates declared pending contracts and their review records, without grading
+  prose or inferring missing documentation. Legitimate work with no
+  documentation delta keeps its existing route. Iceboxed forming work keeps its
+  existing parking route; its documentation evidence is required when it enters
+  the lifecycle, under the same validity rule as unfreezing.
 
 - **A todo enters the lifecycle valid; the icebox parks ideas at any stage.** A
   todo is valid when its intended outcome and every known contract that Prepare
@@ -186,7 +241,8 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   only a confirmed duplicate, an owner that cannot be corrected in place,
   process intent defensible from neither authorized intent nor applicable
   principles, a defect claim carrying neither the evidence nor the human
-  request that grounds it, or an input for which no defensible intent remains. A
+  request that grounds it, an input for which no defensible intent remains, or
+  work with no actionable continuation under this policy. A
   human-owned consequence is repaired by returning only that consequence to
   its owner; technical process intent remains agent-owned. Scheduling and
   `hold` state do not decide validity.
@@ -306,6 +362,12 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   human identity at the root is not authorship evidence.
 
 ## Rationale
+
+Keeping an item alive spends attention and invites further work. An unresolved
+question alone justifies neither expense. Concrete next contributions and
+unblock conditions keep the workflow tied to an achievable outcome; retained
+records preserve what was learned without turning uncertainty into permanent
+work or speculative infrastructure.
 
 Creation stays intentionally cheap. Its bounded check prevents obvious waste
 without forcing every creator to perform the preparation worker's deeper

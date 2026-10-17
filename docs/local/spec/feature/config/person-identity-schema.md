@@ -39,160 +39,59 @@ kebab-case. Once set, the slug never changes.
 
 ### Use cases
 
-#### UC-CFG-PERSON-1: Minimal person entry accepted
+#### UC-CFG-PERSON-1: An operator registers a person for identity resolution
 
 ```
-Given a the global overlay's people list entry { name: "Alice", email: "alice@example.com" }
-When PersonEntry validation runs
-Then validate_email strips and finds the value non-empty
-And the stripped value "alice@example.com" is stored on the model
-And username defaults to None
-And role defaults to None
-And expertise defaults to None
-And proficiency defaults to None
+Given an operator needs TeleClaude to recognize a person
+When they register the person's name and contact email
+Then the person is available for identity resolution by that email
 ```
 
 #### UC-CFG-PERSON-2: Empty email rejected before storage
 
-```
-Given a the global overlay's people list entry { name: "Alice", email: "   " }
-When email validation runs
-Then trimming the value yields the empty string ""
-And a validation error is raised with the message: "Person email must be non-empty"
-And the global overlay loader raises before save is reachable
-```
-
 #### UC-CFG-PERSON-3: Email whitespace is stripped on persist
-
-```
-Given a the global overlay's people list entry { name: "Alice", email: "  alice@example.com  " }
-When email validation runs
-Then trimming the value yields "alice@example.com"
-And the validator returns the stripped value
-And the stored email is "alice@example.com" (whitespace removed)
-```
 
 #### UC-CFG-PERSON-4: min_length=1 on email field rejects empty literal
 
-```
-Given a the global overlay's people list entry { name: "Alice", email: "" }
-When PersonEntry validation runs
-Then the Field(min_length=1) constraint on email fires before validate_email
-And validation fails with a string-too-short error
-```
-
-#### UC-CFG-PERSON-5: Role enum accepts known values
+#### UC-CFG-PERSON-5: An operator assigns a supported platform role
 
 ```
-Given a the global overlay's people list entry with role = "admin"
-When PersonEntry validation runs
-Then the role schema accepts "admin" as a valid role value
-And role = "admin"
+Given an operator needs to assign platform standing to a person
+When they configure the person as an administrator or member
+Then the person's platform role reflects that choice
 ```
 
 #### UC-CFG-PERSON-6: Role enum rejects unknown values
 
-```
-Given a the global overlay's people list entry with role = "owner"
-When PersonEntry validation runs
-Then the Literal type rejects "owner"
-And validation fails with a literal-mismatch error
-```
-
-#### UC-CFG-PERSON-7: Flat expertise map accepted
+#### UC-CFG-PERSON-7: An operator configures a person's expertise profile
 
 ```
-Given a the global overlay's people list entry with expertise = {
-  "python": "expert",
-  "design": "intermediate"
-}
-When PersonEntry validation runs
-Then expertise is a dict mapping each domain to a ProficiencyLevel literal
-And each value is one of "novice" | "intermediate" | "advanced" | "expert"
-And the entry is accepted
+Given an operator wants assistance calibrated to a person's expertise in different domains
+When they configure that person's expertise profile
+Then the profile preserves the declared expertise levels by domain
 ```
 
 #### UC-CFG-PERSON-8: Nested expertise map accepted
 
-```
-Given a the global overlay's people list entry with expertise = {
-  "sdlc": { "python": "expert", "rust": "intermediate" },
-  "design": "advanced"
-}
-When PersonEntry validation runs
-Then expertise accepts both shapes per the type
-  dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]]
-And the entry is accepted with mixed flat-and-nested values
-```
-
 #### UC-CFG-PERSON-9: Expertise with unknown proficiency level rejected
-
-```
-Given a the global overlay's people list entry with expertise = { "python": "guru" }
-When PersonEntry validation runs
-Then "guru" is not a member of ProficiencyLevel
-And validation fails with a literal-mismatch error
-```
 
 #### UC-CFG-PERSON-10: Deprecated `proficiency` field still parses
 
-```
-Given a the global overlay's people list entry with proficiency = "intermediate"
-When PersonEntry validation runs
-Then proficiency accepts the ProficiencyLevel literal "intermediate"
-And the entry is accepted
-And expertise remains None
-```
-
 #### UC-CFG-PERSON-11: Global overlay collects people as a list
-
-```
-Given a global overlay YAML with a `people` list of N entries
-When global overlay validation runs
-Then each entry is independently validated as a person entry
-And the global overlay's people list holds the validated person entries
-And the empty list is accepted as the default
-```
 
 #### UC-CFG-PERSON-12: Global-level disallowed keys are rejected near people
 
-```
-Given a global overlay YAML with a top-level `creds` key alongside `people`
-When the global overlay's key-restriction check runs
-Then `creds` intersects the disallowed set
-And a validation error is raised: "Keys not allowed at global level: creds"
-And no person-entry parsing is attempted; loading fails first
-```
-
-#### UC-CFG-PERSON-13: Well-formed slug accepted and stripped
+#### UC-CFG-PERSON-13: A person's workspace remains tied to a stable identity
 
 ```
-Given the global overlay's people list entry with slug = "  alice-smith  "
-When PersonEntry validation runs
-Then the value is stripped to "alice-smith"
-And validate_slug("alice-smith") matches the shared slug pattern and returns without error
-And the stored slug is "alice-smith"
+Given an operator creates a workspace for a person whose display name may change
+When the person's identity is registered with its canonical slug
+Then the workspace remains associated with that person after a display-name change
 ```
 
 #### UC-CFG-PERSON-14: Empty or absent slug normalizes to None for legacy load
 
-```
-Given the global overlay's people list entry that omits slug, or sets it to "" or "   "
-When PersonEntry validation runs
-Then the slug validator returns None
-And the entry is accepted so a pre-slug config still loads
-And the stored slug is None
-```
-
 #### UC-CFG-PERSON-15: Invalid slug format rejected
-
-```
-Given the global overlay's people list entry with slug = "Alice_Smith"
-When PersonEntry validation runs
-Then validate_slug("Alice_Smith") fails the shared slug pattern
-And a validation error is raised: "Invalid slug. Use lowercase letters, numbers, and hyphens only"
-And the global overlay loader raises on the slug field before the app config is returned
-```
 
 #### UC-CFG-PERSON-16: Legacy person without slug is migrated on load
 

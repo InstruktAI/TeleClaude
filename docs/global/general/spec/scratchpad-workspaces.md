@@ -25,6 +25,13 @@ remains non-authoritative (`general/principle/attunement`).
   and other deliverables required by a workflow use that workflow's canonical
   artifact store, including while they are drafts. A shared scratchpad holds
   exploratory material; it is not a second copy of a required artifact.
+- **Curate knowledge of the subject.** Shared material holds the evidence,
+  findings, designs, alternatives, material decisions and unresolved questions
+  another reader needs to understand or continue the work
+  (`general/principle/intent-first-documentation`). Session coordination and
+  execution bookkeeping stay in their session or workflow records. When an
+  execution event changes the research or design, retain its substantive
+  consequence and evidence, rather than a narrative of the agent's actions.
 - Shared scratchpad workspaces live under `scratchpad/` at the root of the project's
   canonical checkout, which the adopting project excludes from version control.
 - Harness-provided planning and temporary directories serve the agent's local

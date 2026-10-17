@@ -44,39 +44,26 @@ And the session's notices and answer return to that human on the same origin ada
 
 #### UC-COA2: A non-Discord adapter exposes no operator console
 
-```gherkin
-Given a human is using a non-Discord adapter
-When the adapter publishes or handles its interactive surface
-Then it offers no agent selection, session lifecycle, raw-key, channel-management, or admin-reflection controls
-And identity binding, invitation binding and help-desk entry remain available as the entries into conversation
-```
-
-#### UC-COA3: Discord retains the admin surface
+#### UC-COA3: An operator can use Discord for administration while other adapters carry conversations
 
 ```gherkin
-Given the platform has Discord and one or more non-Discord adapters enabled
-When an operator uses adapter-specific administrative controls
-Then those controls are available only through Discord
-And the non-Discord adapters remain conversation input→response surfaces
+Scenario: Manage the platform through Discord
+  Given Discord and a non-Discord adapter both carry person-facing traffic
+  When an operator uses the platform's administrative controls
+  Then those controls are available through Discord
+  And the other adapter remains a conversation input-and-response surface
 ```
 
 #### UC-COA4: A peer does not activate a Telegram receiver
 
-```gherkin
-Given a computer is not the unique master
-And its local Telegram configuration is enabled
-When adapters start or reconnect
-Then no Telegram inbound receiver is activated on that computer
-And no conversation input is consumed by that computer
-```
-
-#### UC-COA5: Discord operator surfaces retain their owner
+#### UC-COA5: An operator can manage a project forum while the master handles conversations
 
 ```gherkin
-Given a non-master computer owns project forums in Discord
-When its adapter starts under master-owned conversation entry
-Then its operator surfaces remain available
-And conversational ownership does not transfer its forums to another computer
+Scenario: Manage a project forum on its owning computer
+  Given a non-master computer owns a project's Discord forum and the master handles conversation entry
+  When an operator uses the forum's administrative controls
+  Then those controls remain available on the owning computer
+  And conversation input remains under the master ownership rule
 ```
 
 ### Cross-context references

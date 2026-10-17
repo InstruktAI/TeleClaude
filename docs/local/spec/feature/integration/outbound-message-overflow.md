@@ -14,11 +14,12 @@ is longer than the receiving chat platform's single-message limit.
 
 ### Use cases
 
-#### UC-OMO1: Delivering a very long message does not hold up the daemon's other work
+#### UC-OMO1: A person can receive a long message without stalling the daemon
 
 ```gherkin
-Given a message several million characters long is being delivered to Discord, which must split it into consecutive messages
-When an agent asks the daemon for its health while that message is being prepared for delivery
-Then the daemon answers the agent within its ordinary response time
-And the long message still reaches Discord as consecutive messages that each fit within Discord's message limit
+Scenario: Deliver a response longer than Discord's single-message limit
+  Given an assistant has a response longer than Discord can display in one message
+  When the assistant delivers it while the daemon handles another request
+  Then the person receives consecutive messages that fit within Discord's message limit
+  And the daemon answers the other request within its ordinary response time
 ```

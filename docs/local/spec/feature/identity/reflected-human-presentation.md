@@ -17,34 +17,26 @@ third-party fallback.
 
 ### Use cases
 
-#### UC-RHP1: Stored Discord avatar presents non-Discord-origin human input
+#### UC-RHP1: A person can recognize their message in the Discord admin lane
 
 ```gherkin
-Given a configured human has a Discord avatar stored with their resolved identity
-And a reflection request for that human supplies no source avatar
-When the human's input is reflected into the Discord admin lane
-Then the reflected message is presented under the human's resolved display name
-And it uses the stored Discord avatar
+Scenario Outline: Reflect a person's message with the available presentation
+  Given a person's input is being reflected
+  And the source presentation is <source presentation>
+  And the person's resolved identity has <stored avatar>
+  When the input appears in the Discord admin lane
+  Then the message uses the person's resolved display name and <expected avatar>
+
+  Examples:
+    | source presentation | stored avatar          | expected avatar       |
+    | none                | a Discord avatar       | the stored avatar     |
+    | an avatar           | a Discord avatar       | the source avatar     |
+    | none                | no avatar              | no avatar             |
 ```
 
 #### UC-RHP2: Source presentation takes precedence
 
-```gherkin
-Given a reflection request already supplies the human's source avatar
-And the resolved identity also carries a stored Discord avatar
-When the human's input is reflected into the Discord admin lane
-Then the reflected message uses the source-supplied avatar
-```
-
 #### UC-RHP3: Missing avatar preserves the no-avatar path
-
-```gherkin
-Given a configured human has no stored Discord avatar
-And a reflection request supplies no source avatar
-When the human's input is reflected into the Discord admin lane
-Then the message is reflected without an avatar
-And no Discord lookup or third-party avatar fallback is attempted
-```
 
 ### Cross-context references
 

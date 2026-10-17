@@ -44,6 +44,28 @@ Other prescribed profiles are registered beside the job or procedure that owns
 their intent. Their delivered slugs are reserved against arbitrary use without
 centralizing their definitions.
 
+Time-scheduled reminders have at most one live occurrence. A one-shot is
+consumed when its firing is accepted by control delivery. A recurring schedule
+advances after an accepted firing; after downtime, at most one overdue
+occurrence is delivered and the next time is calculated from that firing.
+Restart preserves future schedules and resumes only an occurrence not yet
+accepted. Ending the owning session removes its reminders and pending event
+anchors.
+
+An event-anchored reminder remains pending until its first matching typed event.
+A false predicate creates no transition record, while the first match consumes
+the anchor and fires once. An `agent_stop` anchor occurs after the completed
+turn's final output has been recorded. A prescribed profile may prohibit cancellation; if a
+cancel-one or cancel-all request selects a protected reminder, the request is
+rejected before any selected reminder is removed.
+
+Only a firing enters the agent's context; other transitions create typed
+records and their command receives a synchronous acknowledgement. Each firing
+states its occurrence count since the current arming and, for a scheduled
+reminder, the deadline that fired. At most one undelivered firing is retained
+per slug, so a newer occurrence supersedes an older one that has not reached
+the session.
+
 ### Typed entry and recipient presentation
 
 Every material transition produces one typed record in the service's durable
@@ -82,298 +104,99 @@ polling loop, or becomes human-facing internal error feedback.
 
 ### Use cases
 
-#### UC-RMS1: A session schedules a named reminder for itself
+#### UC-RMS1: A person asks their assistant to return to a task later
 
 ```gherkin
-Given an agent session has a valid intent-revealing slug and intent
-When it schedules the reminder after a duration or at an absolute timestamp
-Then the reminder is durably owned by that authenticated session
-And its public identity is the slug
-And no option can target another session
+Scenario: Schedule a named reminder for the assistant
+  Given a person asks their assistant to return to a task later
+  When the assistant schedules a time-based reminder under a named slug
+  Then the reminder is durably owned by that assistant's session
+  And only that session can list or cancel it
+  And the reminder cannot target another session
 ```
 
 #### UC-RMS2: Distinct intents coexist without a session cap
 
-```gherkin
-Given a session has one or more live reminders under distinct slugs
-When it schedules another distinct slug
-Then every reminder remains live with its own intent and schedule
-And no arbitrary numeric cap rejects the additional reminder
-```
-
 #### UC-RMS3: Reusing a slug atomically replaces that reminder
-
-```gherkin
-Given a session owns a live reminder under a slug
-When the same session schedules that slug again
-Then intent, schedule, recurrence, event anchor, and armed time are replaced atomically
-And exactly one live reminder remains under that slug
-And the superseded schedule cannot fire after replacement succeeds
-```
 
 #### UC-RMS4: Slug ownership is session-local
 
-```gherkin
-Given two sessions use the same non-prescribed reminder slug
-When each schedules it for itself
-Then each session owns an independent reminder
-And replacement or cancellation in one session does not affect the other
-```
-
 #### UC-RMS5: Delivered prescribed slugs cannot be squatted
 
-```gherkin
-Given a prescribed reminder profile is delivered under a registered slug
-When a caller tries to use that slug through the arbitrary-intent form
-Then no arbitrary reminder is created
-And the response identifies the prescribed profile surface
-And a non-prescribed valid slug remains available for arbitrary self-reminders
-```
-
-#### UC-RMS6: A session inspects and cancels its own reminders
+#### UC-RMS6: A person inspects and cancels their assistant's reminders
 
 ```gherkin
-Given a session owns live time-scheduled and event-anchored reminders
-When it lists reminders
-Then it sees only its own reminders with slug, intent, schedule, recurrence, and next firing time when one exists
-When it cancels one slug or atomically cancels all
-Then every selected reminder and its pending event anchor is removed idempotently when every selected profile permits cancellation
-And an operation selecting a reminder whose profile protects cancellation is rejected before any selected reminder is removed
-And already accepted session input is not recalled
+Scenario: Inspect the assistant's own reminders
+  Given a person's assistant owns time-based and event-anchored reminders
+  When the person asks the assistant to list its reminders
+  Then the assistant sees only reminders owned by its session, including their intent and schedule
+
+Scenario: Cancel reminders without recalling accepted input
+  Given a person's assistant owns live reminders
+  When the person asks it to cancel a reminder or all reminders
+  Then the service applies the selected profiles' cancellation policies before removing anything
+  And accepted session input is not recalled
 ```
 
 #### UC-RMS7: A firing one-shot reminder is handed to control delivery once
 
-```gherkin
-Given a live one-shot reminder reaches its scheduled time
-When the reminder fires
-Then one reminder entry is handed to the platform's control-delivery surface
-And it carries the slug, armed time, schedule, and agent-authored intent
-And it instructs the receiver to check for intervening input after the armed time before acting
-And the handoff consumes the reminder
-And delivery mechanics remain owned by the control-delivery surface
-```
-
 #### UC-RMS8: A recurring reminder advances without agent re-arming
-
-```gherkin
-Given a live recurring reminder reaches its scheduled time
-When its firing reminder entry is accepted by the control-delivery surface
-Then the reminder stays live and advances by its configured cadence without an agent re-arming it
-And after downtime at most one overdue occurrence is handed off
-And the next occurrence is scheduled from that recovered firing rather than replaying missed intervals
-```
 
 #### UC-RMS9: Restart recovery preserves reminder intent without catch-up noise
 
-```gherkin
-Given live reminders exist when the daemon stops
-When the daemon starts again
-Then future reminders retain their schedules
-And a firing occurrence not yet accepted by the control-delivery surface is handed off promptly
-And an accepted occurrence is not handed off again
-And recurring reminders produce no catch-up burst
-```
-
 #### UC-RMS10: Ended sessions retain no live reminders
-
-```gherkin
-Given a session owns live reminders
-When that session ends through any lifecycle path
-Then all of its reminders and pending event anchors are removed
-And no later reminder fires into the ended session
-And the removal is visible in structured operational evidence
-```
 
 #### UC-RMS11: Event-triggered firing is typed, first-match, and silent on false
 
-```gherkin
-Given a prescribed reminder waits on a typed agent event
-When an event does not satisfy its code-owned activation predicate
-Then the reminder remains pending
-And no transcript entry, reminder envelope, transport write, derived event, or session input is produced
-When the first event satisfies the predicate
-Then that event atomically consumes the pending anchor and fires the reminder directly
-And later matching events do not produce another occurrence
-```
-
 #### UC-RMS12: Goal drive is a sliding inactivity reminder
-
-```gherkin
-Given an agent starts sustained work toward a goal
-When it arms the goal-drive profile
-Then one recurring reminder under the goal-drive slug is scheduled on a sliding five-minute inactivity interval
-And the reminder does not fire while the session shows activity within the interval
-And it first fires after the interval passes with no session activity and the goal still open
-And its intent defaults to reassessing alignment with the goal, correcting course or stopping if not, unless overridden by a free-form --intent
-And the profile is cancelled when the goal is complete, blocked on a human, abandoned, inactive, or invalidated without a successor
-```
 
 #### UC-RMS14: Reminder lifecycle is auditable through service records
 
+#### UC-RMS15: A personal assistant prepares and regrounds for a scheduled action
+
 ```gherkin
-Given a reminder is armed, replaced, cancelled, or fires
-When the material transition commits
-Then the service records one typed reminder record in source order
-And a firing is delivered into the agent work loop
+Scenario: Prepare and reground for a scheduled action
+  Given a person wants their assistant to prepare before an important scheduled action
+  When the assistant schedules one reminder to prepare and another to reground when the action is due
+  Then the person can inspect or cancel each reminder independently
+  And the later reminder prompts fresh grounding of relevance, data, and authorization
+  And neither reminder authorizes the action
 ```
 
-#### UC-RMS15: Preparation and execution reminders remain independent
+#### UC-RMS16: An operator can see the next scheduled reminder for a session
 
 ```gherkin
-Given a personal assistant must prepare before an important scheduled action and reground again when the action is due
-When it schedules those purposes under two distinct arbitrary slugs
-Then both reminders remain independently inspectable and cancellable
-And the later reminder prompts fresh grounding of relevance, data, and authorization
-And neither reminder is itself authorization to perform the action
-```
-
-#### UC-RMS16: The next scheduled reminder is externally inspectable
-
-```gherkin
-Given a session owns one or more reminders with concrete scheduled times
-When an operator reads the session listing
-Then the listing identifies the next scheduled reminder by slug and timestamp
-And a session with only event-anchored reminders still exposes those reminders through its reminder registry
-And a session with no live reminders exposes no next reminder
+Scenario: See the next scheduled reminder
+  Given an operator is monitoring a session with live reminders
+  When they read the session listing
+  Then it identifies the next scheduled reminder by slug and timestamp
+  And event-anchored reminders remain inspectable through the reminder registry
+  And a session with no live reminders shows no next reminder
 ```
 
 #### UC-RMS17: Reminder firings ride the shared control-delivery order
 
-```gherkin
-Given reminder firings and other control payloads await delivery to one session
-When the platform delivers them
-Then they arrive in their enqueue order through the shared control-delivery surface
-And the reminder service introduces no reminder-specific priority or queue bypass of its own
-```
-
 #### UC-RMS18: Satisfied reminder intent reconciles its schedule before the explicit sentinel
-
-```gherkin
-Given an agent receives a firing reminder
-And later input or current state shows that the reminder intent is already satisfied or obsolete
-When the agent evaluates the reminder
-Then a one-shot firing takes no tool action because it already consumed the reminder
-And a recurring firing explicitly cancels its own slug
-And every case authors no summary, status, or confirmation
-And every case ends the turn with exactly `NOOP` and no other text on every runtime
-And silent turn closure is not used to answer a reminder firing
-```
 
 #### UC-RMS19: A self-owning agent departs only after its final output settles
 
-```gherkin
-Given a self-owning agent has completed its durable handoff and child cleanup
-When it emits only its brief farewell and then arms the session-departure profile
-And nothing follows that arming in the turn
-Then the completed turn records that final output before the reminder fires
-And the reminder re-enters the same session exactly once without a caller-supplied delay
-And the agent checks later input before ending itself
-And it ends itself only while the departure remains valid
-```
-
 #### UC-RMS20: A recurring firing states its cancellation instruction in the envelope
-
-```gherkin
-Given a recurring reminder firing is delivered
-When the agent reads the delivered text
-Then it states that an obsolete intent is retired by cancelling this slug
-And it states no consequence attaching to the `NOOP` sentinel
-```
 
 #### UC-RMS21: A bare NOOP turn retires no reminder
 
-```gherkin
-Given a live reminder is armed for a session
-And that session completes a turn whose entire authored output is `NOOP`
-When the platform settles that turn
-Then the sentinel neither cancels nor consumes the reminder, which keeps its existing schedule
-And a reminder anchored on the agent stop that ends that turn fires on that stop as on any other matching stop
-And the service evaluates no answer against the turn
-```
-
 #### UC-RMS22: Only firings reach the agent
-
-```gherkin
-Given a reminder is armed, replaced, or cancelled by any path
-When the transition commits
-Then the service records the transition in its durable reminder records
-And a reminder command's response is a minimal acknowledgement
-And only a firing is delivered into the agent's context
-And the reminder service does not prescribe, prefix, or format subsequent agent-authored output
-```
 
 #### UC-RMS23: Retired reminder vocabulary cannot poison a delivery window
 
-```gherkin
-Given an agent session's cursor-to-now reminder window contains an immutable entry written with a profile name the current build does not prescribe
-And a later reminder entry is waiting in the same window
-When the platform projects reminder history for that session
-Then the historical profile name is treated as open data and rendered through generic reminder presentation
-And the cursor advances through the historical entry so the later entry remains reachable
-And no internal projection failure is reported to a human as a polling error
-And the immutable historical entry remains unchanged as audit truth
-```
-
 #### UC-RMS24: A permanent reminder-record failure cannot stall projection
-
-```gherkin
-Given an agent session's cursor-to-now reminder window contains an immutable entry that the current reader cannot interpret
-And a later reminder entry is waiting in the same window
-When the platform projects reminder history for that session
-Then the permanent failure is recorded with the stable entry identity
-And the unreadable entry is skipped without a delivery handoff
-And every unblocked consumer cursor advances past it so the later entry remains reachable
-And a transient downstream delivery failure still holds its consumer cursor for retry
-And reminder projection failure neither terminates native polling nor becomes human-facing polling feedback
-And the immutable historical entry remains unchanged as audit truth
-```
 
 #### UC-RMS25: A cancellation-protected reminder remains continuously armed
 
-```gherkin
-Given an agent session owns a live reminder whose prescribed profile protects cancellation
-When that session cancels the protected slug or atomically cancels all reminders
-Then the protected reminder remains live
-And the cancellation is rejected before any other selected reminder is removed
-When the session schedules the protected slug again
-Then the live reminder is atomically replaced without an unarmed gap
-When the owning session ends
-Then the protected reminder is removed with the session
-```
-
 #### UC-RMS26: A firing exposes its occurrence history
-
-```gherkin
-Given an agent session owns a live reminder
-When an occurrence fires
-Then the delivered reminder entry states its occurrence number since the current arming
-And it states the moment of that arming, the moment it fired, and for a time-scheduled reminder the deadline that fired
-When the reminder is atomically replaced and later fires
-Then the occurrence number counts from the replacement and the stated arming moment is the replacement's
-```
 
 #### UC-RMS27: A newer firing supersedes an undelivered one
 
-```gherkin
-Given a recurring reminder whose latest firing has not yet been delivered to its session
-When the next occurrence fires
-Then the undelivered firing is superseded and never delivered
-And the slug has at most one undelivered firing at any time
-When the session next drains its control payloads
-Then it receives only the newest occurrence of that slug
-```
-
 #### UC-RMS28: An interrupted agent returns to its work after answering non-human input
-
-```gherkin
-Given an agent session holds unfinished work when non-human input that requires an answer reaches it
-When it arms the halt-to-respond profile as the last action of its answer turn
-And that turn ends, including with exactly `NOOP`
-Then the reminder re-enters the same session exactly once at that turn's agent stop without a caller-supplied delay
-And the firing carries the intent to resume the interrupted work unless intervening input made it stale
-And no later agent stop produces another occurrence
-```
 
 ## Known caveats
 

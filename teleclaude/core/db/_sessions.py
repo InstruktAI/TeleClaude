@@ -3,20 +3,21 @@
 import json
 import time
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy import func, or_, text, update
 from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
-from teleclaude.core.event_bus import event_bus
-from teleclaude.events.envelope import EventVisibility
+from teleclaude.core.runtime_events import publish_session_source_change
+from teleclaude.events.schemas.system import RuntimeSessionChange
 from teleclaude.slug import replace_slug_token
 
 from ...types.procedure_delivery import ProcedureSessionDeliveryInitialization
 from .. import db_models
-from ..events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
 from ..models import JsonDict, OriginRevivalContext, RelayStatus, Session, SessionField, SessionLaunchIntent
 from ..session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from ..session_startup import StartupHandoverState, encode_startup_intent
@@ -247,11 +248,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
             await db_session.commit()
 
         if emit_session_started:
-            event_bus.emit(
-                TeleClaudeEvents.SESSION_STARTED,
-                SessionLifecycleContext(session_id=session_id),
-                visibility=EventVisibility.CLUSTER,
-            )
+            await publish_session_source_change(session_id, RuntimeSessionChange.CREATED)
 
         return session
 
@@ -534,6 +531,24 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
         session_id: str,
         **fields: object,
     ) -> Session | None:
+        """Update session fields through the ordinary source mutation path."""
+        return await self._update_session(session_id, None, **fields)
+
+    async def update_session_if_runtime_run(
+        self,
+        session_id: str,
+        expected_runtime_run_id: str,
+        **fields: object,
+    ) -> Session | None:
+        """Update session fields only while their managed launch still owns the row."""
+        return await self._update_session(session_id, expected_runtime_run_id, **fields)
+
+    async def _update_session(
+        self,
+        session_id: str,
+        expected_runtime_run_id: str | None,
+        **fields: object,
+    ) -> Session | None:
         """Update session fields and handle events.
 
         A nonempty payload returns the resulting session or None for a missing
@@ -556,7 +571,6 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
                 if not row:
                     logger.warning("Attempted to update non-existent session: %s", session_id)
                     return None
-
                 for key, value in fields.items():
                     field = None
                     if isinstance(key, SessionField):
@@ -619,10 +633,14 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
                             summary_len,
                         )
 
-                    for key, value in updates.items():
-                        setattr(row, key, value)
-                    db_session.add(row)
-                    await db_session.commit()
+                    if not await self._persist_session_updates(
+                        db_session,
+                        row,
+                        session_id,
+                        updates,
+                        expected_runtime_run_id,
+                    ):
+                        return None
 
                 result = self._to_core_session(row)
 
@@ -639,12 +657,44 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
 
         # Emit SESSION_UPDATED event for state changes (title, status, etc.).
         # Activity events (user input, tool use, agent output) flow through AgentActivityEvent.
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_UPDATED,
-            SessionUpdatedContext(session_id=session_id, updated_fields=updates),
-            visibility=EventVisibility.CLUSTER,
+        await publish_session_source_change(
+            session_id,
+            RuntimeSessionChange.UPDATED,
+            changed_fields=tuple(updates),
         )
         return result
+
+    async def _persist_session_updates(
+        self,
+        db_session: SqlAsyncSession,
+        row: db_models.Session,
+        session_id: str,
+        updates: Mapping[str, object],
+        expected_runtime_run_id: str | None,
+    ) -> bool:
+        """Apply normalized session fields, conditional on the managed launch when supplied."""
+        if expected_runtime_run_id is None:
+            for key, value in updates.items():
+                setattr(row, key, value)
+            db_session.add(row)
+            await db_session.commit()
+            return True
+
+        statement = (
+            update(db_models.Session)
+            .where(
+                db_models.Session.session_id == session_id,
+                db_models.Session.runtime_run_id == expected_runtime_run_id,
+            )
+            .values(updates)
+            .returning(db_models.Session.session_id)
+        )
+        conditional_result = await db_session.exec(statement)
+        if not conditional_result.all():
+            return False
+        await db_session.commit()
+        await db_session.refresh(row)
+        return True
 
     async def persist_lifecycle_transition(
         self,
@@ -655,7 +705,8 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
         transitioned_at: datetime,
         runtime_start_observed: bool | None = None,
         closed_at: datetime | None = None,
-    ) -> None:
+        expected_runtime_run_id: str | None = None,
+    ) -> bool:
         """Persist the lifecycle owner's complete transition record atomically."""
         updates: _LifecycleTransitionFields = {
             "lifecycle_status": target,
@@ -667,24 +718,41 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
         if closed_at is not None:
             updates["closed_at"] = closed_at
         async with self._session() as db_session:
-            row = await db_session.get(db_models.Session, session_id)
-            if row is None:
-                raise ValueError(f"Cannot transition missing session {session_id}")
-            for key, value in updates.items():
-                setattr(row, key, value)
-            db_session.add(row)
-            await db_session.commit()
+            if expected_runtime_run_id is None:
+                row = await db_session.get(db_models.Session, session_id)
+                if row is None:
+                    raise ValueError(f"Cannot transition missing session {session_id}")
+                for key, value in updates.items():
+                    setattr(row, key, value)
+                db_session.add(row)
+                await db_session.commit()
+            else:
+                statement = (
+                    update(db_models.Session)
+                    .where(
+                        db_models.Session.session_id == session_id,
+                        db_models.Session.runtime_run_id == expected_runtime_run_id,
+                    )
+                    .values(**updates)
+                    .returning(db_models.Session.session_id)
+                )
+                result = await db_session.exec(statement)
+                rows = result.all()
+                if not rows:
+                    return False
+                await db_session.commit()
         logger.info(
             "session_lifecycle_transition_committed",
             session_id=session_id,
             lifecycle_status=target,
             lifecycle_transition_reason=reason,
         )
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_UPDATED,
-            SessionUpdatedContext(session_id=session_id, updated_fields=updates),
-            visibility=EventVisibility.CLUSTER,
+        await publish_session_source_change(
+            session_id,
+            RuntimeSessionChange.UPDATED,
+            changed_fields=tuple(updates),
         )
+        return True
 
     async def close_session(self, session_id: str) -> None:
         """Mark a session as closed without deleting it."""
@@ -703,11 +771,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
                 closed_at=datetime.now(UTC),
             ),
         )
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_CLOSED,
-            SessionLifecycleContext(session_id=session_id),
-            visibility=EventVisibility.CLUSTER,
-        )
+        await publish_session_source_change(session_id, RuntimeSessionChange.CLOSED)
 
     async def update_origin_metadata(
         self,

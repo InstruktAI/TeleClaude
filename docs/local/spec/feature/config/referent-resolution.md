@@ -57,14 +57,14 @@ reference resolves unchanged.
 
 ### Use cases
 
-#### UC-CFG-REF1:
+#### UC-CFG-REF1: An agent can use a locally registered referent
 
 ```gherkin
-Scenario Outline: A reference to something registered here resolves
-  Given an agent session working against this computer
-  And a <referent> registered on this computer
-  When their declaration or request names it by slug
-  Then it resolves to that referent's record on this computer
+Scenario Outline: Resolve a registered referent by slug
+  Given an agent acting for a person is working against this computer
+  And a <referent> is registered on this computer
+  When the agent refers to it by slug
+  Then the agent receives that referent's record from this computer
   And no other computer is consulted
 
   Examples:
@@ -75,14 +75,14 @@ Scenario Outline: A reference to something registered here resolves
     | domain a registered project publishes |
 ```
 
-#### UC-CFG-REF2:
+#### UC-CFG-REF2: An agent can correct an unregistered reference
 
 ```gherkin
 Scenario Outline: A reference to something not registered here is refused
-  Given an agent session working against this computer
+  Given an agent acting for a person is working against this computer
   And a well-formed slug that names no <referent> registered on this computer
-  When their declaration or request names it
-  Then the agent is refused rather than given a partial or substituted record
+  When the agent refers to it
+  Then the request is refused rather than returning a partial or substituted record
   And the refusal the agent reads names the kind and slug, the computer that answered, and how to register that kind there
   And the refusal does not present the reference as malformed
 
@@ -95,13 +95,6 @@ Scenario Outline: A reference to something not registered here is refused
 ```
 
 #### UC-CFG-REF3:
-
-```gherkin
-Given an agent session whose reference was refused because its referent was not registered on this computer
-And the referent has since been registered here through the surface the refusal named
-When the agent resolves the same reference, unchanged
-Then it resolves to the referent's record
-```
 
 ### Cross-context references
 

@@ -28,9 +28,8 @@ from teleclaude.caller_identity import is_desk_role
 from teleclaude.core import tmux_bridge
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionEscalatedPayload, SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.models import RelayStatus, encode_relay_exchange
+from teleclaude.core.runtime_events import publish_session_status
 from teleclaude.core.session_ended import report_session_ended
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_links import cleanup_session_links
@@ -38,8 +37,8 @@ from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_list
 from teleclaude.core.session_runtime_gate import clear_relaunch_awaiting_readiness
 from teleclaude.core.session_status import SessionLifecycleStatus, is_close_started
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
+from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.workflow_machine.single_claim import recorded_binding, session_is_single_claim
-from teleclaude.events.envelope import EventVisibility
 from teleclaude.paths import session_tmp_dir
 from teleclaude.types.procedure_delivery import NotDeliveredReason
 
@@ -64,6 +63,10 @@ _HOST_BINDING_RELEASE_FAILED_EVENT = "session_host_binding_release_failed"
 _HOST_BINDING_RELEASE_ROW_MISSING_REASON = "session row missing during host binding release"
 _PROCEDURE_EVENT_SESSION_CLOSED_REASON = "session_closed"
 _PROCEDURE_EVENT_SESSION_CLEANUP_EVENT = "procedure_event_session_cleanup"
+_PENDING_CHANNEL_CLEANUP_REASON = "pending_channel_cleanup_replay"
+_CLOSE_FAILED_STATUS = "error"
+_CLOSE_FAILED_REASON = "close_failed"
+_CLOSE_FAILED_STATUS_PUBLISH_EVENT = "Failed to publish close failure status for %s"
 
 
 def host_pane_name(session_id: str) -> str:
@@ -377,12 +380,39 @@ async def _end_escalation_if_active(session: Session) -> None:
         relay_started_at=None,
     )
     await db.update_session(session.session_id, relay_exchange=encode_relay_exchange(()))
-    event_bus.emit(
-        "session.escalation_ended",  # type: ignore[arg-type]
-        SessionEscalatedPayload(session_id=session.session_id),
-        visibility=EventVisibility.CLUSTER,
-    )
     logger.info("Escalation ended (session close) for %s", session.session_id)
+
+
+async def recover_failed_close(session_id: str) -> None:
+    """Restore the active/error state after a failed close request."""
+    restored = await db.get_session(session_id)
+    if restored is None or restored.closed_at:
+        return
+    await transition_session(
+        db,
+        session_id,
+        LifecycleTransition(SessionLifecycleStatus.ACTIVE, LifecycleTransitionReason.CLOSE_FAILED),
+    )
+    timestamp = datetime.now(UTC).isoformat()
+    canonical = serialize_status_event(
+        session_id=session_id,
+        status=_CLOSE_FAILED_STATUS,
+        reason=_CLOSE_FAILED_REASON,
+        timestamp=timestamp,
+    )
+    if canonical is None:
+        return
+    try:
+        await publish_session_status(
+            session_id,
+            _CLOSE_FAILED_STATUS,
+            _CLOSE_FAILED_REASON,
+            timestamp,
+            message_intent=canonical.message_intent,
+            delivery_scope=canonical.delivery_scope,
+        )
+    except Exception:
+        logger.warning(_CLOSE_FAILED_STATUS_PUBLISH_EVENT, session_id, exc_info=True)
 
 
 async def terminate_session(
@@ -593,19 +623,20 @@ async def _terminate_session_inner(
     return not already_closed or soft_delete
 
 
-async def emit_recently_closed_session_events(
+async def retry_recently_closed_session_cleanup(
+    adapter_client: AdapterClient,
     *,
     seconds: float = RECENTLY_CLOSED_SESSION_SECONDS,
     include_headless: bool = True,
 ) -> int:
-    """Replay SESSION_CLOSE_REQUESTED for closed sessions with unresolved channel cleanup.
+    """Retry runtime-owned cleanup for recently closed sessions with unresolved channel references.
 
     Used by maintenance to recover cleanup missed across daemon restarts. Only replays
     sessions that are closed in DB but still have a Telegram topic_id (or other adapter
     channel reference) persisted — indicating the channel deletion never completed.
 
-    Emits SESSION_CLOSE_REQUESTED (not SESSION_CLOSED) so that terminate_session runs
-    exactly once and clears the channel reference on success.
+    Calls the existing termination owner, which handles already-closed records and
+    clears channel references through the same cleanup path.
 
     Retained: most callers of terminate_session close a session with no command
     behind them, so no durable operation row exists to answer for their channel
@@ -613,7 +644,7 @@ async def emit_recently_closed_session_events(
     now covered by the operation row; this sweep is still what recovers the rest.
 
     Returns:
-        Number of sessions for which a SESSION_CLOSE_REQUESTED event was emitted.
+        Number of sessions whose cleanup retry was invoked.
     """
     if seconds <= 0:
         return 0
@@ -625,7 +656,7 @@ async def emit_recently_closed_session_events(
         include_headless=include_headless,
     )
 
-    emitted = 0
+    replayed = 0
     for session in sessions:
         if not session.closed_at:
             continue
@@ -634,28 +665,34 @@ async def emit_recently_closed_session_events(
 
         # Only replay if channel cleanup is still pending (topic_id or discord channel still set).
         # If already cleared, the cleanup already completed — skip to avoid duplicate deletes.
-        telegram_topic_id = session.get_origin_section("telegram").get("topic_id")
-        discord_channel_id = session.get_origin_section("discord").get("channel_id")
-        if telegram_topic_id is None and discord_channel_id is None:
+        if not has_pending_channel_cleanup(session):
             logger.debug(
                 "Skipping replay for session %s: channel already cleared",
                 session.session_id,
             )
             continue
 
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_CLOSE_REQUESTED,
-            SessionLifecycleContext(session_id=session.session_id),
-            visibility=EventVisibility.CLUSTER,
+        await terminate_session(
+            session.session_id,
+            adapter_client,
+            reason=_PENDING_CHANNEL_CLEANUP_REASON,
+            session=session,
         )
-        emitted += 1
+        replayed += 1
         logger.info(
-            "Replayed session_close_requested for session %s (closed_at=%s, pending cleanup)",
+            "Retried pending channel cleanup for session %s (closed_at=%s)",
             session.session_id,
             session.closed_at.isoformat(),
         )
 
-    return emitted
+    return replayed
+
+
+def has_pending_channel_cleanup(session: Session) -> bool:
+    """Whether a terminal session still records an adapter channel that close cleanup owes to delete."""
+    telegram_topic_id = session.get_origin_section("telegram").get("topic_id")
+    discord_channel_id = session.get_origin_section("discord").get("channel_id")
+    return telegram_topic_id is not None or discord_channel_id is not None
 
 
 def is_legacy_restricted_session(session: Session) -> bool:

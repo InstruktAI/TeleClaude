@@ -126,44 +126,9 @@ And the platform makes no failure diagnosis from the silence or captured text
 
 #### UC-SSO4: Reported open tool calls exclude the active-turn observation
 
-```gherkin
-Given a supervising agent is waiting for an active child
-And at least one native tool call reported by the child remains open
-When the activity observation window elapses
-Then that silence produces no in-turn observation
-And the recorded tool calls are unchanged
-```
-
 #### UC-SSO5: Only current distinct supervisors receive the observation
 
-```gherkin
-Scenario Outline: Ineligible relationships receive no silence assessment
-  Given a child satisfies a silence observation condition
-  And its only possible recipient is "<recipient>"
-  When the platform resolves the child's supervising caller
-  Then no silence observation is delivered
-  And no human-facing or target-agent fallback is used
-
-  Examples:
-    | recipient                                    |
-    | absent                                       |
-    | closed caller                                |
-    | target itself                                |
-    | one-reply subscriber                         |
-    | detached initiator without later supervision |
-    | caller that unsubscribed                     |
-```
-
 #### UC-SSO6: Observation claims remain bounded and current
-
-```gherkin
-Given a supervising agent is waiting for a child's run or turn
-When that child satisfies a silence observation condition
-Then at most one observation is claimed for that run or turn
-And native activity arriving before the claim invalidates the earlier view
-And repeated scans or daemon replacement do not duplicate a claimed observation
-And a fresh run or real new prompt opens the next observation opportunity
-```
 
 #### UC-SSO7: A remote supervisor retains control of its subscription
 

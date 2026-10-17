@@ -31,6 +31,20 @@ and identifier compatibility follow
 
 ## Canonical fields
 
+### Session-owned source observations
+
+Retained sessions that reference the same native transcript keep independent
+conversation mirrors and attribution. Each mirror owns its source observations,
+messages, coverage and retained-content decisions. Refreshing one conversation
+preserves the other conversation's recorded content and identity facts
+(`sdlc/policy/code-quality`).
+
+A session without a mirror is projected from its published lineage through the
+existing conversation reader. Another session's source observation supplies
+neither its content nor evidence that the requested conversation is current.
+Native-source addressing follows
+`local/projects/teleclaude/spec/feature/session_mirrors/session-id-namespaces`.
+
 ### Use cases
 
 #### UC-MIE-1:
@@ -94,6 +108,17 @@ Given a historical transcript has no established TeleClaude association
 When that retained history is associated with an archive session
 Then the conversation remains retrievable through its original source identity
 And no missing human attribution is inferred from its prose
+```
+
+#### UC-MIE-8:
+
+```gherkin
+Given an operator's native transcript has recorded history under a closed archive session
+And a later live session records that same transcript in its conversation lineage
+When the live conversation is refreshed after the transcript gains new exchanges
+Then the operator can retrieve the refreshed live conversation by its TeleClaude identity
+And the archived conversation remains retrievable by its own TeleClaude identity with its recorded content and attribution preserved
+And another refresh does not duplicate exchanges within either conversation
 ```
 
 ### Cross-context references

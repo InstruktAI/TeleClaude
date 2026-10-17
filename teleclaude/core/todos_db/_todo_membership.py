@@ -24,6 +24,7 @@ from teleclaude.core.todos_db._errors import (
     HolderReconciliationRefused,
 )
 from teleclaude.core.todos_db._models import TODO_DEPS_TABLE, TODO_TABLE, Todo, TodoDep, TodoStateModel
+from teleclaude.core.workflow_store.types import DocumentationAdmission
 
 
 class _TodoMembershipHost(Protocol):
@@ -55,6 +56,8 @@ class _TodoMembershipHost(Protocol):
         *,
         first_child_slug: str,
         project_root: Path,
+        documentation_admission: DocumentationAdmission | None = None,
+        allow_unreviewed_transfer: bool = False,
     ) -> tuple[str, MarkerReceipt | None]: ...
 
     async def set_deps(self, slug: str, *, after: list[str], session: SqlAsyncSession | None = None) -> None: ...

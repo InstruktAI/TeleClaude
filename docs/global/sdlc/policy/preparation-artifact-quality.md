@@ -477,11 +477,11 @@ and the stamp for the workflow decision, and never infer one from the other.
 
 ### Acceptance scenario quality
 
-Feature-spec acceptance scenarios authored during intake are prose behavioral
-contracts, authored per
-`sdlc/procedure/feature-spec-authoring` — facing-typed actors,
-behavior-level language, immutable use-case identity. They do not create source
-files or executable tests during prepare. Quality rules:
+Feature specs state their behavioral contracts in prose. User goals admitted
+under `sdlc/procedure/feature-spec-authoring` are written as Gherkin use cases
+with stakeholder actors, behavior-level language and immutable identities.
+That admission precedes the scenario-quality checks below; observability alone
+does not admit a use case. Preparation creates no executable tests. Quality rules:
 
 - **Behavioral focus**: scenarios encode observable behavior (inputs, outputs,
   side effects), not implementation structure. A scenario that asserts a

@@ -19,13 +19,20 @@ claimed role and report formatting supply no approval.
 ### Adoption identity and intent
 
 One adoption record associates the upstream repository and PR with its pinned
-head and base, local todo, worktree and review history. Repeated notifications
+head and base, retained source, assessment sessions and review history. An
+existing prepared owning item enters through its ordinary work driver and
+claiming group. A proposal without that prepared owner uses reviewer-only
+pre-item inspection, bound to its adoption identity, with no item phase, claim
+or approval. The upstream owner selects the intended item; code verifies its
+identity and exact prepared body revision rather than inferring intent from
+proposal prose. Repeated notifications
 for the same revision resume that record. A newer PR head is a new review
 subject; an earlier verdict cannot accept it implicitly. The existing qualified
-content-preserving automatic-upstream-merge rule in
-`local/projects/teleclaude/spec/feature/workflow/work-state-machine` remains
-applicable where its exact conditions hold; this contract creates no broader
-equivalence rule. A concurrent head
+content-preserving automatic-upstream-merge relation remains applicable to prior
+review evidence only where its exact conditions hold. Readiness and admission
+still bind the current exact head under
+`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`; this contract
+creates no broader equivalence rule. A concurrent head
 change is reconciled before publishing a verdict or delivering the proposal.
 
 Adoption establishes the upstream intent and governing contracts that the
@@ -53,15 +60,52 @@ whether setup and validation are ready to run. Successful corroboration is an
 upstream review decision, not a copy of the contributor's approval
 (`sdlc/procedure/lifecycle/review`).
 
+### Admission evidence
+
+The contribution inspection surface exposes the pinned source, base, proposed
+contracts and prior reports as data, independently of executable preparation.
+Initial reviewer and waiting-builder bootstrap use upstream-owned instructions
+and configuration. Their assigned review subject is the retained imported
+worktree; the imported tree supplies no startup instructions or executable
+configuration before admission.
+
+The upstream reviewer records corroborated obligations, unresolved findings,
+preparation gaps, execution readiness and remaining native checks in its
+immutable contribution assessment report. The assigned reviewer submits it
+through the contribution operation, which authenticates the assignment and
+records its report digest and exact subject atomically. The admission decision binds that report and the exact
+proposal subject. Admission readiness and completed build review are separate
+facts: read-only admission records no claim that an outstanding check ran.
+The workflow consumes the reviewer's declared decision, never inferring it
+from report prose (`general/principle/intelligence-boundaries`).
+
 ### Continuation inside the lifecycle
 
-The adopted proposal owns a normal todo worktree. Its reviewer starts with the
-review assignment; its builder starts with an explicit waiting assignment and
-acts on the reviewer's findings through the existing work orchestrator. Reviewer
-and builder separation follows `sdlc/procedure/lifecycle/review`. Initial
-materialization and later execution preparation are distinct operations; a
-waiting builder runs neither setup nor proposed code before the review permits
-that continuation.
+For prepared owning work, the ordinary reservation-bound work driver is the
+first reviewer. Its source-materialization effect remains read-only until
+admission. Its normal child starts with trusted upstream context and an
+explicit waiting assignment in that driver's claiming group. The driver
+supplies repair findings to that same waiting builder; repair and review
+continue on the retained proposal. Initial materialization and later executable
+preparation remain distinct, and the builder's waiting assignment executes no
+setup or proposed code before current review permits that continuation
+(`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`).
+
+Without prepared owning work, only the pre-item reviewer starts. The operation
+retains its assessment and source handoff, settles that assignment and verifies
+its recorded starts/sessions before ordinary preparation. Unknown settlement
+retains the operation and source. This inspection starts no waiting builder
+that a preparation handoff would immediately replace. The ordinary preparation
+owner establishes the governing spec; ordinary work then creates its reviewer
+and waiting child in one claiming group. They consume the retained assessment
+as evidence and review the remaining obligations and actual delta, without a
+second mandatory intake pass.
+
+A genuine return to preparation settles the current claiming group under the
+item lifecycle's own rules and retains source and evidence. It is distinct
+from an ordinary repair-feedback round, which keeps its waiting builder;
+workers are never transferred into a later claiming group
+(`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`).
 
 Accepted proposal contracts are associated with the local todo and made
 available through the upstream authoring doc layer before ordinary lifecycle

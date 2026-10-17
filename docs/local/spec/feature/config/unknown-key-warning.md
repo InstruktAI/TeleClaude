@@ -42,71 +42,27 @@ fields.
 
 ### Use cases
 
-#### UC-CFG-UNKNOWN-1: An unknown top-level overlay key blocks loading
+#### UC-CFG-UNKNOWN-1: An operator can diagnose an unsupported configuration key
 
 ```gherkin
-Given an operator-authored teleclaude.yml contains an undeclared top-level key
-When the owning overlay is loaded
-Then validation fails before the overlay becomes available to consumers
-And the failure identifies the configuration file and the offending key path
+Given an operator has placed a key outside the accepted vocabulary in a configuration file
+When that configuration is loaded
+Then validation rejects it before consumers can use the configuration
+And the failure identifies the file and offending key path
+And when the key belongs in another declared section, the failure names that section
 ```
 
 #### UC-CFG-UNKNOWN-2: An unknown nested overlay key blocks loading
 
-```gherkin
-Given an operator-authored teleclaude.yml contains an undeclared key inside a declared nested section
-When the owning overlay is loaded
-Then validation fails at that nested section
-And the failure identifies the configuration file and the dotted offending key path
-```
-
 #### UC-CFG-UNKNOWN-3: An unknown key in a named overlay mapping blocks loading
-
-```gherkin
-Given an operator-authored teleclaude.yml contains a mapping of named schema-backed entries
-And one named entry contains an undeclared key
-When the owning overlay is loaded
-Then validation fails for that named entry
-And the failure identifies the entry and offending key path
-```
 
 #### UC-CFG-UNKNOWN-4: An unknown key in an overlay list item blocks loading
 
-```gherkin
-Given an operator-authored teleclaude.yml contains a list of schema-backed entries
-And one entry contains an undeclared key
-When the owning overlay is loaded
-Then validation fails for that list item
-And the failure identifies the item and offending key path
-```
-
 #### UC-CFG-UNKNOWN-5: An unknown machine agent key is rejected
-
-```gherkin
-Given an operator-authored config.yml declares an agent outside the supported agent vocabulary
-When the machine configuration is loaded
-Then validation fails before the runtime configuration becomes available
-And the failure identifies the unsupported agent key
-```
 
 #### UC-CFG-UNKNOWN-6: An unknown machine-config key blocks loading
 
-```gherkin
-Given an operator-authored config.yml contains a key outside the accepted input shape of its owning section
-When the machine configuration is loaded
-Then validation fails before the runtime configuration becomes available
-And the failure identifies the configuration file and dotted offending key path
-```
-
 #### UC-CFG-UNKNOWN-7: Section-declared machine-config inputs remain valid
-
-```gherkin
-Given an operator-authored config.yml uses an input key explicitly accepted by its owning section
-And that key does not mirror a field name on the resulting runtime object
-When the machine configuration is loaded
-Then the input is accepted
-And it is mapped into the typed runtime configuration aggregate
-```
 
 #### UC-CFG-UNKNOWN-8: Recognized stored configuration migrates before consumption
 
@@ -117,14 +73,6 @@ And it is mapped into the typed runtime configuration aggregate
 #### UC-CFG-UNKNOWN-11: Concurrent migrations preserve each other's updates
 
 #### UC-CFG-UNKNOWN-12: A key placed in the wrong checkpoint registry names the registry it belongs to
-
-```gherkin
-Given an operator-authored project configuration declares a checkpoint entry
-And that entry carries a key the opposite checkpoint registry owns
-When the project configuration is loaded
-Then validation fails identifying that entry and naming the registry the key belongs to
-And the operator reads that guidance rather than the generic undeclared-key failure
-```
 
 ### Cross-context references
 

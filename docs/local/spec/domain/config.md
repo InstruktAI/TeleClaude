@@ -139,16 +139,17 @@ TeleClaudeNext.
   consumer that meets such a name resolves it through this answer and never
   restates the condition in its own words.
 
-**Configuration subjects are reachable through the daemon.** Every `telec config`
-operation on a subject — list, get, init, patch, project creation, person
-invitation, the voice-bot declaration, help-desk links, validation, and the
-environment — is also published as a daemon request that performs the same
-operation under the same target clearance
+**Configuration commands execute in the addressed daemon.** UI clients reach
+the configuration API, which constructs internal configuration commands; the
+CLI constructs the same commands for submission to the daemon. The configuration
+owner executes them under the same target clearance for either ingress
 (`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`).
-A `telec config` command addressed to another computer reaches that computer
-through it
-(`local/projects/teleclaude/spec/feature/integration/computer-addressed-execution`);
-addressed to this computer, the command still runs in the process that invokes it.
+The shared editor contract supplies resolved, defaulted, masked field values and
+accepts field edit intent
+(`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`,
+Shared configuration editor). The request's computer selects the daemon that
+owns execution
+(`local/projects/teleclaude/spec/feature/integration/computer-addressed-execution`).
 
 The TUI configuration view reaches configuration only through these daemon
 requests; it holds no write authority over a backing file

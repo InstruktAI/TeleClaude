@@ -75,12 +75,18 @@ _PATCH_MODELS: Final[Mapping[ConfigSubjectKind, tuple[type[ClosedModel], ...]]] 
 }
 
 
-def effective_sections(view: SubjectView) -> dict[str, object]:  # guard: loose-dict - rendered config view
+def effective_sections(
+    view: SubjectView, *, machine_environment: Mapping[str, str] | None = None
+) -> dict[str, object]:  # guard: loose-dict - rendered config view
     """Return the view's sections with references resolved and sensitive values masked."""
+    if view.ref.kind is ConfigSubjectKind.COMPUTER and machine_environment is not None:
+        return _computer_sections(view, machine_environment=machine_environment)
     return _EFFECTIVE_SECTIONS[view.ref.kind](view)
 
 
-def environment_references(view: SubjectView) -> list[EnvironmentReferenceRow]:
+def environment_references(
+    view: SubjectView, *, machine_environment: Mapping[str, str] | None = None
+) -> list[EnvironmentReferenceRow]:
     """Every field of a computer, global, or person view whose stored value is one whole environment reference.
 
     Resolved from the environment its section's configuration surface owns, the way the effective
@@ -89,7 +95,7 @@ def environment_references(view: SubjectView) -> list[EnvironmentReferenceRow]:
     """
     entries: list[EnvironmentReferenceRow] = []
     for name, section in view.sections.items():
-        owner = _reference_owner(view, name)
+        owner = _reference_owner(view, name, machine_environment=machine_environment)
         if owner is None:
             continue
         environment, environment_name = owner
@@ -108,11 +114,16 @@ def environment_references(view: SubjectView) -> list[EnvironmentReferenceRow]:
     return entries
 
 
-def _reference_owner(view: SubjectView, section_name: str) -> tuple[Mapping[str, str], ConfigEnvironment] | None:
+def _reference_owner(
+    view: SubjectView, section_name: str, *, machine_environment: Mapping[str, str] | None = None
+) -> tuple[Mapping[str, str], ConfigEnvironment] | None:
     """The environment values and the environment name that own a section's references, if the kind projects any."""
     match view.ref.kind:
         case ConfigSubjectKind.COMPUTER:
-            return machine_runtime_environment(), ConfigEnvironment.MACHINE
+            return (
+                machine_environment if machine_environment is not None else machine_runtime_environment(),
+                ConfigEnvironment.MACHINE,
+            )
         case ConfigSubjectKind.GLOBAL:
             return _environment_beside(view, 0, owner_only=False), ConfigEnvironment.GLOBAL
         case ConfigSubjectKind.PERSON:
@@ -194,8 +205,10 @@ def _nested_models(annotation: object) -> tuple[type[ClosedModel], ...]:
     return tuple(models)
 
 
-def _computer_sections(view: SubjectView) -> dict[str, object]:  # guard: loose-dict - rendered config view
-    environment = machine_runtime_environment()
+def _computer_sections(
+    view: SubjectView, *, machine_environment: Mapping[str, str] | None = None
+) -> dict[str, object]:  # guard: loose-dict - rendered config view
+    environment = machine_environment if machine_environment is not None else machine_runtime_environment()
     return {
         name: _resolved_masked(section, environment, TeleclaudeConfig, drop_unresolved_machine_fields)
         for name, section in view.sections.items()

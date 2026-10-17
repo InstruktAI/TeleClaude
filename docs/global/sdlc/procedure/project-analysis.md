@@ -14,6 +14,7 @@ dispatch:
 - @~/.teleclaude/docs/general/concept/normalized-agent-artifacts.md
 - @~/.teleclaude/docs/general/principle/intent-first-documentation.md
 - @~/.teleclaude/docs/sdlc/principle/documentation-first-development.md
+- @~/.teleclaude/docs/sdlc/procedure/feature-spec-authoring.md
 - @~/.teleclaude/docs/sdlc/principle/domain-driven-design.md
 - @~/.teleclaude/docs/general/policy/snippet-value-contract.md
 - @~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
@@ -114,13 +115,17 @@ cleanup pass.
   terms. Do not replace this with a flat `local/projects/<slug>/concept/domain-model`
   summary.
 - **Feature specs:** author or refresh
-  `local/projects/<slug>/spec/feature/<context>/<concept>` only for Category A
-  user-visible product capabilities. The concept is a durable product/domain
-  noun, never the onboarding run slug and never a tooling cleanup label.
+  `local/projects/<slug>/spec/feature/<context>/<concept>` for behavioral
+  capabilities under `sdlc/principle/documentation-first-development`. Apply
+  `sdlc/procedure/feature-spec-authoring` separately before writing Gherkin;
+  implementation branches do not establish stakeholder goals. The concept is a
+  durable product/domain noun, never the onboarding run slug or a tooling label.
 - **Contract or tooling refinements:** route service contracts, CLI surfaces,
   generated-doc behavior, conventions, and scaffolding rules to the relevant
   domain spec, tool spec, policy, procedure, or design doc. Do not create a
-  feature spec for work whose audience is agents or operators.
+  feature spec solely from an implementation inventory. The actor's label does
+  not decide classification; use the same behavioral-contract and user-goal
+  distinctions as feature intake (`sdlc/procedure/feature-spec-authoring`).
 - **Current versus target truth:** onboarding analysis is code-grounded
   inventory. Generated snippets describe current behavior; they carry no
   `delivered_by` (absence = current). Design-delivery snippets that describe
@@ -232,7 +237,7 @@ Generated snippets must:
 - Carry the analyzed project's qualified IDs from the scaffolding schema
   (`local/projects/<slug>/…`, `<slug>` being the project's declared slug). Flat IDs such as
   `local/projects/<slug>/design/architecture` remain valid; nested spec IDs are reserved for
-  earned domain specs and Category A feature specs.
+  earned domain specs and classified feature specs.
 - Include `generated_by: telec-init` and `generated_at: <ISO8601>` in frontmatter.
 - Declare `visibility` deliberately. Default to `internal`. Promote a single
   snippet to `public` only when both hold: (a) the content reveals nothing
@@ -257,7 +262,7 @@ over restating the contract.
 | Snippet shape                                            | Taxonomy | Worth producing when…                                                                                                                                                                           |
 | -------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `local/projects/<slug>/spec/domain/<context>`            | spec     | A bounded context is evidenced by coherent domain vocabulary, state ownership, events, entry points, and invariants.                                                                            |
-| `local/projects/<slug>/spec/feature/<context>/<concept>` | spec     | A user-visible product capability is present and needs durable business value plus Gherkin scenarios. Never use this for tooling, contract cleanup, or generic code inventory.                  |
+| `local/projects/<slug>/spec/feature/<context>/<concept>` | spec     | A behavioral capability earns a durable contract under `sdlc/principle/documentation-first-development`; Gherkin is added only for goals admitted by `sdlc/procedure/feature-spec-authoring`.   |
 | `local/projects/<slug>/design/architecture`              | design   | Repo structure encodes durable intent the code cannot express — non-obvious layering, a deliberate constraint, or topology agents must navigate.                                                |
 | `local/projects/<slug>/policy/conventions`               | policy   | Conventions diverge from the language's global policy in ways agents must respect (custom error hierarchy, project-specific naming). The global policy answers the rest.                        |
 | `local/projects/<slug>/spec/dependencies`                | spec     | Dependency choices encode constraints invisible in the manifest (why a version is pinned, why a library was chosen over alternatives). Otherwise the manifest is the source of truth.           |

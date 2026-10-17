@@ -18,8 +18,7 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.command_dispatch import run_local_command
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import ErrorEventContext, TeleClaudeEvents
+from teleclaude.core.runtime_events import publish_runtime_error
 from teleclaude.docs_subscriptions import (
     IndexFileIdentity,
     SubscriptionEntry,
@@ -28,7 +27,7 @@ from teleclaude.docs_subscriptions import (
     published_procedure_subscriptions,
 )
 from teleclaude.events.consumers import Consumer, Interest
-from teleclaude.events.envelope import EventHomeMarker, EventHomeRef, EventVisibility, ReceivedEvent, occurrence_id
+from teleclaude.events.envelope import EventHomeMarker, EventHomeRef, ReceivedEvent, occurrence_id
 from teleclaude.events.type_pattern import ANY_TYPE
 from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.commands import ActivateProcedureCommand
@@ -47,12 +46,12 @@ _UNREADABLE_INDEX_SOURCE = "procedure_subscriptions_refresh"
 _ERROR_EVENT_EMISSION_FAILED_EVENT = "procedure_activation_error_event_emission_failed"
 
 
-def _emit_platform_error(message: str, *, source: str, details: Mapping[str, object] | None = None) -> None:
+async def _emit_platform_error(message: str, *, source: str, details: Mapping[str, object] | None = None) -> None:
     try:
-        event_bus.emit(
-            TeleClaudeEvents.ERROR,
-            ErrorEventContext(session_id=None, message=message, source=source, details=details),
-            visibility=EventVisibility.CLUSTER,
+        await publish_runtime_error(
+            source=source,
+            message=message,
+            details=dict(details) if details is not None else None,
         )
     except Exception as exc:
         logger.error(_ERROR_EVENT_EMISSION_FAILED_EVENT, source=source, error=str(exc))
@@ -96,7 +95,7 @@ class _PublishedSubscriptions:
         except (OSError, ValueError, yaml.YAMLError) as exc:
             self._entries = ()
             logger.error(_SUBSCRIPTIONS_UNREADABLE_EVENT, error=str(exc), exc_info=True)
-            _emit_platform_error(str(exc), source=_UNREADABLE_INDEX_SOURCE)
+            await _emit_platform_error(str(exc), source=_UNREADABLE_INDEX_SOURCE)
             return self._entries
         self._version = publication.identity
         self._entries = publication.entries

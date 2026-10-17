@@ -38,6 +38,7 @@ class LifecycleTransition:
     reason: LifecycleTransitionReason
     runtime_start_observed: bool | None = None
     closed_at: datetime | None = None
+    expected_runtime_run_id: str | None = None
 
 
 class LifecycleStore(Protocol):
@@ -54,7 +55,8 @@ class LifecycleStore(Protocol):
         transitioned_at: datetime,
         runtime_start_observed: bool | None = None,
         closed_at: datetime | None = None,
-    ) -> None: ...
+        expected_runtime_run_id: str | None = None,
+    ) -> bool: ...
 
 
 _ALLOWED_SOURCES: dict[LifecycleTransitionReason, frozenset[SessionLifecycleStatus]] = {
@@ -93,11 +95,13 @@ _ALLOWED_SOURCES: dict[LifecycleTransitionReason, frozenset[SessionLifecycleStat
 }
 
 
-async def transition_session(store: LifecycleStore, session_id: str, transition: LifecycleTransition) -> None:
+async def transition_session(store: LifecycleStore, session_id: str, transition: LifecycleTransition) -> bool:
     """Validate and persist one lifecycle transition through the sole write seam."""
     session = await store.get_session(session_id)
     if session is None:
         raise ValueError(f"Cannot transition missing session {session_id}")
+    if transition.expected_runtime_run_id is not None and session.runtime_run_id != transition.expected_runtime_run_id:
+        return False
     current = SessionLifecycleStatus(session.lifecycle_status or SessionLifecycleStatus.INITIALIZING)
     allowed = _ALLOWED_SOURCES[transition.reason]
     if transition.reason is LifecycleTransitionReason.CREATED:
@@ -111,11 +115,12 @@ async def transition_session(store: LifecycleStore, session_id: str, transition:
     if transition.reason is LifecycleTransitionReason.RELAUNCH_REOPENED:
         if transition.target is not SessionLifecycleStatus.ACTIVE:
             raise ValueError("Relaunch reopening requires an active target")
-    await store.persist_lifecycle_transition(
+    return await store.persist_lifecycle_transition(
         session_id,
         target=transition.target.value,
         reason=transition.reason.value,
         transitioned_at=datetime.now(UTC),
         runtime_start_observed=transition.runtime_start_observed,
         closed_at=transition.closed_at,
+        expected_runtime_run_id=transition.expected_runtime_run_id,
     )

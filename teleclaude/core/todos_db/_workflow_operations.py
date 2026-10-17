@@ -6,6 +6,7 @@ import json
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Protocol
 
 from sqlmodel import select
@@ -13,14 +14,21 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_LOG, TodoStatus
 from teleclaude.core.next_machine._types import StateValue
+from teleclaude.core.next_machine.documentation_evidence import (
+    DocumentationEvidenceRefused,
+    require_reviewed_pending_documentation,
+)
+from teleclaude.core.next_machine.marker_reconciliation import MarkerReceipt, restore_lifecycle_markers
 from teleclaude.core.todos_db._converted_rows import insert_converted_row, is_converted_row
 from teleclaude.core.todos_db._models import TODO_STATE_TABLE, TODO_TABLE, Todo, TodoStateModel
 from teleclaude.core.workflow_store.types import (
     ArtifactRevisionMismatch,
+    DocumentationAdmission,
     ItemChange,
     PendingEffectItem,
     TodoDiagnosticRecord,
 )
+from teleclaude.git_lock import main_branch_lock_async
 from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, stored_holder, with_claim_change, workflow_record_of
 from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, LIFECYCLE_PHASE_STATE_KEY
 
@@ -30,6 +38,7 @@ _PENDING_EFFECTS_MARKER = '%"pending_effects": [{%'  # the serialized form of a 
 _STATE_RENAME_FAILURE = "state rename failed for {slug!r}"
 _ARTIFACT_RENAME_FAILURE = "artifact rename failed for {slug!r}"
 _TODO_RENAME_FAILURE = "todo rename failed for {slug!r}"
+_SNAPSHOT_CHANGED = "documentation evidence changed before lifecycle admission; submit a fresh request"
 
 
 StatePrecondition = Callable[[dict[str, StateValue] | None], None]
@@ -93,6 +102,9 @@ def _after_item_commit(
 
 
 class _CreateItemHost(Protocol):
+    @property
+    def project_root(self) -> Path: ...
+
     def _session(self) -> AbstractAsyncContextManager[SqlAsyncSession]: ...
 
     async def add_to_todo(
@@ -110,6 +122,8 @@ class _CreateItemHost(Protocol):
         context: str | None,
         cwd: str,
         session: SqlAsyncSession,
+        documentation_admission: DocumentationAdmission | None = None,
+        reconciliation_receipts: list[MarkerReceipt] | None = None,
     ) -> bool: ...
 
     async def write_state(
@@ -295,32 +309,58 @@ class TodosDbWorkflowOperationsMixin:
         artifact_name: str,
         artifact_body: str,
         updated_by: str | None,
+        documentation_admission: DocumentationAdmission | None = None,
     ) -> bool:
         """Atomically create the item, initial state and first artifact version."""
-        async with self._session() as session:
-            async with session.begin():
-                created = await self.add_to_todo(
-                    slug,
-                    lineage=lineage,
-                    group_slug=group_slug,
-                    after=after,
-                    description=description,
-                    schedule=schedule,
-                    status=status,
-                    entry_point=entry_point,
-                    human_involved=human_involved,
-                    context=context,
-                    cwd=cwd,
-                    session=session,
-                )
-                await self.write_state(slug, state, session=session)
-                await self.write_artifact(
-                    slug,
-                    artifact_name,
-                    artifact_body,
-                    updated_by=updated_by,
-                    session=session,
-                )
+        reconciliation_receipts: list[MarkerReceipt] = []
+        committed = False
+        try:
+            async with main_branch_lock_async():
+                async with self._session() as session:
+                    async with session.begin():
+                        if (
+                            documentation_admission is not None
+                            and documentation_admission.evidence_snapshot is not None
+                        ):
+                            current_evidence = await require_reviewed_pending_documentation(
+                                self.project_root,
+                                self,
+                                documentation_admission.evidence_snapshot.checked_slugs,
+                                session=session,
+                            )
+                            if current_evidence != documentation_admission.evidence_snapshot:
+                                raise DocumentationEvidenceRefused(_SNAPSHOT_CHANGED)
+                        created = await self.add_to_todo(
+                            slug,
+                            lineage=lineage,
+                            group_slug=group_slug,
+                            after=after,
+                            description=description,
+                            schedule=schedule,
+                            status=status,
+                            entry_point=entry_point,
+                            human_involved=human_involved,
+                            context=context,
+                            cwd=cwd,
+                            session=session,
+                            documentation_admission=documentation_admission,
+                            reconciliation_receipts=reconciliation_receipts,
+                        )
+                        await self.write_state(slug, state, session=session)
+                        await self.write_artifact(
+                            slug,
+                            artifact_name,
+                            artifact_body,
+                            updated_by=updated_by,
+                            session=session,
+                        )
+            committed = True
+        except Exception:
+            if not committed:
+                for receipt in reversed(reconciliation_receipts):
+                    if receipt.plan is not None:
+                        restore_lifecycle_markers(Path(cwd), receipt.slug, receipt.plan)
+            raise
         self.on_committed(_TODO_UPDATED_EVENT)
         return created
 

@@ -39,40 +39,40 @@ has no other owning spec.
 
 ### Use cases
 
-#### UC-CA-1: A content dump credits the resolved caller
+#### UC-CA-1: A person records content under their resolved identity
 
-```
-Given an operator at a terminal whose login names a registered person, or an agent in a session carrying a principal
-When they run telec content dump without --author
-Then the created inbox entry's author is the principal the platform resolved for that caller
-And the content-dumped notification carries the same author
+```gherkin
+Scenario: Save content under the caller's identity
+  Given a person or an agent acting for them has a verified platform identity
+  When they save a content item without choosing an author name
+  Then the item is attributed to the identity the platform resolved
+
+Scenario: An unidentifiable caller cannot create unattributed content
+  Given a caller cannot be identified by the platform
+  When they save content without choosing an author name
+  Then no content item is created
+  And the caller is told how to establish an identity
 ```
 
 #### UC-CA-2: A caller the platform cannot identify dumps nothing unattributed
 
-```
-Given a process the platform cannot identify
-When it runs telec content dump without --author
-Then no inbox entry is created
-And the refusal names how to establish an identity
-```
-
 #### UC-CA-3: An explicitly credited author is recorded as given
 
-```
-Given an operator runs telec content dump with --author alice
-When the inbox entry is created
-Then its author is alice
-And no identity lookup decides the author
+```gherkin
+Scenario: Record a content item under an explicitly chosen author name
+  Given an operator wants a content item credited to a chosen author
+  When they save it with that author name
+  Then the recorded author is exactly the name they supplied
+  And caller identity does not replace it
 ```
 
 #### UC-CA-4: A content dump lands in its project's inbox from anywhere inside it
 
-```
-Given an operator or agent standing in a subdirectory, or in a slug worktree, of a project
-When they run telec content dump
-Then the inbox entry is created in the project's publications inbox at its owning checkout
-And no inbox entry is created in the subdirectory or the worktree
+```gherkin
+Scenario: Save content into the working project's inbox
+  Given an operator or agent is working in a project
+  When they save a content item for that project
+  Then it appears in the project's publications inbox
 ```
 
 ### Cross-context references

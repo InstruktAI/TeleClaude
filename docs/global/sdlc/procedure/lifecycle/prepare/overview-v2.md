@@ -61,7 +61,9 @@ genuinely theirs.
 
 ## Outputs
 
-- The issue body as the spec: use cases and falsifiable invariants.
+- The issue body as the spec: the prose behavioral contract, any admitted
+  Gherkin use cases and falsifiable invariants
+  (`sdlc/procedure/feature-spec-authoring`).
 - The comment trail: derivation, challenges, dispositions, the readiness verdict.
 
 ## Recovery

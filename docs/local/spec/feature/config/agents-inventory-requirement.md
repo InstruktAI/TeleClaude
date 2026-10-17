@@ -37,128 +37,25 @@ the runtime does not honor.
 
 #### UC-CFG-AGENTS-1: Valid agents block with explicit default
 
-```
-Given config.yml contains:
-  agents:
-    default: claude
-    claude:
-      enabled: true
-    gemini:
-      enabled: false
-And no other agent keys are present
-When the config builder processes the merged config
-Then the agents-section check confirms the section is present
-And agent-key validation passes (claude and gemini are in the known agent set)
-And the default agent is "claude" after lowercase normalization
-And the agent registry contains a typed entry for every known agent key
-And claude.enabled is True, gemini.enabled is False
-And codex.enabled is True (default when user omits the key)
-And the resolved default_agent == "claude"
-```
-
 #### UC-CFG-AGENTS-2: Missing agents section is rejected
-
-```
-Given config.yml omits the top-level `agents:` key entirely
-When the agents-section check runs
-Then a validation error is raised with the message:
-  "Missing required config key `config.yml:agents`. Add `agents:` with at least one configured agent entry."
-And agent registry construction is never reached
-```
 
 #### UC-CFG-AGENTS-3: agents value of wrong shape is rejected
 
-```
-Given config.yml contains `agents: [claude, gemini]` (a list, not a mapping)
-When the agents-section check runs
-Then a validation error is raised with the message:
-  "Invalid config key `config.yml:agents`: expected a mapping of agent names to settings."
-```
-
 #### UC-CFG-AGENTS-4: Missing default is rejected
-
-```
-Given config.yml contains an agents block with `claude:` and `gemini:` entries but no `default:` key
-When the config builder processes the agents mapping
-Then the default agent value is absent
-And a validation error is raised including the text:
-  "Missing required config key `config.yml:agents.default`."
-And the message lists the allowed agents (claude, gemini, codex, deepseek)
-```
 
 #### UC-CFG-AGENTS-5: Default naming an unknown agent is rejected
 
-```
-Given config.yml contains `agents.default: groq` (not in the known agent set)
-When the config builder processes the agents mapping
-Then a validation error is raised including the text:
-  "Invalid config key `config.yml:agents.default`: unknown agent 'groq'."
-And the message lists the allowed values
-```
-
 #### UC-CFG-AGENTS-6: Default value of non-string type is rejected
-
-```
-Given config.yml contains `agents.default: 42` (a non-string)
-When the config builder processes the agents mapping
-Then a validation error is raised including:
-  "Invalid config key `config.yml:agents.default`: expected a string"
-```
 
 #### UC-CFG-AGENTS-7: Unknown agent keys are rejected
 
-```
-Given config.yml contains an `agents.gpt5` block alongside known keys
-When agent-key validation runs
-Then a validation error is raised with:
-  "Unknown key(s) under `config.yml:agents`: gpt5. Allowed keys: claude, gemini, codex, deepseek."
-And the unknown keys list is sorted alphabetically
-```
-
 #### UC-CFG-AGENTS-8: All-agents-disabled is rejected
-
-```
-Given config.yml contains agents.default: claude
-And every known agent has `enabled: false`
-When the config builder builds the agent registry
-Then a validation error is raised with:
-  "Invalid config at `config.yml:agents`: all known agents are disabled."
-```
 
 #### UC-CFG-AGENTS-9: Default agent disabled is rejected
 
-```
-Given config.yml contains:
-  agents:
-    default: claude
-    claude: { enabled: false }
-    gemini: { enabled: true }
-When the config builder checks whether the default agent is enabled
-Then a validation error is raised with:
-  "Invalid config key `config.yml:agents.default`: 'claude' is disabled."
-```
-
 #### UC-CFG-AGENTS-10: Undeclared runtime key computer.tmux_binary is rejected
 
-```
-Given config.yml contains:
-  computer:
-    tmux_binary: /usr/local/bin/tmux
-When the machine config validates raw operator input
-Then validation rejects `computer.tmux_binary` as an unknown key
-And config construction is never reached
-```
-
 #### UC-CFG-AGENTS-11: Per-agent binary is filled from runtime policy
-
-```
-Given a valid agents block reaches the agent registry build step
-When the agent registry is built
-Then for each known agent key a typed entry is constructed
-And each entry's binary path is resolved by the platform (not user-configurable)
-And the tmux binary is likewise resolved by the platform
-And the user has no surface to override these binary paths
-```
 
 ### Cross-context references
 
@@ -197,10 +94,11 @@ And the user has no surface to override these binary paths
   Agent-key validation sees the agents mapping with `default` already removed,
   so it does not need to special-case the literal string `"default"` in the
   unknown-key check.
-- **Per-agent fields other than `enabled` are silently ignored.** The user
-  may write `agents.claude.foo: bar`; the config builder only reads `enabled`
-  from the per-agent config. The rest of the per-agent fields come from the
-  protocol definitions, not from the user file.
+- **Only tier-declared per-agent settings are accepted.** At the current
+  schema, `enabled` is TUI-editable and `profiles` and `model_chains` are
+  public configuration fields. Any other per-agent field is refused by name
+  by the closed settings validator; it is never accepted and discarded.
+  Platform-derived values such as `binary` remain runtime policy.
 - **Runtime-policy fields are outside the accepted input shape.** Historical
   runtime fields such as `computer.tmux_binary` and per-agent `binary`
   overrides are rejected as undeclared keys rather than accepted and dropped.

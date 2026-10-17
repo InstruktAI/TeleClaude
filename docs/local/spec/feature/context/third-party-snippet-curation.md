@@ -30,40 +30,24 @@ the path.
 
 ### Use cases
 
-```
-Scenario: Author a third-party snippet under the project tree
-  Given a Markdown file at docs/third-party/vendors/acme/widgets.md
-  And frontmatter with description "Acme widgets reference" only
-  And a "## Sources" section listing a Context7 ID and an https URL
-  When source validation runs
-  Then the file passes third-party validation
-  And its id and scope are derived from the path
-  And it is written into the third-party index as an entry with id, description, scope, and path
+#### UC-TPSC1: Make a sourced vendor reference available to a project
+
+```gherkin
+Scenario: Curate an external reference for project work
+  Given a project maintainer needs a vendor or framework reference for the project's work
+  When an agent curates that reference for the project
+  Then the reference is discoverable separately from taxonomy documentation
+  And its originating source is recorded
 ```
 
-```
-Scenario: Phase 1 lists third-party entries separately
-  Given third-party entries are indexed
-  When the operator runs telec docs index --third-party
-  Then taxonomy snippets and third-party entries are listed in separate sections
-  And the third-party entries show id, description, and scope only
-```
+#### UC-TPSC2: Find third-party references separately from taxonomy documents
 
-```
-Scenario: Phase 2 auto-loads third-party indexes on prefix match
-  Given the operator requests an ID starting with "third-party/" via telec docs get
-  And no --third-party flag was passed
-  Then the context selector auto-loads the third-party index
-  And the snippet body is returned without a frontmatter header
-  And no Required reads dependency expansion is performed for the third-party entry
-```
-
-```
-Scenario: Description is required
-  Given a third-party Markdown file with no description in frontmatter
-  When source validation runs over the file
-  Then a missing-frontmatter-field finding is reported for "description"
-  And validation exits with a non-zero status
+```gherkin
+Scenario: Browse external references
+  Given an operator wants to browse available vendor or framework references
+  When they open the third-party reference listing
+  Then they can distinguish those references from taxonomy documentation
+  And each listed reference is described well enough to choose what to retrieve
 ```
 
 ### Cross-context references

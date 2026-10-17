@@ -65,3 +65,28 @@ CREATE TABLE IF NOT EXISTS todo_docs_local_identity_cutovers (
     migration_key   TEXT PRIMARY KEY,
     completed_at    TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS commit_review (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    sha                 TEXT NOT NULL,
+    verdict             TEXT NOT NULL,
+    reviewer_session_id TEXT NOT NULL,
+    producer_session_ids TEXT,
+    stamped_at          TEXT NOT NULL,
+    reason              TEXT NOT NULL DEFAULT '',
+    migration_source    TEXT UNIQUE
+);
+CREATE INDEX IF NOT EXISTS idx_commit_review_sha ON commit_review(sha, id);
+
+CREATE TABLE IF NOT EXISTS documentation_transfer (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_slug          TEXT NOT NULL,
+    target_slug          TEXT NOT NULL,
+    parent_id            TEXT NOT NULL,
+    source_sha           TEXT,
+    source_path_blobs    TEXT NOT NULL,
+    target_path_blobs    TEXT NOT NULL,
+    transition_id        TEXT NOT NULL,
+    reconciliation_commit TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_documentation_transfer_target ON documentation_transfer(target_slug, id);

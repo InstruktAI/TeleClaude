@@ -74,6 +74,20 @@ assessment operate against the installed checkout. Physical maintenance records
 belong to the checkout activation they describe; sharing a logical project does
 not merge installation and development maintenance.
 
+Store access consumes the canonical shared-state identity through
+`local/projects/teleclaude/design/architecture/workflow-store`. Association
+preserves that identity and its selected adapter; source placement supplies no
+storage address or replacement store.
+
+An association transition preserves or settles the in-flight objects whose
+source ownership it changes before publishing that relationship. Workflow
+serializes the transition with source placement, including worktree creation
+and integration admission. A refused transition retains the existing ownership
+and names the affected work; it does not repath live work. The lifecycle and
+integration contracts remain owned by
+`local/projects/teleclaude/design/architecture/workflow-machine` and
+`local/projects/teleclaude/spec/feature/workflow/integration-state-machine`.
+
 Docs and bootstrap context select the invocation's coherent view under
 `local/projects/teleclaude/spec/feature/context/checkout-context-selection`.
 The global CLI remains the installed controller; a development directory changes

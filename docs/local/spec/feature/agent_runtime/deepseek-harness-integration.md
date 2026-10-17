@@ -32,28 +32,12 @@ installation convergence, owned by reconciliation
 
 ### Use cases
 
-#### UC-DSH-AGENT-1: deepseek is a known, launchable agent
+#### UC-DSH-AGENT-1: An operator can start a session with DeepSeek
 
-```
-Given a config.yml whose agents section declares deepseek with enabled: true
-And dsh is installed on PATH
-When the daemon starts a session for the deepseek agent
-Then agent-key validation accepts deepseek (known agent set)
-And the session pane runs the dsh CLI with the tui profile
-And the mode chain entry's `patch` (a JSON parameter map) is rendered
-  into a patch file in the session's own tmpdir and passed via --patch
-And the patch selects the mode's parameters (fast: deepseek-v4-flash;
-  med: deepseek-v4-pro with high effort; slow: deepseek-v4-pro with max)
-And the patch file is discarded with the session — no static patch files
-  exist anywhere in the launch path
-And the pane shows the TUI idle prompt before any message is typed
-And the daemon types the user's prompt into the pane only after the TUI
-  idle prompt appears
-And a session resumed by its native id relaunches the CLI with the tui
-  profile
-And a restricted-profile launch merges a sandbox-policy override into the
-  generated patch, confining the session to workspace-write (rooted at the
-  session cwd)
+```gherkin
+Given an operator chooses the enabled DeepSeek runtime for a session
+When the session is ready
+Then that same session runs DeepSeek and accepts the operator's prompt
 ```
 
 #### UC-DSH-AUTH-1: runner setup checks DeepSeek authentication
@@ -90,64 +74,30 @@ And the dsh-hooks plugin keeps the turn going with the reason injected
 
 #### UC-DSH-CHECKPOINT-2: unmapped DSH stops mint a headless mapping instead of dropping
 
-```
-Given a deepseek session whose hooks fire from a tmux whose contract
-  belongs to another agent (or from no TeleClaude tmux at all)
-And the session has no TeleClaude session row and no cached mapping
-When the receiver resolves a Stop (or SessionStart) hook event
-Then the tmux-contract mismatch is never attributed to the marker session
-And the event falls through to the shared resolution path
-And the adapter-declared mint set (session_start, agent_stop) mints a
-  headless session id instead of dropping the event
-And the outbox dispatcher creates the headless session row (launch intent
-  carries the default thinking mode med when the payload carries none)
-And every adapter mints agent_stop (claude, gemini, codex, deepseek), so
-  unmapped stops uniformly become headless sessions rather than drops
-```
-
 #### UC-DSH-DISTRIBUTE-1: artifact expansion renders and deploys the DSH master
 
-```
-Given the mother project's agents/ directory carries DEEPSEEK.addendum.md
-And ~/.dsh exists on the machine
-When the artifact expansion routine runs with agents enabled
-Then the deepseek agent is processed like claude/codex/gemini
-And a dist/deepseek/AGENTS.md master is rendered from the global masters,
-  inline-expanded, and appended with the DEEPSEEK.addendum.md failure modes
-And the deploy writes ~/.dsh/AGENTS.md (plus agents/commands/skills
-  subdirs when artifact items exist, mirroring the other agents)
-And skills transform through the deepseek SKILL.md shape (plain frontmatter)
-And a machine without ~/.dsh skips deepseek like the other agents
+```gherkin
+Given an administrator wants DeepSeek sessions to use the platform's agent guidance
+When agent artifacts are distributed to an installed DeepSeek runtime
+Then the guidance and applicable artifacts are available when a DeepSeek session starts
+And an absent DeepSeek installation receives no deployment
 ```
 
 #### UC-DSH-SEARCH-1: history search indexes DSH sessions
 
-```
-Given deepseek sessions persist under ~/.dsh/sessions as session.jsonl.zstd
-When the mirror worker reconciles transcripts (or telec history search runs)
-Then DSH transcripts are discovered under the deepseek session root
-And a delegated child session — whose session entry carries parentSession —
-  is recognized as a subagent transcript at discovery and never becomes a
-  candidate, as Claude's and Codex's subagent transcripts are not
-And each remaining transcript's native session id is read from its session
-  entry (a legacy session- prefix is normalized; the parent directory name
-  is the fallback when the entry is unreadable)
-And the project is recovered from the session entry's cwd
-And a conversation mirror is generated and FTS-searchable
-And `telec history search --agent deepseek <term>` returns matches
-And `--agent all` includes deepseek sessions
+```gherkin
+Given an operator wants to find a past DeepSeek conversation
+When they search history for terms
+Then matching DeepSeek conversations are available through the DeepSeek filter
+And an all-agent search includes them
 ```
 
 #### UC-DSH-SCOPE-1: DSH transcripts feed scoping and transcript views
 
-```
-Given a deepseek session whose native transcript path is bound
-When session scoping resolves paths for the session (checkpoint
-  attribution, todo scaffolding)
-Then the deepseek extractor returns write/edit and shell-mutator paths
-  from the normalized tool timeline
-And rendering the session's transcript produces the deepseek
-  conversation rather than an unknown-agent fallback
+```gherkin
+Given an operator reviews work performed in a DeepSeek session
+When they inspect its conversation and changed-path scope
+Then they can read the DeepSeek conversation and see the paths it changed
 ```
 
 ### Commit identity
@@ -162,6 +112,8 @@ agent session's author identity.
   `launch_environment` on fresh starts, resumes, restarts, handoffs, and pane
   recovery. They open directly in the chat composer, bypassing the single-line
   Launchpad input, so first-message delivery preserves multiline prompts.
+- A restricted DeepSeek session remains confined to workspace-write rooted at
+  that session's working directory.
 - A launched deepseek session reaches the TUI idle prompt, never the TUI's
   first-run guide: agent-CLI configuration records the guide as complete in the
   TUI's per-machine data directory and leaves a record that already marks it

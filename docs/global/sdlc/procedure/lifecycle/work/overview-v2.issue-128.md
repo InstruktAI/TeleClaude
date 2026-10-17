@@ -67,6 +67,24 @@ and as findings in the item's log where it does not.
 
 ## Steps
 
+<!-- planned:reviewed-pr-contributions -->
+
+### Contributor assignments
+
+For a contributor-proposal assignment, follow the project's contribution
+contract's review-before-publication route. Review the complete local subject
+from the builder's commit notices, invoke its recorded branch-publication
+operation for the exact reviewed commit, and then perform the ordinary
+readiness act. The ready-item handoff uses that project's proposal operation.
+The work driver's item authority and native readiness gates remain the
+ordinary lifecycle's (`sdlc/policy/process-change-authority`).
+
+For an imported proposal owned by prepared work, begin with the project's
+read-only admission assessment and its normal child waiting in your claiming
+group. Give ordinary repair findings to that same builder. A real return to
+preparation follows the lifecycle's separate closing contract.
+<!-- /planned:reviewed-pr-contributions -->
+
 1. **Enter.** Call the entry verb for the item. The first call claims the item
    for you, and its instruction names the branch and worktree the builder works
    in. Every later call returns the instruction for the phase. When the

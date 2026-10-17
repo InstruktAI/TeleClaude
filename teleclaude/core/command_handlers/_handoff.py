@@ -1,10 +1,10 @@
 """Execution half of an in-place agent handoff."""
 
-import asyncio
 import shlex
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -16,8 +16,6 @@ from teleclaude.core.agent_startup_delivery import AgentStartupDeliveryMode, del
 from teleclaude.core.agent_status import AgentRunStart, transition_agent_status
 from teleclaude.core.agents import _get_agent_config, assert_agent_enabled, get_agent_command
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import AgentReadyContext, TeleClaudeEvents
 from teleclaude.core.injected_text import (
     EnvelopeName,
     InjectedInputAuthority,
@@ -25,11 +23,13 @@ from teleclaude.core.injected_text import (
     semantic_envelope,
 )
 from teleclaude.core.models import Session, ThinkingMode
+from teleclaude.core.runtime_readiness import RuntimeReadinessKey
 from teleclaude.core.session_launch_profile import resolve_session_launch_profile
 from teleclaude.core.session_runtime_gate import SessionRuntimeLease
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_transcript_chain import append_transcript_once
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
+from teleclaude.runtime.environment import runtime_run_command
 from teleclaude.types.commands import HandoffAgentCommand
 
 from ._restart import RELAUNCH_QUIET_S, StopDeadlineAnchor, stop_agent_process
@@ -42,6 +42,7 @@ _HANDOFF_DELIVERY_FAILURE_NOTICE = "Handoff startup brief could not be delivered
 _HANDOFF_NOT_RUNNABLE_ERROR = "Session is not open and runnable for handoff"
 _HANDOFF_SURFACE_UNAVAILABLE_ERROR = "Session has no runnable managed execution surface"
 _HANDOFF_STOP_FAILED_ERROR = "Agent did not exit after termination. Handoff aborted."
+_HANDOFF_SESSION_CLOSED_BEFORE_SUCCESSOR = "Session {} closed before successor launch"
 
 
 async def execute_handoff(
@@ -107,23 +108,18 @@ async def execute_handoff(
         current = await db.get_session(session.session_id)
         if current is None:
             raise RuntimeError(f"Session {session.session_id} vanished mid-handoff before launch")
-        ready_future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-
-        async def on_ready(_event_type: str, context: AgentReadyContext) -> None:
-            if (
-                context.session_id == current.session_id
-                and context.compaction_launch_context is None
-                and not ready_future.done()
-            ):
-                ready_future.set_result(None)
-
-        handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, on_ready)
+        runtime_run_id = str(uuid4())
+        if not await db.install_runtime_run(current.session_id, runtime_run_id):
+            raise RuntimeError(_HANDOFF_SESSION_CLOSED_BEFORE_SUCCESSOR.format(current.session_id))
+        successor_command = runtime_run_command(successor_command, runtime_run_id)
+        readiness_key = RuntimeReadinessKey.ordinary(current.session_id, runtime_run_id)
+        ready_future = client.runtime_readiness.register(readiness_key)
         try:
             run_started_at = datetime.now(UTC)
             await transition_agent_status(
                 db,
                 current.session_id,
-                AgentRunStart(startup_work_expected=bool(startup_message)),
+                AgentRunStart(startup_work_expected=bool(startup_message), run_id=runtime_run_id),
                 at=run_started_at,
             )
             if not await execute_terminal_command(current.session_id, successor_command, None, True):
@@ -135,9 +131,10 @@ async def execute_handoff(
                 ready_future=ready_future,
                 quiet_s=RELAUNCH_QUIET_S,
                 timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
+                readiness=client.runtime_readiness,
             )
         finally:
-            event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, handler)
+            client.runtime_readiness.release(readiness_key, ready_future)
         current = await db.get_session(current.session_id)
         if current is None:
             raise RuntimeError(f"Session {session.session_id} vanished mid-handoff after launch")
@@ -151,6 +148,7 @@ async def execute_handoff(
                 quiet_s=RELAUNCH_QUIET_S,
                 timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
                 delivery_mode=AgentStartupDeliveryMode.HANDOFF,
+                readiness=client.runtime_readiness,
             )
             if not delivery.succeeded:
                 await client.send_message(current, _HANDOFF_DELIVERY_FAILURE_NOTICE)

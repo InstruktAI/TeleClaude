@@ -48,3 +48,11 @@ Given an agent wants the event types one owner emits, such as the platform itsel
 When it lists the event catalog narrowed to that owner
 Then it sees exactly the declared types whose name begins with that owner's segment
 ```
+
+<!-- planned:issue-128 -->
+
+## See Also
+
+- docs/local/spec/feature/event-catalog/item-event-occurrences.md — inspect one item's retained workflow event trail.
+
+<!-- /planned:issue-128 -->

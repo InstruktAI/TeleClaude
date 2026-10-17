@@ -15,38 +15,47 @@ The agent_runtime bounded context is hosted by a single long-running service pro
 
 ## Canonical fields
 
+### Startup and recovery invariants
+
+A per-computer lock admits one service process. A start attempt that fails
+releases its lock; a competing process exits without opening the runtime.
+Session-cache warm-up seeds durable rows only: it does not probe host panes or
+schedule per-session polling. Hooks, messages, and the polling coordinator
+resume polling, while periodic cleanup owns orphan discovery.
+
+Transient network, connection, timeout, and operating-system failures retry
+startup with bounded backoff; configuration, authentication, and lock failures
+exit immediately. An unexpected request-surface exit is retried only outside
+shutdown; exhausted recovery requests ordinary service shutdown so the service
+manager can relaunch it.
+
 ### Use cases
-
-#### Single-instance lock
-
-```
-Given an agent_runtime service process is starting
-When the lock acquisition runs against the configured lock file
-Then a successful acquisition records the current process identity and registers a release at exit
-And a contended acquisition raises a lock error naming the holder (when readable)
-And the process exits abnormally on lock error
-And the lock release is idempotent
-```
 
 #### Staged startup ordering
 
-```
-Given the service has acquired the single-instance lock and obtained its event loop
-When startup runs (guarded by an idempotent started flag)
-Then it executes in this strict order:
-  1. Outbox schema migration
-  2. Storage initialization (connection plus schema check, target: <1s)
-  3. Operations service initialization and start (target: <1s)
-  4. Local-sessions cache warm — list every local session (including headless) from durable storage, build snapshot rows, seed the service's in-memory session cache; a slow-warm warning is emitted at >=5s with per-stage timings (target: 1–4s)
-  5. Construct the request-surface so the event platform's push callback can wire into it (NOT started yet)
-  6. Adapter client start (target: 3–12s)
-  7. Event platform init — the producer must be ready before any workflow operation can land
-  8. Post-adapter completion tasks — see below
-  9. Start the request surface and wire an exit-handler callback (target: 1–3s)
-  10. Local-projects cache warm — projects-with-todos snapshot into the service's in-memory project cache (target: 2–5s)
-And on completion the started flag is set and total elapsed is logged
-And total elapsed >=30s triggers a slow-startup warning
-```
+Storage migration and initialization precede operations startup and local source
+materialization. Adapters receive the local session state their startup
+requires. Domain-event publication is ready before producers can emit, and
+each required consumer's progress is established before the source activity it
+must observe. Registering or scheduling a reader alone does not establish that
+handover.
+The producer and reader positions for both event source streams are prepared
+independently of adapter startup. Handler execution remains gated on its own
+dependencies, including request-surface binding where required.
+
+The request surface is constructed before its event callbacks are wired, and
+its listener is bound before consumers that call it execute. Source seeding and
+live session materialization share an explicit coverage handover before the
+runtime declares startup complete. The handover reconciles current source
+state through the cache owner under
+`local/projects/teleclaude/design/architecture/cache`; it does not publish
+previously captured startup rows after newer live materialization.
+
+Post-adapter reconciliation, request-surface recovery and project warmup retain
+their owner contracts. Startup remains idempotent and reports completion and
+slow stages through the lifecycle's configured observations. These readiness
+boundaries follow `sdlc/principle/architectural-defaults` and
+`sdlc/policy/domain-ownership`.
 
 #### UC-DL6: Post-adapter completion tasks
 
@@ -62,31 +71,6 @@ And the inbound queue manager is brought up
 And conversation-delivery reconciliation re-sends bounded peer bundles for any conversation link with an orphaned pending-through cursor
 And outstanding final-output reconciliation is NOT done here — it is scheduled as a background pass after the request surface starts
 And the request surface starts AFTER these tasks have completed
-```
-
-#### Cache warm honesty
-
-```
-Given the warm only seeds durable-storage snapshots into the in-memory cache
-When the local-sessions cache warm runs
-Then it does NOT touch the host-pane layer, does NOT match storage rows against live host panes, and does NOT (re)schedule polling for live sessions
-And per-session polling resumption is the responsibility of downstream paths (hook events, send-message, explicit polling-coordinator callers)
-And orphan host-pane / workspace / per-session tmpdir detection is the responsibility of the periodic cleanup loop, NOT the lifecycle startup
-```
-
-#### Post-startup background workers
-
-```
-Given startup has completed
-When the service's start sequence continues
-Then it starts the following background workers, each supervised as UC-DL17 states:
-  - Periodic cleanup (first iteration runs immediately, then every hour)
-  - Poller watch
-  - Hook outbox dispatcher — it starts one worker per session on demand, in parallel across sessions
-  - Mirror worker — transcript mirroring
-  - Workflow bridge and identity bridge — translators that bring v2 envelopes into v1 cache invalidation
-  - Resource monitor, write-ahead-log checkpoint, optional supervisor watch
-And only after these are scheduled does the service log that it is running
 ```
 
 #### UC-DL2 — Turn delivery state is reconciled before adapters can emit output
@@ -129,18 +113,13 @@ And exhausting retries exits abnormally
 And every startup attempt acquires the single-instance lock idempotently; failure during start releases the lock before re-raise
 ```
 
-#### Shutdown ordering
+#### An operator can stop the daemon without losing accepted work
 
 ```gherkin
-Given a human operator requests ordinary daemon shutdown or restart
-When the running service begins preparation for shutdown
-Then admission closes to new business work before any completion dependency stops
-And acknowledged work retains its ownership until its effects and durable outcomes settle
-And runtime hooks, readiness signals, storage, terminal ownership and outcome delivery needed by that work remain available
-And long-running work leaves the service only at an existing durable recovery boundary or with an explicit terminal outcome
-And a successful preparation remains closed to new business work until the process exits
-And shutdown then stops background consumers, transports and adapters before closing storage and releasing the single-instance lock
-And independently running agent turns are neither terminated nor awaited as daemon-owned work
+Given a human operator needs to stop or restart the daemon while acknowledged work is active
+When ordinary shutdown begins
+Then new work is refused and acknowledged work settles or reaches a durable recovery boundary before its required dependencies stop
+And independently running agent turns continue without being terminated
 ```
 
 #### UC-DL4: Shutdown without active playback avoids invalid cancellation
@@ -178,85 +157,27 @@ And the service never stays up with its request surface left down
 
 #### UC-CW1: Chiptunes registry paths are durable home-root control files
 
-```
-Given the chiptunes worker has a pidfile and control socket
-When the paths are resolved
-Then both registry paths live flat at the TeleClaude home root
-And neither registry path lives under `/tmp`
-And the manager and worker import the same path constants
-```
-
 #### UC-CW2: Chiptunes worker scan uses exact same-user process identity
-
-```
-Given multiple local processes mention the chiptunes worker module
-When the manager scans the process table for a live worker
-Then only a same-user process launched as `-m teleclaude.chiptunes.worker` counts as the worker
-And processes that merely mention the module string are ignored
-And processes owned by another user are ignored
-```
 
 #### UC-CW3: Reachable chiptunes worker is adopted
 
-```
-Given a chiptunes worker process is alive
-And its control socket is reachable
-When the manager ensures a worker is available
-Then it adopts the existing worker
-And it does not spawn a replacement
-And it does not terminate the reachable worker
-```
-
 #### UC-CW4: Unreachable chiptunes worker is replaced once
 
-```
-Given a chiptunes worker process is alive
-And its control socket is missing or unreachable
-When the manager ensures a worker is available
-Then it terminates the unreachable orphan
-And it clears the stale registry
-And it starts at most one replacement worker
-```
+#### UC-CW5: A listener keeps music through a daemon restart
 
-#### UC-CW5: Reattach reconnects to reachable chiptunes worker
-
-```
-Given a chiptunes worker process survived service restart
-And its control socket is reachable
-When the manager reattaches during service boot
-Then it reconnects to the worker
-And it requests the worker state snapshot
-And it keeps music continuity without spawning a duplicate
+```gherkin
+Scenario: Continue playback while the worker remains available
+  Given a person is listening to music from a reachable Chiptunes worker
+  And the daemon restarts before the worker's idle lease expires
+  When the daemon resumes service
+  Then music continues without starting a duplicate worker
 ```
 
 #### UC-CW6: Reattach terminates unreachable chiptunes orphan
 
-```
-Given a chiptunes worker process survived service restart
-And its control socket is missing or unreachable
-When the manager reattaches during service boot
-Then it does not reconnect to the orphan
-And it terminates the orphan
-And it clears the stale registry
-```
-
 #### UC-CW7: Idle chiptunes worker exits after lease window
 
-```
-Given no daemon client has connected to the chiptunes worker for longer than the idle-lease window
-When the worker checks its lease
-Then it requests a clean stop
-And its registry is released as part of shutdown
-```
-
 #### UC-CW8: Idle chiptunes worker stays alive within lease window
-
-```
-Given the chiptunes worker has recent daemon client activity within the idle-lease window
-When the worker checks its lease
-Then it keeps running
-And daemon restart gaps inside the lease window are tolerated
-```
 
 #### UC-DL1: Projects listing tolerates a registry entry that is not a project checkout
 
@@ -406,6 +327,33 @@ And the service manager relaunches the service on its installed code
 And the agent never finds the capability silently absent while the daemon reports itself healthy
 ```
 
+### Runtime-local coordination
+
+Runtime-owned readiness coordination scopes a waiter to its target session and
+launch identity. Registration precedes the action that can satisfy the waiter.
+Managed launch identity originates before child execution and returns with the
+normalized hook from that child. The runtime validates this correlation before
+applying managed-start evidence; the current record alone does not establish
+which launch produced an arriving hook.
+Installing a new ordinary run and clearing its observed-start evidence are one
+source mutation. A matching start writes that evidence conditionally against
+the same run, and resumed catch-up reads that run's evidence. A hook without
+launch context never acquires the current run's identity from the database;
+an already-running process without that correlation retains its existing
+timeout and inspection outcomes rather than establishing a new run's readiness.
+An already persisted matching start can satisfy a resumed wait; another
+session's start or a distinct compaction launch cannot satisfy it. Success,
+timeout, cancellation and shutdown settle and release the registration under
+the caller's existing launch or continuation contract. This ownership follows
+`sdlc/policy/domain-ownership`.
+
+Hook-outbox processing that awaits its runtime owner retains that completion
+boundary before the hook is settled. Local readiness and continuations use
+their owning runtime capability, independently of domain-notification
+consumption. Command execution retains the command or operation owner's
+acceptance and completion contract, as composed by
+`local/projects/teleclaude/design/architecture/event-delivery`.
+
 ### Graceful admission and settlement
 
 The service owns admission and draining across API, adapter, remote-command and
@@ -448,7 +396,7 @@ evidence requirement (`general/principle/grounding`).
 - **The should-exit flag is the only clean-exit signal.** A request-surface task that exited because should-exit was set is treated as intentional and does NOT trigger restart. Anything else (raised exception, task done without should-exit) is treated as a crash.
 - **Slow startup is a warning, not a failure.** Startup elapsed time at or beyond the slow-startup threshold (30s) emits a warning; the warm cache also emits a per-stage breakdown when warm takes 5s or more. Neither aborts the boot.
 - **Background workers are started outside the lifecycle.** Lifecycle startup does NOT launch periodic cleanup, poller watch, the hook-outbox worker, the mirror worker, or the v2 bridges — those are launched by the service's start sequence after lifecycle startup returns. The split is deliberate: lifecycle owns the deterministic boot prefix; the service owns the steady-state worker set.
-- **Chiptunes worker survives service restart, within bounds.** Disconnecting from the chiptunes manager on shutdown does NOT stop the worker process; on next boot the service reattaches when the worker's control socket is reachable, treats an alive-but-unreachable worker as an orphan and terminates it, and a worker with no daemon client past the idle-lease window exits on its own. Music continuity is decoupled from service lifecycle, bounded by control-socket reachability and the idle lease.
+- **Chiptunes worker survives service restart, within bounds.** Its registry is persisted at the platform home so a surviving worker can be found after restart. Only a same-user Chiptunes worker is eligible for reattachment; a process that merely mentions the worker module is ignored. The service reattaches to a reachable worker and does not spawn a duplicate. An unreachable worker is terminated before at most one replacement is started. A worker with no daemon client past the idle-lease window exits on its own. Music continuity is bounded by worker reachability and that lease.
 
 - **A timed-out stop ends in a relaunched daemon.** The service manager relaunches a daemon that completes its own shutdown, and the prepared process carries no record of whether its caller asked for a stop or a restart. Keeping the daemon down after a stop whose preparation timed out takes another `make stop` once it is back.
 

@@ -6,8 +6,7 @@ from fastapi import APIRouter, Depends
 
 from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, carried_caller
 from teleclaude.api_models_operations import OperationStatusDTO
-from teleclaude.core.operations import get_operations_service
-from teleclaude.core.operations.service import SerializedOperation
+from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 
 router = APIRouter(prefix="/operations", tags=["operations"])
 

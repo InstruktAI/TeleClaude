@@ -3,16 +3,19 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_io
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import resolve_launch_model
+from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.injected_text import InjectedInputAuthority
 from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.runtime_readiness import RuntimeReadinessKey
 from teleclaude.core.session_cleanup import host_pane_name
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_launch_profile import resolve_session_launch_profile
@@ -21,6 +24,7 @@ from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.daemon_session import ensure_tmux_with_identity
+from teleclaude.runtime.environment import runtime_run_command
 from teleclaude.types.commands import KeysCommand
 
 from ._utils import StartPollingFunc, with_session
@@ -168,13 +172,35 @@ async def _ensure_tmux_for_headless(
             launch_flags=launch_profile.flags,
             resolved_flags=launch.flags if launch else None,
         )
-        await tmux_io.process_text(
-            session,
-            resume_cmd,
-            working_dir=working_dir,
-            active_agent=session.active_agent,
-            authority=InjectedInputAuthority.INTERFACE,
-        )
+        runtime_run_id = str(uuid4())
+        if not await db.install_runtime_run(session.session_id, runtime_run_id):
+            return None
+        resume_cmd = runtime_run_command(resume_cmd, runtime_run_id)
+        readiness_key = RuntimeReadinessKey.ordinary(session.session_id, runtime_run_id)
+        ready_future = client.runtime_readiness.register(readiness_key)
+        try:
+            if not await tmux_io.process_text(
+                session,
+                resume_cmd,
+                working_dir=working_dir,
+                active_agent=session.active_agent,
+                authority=InjectedInputAuthority.INTERFACE,
+                readiness=client.runtime_readiness,
+            ):
+                return None
+            await await_agent_readiness(
+                agent_name=session.active_agent,
+                session=session,
+                session_id=session.session_id,
+                ready_future=ready_future,
+                quiet_s=tmux_io.ADOPTION_STABILIZE_QUIET_S,
+                timeout_s=tmux_io.ADOPTION_READINESS_TIMEOUT_S,
+                readiness=client.runtime_readiness,
+            )
+        except TimeoutError:
+            return None
+        finally:
+            client.runtime_readiness.release(readiness_key, ready_future)
 
     if start_polling:
         await start_polling(session.session_id, tmux_name)
@@ -211,10 +237,10 @@ async def keys(
         await kill_command(cmd, start_polling)
         return
     if key_name == "escape":
-        await escape_command(cmd, start_polling, double=False)
+        await escape_command(cmd, client, start_polling, double=False)
         return
     if key_name == "escape2x":
-        await escape_command(cmd, start_polling, double=True)
+        await escape_command(cmd, client, start_polling, double=True)
         return
     if key_name == "ctrl":
         await ctrl_command(cmd, client, start_polling)
@@ -302,6 +328,7 @@ async def kill_command(
 async def escape_command(
     session: Session,
     cmd: KeysCommand,
+    client: "AdapterClient",
     start_polling: StartPollingFunc,
     double: bool = False,
 ) -> None:
@@ -333,6 +360,7 @@ async def escape_command(
             working_dir=working_dir,
             active_agent=active_agent,
             authority=InjectedInputAuthority.INTERFACE,
+            readiness=client.runtime_readiness,
         )
 
         if not success:

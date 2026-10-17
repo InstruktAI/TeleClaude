@@ -35,13 +35,6 @@ makes reaching around it a deliberate act rather than an ordinary one.
 
 #### UC-ACA-6: Every route the platform provides leads to the boundary
 
-```gherkin
-Given an agent session
-When the session reaches for a mail or calendar connector through any route the platform provides it
-Then the invocation reaches the connector through the mediated boundary
-And the gates that boundary enforces apply to it
-```
-
 ## Known caveats
 
 - A session holding the person's own operating-system authority can execute a

@@ -56,7 +56,7 @@ This is the structural reason a service rewrite is safe under this discipline: t
 
 Documentation organizes around two snippet kinds with one-directional flow:
 
-- **Feature spec** (the hub) — describes owner-local behavior in business-value terms, contains Gherkin acceptance scenarios, and points at the bounded contexts it touches. Lives under the context that owns the behavioral decision at `docs/local/spec/feature/<context>/<concept-name>.md`. Concept-named, NEVER slug-named — the snippet identity is the domain concept it describes, not the todo that authored or refined it. Other contexts may index the spec as consumers; that does not make them co-owners.
+- **Feature spec** (the hub) — describes owner-local behavior in business-value terms through its prose contract, adds Gherkin use cases when user goals warrant them, and points at the bounded contexts it touches. Lives under the context that owns the behavioral decision at `docs/local/spec/feature/<context>/<concept-name>.md`. Concept-named, NEVER slug-named — the snippet identity is the domain concept it describes, not the todo that authored or refined it. Other contexts may index the spec as consumers; that does not make them co-owners.
 - **Domain spec** (the spokes) — describes a bounded context's ubiquitous language, aggregates, events, and design. Its Use cases section indexes the feature specs that touch this context.
 
 Authoring flows from hub to spokes: an intake agent processes a human's input as a feature need (the hub), then identifies and updates the affected domain specs (the spokes). The reverse direction (spokes inferring hubs) is forbidden — domain concepts don't carry business value standalone; that's the feature's job.
@@ -129,13 +129,13 @@ delivery in that capability fills naturally.
 
 The doc-snippet updates ARE the design record — they are authoritative. The `architecture` workflow.artifact persists, but only as a thin per-todo audit log: which snippets the architecture phase touched, why, and the pending carriers that name its slug. It carries no design body and is never the source of truth. There is no `architecture` snippet kind. Decisions that don't survive (implementation tactic choices, library selection, internal sequencing) stay ephemeral in workflow.artifacts. The architecture phase routes per change: internal-to-context → domain spec; cross-cutting → design doc; or both when a change has both faces — and logs the routing in the thin artifact.
 
-**PRDs do not survive as snippets.** The PRD captures work-guidance for one delivery (MoSCoW, Why, risks). It is scaffolding. It stays a workflow.artifact and retires after delivery. Only the behavioral contract (Gherkin in feature spec) and the design (updates in domain specs) become docs.
+**PRDs do not survive as snippets.** The PRD captures work-guidance for one delivery (MoSCoW, Why, risks). It is scaffolding. It stays a workflow.artifact and retires after delivery. The behavioral contract (feature-spec prose and any admitted Gherkin use cases) and the design (updates in domain specs) become docs.
 
 ### 4. Prepare workers author directly to the docs layer
 
 The intake and architecture phases of the prepare lifecycle write DIRECTLY to docs — feature spec snippets (intake), domain spec snippets and architecture design docs (architecture). No design-bearing workflow.artifact that later "migrates." The doc IS the source; the architecture phase additionally writes a thin index/log artifact recording which snippets it touched.
 
-**Gherkin lives in the feature spec snippet, authored during intake.** There is no separate `test-specs` phase. The intake worker authors business value + Gherkin acceptance scenarios in the same feature spec snippet, in the same phase. The v1 test-specs phase was artifact-shaped ceremony that the hub-and-spoke model removes.
+**Admitted use cases are written in Gherkin in the feature spec.** Intake authors the business value and prose contract, adding Gherkin only for user goals admitted by `sdlc/procedure/feature-spec-authoring`. A behavioral change that adds no user goal can refine that contract without adding a use case. There is no separate `test-specs` phase.
 
 Ephemeral workflow.artifacts (PRD, implementation plan, review findings, drift analysis, deferrals) remain in `workflow.artifacts` because they're process scaffolding, not behavioral contract.
 

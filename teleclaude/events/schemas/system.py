@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from pydantic import Field, JsonValue
+
+from teleclaude.core.agent_availability import AgentAvailabilityStatus
+from teleclaude.core.events import AgentHookEventType
 from teleclaude.events.catalog import DeclaredEvent, EventData, LifecycleState, PlatformEvent
 from teleclaude.events.envelope import EventHomeKind
 from teleclaude.events.references import (
@@ -11,6 +15,7 @@ from teleclaude.events.references import (
     ConfigurationRef,
     EventRef,
     EventTypeRef,
+    OperationRef,
     SessionRef,
     StreamEntryRef,
 )
@@ -23,6 +28,8 @@ BURST_FAMILY = "teleclaude.system.burst"
 FAILURE_CASCADE_FAMILY = "teleclaude.system.failure_cascade"
 ENTITY_FAMILY = "teleclaude.system.entity"
 CONFIG_VALIDATION_FAMILY = "teleclaude.config.validation"
+_RUNTIME_OPERATION_OUTCOME_FAMILY = "teleclaude.agent_runtime.operation"
+_RUNTIME_OPERATION_HOME_KINDS = (EventHomeKind.PROJECT, EventHomeKind.PERSON, EventHomeKind.COMPANY)
 #: The name every kinded session-ended type sits below; a subscriber selects one kind or every ending through it.
 SESSION_ENDED_PREFIX = RETIRED_SESSION_ENDED_TYPE
 
@@ -36,10 +43,79 @@ class SessionEndedKind(StrEnum):
     UNKNOWN = "unknown"
 
 
+class RuntimeSessionChange(StrEnum):
+    """Source-row changes that request current session reconciliation."""
+
+    CREATED = "created"
+    UPDATED = "updated"
+    CLOSED = "closed"
+
+
+class RuntimeOperationResult(StrEnum):
+    """Terminal result carried by a durable operation occurrence."""
+
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class SessionEndedData(EventData):
     ended_at: str
     project_path: str | None = None
     session_id: str
+
+
+class RuntimeSessionSourceChangedData(EventData):
+    session_id: str
+    change: RuntimeSessionChange
+    changed_fields: list[str] = Field(default_factory=list)
+
+
+class RuntimeSessionStatusData(EventData):
+    session_id: str
+    status: str
+    reason: str
+    timestamp: str
+    last_activity_at: str | None = None
+    message_intent: str | None = None
+    delivery_scope: str | None = None
+
+
+class RuntimeAgentActivityData(EventData):
+    session_id: str
+    event_type: AgentHookEventType
+    timestamp: str | None = None
+    canonical_type: str | None = None
+    message_intent: str | None = None
+    delivery_scope: str | None = None
+    details: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class RuntimeAgentAvailabilityData(EventData):
+    agent: str
+    status: AgentAvailabilityStatus | None = None
+    status_until: str | None = None
+    reason: str | None = None
+    error: str | None = None
+    model: str | None = None
+    model_status: AgentAvailabilityStatus | None = None
+    model_status_until: str | None = None
+    model_reason: str | None = None
+
+
+class RuntimeErrorData(EventData):
+    session_id: str | None
+    message: str
+    source: str | None = None
+    details: dict[str, JsonValue] | None = None
+    severity: str
+    retryable: bool
+    code: str | None = None
+
+
+class RuntimeOperationOutcomeData(EventData):
+    operation_id: str
+    operation_kind: str
+    error: str | None = None
 
 
 class SessionRestartFailedData(EventData):
@@ -158,6 +234,49 @@ class SessionRestartFailed(PlatformEvent[SessionRef, SessionRestartFailedData]):
     HOME_KINDS = _SESSION_HOMES
 
 
+class RuntimeSessionSourceChanged(PlatformEvent[SessionRef, RuntimeSessionSourceChangedData]):
+    NAME = "teleclaude.agent_runtime.session.source_changed"
+    DESCRIPTION = "A session source row changed and should be reconciled from current state"
+    HOME_KINDS = _SESSION_HOMES
+
+
+class RuntimeSessionStatusChanged(PlatformEvent[SessionRef, RuntimeSessionStatusData]):
+    NAME = "teleclaude.agent_runtime.session.status_changed"
+    DESCRIPTION = "A session's canonical runtime status changed"
+    HOME_KINDS = _SESSION_HOMES
+
+
+class RuntimeAgentActivityObserved(PlatformEvent[SessionRef, RuntimeAgentActivityData]):
+    NAME = "teleclaude.agent_runtime.agent.activity_observed"
+    DESCRIPTION = "An agent session produced an activity observation"
+    HOME_KINDS = _SESSION_HOMES
+
+
+class RuntimeAgentAvailabilityChanged(PlatformEvent[ComputerRef, RuntimeAgentAvailabilityData]):
+    NAME = "teleclaude.agent_runtime.agent.availability_changed"
+    DESCRIPTION = "Agent availability on this computer changed"
+
+
+class RuntimeErrorReported(PlatformEvent[EventRef, RuntimeErrorData]):
+    NAME = "teleclaude.agent_runtime.error.reported"
+    DESCRIPTION = "A runtime error was reported with its existing diagnostic details"
+    HOME_KINDS = _SESSION_HOMES
+
+
+class RuntimeOperationSucceeded(PlatformEvent[OperationRef, RuntimeOperationOutcomeData]):
+    FAMILY = _RUNTIME_OPERATION_OUTCOME_FAMILY
+    STATE = LifecycleState.SUCCEEDED
+    DESCRIPTION = "A durable operation completed successfully"
+    HOME_KINDS = _RUNTIME_OPERATION_HOME_KINDS
+
+
+class RuntimeOperationFailed(PlatformEvent[OperationRef, RuntimeOperationOutcomeData]):
+    FAMILY = _RUNTIME_OPERATION_OUTCOME_FAMILY
+    STATE = LifecycleState.FAILED
+    DESCRIPTION = "A durable operation failed"
+    HOME_KINDS = _RUNTIME_OPERATION_HOME_KINDS
+
+
 class SessionBootstrapFailed(PlatformEvent[SessionRef, SessionBootstrapFailedData]):
     NAME = "teleclaude.system.session.bootstrap_failed"
     DESCRIPTION = "A session's tmux/identity bootstrap failed, stranding it before it reached active"
@@ -248,6 +367,13 @@ DECLARED: tuple[DeclaredEvent, ...] = (
     SystemSessionEnded,
     UnknownSessionEnded,
     SessionRestartFailed,
+    RuntimeSessionSourceChanged,
+    RuntimeSessionStatusChanged,
+    RuntimeAgentActivityObserved,
+    RuntimeAgentAvailabilityChanged,
+    RuntimeErrorReported,
+    RuntimeOperationSucceeded,
+    RuntimeOperationFailed,
     SessionBootstrapFailed,
     EffectiveConfigUpdated,
     ConfigValidationFailed,

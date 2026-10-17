@@ -37,8 +37,6 @@ from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_dispatch import forward_command_to_peer
 from teleclaude.core.conversation_messages import format_identity_conversation
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.inbound.fleet import local_conversation_adapters
 from teleclaude.core.integration.session_address import SessionAddressResolved, resolve_session_conversation_url
 from teleclaude.core.models import (
@@ -56,7 +54,13 @@ from teleclaude.core.models import (
 from teleclaude.core.models._adapter import UNATTENDED_SECTION, unattended_stamp
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.roles import RoleName
-from teleclaude.core.session_cleanup import host_pane_name, terminate_session
+from teleclaude.core.runtime_events import publish_session_source_change
+from teleclaude.core.session_cleanup import (
+    has_pending_channel_cleanup,
+    host_pane_name,
+    recover_failed_close,
+    terminate_session,
+)
 from teleclaude.core.session_company import record_session_company_resolved
 from teleclaude.core.session_listeners import establish_supervision
 from teleclaude.core.session_listing import SessionListingSelection
@@ -66,8 +70,9 @@ from teleclaude.core.session_utils import WorkingDirectoryUnavailableError, reso
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
 from teleclaude.core.workflow_machine.helpers import helper_start_fence
 from teleclaude.core.workflow_store.store import get_workflow_store
-from teleclaude.events.envelope import EventHomeMarker, EventVisibility
+from teleclaude.events.envelope import EventHomeMarker
 from teleclaude.events.home_owner import EventHomeOwnerMarker
+from teleclaude.events.schemas.system import RuntimeSessionChange
 from teleclaude.project_root import is_project_checkout
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.services.project_catalog.ownership import load_project_ownership_index
@@ -79,6 +84,7 @@ from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import TRANSCRIPT_READERS, parse_session_transcript
 
 from ._session_identity import resolve_session_creation_identity
+from ._session_transcript import publish_transcript_format_mismatches
 from ._utils import EndSessionHandlerResult, SessionDataPayload, with_session
 
 if TYPE_CHECKING:
@@ -86,6 +92,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _UNBOUND_TMUX_NAME = ""
+_SESSION_CLOSE_FAILED_EVENT = "Failed to close session %s: %s"
 
 _WORKING_DIR_NOT_ABSOLUTE_TEMPLATE = "Working directory must be an absolute path: {working_dir}"
 _WORKING_DIR_MISSING_TEMPLATE = "Working directory does not exist: {working_dir}"
@@ -833,6 +840,7 @@ async def get_session_data(
 
     # Parse session transcript to markdown with filtering
     try:
+        transcript_mismatches: list[tuple[str, str]] = []
         markdown_content = parse_session_transcript(
             str(native_log_file),
             session.title,
@@ -840,7 +848,9 @@ async def get_session_data(
             since_timestamp=cmd.since_timestamp,
             until_timestamp=cmd.until_timestamp,
             tail_chars=cmd.tail_chars if cmd.tail_chars > 0 else 2000,
+            on_format_mismatch=lambda agent, path, _error: transcript_mismatches.append((agent, path.name)),
         )
+        await publish_transcript_format_mismatches(transcript_mismatches)
         logger.info(
             "Parsed %s transcript (%d bytes) for session %s",
             transcript_reader.display_name,
@@ -895,7 +905,7 @@ async def close_session(
                 session.computer_name,
                 session.session_id,
             )
-            command = CloseSessionCommand(session_id=session.session_id)
+            command = CloseSessionCommand(session_id=session.session_id, request_id=_cmd.request_id)
             command.computer = session.computer_name
             await forward_command_to_peer(client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
             return
@@ -905,15 +915,28 @@ async def close_session(
     # terminal. It must fall through to terminate_session so closed_at actually gets
     # set; otherwise the row is hidden but never finalized and resurfaces from caches.
     if session.closed_at or session.lifecycle_status == "closed":
+        if has_pending_channel_cleanup(session):
+            await terminate_session(
+                session.session_id,
+                client,
+                reason="close_session_cleanup_replay",
+                session=session,
+            )
+            return
         logger.info("Session %s already terminal; nothing to close", session.session_id)
         return
 
-    await terminate_session(
-        session.session_id,
-        client,
-        reason="close_session",
-        session=session,
-    )
+    try:
+        await terminate_session(
+            session.session_id,
+            client,
+            reason="close_session",
+            session=session,
+        )
+    except Exception as error:
+        logger.error(_SESSION_CLOSE_FAILED_EVENT, session.session_id, error, exc_info=True)
+        await recover_failed_close(session.session_id)
+        raise
 
 
 async def end_session(
@@ -944,11 +967,7 @@ async def end_session(
     # the row is hidden but never finalized and resurfaces from cached snapshots.
     if session.closed_at or session.lifecycle_status == "closed":
         logger.info("Session %s already terminal; replaying session_closed", cmd.session_id)
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_CLOSED,
-            SessionLifecycleContext(session_id=session.session_id),
-            visibility=EventVisibility.CLUSTER,
-        )
+        await publish_session_source_change(session.session_id, RuntimeSessionChange.CLOSED)
         return {
             "status": "success",
             "message": f"Session {cmd.session_id} already closed; session_closed replayed",

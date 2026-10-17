@@ -26,13 +26,6 @@ from teleclaude.adapters.discord.session_launcher import (
 from teleclaude.config.machine import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import (
-    ProjectRefreshTrigger,
-    ProjectsChangedContext,
-    SessionLifecycleContext,
-    TeleClaudeEvents,
-)
 from teleclaude.core.help_desk_relay import answer_in_thread
 from teleclaude.core.inbound import (
     resolve_binding_key,
@@ -42,7 +35,6 @@ from teleclaude.core.models import (
     Session,
 )
 from teleclaude.core.session_status import is_session_terminal
-from teleclaude.events.envelope import EventVisibility
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -61,7 +53,7 @@ from teleclaude.core.identity import (
     session_person_role,
 )
 from teleclaude.core.origins import InputOrigin
-from teleclaude.types.commands import ProcessMessageCommand
+from teleclaude.types.commands import CloseSessionCommand, ProcessMessageCommand
 
 logger = get_logger(__name__)
 
@@ -169,7 +161,7 @@ class GatewayHandlersMixin:
 
         async def _holds_shared_provider_authority(self) -> bool: ...
 
-        async def _handle_projects_changed(self, _event: str, context: ProjectsChangedContext) -> None: ...
+        async def _handle_projects_changed(self, _event: str, context: object) -> None: ...
 
         def _request_desk_reconcile(self) -> None: ...
 
@@ -404,10 +396,7 @@ class GatewayHandlersMixin:
         self._infrastructure_provisioned = True
         self._request_desk_reconcile()
         if getattr(self, "_project_reconcile_pending", False):
-            await self._handle_projects_changed(
-                TeleClaudeEvents.PROJECTS_CHANGED,
-                ProjectsChangedContext(trigger=ProjectRefreshTrigger.REGISTRY_CHANGE),
-            )
+            await self._handle_projects_changed("startup-catchup", None)
 
     async def _post_project_forum_launchers(self) -> None:
         """Ensure launchers exist in every currently mapped project forum."""
@@ -582,7 +571,7 @@ class GatewayHandlersMixin:
     # =========================================================================
 
     async def _emit_close_for_thread(self, thread_id: int, *, trigger: str) -> None:
-        """Look up session by thread_id and emit SESSION_CLOSE_REQUESTED.
+        """Look up the thread session and invoke the runtime close command.
 
         Shared by both thread-delete and thread-archive handlers.
         """
@@ -621,11 +610,7 @@ class GatewayHandlersMixin:
             trigger,
             session.session_id,
         )
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_CLOSE_REQUESTED,
-            SessionLifecycleContext(session_id=session.session_id),
-            visibility=EventVisibility.CLUSTER,
-        )
+        await get_command_service().close_session(CloseSessionCommand(session_id=session.session_id))
 
     async def _handle_thread_delete(self, payload: object) -> None:
         """Handle a Discord thread being deleted externally."""

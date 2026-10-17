@@ -47,89 +47,37 @@ same contract. The existing input-delivery boundary owns occurrence identity
 
 ### Use cases
 
-#### UC-DPAC-1: Team text enters the continuing assistant
+#### UC-DPAC-1: A person can use their assistant through a private Team channel
 
 ```gherkin
-Given Discord has an established private Team channel for a registered person
-When that person sends text in the channel
-Then Discord hands its channel designation and verified identity to core conversation resolution
-And the assistant response returns to that Team channel
+Scenario Outline: Continue the conversation with <input>
+  Given a registered person has a designated Team assistant channel
+  When they send <input> through that channel
+  Then it reaches their continuing assistant conversation
+  And the response returns to that channel
+
+  Examples:
+    | input                 |
+    | text                  |
+    | audio without text    |
+    | an image without text |
+    | a file without text   |
 ```
 
 #### UC-DPAC-2: Attachment-only input carries the same designation
 
-```gherkin
-Scenario Outline: Team input through <modality>
-  Given a registered person has a designated Team assistant channel
-  When they send <modality> input with no text body
-  Then Discord supplies the same conversation designation as for text input
-  And the accepted input reaches the channel's continuing session
-  And its response returns to that channel
-
-  Examples:
-    | modality |
-    | audio    |
-    | image    |
-    | file     |
-```
-
 #### UC-DPAC-3: A forum post stays independently selected
-
-```gherkin
-Given a person has a Team assistant channel and an independent project-forum session
-When they post to the forum session
-Then Discord delivers to that independently selected session
-And it supplies no Team assistant designation for that post
-```
 
 #### UC-DPAC-4: Sender identity agrees with the channel association
 
-```gherkin
-Given a designated Team channel serves one registered person
-When an incoming message resolves to another person or no registered person
-Then the message does not enter the designated person's assistant
-And the mismatch is reported through the existing identity and routing refusal contract
-```
-
 #### UC-DPAC-5: Shared Team input reaches one resolver
 
-```gherkin
-Scenario Outline: shared Team input through <modality>
-  Given multiple computers are connected to the guild containing a Team assistant channel
-  And one live computer is the mesh master and runs Discord
-  When the channel receives <modality> input from its person
-  Then Discord passes it through shared conversation ownership
-  And exactly one accepted input reaches the master's continuing conversation
-  And non-master receivers start no competing session and send no independent assistant reply
-
-  Examples:
-    | modality |
-    | text     |
-    | audio    |
-    | image    |
-    | file     |
-```
-
-#### UC-DPAC-6: Combined attachment and text input is delivered once
+#### UC-DPAC-6: A person can send attachments with text in one Team message
 
 ```gherkin
-Scenario Outline: combined message at <state>
-  Given a designated Team assistant channel has <state>
-  When its person sends <attachments> with accompanying text
-  Then the channel is resolved once to its continuing conversation
-  And every accepted attachment reaches that conversation once
-  And accompanying text reaches it once across the delivered material
-  And attachment-derived content and accompanying text are both retained
-
-  Examples:
-    | state                  | attachments    |
-    | no session             | an image       |
-    | an open session        | an image       |
-    | a closed session       | an image       |
-    | no session             | multiple files |
-    | an open session        | multiple files |
-    | a closed session       | multiple files |
-    | no session             | audio          |
-    | an open session        | audio          |
-    | a closed session       | audio          |
+Scenario: Send attachments and text together
+  Given a person has a designated Team assistant channel
+  When they send one or more attachments with accompanying text
+  Then each accepted attachment and the text reach the same conversation once
+  And the conversation retains both the attachment-derived content and the text
 ```

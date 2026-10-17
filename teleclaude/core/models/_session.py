@@ -341,6 +341,7 @@ class SessionField(Enum):
     SUBJECT_OWNER = "subject_owner"
     LAST_MESSAGE_SENT = "last_message_sent"
     LAST_MESSAGE_SENT_AT = "last_message_sent_at"
+    LAST_INPUT_ORIGIN = "last_input_origin"
     LAST_PROJECTED_AT = "last_projected_at"
     LAST_PROJECTED_OUTPUT_DIGEST = "last_projected_output_digest"
     LAST_OUTPUT_RAW = "last_output_raw"

@@ -30,6 +30,8 @@ compaction. Creating one leaves the adapter-bound continuing conversation in
 place. Both kinds are eligible for memory extraction at closure.
 The person's next message, or their re-entry at the desk, revives the same
 session (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
+Adopting an existing session as that continuing conversation does not itself
+start idle maintenance, close the session, or trigger memory extraction.
 
 An eligible session closure requests readiness of its session-owned conversation
 mirror. Only after the mirror covers that closure does the memory capability
@@ -102,46 +104,27 @@ an observable reason. Memory writes already completed survive an interrupted ext
 
 ### Use cases
 
-#### UC-CC1:
+#### UC-CC1: A person returns to their continuing conversation after time away
 
 ```gherkin
-Given a human has an adapter-bound continuing conversation whose agent is idle
-And the conversation has received no input through its idle threshold
-When idle maintenance runs
-Then the agent's context is compacted through its native compaction mechanism
-And confirmed compaction completion immediately closes that runtime
-And the human receives no maintenance message
+Given a person's designated assistant conversation has been idle while they were away
+When they return and send a message
+Then the same conversation resumes with its prior context
+And they receive no maintenance message
 ```
 
 #### UC-CC2: A conversation that is still going on is not closed
 
 ```gherkin
-Given a conversation session that would otherwise be due for its idle close
-When its agent is still working, an escalation relay is active on it, or input reached it while it was being closed
-Then the session is not closed by that pass
-And the escalation, the agent's work and the new input continue undisturbed
+Given a person continues a designated conversation near its idle-close point
+When the agent is still working, an escalation is active, or their input arrives during closure
+Then their conversation remains available to continue
+And the work, escalation, and accepted input continue undisturbed
 ```
 
 #### UC-CC3: A closed conversation is read once by its memory agent
 
-```gherkin
-Given an eligible human conversation has closed
-When its complete conversational mirror is confirmed ready for that closure
-Then the memory worker receives its unprocessed conversational stretch
-And successful handling advances progress for that conversation
-And a repeated closure notification does not repeat completed extraction
-```
-
 #### UC-CC4: Memories about a person stay current, not accumulated
-
-```gherkin
-Given current memories about a person, and a newly read stretch of conversation with them
-When the memory agent keeps their memories
-Then a new fact becomes a new memory
-And a changed fact updates the memory that held it
-And a fact that no longer holds retires its memory
-And no near-duplicate of an existing memory is added
-```
 
 #### UC-CC5: A revived session starts with the current memories about its person
 
@@ -172,29 +155,9 @@ And a session serving any other identity does not
 
 #### UC-CC8: Business items from a desk conversation are collected, not used
 
-```gherkin
-Given a desk conversation that showed something about the business — a request, a complaint, recurring confusion, sentiment, a mention of an alternative
-When its memory agent reads it
-Then the item is collected for the home that owns the desk
-And it never appears in any session's startup context
-```
-
 #### UC-CC9: Only conversation sessions are closed for being idle
 
-```gherkin
-Given a session that is not a conversation session, such as an agent's worker, an orchestrator, or a memory agent
-When it has had no input for 30 minutes or longer
-Then the idle cycle neither compacts nor closes it
-```
-
 #### UC-CC10: A desk agent keeps native commands unavailable while serving its visitor
-
-```gherkin
-Given a help-desk agent serving a human visitor
-When the visitor's conversation starts or revives
-Then native slash-command execution is unavailable to that desk agent
-And bundled skills remain unavailable
-```
 
 #### UC-CC11: A returning person abandons idle maintenance
 
@@ -209,13 +172,6 @@ And maintenance waits for the next idle period
 
 #### UC-CC12: An abandoned attempt cannot affect the revived conversation
 
-```gherkin
-Given a human person's conversation resumed after idle maintenance was abandoned
-When startup or completion from the abandoned attempt arrives later
-Then that attempt neither opens the resumed agent's input readiness nor closes the conversation
-And the person's conversation continues normally
-```
-
 #### UC-CC13:
 
 ```gherkin
@@ -227,58 +183,15 @@ And its eventual close receives the same mirror-based extraction as the person's
 
 #### UC-CC14:
 
-```gherkin
-Given a human returns to a conversation while its closed stretch awaits memory extraction
-When the conversation resumes and produces more messages
-Then the pending extraction still handles its captured stretch
-And completing it does not skip messages from the resumed conversation
-```
-
 #### UC-CC15:
-
-```gherkin
-Given a human closed an eligible conversation immediately after its last exchange
-When its mirror has not yet captured that exchange
-Then extraction waits for the mirror's confirmed coverage
-And it starts when coverage is ready without requiring another human message
-```
 
 #### UC-CC16:
 
-```gherkin
-Given an eligible human conversation closes with an already-current mirror
-When closure post-processing observes that coverage
-Then extraction can proceed without a new conversation-text change
-And successful handling with nothing new to extract leaves progress complete
-```
-
 #### UC-CC17: A member's designated channel uses idle maintenance
-
-```gherkin
-Given a human has a designated assistant channel on a UI adapter
-And its agent is idle with no human input through the idle threshold
-When idle maintenance runs
-Then the conversation follows the native compaction and immediate closure contract
-And mirror readiness releases its eligible memory extraction
-```
 
 #### UC-CC18: Adoption makes an existing channel conversation continuing
 
-```gherkin
-Given an existing human assistant session has been verified and adopted for its designated channel
-When that conversation becomes due for idle maintenance
-Then it follows the same continuing-conversation lifecycle as a newly created channel conversation
-And adoption itself performs no compaction, closure or memory extraction
-```
-
 #### UC-CC19: Forum and explicit conversations retain ordinary closure
-
-```gherkin
-Given a person has a forum conversation or an explicitly started PA session
-When input arrives through an adapter or that session reaches the idle threshold
-Then receipt of adapter input alone does not make it a designated continuing conversation
-And it retains its ordinary close lifecycle and existing extraction eligibility
-```
 
 ### Cross-context references
 

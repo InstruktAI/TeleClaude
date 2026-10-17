@@ -59,87 +59,82 @@ runner run-state, and project config.
 
 ### Use cases
 
-#### UC-JOS-1: List distinguishes local, subscribed, and available jobs
+#### UC-JOS-1: An operator finds the jobs a project can use
 
-```
-Given a project with a local job, a published job it subscribes to, and a published job it does not subscribe to
-When an operator or agent lists jobs at the CLI
-Then all three jobs appear, each named by its declared name
-And each is marked with its relationship to the project — local, subscribed, or available
+```gherkin
+Given the project has a local job, a published job it subscribes to, and a published job it does not subscribe to
+When the operator asks their agent to list the project's jobs
+Then all three jobs appear under their declared names
+And each is identified as local, subscribed, or available
 ```
 
-#### UC-JOS-2: Status shows last run, last outcome, and next due
+#### UC-JOS-2: An operator checks how a job is doing
 
-```
-Given a job that has run before and carries a schedule
-When an operator or agent requests job status at the CLI
-Then the job shows the last run time and the last run's outcome read from the runner's run state
-And it shows the next due time derived from the job's schedule
+```gherkin
+Scenario: A job that has run shows its recent outcome and next expected run
+  Given a job has run before and has a schedule
+  When the operator asks their agent for that job's status
+  Then the operator sees its last run, its outcome, and when it is next expected
+
+Scenario: A job that has never run still shows when it is next expected
+  Given a scheduled job has never run
+  When the operator asks their agent for that job's status
+  Then the operator sees no last run or outcome
+  And still sees when the first run is expected
+
+Scenario: A job run on subscriber schedules shows the earliest next run
+  Given two enabled subscriber schedules produce different next-run times
+  When the operator asks their agent for the published job's status
+  Then the earlier subscriber time is shown
+  And no next run is shown when there are no enabled subscribers
 ```
 
 #### UC-JOS-3: Status of a never-run job shows next due without last run
 
-```
-Given a configured job that has never run
-When an operator or agent requests job status at the CLI
-Then the job shows no last run and no last outcome
-And it still shows a next due time anchored on when the runner first saw the job
+#### UC-JOS-4: An operator subscribes the project to a published job
+
+```gherkin
+Scenario: Subscribe to a published job
+  Given a published job the project does not subscribe to
+  When the operator asks their agent to subscribe the project to it
+  Then the job appears as subscribed on the next list
+
+Scenario: A local or unknown job cannot be subscribed
+  Given a local job or an unknown job name
+  When the operator asks their agent to subscribe the project to it
+  Then the request is refused naming the job
+  And no subscription is created
 ```
 
-#### UC-JOS-4: Enabling a published job subscribes the project to it
+#### UC-JOS-5: An operator unsubscribes the project from a published job
 
-```
-Given a published job the project does not subscribe to
-When an operator or agent enables the job at the CLI
-Then the project's own jobs carry an active subscribing entry carrying that job's name
-And the job appears as subscribed on the next list
-```
+```gherkin
+Scenario: Unsubscribe from a published job
+  Given a published job the project subscribes to
+  When the operator asks their agent to unsubscribe the project from it
+  Then the job appears as available rather than subscribed on the next list
 
-#### UC-JOS-5: Disabling a published job unsubscribes the project from it
-
-```
-Given a published job the project subscribes to
-When an operator or agent disables the job at the CLI
-Then the project's subscribing entry for that job's name is deactivated
-And the job appears as available rather than subscribed on the next list
+Scenario: A job the project does not subscribe to cannot be unsubscribed
+  Given a local or unknown job, or a published job with no project subscription
+  When the operator asks their agent to unsubscribe the project from it
+  Then the request is refused naming the condition
+  And no subscription is removed
 ```
 
 #### UC-JOS-6: Subscribing to a job that is not published is rejected without a write
 
-```
-Given a job that is not published — a local job or an unknown name
-When an operator or agent tries to enable or disable it at the CLI
-Then the command fails naming the job
-And the project's configuration is left unchanged
-```
+#### UC-JOS-7: An operator runs a job on demand
 
-#### UC-JOS-7: Run a job on demand
-
-```
+```gherkin
 Given a job in the invoking project's effective job set
-When an operator or agent runs the job on demand at the CLI
-Then the job is dispatched through the existing run path for the invoking project only
+When the operator asks their agent to run it on demand
+Then the job is accepted for that project only
 And the operator is told the run was accepted
 ```
 
 #### UC-JOS-8: Disabling a job the project never subscribed to writes nothing
 
-```
-Given a published job the project has no subscribing entry for
-When an operator or agent disables the job at the CLI
-Then the command reports that the project does not subscribe to it
-And the project's configuration is left unchanged
-```
-
 #### UC-JOS-9: Status of a subscriber-scheduled job shows its earliest subscriber due
-
-```
-Given a job the runner runs on its subscribers' schedules
-And two enabled person subscriptions to it with different `when` schedules
-When an operator or agent requests job status at the CLI
-Then the job shows as next due the earlier of the two subscribers' next occurrences
-And a job with no enabled subscriber shows no next due
-```
 
 ## Known caveats
 

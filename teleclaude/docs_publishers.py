@@ -12,7 +12,7 @@ from typing import NamedTuple
 
 from teleclaude.config.loader import load_declared_project_config
 from teleclaude.domains import publishes_for_root
-from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_ROOTS, PEOPLE_DIR, REPO_ROOT
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, GLOBAL_DOCS_ROOTS, PEOPLE_DIR, REPO_ROOT
 from teleclaude.project_manifest import load_roots
 from teleclaude.slug import derive_project_slug, normalize_slug
 from teleclaude.snippet_validation import is_generated_global_doc_artifact, tier_root_kind
@@ -205,8 +205,10 @@ def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
             continue
     if relative_path is None:
         return candidate
-    if not relative_path.parts or is_generated_global_doc_artifact(relative_path):
+    if not relative_path.parts:
         return candidate
+    if is_generated_global_doc_artifact(relative_path):
+        return GLOBAL_DOCS_DIR / relative_path
     root_name, *tail = relative_path.parts
     if root_name in (COMPANIES_ROOT.name, PEOPLE_DIR.name):
         if tier_root_kind(project_root) is not None and tail and tail[0] == project_root.name:

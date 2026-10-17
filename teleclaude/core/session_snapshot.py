@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import time
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -27,6 +28,37 @@ _LOOKUP_TIMEOUT_SECONDS = 10
 _LOOKUP_RETRY_SECONDS = 60
 _LOOKUP_CACHE_SIZE = 256
 _LOOKUP_UNAVAILABLE_EVENT = "session_github_issue_lookup_unavailable"
+
+
+@dataclass(frozen=True)
+class SessionIssueAssignment:
+    """Verified assignment identity used to decide whether enrichment still applies."""
+
+    session_id: str
+    command: str
+    project_path: str
+    selector: str
+    subject: str | None
+
+    def applies_to(self, session: Session) -> bool:
+        """Reject enrichment resolved for a different source row."""
+        return (
+            session.session_id == self.session_id
+            and session.command == self.command
+            and session.project_path == self.project_path
+        )
+
+
+@dataclass(frozen=True)
+class SessionIssueMetadata:
+    """Optional issue metadata resolved for one assignment."""
+
+    assignment: SessionIssueAssignment
+    reference: GitHubIssueReference | None
+
+    def applies_to(self, session: Session) -> bool:
+        """Reject enrichment resolved for a different source row."""
+        return self.assignment.applies_to(session)
 
 
 @lru_cache(maxsize=_LOOKUP_CACHE_SIZE)
@@ -55,23 +87,56 @@ def _issue_lookup_attempt(project_path: str, selector: str, _retry_period: int) 
         return None
 
 
-async def project_session_snapshot(runtime_db: Db, session: Session, *, computer: str) -> SessionSnapshot:
-    """Build one snapshot with issue identity resolved on the session's owning computer."""
-    snapshot = SessionSnapshot.from_db_session(session, computer=computer)
+async def resolve_session_issue_assignment(runtime_db: Db, session: Session) -> SessionIssueAssignment | None:
+    """Read the applicable issue assignment without waiting on external metadata."""
     if session.command is None or session.project_path is None:
-        return snapshot
+        return None
     handover = await runtime_db.get_startup_handover(session.session_id)
     invocation = handover.intent.invocation if handover is not None else None
     if invocation is None:
-        return snapshot
+        return None
     parameters = dict(invocation.parameters)
     selector = parameters.get(WorkSubjectParameter.ISSUE)
     if selector is None:
-        return snapshot
-    reference = await asyncio.to_thread(
-        _issue_lookup_attempt, session.project_path, selector, int(time.monotonic() / _LOOKUP_RETRY_SECONDS)
+        return None
+    subject = parameters.get(WorkSubjectParameter.BRANCH) or parameters.get(WorkSubjectParameter.SLUG)
+    return SessionIssueAssignment(
+        session_id=session.session_id,
+        command=session.command,
+        project_path=session.project_path,
+        selector=selector,
+        subject=subject,
     )
-    if reference is not None:
-        subject = parameters.get(WorkSubjectParameter.BRANCH) or parameters.get(WorkSubjectParameter.SLUG)
-        snapshot.github_issue = reference.model_copy(update={_SUBJECT_FIELD: subject})
+
+
+async def resolve_session_issue_metadata(assignment: SessionIssueAssignment) -> SessionIssueMetadata:
+    """Resolve optional external issue metadata for an already-read assignment."""
+    reference = await asyncio.to_thread(
+        _issue_lookup_attempt,
+        assignment.project_path,
+        assignment.selector,
+        int(time.monotonic() / _LOOKUP_RETRY_SECONDS),
+    )
+    return SessionIssueMetadata(assignment=assignment, reference=reference)
+
+
+def project_session_snapshot_from_source(
+    session: Session,
+    *,
+    computer: str,
+    issue_metadata: SessionIssueMetadata | None = None,
+) -> SessionSnapshot:
+    """Project a current source row with optional metadata already resolved for it."""
+    snapshot = SessionSnapshot.from_db_session(session, computer=computer)
+    if issue_metadata is not None and issue_metadata.applies_to(session) and issue_metadata.reference is not None:
+        snapshot.github_issue = issue_metadata.reference.model_copy(
+            update={_SUBJECT_FIELD: issue_metadata.assignment.subject}
+        )
     return snapshot
+
+
+async def project_session_snapshot(runtime_db: Db, session: Session, *, computer: str) -> SessionSnapshot:
+    """Build one snapshot with issue identity resolved on the session's owning computer."""
+    assignment = await resolve_session_issue_assignment(runtime_db, session)
+    issue_metadata = await resolve_session_issue_metadata(assignment) if assignment is not None else None
+    return project_session_snapshot_from_source(session, computer=computer, issue_metadata=issue_metadata)

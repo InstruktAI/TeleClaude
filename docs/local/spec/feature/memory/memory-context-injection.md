@@ -22,42 +22,14 @@ existing context behavior.
 
 ### Use cases
 
-#### Session-start injection
+#### UC-MCI1: A person starts work with recent memories in context
 
-```
-Given the session-start consumer is preparing context for a new agent session
-And the resolved project is <project_name>
-And the resolved identity scope is <identity_key> (or absent)
-When it requests the memory context block from the memory service
-Then the memory service returns either a rendered Markdown string or the empty string
-And the empty string is returned when the project has no observations or any error occurs during read or render
-And the session proceeds with whatever the service returned
-```
-
-#### Context generation
-
-```
-Given the memory service receives a context request for <project> (optionally scoped by identity)
-When it builds the response
-Then it fetches up to the most-recent 50 current observations for that project, ordered newest-first
-And if no observations are returned, it returns the empty string
-And otherwise it renders the observation timeline as Markdown and returns the resulting string
-And any error during read or render results in the empty string being returned
-```
-
-#### Rendering shape
-
-```
-Given the renderer receives a non-empty observation timeline
-When it produces the Markdown
-Then the output begins with `# Memory Context`
-And includes a `## Index (<N> memories, newest first)` section with a four-column table `| # | Type | Title | When |` where `<N>` is the observation count
-And the index caps at MEMORY_INDEX_CAP entries (default 100); when the total exceeds the cap, the heading reads `## Index (<cap> of <total> memories, newest first)` and only the newest <cap> rows appear in the table
-And the `When` column uses relative-time formatting: `just now` (<60s), `<m>m ago` (<1h), `<h>h ago` (<24h), `<d>d ago` (≥24h)
-And below the index a second section emits one `### <i>. <title>` detail block per observation containing the `**Type:**` line and the `> <narrative>` quote
-And that section's heading is `## Top <MEMORY_EXPANDED_TOP_N> — Expanded` (default `Top 10 — Expanded`) when the indexed count meets or exceeds MEMORY_EXPANDED_TOP_N, otherwise `## Expanded`
-And titles are truncated to 60 characters in the table cells
-And missing titles render as `Untitled`
+```gherkin
+Scenario: Begin work with relevant recent memories
+  Given a person starts a new agent session for a project
+  When the session begins
+  Then its context includes recent memory observations for that project and the identity it acts for, when available
+  And an empty or failed memory lookup does not prevent the session from starting
 ```
 
 ### Cross-context references

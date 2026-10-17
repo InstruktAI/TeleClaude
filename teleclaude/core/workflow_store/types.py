@@ -9,6 +9,7 @@ from typing import Final, NamedTuple, NewType, Protocol, TypedDict
 
 from teleclaude.constants import TodoStatus
 from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import CommitReviewVerdict
 
 WorkItemId = NewType("WorkItemId", str)
 """Canonical workflow identity: the stable todo slug."""
@@ -261,6 +262,75 @@ class DeliveryRecord:
     item_id: WorkItemId
     root_sha: str
     delivered_at: str
+
+
+@dataclass(frozen=True)
+class CommitReviewRecord:
+    """Immutable repository-local evidence for one reviewed commit."""
+
+    sha: str
+    verdict: CommitReviewVerdict
+    reviewer_session_id: str
+    producer_session_ids: tuple[str, ...] | None
+    stamped_at: str
+    reason: str
+    migration_source: str | None = None
+
+    @property
+    def independent(self) -> bool:
+        """Whether verified producer provenance excludes the reviewer."""
+        return bool(self.producer_session_ids) and self.reviewer_session_id not in self.producer_session_ids
+
+
+@dataclass(frozen=True)
+class ReviewedDocumentationSource:
+    """A carrier path proven to match an independently reviewed source commit."""
+
+    owner_slug: str
+    source_sha: str
+    relative_path: str
+    blob_id: str
+    carrier_path: str
+    carrier_blob_id: str
+
+
+@dataclass(frozen=True)
+class DocumentationAdmission:
+    """Pinned first-child parent identity and its reviewed pending source set."""
+
+    parent_slug: str | None
+    parent_id: str | None
+    parent_status: TodoStatus | None
+    sources: tuple[ReviewedDocumentationSource, ...]
+    carrier_path_blobs: tuple[tuple[str, str], ...]
+    source_commit_by_path: tuple[tuple[str, str | None], ...]
+    evidence_snapshot: DocumentationEvidenceSnapshot | None
+
+
+@dataclass(frozen=True)
+class DocumentationEvidenceSnapshot:
+    """Exact canonical evidence set checked before a lifecycle mutation."""
+
+    main_revision: str
+    checked_slugs: tuple[str, ...]
+    carrier_blobs: tuple[tuple[str, str, str], ...]
+    sources: tuple[ReviewedDocumentationSource, ...]
+    review_records: tuple[CommitReviewRecord, ...]
+    transfer_records: tuple[DocumentationTransferRecord, ...]
+
+
+@dataclass(frozen=True)
+class DocumentationTransferRecord:
+    """Exact source-to-child continuity produced by a successful marker split."""
+
+    source_slug: str
+    target_slug: str
+    parent_id: str
+    source_sha: str | None
+    source_path_blobs: tuple[tuple[str, str], ...]
+    target_path_blobs: tuple[tuple[str, str, str, str, str], ...]
+    transition_id: str
+    reconciliation_commit: str
 
 
 @dataclass(frozen=True)

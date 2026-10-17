@@ -42,32 +42,13 @@ env_allow_list:
 
 ### Use cases
 
-```
-Given the global teleclaude.yml has env_allow_list
-And a project teleclaude.yml may also have env_allow_list
-When the agent runtime starts a new agent session for that project
-Then only names listed in the merged env_allow_list are eligible for pass-through from the runtime process environment
-And global entries are considered before project entries
-And each listed value is read from the runtime process environment
-And missing variables are skipped
-And variables not listed in the merged env_allow_list are not passed through
-And the regular project .env is not treated as an implicit allow list
-And authorized values are delivered through the agent runtime's private per-session env file
-```
+#### UC-CFG-ENV-1: A configuration owner authorizes a credential for a trusted agent
 
-```
-Given the user's login shell declares the XDG base directories
-When the agent runtime starts a new agent session
-Then the session's inherited environment carries those directories
-And the runtime process environment is not required to hold them
-```
-
-```
-Given an agent skill needs a secret or account credential
-When the project owner trusts the agent with that access
-Then the owner adds the variable name to env_allow_list
-And ensures the runtime process environment contains the value
-And starts or restarts the agent session
+```gherkin
+Given a configuration owner trusts an agent with a named credential
+When the owner adds that variable name to the global or project env_allow_list they control
+Then that allow list authorizes the named variable
+And no other variable name is authorized by that change
 ```
 
 ### Environment values outside the allow list

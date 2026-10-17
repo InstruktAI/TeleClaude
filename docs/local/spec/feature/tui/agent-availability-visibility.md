@@ -21,46 +21,35 @@ administrative command surface, never by interacting with the TUI pills.
 
 ### Use cases
 
-#### UC-TAAV-1: A single-agent status change leaves other agents' rendered status intact
+#### UC-TAAV-1: An operator can see current agent availability in the TUI
 
-```
-Given a running TUI whose bootstrap loaded availability for all configured agents
-When a live availability event arrives for one agent
-Then that agent's rendered status reflects the event
-And every other agent's rendered status is unchanged
-And no other agent renders the unknown marker
+```gherkin
+Scenario: See one agent's availability change
+  Given an operator sees the availability of several configured agents
+  When one agent's availability changes
+  Then that agent is shown with its new availability
+  And the other agents retain their last known availability
+
+Scenario: Keep availability while other information refreshes
+  Given an operator sees known availability for every configured agent
+  When unrelated information in the TUI refreshes
+  Then every displayed agent availability remains unchanged
+
+Scenario: Distinguish unknown availability from available
+  Given an operator opens the TUI before availability has been learned for some agents
+  When the configured agents are displayed
+  Then each agent without known availability is shown as unknown, not available
+
+Scenario: See current availability after reconnecting
+  Given the operator's TUI was disconnected
+  When it reconnects
+  Then the current availability of every configured agent appears without a manual refresh
 ```
 
 #### UC-TAAV-2: Agent availability pills are display-only
 
-```
-Given a running TUI that renders agent availability pills
-When an operator clicks an availability pill
-Then no agent availability state is changed
-And no agent-status mutation request is sent
-```
-
 #### UC-TAAV-3: An unrelated refresh preserves known agent availability
-
-```
-Given a human operator sees known availability for every configured agent in a running TUI
-When the TUI refreshes information unrelated to agent availability
-Then every displayed agent availability remains unchanged
-```
 
 #### UC-TAAV-4: Availability not yet learned is displayed as unknown
 
-```
-Given a human operator opens the TUI before agent availability has been learned
-When the TUI displays the configured agents
-Then each agent without known availability renders the unknown marker
-And no agent without known availability is presented as available
-```
-
 #### UC-TAAV-5: Reconnection restores authoritative agent availability
-
-```
-Given a human operator has a running TUI whose daemon connection was interrupted
-When the TUI reconnects to the daemon
-Then the current availability of every configured agent appears without a manual refresh
-```

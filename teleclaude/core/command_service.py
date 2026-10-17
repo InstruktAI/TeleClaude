@@ -67,14 +67,11 @@ if TYPE_CHECKING:
 
 from teleclaude.core.adapter_errors import AdapterError
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import VoiceFocusSetContext
 from teleclaude.core.help_desk_relay import EscalationRequest, escalate
 from teleclaude.core.inbound_queue import init_inbound_queue_manager
 from teleclaude.core.models import ContentFormat, JsonDict, MessageMetadata
 from teleclaude.core.session_links import close_link_for_member
 from teleclaude.core.session_listeners import unregister_listener
-from teleclaude.events.envelope import EventVisibility
 
 logger = get_logger(__name__)
 
@@ -98,6 +95,7 @@ class UnsubscribeSessionPayload(TypedDict):
 
 StartPollingFunc = Callable[[str, str], Awaitable[None]]
 ExecuteTerminalCommandFunc = Callable[[str, str, str | None, bool], Awaitable[bool]]
+VoiceFocusHandler = Callable[[str], Awaitable[None]]
 QueueBackgroundTaskFunc = Callable[[Awaitable[object], str], None]
 BootstrapSessionFunc = Callable[[str, SessionLaunchIntent | None], Awaitable[None]]
 
@@ -145,6 +143,7 @@ class CommandService:
         self._execute_terminal_command = execute_terminal_command
         self._queue_background_task = queue_background_task
         self._bootstrap_session = bootstrap_session
+        self._voice_focus_handler: VoiceFocusHandler | None = None
 
         # Initialize the inbound queue manager singleton with delivery wired to this service's deps.
         init_inbound_queue_manager(
@@ -152,6 +151,10 @@ class CommandService:
             delivery_exhausted_callback=functools.partial(notify_delivery_exhausted, client=client),
             force=True,
         )
+
+    def set_voice_focus_handler(self, handler: VoiceFocusHandler | None) -> None:
+        """Bind or release the local adapter capability for explicit voice focus."""
+        self._voice_focus_handler = handler
 
     @_admitted
     async def create_session(self, cmd: CreateSessionCommand) -> dict[str, str]:
@@ -247,16 +250,12 @@ class CommandService:
         current reply immediately). Core imports no adapter module.
         """
         record = await voice_focus.set_explicit(cmd.person_slug, cmd.session_id)
-        event_bus.emit(
-            "voice_focus_set",
-            VoiceFocusSetContext(
-                focus_id=record.focus_id,
-                session_id=cmd.session_id,
-                basis=record.basis.value,
-                set_at=record.set_at.isoformat(),
-            ),
-            visibility=EventVisibility.LOCAL,
-        )
+        handler = self._voice_focus_handler
+        if handler is not None:
+            try:
+                await handler(cmd.session_id)
+            except Exception:
+                logger.exception("Voice focus continuation failed after persisting focus_id=%s", record.focus_id)
         return {
             "focus_id": record.focus_id,
             "session_id": record.focused_session_id,

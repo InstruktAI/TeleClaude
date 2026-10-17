@@ -22,10 +22,10 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.events.db import EventDB
 from teleclaude.events.envelope import EventHomeKind, EventHomeRef, ReceivedEvent
-from teleclaude.events.processor import EventProcessor
+from teleclaude.events.processor import STREAM_NAME, EventProcessor
 from teleclaude.events.references import ReferenceKind
 from teleclaude.events.type_pattern import TypePattern
-from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, StreamEvent
+from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, EntryCodec, StreamEvent
 
 if TYPE_CHECKING:
     from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
@@ -45,6 +45,16 @@ _DUPLICATE_NAMES_ERROR = "consumer names must be unique on a computer; declared 
 _NAME_SEPARATOR = ", "
 _CONSUMER_STARTED_EVENT = "Event consumer starting"
 _CONSUMER_TASK_TEMPLATE = "event-consumer-{name}"
+
+
+def consumer_group_name(name: str, computer: str) -> str:
+    """Return the stable Redis group for a named consumer on one computer."""
+    return _GROUP_TEMPLATE.format(name=name, computer=computer)
+
+
+def consumer_reader_name(name: str, computer: str) -> str:
+    """Return the stable reader identity that owns ordered pending recovery."""
+    return _READER_TEMPLATE.format(name=name, computer=computer)
 
 
 @dataclass(frozen=True)
@@ -122,6 +132,8 @@ class ConsumerRuntime:
         redis_client: Any,
         db: EventDB,
         computer: str,
+        stream: str = STREAM_NAME,
+        codec: EntryCodec[StreamEvent] = PLATFORM_ENTRY_CODEC,
     ) -> None:
         names = [consumer.name for consumer in consumers]
         repeated = sorted({name for name in names if names.count(name) > 1})
@@ -133,15 +145,20 @@ class ConsumerRuntime:
                 EventProcessor(
                     redis_client,
                     _ConsumerPipeline(consumer, db, computer),
-                    codec=PLATFORM_ENTRY_CODEC,
+                    codec=codec,
                     declared_name=consumer.name,
                     ordered=True,
-                    group=_GROUP_TEMPLATE.format(name=consumer.name, computer=computer),
-                    consumer_name=_READER_TEMPLATE.format(name=consumer.name, computer=computer),
+                    stream=stream,
+                    group=consumer_group_name(consumer.name, computer),
+                    consumer_name=consumer_reader_name(consumer.name, computer),
                 ),
             )
             for consumer in consumers
         ]
+
+    async def prepare_group_positions(self) -> None:
+        """Prepare every stable reader group before any consumer task can execute handlers."""
+        await asyncio.gather(*(processor.prepare_group_position() for _name, processor in self._processors))
 
     def supervise(self, registry: TaskRegistry, shutdown_event: asyncio.Event) -> tuple[SupervisedTask, ...]:
         """Run every consumer until shutdown as its own supervised task: one that ends is replaced alone."""

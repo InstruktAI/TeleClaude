@@ -65,11 +65,12 @@ prompt is not the live composer.
 Headless adoption uses lower-level pane primitives for shell and runtime launch;
 its triggering conversational message uses the shared input-delivery surface.
 Every post-launch text delivery observes composer occupancy, including the
-initial message and an adoption's triggering message. UC-SID10 and UC-SID11
-govern draft preservation and non-composer screens. A startup signal does not
-authorize Enter on an occupied composer or an interaction with a menu. Genuine
-runtime suggestion chrome is not authored input; its styling must not erase
-ordinary colored human text during occupancy observation.
+initial message and an adoption's triggering message. This protects the
+person's existing draft and prevents injection into a non-composer screen. A
+startup signal does not authorize Enter on an occupied composer or an
+interaction with a menu. Genuine runtime suggestion chrome is not authored
+input; its styling must not erase ordinary colored human text during occupancy
+observation.
 
 When that observation identifies no composer because the agent shows another
 screen, nothing is pasted, typed, or submitted into that screen, whatever the
@@ -100,7 +101,10 @@ composer.
 
 Accepted messages retain their original occurrence and ordering. A readiness
 wait does not authorize a duplicate resend, a new session, or a synthetic
-lifecycle transition. Recovery follows UC-SID6.
+lifecycle transition. After daemon restart, recovery reconciles the durable
+accepted occurrence against the native transcript and composer state rather
+than pasting blindly; an unresolved delivery remains visible and held rather
+than guessed, dropped, or reordered.
 
 ### Returning input during idle maintenance
 
@@ -173,109 +177,56 @@ conversation turn in either form, and the projection of a correlated turn shows
 the accepted text
 (`local/projects/teleclaude/design/architecture/conversation-delivery`).
 
+### Target validation and delivery outcomes
+
+A target that does not exist, is closed or closing, or is not accessible is
+refused before host-pane interaction. Raw-key and direct-send failures return a
+caller-visible failure; temporary paste buffers are cleaned on a best-effort
+basis, and these direct operations are not retried here. Queue-backed input is
+not marked delivered until its accepted occurrence is bound to the native
+transcript. If a session-originated send exhausts its delivery window, its caller
+receives the target and failure outcome while the target remains available for
+inspection or recovery.
+
+### Raw-key commands
+
+Raw-key commands accept named special keys and an optional repeat count for the
+keys that support repetition. Host-pane key encoding remains with
+`local/projects/teleclaude/spec/feature/agent_runtime/tmux-pane-orchestration`;
+raw keys do not use the structured-message composer path.
+
+`enter` submits; `up`, `down`, `left`, and `right` send arrows; `tab`, `btab`,
+and `bspace` send Tab, Backtab, and Backspace. Repeat counts apply to arrows,
+Backtab, and Backspace. SIGINT and SIGTERM reach the pane as Ctrl-C and Ctrl-\;
+SIGKILL keeps the host-pane owner's foreground-child behavior.
+
 ### Use cases
 
 #### Structured message — happy path
 
 ```gherkin
-Given an authenticated agent or human caller sends text to an accessible open session
-When the platform accepts the message
-Then it preserves the caller's structural authorship and durable input occurrence
-And a session-originated message identifies its actual sending session
-And a human's direct input remains human-authored
-When the target agent's input-readiness contract is satisfied
-Then its empty composer receives one paste and submission
-And its occupied composer preserves the existing text and appends two newlines followed by an accepted message that is not conversation text, without submission
-And accepted conversation text waits for an empty composer instead of joining the existing text
-And its non-composer or ambiguous surface receives no input
-And these rules also govern the conversational message that triggered adoption of a headless agent
-And a session running no agent uses its ordinary terminal-input path
+Scenario: A person sends input to an accessible session through their assistant
+  Given a person asks their assistant to send a message to an accessible open session
+  When the receiving agent is ready for input
+  Then it receives the accepted message once
 ```
 
 #### Raw keys — happy path
 
-```
-Given an authenticated caller sends a key command to a session with a key name and optional repeat count
-And the target session exists and is accessible to the caller
-When the agent_runtime service handles the request
-Then it constructs a "keys" command via the command mapper carrying the session id, key name, and repeat count
-And dispatches through the command service
-And the host-pane orchestration layer translates the key name to the host pane's native key notation (e.g., "enter" → submit, "up"/"down"/"left"/"right" → arrows, "tab"/"btab" → tab/back-tab, "bspace" → backspace)
-And the repeat count is passed to the host-pane layer for repeatable keys (arrows, back-tab, backspace) when supplied
-And termination signals route through the host-pane signal primitives (SIGINT, SIGTERM via key commands; SIGKILL by signaling the pane's foreground child directly)
-And the response reports success
-```
-
-#### Target session missing or closed
-
-```
-Given the caller sends a message to a session this computer owns, or names no owning computer
-And the session does not resolve OR has a closed-at marker OR has lifecycle status in {closed, closing}
-When the target-session validation runs
-Then the request is refused with "Session {id} not found" or "Session {id} is closed"
-And no host-pane interaction is attempted
-```
-
-#### Delivery failure
-
-```
-Given the target session is open but the underlying host pane has died (pane gone, server crash, etc.)
-When the raw key-injection pipeline executes its load-buffer → paste-with-bracket → submit sequence
-And any raw-pipeline step fails OR exceeds the quick subprocess timeout
-Then the matching error is logged with a structured reason naming the failing step
-And the temporary host-pane paste buffer is best-effort cleaned; cleanup failures are logged but never override the operation result
-And the key-injection primitive returns failure
-And the upstream send-message path logs the failure and raises a server-side error to the caller
-And no retry or backoff is applied at this layer
-```
-
-```
-Given the target session has an active agent
-When the host pane cannot be captured for the pre-delivery observation
-Or the selected host-pane paste or paste-and-submit primitive fails
-Then the prompt-state delivery routine returns failure
-And the upstream send-message path logs the failure and raises a server-side error to the caller
-And the message is not marked delivered by queue workers
+```gherkin
+Scenario: An operator sends a key to an accessible session
+  Given an operator needs to send a special key to an agent session
+  When they send a supported key with an optional repeat count
+  Then the session receives that key and reports whether delivery succeeded
 ```
 
 #### Direct-link conflict (work-mode send blocked)
 
-```
-Given the caller already holds an active direct link with the target session
-And the caller sends a plain (non-direct) message
-When the direct-link conflict guard runs
-Then the agent_runtime service responds with an error identifying the active link and message: "A direct link is already active with this peer..."
-And no message is delivered to the agent
-```
-
-The direct-link creation / peer fan-out / close-link flows are documented in their own spec; this spec only notes the work-send conflict response.
+The direct-conversation-links owner defines the plain-send refusal while a link is active; this surface reports that refusal without delivering the message.
 
 #### UC-SID1 — A session-originated send identifies its sender
 
-```
-Given an authenticated caller sends a plain (non-direct) message that carries a caller session id (the send is session-originated)
-When the origin-wrapping step runs
-Then a caller whose session runs an agent has its message prepended with an identity header naming that agent as the author, qualified by the caller's job role when one exists, with the caller's session and computer
-And a caller whose session runs no agent has its message prepended with an identity header naming its machine-role label and session
-And the header is composed from the caller's own session record on the computer that received the call, the carried caller session being taken as given
-And no fabricated role label, and no human identity, is ever substituted to force a header
-And every composed header additionally carries the send-moment occurrence time, truncated to the minute in UTC
-And that occurrence time is rendered once into the opening delimiter, with the paired closing derived from it
-And the rendered identity matches what every other surface resolves for the same caller
-And in no branch is a session-originated message delivered as human-looking typed input
-```
-
 #### UC-SID9 — Every injected text enters its typed acceptance surface
-
-```gherkin
-Given the platform delivers conversational text or a non-conversational control payload into a session
-When the payload is accepted
-Then conversational text acquires its durable inbound acceptance record, source deduplication, and typed classification
-And control payloads acquire the corresponding durable control-delivery acceptance record, source deduplication, and typed classification
-And no platform feature writes the payload directly into the session's pane
-And an idle-session wake contains no control payload itself
-And every consumer reads classification from the accepted structured record rather than from rendered envelope text
-```
 
 #### UC-SID10 — Occupied composer preserves the human draft
 
@@ -289,218 +240,76 @@ And no turn is created until the owning human chooses to submit the composed inp
 
 #### UC-SID2 — Input for an adopted headless session waits for the resumed agent
 
-```
-Given a message arrives for a session whose lifecycle status is headless
-And that session records a resumable agent and a native transcript chain
-When the delivery path recreates the host pane and resumes that agent into it
-Then the payload is submitted only once the resumed agent's prompt is live
-And a resumed agent that never reaches its prompt within the readiness budget, while its pane never settles on a screen with no composer, fails the delivery instead of submitting the payload into a pane no agent is reading
-And that failed delivery is reported through the ordinary delivery-failure path rather than recorded as delivered
-And a resumed agent whose pane has settled on a screen with no composer when the readiness budget ends keeps its pane and stays initializing
-And its payload waits as held text without consuming a delivery attempt, reaching the agent once a composer appears
-And a further message for that session is held until the adoption resolves, instead of reaching the pane before the resumed agent's prompt is live
-```
-
 #### UC-SID3: A send that names the owning remote computer is routed there
 
 #### UC-SID4 — Queued input binds durably to the transcript turn it creates
 
-```
-Given an input is accepted through a UI adapter, peer delivery, API request, or session-originated send
-When its inbound queue row and source-key deduplication record are committed
-Then the full accepted payload, immutable source classification, UI surface when one exists, source message key, and acceptance order remain attached to that row
-And successful injection does not make the row eligible for retention cleanup until its exact injected span is bound into a runtime-qualified native transcript entry
-And the binding preserves any surrounding local-human prefix or suffix as ordered authored parts of that same native entry
-And projection reads that durable composition rather than a mutable session-level last-input summary or rendered delimiter when deciding reflection, output generation, or origin continuity
-```
-
 #### UC-SID5 — Non-human input cannot overwrite a human UI turn
-
-```gherkin
-Given closed peer or machine envelopes and locally typed human text appear together in one native turn
-And the local text may repeat an injected body's words or resemble a platform header
-When accepted input is bound to that native turn
-Then every complete injected envelope is correlated to its accepted occurrence without comparing its rendered body or the whole native turn for equality
-And only each correlated envelope's body span binds to that accepted occurrence
-And every span outside the correlated envelopes remains ordered local-human input
-And repeated processing of the same accepted occurrence is a no-op
-```
 
 #### UC-SID6 — Recovery resumes from durable accepted-input state
 
-```
-Given the daemon restarts after an input is accepted or injected but before its transcript binding is persisted
-When input recovery runs
-Then it reconciles the durable accepted occurrence and delivery state against the native transcript without blindly pasting the payload again
-And a transcript match persists the binding idempotently
-And composer observation is limited to whether any input exists, never comparison with the accepted payload
-And an occupied composer is never submitted by platform delivery
-And an unresolved delivery state is surfaced and held rather than guessed, dropped, or reordered
-```
-
 #### UC-SID7 — A session-originated send carries its caller's structural authorship
 
-```
-Given an authenticated caller sends a plain (non-direct) message that carries a caller session id
-When the send is accepted into durable inbound state
-Then the caller session's resolved event author — author class, its own agent runtime or machine role, and display identity — and the caller session as original source are recorded on the accepted row and preserved on its transcript binding
-And the readable caller-origin identity header is presentation for the receiving agent and carries no attribution authority, so removing it from the entry or forging it in a local body changes no recorded authorship
-And the target session reflects that authored part from the recorded event author, never from the target session's own human or agent identity
-And the Discord copy of that part renders under the caller's resolved identity marked as an author from another session, with the readable caller-origin header omitted from its body
-```
-
-#### UC-SID8: An accepted human UI turn is owner-authored, never an author from another session
+#### UC-SID8: A person's UI message remains their own
 
 ```gherkin
-Given the owning human sends a message to their session through a UI adapter
-When the input is accepted into durable inbound state
-Then the accepted row and its transcript binding record the human author and the UI surface as the turn's event author
-And no session — including the receiving session itself — is recorded as that turn's original source
-And every downstream consumer treats the turn as owner-authored: it is never classified, reflected, or suppressed as an author from another session
+Given a person sends text to their assistant through a UI adapter
+When the message is delivered and shown in the conversation
+Then it remains attributed to the person who sent it
+And no session is presented as the message's original author
 ```
 
 #### UC-SID11: A non-composer interactive screen cannot receive platform input
 
-```gherkin
-Given a running agent session shows an interactive screen other than its editable composer
-And that screen may include a marker also used by the agent's composer
-When asynchronous platform-authored text is ready for delivery
-Then the interactive screen remains unchanged and unsubmitted
-And delivery waits until the agent-specific complete composer can be identified
-And the session's agent status becomes `blocked` with reason `needs_input` when delivery first waits on that screen
-And the session's watchers receive a blocked notification carrying a capture of the pane
-When the screen is cleared and the composer is identified as empty
-Then the waiting text is submitted once
-And the session leaves `blocked` through the agent event that follows the submission
-When the screen is not cleared within the delivery-retry window
-Then the text ends undelivered with the terminal notice its delivery path already gives
-And the screen remains unchanged and unsubmitted
-```
-
 #### UC-SID13: A complete empty Codex composer accepts platform input
 
-```gherkin
-Given a running Codex session shows its complete editable composer with no text
-And an accepted platform-authored input occurrence is ready for delivery
-When the platform observes the session before delivery
-Then the composer is recognized as empty and ready
-And the accepted input is pasted and submitted exactly once
-And the Codex agent receives the resulting turn
-```
-
-#### UC-SID12: An exhausted session-originated send reports failure to its caller
+#### UC-SID12: A person's agent learns when its session message cannot be delivered
 
 ```gherkin
-Given an agent session sends a message to another active session
-And the message is accepted but cannot reach the target agent within the delivery retry budget
-When delivery is exhausted
-Then the caller session receives a durable notification naming the target and the delivery failure
-And the target session remains available for inspection or recovery
+Given a person asks their agent to send a message to another active session
+And the accepted message cannot reach the target within the delivery window
+When delivery ends
+Then the caller's session receives a durable failure naming the target
+And the target remains available for inspection or recovery
 And the message is not represented as delivered
 ```
 
 #### UC-SID14: First input does not wait for a start signal that requires that input
 
-```gherkin
-Given an agent caller has started or revived a child runtime whose start signal follows initial prompt submission
-And the child's complete live composer is empty and accepts input
-And the child has not yet been marked active
-When the first accepted message reaches delivery
-Then the message is submitted once to that child in accepted order
-And delivery does not wait for lifecycle activation
-And pane readiness and submission do not themselves mark the child active
-And the child becomes active only from its declared runtime-start observation
-```
-
 #### UC-SID15: Human-input recency excludes machine-authored turns
-
-```gherkin
-Given an authenticated agent action asks whether recent human input can support an involvement declaration
-When agent runtime reads the session's existing input and transcript evidence
-Then it returns the age of the latest authenticated human-authored input when one exists
-And platform commands, additional context, peer input, reminders, wakes, checkpoints, continuations, and runtime artifacts never qualify as human input
-And no session-wide human-involvement state is created or persisted
-```
 
 #### UC-SID16: Additional context carries no involvement semantics
 
+#### UC-SID17: A person's conversation message cannot control the agent interface
+
 ```gherkin
-Given a caller starts a command session with additional context
-When the context is delivered to the agent
-Then the complete caller-supplied details remain available to that session
-And their presence, absence, or wording changes no human-involvement declaration or recency result
+Given a person sends ordinary conversation text that begins with a character their agent treats as interface control
+When the message is delivered to the agent
+Then it is submitted as an ordinary prompt rather than running an interface command
+And it waits for an empty composer without joining a human draft
+And the conversation reflects the person's text as sent
 ```
 
-#### UC-SID17: A conversation message never controls the agent interface
+#### UC-SID18: An operator can submit interface-control text as typed input
 
 ```gherkin
-Given a person writes to an agent session through a conversation channel
-And their message is not a platform command the channel or the platform resolves before delivery
-And the message's first character after any leading whitespace is one the session's agent treats as interface control
-When the message reaches the agent, whether it continues the conversation or starts the session
-Then it waits while the composer holds a draft and joins no draft
-And the empty composer then submits it once as an ordinary prompt
-And no shell command runs, no interface command executes, and no input mode starts from it
-And every reflection shows the message exactly as the person sent it
-```
-
-#### UC-SID18: Terminal and platform input keep interface control
-
-```gherkin
-Given an operator at the terminal or the TUI, or the platform itself, sends text beginning with a character the agent treats as interface control
-When the text is submitted to the agent
+Given an operator enters interface-control text at the terminal or TUI
+When the text is submitted to the agent session
 Then the text is submitted exactly as written
-And the agent interface acts on it as it acts on typed input
+And the agent interface acts on it as if the operator typed it directly
 ```
 
 #### UC-SID19: A message ending in a backslash submits once
 
-```gherkin
-Given a person writes to an agent session through a conversation channel
-And their message ends in a backslash, possibly followed by whitespace
-When the message reaches the agent's empty composer
-Then the composer submits it once as an ordinary prompt
-And the agent receives the message's text with its final backslash
-And the person's next message starts its own prompt instead of joining this one
-```
-
 #### UC-SID20: Held conversation text does not wait forever
 
-```gherkin
-Given a person writes to an agent session through a conversation channel
-And the session's composer holds input that is not cleared
-When the delivery-retry window since the message's acceptance lapses
-Then the message is not delivered to the agent, even if the composer empties afterwards
-And that conversation receives a notice that the message did not reach the agent because its input was occupied
-And the composer's content is unchanged
-```
-
 #### UC-SID21: Graceful shutdown settles input delivery and its acknowledgment
-
-```gherkin
-Given an agent caller's input has been acknowledged for delivery to an empty composer
-And the platform has begun placing that input into the target terminal
-When ordinary daemon shutdown is requested before delivery's outcome is recorded
-Then the existing delivery owner settles the paste and submission and records the same occurrence's delivery outcome before its dependencies stop
-And ordinary restart does not leave that occurrence eligible for an unguarded duplicate submission
-And occupied-composer and non-composer protections remain in force
-```
 
 Graceful settlement is owned by
 `local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`; abrupt-loss
 recovery continues to use this surface's durable accepted-input evidence.
 
 #### UC-SID22: A session-originated start message identifies its sender
-
-```gherkin
-Given a caller carrying a caller session id starts a new agent session with a startup message and without direct ignition
-And the startup message is not dispatched as a command
-When the new session's agent receives its startup message
-Then the message carries the same identity header a session-originated send composes for that caller
-And the header reaches the new session's agent whether it starts on the caller's computer or on another
-And a startup message dispatched as a command keeps its command form
-And a caller carrying no caller session id starts the session with its startup message as written
-```
 
 ### Cross-context references
 
@@ -520,7 +329,7 @@ And a caller carrying no caller session id starts the session with its startup m
 - **A small post-paste gap is hardcoded for paste-and-submit.** The ordering margin between the bracketed-paste close marker and the discrete submit does NOT scale with payload size; resizing this constant affects every submitted paste. Prompt-state delivery selects that primitive only after its pre-delivery observation finds an empty composer.
 - **The host-pane primitives pass text through unchanged.** They paste the payload they receive for every runtime; the characters a delivery adds are the marks described under Conversation input authority, chosen before the primitive is reached.
 
-- **Origin wrapping identifies every session-originated send.** The wrapping step prepends an identity header to every plain send that carries a caller session id. A caller whose session runs an agent is named by that agent as the author, qualified by the caller's role name when one exists, as UC-SID1 states; a caller whose session runs no agent is named by its role's header label from the agent role catalog (`local/projects/teleclaude/spec/feature/identity/agent-roles`), drawn from the closed label vocabulary. The role is read from the session record's single role field; authorship on the accepted row is unchanged. A caller whose session resolves to no machine role, such as a top-level interactive session, is named as an agent and identified by its active agent and session id; it is delivered, not refused. The human whose account the session runs under is lineage, not authorship, and never appears in the header. Only genuine human direct input, which carries no caller session id, is delivered unwrapped. The carried caller session is taken as given and read from this computer, where the caller runs; no fabricated role, agent, or host attribution is ever substituted to force a header.
+- **Origin wrapping identifies every session-originated send.** The wrapping step prepends an identity header to every plain send that carries a caller session id. A caller whose session runs an agent is named by that agent as the author, qualified by the caller's role name when one exists; a caller whose session runs no agent is named by its role's header label from the agent role catalog (`local/projects/teleclaude/spec/feature/identity/agent-roles`), drawn from the closed label vocabulary. The role is read from the session record's single role field; authorship on the accepted row is unchanged. A caller whose session resolves to no machine role, such as a top-level interactive session, is named as an agent and identified by its active agent and session id; it is delivered, not refused. Session-originated startup messages use the same sender identity; command-dispatched startup input keeps its command form. The human whose account the session runs under is lineage, not authorship, and never appears in the header. Only genuine human direct input, which carries no caller session id, is delivered unwrapped. The carried caller session is taken as given and read from this computer, where the caller runs; no fabricated role, agent, or host attribution is ever substituted to force a header.
 
 - **The origin header carries no attribution authority.** The header is what the receiving agent reads; it is not what downstream surfaces attribute from. Authorship for a session-originated send is carried structurally on the accepted row and its transcript binding, so the header can be absent, altered, or imitated without moving attribution.
 

@@ -14,8 +14,8 @@ dispatch:
 
 ## Goal
 
-Author the spec for one item in that item's body: what the outcome is, the use
-cases that make it observable, and the invariants that must hold. The preparing
+Author the spec for one item in that item's body: what the outcome is, any
+admitted user-goal use cases, and the invariants that must hold. The preparing
 session that dispatched you challenges what you write; you own the content and
 dispose every challenge with a change or with evidence.
 
@@ -36,8 +36,9 @@ dispose every challenge with a change or with evidence.
    higher-order demands that apply. Add no product outcome the input and the
    domain do not justify.
 3. **Write the spec into the body.** Keep the original intent at the top. Then:
-   the outcome; use cases as `Given / When / Then`, each one observable
-   behavior; invariants as falsifiable claims, including what holds when a step
+   the outcome and prose behavioral contract; user goals admitted under
+   `sdlc/procedure/feature-spec-authoring` as Gherkin `Given / When / Then`;
+   invariants as falsifiable claims, including what holds when a step
    fails midway, when two actors act at once, and across a restart. Reference
    contracts other contexts own instead of restating them. For a bug, state the
    cause the spec rests on: the causal mechanism with its evidence, an occurrence

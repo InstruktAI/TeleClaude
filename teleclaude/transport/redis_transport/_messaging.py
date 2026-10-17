@@ -25,7 +25,6 @@ from teleclaude.core import command_handlers
 from teleclaude.core.command_dispatch import shutdown_refusal_envelope
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentAttentionObservation,
     SessionOutputStoppedPayload,
@@ -70,7 +69,6 @@ from teleclaude.core.supervisory_silence import (
     SilenceTimeoutOwner,
 )
 from teleclaude.core.workflow_machine.peer_start_intake import PEER_START_COMMANDS, serve_peer_start
-from teleclaude.events.envelope import EventVisibility
 from teleclaude.history.service import HistoryRelayCommand
 
 if TYPE_CHECKING:
@@ -785,12 +783,10 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 logger.warning(_SYSTEM_COMMAND_PAYLOAD_REJECTED_EVENT, command=command, from_computer=from_computer)
                 return
 
-        event_bus.emit(
-            "system_command",
+        await self.client.dispatch_system_command(
             SystemCommandContext(
                 command=command,
                 from_computer=from_computer or "unknown",
                 payload=payload,
-            ),
-            visibility=EventVisibility.CLUSTER,
+            )
         )

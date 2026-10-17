@@ -32,20 +32,7 @@ nothing else calls it.
 
 #### UC-HML-1: No listing verb exists on the history surface
 
-```
-Given an operator invokes a mirror-listing verb on the history surface
-Then no such command is offered
-And the surface's help does not advertise one
-```
-
 #### UC-HML-2: Identity enumeration is a search filter
-
-```
-Given an operator wants the stored conversations belonging to one identity
-When they filter history search by that identity
-Then the matching mirrors are returned, including mirrors whose session record no longer exists
-And the caller's role band applies before any row is returned
-```
 
 ## Known caveats
 

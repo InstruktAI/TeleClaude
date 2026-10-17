@@ -48,6 +48,23 @@ flattening unrelated pending material. Dependency changes not yet accepted upstr
 proposal dependencies. The candidate's full code-and-documentation revision is
 the review subject before publication.
 
+The complete proposal is assembled on the item's actual work branch before its
+approving review. The independent work driver can review local commits from
+the builder's completion notices before public branch publication. Its report
+binds the composed code, documentation and evidence subject. The recorded
+contributor delivery purpose makes ordinary per-commit publication local until
+that review is current.
+
+The holding work driver then invokes the contribution branch-publication
+operation, which publishes the exact reviewed commit to the enrolled writable
+ref through the normal leased update and publish-intent contract. The ordinary
+readiness stamp checks that published ref, the worktree and the proposed commit
+before and after native gates. A ready contributor item triggers PR and report
+handoff against the already-published subject. Publication failure leaves the
+item unready and its branch resumable. Upstream-main comparison remains
+independent of that writable ref
+(`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`).
+
 Every proposal records its upstream base, head revision, local todo identity,
 upstream PR identity and review-evidence identity. Retry of the same handoff
 finds and updates that proposal rather than opening another. The contributor
@@ -58,6 +75,29 @@ PR closure without merge records that disposition and retains the local work
 until its owner retires or resumes it. A confirmed merge records upstream
 acceptance and its actual commit before ordinary delivered-work cleanup; closure
 alone never supplies that confirmation.
+
+### Contribution operations
+
+The contribution command surface offers proposal publication, inspection and
+reconciliation by local todo. Its inspection identifies retained work, the
+current proposal revision, publication failures and the independent delivery,
+release and installation facts. Branch publication precedes readiness; ready
+handling and an explicit retry invoke the same resumable PR/report handoff.
+
+Standing enrollment is a computer-local declaration for the registered logical
+project, changed through the configuration owner's semantic operation. The
+declaration selects the upstream and writable destination independently of the
+release channel; a clone, imported project declaration or supplied PR cannot
+enroll its receiving installation. Disabling enrollment stops later public
+writes and retains existing proposals. The configuration owner validates and
+persists the declaration (`local/projects/teleclaude/spec/domain/config`).
+
+Workflow owns durable proposal and adoption records, including their revision
+history, retry position and links to local todo identities. Provider operations
+cross integration's typed transport contract; configuration, documentation
+projection, release admission and installation assessment retain their owners
+(`sdlc/policy/domain-ownership`). An interrupted external write is reconciled
+with the provider before it is repeated.
 
 ### Review evidence
 

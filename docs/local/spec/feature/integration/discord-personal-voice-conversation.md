@@ -36,116 +36,90 @@ The human can move between visible agent threads and voice conversation without 
 
 ### Use cases
 
-#### UC-DPVC-1
+#### UC-DPVC-1: A person can start a voice conversation in their private room
 
 ```gherkin
-Given a human has a person-scoped voice bot credential
-And is present in their private personal Discord voice room
-When the human enters that room
-Then the person's authenticated voice bot joins that observed room automatically
-And the room becomes available for that human's agent conversation
-When the human leaves
-Then the bot disconnects
-And incomplete input and pending speech for that listener are cancelled
+Scenario: Enter and leave a personal voice room
+  Given a person has a configured private Discord voice room
+  When they enter the room
+  Then their assistant is available for voice conversation without manually connecting the bot
+  When they leave
+  Then incomplete speech and pending replies are cancelled
 ```
 
-#### UC-DPVC-2
+#### UC-DPVC-2: A person's voice conversation follows the assistant they last used
 
 ```gherkin
-Given an identified human has active agent sessions represented by Discord threads
-When input from that human is accepted by one session
-Then that session becomes the human's voice focus
-And later activity that is not accepted human input does not change the focus
+Scenario: Hear replies from the assistant the person last used
+  Given a person has several assistant conversations available in Discord
+  When they send accepted input to one conversation
+  Then spoken replies follow that conversation
+  And activity that is not accepted input does not switch the conversation they hear
 ```
 
-#### UC-DPVC-3
+#### UC-DPVC-3: A person can listen to another thread without sending a prompt
 
 ```gherkin
-Given a human is listening in the configured voice room
-And another agent thread exposes its `Listen here` control
-When the human activates that control
-Then that thread's session becomes the voice focus
-And its latest complete reply is generated or retrieved and played without another playback action
-And no prompt is sent to the agent
+Scenario: Listen to another conversation
+  Given a person is in the configured voice room and another thread has a Listen here control
+  When they choose that thread
+  Then they hear its latest complete reply without sending a prompt to the agent
 ```
 
-#### UC-DPVC-4
+#### UC-DPVC-4: A person can pause during push-to-talk without splitting or prematurely sending speech
 
 ```gherkin
-Given a human presses push-to-talk while one session has voice focus
-When the human speaks, pauses while continuing to hold, speaks again, and releases push-to-talk
-Then the held-button pause remains inside one utterance
-And explicit transmission-end framing closes the utterance on release
-And the complete utterance is transcribed and delivered exactly once to the session captured at transmission start
+Scenario: Speak across a pause while holding push-to-talk
+  Given a person has selected an assistant conversation
+  When they hold push-to-talk, pause while still holding, speak again, and release
+  Then one complete utterance reaches the conversation selected when they began speaking
+
+Scenario: Do not submit incomplete speech
+  Given a person's voice transmission has no complete ending
+  When audio pauses or the connection ends before a complete release
+  Then no partial recording reaches the assistant
 ```
 
 #### UC-DPVC-5
 
-```gherkin
-Given received voice data has no complete explicit transmission-end framing
-When silence or elapsed time follows the received data
-Then no transcription is submitted to an agent
-And the incomplete recording is discarded through an explicit lifecycle transition
-```
-
 #### UC-DPVC-6
 
+#### UC-DPVC-7: A person hears the complete assistant reply automatically
+
 ```gherkin
-Given an agent thread has completed a substantive reply
-When its Listen here control is presented
-Then the thread contains exactly one button-only Listen here control
-And the control is the last message in the thread
-When the human sends the next input
-Then the existing pending-message cleanup removes that control
-And the next completed reply recreates one control at the bottom
+Scenario: Hear a complete reply in the voice room
+  Given a person's assistant completes a user-visible reply while they remain in the voice room
+  When the reply is spoken
+  Then they hear the complete response automatically in the configured voice
 ```
 
-#### UC-DPVC-7
+#### UC-DPVC-8: A person hears speech only from the conversation they selected
 
 ```gherkin
-Given the focused session completes a substantive user-visible reply
-And its human remains in the configured voice room
-When voice output is delivered
-Then the complete reply is synthesized with the Discord voice configured for the rendering provider
-And it plays automatically through the voice bot
-And host-speaker playback and its summary behaviour remain unchanged
+Scenario: Stop speech from the previous conversation
+  Given speech from a selected conversation is playing or queued
+  When a person selects another conversation or leaves the voice room
+  Then speech from the previous conversation stops and no queued reply plays
 ```
 
-#### UC-DPVC-8
+#### UC-DPVC-9: A person can resume voice conversation after the daemon restarts
 
 ```gherkin
-Given speech from one focused session is playing or queued
-When the human selects another session or leaves the voice room
-Then stale playback stops
-And queued speech for the previous selection does not play
-```
-
-#### UC-DPVC-9
-
-```gherkin
-Given the daemon restarts while the configured human remains in the personal voice room
-When Discord connectivity is restored
-Then the owning daemon restores the voice connection and selected-session behavior
-And no fleet peer creates a competing voice connection
+Scenario: Return to the voice conversation after reconnecting
+  Given a person remains in their configured voice room while the adapter reconnects
+  When the voice room becomes available again
+  Then the assistant conversation follows the person's current selection
 ```
 
 #### UC-DPVC-10
 
-```gherkin
-Given a session's reply has already been synthesized for the voice room
-And that session has produced no newer reply
-When the human selects that session again
-Then the room plays the already-rendered audio
-And no new synthesis is performed
-```
-
-#### UC-DPVC-11
+#### UC-DPVC-11: A person's voice conversation accepts only their own speech
 
 ```gherkin
-Given a person other than the configured human is in the personal voice room
-When that person speaks
-Then no utterance is opened for their audio
-And nothing from their audio reaches any session
+Scenario: Keep another person's speech out of the assistant conversation
+  Given a personal voice room is configured for one person
+  When someone else in the room speaks
+  Then their audio does not reach any assistant conversation
 ```
 
 ## Known caveats

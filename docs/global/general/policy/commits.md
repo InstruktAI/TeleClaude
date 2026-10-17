@@ -42,6 +42,20 @@ Human-Involved: <true|false>
   not enforce this by inspecting messages: a message that contains one
   survives untouched, appended to rather than corrected.
 
+**Todo association:**
+
+For documentation prepared for a future todo, choose the fitting slug before
+committing and supply it through `telec code commit --todo <slug>`. Choosing the
+slug creates and reserves no todo. Work associated with an existing todo uses
+the same flag. Work outside a todo keeps its ordinary commit path.
+
+The sealed commit surface appends the association itself. It infers the footer
+from the owning project's recorded state at commit creation:
+`Planned-Todo: <slug>` when the todo does not yet exist, or `Todo: <slug>` when it does. Both
+names carry the same commit-to-todo association. `Planned-Todo` records absence
+at commit time, not current lifecycle state, and remains unchanged after the todo
+is created (`general/principle/grounding`).
+
 **Valid types:**
 
 All Committizen types are allowed.
@@ -106,14 +120,27 @@ All Committizen types are allowed.
   touches names the candidate; it never decides that review is owed. Discarding
   is not reviewing; it records that no review is owed, never that the change
   is correct. Review is technical stewardship, never a human ratification step.
-- Every commit-review outcome is a stamp on the commits it covers. The reviewer
-  stamps its verdict on exactly the SHAs it reviewed, and the author stamps the
-  candidates it discards. A stamp lands in the review state of the todo whose
-  lifecycle claim the stamping session or the session that started it holds,
-  and lands on no todo when neither holds one. Either way it discharges the
-  checkpoint's post-commit review gate for those commits. The stamp records
-  the session that gave it, so a discard stays distinguishable from a
-  reviewer's verdict.
+
+- Every commit-review outcome is a repository-owned record keyed by the commit
+  SHA, available independently of whether a todo exists or a session holds its
+  claim. The record carries the verified stamping session, verdict, time and
+  reason. The reviewer stamps exactly the commits reviewed; an author's discard
+  remains distinguishable and supplies no independent review approval. Todo
+  review state consumes this same record rather than owning a separate verdict.
+  A stamp with no claimed todo still persists and discharges its applicable
+  checkpoint obligation. This keeps pre-creation documentation approval
+  available as evidence without reconstructing a transcript
+  (`general/principle/grounding`).
+- An approval is independent only when its authenticated stamping session is
+  distinct from every producing session recorded by the reviewed commit's
+  sealed `Session:` provenance. An approval from a producing session, or one
+  whose reviewer or producing-session provenance cannot be established, supplies
+  no independent approval evidence. The creation boundary consumes that
+  established provenance with the SHA-bound verdict; it never accepts a caller's
+  assertion of independence. Author discard stamps retain their existing
+  purpose and do not become review approvals
+  (`general/concept/lineage-vs-authorship`).
+
 - A `REQUEST CHANGES` verdict stays with the authoring session for
   evidence-based rejection or in-scope remediation and re-review. Before
   remediation, the author records each finding's disposition and its

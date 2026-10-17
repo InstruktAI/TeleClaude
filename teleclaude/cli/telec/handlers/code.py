@@ -39,6 +39,8 @@ from teleclaude.cli.telec.handlers._code_stamp import handle_code_stamp
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import CODE_COMMIT, CODE_OWNERS
 from teleclaude.commit_identity import (
+    PLANNED_TODO_TRAILER_KEY,
+    TODO_TRAILER_KEY,
     CommitIdentityUnresolvable,
     compose_commit_footer,
     resolve_commit_identity_from_caller,
@@ -48,6 +50,7 @@ from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
 from teleclaude.core.models import Session
 from teleclaude.core.roles import RoleName
 from teleclaude.core.session_utils import resolve_working_dir
+from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.project_root import (
@@ -68,6 +71,7 @@ from teleclaude.session_identity import get_session_id
 from teleclaude.session_scoping import clear as clear_session_paths
 from teleclaude.session_scoping import declare as declare_session_paths
 from teleclaude.session_scoping import resolve_workspace
+from teleclaude.slug import validate_slug
 
 logger = get_logger(__name__)
 _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+")
@@ -82,6 +86,8 @@ _CODE_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code capab
 _COMMIT_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code or docs capability"
 _MERGE_WORKTREE_DIFF_ARGUMENTS = ("--name-only", "-z", "--")
 _NUL_CHARACTER = "\x00"
+_ERR_TODO_LOOKUP = "ERROR: cannot resolve todo association for {slug!r}: {error}"
+_TODO_ASSOCIATION_LINE = "{key}: {slug}"
 _DOC_LAYER_WORKTREE_ERROR = "ERROR: doc-layer paths cannot be committed from a slug worktree:"
 _DOC_LAYER_WORKTREE_GUIDANCE = (
     "\nThe doc layer is authored at prepare on main and folded at integration; "
@@ -430,6 +436,7 @@ def handle_code_commit(args: list[str]) -> None:
     human_involved_reason = parsed.value(F.FLAG_HUMAN_INVOLVED_COMMIT)
     includes = list(parsed.values(F.FLAG_COMMIT_INCLUDE))
     only = list(parsed.values(F.FLAG_COMMIT_ONLY))
+    todo_slug = parsed.value(F.FLAG_COMMIT_TODO)
 
     if includes and only:
         print(
@@ -488,6 +495,7 @@ def handle_code_commit(args: list[str]) -> None:
             caller_identity=caller_identity,
             only=only or None,
             human_involved=human_involved,
+            todo_slug=todo_slug,
         )
 
     publish_todo_branch(project_root)
@@ -541,11 +549,13 @@ def _commit_under_lock(
     caller_identity: ResolvedCliIdentity,
     only: list[str] | None = None,
     human_involved: bool = False,
+    todo_slug: str | None = None,
 ) -> None:
     """Commit the resolved pathspec while holding the main-branch lock."""
     # Clear stale index locks before work, minimizing the flock window.
     wait_for_index_lock_clear(project_root)
     _check_commit_message(message, project_root)
+    todo_association = _resolve_commit_todo_association(project_root, todo_slug)
     if only is not None and includes:
         print("ERROR: --only cannot be combined with --include.", file=sys.stderr)
         raise SystemExit(2)
@@ -561,6 +571,7 @@ def _commit_under_lock(
             enforce_context_bound=enforce_context_bound,
             caller_identity=caller_identity,
             human_involved=human_involved,
+            todo_association=todo_association,
         )
         return
 
@@ -678,6 +689,7 @@ def _commit_under_lock(
         commit_args=("-F", "{message_file}", "--", *pathspec),
         caller_identity=caller_identity,
         human_involved=human_involved,
+        todo_association=todo_association,
     )
     if stdout:
         print(stdout)
@@ -742,6 +754,20 @@ def _resolve_context_payload_paths(paths: list[str], project_root: Path, context
     return resolved
 
 
+def _resolve_commit_todo_association(project_root: Path, slug: str | None) -> tuple[str, str] | None:
+    """Resolve the historical footer name from the owning workflow store."""
+    if slug is None:
+        return None
+    try:
+        validate_slug(slug)
+        recorded = get_workflow_store_sync(project_root).slug_recorded_sync(slug)
+    except (OSError, OperationalError, RuntimeError, ValueError) as exc:
+        print(_ERR_TODO_LOOKUP.format(slug=slug, error=exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+    key = TODO_TRAILER_KEY if recorded else PLANNED_TODO_TRAILER_KEY
+    return key, slug
+
+
 def _commit_active_merge(
     repo: Repo,
     message: str,
@@ -752,6 +778,7 @@ def _commit_active_merge(
     enforce_context_bound: bool,
     caller_identity: ResolvedCliIdentity,
     human_involved: bool = False,
+    todo_association: tuple[str, str] | None = None,
 ) -> None:
     """Close an active merge as a full-index commit."""
     snapshot = working_tree_snapshot(project_root)
@@ -787,6 +814,7 @@ def _commit_active_merge(
         commit_args=("-F", "{message_file}"),
         caller_identity=caller_identity,
         human_involved=human_involved,
+        todo_association=todo_association,
     )
     if stdout:
         print(stdout)
@@ -823,6 +851,7 @@ def _commit_repo_with_message(
     commit_args: tuple[str, ...],
     caller_identity: ResolvedCliIdentity,
     human_involved: bool = False,
+    todo_association: tuple[str, str] | None = None,
 ) -> tuple[str, str]:
     """Commit with the resolved author identity and mandated footer.
 
@@ -837,7 +866,12 @@ def _commit_repo_with_message(
     except CommitIdentityUnresolvable as exc:
         raise SystemExit(str(exc)) from exc
 
-    final_message = compose_commit_footer(message, session_id=session_id, human_involved=human_involved)
+    final_message = compose_commit_footer(
+        message,
+        session_id=session_id,
+        human_involved=human_involved,
+        todo_association=todo_association,
+    )
 
     with tempfile.NamedTemporaryFile("w", suffix=".txt", encoding="utf-8", delete=False) as msg_file:
         msg_file.write(final_message)

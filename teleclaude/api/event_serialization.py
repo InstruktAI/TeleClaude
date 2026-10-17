@@ -7,7 +7,7 @@ from teleclaude.api_models import (
 )
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.agents import is_agent_enabled
-from teleclaude.core.events import AgentAvailabilityContext
+from teleclaude.events.schemas.system import RuntimeAgentAvailabilityData
 
 
 def availability_legacy_fields(
@@ -43,7 +43,7 @@ def build_model_availability_delta(
     )
 
 
-def agent_availability_event_dto(context: AgentAvailabilityContext) -> AgentAvailabilityEventDTO:
+def agent_availability_event_dto(context: RuntimeAgentAvailabilityData) -> AgentAvailabilityEventDTO:
     """Convert an availability event context to its WebSocket DTO."""
     available, unavailable_until, degraded_until = availability_legacy_fields(context.status, context.status_until)
     return AgentAvailabilityEventDTO(

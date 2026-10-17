@@ -60,6 +60,12 @@ from teleclaude.core.human_involvement import (
 )
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
+from teleclaude.core.next_machine.documentation_evidence import (
+    DocumentationEvidenceRefused,
+    require_reviewed_pending_documentation,
+    snapshot_pending_carrier_blobs,
+    source_commit_refs,
+)
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
     KindMigrationResult,
@@ -71,14 +77,13 @@ from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.started_build import BuildAlreadyStarted, refuse_if_build_started
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
-from teleclaude.core.operations import get_operations_service
-from teleclaude.core.operations.service import SerializedOperation
+from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.core.todos_db import HolderReconciliationRefused, HolderTransitionRefused
+from teleclaude.core.todos_db._errors import HolderReconciliationRefused, HolderTransitionRefused
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.core.workflow_machine.activation import restore_classifier
 from teleclaude.core.workflow_store.store import get_workflow_store
-from teleclaude.core.workflow_store.types import ActivationRefused
+from teleclaude.core.workflow_store.types import ActivationRefused, DocumentationAdmission, ReviewedDocumentationSource
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.envelope_facts import home_for_project_path
 from teleclaude.events.producer import publish_event
@@ -476,6 +481,81 @@ def _validate_slug_for_create(slug: str, *, field_name: str) -> None:
         raise HTTPException(status_code=400, detail=f"invalid {field_name} '{slug}': {exc}") from exc
 
 
+async def _require_creation_documentation_evidence(
+    todos_db: WorkflowStore,
+    slug: str,
+    parent_slug: str | None,
+    *,
+    icebox: bool,
+) -> DocumentationAdmission | None:
+    """Require current evidence before active admission, including first-child inputs."""
+    parent_record = await todos_db.read_todo_diagnostic_record(parent_slug) if parent_slug else None
+    parent_id = parent_record["id"] if parent_record is not None else None
+    parent_status = TodoStatus(parent_record["status"]) if parent_record is not None else None
+    has_incoming_parent = parent_record is not None and parent_record["status"] in {
+        TodoStatus.ACTIVE.value,
+        TodoStatus.ICEBOX.value,
+    }
+    if icebox:
+        carrier_path_blobs = (
+            snapshot_pending_carrier_blobs(todos_db.project_root, parent_slug)
+            if has_incoming_parent and parent_slug is not None
+            else ()
+        )
+        source_refs = (
+            source_commit_refs(todos_db.project_root, parent_slug)
+            if has_incoming_parent and parent_slug is not None
+            else ()
+        )
+        sources: tuple[ReviewedDocumentationSource, ...] = ()
+        if has_incoming_parent and parent_slug is not None:
+            try:
+                parked_snapshot = await require_reviewed_pending_documentation(
+                    todos_db.project_root,
+                    todos_db,
+                    (parent_slug,),
+                )
+                sources = parked_snapshot.sources
+            except DocumentationEvidenceRefused:
+                sources = ()
+        return DocumentationAdmission(
+            parent_slug=parent_slug,
+            parent_id=parent_id,
+            parent_status=parent_status,
+            sources=sources,
+            carrier_path_blobs=carrier_path_blobs,
+            source_commit_by_path=source_refs,
+            evidence_snapshot=None,
+        )
+    evidence_slugs = [slug]
+    if has_incoming_parent and parent_slug is not None:
+        evidence_slugs.append(parent_slug)
+    evidence_snapshot = await require_reviewed_pending_documentation(
+        todos_db.project_root,
+        todos_db,
+        tuple(evidence_slugs),
+    )
+    sources = evidence_snapshot.sources
+    parent_sources = (
+        tuple(source for source in sources if source.owner_slug == parent_slug)
+        if has_incoming_parent and parent_slug is not None
+        else ()
+    )
+    return DocumentationAdmission(
+        parent_slug=parent_slug,
+        parent_id=parent_id,
+        parent_status=parent_status,
+        sources=parent_sources,
+        carrier_path_blobs=tuple(
+            (path, blob)
+            for owner, path, blob in evidence_snapshot.carrier_blobs
+            if has_incoming_parent and owner == parent_slug
+        ),
+        source_commit_by_path=tuple((source.carrier_path, source.source_sha) for source in parent_sources),
+        evidence_snapshot=evidence_snapshot,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Shared todos.db helpers (artifact routes import these; see todo_artifact_routes)
 # ---------------------------------------------------------------------------
@@ -650,6 +730,12 @@ async def todo_content_create(
         else:
             written_artifact_name = ARTIFACT_INPUT
             written_artifact_body = f"# {slug} — Input\n\n{request.content}\n"
+        documentation_admission = await _require_creation_documentation_evidence(
+            todos_db,
+            slug,
+            request.group,
+            icebox=request.icebox,
+        )
         await todos_db.create_item_with_initial_artifact(
             slug,
             state,
@@ -666,6 +752,7 @@ async def todo_content_create(
             artifact_name=written_artifact_name,
             artifact_body=written_artifact_body,
             updated_by=identity.session_id,
+            documentation_admission=documentation_admission,
         )
 
         if written_artifact_name in _DRIFT_TRACKED_ARTIFACT_NAMES:
@@ -737,6 +824,8 @@ async def todo_content_create(
     except HolderReconciliationRefused as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except HolderTransitionRefused as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except DocumentationEvidenceRefused as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception:
         logger.error("todo creation failed", slug=slug, exc_info=True)

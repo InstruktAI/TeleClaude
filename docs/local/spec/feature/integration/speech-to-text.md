@@ -55,77 +55,33 @@ capability membership is in
 
 ### Use cases
 
-#### UC-STT1:
+#### UC-STT1: An agent can get a transcript of audio for its person
 
 ```gherkin
-Given an agent holds an https URL to an audio recording
-And the computer's speech-to-text chain has a service that can run
-When the agent transcribes the URL
-Then the transcript of the recording is the command's output
-And no copy of the fetched audio remains on the computer
+Scenario Outline: Transcribe <source>
+  Given an agent is acting for a person who requested a transcript of audio they can access
+  When it requests a transcript from <source>
+  Then it receives the transcript to fulfill that request
+
+  Examples:
+    | source                       |
+    | an accessible https URL      |
+    | a file on the local computer |
 ```
 
 #### UC-STT2:
 
-```gherkin
-Given an agent holds the path of an audio file on its computer
-And the computer's speech-to-text chain has a service that can run
-When the agent transcribes the path
-Then the transcript of the file is the command's output
-And the file is unchanged and still present
-```
-
 #### UC-STT3:
-
-```gherkin
-Given the computer's speech-to-text chain lists a service that cannot transcribe the audio, followed by one that can
-When an agent transcribes that audio
-Then the transcript from the later service is the command's output
-```
 
 #### UC-STT4:
 
-```gherkin
-Given an agent holds a URL that cannot be fetched
-When the agent transcribes the URL
-Then the command fails with the source-unavailable status and the reason the fetch failed
-And no speech-to-text service is asked to transcribe anything
-```
-
 #### UC-STT5:
-
-```gherkin
-Given an agent holds a URL or path whose content is not audio
-When the agent transcribes it
-Then the command fails with the unsupported-media status
-And no speech-to-text service is asked to transcribe anything
-```
 
 #### UC-STT6:
 
-```gherkin
-Given the computer's speech-to-text chain holds no service that can run on that computer
-When an agent transcribes an audio file
-Then the command fails with the no-service status and a reason naming why no service can run
-```
-
 #### UC-STT7:
 
-```gherkin
-Given every service in the computer's speech-to-text chain runs and fails to transcribe the audio
-When an agent transcribes that audio
-Then the command fails with the transcription-failed status
-And the reason names each service's failure
-```
-
 #### UC-STT8:
-
-```gherkin
-Given the computer has no media prober installed
-When an agent transcribes a URL or a path
-Then the command refuses with a reason naming the missing tool
-And no source is fetched and no speech-to-text service is asked to transcribe anything
-```
 
 ## Known caveats
 

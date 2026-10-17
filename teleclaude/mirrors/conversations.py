@@ -35,6 +35,9 @@ from teleclaude.mirrors.store import (
 _SEGMENT_SEPARATOR = "\n\n"
 _EMPTY_TEXT = ""
 _SOURCE_PARAM_PREFIX = "source_"
+_AMBIGUOUS_SOURCE_OBSERVATION_ERROR = (
+    "The source is observed by multiple conversation mirrors; an explicit session identity is required."
+)
 
 _MIRROR_STATE_COLUMNS = """\
 mirrors.id, mirrors.created_at, mirrors.title, mirrors.covered_at, mirrors.coverage_ready,
@@ -48,10 +51,10 @@ _SELECT_MIRROR_BY_SESSION_SQL = (
     f"SELECT {_MIRROR_STATE_COLUMNS} FROM mirrors LEFT JOIN mirror_sessions ON mirror_sessions.id = mirrors.session "
     "WHERE mirrors.session = :session"
 )
-_SELECT_MIRROR_BY_SOURCES_SQL = (
-    f"SELECT {_MIRROR_STATE_COLUMNS} FROM mirrors LEFT JOIN mirror_sessions ON mirror_sessions.id = mirrors.session "
-    "WHERE mirrors.id = (SELECT mirror FROM mirror_sources WHERE source_identity IN ({placeholders}) "
-    "ORDER BY position DESC LIMIT 1)"
+_SELECT_MIRRORS_BY_SOURCES_SQL = (
+    f"SELECT DISTINCT {_MIRROR_STATE_COLUMNS} FROM mirrors "
+    "LEFT JOIN mirror_sessions ON mirror_sessions.id = mirrors.session "
+    "WHERE mirrors.id IN (SELECT mirror FROM mirror_sources WHERE source_identity IN ({placeholders}))"
 )
 _SELECT_SOURCE_STATES_SQL = """\
 SELECT id, source_identity, native_session_id, agent, transcript_path, position, file_size, file_mtime_ns,
@@ -67,8 +70,7 @@ INSERT INTO mirror_sources (
     :mirror, :source_identity, :native_session_id, :agent, :transcript_path, :position, :file_size, :file_mtime_ns,
     :missing_at, :derivation_version, :now, :now
 )
-ON CONFLICT(source_identity) DO UPDATE SET
-    mirror = excluded.mirror,
+ON CONFLICT(mirror, source_identity) DO UPDATE SET
     native_session_id = COALESCE(excluded.native_session_id, mirror_sources.native_session_id),
     agent = excluded.agent,
     transcript_path = COALESCE(excluded.transcript_path, mirror_sources.transcript_path),
@@ -79,8 +81,10 @@ ON CONFLICT(source_identity) DO UPDATE SET
     derivation_version = excluded.derivation_version,
     updated_at = excluded.updated_at
 """
-_SELECT_SOURCE_OBSERVATION_SQL = "SELECT file_mtime_ns FROM mirror_sources WHERE source_identity = :source_identity"
-_SELECT_SOURCE_ID_SQL = "SELECT id FROM mirror_sources WHERE source_identity = :source_identity"
+_SELECT_SOURCE_OBSERVATION_SQL = (
+    "SELECT file_mtime_ns FROM mirror_sources WHERE mirror = :mirror AND source_identity = :source_identity"
+)
+_SELECT_SOURCE_ID_SQL = "SELECT id FROM mirror_sources WHERE mirror = :mirror AND source_identity = :source_identity"
 _DELETE_SOURCE_MESSAGES_SQL = "DELETE FROM mirror_messages WHERE source = :source"
 _INSERT_MESSAGE_SQL = """\
 INSERT INTO mirror_messages (source, ordinal, entry_index, block_ordinal, timestamp, role, text)
@@ -139,9 +143,6 @@ _RESET_READINESS_SQL = (
     "(SELECT id FROM mirror_sessions WHERE session_id = :session_id)"
 )
 _ATTRIBUTE_MIRROR_SQL = "UPDATE mirrors SET session = :session WHERE id = :id AND session IS NULL"
-_SELECT_HOLDING_MIRRORS_SQL = "SELECT DISTINCT mirror FROM mirror_sources WHERE source_identity IN ({placeholders})"
-_COUNT_MIRROR_SOURCES_SQL = "SELECT COUNT(*) FROM mirror_sources WHERE mirror = :mirror"
-_DELETE_EMPTY_MIRROR_SQL = "DELETE FROM mirrors WHERE id = :mirror"
 _STAMP_COVERAGE_SQL = """\
 UPDATE mirrors SET
     coverage_ready = CASE WHEN covered_at IS NULL OR :covered_at >= covered_at THEN :coverage_ready ELSE coverage_ready END,
@@ -153,8 +154,8 @@ _SELECT_SOURCE_FACTS_SQL = (
     "SELECT source_identity, native_session_id, transcript_path, message_count, missing_at "
     "FROM mirror_sources WHERE mirror = :mirror ORDER BY position, id"
 )
-_CLEAR_UNREPROJECTABLE_SQL = "DELETE FROM mirror_unreprojectable_sources WHERE source_identity = :source_identity"
-_CLEAR_SHRINK_REFUSAL_SQL = "DELETE FROM mirror_shrink_refusals WHERE source_identity = :source_identity"
+_CLEAR_UNREPROJECTABLE_SQL = "DELETE FROM mirror_unreprojectable_sources WHERE source = :source"
+_CLEAR_SHRINK_REFUSAL_SQL = "DELETE FROM mirror_shrink_refusals WHERE source = :source"
 _TRANSCRIPT_PATH_FIELD = "transcript_path"
 
 
@@ -167,6 +168,10 @@ class SourceMessage:
     timestamp: str | None
     role: str
     text: str
+
+
+class AmbiguousSourceObservationError(ValueError):
+    """A source-only lookup matched multiple conversation mirrors and needs an explicit identity."""
 
 
 @dataclass(frozen=True)
@@ -323,17 +328,15 @@ def get_conversation_state(
     source_identities: Sequence[str],
     db: str | Path | None = None,
 ) -> ConversationState | None:
-    """Read the conversation mirror a session owns, or else the one that already holds any of these sources."""
+    """Read one session's conversation, or use an unambiguous source-only lookup when no session is supplied."""
     try:
         with _get_ro_engine(db).connect() as conn:
-            row = None
             if session_id is not None:
                 row = conn.execute(text(_SELECT_MIRROR_BY_SESSION_ID_SQL), dict(session_id=session_id)).first()
-            if row is None and source_identities:
-                placeholders, params = _bind_sources(source_identities)
-                row = conn.execute(
-                    text(_SELECT_MIRROR_BY_SOURCES_SQL.format(placeholders=placeholders)), params
-                ).first()
+            elif source_identities:
+                row = _source_only_mirror(conn, source_identities)
+            else:
+                row = None
             if row is None:
                 return None
             sources = conn.execute(text(_SELECT_SOURCE_STATES_SQL), dict(mirror=row.id)).all()
@@ -365,11 +368,13 @@ def _merge_metadata(stored: dict[str, JsonValue], supplied: dict[str, JsonValue]
     return merged
 
 
-def _is_older_observation(conn: Connection, update: SourceUpdate) -> bool:
+def _is_older_observation(conn: Connection, mirror_id: int, update: SourceUpdate) -> bool:
     """Whether the store already holds a newer observation of this source's file than the one this update read."""
     if update.file_mtime_ns is None:
         return False
-    stored = conn.execute(text(_SELECT_SOURCE_OBSERVATION_SQL), dict(source_identity=update.source_identity)).scalar()
+    stored = conn.execute(
+        text(_SELECT_SOURCE_OBSERVATION_SQL), dict(mirror=mirror_id, source_identity=update.source_identity)
+    ).scalar()
     return stored is not None and int(stored) > int(update.file_mtime_ns)
 
 
@@ -393,7 +398,9 @@ def _apply_source(conn: Connection, mirror_id: int, update: SourceUpdate, now: s
     )
     if update.messages is None:
         return
-    source_id = conn.execute(text(_SELECT_SOURCE_ID_SQL), dict(source_identity=update.source_identity)).scalar_one()
+    source_id = conn.execute(
+        text(_SELECT_SOURCE_ID_SQL), dict(mirror=mirror_id, source_identity=update.source_identity)
+    ).scalar_one()
     conn.execute(text(_DELETE_SOURCE_MESSAGES_SQL), dict(source=source_id))
     if update.messages:
         conn.execute(
@@ -420,8 +427,8 @@ def _apply_source(conn: Connection, mirror_id: int, update: SourceUpdate, now: s
             timestamp_end=update.messages[-1].timestamp if update.messages else None,
         ),
     )
-    conn.execute(text(_CLEAR_UNREPROJECTABLE_SQL), dict(source_identity=update.source_identity))
-    conn.execute(text(_CLEAR_SHRINK_REFUSAL_SQL), dict(source_identity=update.source_identity))
+    conn.execute(text(_CLEAR_UNREPROJECTABLE_SQL), dict(source=source_id))
+    conn.execute(text(_CLEAR_SHRINK_REFUSAL_SQL), dict(source=source_id))
 
 
 @dataclass(frozen=True)
@@ -486,24 +493,25 @@ def _create_mirror(conn: Connection, update: ConversationUpdate, session: int | 
     return int(result.lastrowid)
 
 
-def _reap_emptied_mirrors(conn: Connection, previous_mirror_ids: set[int], mirror_id: int) -> None:
-    """Remove a conversation mirror whose every source moved to another conversation, so it cannot duplicate it."""
-    for previous in previous_mirror_ids - {mirror_id}:
-        if conn.execute(text(_COUNT_MIRROR_SOURCES_SQL), {"mirror": previous}).scalar_one() == 0:
-            conn.execute(text(_DELETE_EMPTY_MIRROR_SQL), {"mirror": previous})
+def _one_source_mirror(matches: Sequence[Row[Any]]) -> Row[Any] | None:
+    """Return a source-only match only when it identifies one conversation unambiguously."""
+    if len(matches) > 1:
+        raise AmbiguousSourceObservationError(_AMBIGUOUS_SOURCE_OBSERVATION_ERROR)
+    return matches[0] if matches else None
 
 
-def _holding_mirrors(conn: Connection, source_identities: Sequence[str]) -> set[int]:
+def _source_only_mirror(conn: Connection, source_identities: Sequence[str]) -> Row[Any] | None:
+    if not source_identities:
+        return None
     placeholders, params = _bind_sources(source_identities)
-    rows = conn.execute(text(_SELECT_HOLDING_MIRRORS_SQL.format(placeholders=placeholders)), params).scalars().all()
-    return {int(row) for row in rows}
+    matches = conn.execute(text(_SELECT_MIRRORS_BY_SOURCES_SQL.format(placeholders=placeholders)), params).all()
+    return _one_source_mirror(matches)
 
 
 def _find_mirror(conn: Connection, session: int | None, source_identities: Sequence[str]) -> Row[Any] | None:
     if session is not None:
         return conn.execute(text(_SELECT_MIRROR_BY_SESSION_SQL), dict(session=session)).first()
-    placeholders, params = _bind_sources(source_identities)
-    return conn.execute(text(_SELECT_MIRROR_BY_SOURCES_SQL.format(placeholders=placeholders)), params).first()
+    return _source_only_mirror(conn, source_identities)
 
 
 def reset_coverage_readiness(session_id: str, *, db: str | Path | None = None) -> None:
@@ -578,14 +586,12 @@ def write_conversation(update: ConversationUpdate, *, db: str | Path | None = No
             mirror_id = stored.id if stored is not None else _create_mirror(conn, update, session, now)
             previous_text = str(stored.conversation_text) if stored is not None else _EMPTY_TEXT
             stored_metadata = _parse_metadata(stored.metadata) if stored is not None else {}
-            previous_holders = _holding_mirrors(conn, [source.source_identity for source in update.sources])
             superseded = False
             for source in update.sources:
-                if _is_older_observation(conn, source):
+                if _is_older_observation(conn, mirror_id, source):
                     superseded = True
                     continue
                 _apply_source(conn, mirror_id, source, now)
-            _reap_emptied_mirrors(conn, previous_holders, mirror_id)
             implied = _implied_mirror(conn, mirror_id)
             metadata = _merge_metadata(stored_metadata, update.facts.metadata)
             if implied.transcript_path:

@@ -16,6 +16,7 @@ from teleclaude.adapters.whatsapp_adapter import WhatsAppAdapter
 from teleclaude.config.machine import config
 from teleclaude.config.validation import missing_required_fields
 from teleclaude.core.delivery import resolve_destination
+from teleclaude.core.events import SystemCommand, SystemCommandContext
 from teleclaude.core.models import MessageMetadata
 from teleclaude.transport.redis_transport import RedisTransport
 
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.events import AgentEventContext
     from teleclaude.core.models import Session
+    from teleclaude.core.runtime_readiness import RuntimeReadiness
     from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
@@ -72,13 +74,14 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
     Narrow flows must not provision unrelated UI lanes.
     """
 
-    def __init__(self, task_registry: "TaskRegistry") -> None:
+    def __init__(self, task_registry: "TaskRegistry", runtime_readiness: "RuntimeReadiness") -> None:
         """Initialize adapter runtime.
 
         Args:
             task_registry: Daemon-owned TaskRegistry for tracking and supervising background tasks
         """
         self.task_registry = task_registry
+        self.runtime_readiness = runtime_readiness
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance (UI adapters only)
         # Redis is a transport, not an adapter: kept off the adapter registry so
         # adapter counts, UI resolution, and headless detection stay honest.
@@ -86,12 +89,22 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         self.cache: DaemonCache | None = None
         # Per-adapter startup outcome (disabled/misconfigured/error/ok), surfaced to the user.
         self.adapter_status: dict[str, AdapterStatusReport] = {}
-        self.subscribe_session_events()
         # Direct handler for agent events (set by daemon, replaces event bus for AGENT_EVENT)
         self.agent_event_handler: Callable[[AgentEventContext], Awaitable[None]] | None = None
         self.agent_coordinator: AgentCoordinator | None = None
+        self.system_command_handler: Callable[[SystemCommandContext], Awaitable[None]] | None = None
         # Per-session lock for channel provisioning (prevents concurrent ensure_channel races)
         self._channel_ensure_locks: dict[str, asyncio.Lock] = {}
+
+    async def dispatch_system_command(self, context: SystemCommandContext) -> None:
+        """Route each system command directly to its owning runtime capability."""
+        if context.command == SystemCommand.SESSION_OUTPUT_STOPPED:
+            for _adapter_type, adapter in self._ui_adapters():
+                if isinstance(adapter, DiscordAdapter):
+                    await adapter.handle_system_command(context)
+            return
+        if self.system_command_handler is not None:
+            await self.system_command_handler(context)
 
     def register_adapter(self, adapter_type: str, adapter: BaseAdapter) -> None:
         """Manually register an adapter (for testing).

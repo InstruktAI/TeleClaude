@@ -188,7 +188,7 @@ And a driver that started before the publication receives the instruction its ow
 Given an unclaimed item in preparation whose dependencies are complete
 When any surface that starts preparation is used
 Then exactly one driver session holds the claim
-And that session's title is its role followed by the item it works on
+And that session's title is its catalog role followed by its arguments
 And a claim note names the session
 ```
 

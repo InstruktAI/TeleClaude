@@ -15,6 +15,8 @@ from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.media import MediaRef
 from teleclaude.types.procedure_delivery import ProcedureSessionDeliveryInitialization
 
+_RUNTIME_RUN_ID_FIELD = "runtime_run_id"
+
 
 class CommandType(str, Enum):
     """Internal command types."""
@@ -224,6 +226,7 @@ class StartAgentCommand(InternalCommand):
     thinking_mode: str = "slow"
     args: list[str] = field(default_factory=list)
     origin: str | None = None
+    runtime_run_id: str | None = None
     resolved_model_flags: str | None = None
     visible_input_source_text: str | None = None
 
@@ -235,6 +238,7 @@ class StartAgentCommand(InternalCommand):
         thinking_mode: str = "slow",
         args: list[str] | None = None,
         origin: str | None = None,
+        runtime_run_id: str | None = None,
         resolved_model_flags: str | None = None,
         visible_input_source_text: str | None = None,
         request_id: str | None = None,
@@ -245,6 +249,7 @@ class StartAgentCommand(InternalCommand):
         self.thinking_mode = thinking_mode
         self.args = args or []
         self.origin = origin
+        self.runtime_run_id = runtime_run_id
         self.resolved_model_flags = resolved_model_flags
         self.visible_input_source_text = visible_input_source_text
 
@@ -256,6 +261,7 @@ class StartAgentCommand(InternalCommand):
         """Serialize durable start intent without local model-resolution state."""
         payload = super().to_dict()
         payload.pop("resolved_model_flags", None)
+        payload.pop(_RUNTIME_RUN_ID_FIELD, None)
         return payload
 
 

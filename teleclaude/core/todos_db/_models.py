@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, ForeignKey, Index, String, Text, text
+from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, String, Text, text
 from sqlmodel import Field, SQLModel
 
 
@@ -121,6 +121,39 @@ class TodoArtifactVersion(SQLModel, table=True):
     created_at: str
 
 
+class CommitReview(SQLModel, table=True):
+    """Repository-scoped immutable commit-review evidence."""
+
+    __tablename__ = "commit_review"  # pyright: ignore[reportAssignmentType]
+    __table_args__ = {"extend_existing": True}
+
+    id: int | None = Field(default=None, sa_column=Column(Integer, primary_key=True, autoincrement=True))
+    sha: str = Field(index=True)
+    verdict: str
+    reviewer_session_id: str
+    producer_session_ids: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    stamped_at: str
+    reason: str
+    migration_source: str | None = Field(default=None, sa_column=Column(String, unique=True, nullable=True))
+
+
+class DocumentationTransfer(SQLModel, table=True):
+    """Workflow-owned proof for a pending-documentation identity transformation."""
+
+    __tablename__ = "documentation_transfer"  # pyright: ignore[reportAssignmentType]
+    __table_args__ = {"extend_existing": True}
+
+    id: int | None = Field(default=None, sa_column=Column(Integer, primary_key=True, autoincrement=True))
+    source_slug: str
+    target_slug: str = Field(index=True)
+    parent_id: str
+    source_sha: str | None = Field(default=None, sa_column=Column(String, nullable=True))
+    source_path_blobs: str = Field(sa_column=Column(Text, nullable=False))
+    target_path_blobs: str = Field(sa_column=Column(Text, nullable=False))
+    transition_id: str
+    reconciliation_commit: str
+
+
 class TodoDep(SQLModel, table=True):
     """Dependency edge between todo slugs."""
 
@@ -144,23 +177,33 @@ TODO_STATE_TABLE = SQLModel.metadata.tables["todo_state"]
 TODO_ARTIFACT_TABLE = SQLModel.metadata.tables["todo_artifacts"]
 TODO_ARTIFACT_VERSION_TABLE = SQLModel.metadata.tables["todo_artifact_versions"]
 TODO_DEPS_TABLE = SQLModel.metadata.tables["todo_deps"]
+Index("idx_commit_review_sha", "sha", "id")
+Index("idx_documentation_transfer_target", "target_slug", "id")
+COMMIT_REVIEW_TABLE = SQLModel.metadata.tables["commit_review"]
+DOCUMENTATION_TRANSFER_TABLE = SQLModel.metadata.tables["documentation_transfer"]
 
 TODOS_DB_TABLES = [
     TODO_TABLE,
     TODO_STATE_TABLE,
     TODO_ARTIFACT_TABLE,
     TODO_ARTIFACT_VERSION_TABLE,
+    COMMIT_REVIEW_TABLE,
+    DOCUMENTATION_TRANSFER_TABLE,
     TODO_DEPS_TABLE,
 ]
 
 
 __all__ = [
+    "COMMIT_REVIEW_TABLE",
+    "DOCUMENTATION_TRANSFER_TABLE",
     "TODOS_DB_TABLES",
     "TODO_ARTIFACT_TABLE",
     "TODO_ARTIFACT_VERSION_TABLE",
     "TODO_DEPS_TABLE",
     "TODO_STATE_TABLE",
     "TODO_TABLE",
+    "CommitReview",
+    "DocumentationTransfer",
     "Todo",
     "TodoArtifact",
     "TodoArtifactVersion",

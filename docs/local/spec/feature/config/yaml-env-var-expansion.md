@@ -48,102 +48,37 @@ No row inherits, shadows, or falls back to another row. The selected YAML path d
 
 ### Use cases
 
-#### UC-CFG-EXPAND-1
+#### UC-CFG-EXPAND-1: An operator uses a scoped environment value in configuration
 
 ```gherkin
-Given a user-facing configuration contains a `${NAME}` reference
-And its sibling environment file contains NAME
-When that configuration is loaded
-Then the typed configuration contains the sibling file's value
-And validation occurs after resolution
+Given an operator keeps a configuration value in the environment source owned by that configuration
+When they reference it from YAML and use the configuration
+Then the typed setting uses that value without copying the secret into the configuration file
 ```
 
 #### UC-CFG-EXPAND-2
 
-```gherkin
-Given a user-facing configuration contains a value that is one whole `${NAME}` reference
-And its sibling environment file does not contain NAME
-And NAME exists in the process environment or another configuration tier
-When that configuration is loaded
-Then the configuration loads with that field absent
-And no value is taken from the process environment or another tier
-```
-
 #### UC-CFG-EXPAND-3
-
-```gherkin
-Given a configuration contains references inside mappings, lists, and nested combinations
-When its environment references are resolved
-Then every string leaf is resolved against the same owning environment source
-And non-string values retain their types
-```
 
 #### UC-CFG-EXPAND-4
 
-```gherkin
-Given machine configuration contains an environment reference
-And the TeleClaude checkout's `.env` holds a value for it
-When machine configuration is loaded, validated or written
-Then the reference resolves from the machine runtime environment with that `.env` applied
-And a shell-provided value for the same name takes precedence
-And user-facing overlay environment files do not participate
-```
-
 #### UC-CFG-EXPAND-5
-
-```gherkin
-Given an experiments side-file sits beside machine configuration
-And it contains an environment reference
-When machine configuration is loaded
-Then the side-file uses the same machine runtime environment
-And its resolved experiments are composed with the machine configuration
-```
 
 #### UC-CFG-EXPAND-6
 
-```gherkin
-Given a YAML value is `${NAME:-fallback}`
-When the owning environment holds no value for NAME
-Then the field resolves to the fallback
-When the owning environment holds a value for NAME
-Then the field resolves to that value
-```
-
 #### UC-CFG-EXPAND-7
 
-```gherkin
-Given global, project, company, and person environment files each declare the same name with different values
-And each corresponding configuration references that name
-When the four configurations are loaded
-Then each typed configuration contains only its sibling file's value
-```
-
-#### UC-CFG-EXPAND-8
+#### UC-CFG-EXPAND-8: An operator saves changes without serializing secrets
 
 ```gherkin
-Given an effective configuration contains a value resolved from `${NAME}`
-When an unrelated field is edited and the configuration is saved
-Then the YAML retains `${NAME}` rather than the resolved value
-And the resolved value is not serialized into the YAML
+Given an operator edits an unrelated setting in a configuration that contains an environment reference
+When the configuration is saved
+Then the reference remains in YAML and its resolved secret is not serialized there
 ```
 
 #### UC-CFG-EXPAND-9
 
-```gherkin
-Given a configuration value embeds `${NAME}` inside a longer string
-And the owning environment does not contain NAME
-When that configuration is loaded
-Then loading fails naming NAME and the value's path
-```
-
 #### UC-CFG-EXPAND-10
-
-```gherkin
-Given a configuration value contains a `${...}` token that is neither `${NAME}` nor `${NAME:-default}`
-When that configuration is loaded
-Then loading fails naming the value's path
-And no field is silently left out in its place
-```
 
 ## Allowed values
 

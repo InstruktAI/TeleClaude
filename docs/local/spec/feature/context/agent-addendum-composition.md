@@ -24,49 +24,10 @@ Composition is a separate Sync step from inflation. Inflation builds the
 baseline (and optionally runs inline-ref expansion on it); composition then
 appends the agent-specific addendum verbatim after token substitution. The
 result is the final Deployed `AGENTS.md` written under each project root for
-each target agent.
+each target agent. During local distribution with the Codex repo override enabled,
+the composed Codex content is also written to the project root as `AGENTS.override.md`.
 
 ## Canonical fields
-
-### Use cases
-
-```
-Scenario: Claude addendum is appended after inflation with token substitution
-  Given the prefix root contains a CLAUDE.addendum.md
-  And the baseline AGENTS.md has been processed for the Claude target
-  When the sync composition step runs for the Claude target
-  Then CLAUDE.addendum.md is read from the prefix root
-  And the substitution step substitutes {AGENT_PREFIX} and {{agent}} tokens for Claude's prefix
-  And the substituted content is concatenated onto the baseline under a "\n---\n\n" separator
-  And no @-ref expansion runs on the addendum content
-```
-
-```
-Scenario: Missing addendum file is silently skipped
-  Given the prefix root does not contain a GEMINI.addendum.md
-  And the baseline AGENTS.md has been processed for the Gemini target
-  When the sync composition step runs for the Gemini target
-  Then no addendum block is appended to the output
-  And no error is raised
-  And the final Gemini output equals the inflated baseline alone
-```
-
-```
-Scenario: AGENTS.addendum.md is not consulted
-  Given the prefix root contains AGENTS.addendum.md but no per-agent addendum
-  When the sync composition step runs for any target agent
-  Then AGENTS.addendum.md is NOT read and NOT composed into any agent output
-  And the final output for every agent equals the inflated baseline alone
-```
-
-```
-Scenario: Codex local-phase repo override mirrors the addendum
-  Given the current sync is in the local distribution phase with Codex repo-override enabled
-  And the prefix root contains a CODEX.addendum.md
-  When the Codex output is written
-  Then the composed Codex AGENTS.md is written under the per-agent deployment directory
-  And the same combined content is also written to AGENTS.override.md at the project root
-```
 
 ### Cross-context references
 

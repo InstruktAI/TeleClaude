@@ -93,184 +93,41 @@ never loaded as another tier.
 
 #### UC-CFG-WSD1: Declared tier governs, not location
 
-```
-Given a root directory whose teleclaude.yml declares itself a person configuration
-And the directory does not sit under any conventional person-folder location
-When an agent loads configuration for that root
-Then the file is loaded as a person overlay
-And the invocation resolves to the person tier at that root
-```
-
 #### UC-CFG-WSD2: Nearest anchoring tier declaration is the context root
-
-```
-Given a human or agent invokes the CLI from a subdirectory below an anchoring tier declaration
-When the context is resolved
-Then the nearest ancestor directory carrying an anchoring tier declaration is the context root
-And that file's declared tier governs the invocation
-```
 
 #### UC-CFG-WSD3: A person context needs no git checkout
 
-```
-Given a person directory whose configuration declares itself a person configuration
-And no git checkout exists at or above that directory
-When an agent invokes a read surface such as the docs index from within it
-Then the invocation resolves to the person tier
-And no failure about a missing project checkout occurs
-```
-
 #### UC-CFG-WSD4: Worktree shared state resolves to the owning checkout
-
-```
-Given a linked git worktree of an owning project checkout
-When an agent resolves shared project state such as the todo store from within the worktree
-Then the shared state root is the owning checkout, never the worktree itself
-```
 
 #### UC-CFG-WSD5: A project without git fails loud on shared state
 
-```
-Given a root whose configuration declares itself a project configuration
-And no git metadata exists at that root
-When shared project state is resolved for that project
-Then resolution fails with a clear error naming the project root
-```
-
 #### UC-CFG-WSD6: A file the registries name is declared by its migration
-
-```
-Given a same-named configuration file authored before tier declarations existed
-And the tier registries name its location
-When an agent loads that file
-Then it loads as the tier the registries name
-And the stored file is unchanged by the load
-And once a migration run has stored it, the file carries that tier declaration
-```
 
 #### UC-CFG-WSD7: An unregistered file from before declarations loads as a project
 
-```
-Given a same-named configuration file authored before tier declarations existed
-And the tier registries do not name its location
-When that file is loaded
-Then it loads as a project configuration without registry standing
-And the stored file is unchanged by the load
-```
-
 #### UC-CFG-WSD8: An invalid declaration never loads as another tier
-
-```
-Given a same-named configuration file whose declaration names an unknown or tier-inconsistent kind
-When that file is loaded
-Then loading fails with a clear error naming the file and the invalid declaration
-And the file is never loaded as another configuration tier
-```
 
 #### UC-CFG-WSD9: A company configuration is recognized, never misclassified
 
-```
-Given a company configuration file declaring itself a company configuration
-When context resolution encounters it
-Then it is recognized as company configuration
-And no context root is anchored at the company folder
-And it is never treated as an anchoring tier
-And invocation from within the company folder behaves as invocation with no context root
-And company configuration composes alongside its member projects through their declared company membership
-```
-
 #### UC-CFG-WSD10: A declared file missing its schema reference gains it when stored
-
-```
-Given a same-named configuration file the tier registries name
-And that file carries a valid tier declaration and no schema reference
-When a migration run or an agent's configuration operation stores that file
-Then the file carries its schema reference
-And its existing tier declaration is left as it stands
-```
 
 #### UC-CFG-WSD11: A file that cannot be written still loads
 
-```
-Given a same-named configuration file the tier registries name
-And that file is not writable by the invoking user
-And that file carries no tier declaration and has not passed the declaring migration
-When an agent loads that file
-Then it loads as the tier the registries name
-And the file is not modified
-```
-
 #### UC-CFG-WSD12: An unavailable registered root is migrated when it returns
-
-```
-Given a registered project root that is unavailable while a migration run executes
-When that root becomes available and its configuration file is loaded
-Then the file loads in its current shape
-And a later migration run stores it at the current version
-And its absence left every other root migrated by the earlier run
-```
 
 #### UC-CFG-WSD13: A schema reference is never written ahead of its schema
 
 #### UC-CFG-WSD14: A declaration removed after migration is not restored
 
-```
-Given a configuration file stored past the declaring migration
-And its tier declaration has been removed
-And the tier registries name its location
-When that file is loaded
-Then loading fails with an error naming the file and the missing declaration
-And no tier declaration is restored
-And the file is never loaded as any tier
-```
-
 #### UC-CFG-WSD15: Removing the schema reference too does not restore a declaration
-
-```
-Given a configuration file stored past the declaring migration
-And it carries neither a tier declaration nor a schema reference
-When that file is loaded
-Then loading fails with an error naming the file and the missing declaration
-And no tier declaration is restored
-```
 
 #### UC-CFG-WSD16: A root registered later is declared by its registration
 
-```
-Given a project root whose configuration file was authored without a tier declaration
-And the root is not yet registered
-When an operator or agent registers that project
-Then its configuration file is stored declaring the project tier
-```
-
 #### UC-CFG-WSD17: Moving a repository does not restore a declaration
-
-```
-Given a configuration file stored past the declaring migration whose tier declaration has been removed
-And its repository is cloned to another machine
-When that file is loaded there
-Then loading fails with an error naming the file and the missing declaration
-And no tier declaration is restored on that machine
-```
 
 #### UC-CFG-WSD18: Loading an undeclared file writes nothing
 
-```
-Given a same-named configuration file carrying no tier declaration
-When that file is loaded
-Then the stored file is byte-identical before and after the load, whether the load succeeds or fails
-And no record of the load is kept that a later load consults
-```
-
 #### UC-CFG-WSD19: A written file carries its tier's schema reference on every machine
-
-```
-Given a declared configuration file of any tier
-And the machine writing it may or may not hold that tier's published schema
-When an agent's configuration operation writes that file
-Then the file carries its tier's schema reference
-And the written content is identical to what any other machine writes for the same document
-```
 
 ### Cross-context references
 

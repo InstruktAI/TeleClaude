@@ -11,15 +11,20 @@ visibility: 'public'
 
 ## What it is
 
-`telec code test`, `telec code lint`, and `telec code format` all invoke their
-native `make` target through the same runner primitive
-(`_run_in_process_group` in `teleclaude/cli/telec/handlers/quality.py`), which
-launches the target as its own session/process-group leader
-(`start_new_session=True`). Detachment means the runner — not the caller's
-terminal — owns reaping the group: before the runner returns the child's exit
-code, it tears down the whole process group on every return path, not only
-the abnormal ones, so a descendant the target spawned (`make` → `bash` →
-`pytest` → `execnet` workers) never survives reparented to PID 1.
+`telec code test`, `telec code lint`, and `telec code format` run the
+project's selected native checks. Each invocation owns its spawned command
+processes and reaps their descendants before returning, on success, failure, or
+cancellation; the command's original result or error remains the outcome.
+
+Guardrail subprocesses use the checked-out TeleClaude runtime independently of
+the launching interpreter. Native Python checks use the already prepared
+project environment and do not synchronize dependencies. Full-native lint
+requests for the same Git repository serialize; each request runs its selected
+checks once and receives its own outcome, and a queued request can be cancelled.
+Cancellation reaches started command groups, which are reaped before temporary
+grading environments are removed. Guardrail stage records use an opaque
+execution-root identifier and never include the raw root path; recording does
+not change the check outcome.
 
 ## Canonical fields
 
@@ -27,112 +32,23 @@ the abnormal ones, so a descendant the target spawned (`make` → `bash` →
 
 #### UC-CQD1: telec code test reaps a suite-spawned descendant on a normal-exit (session_timeout) interrupt
 
-```gherkin
-Given telec code test runs the suite as a detached session/process-group leader
-And a suite-spawned OS descendant outlives pytest
-When pytest returns normally with no signal to the runner (an xdist session_timeout interrupt, exit code 2)
-Then the runner reaps the child process group before returning the exit code
-And no suite-spawned descendant survives reparented to PID 1
-```
-
 #### UC-CQD2: telec code lint runs a guardrails step under the bundled interpreter regardless of the launching interpreter
-
-```gherkin
-Given telec code lint is launched by an interpreter that lacks TeleClaude's runtime dependencies
-When the guardrails lane runs a step that imports teleclaude
-Then the step's subprocess runs under the bundled TeleClaude checkout's venv interpreter
-And the step does not fail with ModuleNotFoundError for a TeleClaude runtime dependency
-```
 
 #### UC-CQD3: routine lint does not execute CLI help paths
 
-```gherkin
-Given an agent invokes routine or repository-wide lint
-When the guardrails lane runs
-Then it does not start CLI commands solely to validate their help behavior
-```
-
 #### UC-CQD4: Guardrail stage durations distinguish subprocess checks from source validation
-
-```gherkin
-Given a quality gate runs the guardrail lane
-When a stage returns or raises an exception
-Then a completion record names the stage, outcome, monotonic elapsed milliseconds, opaque execution-root id, process id, and lane-run id
-And no raw execution-root path is written in the stage records
-And successful completion is logged at DEBUG and failed completion at ERROR
-And caller cancellation is recorded at DEBUG and propagates
-And stage entry is available at TRACE, including in-process source validation
-And the original return or exception still determines the gate outcome
-And records are emitted per stage rather than per candidate file
-```
 
 #### UC-CQD5: Full native lint runs share one repository concurrency slot
 
-```gherkin
-Given two full native lint requests target checkouts sharing one Git repository
-When one request runs the native suite
-Then the other waits for that repository's full-native slot
-And every request still runs its selected checks and receives its own outcome
-And waiting can be interrupted through the existing command cancellation context
-And the slot is released after success, failure or process exit
-And a completion record distinguishes queue waiting from suite execution
-And queued cancellation records zero suite execution time and the cancelled slot outcome
-And a slot error is recorded without suppressing its exception
-```
-
 #### UC-CQD6: Root formatting checks reuse Prettier's content cache
-
-```gherkin
-Given root Markdown formatting checks use Prettier with no plugins
-When the file contents, formatting options, Prettier version and Node version are unchanged
-Then the check may reuse Prettier's built-in content cache
-And changed files are checked by the same formatter and options
-And formatting writes preserve the cache for other unchanged files
-```
 
 #### UC-CQD7: Full Python analysis uses bounded Pyright workers
 
-```gherkin
-Given the project-native lint recipe selects a full Python analysis
-When Pyright checks the configured sources
-Then it uses two analyzer workers with the existing source selection and diagnostic options
-And a scoped Python file analysis retains its existing invocation
-And the shared command runner owns and reaps the worker processes
-```
-
 #### UC-CQD8: Independent lint checks overlap after preparation
-
-```gherkin
-Given lint has resolved its owning homes, selected paths and check families
-And any formatting and staged-content preparation has completed
-When a home requires native checks and guardrails
-Then those read-only lanes may execute concurrently
-And independent guardrail stages use bounded concurrency
-And each selected check executes once with its original root, environment and scope
-And owning homes are completed one at a time
-And findings remain blocking with failure selection in declared check order
-```
 
 #### UC-CQD9: Concurrent lint retains process ownership through interruption
 
-```gherkin
-Given a lint invocation has concurrent checks running or waiting
-When the caller cancels or the coordinating process receives a termination signal
-Then the checks share the caller's cancellation request
-And every started command group is reaped before control returns
-And an outer checkout-grading wrapper allows its nested command owner to complete escalation before killing the wrapper
-And temporary grading environments remain alive until their checks finish
-And the original cancellation or unexpected failure propagates
-```
-
 #### UC-CQD10: Native Python lint uses the prepared environment
-
-```gherkin
-Given the project's Python environment has been prepared
-When its native lint recipe starts read-only checks
-Then its Python tool invocations do not synchronize dependencies
-And concurrent validators use that prepared environment
-```
 
 ## Known caveats
 

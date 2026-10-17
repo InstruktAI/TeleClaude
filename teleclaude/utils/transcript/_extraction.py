@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +17,7 @@ from ._iterators import (
     TRANSCRIPT_READERS,
     _get_entries_for_agent,
     _start_index_after_timestamp_or_rotation,
+    collect_transcript_format_mismatches,
 )
 from ._parsers import normalize_transcript_entry_message
 from ._rendering import render_transcript_from_entries
@@ -277,6 +278,7 @@ def parse_session_transcript(
     collapse_tool_results: bool = False,
     include_thinking: bool = True,
     include_tools: bool = True,
+    on_format_mismatch: Callable[[str, Path, json.JSONDecodeError], None] | None = None,
 ) -> str:
     """Parse a session transcript using the agent-specific parser.
 
@@ -296,17 +298,18 @@ def parse_session_transcript(
         return f"Transcript file not found: {transcript_path}"
 
     reader = TRANSCRIPT_READERS[agent_name]
-    rendered = render_transcript_from_entries(
-        reader.read(path, None),  # type: ignore[arg-type]
-        title,
-        since_timestamp,
-        until_timestamp,
-        tail_chars,
-        tail_limit_fn=reader.tail_limit,
-        collapse_tool_results=collapse_tool_results,
-        include_thinking=include_thinking,
-        include_tools=include_tools,
-    )
+    with collect_transcript_format_mismatches(on_format_mismatch):
+        rendered = render_transcript_from_entries(
+            reader.read(path, None),  # type: ignore[arg-type]
+            title,
+            since_timestamp,
+            until_timestamp,
+            tail_chars,
+            tail_limit_fn=reader.tail_limit,
+            collapse_tool_results=collapse_tool_results,
+            include_thinking=include_thinking,
+            include_tools=include_tools,
+        )
     if escape_triple_backticks:
         return _escape_triple_backticks(rendered)
     return rendered

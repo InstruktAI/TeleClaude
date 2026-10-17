@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import cast
+from typing import NamedTuple, cast
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
@@ -19,7 +20,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.core.db.connection_factory import create_async_db_engine, create_sync_db_engine
 from teleclaude.docs_layout import registered_project_slugs
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.project_manifest import load_registered_roots
+from teleclaude.types.todos import CommitReviewDetail, CommitReviewVerdict, TodoEventKind
 
 from ._activation_schema import ensure_activation_schema
 from ._docs_local_rename import (
@@ -32,6 +35,39 @@ from ._models import TODOS_DB_TABLES
 from ._sdlc_rename import migrate_sdlc_rename
 
 logger = get_logger(__name__)
+_TODO_STATE_TABLE = "todo_state"
+_COMMIT_REVIEW_TABLE = "commit_review"
+_LEGACY_STATE_QUERY = "SELECT id, state FROM todo_state"
+_IMPORTED_REVIEW_SOURCES_QUERY = "SELECT migration_source FROM commit_review WHERE migration_source IS NOT NULL"
+_LEGACY_EVENTS_FIELD = "events"
+_LEGACY_DETAILS_FIELD = "details"
+_LEGACY_EVENT_KIND_FIELD = "kind"
+_LEGACY_ACTOR_FIELD = "actor"
+_LEGACY_TIMESTAMP_FIELD = "at"
+_LEGACY_PROVENANCE_WARNING = "commit_review_legacy_provenance_unavailable"
+_LEGACY_STATE_WARNING = "commit_review_legacy_state_unreadable"
+_LEGACY_STATE_WARNING_TODO_ID = "todo_id"
+_LEGACY_PROVENANCE_WARNING_SHA = "sha"
+_GIT_SESSION_TRAILER_FORMAT = "--format=%(trailers:key=Session,valueonly,unfold)"
+_GIT_NO_WALK = "--no-walk"
+_SESSION_TRAILER_SEPARATOR = ","
+_EMPTY_REASON = ""
+_MIGRATION_SOURCE_TEMPLATE = "{todo_id}:{event_index}"
+_COMMIT_REVIEW_INSERT_SQL = (
+    "INSERT OR IGNORE INTO commit_review "
+    "(sha, verdict, reviewer_session_id, producer_session_ids, stamped_at, reason, migration_source) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?)"
+)
+
+
+class _LegacyCommitReviewInsert(NamedTuple):
+    sha: str
+    verdict: str
+    reviewer_session_id: str
+    producer_session_ids: str | None
+    stamped_at: str
+    reason: str
+    migration_source: str
 
 
 def _generate_id() -> str:
@@ -602,6 +638,92 @@ def _migrate_todo_group_id(conn: sqlite3.Connection) -> None:
     logger.info("todo.group_id migration complete")
 
 
+def _migrate_commit_review_events(conn: sqlite3.Connection, project_root: Path) -> None:
+    """Import legacy stamps and derive independence only from available Git producer provenance.
+
+    The reviewer, time, and reason come from the legacy event. A readable commit
+    Session trailer supplies producer provenance; missing provenance stays NULL
+    and cannot qualify as independent approval.
+    """
+    if not _table_exists(conn, _TODO_STATE_TABLE) or not _table_exists(conn, _COMMIT_REVIEW_TABLE):
+        return
+    pending_rows = _pending_commit_review_events(conn)
+    if not pending_rows:
+        return
+    try:
+        repo: Repo | None = Repo(str(project_root))
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        repo = None
+    prepared_rows: list[_LegacyCommitReviewInsert] = []
+    for row in pending_rows:
+        producer_sessions: list[str] | None = None
+        if repo is not None:
+            try:
+                trailer = repo.git.log(_GIT_NO_WALK, _GIT_SESSION_TRAILER_FORMAT, row.sha)
+                parsed_sessions = [
+                    value.strip() for value in trailer.split(_SESSION_TRAILER_SEPARATOR) if value.strip()
+                ]
+                producer_sessions = parsed_sessions or None
+            except GitCommandError:
+                logger.warning(_LEGACY_PROVENANCE_WARNING, **{_LEGACY_PROVENANCE_WARNING_SHA: row.sha})
+        prepared_rows.append(
+            row._replace(producer_session_ids=json.dumps(producer_sessions) if producer_sessions is not None else None)
+        )
+    # The bootstrap caller supplies a fresh connection; all Git work precedes writer acquisition.
+    for row in prepared_rows:
+        conn.execute(_COMMIT_REVIEW_INSERT_SQL, row)
+    conn.commit()
+
+
+def _pending_commit_review_events(conn: sqlite3.Connection) -> list[_LegacyCommitReviewInsert]:
+    """Read missing source identities in legacy traversal order without acquiring a writer."""
+    imported_sources = {row[0] for row in conn.execute(_IMPORTED_REVIEW_SOURCES_QUERY).fetchall()}
+    pending_rows: list[_LegacyCommitReviewInsert] = []
+    for todo_id, raw_state in conn.execute(_LEGACY_STATE_QUERY).fetchall():
+        try:
+            payload = json.loads(str(raw_state))
+        except (TypeError, ValueError):
+            logger.warning(_LEGACY_STATE_WARNING, **{_LEGACY_STATE_WARNING_TODO_ID: str(todo_id)})
+            continue
+        events = payload.get(_LEGACY_EVENTS_FIELD) if isinstance(payload, dict) else None
+        if not isinstance(events, list):
+            continue
+        for event_index, event in enumerate(events):
+            if (
+                not isinstance(event, dict)
+                or event.get(_LEGACY_EVENT_KIND_FIELD) != TodoEventKind.COMMIT_REVIEW_STAMP.value
+            ):
+                continue
+            details = event.get(_LEGACY_DETAILS_FIELD)
+            if not isinstance(details, dict):
+                continue
+            sha = details.get(CommitReviewDetail.SHA.value)
+            verdict = details.get(CommitReviewDetail.VERDICT.value)
+            reviewer = event.get(_LEGACY_ACTOR_FIELD)
+            stamped_at = event.get(_LEGACY_TIMESTAMP_FIELD)
+            if not all(isinstance(value, str) and value for value in (sha, verdict, reviewer, stamped_at)):
+                continue
+            try:
+                typed_verdict = CommitReviewVerdict(verdict)
+            except ValueError:
+                continue
+            migration_source = _MIGRATION_SOURCE_TEMPLATE.format(todo_id=todo_id, event_index=event_index)
+            if migration_source in imported_sources:
+                continue
+            pending_rows.append(
+                _LegacyCommitReviewInsert(
+                    cast(str, sha),
+                    typed_verdict.value,
+                    cast(str, reviewer),
+                    None,
+                    cast(str, stamped_at),
+                    str(details.get(CommitReviewDetail.REASON.value, _EMPTY_REASON)),
+                    migration_source,
+                ),
+            )
+    return pending_rows
+
+
 def _bootstrap_todos_db(db_path: str) -> None:
     """Run sync migrations and ensure the ORM schema exists."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -645,6 +767,12 @@ def _bootstrap_todos_db(db_path: str) -> None:
         ensure_activation_schema(activation_conn)
     finally:
         activation_conn.close()
+
+    conn = sqlite3.connect(db_path)
+    try:
+        _migrate_commit_review_events(conn, Path(db_path).parent.parent)
+    finally:
+        conn.close()
 
     maybe_auto_import_legacy_markdown_todos(db_path)
 

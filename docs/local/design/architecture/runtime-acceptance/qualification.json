@@ -1,0 +1,359 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "finite_preimplementation_setup_assertions",
+  "purpose": "One separately authorized OS/harness setup qualification attempt; no product execution or application corpus",
+  "vector_order": [
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4",
+    "Q5.a",
+    "Q5.b",
+    "Q5.c",
+    "Q5.d",
+    "Q5.e",
+    "Q6.a",
+    "Q6.b",
+    "Q6.c",
+    "Q6.d",
+    "Q6.e",
+    "Q7.a",
+    "Q7.b",
+    "Q8.a",
+    "Q8.b"
+  ],
+  "vectors": [
+    {
+      "id": "Q1",
+      "budget_seconds": 120,
+      "max_attempts": 1,
+      "actions": [
+        "Authenticate every locked vendor input and dependency basis",
+        "Compare actual host image/kernel/architecture/package/interpreter/template identities with static lock; inspect privileged action admission without mutation"
+      ],
+      "observation_authority": [
+        "vendor signatures/attestation and byte digests",
+        "read-only host package/interpreter metadata",
+        "protected lock/realization records"
+      ],
+      "required_facts": [
+        "all required bytes authenticated",
+        "exact tuple and dependency preconditions match",
+        "source review and separate qualification authorization name this SHA and lock",
+        "a mismatch ends before any guest or privileged mutation"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q2",
+      "budget_seconds": 480,
+      "max_attempts": 1,
+      "actions": [
+        "Provision only authenticated offline file data, with no outside package control-script execution",
+        "Bind active original parent and subscriptions/handles before exactly one guest boot",
+        "Verify namespace/maps and mask admission, then configure exact guest archives/accounts/tools inside guest"
+      ],
+      "observation_authority": [
+        "one manager connection and protected intent/result journal",
+        "original parent descriptors",
+        "actual namespace maps and guest OS metadata"
+      ],
+      "required_facts": [
+        "one guest invocation",
+        "non-identity namespace and actual UID mapping",
+        "correct account/sudo/bus/network/tool/source ownership",
+        "all active unit/drop-in/activation readbacks accounted by the recipe and locked vendor graph",
+        "no product session/API/installer executed"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q3",
+      "budget_seconds": 120,
+      "max_attempts": 1,
+      "actions": [
+        "Verify runtime mask on the already active measurement guest with unchanged invocation",
+        "On one separate locked inert diagnostic service, start once, mask while active without stop, observe unchanged invocation, then stop normally",
+        "Request exactly one subsequent native manager start of that masked diagnostic service",
+        "Request a forbidden second measurement-guest start through the helper admission interface"
+      ],
+      "observation_authority": [
+        "actual manager ActiveState/InvocationID and UnitMasked error for the separate diagnostic unit",
+        "same measurement manager/guest invocation",
+        "protected helper admission journal"
+      ],
+      "required_facts": [
+        "mask preserves each running invocation",
+        "native masked diagnostic start refused with no new invocation/job",
+        "measurement helper second start refused before manager mutation",
+        "no pending restart/start uncertainty; measurement guest is never restarted"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q4",
+      "budget_seconds": 300,
+      "max_attempts": 1,
+      "actions": [
+        "Start one inert OS descendant by guest system manager, one by guest user manager and one by a long-lived guest shell under the already-bound measurement guest",
+        "Request normal guest poweroff once",
+        "Read original parent population after verified shutdown"
+      ],
+      "observation_authority": [
+        "actual guest manager/system/user process placement",
+        "same outside manager/invocation and original observation handles",
+        "raw cgroup.events bytes"
+      ],
+      "required_facts": [
+        "all three inert creators and descendants placed inside the measured boundary",
+        "guest poweroff without forced termination or reboot",
+        "same inactive service and active original parent",
+        "mask and admission stay closed",
+        "original recursive populated 0; no P1/P2/application success inferred"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q5.a",
+      "budget_seconds": 60,
+      "max_attempts": 1,
+      "actions": [
+        "On a separate empty diagnostic slice, bind original handles then stop/collect it through the host manager",
+        "Start an empty same-name diagnostic slice once"
+      ],
+      "observation_authority": ["real manager lifecycle events", "original fd reads and inotify lifetime events"],
+      "required_facts": [
+        "original object invalidated",
+        "replacement cannot supply original proof",
+        "no rebind or stat-equality fallback",
+        "qualification measurement parent unchanged"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q5.b",
+      "budget_seconds": 60,
+      "max_attempts": 1,
+      "actions": ["Deactivate a separate diagnostic parent while observing it"],
+      "observation_authority": ["actual manager ActiveState/UnitRemoved messages on original connection"],
+      "required_facts": [
+        "deactivation invalidates proof even if population is zero",
+        "no same-name lookup repairs continuity"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q5.c",
+      "budget_seconds": 60,
+      "max_attempts": 1,
+      "actions": [
+        "Close the dedicated diagnostic system-bus connection after subscription while an object remains active"
+      ],
+      "observation_authority": ["actual transport disconnect and subscription lifecycle"],
+      "required_facts": [
+        "connection loss recorded unproven",
+        "no automatic reconnect/rebaseline",
+        "original source and error preserved"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q5.d",
+      "budget_seconds": 60,
+      "max_attempts": 1,
+      "actions": ["Close a separate diagnostic observation fd, then attempt its original-handle read"],
+      "observation_authority": ["actual EBADF from native read"],
+      "required_facts": ["dead observation handle unproven", "no reopen-by-name", "no empty result substituted"],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q5.e",
+      "budget_seconds": 60,
+      "max_attempts": 1,
+      "actions": [
+        "Read native inotify queue limit without changing it",
+        "On an owned regular diagnostic directory and separate queue, create exactly limit+1 distinct empty filenames without reading events, capped at 65536 events",
+        "Drain that queue once, then remove only owned diagnostic files"
+      ],
+      "observation_authority": [
+        "actual kernel IN_Q_OVERFLOW notification on the same inotify mechanism used by the observer"
+      ],
+      "required_facts": [
+        "actual overflow invalidates continuity",
+        "unsupported or excessive limit is failed/unexecuted, never a synthetic overflow pass",
+        "no cgroup write, migration or measurement-parent replacement"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q6.a",
+      "budget_seconds": 60,
+      "max_attempts": 1,
+      "actions": [
+        "Record a diagnostic helper action intent",
+        "Terminate that inert helper before any result acknowledgment"
+      ],
+      "observation_authority": ["fsynced one-way journal and actual child exit"],
+      "required_facts": [
+        "intent retained with result unknown",
+        "original error preserved",
+        "no retry, replacement or release"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q6.b",
+      "budget_seconds": 60,
+      "max_attempts": 1,
+      "actions": [
+        "Over a dedicated diagnostic connection, send one StartTransientUnit for the locked inert /usr/bin/true unit",
+        "Close the connection after request write and before reading its acknowledgment"
+      ],
+      "observation_authority": [
+        "actual transport boundary and protected prewritten intent; any available manager read remains separate"
+      ],
+      "required_facts": [
+        "start acknowledgment unknown whether accepted or not",
+        "no second start",
+        "inactive status does not manufacture consumption",
+        "bounded closure/read/export only"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q6.c",
+      "budget_seconds": 60,
+      "max_attempts": 1,
+      "actions": ["Finalize a diagnostic run with its declared inner report absent"],
+      "observation_authority": ["anchored file open result and prewritten availability journal"],
+      "required_facts": [
+        "report availability false/unknown preserved",
+        "missing evidence independently blocks final pass",
+        "safe recovery prefix remains readable"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q6.d",
+      "budget_seconds": 60,
+      "max_attempts": 1,
+      "actions": [
+        "Seal one bounded harness diagnostic report",
+        "Change one diagnostic payload byte",
+        "Attempt readback validation once"
+      ],
+      "observation_authority": ["retained original bytes/digest plus actual changed-file digest"],
+      "required_facts": [
+        "corruption blocks final acceptance and release",
+        "original seal never resealed to match changed data",
+        "failure record preserves both availability and original error"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q6.e",
+      "budget_seconds": 60,
+      "max_attempts": 1,
+      "actions": [
+        "Stage a bounded diagnostic export as the ordinary outside account into an owned destination made unwritable by a root-owned parent",
+        "Attempt its file write once"
+      ],
+      "observation_authority": ["actual permission error and safe external recovery record"],
+      "required_facts": [
+        "export failure retained independently",
+        "no uploaded-pass assertion",
+        "original earlier outcome preserved",
+        "no extra path, credential archive or retry"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q7.a",
+      "budget_seconds": 120,
+      "max_attempts": 1,
+      "actions": [
+        "Run two inert qualification ownership helpers concurrently with distinct run identities and diagnostic resource prefixes"
+      ],
+      "observation_authority": ["exclusive filesystem ownership and action journals for each helper"],
+      "required_facts": [
+        "resources remain disjoint",
+        "neither owner mutates or releases the other prefix",
+        "both outcomes explicitly observed"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q7.b",
+      "budget_seconds": 120,
+      "max_attempts": 1,
+      "actions": ["Reserve one diagnostic run identity", "Ask a second owner to reserve that exact identity once"],
+      "observation_authority": ["atomic exclusive ownership refusal and both journals"],
+      "required_facts": [
+        "second owner refused before privileged mutation",
+        "first owner resources unchanged",
+        "no adopted retained generation"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q8.a",
+      "budget_seconds": 90,
+      "max_attempts": 1,
+      "actions": [
+        "Perform bounded normal closure and explicit diagnostic file readback/export for already-settled inert objects",
+        "Record actual monotonic phase durations"
+      ],
+      "observation_authority": ["actual start/end monotonic observations and readback hashes"],
+      "required_facts": [
+        "shutdown/export facts fit the remaining budget",
+        "no guessed sleep supplies success",
+        "measured duration retained; no application-profile timing claim"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    },
+    {
+      "id": "Q8.b",
+      "budget_seconds": 90,
+      "max_attempts": 1,
+      "actions": [
+        "Present an already-expired remaining budget to the source-reviewed admission seam before another diagnostic action"
+      ],
+      "observation_authority": ["original monotonic deadline and protected admission record"],
+      "required_facts": [
+        "no new start or privileged action",
+        "partial evidence retained",
+        "outer deadline never reset",
+        "no force-kill-to-pass"
+      ],
+      "failure": "original error plus available journal/evidence retained; no next vector after unexpected result; unexecuted vectors remain unexecuted"
+    }
+  ],
+  "vector_budget_sum_seconds": 2040,
+  "outer_budget_seconds": 2340,
+  "closure_export_reserve_seconds": 300,
+  "normal_command_budget_seconds": 120,
+  "boot_or_guest_configuration_command_budget_seconds": 300,
+  "shutdown_budget_seconds": 240,
+  "export_budget_seconds": 60,
+  "deadline_rule": "Every action uses min(command budget, vector remaining, original outer remaining). Reserve is deducted before admitting another vector. No budget is reset.",
+  "resource_inventory": "one measurement guest; one distinct diagnostic prefix per vector; Q3 one locked inert diagnostic service; Q7.a two declared ownership helpers. All inert OS descendants run only the locked native lifetime command or the same harness OS diagnostic role. No product executable, session/API/state seed or application importer.",
+  "claims": "Each vector reports its exact observed facts and verdict, or unexecuted. Q5.e qualifies kernel overflow detection on an owned diagnostic filesystem queue, not a cgroup movement. Source review separately covers all declared invalidation branches. Expected negative-vector retention is no profile cleanup pass.",
+  "stop_rule": "Unexpected vector result ends the attempt after only predeclared bounded closure/read/export. No auto-retry or same-run new guest. Another attempt requires independent disposition and separate authorization.",
+  "evidence_fields": [
+    "qualification_source_commit",
+    "qualification_source_tree",
+    "static_lock_sha256",
+    "recipe_sha256",
+    "qualification_sha256",
+    "realization_sha256",
+    "authorization_address",
+    "vector_id",
+    "action_intent",
+    "actual_result_or_unknown",
+    "authority_object_and_generation",
+    "original_failure",
+    "retained_paths_and_evidence_hashes",
+    "actual_duration",
+    "unexecuted_vectors"
+  ]
+}

@@ -30,7 +30,7 @@ from teleclaude.config.jobs import (
     SubscriptionChange,
     load_effective_jobs,
 )
-from teleclaude.config.subject_operations import ConfigRequest, ConfigVerb
+from teleclaude.config.operation_requests import ConfigRequest, ConfigVerb
 from teleclaude.config_subjects import ConfigSubjectKind
 from teleclaude.cron.result_store import job_result_transaction, write_job_result_in_transaction
 from teleclaude.cron.state import CronState, JobRunStatus, compose_job_key

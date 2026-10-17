@@ -97,8 +97,10 @@ from teleclaude.identity_reach import Reach, resolve_reach
 from teleclaude.memory.curation import MemoryScope, memory_scope
 from teleclaude.runtime.environment import (
     COMPACTION_LAUNCH_CONTEXT_FIELD,
+    RUNTIME_RUN_ID_FIELD,
     CompactionLaunchContext,
     read_compaction_launch_context,
+    read_runtime_run_id,
 )
 from teleclaude.session_identity import inspect_session_identity_marker
 from teleclaude.session_scoping._extractors._common import CERTAIN_EDIT_TOOLS, _canonical_tool_name
@@ -276,6 +278,7 @@ class _ReceiverOutboxContext:
     agent: str
     event_type: str
     outbox_db: str
+    runtime_run_id: str | None = None
     launch_context: CompactionLaunchContext | None = None
 
 
@@ -865,10 +868,12 @@ def _serialize_outbox_payload(
     return json.dumps(dict(payload))
 
 
-def _attach_compaction_launch_context(payload: JsonDict, context: _ReceiverOutboxContext) -> None:
-    """Carry the typed child launch context beside normalized provider fields."""
+def _attach_launch_context(payload: JsonDict, context: _ReceiverOutboxContext) -> None:
+    """Carry immutable launch identities beside normalized provider fields."""
     if context.launch_context is not None:
         payload[COMPACTION_LAUNCH_CONTEXT_FIELD] = cast(JsonValue, context.launch_context.to_payload())
+    if context.runtime_run_id is not None:
+        payload[RUNTIME_RUN_ID_FIELD] = context.runtime_run_id
 
 
 def enqueue_hook_event(
@@ -1269,7 +1274,7 @@ def _enqueue_native_metadata_update(
         payload["native_session_id"] = raw_native_session_id
     if raw_native_log_file is not None:
         payload["native_log_file"] = raw_native_log_file
-    _attach_compaction_launch_context(payload, context)
+    _attach_launch_context(payload, context)
     enqueue_hook_event(
         session_id,
         AgentHookEvents.NATIVE_METADATA_UPDATE,
@@ -1290,7 +1295,7 @@ def _enqueue_native_session_refresh(
         "source_event_type": context.event_type,
         "native_session_id": native_session_id,
     }
-    _attach_compaction_launch_context(payload, context)
+    _attach_launch_context(payload, context)
     enqueue_hook_event(
         session_id,
         AgentHookEvents.NATIVE_SESSION_REFRESH,
@@ -1611,6 +1616,7 @@ def main() -> None:
     args = _parse_args()
     args.agent = AgentName.from_str(args.agent).value
     launch_context = read_compaction_launch_context()
+    runtime_run_id = read_runtime_run_id()
 
     logger.debug(
         "Hook receiver start",
@@ -1711,6 +1717,7 @@ def main() -> None:
         agent=args.agent,
         event_type=event_type,
         outbox_db=_get_default_outbox_db(),
+        runtime_run_id=runtime_run_id,
         launch_context=launch_context,
     )
     execution_kind = adapter.classify_execution_kind(data)
@@ -1889,6 +1896,7 @@ def main() -> None:
 
     data[_AGENT_NAME_FIELD] = args.agent
     data[_RECEIVED_AT_FIELD] = datetime.now(UTC).isoformat()
+    _attach_launch_context(data, outbox_context)
     _attach_attention_observation(data, event_type, raw_event_type, raw_data, receiver_ingress_id)
 
     debounce_window_s = _HOOK_COALESCE_WINDOWS_S.get(event_type)

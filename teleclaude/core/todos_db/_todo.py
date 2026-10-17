@@ -6,7 +6,7 @@ import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import cast
 
 from sqlalchemy import delete, update
 from sqlmodel import Session as SqlSession
@@ -41,15 +41,27 @@ from teleclaude.core.todos_db._models import (
     TodoStateModel,
 )
 from teleclaude.core.todos_db._rows import TodoRow
+from teleclaude.core.todos_db._todo_documentation_transfer import (
+    DocumentationTransferWriter,
+    persist_documentation_transfers,
+    validate_documentation_admission,
+)
 from teleclaude.core.todos_db._todo_membership import TodosDbTodoMembershipMixin
+from teleclaude.core.todos_db._todo_state_helpers import collect_entry_updates, readiness_state_fields
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage, upcycle_state_dict
+from teleclaude.core.workflow_store.types import DocumentationAdmission
+from teleclaude.docs_reconcile import pending_document_carriers
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, LifecyclePhase
-from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import DependencyEntry, TodoState
 
 _ACTIVE_TODO_STATUS = "active"
 _ACTIVE_OR_ICEBOX = (TodoStatus.ACTIVE.value, TodoStatus.ICEBOX.value)
+_UNKNOWN_GROUP_TEMPLATE = "cannot group under unknown todo: {slug!r}"
+_GROUP_ADMISSION_CHANGED = "todo {slug!r} changed after documentation admission; resubmit the create request"
+_GROUP_PENDING_DOCS_UNADMITTED = (
+    "todo {slug!r} carries pending documentation; use active creation after its review evidence is current"
+)
 
 
 def _require_delivery_receipt(receipt: MarkerReceipt | None) -> None:
@@ -111,47 +123,6 @@ def _todo_row(model: Todo) -> TodoRow:
     )
 
 
-class _EntryUpdates(TypedDict, total=False):
-    """Subset of todo fields eligible for idempotent update."""
-
-    group_id: str
-    description: str
-    updated_at: str
-
-
-def _collect_entry_updates(
-    existing: Todo,
-    *,
-    group_id: str | None,
-    description: str | None,
-) -> _EntryUpdates:
-    """Build a dict of fields that differ from the existing entry."""
-    values = _EntryUpdates()
-    if group_id is not None and existing.group_id != group_id:
-        values["group_id"] = group_id
-    if description is not None and existing.description != description:
-        values["description"] = description
-    return values
-
-
-def _readiness_state_fields(state_model: TodoStateModel | None) -> tuple[str | None, str | None]:
-    if state_model is None:
-        return None, None
-    try:
-        state = json.loads(state_model.state)
-    except (TypeError, ValueError):
-        return None, None
-    if not isinstance(state, dict):
-        return None, None
-    payload = upcycle_state_dict(cast(dict[str, StateValue], state))
-    kind = payload.get("kind")
-    lifecycle_phase = payload.get("lifecycle_phase")
-    return (
-        kind if isinstance(kind, str) else None,
-        lifecycle_phase if isinstance(lifecycle_phase, str) else None,
-    )
-
-
 class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
     """Todo CRUD, ordering, deps, delivery, icebox (replaces todo.yaml)."""
 
@@ -189,6 +160,8 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
         *,
         first_child_slug: str,
         project_root: Path,
+        documentation_admission: DocumentationAdmission | None = None,
+        allow_unreviewed_transfer: bool = False,
     ) -> tuple[str, MarkerReceipt | None]:
         """Promote an eligible live target to holder, returning its id and split receipt.
 
@@ -198,9 +171,26 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
         """
         parent = await self._resolve_group_parent(session, group_slug)
         if parent is None:
-            raise ValueError(f"cannot group under unknown todo: {group_slug!r}")
+            raise ValueError(_UNKNOWN_GROUP_TEMPLATE.format(slug=group_slug))
+        if documentation_admission is not None:
+            if documentation_admission.parent_slug != group_slug:
+                raise HolderTransitionRefused(_GROUP_ADMISSION_CHANGED.format(slug=group_slug))
+            if documentation_admission.parent_id != parent.id or (
+                documentation_admission.parent_status is None
+                or documentation_admission.parent_status.value != parent.status
+            ):
+                raise HolderTransitionRefused(_GROUP_ADMISSION_CHANGED.format(slug=group_slug))
         if parent.status == TodoStatus.HOLDER.value:
             return parent.id, None
+        if (
+            documentation_admission is None
+            and pending_document_carriers(project_root, group_slug)
+            and not allow_unreviewed_transfer
+        ):
+            raise HolderTransitionRefused(_GROUP_PENDING_DOCS_UNADMITTED.format(slug=group_slug))
+
+        if documentation_admission is not None and documentation_admission.parent_slug is not None:
+            validate_documentation_admission(project_root, documentation_admission)
 
         state_model = await self._validate_holder_transition(session, parent, group_slug)
         receipt = reconcile_lifecycle_markers(
@@ -229,7 +219,7 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
     ) -> TodoStateModel | None:
         """Return the target state after confirming it may become a holder."""
         state_model = await session.get(TodoStateModel, parent.id)
-        _, lifecycle_phase = _readiness_state_fields(state_model)
+        _, lifecycle_phase = readiness_state_fields(state_model)
         phase = coerce_lifecycle_phase(lifecycle_phase)
         if (
             phase is None
@@ -339,6 +329,8 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
         context: str | None = None,
         cwd: str,
         session: SqlAsyncSession | None = None,
+        documentation_admission: DocumentationAdmission | None = None,
+        reconciliation_receipts: list[MarkerReceipt] | None = None,
     ) -> bool:
         """Add or update a slug in the todo. Idempotent — returns True on success.
 
@@ -366,11 +358,30 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
                     group_slug,
                     first_child_slug=slug,
                     project_root=project_root,
+                    documentation_admission=documentation_admission,
+                    allow_unreviewed_transfer=status is TodoStatus.ICEBOX,
                 )
+                if split_receipt is not None and reconciliation_receipts is not None:
+                    reconciliation_receipts.append(split_receipt)
+                if (
+                    split_receipt is not None
+                    and documentation_admission is not None
+                    and documentation_admission.parent_slug is not None
+                    and documentation_admission.parent_id is not None
+                    and (documentation_admission.sources or documentation_admission.carrier_path_blobs)
+                ):
+                    persist_documentation_transfers(
+                        cast(DocumentationTransferWriter, self),
+                        db_session,
+                        documentation_admission,
+                        split_receipt,
+                        slug,
+                        project_root,
+                    )
 
             existing = await self._active_entry(db_session, slug)
             if existing is not None:
-                values = _collect_entry_updates(existing, group_id=group_id, description=description)
+                values = collect_entry_updates(existing, group_id=group_id, description=description)
                 if values:
                     values["updated_at"] = datetime.now(UTC).isoformat()
                     statement = update(Todo).where(
@@ -554,7 +565,7 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
         if entry is None:
             return
         state_model = await session.get(TodoStateModel, entry.id)
-        kind, lifecycle_phase = _readiness_state_fields(state_model)
+        kind, lifecycle_phase = readiness_state_fields(state_model)
         deps_result = await session.exec(select(TodoDep.depends_on).where(TODO_DEPS_TABLE.c.slug == slug))
         after_deps = [str(dep) for dep in deps_result.all()]
         if is_ready_band_eligible(
@@ -577,7 +588,7 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
         if entry is None:
             return
         state_model = session.get(TodoStateModel, entry.id)
-        kind, lifecycle_phase = _readiness_state_fields(state_model)
+        kind, lifecycle_phase = readiness_state_fields(state_model)
         deps_result = session.exec(select(TodoDep.depends_on).where(TODO_DEPS_TABLE.c.slug == slug))
         after_deps = [str(dep) for dep in deps_result.all()]
         if is_ready_band_eligible(
@@ -693,24 +704,6 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
             entry.ready_since = None
             entry.updated_at = datetime.now(UTC).isoformat()
             session.add(entry)
-            await session.commit()
-        self._on_mutation("todo_updated", None)
-        return True
-
-    async def unfreeze(self, slug: str) -> bool:
-        """Restore a slug from icebox to active. Returns False if not found."""
-        async with self._session() as session:  # type: ignore[attr-defined]
-            statement = select(Todo).where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status == "icebox").limit(1)
-            result = await session.exec(apply_todo_identity_pin(statement, self, slug))
-            entry = result.first()
-            if entry is None:
-                return False
-            entry.status = "active"
-            entry.updated_at = datetime.now(UTC).isoformat()
-            session.add(entry)
-            delivered_result = await session.exec(select(Todo.slug).where(TODO_TABLE.c.status == "delivered"))
-            delivered_slugs = {str(delivered_slug) for delivered_slug in delivered_result.all()}
-            await self._stamp_ready_since_for_slug_if_eligible(session, slug, delivered_slugs=delivered_slugs)
             await session.commit()
         self._on_mutation("todo_updated", None)
         return True

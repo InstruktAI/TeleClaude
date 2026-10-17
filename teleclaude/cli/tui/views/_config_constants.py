@@ -4,15 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from types import UnionType
-from typing import Any, Literal, Union, get_args, get_origin
+from typing import Literal
 
 from instrukt_ai_logging import get_logger
 from rich.style import Style
 
-from teleclaude.cli.config_handlers import EnvVarStatus
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, get_neutral_color
-from teleclaude.config.identity_schema import PersonEntry
+from teleclaude.cli.tui.views.config_operations import EnvVarStatus
 
 logger = get_logger(__name__)
 
@@ -30,6 +28,15 @@ class ConfigTuiOutcome(StrEnum):
     BLOCKED = "blocked"
     FAILED = "failed"
     GUIDED_COMPLETENESS = "guided_completeness"
+
+
+class ConfigTuiRowAction(StrEnum):
+    """Closed row-click routing vocabulary for the Config screen."""
+
+    PERSON_SELECT = "person_select"
+    ENVIRONMENT = "env_row"
+    REFLECTED_FIELD = "reflected_row"
+    PERSON_FIELD = "person_reflected_row"
 
 
 def observe_config_tui(outcome: ConfigTuiOutcome, **details: object) -> None:
@@ -51,9 +58,6 @@ class Subtab(StrEnum):
 
 # Ordered tabs for index-based navigation (active_subtab).
 _SUBTABS = tuple(Subtab)
-
-
-_PERSON_EDITABLE_FIELDS = ("name", "email", "role", "username", "preferences", "expertise")
 
 
 class AdapterTab(StrEnum):
@@ -164,37 +168,6 @@ def project_adapter_sections(env_data: list[EnvVarStatus]) -> list[AdapterSectio
     return sections
 
 
-def get_allowed_values_for_field(field_name: str) -> list[str] | None:
-    """Extract Literal allowed values from PersonEntry schema or Union annotations."""
-
-    def unpack_union(t: Any) -> list[Any]:
-        if get_origin(t) in (Union, UnionType):
-            return list(get_args(t))
-        return [t]
-
-    if ":" in field_name:
-        parent, _ = field_name.split(":", 1)
-        if parent in PersonEntry.model_fields:
-            ann = PersonEntry.model_fields[parent].annotation
-            # Unpack Optionals/Unions to find dict type
-            dict_types = [t for t in unpack_union(ann) if get_origin(t) is dict or t is dict]
-            if dict_types:
-                dict_ann = dict_types[0]
-                args = get_args(dict_ann)
-                if len(args) == 2:
-                    val_type = args[1]
-                    for option in unpack_union(val_type):
-                        if get_origin(option) is Literal:
-                            return list(get_args(option))
-    else:
-        if field_name in PersonEntry.model_fields:
-            ann = PersonEntry.model_fields[field_name].annotation
-            for option in unpack_union(ann):
-                if get_origin(option) is Literal:
-                    return list(get_args(option))
-    return None
-
-
 __all__ = [
     "_ADAPTER_ENV_KEYS",
     "_ADAPTER_LABELS",
@@ -204,7 +177,6 @@ __all__ = [
     "_GUIDED_STEPS",
     "_INFO",
     "_OK",
-    "_PERSON_EDITABLE_FIELDS",
     "_SEP",
     "_SUBTABS",
     "_TAB_ACTIVE",
@@ -217,6 +189,5 @@ __all__ = [
     "Subtab",
     "_normal_style",
     "classify_adapter_status",
-    "get_allowed_values_for_field",
     "project_adapter_sections",
 ]

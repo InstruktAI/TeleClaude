@@ -18,7 +18,7 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _maybe_show_help
 from teleclaude.cli.telec.surface import CONFIG_ENV_LIST, CONFIG_ENV_SET, CONFIG_VALIDATE
-from teleclaude.config.subject_operations import VALIDATE_NOTES_KEY, ConfigRequest, ConfigVerb
+from teleclaude.config.operation_requests import VALIDATE_NOTES_KEY, ConfigRequest, ConfigVerb
 
 
 def handle_config_cli(args: list[str]) -> None:

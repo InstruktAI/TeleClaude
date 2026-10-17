@@ -46,12 +46,27 @@ arguments, entry kind and facts, and additional context. A scheduled run retains
 its configured job identity; an activation retains its home, subject, attendance
 and delivery settings. Those values remain available on continuation.
 
+<!-- planned-change:issue-128 -->
+
 The session's generated title is its role name followed by its work subject.
 A direct invocation with a bound branch uses that branch as its subject;
 other direct invocations use their supplied arguments. A scheduled run shows
 its job name and an activation its home in that place. The full procedure ID
 and complete arguments remain recorded and inspectable in session details.
 Display abbreviation does not change dispatch, continuation or matching identity.
+<!-- change:issue-128 -->
+
+The session's generated title is its role name followed by its work subject.
+A direct invocation with a bound branch uses that branch as its subject;
+other direct invocations use their supplied arguments. A scheduled run shows
+its job name. A subject-identity activation whose procedure declares parameters
+uses the bound canonical subject identifier; other activations use their home.
+The activation binding follows
+`local/projects/teleclaude/design/architecture/procedure-activation`.
+The full procedure ID and complete arguments remain recorded and inspectable
+in session details. Display abbreviation does not change dispatch,
+continuation or matching identity.
+<!-- /planned-change:issue-128 -->
 
 A bound issue parameter identifies GitHub work when GitHub's issue lookup
 resolves it in the assignment's project. Session snapshots carry its verified

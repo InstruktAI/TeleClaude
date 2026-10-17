@@ -34,6 +34,7 @@ _WORKFLOW_SHUTDOWN_COMPONENT = "workflow_bridge"
 _IDENTITY_SHUTDOWN_COMPONENT = "identity_bridge"
 _CLUSTER_SHUTDOWN_COMPONENT = "cluster_bridge"
 _EVENT_DB_SHUTDOWN_COMPONENT = "event_db"
+_EVENT_REDIS_SHUTDOWN_COMPONENT = "event_platform_redis"
 _TTS_SHUTDOWN_COMPONENT = "tts_manager"
 _CHIPTUNES_SHUTDOWN_COMPONENT = "chiptunes_manager"
 _REGISTRY_SHUTDOWN_COMPONENT = "task_registry"
@@ -188,12 +189,7 @@ from teleclaude.services.process_janitor.service import ProcessJanitorSettings
 _record_import_timing("teleclaude.services.process_janitor", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.event_bus import event_bus
-
-_record_import_timing("teleclaude.core.event_bus", _t)
-
-_t = time.perf_counter()
-from teleclaude.core.events import ProjectRefreshTrigger, TeleClaudeEvents
+from teleclaude.core.events import ProjectRefreshTrigger
 
 _record_import_timing("teleclaude.core.events", _t)
 
@@ -266,8 +262,10 @@ _record_import_timing("teleclaude.daemon_session", _t)
 
 _t = time.perf_counter()
 from teleclaude.events import EventDB
+from teleclaude.events.consumers import ConsumerRuntime
 from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility, occurrence_id
 from teleclaude.events.envelope_facts import home_for_project_path as _workflow_event_home
+from teleclaude.events.processor import EventProcessor
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import ConfigurationRef, TodoRef
 from teleclaude.events.schemas.sdlc import (
@@ -322,6 +320,7 @@ from teleclaude.core.idle_close import ConversationIdleCycle
 _record_import_timing("teleclaude.core.idle_close", _t)
 
 _t = time.perf_counter()
+from teleclaude.core.runtime_readiness import RuntimeReadiness
 from teleclaude.core.session_compaction import session_compaction_owner
 
 _record_import_timing("teleclaude.core.session_compaction", _t)
@@ -436,9 +435,14 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         # Initialize task registry for tracking background tasks
         self.drain = get_shutdown_drain()
         self.task_registry = TaskRegistry(drain=self.drain, escalate=self.request_shutdown)
+        self.runtime_readiness = RuntimeReadiness()
 
         # Initialize unified adapter client (observer pattern - NO daemon reference)
-        self.client = AdapterClient(task_registry=self.task_registry)
+        self.client = AdapterClient(
+            task_registry=self.task_registry,
+            runtime_readiness=self.runtime_readiness,
+        )
+        self.client.system_command_handler = self._handle_system_command_direct
         self.command_service = init_command_service(
             CommandService(
                 client=self.client,
@@ -510,28 +514,17 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.agent_coordinator = AgentCoordinator(
             self.client,
             self.tts_manager,
+            runtime_readiness=self.runtime_readiness,
             reminder_service=self.reminder_service,
             compaction_owner=session_compaction_owner,
         )
+        self.runtime_readiness.set_no_composer_handler(self.agent_coordinator.handle_delivery_no_composer)
         session_cleanup.configure_reminder_service(self.reminder_service)
         register_default_processors()
 
-        # Wire direct agent event handler — replaces event bus for AGENT_EVENT.
-        # polling_coordinator and redis_transport call this directly instead of
-        # fire-and-forget through event_bus.emit().
+        # Wire direct agent event handling at the runtime owner.
         self.client.agent_event_handler = self._handle_agent_event_direct
         self.client.agent_coordinator = self.agent_coordinator
-
-        # Daemon-owned event subscriptions. AGENT_EVENT bypasses the bus —
-        # it is routed directly via adapter_client.agent_event_handler above.
-        # Other events (AGENT_ACTIVITY, AGENT_AVAILABILITY, SESSION_UPDATED, etc.)
-        # are owned by their respective components (api_server, adapters).
-        event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started)
-        event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed)
-        event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, self._handle_session_close_requested)
-        event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error)
-        event_bus.subscribe(TeleClaudeEvents.DELIVERY_NO_COMPOSER, self._handle_delivery_no_composer)
-        event_bus.subscribe("system_command", self._handle_system_command)
 
         # Note: Adapters are loaded in client.start(), not here
 
@@ -563,11 +556,14 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.hook_outbox_task: SupervisedTask | None = None
         self.agent_status_watchdog_task: SupervisedTask | None = None
         self._event_db: EventDB | None = None
+        self._event_redis_client: object | None = None
         self._fleet_capability_map_provider: Callable[[], FleetCapabilityMap] | None = None
         self.mirror_worker_task: SupervisedTask | None = None
         self._event_consumer_tasks: tuple[SupervisedTask, ...] = ()
+        self._platform_consumer_runtime: ConsumerRuntime | None = None
+        self._runtime_consumer_runtime: ConsumerRuntime | None = None
+        self._relay_delivery_processor: EventProcessor[Any] | None = None
         self._relay_delivery_task: SupervisedTask | None = None
-        self._internal_event_bus_task: SupervisedTask | None = None
         self._task_schedule_clock_task: SupervisedTask | None = None
         self._workflow_bridge_task: SupervisedTask | None = None
         self._workflow_bridge: WorkflowBridge | None = None
@@ -952,6 +948,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             command,
             working_dir=working_dir,
             authority=InjectedInputAuthority.INTERFACE,
+            readiness=self.client.runtime_readiness,
         )
 
         if not success:
@@ -1071,18 +1068,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             )
             logger.info("Mirror worker started")
 
-            # Event platform producer prep runs inside lifecycle.startup() before
-            # the API server begins accepting traffic, so the producer is ready
-            # by the time any /todos/* operation can be submitted. Event consumers
-            # start only after the API socket is bound, so no consumer self-call
-            # against that socket can land before it exists.
-
-            # Initialize webhook service subsystem
-            try:
-                await self._init_webhook_service()
-            except Exception:
-                logger.error("Webhook service initialization failed, continuing without webhooks", exc_info=True)
-
             await self._start_workflow_bridge()
             await self._start_identity_bridge()
             await self._start_cluster_bridge()
@@ -1143,6 +1128,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         await self._cancel_task_attr(_PREPARED_EXIT_ATTR, _PREPARED_EXIT_STOPPED)
         await self._settle_accepted_work()
         self.drain.begin_stopping()
+        self.runtime_readiness.close()
         self.shutdown_event.set()
 
         # Stop sandbox container (before other tasks to release socket)
@@ -1179,7 +1165,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         await self._await_worker_attr("_cluster_bridge_task", "Cluster Redis bridge stopped", timeout=5.0)
 
         await self._await_worker_attr("_task_schedule_clock_task", "Task schedule clock stopped", timeout=5.0)
-        await self._await_worker_attr("_internal_event_bus_task", "Internal EventBus stopped", timeout=5.0)
         for consumer_task in self._event_consumer_tasks:
             await self._await_worker(consumer_task, consumer_task.name, _EVENT_CONSUMER_STOPPED, timeout=5.0)
         await self._await_worker_attr(_RELAY_DELIVERY_TASK_ATTRIBUTE, _RELAY_DELIVERY_STOPPED, timeout=5.0)
@@ -1194,13 +1179,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             ("launchd_watch_task", "Launchd watch task stopped"),
         ):
             await self._stop_worker_attr(attr_name, log_message)
-
-        # Close event DB
-        if self._event_db:
-            with cleanup_step(_EVENT_DB_SHUTDOWN_COMPONENT):
-                await self._event_db.close()
-                self._event_db = None
-                logger.info("EventDB closed")
 
         if hasattr(self, "tts_manager"):
             with cleanup_step(_TTS_SHUTDOWN_COMPONENT):
@@ -1221,6 +1199,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         with cleanup_step(_LIFECYCLE_SHUTDOWN_COMPONENT):
             await self.lifecycle.shutdown()
+
+        # Event dependencies outlive every reader, adapter, request and runtime-owned metadata task.
+        if self._event_db:
+            with cleanup_step(_EVENT_DB_SHUTDOWN_COMPONENT):
+                await self._event_db.close()
+                self._event_db = None
+                logger.info("EventDB closed")
+        with cleanup_step(_EVENT_REDIS_SHUTDOWN_COMPONENT):
+            await self._close_event_platform_redis()
 
         self._release_lock()
         logger.info("Daemon stopped")

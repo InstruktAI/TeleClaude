@@ -69,74 +69,17 @@ caller's identity is resolved independently of the enclosing person context.
 
 #### UC-TIERP-1: Every declared tier answers all three questions
 
-```
-Given a root carrying any valid tier declaration
-When an agent asks whether the root is an invocation context, whether its material participates in a surface, and whether it carries project subscriptions
-Then each question is answered from the declared tier
-And no question fails with an error
-And no answer is derived from where the root sits
-```
-
 #### UC-TIERP-7: The global tier answers all three questions
-
-```
-Given a root declaring itself the global configuration
-When an agent asks whether the root is an invocation context, whether its material participates in documentation, and whether it carries project subscriptions
-Then the root is an invocation context
-And its material participates in documentation
-And it carries no project subscriptions
-And no answer is inferred from another tier
-```
 
 #### UC-TIERP-2: A tier never inherits another tier's answers
 
-```
-Given a root whose declared tier is not the project tier
-When an agent asks what that root permits
-Then the answer states that tier's own permissions
-And it reports no project subscription the tier does not carry
-```
-
 #### UC-TIERP-3: Participation on one axis grants nothing on another
-
-```
-Given a tier whose material participates in documentation
-And whose declaration establishes no invocation context
-When an agent invokes from a root carrying that declaration
-Then the invocation behaves as invocation with no context root
-And no project subscription or lifecycle behavior is available there
-```
 
 #### UC-TIERP-4: The person tier answers all three questions
 
-```
-Given a root declaring itself a person configuration
-When an agent asks whether the root is an invocation context, whether its material participates in documentation, and whether it carries project subscriptions
-Then the root is an invocation context
-And its material participates in documentation
-And no project subscription and no project lifecycle behavior is available there
-And no answer states any permission beyond these three
-```
-
 #### UC-TIERP-5: A project inside a personal space is an ordinary project
 
-```
-Given a project declaration at a root inside a person's personal space
-When an agent invokes from that project root
-Then the invocation resolves to that project on every permission axis
-And the project's own repository holds its history
-And the acting caller's identity is resolved independently of the enclosing person context
-```
-
 #### UC-TIERP-6: A project in a personal space cannot name another owner
-
-```
-Given a project root inside one person's personal space
-And that project declares a different person as its owner
-When that project's configuration is loaded
-Then loading is refused, naming the person whose space contains it
-And no permission axis is answered for it as that other person's project
-```
 
 ## Known caveats
 

@@ -206,7 +206,9 @@ names files explicitly.
 
 ## Inputs / Outputs
 
-Sealed contract — exactly:
+The arguments below compose with the optional todo association owned by
+`local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`; its
+association follows `general/policy/commits`.
 
 - `"<message>"` — one quoted commit message (required when `--approved`).
 - `--approved` — agent-owned sealed-gate acknowledgment. Absence triggers

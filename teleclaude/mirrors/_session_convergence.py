@@ -14,6 +14,8 @@ from dataclasses import dataclass
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.mirrors._source_observation_migration import create_current_source_observation_schema
+
 logger = get_logger(__name__)
 
 _DUPLICATE_COLUMN_ERROR = "duplicate column"
@@ -22,40 +24,6 @@ _CONVERGED_EVENT = "mirror.session_owned_convergence_complete"
 
 _ADD_COVERED_AT_SQL = "ALTER TABLE mirrors ADD COLUMN covered_at TEXT"
 _ADD_COVERAGE_READY_SQL = "ALTER TABLE mirrors ADD COLUMN coverage_ready INTEGER NOT NULL DEFAULT 0"
-
-_SESSION_OWNED_TABLES_SQL = """\
-CREATE TABLE IF NOT EXISTS mirror_sources (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    mirror INTEGER NOT NULL,
-    source_identity TEXT NOT NULL UNIQUE,
-    native_session_id TEXT,
-    agent TEXT NOT NULL,
-    transcript_path TEXT,
-    position INTEGER NOT NULL DEFAULT 0,
-    file_size INTEGER,
-    file_mtime_ns TEXT,
-    missing_at TEXT,
-    derivation_version INTEGER NOT NULL DEFAULT 0,
-    archival_text TEXT NOT NULL DEFAULT '',
-    message_count INTEGER NOT NULL DEFAULT 0,
-    timestamp_start TEXT,
-    timestamp_end TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_mirror_sources_mirror ON mirror_sources(mirror);
-CREATE INDEX IF NOT EXISTS idx_mirror_sources_native ON mirror_sources(native_session_id);
-CREATE TABLE IF NOT EXISTS mirror_messages (
-    source INTEGER NOT NULL,
-    ordinal INTEGER NOT NULL,
-    entry_index INTEGER NOT NULL,
-    block_ordinal INTEGER NOT NULL,
-    timestamp TEXT,
-    role TEXT NOT NULL,
-    text TEXT NOT NULL,
-    PRIMARY KEY (source, ordinal)
-) WITHOUT ROWID;
-"""
 
 _UNIQUE_SESSION_INDEX_SQL = (
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_mirrors_session_unique ON mirrors(session) WHERE session IS NOT NULL"
@@ -110,12 +78,12 @@ class _OldMirrorRow:
 
 def create_session_owned_schema(conn: sqlite3.Connection) -> None:
     """Create the source and message tables and the one-mirror-per-session guard on a store with no duplicates."""
-    conn.executescript(_SESSION_OWNED_TABLES_SQL)
+    create_current_source_observation_schema(conn)
     conn.execute(_UNIQUE_SESSION_INDEX_SQL)
 
 
 def _create_session_owned_tables(conn: sqlite3.Connection) -> None:
-    conn.executescript(_SESSION_OWNED_TABLES_SQL)
+    create_current_source_observation_schema(conn)
 
 
 def _add_coverage_columns(conn: sqlite3.Connection) -> None:

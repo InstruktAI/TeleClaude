@@ -230,6 +230,19 @@ def _iter_lifecycle_files(project_root: Path) -> list[Path]:
     return sorted({*_iter_snippet_files(project_root), *(item.companion_path for item in command_companions)})
 
 
+def pending_document_carriers(project_root: Path, slug: str) -> tuple[Path, ...]:
+    """List structured pending-document carriers for a slug, including untracked sources."""
+    matches: list[Path] = []
+    for path in _iter_lifecycle_files(project_root):
+        content = path.read_text(encoding=_UTF8_ENCODING)
+        parsed = _split_frontmatter(content)
+        declared_by = _delivered_by(parsed[0]) if parsed is not None else []
+        has_marker = any(match.group(_MARKER_SLUG_GROUP) == slug for match in _PENDING_MARKER_PATTERN.finditer(content))
+        if slug in declared_by or has_marker or companion_slug(path) == slug:
+            matches.append(path)
+    return tuple(matches)
+
+
 def _relative_path(project_root: Path, path: Path) -> str:
     """Return the repository-relative form required in reconciliation evidence."""
     return str(path.relative_to(project_root))

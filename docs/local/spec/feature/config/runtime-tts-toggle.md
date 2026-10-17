@@ -11,20 +11,17 @@ visibility: 'public'
 
 ## What it is
 
-The runtime-settings layer holds runtime-mutable operator toggles distinct
-from the YAML configuration surface. YAML files define the boot-time shape of
-the system and require a reload to take effect; the runtime-settings layer
-exists for the narrow case where an operator flips a switch and expects the
-next event to honour the new value immediately, with persistence as a
-best-effort side effect rather than the authoritative path.
+The runtime-settings layer holds operator toggles distinct from YAML
+configuration. YAML files define boot-time settings and require a reload to
+take effect; runtime settings let an operator change a live value without
+editing YAML. The runtime-settings layer owns that current value and its
+best-effort persistence.
 
 In v1 the entire surface is one field: `tts.enabled`. The patch protocol is
 namespaced (`tts` section, then field names) so a future section (e.g., `stt`,
 `notifications`) can be added without breaking the protocol — but today only
-TTS is mutable. The toggle is dual-written on every patch: the in-memory
-settings state AND the live TTS manager's enabled flag are updated
-synchronously before the persistence task is scheduled. A consumer reading the
-TTS manager's enabled flag after a patch is guaranteed to see the new value.
+TTS is mutable. An accepted patch updates the current runtime-settings value synchronously
+before persistence is scheduled. The TTS system owns consuming this value.
 
 Persistence is JSON, not YAML, and is debounced. Each patch schedules a
 background task that sleeps 0.5 seconds and then writes the JSON state file.
@@ -34,370 +31,187 @@ Flush failures are caught and logged, never re-raised. The principle is "the
 runtime state is the truth; the file is a best-effort cache so we survive a
 restart".
 
-On startup, the layer reads the JSON state file (if present) and replays the
-stored values back into both the in-memory settings state and the TTS manager.
-A missing or malformed file is treated as "no prior state" — the layer falls
-back to whatever the TTS manager was already initialised with.
+On startup, the layer reads the JSON state file (if present) and restores the
+stored value into runtime-settings state. A missing or malformed file is
+treated as "no prior state" — the runtime-settings value stays at its boot-time
+seed.
+
+The YAML `config.tts.enabled` value is the boot-time seed for runtime-settings;
+it does not own the live value after startup. If a requested update is refused
+by TTS, the runtime-settings value stays unchanged and the refusal is returned
+to the caller.
+
+An explicit deprovision request first forces the runtime-settings value off and
+persists it before requesting TTS cleanup. If that off-state write fails,
+cleanup is not requested. The CLI requires explicit confirmation; the settings
+route returns the disabled value on success, 503 when runtime settings are
+unavailable, and 500 when persistence or downstream cleanup fails. TTS owns the
+dependency lifecycle and cleanup behavior
+(`local/projects/teleclaude/design/architecture/tts-system`).
+
+Patch payloads that are empty, malformed, contain unsupported keys, or give
+`enabled` a non-boolean value are refused without changing the live state or
+scheduling persistence. Guardrail details such as exact parser messages and
+serialization format remain outside the operator goal.
 
 ## Canonical fields
 
 ### Use cases
 
-#### UC-CFG-RUNTIME-1: patch flips TTS in-memory and on the TTS manager
+#### UC-CFG-RUNTIME-1: An operator changes the live TTS setting
 
-```
-Given the runtime-settings layer has tts.enabled = False and the TTS manager's enabled flag is False
-And an incoming patch payload sets tts.enabled = True
-When the patch is applied
-Then the in-memory tts.enabled is set to True synchronously
-And the TTS manager's enabled flag is set to True synchronously
-And a success log entry "Runtime tts.enabled -> True" is emitted
-And a debounced persist to disk is scheduled
-And the patch returns the updated settings state
+```gherkin
+Scenario Outline: An operator enables or mutes TTS
+  Given an operator wants TTS <choice>
+  When they change the live TTS setting
+  Then runtime settings reports <choice> immediately
+  And the YAML configuration remains unchanged
+
+  Examples:
+    | choice |
+    | enabled |
+    | muted |
+
+Scenario: An invalid toggle request leaves the current setting intact
+  Given an operator requests an empty or unsupported TTS patch
+  When configuration validates the request
+  Then it is refused with a useful validation explanation
+  And the runtime-settings value is unchanged
+  And no persistence is scheduled
+
+Scenario: A refused enable request leaves the setting off
+  Given runtime-settings is off and TTS refuses an enable request
+  When configuration handles the refusal
+  Then the runtime-settings value remains off
+  And the caller receives the refusal
 ```
 
 #### UC-CFG-RUNTIME-2: Empty patch raises a validation error
 
-```
-Given an incoming patch payload where no mutable field is set
-  (tts section absent, or tts.enabled absent)
-When the patch is applied
-Then no mutation occurs
-And a validation error "No mutable settings in patch" is raised
-And no flush is scheduled
-```
-
 #### UC-CFG-RUNTIME-3: Debounced flush coalesces rapid patches
-
-```
-Given two patch calls arrive within 0.5 seconds while the service is running
-When the first patch schedules a debounced flush
-And the second patch arrives before the first flush fires
-Then the pending flush is cancelled
-And a fresh flush is scheduled 0.5 s from the second call
-And only the most recent state is written to disk when the flush fires
-```
 
 #### UC-CFG-RUNTIME-4: Patch parser rejects unknown top-level keys
 
-```
-Given a raw JSON body {"tts": {"enabled": true}, "weather": "sunny"}
-When the patch parser validates the payload
-Then the unknown top-level key "weather" is identified (only "tts" is allowed)
-And a validation error "Unknown settings keys: ['weather']" is raised
-And no patch payload is produced
-```
-
 #### UC-CFG-RUNTIME-5: Patch parser rejects unknown keys inside the tts block
-
-```
-Given a raw JSON body {"tts": {"enabled": true, "volume": 0.8}}
-When the patch parser validates the payload
-Then the top-level key check passes
-And the unknown tts key "volume" is identified (only "enabled" is allowed)
-And a validation error "Unknown tts keys: ['volume']" is raised
-```
 
 #### UC-CFG-RUNTIME-6: Patch parser rejects non-boolean enabled
 
-```
-Given a raw JSON body {"tts": {"enabled": "true"}}
-When the patch parser validates the payload
-Then the value "true" is a string, not a bool
-And a validation error "tts.enabled must be a boolean" is raised
-And no implicit coercion of "true" -> True is performed
-```
-
 #### UC-CFG-RUNTIME-7: Patch parser rejects non-object top-level payload
-
-```
-Given a raw JSON body that parsed into a list, string, or None
-When the patch parser validates the payload
-Then the top-level shape is not a JSON object
-And a validation error "Expected JSON object" is raised
-```
 
 #### UC-CFG-RUNTIME-8: Patch parser rejects non-object tts section
 
-```
-Given a raw JSON body {"tts": true}
-When the patch parser validates the payload
-Then the top-level key check passes
-And the tts value is not a JSON object
-And a validation error "tts must be an object" is raised
-```
-
 #### UC-CFG-RUNTIME-9: Patch parser with tts.enabled absent produces a no-op patch
 
-```
-Given a raw JSON body {"tts": {}}
-When the patch parser validates the payload
-Then no unknown keys are found in the tts block
-And "enabled" is absent, so the tts enabled delta is None (no-op)
-And a patch payload with no active changes is returned
-And a subsequent apply of this payload raises "No mutable settings in patch"
-```
+#### UC-CFG-RUNTIME-10: Operator’s TTS setting is restored on restart
 
-#### UC-CFG-RUNTIME-10: Startup replays persisted tts.enabled into the TTS manager
+```gherkin
+Scenario: Restore an operator's persisted choice
+  Given the operator's accepted runtime setting was persisted
+  When TeleClaude restarts
+  Then runtime settings restores that choice
+  And the YAML boot seed does not overwrite it
 
-```
-Given the JSON state file at the configured state path exists and contains {"tts": {"enabled": true}}
-When the runtime-settings layer starts up
-Then the layer stores the state path and takes the TTS manager reference
-And initialises in-memory state seeded from the TTS manager's current enabled flag
-And reads the persisted JSON state file
-And replays the stored value: in-memory tts.enabled = True, TTS manager enabled = True
+Scenario: Startup continues when no usable persisted setting exists
+  Given no usable persisted runtime setting exists
+  When TeleClaude starts
+  Then runtime settings uses the boot-time seed
+  And startup continues
 ```
 
 #### UC-CFG-RUNTIME-11: Startup with missing state file leaves seeded state intact
 
-```
-Given the configured state path does NOT exist on disk
-When the runtime-settings layer starts up
-Then the state-file read returns nothing
-And startup proceeds without replaying any persisted state
-And the in-memory state stays seeded from the TTS manager's enabled flag at startup time
-```
-
 #### UC-CFG-RUNTIME-12: Startup with malformed JSON is logged and swallowed
-
-```
-Given the state path exists but contains invalid JSON (or a non-object JSON value)
-When the runtime-settings layer starts up
-Then the JSON parse fails
-And the failure is logged: "Failed to read runtime settings from {settings_path}"
-And the state-file read returns nothing
-And startup succeeds — the in-memory state stays seeded from the TTS manager's boot-time value
-```
 
 #### UC-CFG-RUNTIME-13: Persistence with no running event loop is a no-op
 
-```
-Given the runtime-settings layer is in a context with no running event loop when a flush is due
-When the layer attempts to schedule a debounced persist
-Then no background task is created (scheduling is skipped silently)
-And the in-memory mutation from the prior patch call still stands
-And the disk file is NOT updated for that call (will be updated by the next patch that runs under a live event loop)
-```
-
 #### UC-CFG-RUNTIME-14: Flush failure is logged, not raised
-
-```
-Given a debounced flush fires
-And the write to the state path raises (disk full, permission denied, etc.)
-When the exception propagates inside the flush
-Then the failure is logged: "Failed to flush runtime settings to disk"
-And the exception is swallowed
-And the in-memory state remains correct; only the on-disk cache is stale
-```
 
 #### UC-CFG-RUNTIME-15: Flush writes the full state shape, not a diff
 
-```
-Given a successful debounced flush
-When the flush runs
-Then the state file's parent directory is created if absent
-And the current state is serialised as JSON: {"tts": {"enabled": <current bool>}}
-And the JSON is written to the state path (utf-8, pretty-printed, keys sorted)
-And a success log entry is emitted
-```
+#### UC-CFG-RUNTIME-16: Operator’s live TTS setting survives a YAML reload
 
-#### UC-CFG-RUNTIME-16: A tts-section config reload preserves the runtime-owned enabled flag
-
-```
-Given the runtime-settings layer has set tts.enabled = False on the TTS manager
-And the YAML config has tts.enabled = True
-When a tts-section config reload fires because a tts field changed (a voice, a service, or an event mapping)
-Then the TTS manager refreshes its config-derived state from YAML (services, voices, events, service priority)
-And the TTS manager's live enabled flag stays False
-And no session-start voice is spoken while the runtime layer holds TTS muted
+```gherkin
+Given an operator has set the runtime TTS value to muted while YAML enables it
+When their TTS configuration is reloaded
+Then the runtime-settings value remains muted
 ```
 
 #### UC-CFG-RUNTIME-17: Enabling TTS provisions the optional deps before the flag flips
 
-```
-Given the TTS manager's enabled flag is False and the TTS-exclusive deps are not installed
-And the host is a supported platform for at least one configured-and-enabled TTS service
-And an incoming patch sets tts.enabled = True
-When the patch is applied
-Then the TTS-exclusive deps are installed off the event loop before the flag changes
-And the TTS manager's enabled flag is then set to True
-And the patch returns the updated settings state with tts.enabled = True
-```
-
 #### UC-CFG-RUNTIME-18: Enabling on an unsupported platform or a failed install fails closed
-
-```
-Given the TTS manager's enabled flag is False and the TTS-exclusive deps are not installed
-And either the host supports no configured-and-enabled TTS service
-  or the dependency install does not complete
-And an incoming patch sets tts.enabled = True
-When the patch is applied
-Then no flag change occurs and the TTS manager's enabled flag stays False
-And a tts_provision_failed event is logged
-And the request fails with a clear message that TTS could not be provisioned
-And no session-start voice is spoken
-```
 
 #### UC-CFG-RUNTIME-19: Muting never provisions or uninstalls
 
-```
-Given the TTS manager's enabled flag is True and the deps are installed
-And an incoming patch sets tts.enabled = False
-When the patch is applied
-Then no provisioning runs and no dependency is uninstalled
-And the TTS manager's enabled flag is set to False synchronously
-```
-
 #### UC-CFG-RUNTIME-20: Startup with a replayed enabled=True but unprovisioned deps fails closed
 
-```
-Given the persisted runtime state replays tts.enabled = True into the TTS manager at startup
-And the TTS-exclusive deps are not installed on the host
-When the daemon reconciles runtime state after the runtime-settings layer initialises
-Then the TTS manager's enabled flag is forced to False
-And the runtime-settings state is forced to tts.enabled = False before the settings API can report it
-And the off state is persisted back to the runtime settings file
-And the reason is logged
-And no dependency install runs at startup
-```
+#### UC-CFG-RUNTIME-21: Operator requests TTS deprovision
 
-The YAML `config.tts.enabled` field is a boot default-intent seed for the TTS
-manager's initial enabled flag; the runtime-settings layer is the single source
-of truth for the live enable/mute. Provisioned state is determined by probing
-whether a configured-and-enabled TTS service's dependencies import, never by a
-configuration flag.
+```gherkin
+Scenario: A confirmed deprovision request reaches TTS after configuration stores off
+  Given an operator explicitly confirms TTS deprovision
+  When configuration accepts the request
+  Then the runtime-settings value is off and persisted before cleanup is requested
+  And the caller receives the operation result
 
-#### UC-CFG-RUNTIME-21: Explicit deprovision reclaims TTS-only dependencies
+Scenario: An unconfirmed deprovision request does not reach TTS
+  Given the operator has not explicitly confirmed deprovision
+  When the CLI request is made
+  Then the CLI asks for confirmation
+  And no cleanup request is sent
 
-```
-Given the TTS optional dependencies have been provisioned
-And dependencies shared with STT or summarization are installed
-When an operator invokes the explicit TTS deprovision action
-Then the runtime-settings state is forced to tts.enabled = False
-And the TTS manager's enabled flag is forced to False
-And the off state is persisted before dependency removal starts
-And only TTS-exclusive optional dependencies are removed
-And dependencies shared with STT or summarization remain installed
-And muting TTS alone never triggers deprovision
-And a later TTS enable follows UC-CFG-RUNTIME-17 and provisions the optional dependencies before the flag flips
+Scenario: Persistence failure prevents a cleanup request
+  Given persisting the forced-off runtime-settings value fails
+  When the operator confirms deprovision
+  Then cleanup is not requested
+  And the in-memory runtime-settings value remains off
+  And the failure is reported to the caller
+
+Scenario: TTS cleanup failure is returned with runtime settings still off
+  Given the runtime-settings value is off and persisted
+  And TTS cleanup fails
+  When the operator confirms deprovision
+  Then the route reports the downstream failure
+  And the runtime-settings value remains off
+
+Scenario: An unavailable runtime refuses deprovision
+  Given no runtime-settings layer is available to the settings route
+  When the operator confirms deprovision
+  Then the route reports that runtime settings are unavailable
+  And no cleanup request is sent
 ```
 
 #### UC-CFG-RUNTIME-22: A failed off-state persist blocks dependency removal
 
-```
-Given an operator invokes the explicit TTS deprovision action
-And persisting the forced-off runtime state to disk fails
-When the deprovision action runs
-Then the failure propagates to the caller
-And the TTS manager's enabled flag is still forced to False in memory
-And dependency removal never runs
-```
-
 #### UC-CFG-RUNTIME-23: Deprovision still removes dependencies when TTS is already disabled
-
-```
-Given the TTS manager's enabled flag is already False
-When an operator invokes the explicit TTS deprovision action
-Then TTS-exclusive dependency removal still runs
-And the returned state reports tts.enabled = False
-```
 
 #### UC-CFG-RUNTIME-24: The deprovision route returns the disabled state on success
 
-```
-Given the runtime-settings layer is wired to the settings route
-When the deprovision route handler runs and dependency removal succeeds
-Then the route returns the settings state with tts.enabled = False
-```
-
 #### UC-CFG-RUNTIME-25: The deprovision route maps a dependency-removal failure to 500
-
-```
-Given the runtime-settings layer is wired to the settings route
-And TTS-exclusive dependency removal raises an error
-When the deprovision route handler runs
-Then the route raises an HTTP 500 with the removal-failure detail
-And the TTS manager's enabled flag is still forced to False
-```
 
 #### UC-CFG-RUNTIME-26: The deprovision route maps an off-state persist failure to 500
 
-```
-Given the runtime-settings layer is wired to the settings route
-And persisting the forced-off runtime state to disk fails
-When the deprovision route handler runs
-Then the route raises an HTTP 500 with the persist-failure detail
-```
-
 #### UC-CFG-RUNTIME-27: The deprovision route rejects an unwired runtime-settings layer
-
-```
-Given no runtime-settings layer has been configured on the settings route
-When the deprovision route handler runs
-Then the route raises an HTTP 503
-```
 
 #### UC-CFG-RUNTIME-28: The CLI deprovision verb guards without an explicit confirmation flag
 
-```
-Given an operator runs the telec config tts deprovision CLI verb without --yes
-When the command dispatches
-Then the CLI prints a confirmation guard
-And no daemon API call is made
-```
-
 #### UC-CFG-RUNTIME-29: The CLI deprovision verb calls the daemon once when confirmed
-
-```
-Given an operator runs the telec config tts deprovision CLI verb with --yes
-When the command dispatches
-Then the CLI calls the daemon deprovision API exactly once
-```
 
 #### UC-CFG-RUNTIME-30: The CLI deprovision verb surfaces a daemon API error
 
-```
-Given an operator runs the telec config tts deprovision CLI verb with --yes
-And the daemon API call fails
-When the command dispatches
-Then the CLI surfaces the daemon error to the operator
-```
-
 #### UC-CFG-RUNTIME-31: Top-level CLI dispatch routes tts to the config tts handler
-
-```
-Given an operator invokes telec config tts at the top level
-When the CLI dispatches the command
-Then dispatch routes to the config tts handler
-```
 
 #### UC-CFG-RUNTIME-32: Dependency removal runs the resolver-inverse command from the repo root
 
-```
-Given TTS-exclusive dependencies are provisioned
-When dependency removal runs
-Then the resolver-inverse removal command runs from the repository root
-```
-
 #### UC-CFG-RUNTIME-33: A failed removal command fails closed
-
-```
-Given dependency removal is invoked
-And the removal command exits non-zero
-When dependency removal runs
-Then the removal fails closed with a clear error
-```
 
 ### Cross-context references
 
-- **Cross-context write into the TTS context.** The runtime-settings
-  patcher reaches into a different bounded context — TTS — and mutates
-  its `enabled` flag directly. The relationship is "config owns the
-  toggle; TTS owns the consumption". The current coupling is a direct
-  in-process write held together by convention; the same coordination
-  would flow through an effective-configuration-updated event consumed by the
-  TTS context in the target model.
+- **TTS consumption and dependencies.** Configuration owns the accepted live
+  `tts.enabled` value and operator request. The TTS system owns how it consumes
+  that value and the optional dependency lifecycle
+  (`local/projects/teleclaude/design/architecture/tts-system`). The target
+  model coordinates these contexts through an effective-configuration-updated
+  event.
 - **Distinct from the YAML overlays.** The `tts` block in `teleclaude.yml`
   (and in machine `config.yml`) defines boot-time TTS shape — voices,
   services, event mappings, the initial `enabled` value seeded into the

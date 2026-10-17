@@ -32,6 +32,27 @@ citation rules, severity schema, verdict arithmetic, and reviewer separation.
 
 ## Steps
 
+### 0. Ground the target and reuse relevant assessment evidence
+
+Establish the invoking procedure's target, scope and applicable contracts
+independently, then reconcile supplied censuses, classifications, plans and
+earlier assessments with that target. Distinguish governing contracts from
+recommendations and evidence. Reuse cited source evidence after checking that
+it supports the relevant claim at the reviewed revision; an earlier conclusion
+or approval alone supplies no proof (`general/principle/grounding`).
+
+Judge whether the reviewed artifact carries its authorized decisions correctly
+and preserves the affected requirements. Extend investigation to the dependencies
+needed to judge that target; review does not restart an unrelated census of
+unchanged material. Record reused evidence and gaps requiring fresh grounding.
+The invoking phase's independent derivation and every applicable lane's proof
+obligations remain required (`sdlc/policy/definition-of-done-lanes`).
+
+Challenge an assessed decision when the target, its sources or its governing
+contract establishes a concrete contradiction, missing requirement or invalid
+premise. Apply the finding-validity and convergence rules below; a different
+preferred classification or design alone does not reopen a decision.
+
 ### 1. Execute every applicable review lane
 
 Run every applicable lane defined in

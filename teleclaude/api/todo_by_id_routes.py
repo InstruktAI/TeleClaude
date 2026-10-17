@@ -17,14 +17,10 @@ from teleclaude.api.todo_update_support import require_slug_found
 from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.constants import SLUG_NOT_IN_ICEBOX_DETAIL
-from teleclaude.core.operations import get_operations_service
-from teleclaude.core.operations.service import SerializedOperation
-from teleclaude.core.todos_db import (
-    TodoIdentityActionRefused,
-    TodoIdentityNotFound,
-    TodoIdentityResolution,
-)
+from teleclaude.core.operations.service import SerializedOperation, get_operations_service
+from teleclaude.core.todos_db._todo_soft_delete import TodoIdentityActionRefused, TodoIdentityNotFound
 from teleclaude.core.workflow_store.store import WorkflowStore
+from teleclaude.core.workflow_store.types import IdentityResolution as TodoIdentityResolution
 from teleclaude.services.work.slug_actions import SlugActionOutcome, freeze_todo, unfreeze_todo
 
 logger = get_logger(__name__)
@@ -275,6 +271,8 @@ async def _freeze(resolution: TodoIdentityResolution, effective_cwd: str) -> tod
 
 async def _unfreeze(resolution: TodoIdentityResolution, effective_cwd: str) -> todo_routes._SlugStatusResponse:
     result = await unfreeze_todo(request_project_root(effective_cwd), resolution.slug)
+    if result.outcome is SlugActionOutcome.REFUSED:
+        raise HTTPException(status_code=409, detail=result.detail)
     require_slug_found(
         resolution.slug,
         found=result.outcome is not SlugActionOutcome.NOT_FOUND,

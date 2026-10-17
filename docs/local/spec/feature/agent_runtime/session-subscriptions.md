@@ -162,15 +162,14 @@ And the reset prevents the same target from appearing in the next sweep within m
 And callers use the returned list to drive health checks on apparently-stuck targets (e.g., is the target session still alive?)
 ```
 
-#### `telec sessions unsubscribe <session_id>` is the umbrella verb
+#### UC-SS21: A person can stop their agent's connection to a target
 
 ```
-Given a caller session C wants to stop caring about target T entirely
-When the unsubscribe entry is invoked (identity=C, target=T)
-Then unregister-listener(target=T, caller=C) removes the listener record if any
-And the close-link-for-member path severs any active direct link involving (C, T)
-And the response reports success with two boolean flags: whether a listener was removed, and whether a link was closed (plus the closed link id when applicable)
-And the call is idempotent: empty state reports success with both action flags false
+Given a person wants their agent to stop following a target and close any direct conversation with it
+When their agent invokes `telec sessions unsubscribe` for that target
+Then the listener is removed and any active direct link is closed
+And the result reports which actions were taken, including the closed link id when applicable
+And repeating the request succeeds without changing state again
 ```
 
 #### Read APIs
