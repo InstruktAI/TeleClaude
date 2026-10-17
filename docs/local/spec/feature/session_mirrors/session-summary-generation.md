@@ -28,20 +28,7 @@ neither recomputes nor clears them.
 
 #### UC-SSG-1: Writing a mirror calls no language model
 
-```
-Given the reconciliation loop or the event fanout writes a mirror
-When the mirror is generated from its transcript
-Then no language-model call is made
-And the write completes without consulting any summarizer provider
-```
-
 #### UC-SSG-2: A stored summary is kept as recorded
-
-```
-Given a mirror that carries a summary stored by an earlier version
-When the mirror is written again from its transcript
-Then the stored summary is neither replaced nor cleared
-```
 
 ## Known caveats
 
