@@ -5048,8 +5048,7 @@ def _close_release_world(world: ReleaseWorld, evidence: list[CommandEvidence]) -
                     (_release_python(world), "-m", _RELEASE_TELEC_MODULE, "auth", "logout"),
                     evidence,
                 )
-                if exit_status is None:
-                    raise RuntimeError(_FULL_TERMINAL_CLEANUP_ERROR)
+                _require_terminal_exit(exit_status, evidence)
             finally:
                 terminal.close()
     finally:
