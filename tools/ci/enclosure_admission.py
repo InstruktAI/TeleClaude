@@ -309,6 +309,9 @@ def _require_time(deadline: AdmittedDeadline) -> None:
 def _verify_file(path: Path, row: JsonObject, deadline: AdmittedDeadline) -> None:
     _require_time(deadline)
     require_hex(text(row, Field.SHA256), 64)
+    size = row.get(Field.BYTES)
+    if type(size) is not int or size < 0:
+        raise ValueError(ERROR_SOURCE)
     physical = path.resolve(strict=True)
     for ancestor in (path, *path.parents, physical, *physical.parents):
         native = ancestor.lstat()
@@ -321,7 +324,7 @@ def _verify_file(path: Path, row: JsonObject, deadline: AdmittedDeadline) -> Non
     after = physical.stat()
     if (
         identity[IMAGE_SHA256] != text(row, Field.SHA256)
-        or identity[IMAGE_SIZE_BYTES] != positive_integer(row, Field.BYTES)
+        or identity[IMAGE_SIZE_BYTES] != size
         or identity[IMAGE_DEVICE] != before.st_dev
         or identity[IMAGE_INODE] != before.st_ino
         or (before.st_dev, before.st_ino, before.st_mode, before.st_uid, before.st_mtime_ns, before.st_ctime_ns)

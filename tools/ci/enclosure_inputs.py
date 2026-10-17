@@ -6,6 +6,7 @@ import hashlib
 import os
 import stat
 import time
+import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -73,6 +74,7 @@ class Key(StrEnum):
     TARBALL = "tarball"
     HOST = "host"
     PYTHON_INTERPRETER = "python_interpreter"
+    FILES = "files"
 
 
 @dataclass(frozen=True)
@@ -186,6 +188,32 @@ def acquire_fixed_inputs(
             raise TimeoutError(ERROR_DEADLINE)
         result[item.sha256] = destination
     return result
+
+
+def observer_library_inventory(
+    package: StaticPackage, inputs: Mapping[str, Path], deadline: AdmittedDeadline
+) -> JsonObject:
+    """Derive source-realization member identities from the fixed wheel, without importing or extracting it."""
+    library = object_value(parse_object(package.lock_bytes)[Key.OBSERVER_LIBRARY])
+    archive = _archive(library, inputs, deadline)
+    files: JsonObject = {}
+    with zipfile.ZipFile(archive) as wheel:
+        for member in wheel.infolist():
+            _require_time(deadline)
+            if member.is_dir():
+                continue
+            path = Path(member.filename)
+            if (
+                path.is_absolute()
+                or os.pardir in path.parts
+                or path.as_posix() != member.filename
+                or member.filename in files
+            ):
+                raise ValueError(ERROR_INPUT)
+            data = wheel.read(member)
+            files[member.filename] = {Field.SHA256: hashlib.sha256(data).hexdigest(), Field.BYTES: len(data)}
+    _require_time(deadline)
+    return {Field.SHA256: text(library, Field.SHA256), Key.FILES: files}
 
 
 def stage_observer_library(
