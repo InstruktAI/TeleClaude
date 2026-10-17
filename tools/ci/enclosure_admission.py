@@ -31,10 +31,11 @@ from tools.ci.enclosure_contract import (
 )
 from tools.ci.enclosure_data import GIT, GIT_DIRECTORY, GIT_OPTIONS
 from tools.ci.enclosure_guest import Purpose
+from tools.ci.enclosure_inputs import OBSERVER_DIRECTORY
 from tools.ci.enclosure_journal import ActionResult, Binding
 from tools.ci.enclosure_journal import Key as BindingKey
 from tools.ci.enclosure_native import NativeQuery, query_native
-from tools.ci.enclosure_owner import HelperOwner
+from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, HelperOwner, RunOwner, _require_private_directory
 from tools.ci.enclosure_owner import Key as OwnerKey
 
 ROOT: Final = Path("/")
@@ -52,6 +53,7 @@ REALIZATION_SCHEMA: Final = 1
 HARNESS_MODULE: Final = "tools.ci."
 HARNESS_PACKAGES: Final = frozenset({"tools", "tools.ci"})
 OBSERVER_MODULE: Final = "dbus_next"
+OBSERVER_INITIALIZER: Final = "dbus_next/__init__.py"
 QUALIFICATION_SETUP_VECTOR: Final = "Q2"
 QUALIFICATION_SETUP_ACTIONS: Final = frozenset(
     {Action.PROVISION, Action.CREATE_PARENT, Action.START_GUEST, Action.MASK_GUEST, Action.GUEST_SETUP}
@@ -91,6 +93,8 @@ class Key(StrEnum):
     INTERPRETER = "interpreter"
     LIBRARIES = "libraries"
     PYTHON_BINARY = "python_binary"
+    OBSERVER_LIBRARY = "observer_library"
+    FILES = "files"
 
 
 @dataclass(frozen=True)
@@ -105,20 +109,7 @@ class SourceAdmission:
     def verify(self, query: NativeQuery, deadline: AdmittedDeadline) -> None:
         """Check the actual fixed source/runtime bytes and native checkout within the original action cutoff."""
         _require_time(deadline)
-        record = parse_object(self.realization_bytes)
-        if (
-            positive_integer(record, Field.SCHEMA_VERSION) != REALIZATION_SCHEMA
-            or hashlib.sha256(self.realization_bytes).hexdigest() != self.binding.realization_digest
-            or record.get(BindingKey.CANDIDATE_COMMIT) != self.binding.candidate_commit
-            or record.get(BindingKey.CANDIDATE_TREE) != self.binding.candidate_tree
-            or record.get(BindingKey.STATIC_LOCK_DIGEST) != STATIC_DIGEST
-            or record.get(BindingKey.RECIPE_DIGEST) != RECIPE_DIGEST
-            or record.get(BindingKey.QUALIFICATION_DIGEST) != QUALIFICATION_DIGEST
-            or hashlib.sha256(self.package.lock_bytes).hexdigest() != STATIC_DIGEST
-            or hashlib.sha256(self.package.recipe_bytes).hexdigest() != RECIPE_DIGEST
-            or hashlib.sha256(self.package.qualification_bytes).hexdigest() != QUALIFICATION_DIGEST
-        ):
-            raise ValueError(ERROR_SOURCE)
+        record = self._record()
         root = self.source_root.resolve(strict=True)
         if root != ACTUAL_SOURCE_ROOT or Path(sys.argv[0]).resolve(strict=True) != root / ENTRY:
             raise ValueError(ERROR_SOURCE)
@@ -176,6 +167,69 @@ class SourceAdmission:
         if commit != self.binding.candidate_commit or tree != self.binding.candidate_tree:
             raise ValueError(ERROR_SOURCE)
         _require_time(deadline)
+
+    def verify_observer_library(self, owner: RunOwner, deadline: AdmittedDeadline) -> Path:
+        """Bind reviewed wheel-member bytes to this original run's staged directory before observer import."""
+        controller = owner.journal.binding.controller
+        if (
+            self.binding != owner.journal.binding
+            or deadline.outer_end_ns != owner.journal.deadline.end_ns
+            or os.geteuid() != 0
+            or os.getpid() != controller.pid
+        ):
+            raise ValueError(ERROR_SOURCE)
+        deadline = AdmittedDeadline(
+            deadline.outer_end_ns,
+            deadline.vector_end_ns,
+            min(deadline.effective_end(), deadline.outer_end_ns - owner.journal.deadline.reserve_ns),
+        )
+        _require_time(deadline)
+        controller.require_alive()
+        _require_private_directory(owner.journal.directory_fd)
+        record = self._record()
+        library = object_value(object_value(record[Key.OUTSIDE_RUNTIME])[Key.OBSERVER_LIBRARY])
+        fixed = object_value(parse_object(self.package.lock_bytes)[Key.OBSERVER_LIBRARY])
+        if text(library, Field.SHA256) != text(fixed, Field.SHA256):
+            raise ValueError(ERROR_SOURCE)
+        files = object_value(library[Key.FILES])
+        if OBSERVER_INITIALIZER not in files:
+            raise ValueError(ERROR_SOURCE)
+        directory = Path(PARENT_DESCRIPTOR.format(pid=controller.pid, descriptor=owner.journal.directory_fd))
+        root = directory / OBSERVER_DIRECTORY
+        physical_root = root.resolve(strict=True)
+        admitted: set[Path] = set()
+        for relative, value in files.items():
+            path = Path(relative)
+            if path.is_absolute() or os.pardir in path.parts or path.as_posix() != relative:
+                raise ValueError(ERROR_PATH.format(path=path))
+            physical = (root / path).resolve(strict=True)
+            if not physical.is_relative_to(physical_root):
+                raise ValueError(ERROR_PATH.format(path=path))
+            _verify_file(root / path, object_value(value), deadline)
+            admitted.add(physical)
+        _, loaded_observer = _loaded_inputs(ACTUAL_SOURCE_ROOT)
+        if not loaded_observer <= admitted:
+            raise ValueError(ERROR_SOURCE)
+        controller.require_alive()
+        _require_time(deadline)
+        return root
+
+    def _record(self) -> JsonObject:
+        record = parse_object(self.realization_bytes)
+        if (
+            positive_integer(record, Field.SCHEMA_VERSION) != REALIZATION_SCHEMA
+            or hashlib.sha256(self.realization_bytes).hexdigest() != self.binding.realization_digest
+            or record.get(BindingKey.CANDIDATE_COMMIT) != self.binding.candidate_commit
+            or record.get(BindingKey.CANDIDATE_TREE) != self.binding.candidate_tree
+            or record.get(BindingKey.STATIC_LOCK_DIGEST) != STATIC_DIGEST
+            or record.get(BindingKey.RECIPE_DIGEST) != RECIPE_DIGEST
+            or record.get(BindingKey.QUALIFICATION_DIGEST) != QUALIFICATION_DIGEST
+            or hashlib.sha256(self.package.lock_bytes).hexdigest() != STATIC_DIGEST
+            or hashlib.sha256(self.package.recipe_bytes).hexdigest() != RECIPE_DIGEST
+            or hashlib.sha256(self.package.qualification_bytes).hexdigest() != QUALIFICATION_DIGEST
+        ):
+            raise ValueError(ERROR_SOURCE)
+        return record
 
 
 def _loaded_inputs(root: Path) -> tuple[set[str], set[Path]]:
