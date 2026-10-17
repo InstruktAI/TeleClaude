@@ -29,11 +29,11 @@ framework's own rendering.
 
 ### Use cases
 
-#### UC-TNR1: An operator reads notification text as supplied
+#### UC-TNR1: An operator reads supplied notification text unchanged
 
 ```gherkin
-Given a human operator is working in the running TUI
-When the TUI displays eligible notification text, including bracketed metadata
-Then the operator sees that text displayed exactly as it was supplied
-And the TUI stays open for the operator to keep working
+Scenario: Read the notification as written
+  Given a human operator is working in the TUI
+  When an eligible notification is displayed
+  Then the operator sees the text exactly as it was supplied
 ```
