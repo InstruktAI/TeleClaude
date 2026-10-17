@@ -14,7 +14,7 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
-from teleclaude.core.db._sync import get_session_closed_at_sync
+from teleclaude.core.db._sync import get_session_closed_at_sync, get_session_mirror_facts_by_transcript_sync
 from teleclaude.paths import MAIN_DB_PATH, MIRRORS_DB_PATH  # stable constants — not monkeypatched
 
 from ..utils.transcript_discovery import (
@@ -33,7 +33,7 @@ from .archive import ArchiveAdopter, adopt_retained_history, adopt_unclaimed_tra
 from .closure import CoverageReporter, coverage_is_news
 from .derivation import DERIVATION_VERSION
 from .generator import MirrorCoverage, MirrorWriteTrigger, SourceReadOutcome, refresh_session_mirror_sync
-from .session_context import SessionMirrorContext, get_session_context
+from .session_context import SessionMirrorContext, session_context_from_selected_facts
 from .store import (
     MirrorTombstoneRecord,
     delete_conversation_mirror,
@@ -179,6 +179,7 @@ class MirrorWorker:
             adopt_retained_history(self._archive_adopter, self.db_path)
             self._history_adopted = True
         state = get_mirror_state_by_session_source(self.db_path)
+        selected_facts_by_transcript = get_session_mirror_facts_by_transcript_sync(str(MAIN_DB_PATH))
         contexts_by_path: dict[str, SessionMirrorContext | None] = {}
         context_errors: dict[str, Exception] = {}
 
@@ -188,7 +189,7 @@ class MirrorWorker:
                 raise context_errors[path]
             if path not in contexts_by_path:
                 try:
-                    contexts_by_path[path] = get_session_context(transcript_path=path)
+                    contexts_by_path[path] = session_context_from_selected_facts(selected_facts_by_transcript, path)
                 except Exception as exc:
                     context_errors[path] = exc
                     raise

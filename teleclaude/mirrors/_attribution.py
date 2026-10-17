@@ -12,11 +12,11 @@ from typing import TypedDict, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude import paths as tc_paths
-from teleclaude.core.db._sync import SessionMirrorFacts, list_session_mirror_facts_sync
+from teleclaude.core.db._sync import get_session_mirror_facts_by_transcript_sync
 from teleclaude.core.roles import is_worker_role
 
 from ._types import JsonValue
-from .session_context import SessionMirrorContext, session_context_from_facts
+from .session_context import session_contexts_from_selected_facts
 
 logger = get_logger(__name__)
 
@@ -134,8 +134,8 @@ def upsert_session_attribution(conn: sqlite3.Connection, attribution: MirrorSess
 
 def backfill_session_attributions(conn: sqlite3.Connection, _store_path: str, snapshot_path: Path) -> None:
     """Link retained mirrors to session records and restore facts erased by earlier writes."""
-    facts = list_session_mirror_facts_sync(str(tc_paths.MAIN_DB_PATH))
-    contexts = _context_by_transcript(facts)
+    selected_facts = get_session_mirror_facts_by_transcript_sync(str(tc_paths.MAIN_DB_PATH))
+    contexts = session_contexts_from_selected_facts(selected_facts)
     rows = conn.execute(_BACKFILL_MIRRORS_SQL).fetchall()  # guard: raw-sql - migration-owned mirror scan.
     attributed = 0
     unattributed = 0
@@ -210,17 +210,6 @@ def backfill_session_attributions(conn: sqlite3.Connection, _store_path: str, sn
         facts_restored=facts_restored,
         snapshot_path=str(snapshot_path),
     )
-
-
-def _context_by_transcript(facts: list[SessionMirrorFacts]) -> dict[str, SessionMirrorContext]:
-    """Resolve each transcript to its newest session record."""
-    contexts: dict[str, SessionMirrorContext] = {}
-    for session_facts in facts:
-        transcript_paths = (*session_facts.transcript_files, session_facts.native_log_file)
-        for transcript_path in transcript_paths:
-            if transcript_path:
-                contexts.setdefault(transcript_path, session_context_from_facts(session_facts, transcript_path))
-    return contexts
 
 
 def _metadata(value: object) -> dict[str, JsonValue]:

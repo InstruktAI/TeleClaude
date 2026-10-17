@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 from urllib.parse import quote
 
 from sqlalchemy import Engine, text  # guard: raw-sql
@@ -94,6 +95,9 @@ class SessionMirrorFacts:
     created_at: str | None
     closed_at: str | None
     identity: SessionRecord
+
+
+SessionMirrorFactsByTranscript = Mapping[str, SessionMirrorFacts]
 
 
 def _session_mirror_facts_engine(db_path: str) -> Engine:
@@ -210,6 +214,16 @@ def list_session_mirror_facts_sync(db_path: str) -> list[SessionMirrorFacts]:
         raise
     finally:
         engine.dispose()
+
+
+def get_session_mirror_facts_by_transcript_sync(db_path: str) -> SessionMirrorFactsByTranscript:
+    """Publish one immutable transcript-to-session selection from an ordered facts read."""
+    selected: dict[str, SessionMirrorFacts] = {}
+    for facts in list_session_mirror_facts_sync(db_path):
+        for transcript_path in (*facts.transcript_files, facts.native_log_file):
+            if transcript_path:
+                selected.setdefault(transcript_path, facts)
+    return MappingProxyType(selected)
 
 
 def get_session_closed_at_sync(db_path: str, session_ids: Sequence[str]) -> dict[str, str]:
