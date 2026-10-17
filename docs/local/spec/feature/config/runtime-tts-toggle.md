@@ -58,13 +58,13 @@ serialization format remain outside the operator goal.
 
 ### Use cases
 
-#### UC-CFG-RUNTIME-1: Operator changes the live TTS setting
+#### UC-CFG-RUNTIME-1: An operator changes the live TTS setting
 
 ```gherkin
-Scenario Outline: An accepted change updates the live runtime setting
-  Given an operator requests the live TTS setting <choice>
-  When configuration accepts the update
-  Then the runtime-settings surface reports <choice> immediately
+Scenario Outline: An operator enables or mutes TTS
+  Given an operator wants TTS <choice>
+  When they change the live TTS setting
+  Then runtime settings reports <choice> immediately
   And the YAML configuration remains unchanged
 
   Examples:
@@ -105,23 +105,17 @@ Scenario: A refused enable request leaves the setting off
 #### UC-CFG-RUNTIME-10: Operator’s TTS setting is restored on restart
 
 ```gherkin
-Scenario: A persisted TTS setting is restored on startup
-  Given the operator's previously accepted runtime setting was persisted
-  When the runtime-settings layer starts
-  Then its current value is restored from that persisted setting
+Scenario: Restore an operator's persisted choice
+  Given the operator's accepted runtime setting was persisted
+  When TeleClaude restarts
+  Then runtime settings restores that choice
   And the YAML boot seed does not overwrite it
 
 Scenario: Startup continues when no usable persisted setting exists
-  Given the runtime settings file is missing or malformed
-  When the runtime-settings layer starts
-  Then its current value remains at the boot-time seed
+  Given no usable persisted runtime setting exists
+  When TeleClaude starts
+  Then runtime settings uses the boot-time seed
   And startup continues
-
-Scenario: An unusable enabled value is corrected before exposure
-  Given the persisted runtime setting is enabled but TTS reports that its dependencies are unavailable
-  When startup reconciles runtime settings
-  Then the runtime-settings value is forced off before settings are reported
-  And the off value is persisted
 ```
 
 #### UC-CFG-RUNTIME-11: Startup with missing state file leaves seeded state intact
@@ -138,7 +132,7 @@ Scenario: An unusable enabled value is corrected before exposure
 
 ```gherkin
 Given an operator has set the runtime TTS value to muted while YAML enables it
-When a TTS-section configuration reload occurs
+When their TTS configuration is reloaded
 Then the runtime-settings value remains muted
 ```
 
