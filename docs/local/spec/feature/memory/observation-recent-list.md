@@ -15,42 +15,13 @@ Only current memories are returned: a retired memory or a business prospect is n
 
 ### Use cases
 
-#### List most recent
+#### Browse recent memories
 
-```
-Given a human or agent runs `telec memories list [--limit N] [--type <obs_type>] [--project <slug>]`
-And `--limit` defaults to 50, `--type` and `--project` default to absent
-When the CLI builds the request
-Then it calls the memory search surface with an empty query string
-And forwards limit, type, and project as supplied
-And renders the returned rows in the standard observation table (or prints "No memories found." when the response is empty)
-```
-
-#### Empty-query semantics
-
-```
-Given the memory search surface receives an empty query
-When it issues its search
-Then the primary structured-index attempt rejects the empty query
-And the substring fallback matches every live observation
-And the response honors the optional project and type filters
-And the response is ordered newest-first within the requested limit
-```
-
-#### Type filter
-
-```
-Given the caller supplies --type <obs_type>
-When the search request is built
-Then only observations whose type matches appear in the response
-```
-
-#### Project filter
-
-```
-Given the caller supplies --project <slug>
-When the search request is built
-Then only observations belonging to that project appear in the response
+```gherkin
+Given a human operator wants to review recent memories, optionally narrowed by type or project
+When they list those memories with an optional limit
+Then matching current observations appear newest first within that limit
+And an empty result is reported as no memories found
 ```
 
 ### Cross-context references
