@@ -11,6 +11,8 @@ A help-desk agent that cannot help its visitor runs `telec sessions escalate`.
 The core's agent_runtime context owns the escalation and its relay.
 Escalation is a help-desk act: it is accepted from a session running in a help
 desk and refused from anywhere else.
+The refusal occurs before anyone is notified or relay state changes, so no
+notification is sent and no relay starts.
 
 An escalation reaches **everyone in the desk's scope** — the same people who
 see the desk's Discord category
@@ -81,13 +83,6 @@ Scenario Outline: project owned by <owner>
 
 #### UC-HDX5: Escalation outside a help desk is refused
 
-```gherkin
-Given a session that runs in no help desk
-When it runs the escalate command
-Then the command is refused, naming that escalation is a help-desk act
-And no one is notified and no relay starts
-```
-
 #### UC-HDX6: During a relay the visitor reaches the thread, not the agent
 
 ```gherkin
@@ -140,13 +135,6 @@ And the visitor's messages keep reaching the agent
 #### UC-HDX10: A platform desk escalation is also followed in the shared escalation forum
 
 #### UC-HDX11: The escalation thread is closed to everyone outside the desk's scope
-
-```gherkin
-Given an escalation thread in a company desk's escalations forum
-When a person outside that desk's scope looks for it
-Then they cannot see it
-And a person in the desk's scope can reply in it but cannot open a new thread in the forum
-```
 
 ### Cross-context references
 
