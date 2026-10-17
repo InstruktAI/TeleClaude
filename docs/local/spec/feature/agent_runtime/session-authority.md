@@ -38,6 +38,14 @@ Peers are unaffected: a reviewer and a builder, and a driver and the peer it
 dispatched, all keep talking. So does a session with
 nothing above it, reaching anywhere in the fleet.
 
+Standing sessions have no dispatch parent or human-origin identity; they resolve
+to the platform principal. Adopting a live session into a standing role clears
+its prior human identity. A standing session is not an ordinary dispatched
+child, so ending its former starter does not end it. Direct requests to message,
+link to, unsubscribe from, end, or restart an ancestor are refused; a session
+reports upward through its own completed turn
+(`local/projects/teleclaude/spec/feature/identity/principal-resolution`).
+
 ## Canonical fields
 
 ### Ubiquitous language
@@ -59,44 +67,26 @@ the session itself is not among them.
 
 #### UC-SA1: A standing session has no session above it, whatever door opened it
 
-```gherkin
-Given a session becomes standing — it carries the integrator or project coordinator role, or it is a scheduled job's session
-And the role arrives through any door: an automatic spawn, an agent's directed start, a human's directed start, or adoption by a session already running
-When that session carries the role
-Then no session is recorded above it
-And the session that started it is not woken by its completed turns
-And no human identity is recorded on the session, its work having arrived from a queue, a schedule, or the fleet rather than from a person
-And the session resolves to the platform's principal, `system:daemon`, shared by every session with no human origin
-And a session adopted into the role while running stops carrying the human identity it held, from the moment of adoption
-```
-
 #### UC-SA2: A standing session survives the cleanup of the session that started it
 
+#### UC-SA3: An agent can report a result to its dispatcher within its mandate
+
 ```gherkin
-Given an agent session started a standing session and also holds ordinary dispatched children
-When that agent ends its child sessions without naming one
-Then its ordinary children are closed
-And the standing session keeps running
+Given a child agent acting for a person needs to report a result to its dispatcher
+When it tries to message the dispatcher directly
+Then the request is refused and names the agent's own output as the reporting path
+And the dispatcher receives the result when the child completes its turn
+And the dispatcher remains unchanged
 ```
 
-#### UC-SA3: An act on a session above the caller is refused, and the refusal names the alternative
+#### UC-SA4: An operator can have an agent manage a session within its reach
 
 ```gherkin
-Given an agent session has a session above it in the dispatch chain
-When it asks to message that session, to open or close a direct conversation with it, to unsubscribe from it, to end it, or to restart it
-Then the request is refused before it takes effect
-And the refusal states that a completed turn already reaches the session above, so the result belongs in the caller's own output
-And the target session is unchanged
-```
-
-#### UC-SA4: Peer, downward, and rootless acts are unchanged
-
-```gherkin
-Given an agent session names a target that is not above it in the dispatch chain
-When it messages, opens or closes a direct conversation with, unsubscribes from, ends, or restarts that target
-Then the request proceeds exactly as before
-And a session with nothing above it reaches any session in the fleet
-And a session naming itself is never treated as acting upward
+Given an operator asks their agent to restart a peer or child session
+When that target is not above the agent in the dispatch chain
+Then the restart request proceeds
+And a rootless agent can reach any session in the fleet
+And targeting itself is not treated as an upward act
 ```
 
 ### Known caveats
