@@ -216,7 +216,7 @@ def stage_observer_library(
     # mkdir is exclusive: a partial prior extraction is retained, never reused.
     os.mkdir(OBSERVER_DIRECTORY, mode=0o700, dir_fd=owner.journal.directory_fd)
     os.fsync(owner.journal.directory_fd)
-    directory = Path(PARENT_DESCRIPTOR.format(pid=controller.pid, descriptor=owner.journal.directory_fd))
+    directory = Path(PARENT_DESCRIPTOR.format(pid=controller.pid, descriptor=owner.inherited_directory_fd))
     destination = directory / OBSERVER_DIRECTORY
     # The existing bounded adapter runs only the locked interpreter's stdlib ZIP
     # command; this does not import wheel code or connect a manager observer.
