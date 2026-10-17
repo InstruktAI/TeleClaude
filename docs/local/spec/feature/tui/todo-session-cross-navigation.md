@@ -16,6 +16,10 @@ uppercase initials of its owning human, painted in that human's configured
 colors. A claimed todo (one with a live `active_runner`) renders its text status
 columns boldly and turns them into a one-click jump to the runner session; a
 session row turns its work slug into a one-click jump back to that todo.
+Without a live `active_runner`, those columns remain normal and have no jump.
+Claim styling and its jump affordance apply only to the text status columns;
+the schedule badge, autonomous-creation marker, owner chip, and hold glyph keep
+their own visual rules.
 
 A single shared **human focus** lets the operator click any chip to narrow the
 Preparation view to that person's work and highlights that person's chips in
@@ -40,6 +44,10 @@ person is the live filter (on) or its row is highlighted — and only the weight
 differs: bold under selection, normal under the filter alone.
 On a todo row the chip occupies a dedicated state column (next-to-last, before
 the hold column); on a session row it sits just after the agent/mode segment.
+When no registered person resolves, no person chip is rendered and its column
+space is not reserved.
+Each present work slug is shown once in one highlighted component in the
+session's command tail; a session with no work slug has no slug component.
 
 A rendering invariant governs every chip and every highlighted span: **the
 styled span contains only its own content — never a leading or trailing space.**
@@ -73,111 +81,25 @@ no issue-number link.
 
 #### UC-XNAV-1: Chip color resolves with theme-default fallback
 
-```
-Given a person whose color.background.dark and color.text.dark are unset
-And the active theme is dark mode
-When the person's chip is rendered
-Then the background uses the theme subtle-grey default (the low-contrast stop nearest the terminal background)
-And the text uses the theme highlight default (white)
-And a set cell, when present, is used instead of the default
-```
-
 #### UC-XNAV-2: Todo author chip resolves from created_by_principal
-
-```
-Given a todo whose created_by_principal is "human:alice@example.com"
-And alice is a registered person named "Alice Smith"
-When the todo row is rendered
-Then the chip shows the uppercase initials "AS"
-And the chip colors resolve from alice's PersonConfig.color
-```
 
 #### UC-XNAV-3: Session human chip resolves from the session's lineage root
 
-```
-Given a session whose principal is human:alice@example.com
-And alice is a registered person
-When the session row title line is rendered
-Then a chip shows alice's initials after the agent/mode segment
-And the chip colors resolve from alice's PersonConfig.color
-```
-
 #### UC-XNAV-4: Unresolvable human renders no chip
-
-```
-Given a todo with a null created_by_principal, or a human principal whose email matches no registered person
-When the row is rendered
-Then no chip is rendered
-And the row layout closes the gap rather than reserving chip width
-```
 
 #### UC-XNAV-5: Session work slug is one highlighted component
 
-```
-Given an orchestrator session with working_slug "config-public-surface-contract"
-And title "/work config-public-surface-contract"
-When the session row title line is rendered
-Then the slug is rendered once as a single highlighted span
-And the slug token is stripped from the title text so it is not duplicated
-And the title carries no surrounding quotes
-And the rendered line reads: [N] ▶ claude/med <chip> /work config-public-surface-contract
-```
-
 #### UC-XNAV-6: Worker rows render identically to orchestrator rows
-
-```
-Given a worker session with working_slug "config-public-surface-contract"
-And title "/build config-public-surface-contract"
-When the session row title line is rendered
-Then it uses the same chip + command + single highlighted slug layout as an orchestrator row
-And the slug appears once with no duplication and no double-space before the command tail
-And the rendered line reads: [N] ▶ claude/med <chip> /build config-public-surface-contract
-```
 
 #### UC-XNAV-7: Sessions without a work slug render no slug component
 
-```
-Given a session whose working_slug is null (e.g. an integrator or shell session)
-When the session row title line is rendered
-Then no highlighted slug span is rendered
-And the title renders as-is without quotes
-```
-
 #### UC-XNAV-8: Highlighted spans carry no padding
-
-```
-Given any chip or highlighted slug span on any row
-When the span is rendered
-Then the styled region contains only its own glyphs
-And any separating space sits outside the styled region in the base style
-```
 
 #### UC-XNAV-9: Claimed todo text columns render bold and clickable
 
-```
-Given a todo whose active_runner is a live session id
-When the todo row columns are rendered
-Then the text status columns (K, P/I, B, R, D) render bold
-And each carries a click target that jumps to the active_runner session
-```
-
 #### UC-XNAV-10: Unclaimed todo text columns render normal and inert
 
-```
-Given a todo with no active_runner
-When the todo row columns are rendered
-Then the text status columns render at normal weight
-And they carry no jump click target
-```
-
 #### UC-XNAV-11: The state column is excluded from the claim regime
-
-```
-Given a claimed todo
-When the row is rendered
-Then the row status glyph and the state column (schedule badge, owner chip, hold glyph) are neither bold-toggled by the claim nor made claim-clickable
-And they retain their own semantic color and weight (the schedule badge gold and bold, the hold glyph gold)
-```
 
 #### UC-XNAV-12: Clicking a claimed text column jumps to the session
 
