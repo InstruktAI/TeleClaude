@@ -90,6 +90,7 @@ class HostSubstrateFacts:
     python_sha256: str
     observed_ns: int
     initial_machines: InitialMachines
+    fixed_files: tuple[JsonObject, ...]
 
 
 def _require_time(deadline: AdmittedDeadline) -> None:
@@ -132,7 +133,7 @@ def _package_presence(lock: JsonObject, raw: bytes) -> tuple[bool, int]:
     return CONTAINER_PACKAGE in installed, len(installed)
 
 
-def _locked_file(row: JsonObject, deadline: AdmittedDeadline) -> None:
+def _locked_file(row: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
     _require_time(deadline)
     relative = Path(text(row, Field.PATH))
     if relative.is_absolute() or any(part == os.pardir for part in relative.parts):
@@ -144,9 +145,14 @@ def _locked_file(row: JsonObject, deadline: AdmittedDeadline) -> None:
         if not stat.S_ISLNK(before.st_mode) or before.st_uid != 0:
             raise ValueError(ERROR_FILE.format(path=relative))
     kind = Kind(text(row, Key.KIND))
+    observed: JsonObject = {Field.PATH: str(path), Key.KIND: kind.value}
     if kind == Kind.SYMLINK:
-        if not stat.S_ISLNK(before.st_mode) or os.readlink(path) != text(row, Key.TARGET):
+        if not stat.S_ISLNK(before.st_mode):
             raise ValueError(ERROR_FILE.format(path=relative))
+        target = os.readlink(path)
+        if target != text(row, Key.TARGET):
+            raise ValueError(ERROR_FILE.format(path=relative))
+        observed[Key.TARGET] = target
     else:
         if not stat.S_ISREG(before.st_mode):
             raise ValueError(ERROR_FILE.format(path=relative))
@@ -158,6 +164,8 @@ def _locked_file(row: JsonObject, deadline: AdmittedDeadline) -> None:
             or identity[IMAGE_INODE] != before.st_ino
         ):
             raise ValueError(ERROR_FILE.format(path=relative))
+        observed[Field.SHA256] = identity[IMAGE_SHA256]
+        observed[Field.BYTES] = identity[IMAGE_SIZE_BYTES]
     after = path.lstat()
     if (before.st_dev, before.st_ino, before.st_mode, before.st_uid, before.st_mtime_ns, before.st_ctime_ns) != (
         after.st_dev,
@@ -169,6 +177,18 @@ def _locked_file(row: JsonObject, deadline: AdmittedDeadline) -> None:
     ):
         raise ValueError(ERROR_FILE.format(path=relative))
     _require_time(deadline)
+    observed["identity"] = {
+        "device": after.st_dev,
+        "inode": after.st_ino,
+        "mode": after.st_mode,
+        "uid": after.st_uid,
+        "gid": after.st_gid,
+        "bytes": after.st_size,
+        "mtime_ns": after.st_mtime_ns,
+        "ctime_ns": after.st_ctime_ns,
+        "links": after.st_nlink,
+    }
+    return observed
 
 
 def inspect_host_substrate(
@@ -205,7 +225,7 @@ def inspect_host_substrate(
     if not isinstance(python_rows, list) or len(python_rows) != 1 or not isinstance(activation_rows, list):
         raise ValueError(ERROR_HOST)
     python = object_value(python_rows[0])
-    _locked_file(python, deadline)
+    fixed_files = [_locked_file(python, deadline)]
     actual_python = _file_identity(PROC_PYTHON)
     if actual_python[IMAGE_SHA256] != text(python, Field.SHA256) or actual_python[IMAGE_SIZE_BYTES] != positive_integer(
         python, Field.BYTES
@@ -218,7 +238,7 @@ def inspect_host_substrate(
             continue
         if text(row, Key.PACKAGE) == CONTAINER_PACKAGE and not container_installed:
             continue
-        _locked_file(row, deadline)
+        fixed_files.append(_locked_file(row, deadline))
         activation_count += 1
     pid1 = Controller.capture(1)
     _require_time(deadline)
@@ -237,4 +257,5 @@ def inspect_host_substrate(
         text(python, Field.SHA256),
         time.monotonic_ns(),
         initial_machines,
+        tuple(fixed_files),
     )

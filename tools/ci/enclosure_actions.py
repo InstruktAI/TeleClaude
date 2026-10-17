@@ -377,7 +377,8 @@ def _absent_container_inputs(
             context.commands.query,
             deadline,
             cap,
-            immutable_sources=tuple(context.admission.verified_sources),
+            immutable_sources=tuple(context.admission.verified_sources)
+            + tuple(value for value in substrate.fixed_files if value["kind"] == "file"),
         )
     except DpkgInputError as error:
         try:
