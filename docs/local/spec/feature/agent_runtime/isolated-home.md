@@ -43,38 +43,17 @@ environment is unchanged.
 
 #### UC-IAH1: A worktree receives its home when it is provisioned
 
-```gherkin
-Given a todo's slug worktree is created or attached for dispatch
-When provisioning completes
-Then the worktree owns a temporary clone of the TeleClaude home repository
-And the clone contains the tracked project registry and tier documents
-And no agent created or selected that home
-```
-
 #### UC-IAH2: The clone follows current tracked configuration
-
-```gherkin
-Given a tracked home configuration document differs from what a worktree's clone holds
-When the worktree is next dispatched
-Then its clone holds the current tracked working-tree content
-And the source document is unchanged
-```
 
 #### UC-IAH3: Sessions on one worktree share its home
 
-```gherkin
-Given a build session and a later review session work in the same slug worktree
-When each runs the worktree's code
-Then both run it against the same worktree home
-```
-
-#### UC-IAH5: Installed code keeps operating the live platform
+#### UC-IAH5: An operator can use the live platform from a worktree
 
 ```gherkin
-Given an agent session in a slug worktree
-When the global telec, an agent hook, the agent shell, or git runs in that session
-Then it resolves the live home exactly as it does outside a worktree
-And the session's environment names no worktree home
+Given an operator is working in a slug worktree and needs an installed platform command
+When they use that command from the worktree
+Then it operates on the live home as it does outside the worktree
+And the worktree home does not replace the live platform environment
 ```
 
 #### UC-IAH6: Checkout grading uses the worktree's home
@@ -89,65 +68,30 @@ And the live home is unchanged
 
 #### UC-IAH7: A missing worktree home is refused
 
-```gherkin
-Given a slug worktree whose home does not exist
-When code loaded from that worktree starts
-Then it refuses at startup with the missing home named
-And no home is created
-And the live home is unchanged
-```
-
 #### UC-IAH8: Releasing the worktree deletes its home
 
-```gherkin
-Given a slug worktree with its home
-When the worktree is released at delivery or removal
-Then its home is deleted
-And the source home repository is unchanged
-```
-
 #### UC-IAH9: Maintenance deletes an orphaned home
-
-```gherkin
-Given a worktree home whose worktree no longer exists
-When platform maintenance runs
-Then that home is deleted
-```
 
 #### UC-IAH10: Registry reads do not authorize live project writes
 
 ```gherkin
-Given a worktree's clone contains the real project registry
-When undelivered checkout code invokes an operation that would update registered projects
-Then the operation cannot change any live repository named by that cloned registry
+Given an operator wants to inspect or process registered projects from an undelivered worktree
+When worktree code uses the cloned project registry
+Then it cannot change any live repository named by that registry
 And the registry remains available for configuration reads
 ```
 
 #### UC-IAH13: Maintenance gives an existing worktree its home
 
-```gherkin
-Given a slug worktree that has no home
-When platform maintenance runs
-Then the worktree owns a home holding the current tracked configuration
-And no agent created or selected that home
-```
-
 #### UC-IAH14: A renamed todo's worktree keeps its home
 
-```gherkin
-Given a todo whose slug worktree owns a home
-When the todo is renamed
-Then the renamed worktree owns that home
-And no home remains under the former slug
-```
-
-#### UC-IAH15: Worktree code never resolves the live home
+#### UC-IAH15: A developer can run worktree code without accessing the live home
 
 ```gherkin
-Given code loaded from a slug worktree
-When it starts with TELECLAUDE_HOME unset, empty, or naming any location
-Then it runs against that worktree's home
-And the live home is unchanged
+Given a developer runs code from a slug worktree
+When the code starts with any `TELECLAUDE_HOME` value
+Then it uses that worktree's isolated home
+And the live home remains unchanged
 ```
 
 ## Known caveats
