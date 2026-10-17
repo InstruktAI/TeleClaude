@@ -1480,7 +1480,13 @@ def inspect_package_work(query: NativeQuery, deadline: AdmittedDeadline, cap: in
 
 
 def collect_install_inputs(
-    package: StaticPackage, host: HostSubstrateFacts, query: NativeQuery, deadline: AdmittedDeadline, cap: int
+    package: StaticPackage,
+    host: HostSubstrateFacts,
+    query: NativeQuery,
+    deadline: AdmittedDeadline,
+    cap: int,
+    *,
+    immutable_sources: tuple[JsonObject, ...],
 ) -> JsonObject:
     """Compose actual pre-effect inputs, stopping known incompatible branches without admitting a package action."""
     result: JsonObject = {
@@ -1489,6 +1495,7 @@ def collect_install_inputs(
         "state": "unproven",
         "mode": "unproven",
         "recipient_source_and_pending_admission": "unproven",
+        "outside_immutable_sources": list[JsonValue](immutable_sources),
         "error": None,
     }
     try:
@@ -2035,8 +2042,15 @@ def inspect_info_upgrade_inputs(initial: JsonObject, deadline: AdmittedDeadline)
 
         # Native fopen follows this address, whereas native link/unlink use the named source object itself.
         write_target = capture(physical_format)
+        immutable_sources = initial["outside_immutable_sources"]
+        if not isinstance(immutable_sources, list):
+            raise ValueError(ERROR_INPUT)
         write_scope = inspect_info_write_compatibility(
-            object_value(initial["inputs"]), object_value(initial["dbus_control_sources"]), write_target, deadline
+            object_value(initial["inputs"]),
+            object_value(initial["dbus_control_sources"]),
+            write_target,
+            tuple(object_value(value) for value in immutable_sources),
+            deadline,
         )
         result["info_write_compatibility"] = write_scope
         if write_scope["writing_compatibility"] == "incompatible":
@@ -2118,7 +2132,11 @@ def inspect_info_upgrade_inputs(initial: JsonObject, deadline: AdmittedDeadline)
 
 
 def inspect_info_write_compatibility(
-    inputs: JsonObject, sources: JsonObject, target: JsonObject, deadline: AdmittedDeadline
+    inputs: JsonObject,
+    sources: JsonObject,
+    target: JsonObject,
+    immutable_sources: tuple[JsonObject, ...],
+    deadline: AdmittedDeadline,
 ) -> JsonObject:
     """Stop on one actual immutable-source alias witness; absence of that witness supplies no migration approval."""
     result: JsonObject = {"writing_compatibility": "unproven", "error": None}
@@ -2129,6 +2147,28 @@ def inspect_info_write_compatibility(
             _before_cutoff(deadline)
             return result
         identity = object_value(target["before"])
+
+        def witness(path: str, digest: str, source_identity: JsonObject, differs: bool) -> bool:
+            if differs and all(identity[key] == value for key, value in source_identity.items()):
+                result.update(
+                    {
+                        "writing_compatibility": "incompatible",
+                        "immutable_source_path": path,
+                        "immutable_source_sha256": digest,
+                        "write_target_identity": identity,
+                        "reason": "native format-new truncation would invalidate an actual required immutable source",
+                    }
+                )
+                return True
+            return False
+
+        output_digest = hashlib.sha256(b"1\n").hexdigest()
+        for source in immutable_sources:
+            _before_cutoff(deadline)
+            digest = text(source, Field.SHA256)
+            if witness(text(source, Field.PATH), digest, object_value(source["identity"]), digest != output_digest):
+                _before_cutoff(deadline)
+                return result
         if sources["error"] is not None or not isinstance(sources["files"], list):
             raise ValueError(ERROR_INPUT)
         actual = _input_files(inputs)
@@ -2143,16 +2183,7 @@ def inspect_info_write_compatibility(
             if data is None:
                 raise ValueError(ERROR_INPUT)
             source_identity = object_value(captured["before"])
-            if data != b"1\n" and all(identity[key] == value for key, value in source_identity.items()):
-                result.update(
-                    {
-                        "writing_compatibility": "incompatible",
-                        "immutable_source_path": path,
-                        "immutable_source_sha256": captured["sha256"],
-                        "write_target_identity": identity,
-                        "reason": "native format-new truncation would invalidate an actual required D-Bus control source",
-                    }
-                )
+            if witness(path, text(captured, "sha256"), source_identity, data != b"1\n"):
                 _before_cutoff(deadline)
                 return result
         _before_cutoff(deadline)

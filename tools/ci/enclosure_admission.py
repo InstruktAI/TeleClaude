@@ -8,7 +8,7 @@ import stat
 import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
@@ -106,7 +106,7 @@ class SourceAdmission:
     package: StaticPackage
     binding: Binding
 
-    def verify(self, query: NativeQuery, deadline: AdmittedDeadline) -> None:
+    def verify(self, query: NativeQuery, deadline: AdmittedDeadline) -> tuple[JsonObject, ...]:
         """Check the actual fixed source/runtime bytes and native checkout within the original action cutoff."""
         _require_time(deadline)
         record = self._record()
@@ -114,6 +114,7 @@ class SourceAdmission:
         if root != ACTUAL_SOURCE_ROOT or Path(sys.argv[0]).resolve(strict=True) != root / ENTRY:
             raise ValueError(ERROR_SOURCE)
         sources = object_value(record[Key.SOURCE_FILES])
+        verified: list[JsonObject] = []
         loaded_sources, loaded_observer = _loaded_inputs(root)
         if not (REQUIRED_SOURCES | loaded_sources) <= set(sources):
             raise ValueError(ERROR_SOURCE)
@@ -124,7 +125,7 @@ class SourceAdmission:
             physical = (root / path).resolve(strict=True)
             if not physical.is_relative_to(root):
                 raise ValueError(ERROR_PATH.format(path=path))
-            _verify_file(root / path, object_value(value), deadline)
+            verified.append(_verify_file(root / path, object_value(value), deadline))
         self.package.validate_source(root)
         runtime = object_value(record[Key.OUTSIDE_RUNTIME])
         interpreter = object_value(runtime[Key.INTERPRETER])
@@ -141,7 +142,7 @@ class SourceAdmission:
             or IMAGE_REFERENCE.resolve(strict=True) != expected_path.resolve(strict=True)
         ):
             raise ValueError(ERROR_SOURCE)
-        _verify_file(expected_path, interpreter, deadline)
+        verified.append(_verify_file(expected_path, interpreter, deadline))
         actual_image = _file_identity(IMAGE_REFERENCE)
         if actual_image[IMAGE_SHA256] != text(interpreter, Field.SHA256) or actual_image[
             IMAGE_SIZE_BYTES
@@ -154,7 +155,7 @@ class SourceAdmission:
             if not path.is_absolute() or os.pardir in path.parts or path in seen:
                 raise ValueError(ERROR_PATH.format(path=path))
             seen.add(path)
-            _verify_file(path, row, deadline)
+            verified.append(_verify_file(path, row, deadline))
             loaded_observer.discard(path.resolve(strict=True))
         if loaded_observer:
             raise ValueError(ERROR_SOURCE)
@@ -167,6 +168,7 @@ class SourceAdmission:
         if commit != self.binding.candidate_commit or tree != self.binding.candidate_tree:
             raise ValueError(ERROR_SOURCE)
         _require_time(deadline)
+        return tuple(verified)
 
     def verify_observer_library(self, owner: RunOwner, deadline: AdmittedDeadline) -> Path:
         """Bind reviewed wheel-member bytes to this original run's staged directory before observer import."""
@@ -269,6 +271,7 @@ class ActionAdmission:
     vector_end_ns: int | None
     command_end_ns: int | None
     qualification_vector: str | None
+    verified_sources: list[JsonObject] = field(default_factory=list, compare=False, repr=False)
 
     def perform(self, operation: Callable[[int], ActionResult]) -> ActionResult:
         """Preserve the existing at-most-once phase graph and original absolute bounds."""
@@ -294,7 +297,8 @@ class ActionAdmission:
     def _admit(self, original_command_end: int) -> None:
         self.owner.require_original_parent()
         deadline = AdmittedDeadline(self.owner.journal.deadline.end_ns, self.vector_end_ns, original_command_end)
-        self.source.verify(self.query, deadline)
+        # Publish only a completed source check; these capture-point facts do not claim continuous identity.
+        self.verified_sources[:] = self.source.verify(self.query, deadline)
         if self.owner.journal.transitions != self.source.package.transitions():
             raise ValueError(ERROR_SOURCE)
         self.owner.require_original_parent()
@@ -306,7 +310,7 @@ def _require_time(deadline: AdmittedDeadline) -> None:
         raise TimeoutError(ERROR_DEADLINE)
 
 
-def _verify_file(path: Path, row: JsonObject, deadline: AdmittedDeadline) -> None:
+def _verify_file(path: Path, row: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
     _require_time(deadline)
     require_hex(text(row, Field.SHA256), 64)
     size = row.get(Field.BYTES)
@@ -332,3 +336,20 @@ def _verify_file(path: Path, row: JsonObject, deadline: AdmittedDeadline) -> Non
     ):
         raise ValueError(ERROR_SOURCE)
     _require_time(deadline)
+    return {
+        Field.PATH: str(path),
+        "physical_path": str(physical),
+        Field.SHA256: identity[IMAGE_SHA256],
+        Field.BYTES: identity[IMAGE_SIZE_BYTES],
+        "identity": {
+            "device": after.st_dev,
+            "inode": after.st_ino,
+            "mode": after.st_mode,
+            "uid": after.st_uid,
+            "gid": after.st_gid,
+            "bytes": after.st_size,
+            "mtime_ns": after.st_mtime_ns,
+            "ctime_ns": after.st_ctime_ns,
+            "links": after.st_nlink,
+        },
+    }

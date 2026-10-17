@@ -371,7 +371,14 @@ def _absent_container_inputs(
     context: PrivilegedAction, substrate: HostSubstrateFacts, deadline: AdmittedDeadline, cap: int
 ) -> Never:
     try:
-        inputs = collect_install_inputs(context.owner.package, substrate, context.commands.query, deadline, cap)
+        inputs = collect_install_inputs(
+            context.owner.package,
+            substrate,
+            context.commands.query,
+            deadline,
+            cap,
+            immutable_sources=tuple(context.admission.verified_sources),
+        )
     except DpkgInputError as error:
         try:
             _record_install_inputs(context, error.snapshot, deadline, INSTALL_INPUTS_FILE)
