@@ -37,8 +37,9 @@ Storage migration and initialization precede operations startup and local source
 materialization. Adapters receive the local session state their startup
 requires. Domain-event publication is ready before producers can emit, and
 each required consumer's progress is established before the source activity it
-must observe. Registering or scheduling a reader alone does not establish that
-handover.
+must observe. Work contributed to a stage completes within that stage and does
+not add or reorder the boot prefix. Registering or scheduling a reader alone
+does not establish that handover.
 The producer and reader positions for both event source streams are prepared
 independently of adapter startup. Handler execution remains gated on its own
 dependencies, including request-surface binding where required.
@@ -211,13 +212,6 @@ But when adoption fails the response carries the reason and a folder the request
 
 #### UC-DL3: Startup work added to a stage neither extends nor reorders the boot prefix
 
-```
-Given a startup stage carries work contributed by another bounded context
-When startup runs
-Then the documented stage order is unchanged
-And the contributed work completes inside its own stage rather than deferring a later one
-```
-
 #### UC-DL5: Operations abandoned by a previous run do not abort the boot
 
 ```
@@ -269,17 +263,10 @@ When that window expires
 Then the request reports that preparation did not complete
 And the running daemon retains its draining state and the unfinished work's required resources
 And the host service is neither forcibly terminated nor replaced by that request
-And once that work settles the prepared daemon completes its own shutdown as UC-DL16 states
+And once that work settles the prepared daemon completes its own shutdown
 ```
 
 #### UC-DL13: Preparation belongs to the observed process
-
-```gherkin
-Given an agent operating the host has observed the running daemon's preparation capability and process instance
-When it requests preparation and waits for completion
-Then completion is accepted only from that same process instance
-And an unsupported capability or replacement process produces a visible refusal before a preparation signal or service-manager replacement
-```
 
 #### UC-DL14: A command refused by a restarting daemon tells its caller to run it again
 
@@ -304,15 +291,6 @@ And a daemon whose admission is closed is reported degraded, never healthy
 ```
 
 #### UC-DL16: A prepared daemon completes its own shutdown
-
-```gherkin
-Given the running daemon has reached the drained phase
-When no termination from its lifecycle caller arrives within the bounded termination grace
-Then the daemon completes its ordinary shutdown and exits on its own
-And the service manager relaunches the service on its installed code
-And admission never reopens in the prepared process before it exits
-And a caller that terminates the daemon within the grace sees the ordinary stop or restart
-```
 
 #### UC-DL17: A long-lived task that ends is replaced, or the daemon restarts
 
