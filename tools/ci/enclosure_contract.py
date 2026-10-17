@@ -88,6 +88,7 @@ class Field(StrEnum):
     RUNTIME_OUTER_MAX = "runtime_outer_max"
     CLOSURE_EXPORT_RESERVE = "closure_export_reserve"
     NORMAL_COMMAND_MAX = "normal_command_max"
+    GUEST_BOOT_OR_CONFIGURATION_MAX = "guest_boot_or_configuration_max"
 
 
 class Parameter(StrEnum):

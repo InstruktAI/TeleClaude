@@ -30,6 +30,8 @@ from tools.ci.enclosure_owner import Key as OwnerKey
 from tools.ci.enclosure_privileged import PrivilegedAction
 
 BUSCTL: Final = "/usr/bin/busctl"
+SYSTEMCTL: Final = "/usr/bin/systemctl"
+SETUP_WAIT_OPTIONS: Final = ("--system", "--no-pager", "--no-ask-password", "--job-mode=fail", "--wait")
 BUS_OPTIONS: Final = (
     "--system",
     "--json=short",
@@ -79,6 +81,9 @@ class Key(StrEnum):
     RUNTIME_FILES = "runtime_files"
     MASK_CHANGES = "mask_changes"
     PARENT_CREATED = "parent_created"
+    COMMAND = "command"
+    EXIT_STATUS = "exit_status"
+    COMMAND_END_NS = "command_end_ns"
 
 
 class Member(StrEnum):
@@ -387,7 +392,26 @@ def _mask_guest(context: PrivilegedAction, end_ns: int) -> NativeMutation:
 
 
 def _guest_setup(context: PrivilegedAction, end_ns: int) -> NativeMutation:
-    return NativeMutation(Action.GUEST_SETUP, _start(context, end_ns, GUEST_SETUP, Authority.GUEST))
+    record = parse_object(context.owner.manifest_bytes)
+    machine = Path(text(record, OwnerKey.ROOTFS)).name
+    recipe = parse_object(context.owner.package.recipe_bytes)
+    cap = positive_integer(object_value(recipe[Field.BUDGET_SECONDS]), Field.GUEST_BOOT_OR_CONFIGURATION_MAX)
+    end = _deadline(context, end_ns).command_end(cap)
+    command = (SYSTEMCTL, *SETUP_WAIT_OPTIONS, MACHINE.format(machine=machine), JOB_START, GUEST_SETUP)
+    # Native systemctl subscribes before starting and consumes the job/unit outcome on that same guest connection.
+    status = context.commands.run(command, end)
+    if status != 0 or time.monotonic_ns() >= end:
+        raise ValueError(ERROR_NATIVE)
+    return NativeMutation(
+        Action.GUEST_SETUP,
+        {
+            Key.AUTHORITY: Authority.GUEST.value,
+            Key.UNIT_NAME: GUEST_SETUP,
+            Key.COMMAND: list[JsonValue](command),
+            Key.EXIT_STATUS: status,
+            Key.COMMAND_END_NS: end,
+        },
+    )
 
 
 def _start_payload(context: PrivilegedAction, end_ns: int) -> NativeMutation:
