@@ -142,6 +142,7 @@ class Key(StrEnum):
     AVAILABLE_BYTES = "available_bytes"
     TEXT = "text"
     PYTHON_BINARY = "python_binary"
+    PAYLOAD_END_NS = "payload_end_ns"
 
 
 class Record(StrEnum):
@@ -261,7 +262,8 @@ class GuestContext:
             or image[IMAGE_SIZE_BYTES] != positive_integer(expected_image, Field.BYTES)
         ):
             raise ValueError(ERROR_CONTEXT)
-        if time.monotonic_ns() >= self.admitted_deadline().effective_end():
+        deadline = self.payload_deadline() if role is Role.PAYLOAD else self.admitted_deadline()
+        if time.monotonic_ns() >= deadline.effective_end():
             raise TimeoutError(ERROR_BUDGET)
 
     def admitted_deadline(self) -> AdmittedDeadline:
@@ -281,6 +283,21 @@ class GuestContext:
             or os.getegid() != positive_integer(account, Key.GID)
         ):
             raise ValueError(ERROR_CONTEXT)
+
+    def payload_deadline(self) -> AdmittedDeadline:
+        """Keep the payload work cutoff separate from the same manifest's original cleanup bounds."""
+        original = self.admitted_deadline()
+        end = positive_integer(self.record, Key.PAYLOAD_END_NS)
+        reserve = (
+            positive_integer(
+                object_value(parse_object(self.package.recipe_bytes)[Field.BUDGET_SECONDS]),
+                Field.CLOSURE_EXPORT_RESERVE,
+            )
+            * NANOSECONDS
+        )
+        if end > min(original.effective_end(), original.outer_end_ns - reserve):
+            raise ValueError(ERROR_BUDGET)
+        return AdmittedDeadline(original.outer_end_ns, original.vector_end_ns, end)
 
     def verify_request(self, root: Path, commit: str, tree: str, selection: frozenset[str]) -> None:
         """Bind the public payload request to the protected candidate and effective selection."""

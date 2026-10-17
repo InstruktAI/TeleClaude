@@ -1,4 +1,4 @@
-"""Protected guest setup manifest composition and publication inside its existing action."""
+"""Protected setup/payload manifest handoff inside their existing journaled actions."""
 
 from __future__ import annotations
 
@@ -45,10 +45,10 @@ if TYPE_CHECKING:
     from tools.ci.enclosure_owner import HelperOwner, RunOwner
 
 INPUT_NAME: Final = "guest-setup-manifest.json"
+PAYLOAD_INPUT: Final = "guest-payload-manifest.json"
+PAYLOAD_TEMPORARY: Final = "guest-payload-manifest.tmp"
 MANIFEST_MODE: Final = 0o644
-ERROR_MANIFEST: Final = (
-    "the protected guest setup manifest does not preserve its original admitted run/source/guest/cutoff"
-)
+ERROR_MANIFEST: Final = "the protected guest manifest does not preserve its original admitted run/source/guest/cutoff"
 DIRECTORY_FLAGS: Final = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 READ_FLAGS: Final = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
 UTF8: Final = "utf-8"
@@ -136,7 +136,31 @@ def narrow_setup_manifest(data: bytes, end_ns: int) -> bytes:
     return _encode(record)
 
 
-def read_setup_input(owner: HelperOwner, root_fd: int, expected_digest: str) -> bytes:
+def compose_payload_manifest(owner: RunOwner, setup: bytes, deadline: AdmittedDeadline) -> bytes:
+    """Admit a new payload lifetime from the original run bounds; never extend the completed setup invocation."""
+    record = parse_object(setup)
+    if (
+        record.get(GuestKey.PURPOSE) != Purpose.APPLICATION
+        or record.get(GuestKey.RUN_TOKEN) != owner.journal.binding.run_token
+        or deadline.outer_end_ns != owner.journal.deadline.end_ns
+        or deadline.vector_end_ns is not None
+    ):
+        raise ValueError(ERROR_MANIFEST)
+    work_end = min(deadline.effective_end(), deadline.outer_end_ns - owner.journal.deadline.reserve_ns)
+    if time.monotonic_ns() >= work_end:
+        raise TimeoutError(ERROR_MANIFEST)
+    record[Cutoff.OUTER_END_NS] = deadline.outer_end_ns
+    record[Cutoff.VECTOR_END_NS] = deadline.vector_end_ns
+    record[Cutoff.COMMAND_END_NS] = deadline.command_end_ns
+    record[GuestKey.PAYLOAD_END_NS] = work_end
+    data = _encode(record)
+    _write_private_file(owner.journal.directory_fd, PAYLOAD_INPUT, data)
+    return data
+
+
+def read_guest_input(
+    owner: HelperOwner, root_fd: int, expected_digest: str, *, action: Action = Action.GUEST_SETUP
+) -> bytes:
     """Read the parent's protected input and verify the actual inherited root capability."""
     require_hex(expected_digest, 64)
     if type(root_fd) is not int or root_fd <= 2 or root_fd == owner.inherited_directory_fd:
@@ -151,7 +175,10 @@ def read_setup_input(owner: HelperOwner, root_fd: int, expected_digest: str) -> 
         parent_root.st_gid,
     ):
         raise ValueError(ERROR_MANIFEST)
-    descriptor = os.open(INPUT_NAME, READ_FLAGS, dir_fd=owner.journal.directory_fd)
+    names = {Action.GUEST_SETUP: INPUT_NAME, Action.START_PAYLOAD: PAYLOAD_INPUT}
+    if action not in names:
+        raise ValueError(ERROR_MANIFEST)
+    descriptor = os.open(names[action], READ_FLAGS, dir_fd=owner.journal.directory_fd)
     try:
         before = os.fstat(descriptor)
         if (
@@ -188,12 +215,16 @@ def read_setup_input(owner: HelperOwner, root_fd: int, expected_digest: str) -> 
         close_evidence_descriptors(descriptor)
 
 
-def publish_setup_manifest(owner: HelperOwner, root_fd: int, data: bytes, end_ns: int) -> bytes:
-    """Publish only this first fixed manifest inside the already fsynced guest-setup action intent."""
+def publish_guest_manifest(
+    owner: HelperOwner, root_fd: int, data: bytes, end_ns: int, *, previous_digest: str | None = None
+) -> bytes:
+    """Publish initial setup or replace its exact completed manifest inside the next admitted payload intent."""
     owner.require_original_parent()
     if time.monotonic_ns() >= end_ns:
         raise TimeoutError(ERROR_MANIFEST)
-    narrowed = narrow_setup_manifest(data, end_ns)
+    narrowed = narrow_setup_manifest(data, end_ns) if previous_digest is None else data
+    if previous_digest is not None:
+        require_hex(previous_digest, 64)
     root = os.fstat(root_fd)
     directory_fd = os.dup(root_fd)
     descriptor = -1
@@ -209,8 +240,27 @@ def publish_setup_manifest(owner: HelperOwner, root_fd: int, data: bytes, end_ns
                 raise ValueError(ERROR_MANIFEST)
         if time.monotonic_ns() >= end_ns:
             raise TimeoutError(ERROR_MANIFEST)
+        if previous_digest is not None:
+            existing = os.open(MANIFEST.name, READ_FLAGS, dir_fd=directory_fd)
+            try:
+                before = os.fstat(existing)
+                old = os.pread(existing, MANIFEST_LIMIT + 1, 0)
+                after = os.fstat(existing)
+                if (
+                    not stat.S_ISREG(before.st_mode)
+                    or before.st_uid != root.st_uid
+                    or before.st_mode & 0o022
+                    or not 0 < len(old) <= MANIFEST_LIMIT
+                    or len(old) != before.st_size
+                    or hashlib.sha256(old).hexdigest() != previous_digest
+                    or (before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+                    != (after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+                ):
+                    raise ValueError(ERROR_MANIFEST)
+            finally:
+                close_evidence_descriptors(existing)
         descriptor = os.open(
-            MANIFEST.name,
+            MANIFEST.name if previous_digest is None else PAYLOAD_TEMPORARY,
             os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
             MANIFEST_MODE,
             dir_fd=directory_fd,
@@ -225,6 +275,15 @@ def publish_setup_manifest(owner: HelperOwner, root_fd: int, data: bytes, end_ns
         os.fsync(directory_fd)
         if os.pread(descriptor, len(narrowed) + 1, 0) != narrowed or time.monotonic_ns() >= end_ns:
             raise ValueError(ERROR_MANIFEST)
+        if previous_digest is not None:
+            os.replace(PAYLOAD_TEMPORARY, MANIFEST.name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
+            os.fsync(directory_fd)
+            actual = os.open(MANIFEST.name, READ_FLAGS, dir_fd=directory_fd)
+            try:
+                if os.pread(actual, len(narrowed) + 1, 0) != narrowed or time.monotonic_ns() >= end_ns:
+                    raise ValueError(ERROR_MANIFEST)
+            finally:
+                close_evidence_descriptors(actual)
         return narrowed
     finally:
         close_evidence_descriptors(descriptor, directory_fd)

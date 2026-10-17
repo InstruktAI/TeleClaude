@@ -36,6 +36,7 @@ from tools.ci.enclosure_contract import (
 )
 from tools.ci.enclosure_exchange import HelperExitFailed, HelperStartup, HelperUncertain, run_privileged
 from tools.ci.enclosure_graph import DependencyGraph, inspect_dependency_graph
+from tools.ci.enclosure_guest import GuestContext
 from tools.ci.enclosure_guest_binding import GuestBinding
 from tools.ci.enclosure_guest_evidence import (
     GuestSetupEvidence,
@@ -43,7 +44,7 @@ from tools.ci.enclosure_guest_evidence import (
     read_setup_journal,
     validate_setup_journal,
 )
-from tools.ci.enclosure_guest_manifest import compose_setup_manifest, narrow_setup_manifest
+from tools.ci.enclosure_guest_manifest import compose_payload_manifest, compose_setup_manifest, narrow_setup_manifest
 from tools.ci.enclosure_journal import ActionResult, Outcome
 from tools.ci.enclosure_manager import (
     ACTIVE,
@@ -146,6 +147,9 @@ class BindingPhases:
         self.guest_setup_read: SetupJournalRead | None = None
         self.guest_setup_evidence: GuestSetupEvidence | None = None
         self.configured: ActionResult | None = None
+        self.active_guest_manifest: bytes | None = None
+        self.prepared_payload_manifest: bytes | None = None
+        self.payload_started: ActionResult | None = None
 
     @property
     def startups(self) -> tuple[HelperStartup, ...]:
@@ -162,9 +166,13 @@ class BindingPhases:
         selected: frozenset[str] | None = None,
     ) -> ActionResult:
         """Compose the actual separate helper with this process's original observations, without a new observer."""
-        if action not in (Action.CREATE_PARENT, Action.START_GUEST, Action.MASK_GUEST, Action.GUEST_SETUP) or (
-            (action is Action.GUEST_SETUP) != (self.seal is not None)
-        ):
+        if action not in (
+            Action.CREATE_PARENT,
+            Action.START_GUEST,
+            Action.MASK_GUEST,
+            Action.GUEST_SETUP,
+            Action.START_PAYLOAD,
+        ) or ((action in (Action.GUEST_SETUP, Action.START_PAYLOAD)) != (self.seal is not None)):
             raise ValueError(ERROR_PHASE.format(action=action))
         if self.uncertain is not None:
             raise self.uncertain
@@ -185,30 +193,18 @@ class BindingPhases:
         ).command_end(maximum_seconds)
         action_deadline = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
         await self.manager.check_identity(end_ns)
-        if action in (Action.MASK_GUEST, Action.GUEST_SETUP):
+        if action in (Action.MASK_GUEST, Action.GUEST_SETUP, Action.START_PAYLOAD):
             self._helper_frontier(None)
-            self._require_source_closure(masked=action is Action.GUEST_SETUP)
+            self._require_source_closure(masked=action is not Action.MASK_GUEST)
         else:
             metadata = await self.manager.read_manager(end_ns)
             sources = inspect_start_sources(self.owner, self.package, metadata, action, action_deadline)
             self.start_sources[action] = sources
             if sources[ActivationKey.UNCLASSIFIED]:
                 raise ValueError(ERROR_BINDING)
-        guest_root_fd = None
-        manifest_digest = None
-        if action is Action.GUEST_SETUP:
-            if selected is None or self.seal is None:
-                raise ValueError(ERROR_BINDING)
-            try:
-                binding = await self.admit_guest(action_deadline)
-                self.prepared_guest_manifest = compose_setup_manifest(
-                    self.owner, self.package, binding, self.seal, selected, action_deadline, qualification_vector
-                )
-                guest_root_fd = binding.root_fd
-                manifest_digest = hashlib.sha256(self.prepared_guest_manifest).hexdigest()
-            except BaseException as error:
-                self.completion_failure = error
-                raise
+        guest_root_fd, manifest_digest, previous_digest = await self._prepare_guest_input(
+            action, action_deadline, deadline, qualification_vector, selected
+        )
         await self.manager.check_identity(end_ns)
 
         async def observe(mutation: NativeMutation, end_ns: int, startup: HelperStartup) -> ActionResult:
@@ -225,6 +221,7 @@ class BindingPhases:
                 self._startups,
                 guest_root_fd=guest_root_fd,
                 guest_manifest_digest=manifest_digest,
+                previous_manifest_digest=previous_digest,
             )
             self.results[action] = result
             if time.monotonic_ns() >= end_ns:
@@ -242,6 +239,8 @@ class BindingPhases:
                 self.seal = result
             if action is Action.GUEST_SETUP and result.status is Outcome.SUCCEEDED:
                 self._expose_configured(result, action_deadline)
+            if action is Action.START_PAYLOAD and result.status is Outcome.SUCCEEDED:
+                self._expose_payload(result, action_deadline)
             return result
         except HelperUncertain as error:
             # Preserve the original startup/Process even if an outer caller only renders the raised diagnostic.
@@ -255,16 +254,52 @@ class BindingPhases:
             self.completion_failure = error
             raise
 
+    async def _prepare_guest_input(
+        self,
+        action: Action,
+        admitted: AdmittedDeadline,
+        original: AdmittedDeadline,
+        vector: str | None,
+        selected: frozenset[str] | None,
+    ) -> tuple[int | None, str | None, str | None]:
+        if action not in (Action.GUEST_SETUP, Action.START_PAYLOAD):
+            return None, None, None
+        try:
+            binding = await self.admit_guest(admitted)
+            previous = None
+            if action is Action.GUEST_SETUP:
+                if selected is None or self.seal is None:
+                    raise ValueError(ERROR_BINDING)
+                data = compose_setup_manifest(self.owner, self.package, binding, self.seal, selected, admitted, vector)
+                self.prepared_guest_manifest = data
+            else:
+                if self.configured is None or self.active_guest_manifest is None or self.guest_setup_evidence is None:
+                    raise ValueError(ERROR_BINDING)
+                data = compose_payload_manifest(self.owner, self.active_guest_manifest, original)
+                self.prepared_payload_manifest = data
+                previous = self.guest_setup_evidence.manifest_sha256
+            return binding.root_fd, hashlib.sha256(data).hexdigest(), previous
+        except BaseException as error:
+            self.completion_failure = error
+            raise
+
+    def _expose_payload(self, result: ActionResult, deadline: AdmittedDeadline) -> None:
+        self._guest_completion_frontier(result, deadline, Phase.PAYLOAD_STARTED)
+        self.payload_started = result
+
     def _expose_configured(self, result: ActionResult, deadline: AdmittedDeadline) -> None:
+        self._guest_completion_frontier(result, deadline, Phase.GUEST_CONFIGURED)
+        self.configured = result
+
+    def _guest_completion_frontier(self, result: ActionResult, deadline: AdmittedDeadline, phase: Phase) -> None:
         """Keep helper completion and the final original-stream frontier separate from the durable phase receipt."""
         self._helper_frontier(None)
-        if self.guest_binding is None or result.evidence.get(Evidence.PHASE) != Phase.GUEST_CONFIGURED:
+        if self.guest_binding is None or result.evidence.get(Evidence.PHASE) != phase:
             raise ValueError(ERROR_BINDING)
         self.guest_binding.require_original(deadline)
         self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
         if time.monotonic_ns() >= deadline.effective_end():
             raise TimeoutError(ERROR_BINDING)
-        self.configured = result
 
     def _population_ready(self) -> None:
         if self.population is not None:
@@ -366,7 +401,8 @@ class BindingPhases:
         if self._loop is not loop or self.population is None or self.population.faults or self.manager.faults:
             raise ValueError(ERROR_BINDING)
         if current is not None and (
-            current not in self._startups or current.action not in (Action.MASK_GUEST, Action.GUEST_SETUP)
+            current not in self._startups
+            or current.action not in (Action.MASK_GUEST, Action.GUEST_SETUP, Action.START_PAYLOAD)
         ):
             raise ValueError(ERROR_BINDING)
         facts: list[JsonValue] = []
@@ -546,7 +582,13 @@ class BindingPhases:
         self, mutation: NativeMutation, end_ns: int, deadline: AdmittedDeadline, startup: HelperStartup
     ) -> ActionResult:
         """Establish only implemented original-object phases; no path or observer replacement on failure."""
-        if mutation.action not in (Action.CREATE_PARENT, Action.START_GUEST, Action.MASK_GUEST, Action.GUEST_SETUP):
+        if mutation.action not in (
+            Action.CREATE_PARENT,
+            Action.START_GUEST,
+            Action.MASK_GUEST,
+            Action.GUEST_SETUP,
+            Action.START_PAYLOAD,
+        ):
             raise ValueError(ERROR_PHASE.format(action=mutation.action))
         if startup not in self._startups or startup.action is not mutation.action or startup.identity is None:
             raise ValueError(ERROR_BINDING)
@@ -557,6 +599,8 @@ class BindingPhases:
         await self.manager.check_identity(end_ns)
         if mutation.action is Action.GUEST_SETUP:
             return await self._configured(mutation, end_ns, deadline, startup)
+        if mutation.action is Action.START_PAYLOAD:
+            return await self._payload_start(mutation, end_ns, deadline, startup)
         if mutation.action is Action.MASK_GUEST:
             self._helper_frontier(startup)
             evidence = await self.read_masked_sources(
@@ -713,6 +757,7 @@ class BindingPhases:
         self.guest_setup_read = read
         setup = validate_setup_journal(read, manifest, self.package)
         self.guest_setup_evidence = setup
+        self.active_guest_manifest = manifest
         if (
             native.get("manifest_sha256") != setup.manifest_sha256
             or setup.facts.system_manager.start_ticks != self.guest_binding.facts.controller.start_ticks
@@ -745,6 +790,54 @@ class BindingPhases:
                     "end_ns": read.end_ns,
                     "file_identity": parse_object(json.dumps(asdict(read.before), allow_nan=False).encode(UTF8)),
                 },
+                Evidence.PARENT: _unit(parent),
+                Evidence.GUEST: _unit(guest),
+                Evidence.HELPERS: helpers,
+                Evidence.SEQUENCE: boundary.sequence,
+                Evidence.OBSERVED_NS: boundary.observed_ns,
+                Evidence.POPULATION: {Evidence.RAW: sample.raw.decode(UTF8), Evidence.POPULATED: sample.populated},
+            },
+        )
+
+    async def _payload_start(
+        self, mutation: NativeMutation, end_ns: int, deadline: AdmittedDeadline, startup: HelperStartup
+    ) -> ActionResult:
+        """Native Type=exec start completion is separate from payload admission, report and functional completion."""
+        if self.guest_binding is None or self.prepared_payload_manifest is None or self.population is None:
+            raise ValueError(ERROR_BINDING)
+        native = mutation.evidence
+        digest = hashlib.sha256(self.prepared_payload_manifest).hexdigest()
+        if (
+            native.get(Key.AUTHORITY) != Authority.GUEST
+            or native.get(Key.UNIT_NAME) != "tc-ra-payload.service"
+            or type(native.get(Key.EXIT_STATUS)) is not int
+            or native[Key.EXIT_STATUS] != 0
+            or native.get("manifest_sha256") != digest
+            or positive_integer(native, Key.COMMAND_END_NS) > end_ns
+        ):
+            raise ValueError(ERROR_BINDING)
+        payload_end = GuestContext(self.prepared_payload_manifest, self.package).payload_deadline().effective_end()
+        if time.monotonic_ns() >= payload_end:
+            raise TimeoutError(ERROR_BINDING)
+        parent, guest = await self.manager.read_active_boundary(end_ns)
+        await self.manager.check_identity(end_ns)
+        self.guest_binding.require_original(deadline)
+        self._require_source_closure(masked=True)
+        sample = self.population.sample(end_ns)
+        if sample.faults or sample.populated is not True:
+            raise ValueError(ERROR_BINDING)
+        helpers = self._helper_frontier(startup)
+        boundary = self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
+        if time.monotonic_ns() >= end_ns:
+            raise TimeoutError(ERROR_BINDING)
+        self.active_guest_manifest = self.prepared_payload_manifest
+        return ActionResult(
+            Outcome.SUCCEEDED,
+            {
+                Evidence.PHASE: Phase.PAYLOAD_STARTED.value,
+                Evidence.NATIVE_RECEIPT: dict(native),
+                "payload_manifest_sha256": digest,
+                "payload_end_ns": payload_end,
                 Evidence.PARENT: _unit(parent),
                 Evidence.GUEST: _unit(guest),
                 Evidence.HELPERS: helpers,

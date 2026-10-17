@@ -25,14 +25,15 @@ from tools.ci.enclosure_contract import (
     text,
 )
 from tools.ci.enclosure_guest import close_evidence_descriptors
-from tools.ci.enclosure_guest_manifest import publish_setup_manifest
+from tools.ci.enclosure_guest_manifest import publish_guest_manifest
 from tools.ci.enclosure_journal import ActionResult
 from tools.ci.enclosure_owner import Key as OwnerKey
 from tools.ci.enclosure_privileged import PrivilegedAction
 
 BUSCTL: Final = "/usr/bin/busctl"
 SYSTEMCTL: Final = "/usr/bin/systemctl"
-SETUP_WAIT_OPTIONS: Final = ("--system", "--no-pager", "--no-ask-password", "--job-mode=fail", "--wait")
+GUEST_START_OPTIONS: Final = ("--system", "--no-pager", "--no-ask-password", "--job-mode=fail")
+SETUP_WAIT_OPTIONS: Final = (*GUEST_START_OPTIONS, "--wait")
 BUS_OPTIONS: Final = (
     "--system",
     "--json=short",
@@ -401,7 +402,7 @@ def _guest_setup(context: PrivilegedAction, end_ns: int) -> NativeMutation:
     cap = positive_integer(object_value(recipe[Field.BUDGET_SECONDS]), Field.GUEST_BOOT_OR_CONFIGURATION_MAX)
     end = _deadline(context, end_ns).command_end(cap)
     # This producer is entered only after the existing source admission and durable action intent.
-    manifest = publish_setup_manifest(context.owner, context.guest_root_fd, context.guest_manifest_bytes, end)
+    manifest = publish_guest_manifest(context.owner, context.guest_root_fd, context.guest_manifest_bytes, end)
     command = (SYSTEMCTL, *SETUP_WAIT_OPTIONS, MACHINE.format(machine=machine), JOB_START, GUEST_SETUP)
     # Native systemctl subscribes before starting and consumes the job/unit outcome on that same guest connection.
     status = context.commands.run(command, end)
@@ -421,7 +422,36 @@ def _guest_setup(context: PrivilegedAction, end_ns: int) -> NativeMutation:
 
 
 def _start_payload(context: PrivilegedAction, end_ns: int) -> NativeMutation:
-    return NativeMutation(Action.START_PAYLOAD, _start(context, end_ns, GUEST_PAYLOAD, Authority.GUEST))
+    if (
+        context.guest_root_fd is None
+        or context.guest_manifest_bytes is None
+        or context.previous_manifest_digest is None
+    ):
+        raise ValueError(ERROR_NATIVE)
+    record = parse_object(context.owner.manifest_bytes)
+    machine = Path(text(record, OwnerKey.ROOTFS)).name
+    manifest = publish_guest_manifest(
+        context.owner,
+        context.guest_root_fd,
+        context.guest_manifest_bytes,
+        end_ns,
+        previous_digest=context.previous_manifest_digest,
+    )
+    command = (SYSTEMCTL, *GUEST_START_OPTIONS, MACHINE.format(machine=machine), JOB_START, GUEST_PAYLOAD)
+    status = context.commands.run(command, end_ns)
+    if status != 0 or time.monotonic_ns() >= end_ns:
+        raise ValueError(ERROR_NATIVE)
+    return NativeMutation(
+        Action.START_PAYLOAD,
+        {
+            Key.AUTHORITY: Authority.GUEST.value,
+            Key.UNIT_NAME: GUEST_PAYLOAD,
+            Key.COMMAND: list[JsonValue](command),
+            Key.EXIT_STATUS: status,
+            Key.COMMAND_END_NS: end_ns,
+            "manifest_sha256": hashlib.sha256(manifest).hexdigest(),
+        },
+    )
 
 
 def _poweroff(context: PrivilegedAction, end_ns: int) -> NativeMutation:

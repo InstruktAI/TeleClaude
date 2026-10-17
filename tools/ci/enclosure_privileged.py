@@ -15,7 +15,7 @@ from tools.ci.enclosure_admission import ACTUAL_SOURCE_ROOT, ActionAdmission, So
 from tools.ci.enclosure_contract import Action, AdmittedDeadline, Cutoff, parse_object
 from tools.ci.enclosure_data import PROVISION_ENVIRONMENT
 from tools.ci.enclosure_guest import Record, Role, _append, _output, close_evidence_descriptors
-from tools.ci.enclosure_guest_manifest import read_setup_input
+from tools.ci.enclosure_guest_manifest import read_guest_input
 from tools.ci.enclosure_journal import ActionResult
 from tools.ci.enclosure_native import NativeRead, execute_native, read_native_stdout
 from tools.ci.enclosure_owner import HelperOwner
@@ -211,6 +211,7 @@ class PrivilegedAction:
     admission: ActionAdmission
     guest_root_fd: int | None = None
     guest_manifest_bytes: bytes | None = None
+    previous_manifest_digest: str | None = None
 
     @classmethod
     def load(
@@ -224,6 +225,7 @@ class PrivilegedAction:
         qualification_vector: str | None,
         guest_root_fd: int | None = None,
         guest_manifest_digest: str | None = None,
+        previous_manifest_digest: str | None = None,
     ) -> PrivilegedAction:
         """Load only protected inherited inputs; caller-supplied bounds can narrow the original run."""
         owner = HelperOwner.load(manifest, manifest_digest, inherited_directory_fd, ACTUAL_SOURCE_ROOT)
@@ -243,10 +245,12 @@ class PrivilegedAction:
                 qualification_vector,
             )
             guest_data = None
-            if action is Action.GUEST_SETUP:
+            if action in (Action.GUEST_SETUP, Action.START_PAYLOAD):
                 if guest_root_fd is None or guest_manifest_digest is None:
                     raise ValueError(ERROR_CONTEXT)
-                guest_data = read_setup_input(owner, guest_root_fd, guest_manifest_digest)
+                guest_data = read_guest_input(owner, guest_root_fd, guest_manifest_digest, action=action)
+                if (action is Action.START_PAYLOAD) != (previous_manifest_digest is not None):
+                    raise ValueError(ERROR_CONTEXT)
                 guest_record = parse_object(guest_data)
                 original = AdmittedDeadline.from_record(guest_record, require_vector=qualification_vector is not None)
                 if (
@@ -256,9 +260,9 @@ class PrivilegedAction:
                     or guest_record.get("qualification_vector") != qualification_vector
                 ):
                     raise ValueError(ERROR_CONTEXT)
-            elif guest_root_fd is not None or guest_manifest_digest is not None:
+            elif guest_root_fd is not None or guest_manifest_digest is not None or previous_manifest_digest is not None:
                 raise ValueError(ERROR_CONTEXT)
-            return cls(owner, commands, admission, guest_root_fd, guest_data)
+            return cls(owner, commands, admission, guest_root_fd, guest_data, previous_manifest_digest)
         except BaseException:
             owner.close()
             raise
