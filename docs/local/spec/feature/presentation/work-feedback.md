@@ -60,50 +60,11 @@ And the notification states the owner's way forward when one is published
 
 #### UC-WF2: A technical fault is diagnostic-only
 
-```gherkin
-Scenario Outline: Technical faults leave the operator's work uninterrupted by toasts
-  Given a human operator is using the TUI
-  When a technical fault occurs during <activity>
-  Then the fault is recorded at ERROR with its diagnostic context
-  And the operator receives no toast or synthesized failure notification for it
-
-  Examples:
-    | activity                              |
-    | a background operation                |
-    | a requested action                    |
-    | a session close                       |
-    | operation observation                 |
-    | a hook                                |
-    | local media or preference persistence |
-    | projecting a todo's durable identity  |
-```
-
 #### UC-WF3: An unknown outcome retains its diagnostic address
-
-```gherkin
-Given a human operator has submitted an asynchronous action from the TUI
-When the TUI reaches its observation bound without establishing the outcome
-Then the observation condition is recorded at ERROR with the operation's identity
-And the existing receipt remains available for outcome inspection
-And the operator receives no outcome-unknown or retry-instruction toast
-```
 
 #### UC-WF4: One outcome produces one work notification
 
-```gherkin
-Given an asynchronous action publishes eligible work feedback for a human TUI operator
-When both live delivery and operation observation report the same outcome
-Then the operator receives its work notification once
-```
-
 #### UC-WF5: Technical failure counts produce no aggregate fallback
-
-```gherkin
-Given a human operator requests an action for several sessions in the TUI
-When unexpected technical faults affect some of those requests
-Then their diagnostics are recorded at ERROR
-And the operator receives no aggregate notification derived from those technical failures
-```
 
 ## Known caveats
 
