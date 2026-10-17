@@ -93,32 +93,9 @@ never loaded as another tier.
 
 #### UC-CFG-WSD1: Declared tier governs, not location
 
-```
-Given a root directory whose teleclaude.yml declares itself a person configuration
-And the directory does not sit under any conventional person-folder location
-When an agent loads configuration for that root
-Then the file is loaded as a person overlay
-And the invocation resolves to the person tier at that root
-```
-
 #### UC-CFG-WSD2: Nearest anchoring tier declaration is the context root
 
-```
-Given a human or agent invokes the CLI from a subdirectory below an anchoring tier declaration
-When the context is resolved
-Then the nearest ancestor directory carrying an anchoring tier declaration is the context root
-And that file's declared tier governs the invocation
-```
-
 #### UC-CFG-WSD3: A person context needs no git checkout
-
-```
-Given a person directory whose configuration declares itself a person configuration
-And no git checkout exists at or above that directory
-When an agent invokes a read surface such as the docs index from within it
-Then the invocation resolves to the person tier
-And no failure about a missing project checkout occurs
-```
 
 #### UC-CFG-WSD4: Worktree shared state resolves to the owning checkout
 
@@ -150,34 +127,9 @@ And once a migration run has stored it, the file carries that tier declaration
 
 #### UC-CFG-WSD7: An unregistered file from before declarations loads as a project
 
-```
-Given a same-named configuration file authored before tier declarations existed
-And the tier registries do not name its location
-When that file is loaded
-Then it loads as a project configuration without registry standing
-And the stored file is unchanged by the load
-```
-
 #### UC-CFG-WSD8: An invalid declaration never loads as another tier
 
-```
-Given a same-named configuration file whose declaration names an unknown or tier-inconsistent kind
-When that file is loaded
-Then loading fails with a clear error naming the file and the invalid declaration
-And the file is never loaded as another configuration tier
-```
-
 #### UC-CFG-WSD9: A company configuration is recognized, never misclassified
-
-```
-Given a company configuration file declaring itself a company configuration
-When context resolution encounters it
-Then it is recognized as company configuration
-And no context root is anchored at the company folder
-And it is never treated as an anchoring tier
-And invocation from within the company folder behaves as invocation with no context root
-And company configuration composes alongside its member projects through their declared company membership
-```
 
 #### UC-CFG-WSD10: A declared file missing its schema reference gains it when stored
 
@@ -190,15 +142,6 @@ And its existing tier declaration is left as it stands
 ```
 
 #### UC-CFG-WSD11: A file that cannot be written still loads
-
-```
-Given a same-named configuration file the tier registries name
-And that file is not writable by the invoking user
-And that file carries no tier declaration and has not passed the declaring migration
-When an agent loads that file
-Then it loads as the tier the registries name
-And the file is not modified
-```
 
 #### UC-CFG-WSD12: An unavailable registered root is migrated when it returns
 
@@ -255,22 +198,7 @@ And no tier declaration is restored on that machine
 
 #### UC-CFG-WSD18: Loading an undeclared file writes nothing
 
-```
-Given a same-named configuration file carrying no tier declaration
-When that file is loaded
-Then the stored file is byte-identical before and after the load, whether the load succeeds or fails
-And no record of the load is kept that a later load consults
-```
-
 #### UC-CFG-WSD19: A written file carries its tier's schema reference on every machine
-
-```
-Given a declared configuration file of any tier
-And the machine writing it may or may not hold that tier's published schema
-When an agent's configuration operation writes that file
-Then the file carries its tier's schema reference
-And the written content is identical to what any other machine writes for the same document
-```
 
 ### Cross-context references
 
