@@ -14,17 +14,18 @@ The swap changes only runtime ownership, the current native binding, runtime-sta
 
 The predecessor transcript remains part of the session's continuity, and the successor receives one platform-classified continuation that identifies the predecessor and directs it to re-derive current state. This continuation is not human input and does not alter the session's last visible human input. Accepted input stays durable and ordered across the swap; terminal delivery waits until the successor and continuation are ready. Runtime ownership changes are serialized per session, and a failed swap leaves the session inspectable with its last truthful runtime binding.
 
+The durable operation result names the selected successor and reports whether the swap succeeded.
+
 ## Canonical fields
 
 ### Use cases
 
-#### UC-AH1: An open runnable session swaps agent CLIs in place
+#### UC-AH1: A person continues a session with a different supported agent
 
 ```gherkin
-Given a person wants an open TeleClaude session to continue with a different supported agent
-When the session's agent is handed off
-Then the new agent continues on the same TeleClaude session
-And the session's lifecycle and host-pane identity remain unchanged
+Given a person wants to continue an open TeleClaude session with a different supported agent
+When the handoff succeeds
+Then the same TeleClaude session continues with that agent
 ```
 
 #### UC-AH2: Session runnability remains outside handoff
@@ -35,13 +36,6 @@ And the session's lifecycle and host-pane identity remain unchanged
 
 #### UC-AH5: The successor receives one classified continuation
 
-```gherkin
-Given a person's open session is handed to a different agent
-When the successor begins work
-Then it receives the predecessor context as platform control and is directed to inspect the current working tree and re-derive state
-And that continuation is not presented as human input
-```
-
 #### UC-AH6: Accepted input waits behind the swap boundary
 
 #### UC-AH7: Concurrent runtime mutations do not overlap
@@ -49,9 +43,10 @@ And that continuation is not presented as human input
 #### UC-AH8: Completion and failure report actual progress
 
 ```gherkin
-Given a handoff operation has been accepted after selecting its successor
+Given a person requests handoff of an open session and a successor is selected
 When the operation completes or fails
-Then the caller can inspect its truthful result naming the selected successor and the session's last truthful runtime state
+Then the person can inspect which successor was selected and whether it took over the same session
+And a failed handoff reports the session's last truthful runtime state
 ```
 
 #### UC-AH9: Remote handoff negotiates capability before dispatch
