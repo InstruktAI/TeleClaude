@@ -115,144 +115,123 @@ startup context.
 
 ### Use cases
 
-#### UC-RAAD-1: Automatic dispatch follows the procedure's complete declaration
+#### UC-RAAD-1: An operator can start procedure work on its declared agent
 
 ```gherkin
-Given an agent caller creates fresh work without selecting an agent
-And the work's entry procedure declares an ordered agent list
+Given an operator starts fresh work through a procedure with an ordered agent preference
 When TeleClaude selects the session agent
-Then the initial candidate order is that complete list
-And configuration iteration order does not change the result
+Then it uses the procedure's declared order among eligible agents
+And configuration iteration order does not change the selection
 ```
 
 #### UC-RAAD-3: Automatic eligibility is strict
 
-```gherkin
-Given an automatic fresh-session request has an ordered candidate set
-When TeleClaude evaluates eligibility
-Then unconfigured, disabled, degraded, and unavailable agents are excluded
-And only an operator-available agent may be selected
-```
-
 #### UC-RAAD-4: Reviewer dispatch follows ordinary automatic ordering
 
 ```gherkin
-Given an agent caller creates a fresh reviewer-command session
+Given an operator asks for an independent reviewer session
 When TeleClaude selects the reviewer
-Then it uses the same eligible ordered candidate set as any other automatic fresh session
-And the agent used by the initiating or producing session does not change the result
+Then it uses the ordinary automatic eligible order
+And the initiating or producing agent does not change the reviewer selection
 ```
 
 #### UC-RAAD-5: Generic work remains operable and deterministic
 
 ```gherkin
-Given an agent caller creates generic fresh work with no procedure
-When TeleClaude selects the session agent
-Then it uses Claude, Codex, Gemini, DeepSeek in that order
-And an entry procedure without a dispatch declaration is refused as a publication defect
+Scenario: Start generic work using the platform order
+  Given an operator starts generic fresh work without an agent or procedure
+  When TeleClaude selects the agent
+  Then it uses Claude, Codex, Gemini, and DeepSeek in that order
+
+Scenario: Refuse a procedure without dispatch defaults
+  Given an operator starts work through a published procedure with no dispatch declaration
+  When TeleClaude resolves the request
+  Then it refuses before session creation and names the publication defect
 ```
 
 #### UC-RAAD-6: Manual agent selection never substitutes
 
 ```gherkin
-Given a caller without a system role explicitly selects an agent for a fresh session
-When the selected agent is known and enabled
-And its operator status is available or degraded
-Then TeleClaude selects exactly that agent
-When the selected agent is unavailable, unknown, or disabled
-Then the request is rejected before session creation
-And TeleClaude does not substitute another agent
+Scenario: Honor a manual choice the operator can use
+  Given an operator explicitly selects a known, enabled agent with available or degraded status
+  When they start a fresh session
+  Then TeleClaude selects exactly that agent
+
+Scenario: Refuse an invalid manual choice
+  Given an operator explicitly selects an unknown, disabled, or unavailable agent
+  When they start a fresh session
+  Then the request is rejected before session creation
+  And TeleClaude does not substitute another agent
 ```
 
 #### UC-RAAD-7: Fixed continuation never substitutes
 
 ```gherkin
-Given an agent caller resumes, revives, attaches, continues work bound to a runtime, or restarts without asking for a handoff
-Or a job declares a fixed agent
-When the bound agent cannot continue
-Then TeleClaude does not select a different agent
-And the caller receives an agent-specific refusal or continuation status
+Given an operator asks an existing session to continue on its already-bound agent
+When that agent cannot continue without a handoff
+Then TeleClaude does not select another agent
+And the operator receives the continuation status or refusal for the bound agent
 ```
 
 #### UC-RAAD-8: Every fresh-session entry point uses one policy
 
-```gherkin
-Given two agent callers create equivalent fresh-session requests through different supported entry points
-And command, todo kind, configured inventory, enabled state, operator status, and explicit-or-omitted intent are equal
-When TeleClaude selects each session agent
-Then both requests select the same agent or return the same eligibility failure
-```
-
 #### UC-RAAD-9: Omission remains automatic intent
 
-```gherkin
-Given a fresh-session request omits the agent
-When the request crosses client, adapter, or lifecycle boundaries
-Then omission remains distinguishable from an explicit human selection until policy evaluation
-And the created session reports the agent TeleClaude selected
-```
-
-#### UC-RAAD-10: No eligible candidate creates no session
+#### UC-RAAD-10: An operator receives a clear failure when no agent is eligible
 
 ```gherkin
-Given a fresh-session request has no eligible agent
+Given an operator requests fresh work for which no agent is eligible
 When TeleClaude resolves the request
-Then the request fails clearly
+Then it reports a clear failure
 And no session or runtime is created
 ```
 
 #### UC-RAAD-11: Human-facing fallback remains explainable
 
 ```gherkin
-Given TeleClaude selects a fallback for a fresh human-facing CLI request
+Given an operator requests fresh work and automatic selection uses a fallback agent
 When the result is returned
-Then the human caller can see the selected agent and exact fallback reason
+Then the operator can see the selected agent and exact fallback reason
 ```
 
 #### UC-RAAD-12: Routing explanation does not enter agent context
 
-```gherkin
-Given TeleClaude selects an agent for an automated or spawned fresh-session request
-When the request reaches the selected runtime
-Then human-facing routing explanation is absent from startup context and machine responses
-And the automated caller receives the selected agent and typed routing reason or a required typed failure
-```
-
-#### UC-RAAD-13: Explicit thinking mode overrides the procedure's declaration
+#### UC-RAAD-13: An operator can choose an explicit thinking mode
 
 ```gherkin
 Scenario Outline: Explicit thinking mode overrides the declared mode
-Given an authenticated <caller kind> caller invokes sessions run with an explicit valid thinking mode
-And the procedure declares a thinking mode
+Given an operator starts a procedure session and chooses explicit thinking mode <mode>
+And the procedure declares a default mode
 When TeleClaude resolves the fresh-session request
-Then the explicit thinking mode is used
+Then the session uses the operator's explicit mode
 
 Examples:
-  | caller kind |
-  | human       |
-  | agent       |
+  | mode  |
+  | fast  |
+  | med   |
+  | slow  |
 ```
 
-#### UC-RAAD-14: A declared mode resolves caller omission
+#### UC-RAAD-14: An operator can run a procedure without choosing a mode
 
 ```gherkin
 Scenario Outline: The procedure's declared mode resolves omission
-Given an authenticated <caller kind> caller invokes sessions run for a procedure declaring a thinking mode
-And its caller omits a thinking mode
+Given an operator starts a procedure with declared thinking mode <mode>
+And the operator omits a thinking mode
 When TeleClaude resolves the request
-Then the declared mode is used
-And the session is created without asking the caller to choose
+Then the session uses the procedure's declared mode without asking the operator to choose
 
 Examples:
-  | caller kind |
-  | human       |
-  | agent       |
+  | mode  |
+  | fast  |
+  | med   |
+  | slow  |
 ```
 
-#### UC-RAAD-15: An entry procedure without a dispatch declaration is refused
+#### UC-RAAD-15: An operator can diagnose a procedure missing dispatch defaults
 
 ```gherkin
-Given a caller invokes sessions run for a procedure that declares a role but no dispatch defaults
+Given an operator attempts to start a published procedure that declares a role but no dispatch defaults
 When TeleClaude resolves the request
 Then the request is rejected before session creation as a publication defect naming the procedure
 And one structured ERROR records the missing declaration without prompt or argument content
@@ -260,19 +239,10 @@ And one structured ERROR records the missing declaration without prompt or argum
 
 #### UC-RAAD-16: A resolved procedure supplies its declared mode
 
-```gherkin
-Given a caller invokes sessions run for a published entry procedure
-And the caller omits a thinking mode
-When TeleClaude resolves the request
-Then TeleClaude uses that procedure's declared thinking mode
-And the selected agent's corresponding model chain resolves the launch model
-And caller role does not change the result
-```
-
-#### UC-RAAD-17: A system-role agent preference cannot reserve degraded capacity
+#### UC-RAAD-17: An automated caller's agent preference falls back when ineligible
 
 ```gherkin
-Given a system-role caller explicitly prefers an agent for fresh work
+Given an automated caller explicitly prefers an agent for fresh work
 And that agent is degraded or unavailable
 And another automatically eligible agent exists
 When TeleClaude selects the session agent
@@ -283,22 +253,13 @@ And the caller receives the selected agent and typed fallback reason
 
 #### UC-RAAD-18: Reviewer preference uses ordinary automatic eligibility
 
-```gherkin
-Given a system-role caller explicitly prefers an automatically eligible agent for a fresh reviewer command
-And the initiating or producing session uses the same agent implementation
-When TeleClaude selects the reviewer
-Then it selects the preferred agent
-And it reports no producer-separation fallback reason
-```
-
-#### UC-RAAD-19:
+#### UC-RAAD-19: A job owner can select ordered agent preferences
 
 ```gherkin
-Given an agent caller dispatches a scheduled job with configured candidate preferences
-When TeleClaude selects the session agent
-Then it considers only those candidates in their configured order
-And it applies the existing automatic eligibility rules
-And the routing result identifies declaration-sourced selection
+Given an operator configures ordered agent preferences for a scheduled job
+When the job is dispatched
+Then TeleClaude selects from only those candidates in their declared order
+And automatic eligibility rules apply and the result identifies declaration-sourced selection
 And no eligible candidate results in an explicit refusal before session creation
 ```
 
@@ -307,15 +268,6 @@ And no eligible candidate results in an explicit refusal before session creation
 #### UC-RAAD-21: No unreviewed candidate creates no session
 
 #### UC-RAAD-22: A prior reviewer session's agent stays eligible for the same target
-
-```gherkin
-Given an agent caller creates a fresh reviewer-command session for a target
-And an earlier reviewer session for that same target ran on one of the eligible agents
-When TeleClaude selects the reviewer
-Then that agent is not removed from the candidates
-And selection proceeds over the same full eligible order as any reviewer request
-And the resolved session may be the same agent implementation the earlier session used
-```
 
 ## Known caveats
 
