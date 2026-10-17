@@ -39,6 +39,7 @@ Scenario: Login requires an interactive terminal
   When it attempts to sign in
   Then no terminal identity is recorded
   And it is told that a terminal is required
+  And the command exits with failure
 ```
 
 #### UC-TEL2: Login releases documents whose terminal device is gone and leaves live ones alone
