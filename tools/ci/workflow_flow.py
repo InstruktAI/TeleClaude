@@ -493,6 +493,7 @@ class WorkflowFlow:
     public_message_evidence: list[JsonValue] = field(default_factory=list)
     public_child_evidence: list[JsonValue] = field(default_factory=list)
     public_direct_evidence: list[JsonValue] = field(default_factory=list)
+    public_restoration_evidence: list[JsonValue] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -1187,9 +1188,15 @@ class WorkflowFlow:
     def cli(self, argv: Sequence[str], *, retain: bool = True) -> foundation.Outcome:
         return self.observer.run(argv, retain=retain)
 
-    def git(self, argv: Sequence[str], *, cwd: Path | None = None, what: str = GIT) -> str:
+    def git(
+        self, argv: Sequence[str], *, cwd: Path | None = None, what: str = GIT, evidence: list[JsonValue] | None = None
+    ) -> str:
         working = cwd if cwd is not None else self.project
         outcome = self.host.process((GIT, *argv), working, self.host.environment, FLOW_COMMAND_SECONDS)
+        if evidence is not None:
+            evidence.append(
+                {"kind": "command", "cwd": str(working), "value": self.public_command_evidence((GIT, *argv), outcome)}
+            )
         if outcome.exit_status != 0:
             raise creation.binding_failure(
                 DETAIL_GIT.format(command=what, status=outcome.exit_status, output=outcome.output[-400:])
@@ -1468,6 +1475,7 @@ class WorkflowFlow:
             "public_message_evidence": self.public_message_evidence,
             "public_child_evidence": self.public_child_evidence,
             "public_direct_evidence": self.public_direct_evidence,
+            "public_restoration_evidence": self.public_restoration_evidence,
             "integrators": cast(JsonValue, sorted(integrators)),
             "start_ledger": cast(JsonValue, starts),
             "open_attempt_ids": cast(JsonValue, open_ids),

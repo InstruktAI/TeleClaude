@@ -2434,7 +2434,12 @@ class _FoundationRunner:
                 diagnostics=result.diagnostics,
             )
         )
-        return foundation.Outcome(result.exit_status, f"{result.stdout}{result.stderr}")
+        return foundation.Outcome(
+            result.exit_status,
+            f"{result.stdout}{result.stderr}",
+            diagnostics=result.diagnostics,
+            duration_seconds=result.duration_seconds,
+        )
 
     def note(self, argv: Sequence[str], outcome: foundation.Outcome, diagnostics: str) -> None:
         """Retain bounded evidence of a command the fixture ran inside its pane."""

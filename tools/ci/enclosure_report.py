@@ -57,7 +57,21 @@ from tools.ci.workflow_ledger import (
 )
 from tools.ci.workflow_publication import TERMINAL_STATES
 from tools.ci.workflow_ready import FINDING_DOOR, FINDING_WORK, REASON_ONE, REASON_TWO
-from tools.ci.workflow_review import DIRECT_REFUSAL_ERRORS, FINDING_TEXT, REPLY_TEXT, WRONG_PERFORMER_TEXT
+from tools.ci.workflow_review import (
+    B11_BASE_FEATURE_BYTES,
+    B11_FEATURE_PATH,
+    B11_LOCAL_COMMIT_MESSAGE,
+    B11_LOCAL_HEAD_LABEL,
+    B11_NUMSTAT,
+    B11_SENTINEL_BYTES,
+    B11_SENTINEL_LABEL,
+    B11_SENTINEL_LINE,
+    B11_STATUS_MODIFIED_BYTES,
+    DIRECT_REFUSAL_ERRORS,
+    FINDING_TEXT,
+    REPLY_TEXT,
+    WRONG_PERFORMER_TEXT,
+)
 
 ERROR_REPORT: Final = "the new provisional report binding or original ledger evidence is inconsistent"
 LEDGER_ADDRESS: Final = Path("starts.jsonl")
@@ -287,7 +301,7 @@ def validate_provisional_cleanup(report: JsonObject) -> JsonObject:
     }
 
 
-def _public_session_command(value: JsonValue, argv: list[str]) -> Mapping[str, object]:
+def _command_output(value: JsonValue, argv: list[str]) -> str:
     command = object_value(value)
     duration = command.get("duration_seconds")
     if (
@@ -304,8 +318,12 @@ def _public_session_command(value: JsonValue, argv: list[str]) -> Mapping[str, o
         or duration < 0
     ):
         raise ValueError(ERROR_REPORT)
+    return command["stdout"]
+
+
+def _public_session_command(value: JsonValue, argv: list[str]) -> Mapping[str, object]:
     # Reuse the actual public CLI framing parser, without reading any report-supplied address.
-    record = foundation.json_object(command["stdout"])
+    record = foundation.json_object(_command_output(value, argv))
     if record is None:
         raise ValueError(ERROR_REPORT)
     return record
@@ -1384,6 +1402,230 @@ def _direct_inputs(
     ]
 
 
+def _restoration_reads(
+    value: JsonValue, project: str, worktree: str
+) -> tuple[dict[tuple[str, ...], list[str]], list[bytes]]:
+    if not isinstance(value, list):
+        raise ValueError(ERROR_REPORT)
+    commands: dict[tuple[str, ...], list[str]] = {}
+    files: list[bytes] = []
+    for entry in value:
+        row = object_value(entry)
+        if row.get("kind") == "command":
+            if set(row) != {"kind", "cwd", "value"}:
+                raise ValueError(ERROR_REPORT)
+            cwd = text(row, "cwd")
+            command = object_value(row["value"])
+            argv = _strings(command["argv"])
+            if not argv or argv[0] != "git" or cwd not in (project, worktree):
+                raise ValueError(ERROR_REPORT)
+            output = _command_output(command, list(argv))
+            commands.setdefault((cwd, *argv), []).append(output)
+        elif row.get("kind") == "file":
+            if set(row) != {"kind", "path", "raw_data"} or row["path"] != f"{worktree}/{B11_FEATURE_PATH}":
+                raise ValueError(ERROR_REPORT)
+            try:
+                files.append(base64.b64decode(text(row, "raw_data"), validate=True))
+            except (ValueError, binascii.Error) as error:
+                raise ValueError(ERROR_REPORT) from error
+        else:
+            raise ValueError(ERROR_REPORT)
+    return commands, files
+
+
+def _git_read(
+    reads: dict[tuple[str, ...], list[str]], cwd: str, argv: tuple[str, ...], expected: str, *, raw: bool = False
+) -> tuple[str, ...]:
+    key = (cwd, "git", *argv)
+    values = reads.get(key)
+    if not values or any((value if raw else value.strip()) != expected for value in values):
+        raise ValueError(ERROR_REPORT)
+    return key
+
+
+def _restoration_refs(
+    reads: dict[tuple[str, ...], list[str]], project: str, worktree: str, remote: str, head: str, count: str | None
+) -> tuple[set[tuple[str, ...]], str]:
+    keys = {
+        _git_read(reads, project, ("ls-remote", "origin", f"refs/heads/{ITEM}"), f"{remote}\trefs/heads/{ITEM}"),
+        _git_read(reads, worktree, ("rev-parse", "HEAD"), head),
+        _git_read(reads, worktree, ("show-ref", "--verify", f"refs/heads/{ITEM}"), f"{head} refs/heads/{ITEM}"),
+    }
+    key = (worktree, "git", "rev-list", "--count", f"origin/main..{ITEM}")
+    values = reads.get(key)
+    if not values or any(
+        not value.strip().isdigit() or (count is not None and value.strip() != count) for value in values
+    ):
+        raise ValueError(ERROR_REPORT)
+    keys.add(key)
+    return keys, values[0].strip()
+
+
+def _restoration_stage(
+    value: JsonValue,
+    project: str,
+    worktree: str,
+    commit: str,
+    head: str,
+    count: str | None,
+    mode: str,
+) -> str:
+    reads, files = _restoration_reads(value, project, worktree)
+    keys, found_count = _restoration_refs(reads, project, worktree, commit, head, count)
+    status = ("status", "--porcelain=v1", "--untracked-files=all")
+    cached = ("diff", "--cached", "--name-only")
+    if mode == "append":
+        keys.add(_git_read(reads, worktree, status, B11_STATUS_MODIFIED_BYTES.decode("utf-8"), raw=True))
+        keys.add(_git_read(reads, worktree, cached, ""))
+        keys.add(_git_read(reads, worktree, ("diff", "--numstat", "--", B11_FEATURE_PATH), B11_NUMSTAT))
+        key = (worktree, "git", "diff", "--no-ext-diff", "--unified=0", "--", B11_FEATURE_PATH)
+        diffs = reads.get(key)
+        if not diffs or any(
+            [line for line in diff.splitlines() if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))]
+            != [f"+{B11_SENTINEL_LINE}"]
+            for diff in diffs
+        ):
+            raise ValueError(ERROR_REPORT)
+        keys.add(key)
+        expected_files = [B11_BASE_FEATURE_BYTES + B11_SENTINEL_BYTES]
+    else:
+        keys.add(_git_read(reads, worktree, status, ""))
+        expected_files = [B11_BASE_FEATURE_BYTES]
+        if mode == "clean":
+            keys.add(_git_read(reads, worktree, cached, ""))
+            keys.add(
+                _git_read(
+                    reads,
+                    worktree,
+                    ("show", f"{commit}:{B11_FEATURE_PATH}"),
+                    B11_BASE_FEATURE_BYTES.decode("utf-8"),
+                    raw=True,
+                )
+            )
+        elif mode == "local-head":
+            keys.add(_git_read(reads, worktree, ("rev-parse", f"{head}^"), commit))
+            expected_files = []
+        elif mode != "reset":
+            raise ValueError(ERROR_REPORT)
+    if set(reads) != keys or files != expected_files:
+        raise ValueError(ERROR_REPORT)
+    return found_count
+
+
+def _restoration_record(
+    row: JsonObject, attempt: Attempt, builder: str, created: int, public_finished: int, root: str
+) -> JsonObject:
+    if (
+        set(row)
+        != {
+            "label",
+            "actor",
+            "attempt_id",
+            "started_ns",
+            "observed_ns",
+            "base_project",
+            "worktree",
+            "commit",
+            "before_item",
+            "after_item",
+            "before_reads",
+            "changed_reads",
+            "pre_restore_reads",
+            "post_restore_reads",
+            "write_frame",
+            "mutation_command",
+            "restore_command",
+            "temporary_head",
+        }
+        or row["label"] != attempt.label
+        or not (
+            created <= positive_integer(row, "started_ns") <= positive_integer(row, "observed_ns") <= public_finished
+        )
+    ):
+        raise ValueError(ERROR_REPORT)
+    project = text(row, "base_project")
+    worktree = text(row, "worktree")
+    commit = text(row, "commit")
+    if not project.startswith(root.rstrip("/") + "/") or worktree != f"{project}/trees/{ITEM}":
+        raise ValueError(ERROR_REPORT)
+    if object_value(row["before_item"]) != object_value(row["after_item"]):
+        raise ValueError(ERROR_REPORT)
+    count = _restoration_stage(row["before_reads"], project, worktree, commit, commit, None, "clean")
+    if attempt.label == B11_SENTINEL_LABEL:
+        if row["actor"] != builder or row["mutation_command"] is not None or row["temporary_head"] is not None:
+            raise ValueError(ERROR_REPORT)
+        frame = object_value(row["write_frame"])
+        writes = frame["writes"]
+        if (
+            frame.get("ok") is not True
+            or frame.get("cwd") != worktree
+            or not isinstance(writes, list)
+            or len(writes) != 1
+        ):
+            raise ValueError(ERROR_REPORT)
+        write = object_value(writes[0])
+        if (
+            write.get("path") != B11_FEATURE_PATH
+            or write.get("mode") != "append"
+            or type(write.get("bytes")) is not int
+            or write["bytes"] != len(B11_SENTINEL_BYTES)
+            or write.get("sha256") != hashlib.sha256(B11_SENTINEL_BYTES).hexdigest()
+        ):
+            raise ValueError(ERROR_REPORT)
+        for key in ("changed_reads", "pre_restore_reads"):
+            _restoration_stage(row[key], project, worktree, commit, commit, count, "append")
+        _command_output(row["restore_command"], ["git", "restore", "--worktree", "--", B11_FEATURE_PATH])
+        _restoration_stage(row["post_restore_reads"], project, worktree, commit, commit, count, "clean")
+    else:
+        temporary = text(row, "temporary_head")
+        if row["actor"] is not None or row["write_frame"] is not None or temporary == commit:
+            raise ValueError(ERROR_REPORT)
+        _command_output(row["mutation_command"], ["git", "commit", "--allow-empty", "-m", B11_LOCAL_COMMIT_MESSAGE])
+        for key in ("changed_reads", "pre_restore_reads"):
+            _restoration_stage(row[key], project, worktree, commit, temporary, None, "local-head")
+        _command_output(row["restore_command"], ["git", "reset", "--hard", commit])
+        _restoration_stage(row["post_restore_reads"], project, worktree, commit, commit, count, "reset")
+    return {"attempt_id": attempt.identifier, "state": "owned_local_effect_restored", "commit": commit}
+
+
+def _restoration_inputs(
+    finalizer: JsonObject, ledger: StartLedger, children: list[JsonValue], created: int, public_finished: int, root: str
+) -> list[JsonValue]:
+    labels = {B11_SENTINEL_LABEL, B11_LOCAL_HEAD_LABEL}
+    attempts = [attempt for attempt in ledger.attempts.values() if attempt.case == "B5" and attempt.label in labels]
+    values = finalizer["public_restoration_evidence"]
+    if not isinstance(values, list):
+        raise ValueError(ERROR_REPORT)
+    if "B5" not in ledger.closed_lists:
+        if values:
+            raise ValueError(ERROR_REPORT)
+        return []
+    if (
+        len(attempts) != 2
+        or {attempt.label for attempt in attempts} != labels
+        or len(values) != 2
+        or len(children) != 1
+        or any(attempt.kind != RECORD_EFFECT or attempt.state != RECORD_DISCHARGED for attempt in attempts)
+    ):
+        raise ValueError(ERROR_REPORT)
+    expected = {attempt.identifier: attempt for attempt in attempts}
+    builder = text(object_value(children[0]), "session_id")
+    seen: set[str] = set()
+    commits: set[str] = set()
+    result: list[JsonValue] = []
+    for value in values:
+        row = object_value(value)
+        identifier = text(row, "attempt_id")
+        if identifier not in expected or identifier in seen:
+            raise ValueError(ERROR_REPORT)
+        result.append(_restoration_record(row, expected[identifier], builder, created, public_finished, root))
+        commits.add(text(row, "commit"))
+        seen.add(identifier)
+    if len(commits) != 1:
+        raise ValueError(ERROR_REPORT)
+    return result
+
+
 def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
     """Join declared attempts to actual terminal operation data; receipts alone do not establish semantic settlement."""
     provisional = object_value(report["payload_provisional"])
@@ -1444,5 +1686,8 @@ def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
         "reason_notes": _reason_inputs(finalizer, after.ledger, operations, claims, created, public_finished),
         "children": children,
         "direct_acts": _direct_inputs(finalizer, after.ledger, claims, children, created, public_finished),
+        "local_restoration": _restoration_inputs(
+            finalizer, after.ledger, children, created, public_finished, text(observations, "owned_profile_root")
+        ),
         "semantic_settlement": "unproven",
     }

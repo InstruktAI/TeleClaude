@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import re
 import time
@@ -150,8 +151,13 @@ def _frame_success(
     return frame
 
 
-def _git(flow: flow_module.WorkflowFlow, *arguments: str, cwd: Path | None = None) -> str:
-    return flow.git(arguments, cwd=cwd)
+def _git(
+    flow: flow_module.WorkflowFlow,
+    *arguments: str,
+    cwd: Path | None = None,
+    evidence: list[flow_module.JsonValue] | None = None,
+) -> str:
+    return flow.git(arguments, cwd=cwd, evidence=evidence)
 
 
 def _startup(
@@ -298,8 +304,14 @@ def _require_builder_write_scope(
         )
 
 
-def _git_bytes(flow: flow_module.WorkflowFlow, *arguments: str, cwd: Path) -> bytes:
+def _git_bytes(
+    flow: flow_module.WorkflowFlow, *arguments: str, cwd: Path, evidence: list[flow_module.JsonValue] | None = None
+) -> bytes:
     result = flow.host.process(("git", *arguments), cwd, flow.host.environment, FRAME_SECONDS)
+    if evidence is not None:
+        evidence.append(
+            {"kind": "command", "cwd": str(cwd), "value": flow.public_command_evidence(("git", *arguments), result)}
+        )
     if result.exit_status != 0:
         raise creation.binding_failure(DETAIL_BINDING.format(detail=f"git {' '.join(arguments)} failed"))
     return result.output.encode("utf-8")
@@ -776,22 +788,36 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, comm
     return ready_since
 
 
-def _b11_ref_state(flow: flow_module.WorkflowFlow, worktree: Path) -> tuple[str, str, str, str]:
-    remote = _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}")
-    head = _git(flow, "rev-parse", "HEAD", cwd=worktree)
-    branch = _git(flow, "show-ref", "--verify", f"refs/heads/{flow_module.ITEM}", cwd=worktree)
+def _b11_ref_state(
+    flow: flow_module.WorkflowFlow, worktree: Path, evidence: list[flow_module.JsonValue] | None = None
+) -> tuple[str, str, str, str]:
+    remote = _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}", evidence=evidence)
+    head = _git(flow, "rev-parse", "HEAD", cwd=worktree, evidence=evidence)
+    branch = _git(flow, "show-ref", "--verify", f"refs/heads/{flow_module.ITEM}", cwd=worktree, evidence=evidence)
     count = _git(
         flow,
         "rev-list",
         "--count",
         f"origin/{flow_module.MAIN}..{flow_module.ITEM}",
         cwd=worktree,
+        evidence=evidence,
     )
     return remote, head, branch, count
 
 
+def _b11_file(path: Path, evidence: list[flow_module.JsonValue] | None) -> bytes:
+    data = path.read_bytes()
+    if evidence is not None:
+        evidence.append({"kind": "file", "path": str(path), "raw_data": base64.b64encode(data).decode("ascii")})
+    return data
+
+
 def _b11_assert_clean_c2(
-    flow: flow_module.WorkflowFlow, worktree: Path, commit: str, refs: tuple[str, str, str, str]
+    flow: flow_module.WorkflowFlow,
+    worktree: Path,
+    commit: str,
+    refs: tuple[str, str, str, str],
+    evidence: list[flow_module.JsonValue] | None = None,
 ) -> None:
     expected_remote = f"{commit}\trefs/heads/{flow_module.ITEM}"
     expected_branch = f"{commit} refs/heads/{flow_module.ITEM}"
@@ -801,27 +827,30 @@ def _b11_assert_clean_c2(
         or refs[1] != commit
         or refs[2] != expected_branch
         or not refs[3].isdigit()
-        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
-        or _git(flow, "diff", "--cached", "--name-only", cwd=worktree)
-        or feature.read_bytes() != B11_BASE_FEATURE_BYTES
-        or _git_bytes(flow, "show", f"{commit}:{B11_FEATURE_PATH}", cwd=worktree) != B11_BASE_FEATURE_BYTES
+        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree, evidence=evidence)
+        or _git(flow, "diff", "--cached", "--name-only", cwd=worktree, evidence=evidence)
+        or _b11_file(feature, evidence) != B11_BASE_FEATURE_BYTES
+        or _git_bytes(flow, "show", f"{commit}:{B11_FEATURE_PATH}", cwd=worktree, evidence=evidence)
+        != B11_BASE_FEATURE_BYTES
     ):
         raise creation.binding_failure(DETAIL_BINDING.format(detail="B11 requires the clean published C2 tree"))
 
 
-def _b11_assert_owned_append(flow: flow_module.WorkflowFlow, worktree: Path) -> None:
-    status = _git_bytes(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
-    additions = _git(flow, "diff", "--numstat", "--", B11_FEATURE_PATH, cwd=worktree)
-    diff = _git(flow, "diff", "--no-ext-diff", "--unified=0", "--", B11_FEATURE_PATH, cwd=worktree)
+def _b11_assert_owned_append(
+    flow: flow_module.WorkflowFlow, worktree: Path, evidence: list[flow_module.JsonValue] | None = None
+) -> None:
+    status = _git_bytes(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree, evidence=evidence)
+    additions = _git(flow, "diff", "--numstat", "--", B11_FEATURE_PATH, cwd=worktree, evidence=evidence)
+    diff = _git(flow, "diff", "--no-ext-diff", "--unified=0", "--", B11_FEATURE_PATH, cwd=worktree, evidence=evidence)
     changed_lines = [
         line for line in diff.splitlines() if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
     ]
     if (
         status != B11_STATUS_MODIFIED_BYTES
-        or _git(flow, "diff", "--cached", "--name-only", cwd=worktree)
+        or _git(flow, "diff", "--cached", "--name-only", cwd=worktree, evidence=evidence)
         or additions != B11_NUMSTAT
         or changed_lines != [f"+{B11_SENTINEL_LINE}"]
-        or (worktree / B11_FEATURE_PATH).read_bytes() != B11_BASE_FEATURE_BYTES + B11_SENTINEL_BYTES
+        or _b11_file(worktree / B11_FEATURE_PATH, evidence) != B11_BASE_FEATURE_BYTES + B11_SENTINEL_BYTES
     ):
         raise creation.binding_failure(
             DETAIL_BINDING.format(detail="B11 worktree differs from its owned sentinel append")
@@ -833,8 +862,12 @@ def _b11_item_unchanged(
     snapshot: Mapping[str, object],
     parsed_log: list[tuple[str, str]],
     where: str,
+    evidence: flow_module.MutableJson | None = None,
 ) -> None:
     current = flow.item()
+    if evidence is not None:
+        evidence["after_item"] = cast(flow_module.JsonValue, dict(current))
+        evidence["observed_ns"] = time.monotonic_ns()
     if current != snapshot or _public_log(current) != parsed_log:
         _fail(f"B11 {where} changed the strict public item or parsed log")
 
@@ -876,11 +909,14 @@ def _b11_restore_dirty_sentinel(
     parsed_log: list[tuple[str, str]],
     refs: tuple[str, str, str, str],
     staged_paths: str,
+    evidence: flow_module.MutableJson,
 ) -> None:
-    _b11_assert_owned_append(flow, worktree)
+    before = cast(list[flow_module.JsonValue], evidence["pre_restore_reads"])
+    after = cast(list[flow_module.JsonValue], evidence["post_restore_reads"])
+    _b11_assert_owned_append(flow, worktree, before)
     if (
-        _b11_ref_state(flow, worktree) != refs
-        or _git(flow, "diff", "--cached", "--name-only", cwd=worktree) != staged_paths
+        _b11_ref_state(flow, worktree, before) != refs
+        or _git(flow, "diff", "--cached", "--name-only", cwd=worktree, evidence=before) != staged_paths
     ):
         raise creation.binding_failure(DETAIL_BINDING.format(detail="B11 staged index changed before sentinel restore"))
     restored = flow.host.process(
@@ -889,31 +925,72 @@ def _b11_restore_dirty_sentinel(
         flow.host.environment,
         FRAME_SECONDS,
     )
+    evidence["restore_command"] = flow.public_command_evidence(
+        ("git", "restore", "--worktree", "--", B11_FEATURE_PATH), restored
+    )
     if restored.exit_status != 0:
         raise creation.binding_failure(DETAIL_BINDING.format(detail=restored.output[-300:]))
     if (
-        _b11_ref_state(flow, worktree) != refs
-        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
-        or _git(flow, "diff", "--cached", "--name-only", cwd=worktree) != staged_paths
-        or (worktree / B11_FEATURE_PATH).read_bytes() != B11_BASE_FEATURE_BYTES
-        or _git_bytes(flow, "show", f"{refs[1]}:{B11_FEATURE_PATH}", cwd=worktree) != B11_BASE_FEATURE_BYTES
+        _b11_ref_state(flow, worktree, after) != refs
+        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree, evidence=after)
+        or _git(flow, "diff", "--cached", "--name-only", cwd=worktree, evidence=after) != staged_paths
+        or _b11_file(worktree / B11_FEATURE_PATH, after) != B11_BASE_FEATURE_BYTES
+        or _git_bytes(flow, "show", f"{refs[1]}:{B11_FEATURE_PATH}", cwd=worktree, evidence=after)
+        != B11_BASE_FEATURE_BYTES
     ):
         raise creation.binding_failure(DETAIL_BINDING.format(detail="B11 sentinel restore did not return to exact C2"))
-    _b11_item_unchanged(flow, snapshot, parsed_log, "sentinel restore")
+    _b11_item_unchanged(flow, snapshot, parsed_log, "sentinel restore", evidence)
     flow.require_ledger().discharge(
         effect, "owned 19-byte append restored; C2 refs, index, bytes and public item re-read"
     )
 
 
+def _b11_evidence(
+    flow: flow_module.WorkflowFlow,
+    label: str,
+    snapshot: Mapping[str, object],
+    commit: str,
+    worktree: Path,
+    actor: str | None = None,
+) -> tuple[flow_module.MutableJson, list[flow_module.JsonValue], list[flow_module.JsonValue]]:
+    before: list[flow_module.JsonValue] = []
+    changed: list[flow_module.JsonValue] = []
+    evidence: flow_module.MutableJson = {
+        "label": label,
+        "actor": actor,
+        "attempt_id": None,
+        "started_ns": time.monotonic_ns(),
+        "observed_ns": None,
+        "base_project": str(flow.project),
+        "worktree": str(worktree),
+        "commit": commit,
+        "before_item": cast(flow_module.JsonValue, dict(snapshot)),
+        "after_item": None,
+        "before_reads": before,
+        "changed_reads": changed,
+        "pre_restore_reads": [],
+        "post_restore_reads": [],
+        "write_frame": None,
+        "mutation_command": None,
+        "restore_command": None,
+        "temporary_head": None,
+    }
+    flow.public_restoration_evidence.append(evidence)
+    return evidence, before, changed
+
+
 def _b11_unclean_probe(flow: flow_module.WorkflowFlow, w2: str, builder: str, commit: str, worktree: Path) -> None:
     snapshot = flow.item()
     parsed_log = _public_log(snapshot)
-    refs = _b11_ref_state(flow, worktree)
-    _b11_assert_clean_c2(flow, worktree, commit, refs)
-    staged_paths = _git(flow, "diff", "--cached", "--name-only", cwd=worktree)
+    evidence, before, changed = _b11_evidence(flow, B11_SENTINEL_LABEL, snapshot, commit, worktree, builder)
+    refs = _b11_ref_state(flow, worktree, before)
+    _b11_assert_clean_c2(flow, worktree, commit, refs, before)
+    staged_paths = _git(flow, "diff", "--cached", "--name-only", cwd=worktree, evidence=before)
     effect = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, B11_SENTINEL_LABEL, start_ledger.RECORD_EFFECT)
+    evidence["attempt_id"] = effect
     flow.gate(builder, "go_dirtywrite")
     frame = _frame_success(flow, builder, "dirtywrite", writes=True)
+    evidence["write_frame"] = cast(flow_module.JsonValue, dict(frame))
     writes = frame.get(B11_FRAME_WRITES)
     row = writes[0] if isinstance(writes, list) and len(writes) == 1 else None
     if (
@@ -925,8 +1002,8 @@ def _b11_unclean_probe(flow: flow_module.WorkflowFlow, w2: str, builder: str, co
         or row.get(B11_PAYLOAD_SHA) != flow_module.B11_SENTINEL_SHA256
     ):
         raise creation.binding_failure(DETAIL_FRAME.format(name="dirtywrite", frame=frame))
-    _b11_assert_owned_append(flow, worktree)
-    if _b11_ref_state(flow, worktree) != refs:
+    _b11_assert_owned_append(flow, worktree, changed)
+    if _b11_ref_state(flow, worktree, changed) != refs:
         raise creation.binding_failure(DETAIL_BINDING.format(detail="B11 dirty write changed an item ref"))
     flow.require_ledger().record_effect(
         effect,
@@ -950,7 +1027,7 @@ def _b11_unclean_probe(flow: flow_module.WorkflowFlow, w2: str, builder: str, co
         flow.retain(flow_module.RETAINED_MARKER.format(path=flow.root))
         raise
     try:
-        _b11_restore_dirty_sentinel(flow, worktree, effect, snapshot, parsed_log, refs, staged_paths)
+        _b11_restore_dirty_sentinel(flow, worktree, effect, snapshot, parsed_log, refs, staged_paths, evidence)
     except BaseException:
         flow.retain(flow_module.RETAINED_MARKER.format(path=flow.root))
         raise
@@ -965,57 +1042,67 @@ def _b11_restore_local_head(
     snapshot: Mapping[str, object],
     parsed_log: list[tuple[str, str]],
     original_refs: tuple[str, str, str, str],
+    evidence: flow_module.MutableJson,
 ) -> None:
-    current_refs = _b11_ref_state(flow, worktree)
-    parent = _git(flow, "rev-parse", f"{temporary}^", cwd=worktree)
+    before = cast(list[flow_module.JsonValue], evidence["pre_restore_reads"])
+    after = cast(list[flow_module.JsonValue], evidence["post_restore_reads"])
+    current_refs = _b11_ref_state(flow, worktree, before)
+    parent = _git(flow, "rev-parse", f"{temporary}^", cwd=worktree, evidence=before)
     if (
         current_refs[0] != original_refs[0]
         or current_refs[1] != temporary
         or current_refs[2] != f"{temporary} refs/heads/{flow_module.ITEM}"
         or parent != c2
-        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
+        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree, evidence=before)
     ):
         raise creation.binding_failure(
             DETAIL_BINDING.format(detail="B11 temporary commit is no longer the sole owned change")
         )
     reset = flow.host.process(("git", "reset", "--hard", c2), worktree, flow.host.environment, FRAME_SECONDS)
+    evidence["restore_command"] = flow.public_command_evidence(("git", "reset", "--hard", c2), reset)
     if reset.exit_status != 0:
         raise creation.binding_failure(DETAIL_BINDING.format(detail=reset.output[-300:]))
     if (
-        _b11_ref_state(flow, worktree) != original_refs
-        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
-        or (worktree / B11_FEATURE_PATH).read_bytes() != B11_BASE_FEATURE_BYTES
+        _b11_ref_state(flow, worktree, after) != original_refs
+        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree, evidence=after)
+        or _b11_file(worktree / B11_FEATURE_PATH, after) != B11_BASE_FEATURE_BYTES
     ):
         raise creation.binding_failure(
             DETAIL_BINDING.format(detail="B11 temporary commit restore did not return to C2")
         )
-    _b11_item_unchanged(flow, snapshot, parsed_log, "temporary-head restore")
+    _b11_item_unchanged(flow, snapshot, parsed_log, "temporary-head restore", evidence)
     flow.require_ledger().discharge(effect, f"owned local-only commit {temporary} reset to C2 and refs/item re-read")
 
 
 def _b11_worktree_head_probe(flow: flow_module.WorkflowFlow, w2: str, c2: str, worktree: Path) -> None:
     snapshot = flow.item()
     parsed_log = _public_log(snapshot)
-    original_refs = _b11_ref_state(flow, worktree)
-    _b11_assert_clean_c2(flow, worktree, c2, original_refs)
+    evidence, before, changed = _b11_evidence(flow, B11_LOCAL_HEAD_LABEL, snapshot, c2, worktree)
+    original_refs = _b11_ref_state(flow, worktree, before)
+    _b11_assert_clean_c2(flow, worktree, c2, original_refs, before)
     effect = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, B11_LOCAL_HEAD_LABEL, start_ledger.RECORD_EFFECT)
+    evidence["attempt_id"] = effect
     commit_result = flow.host.process(
         ("git", "commit", "--allow-empty", "-m", B11_LOCAL_COMMIT_MESSAGE),
         worktree,
         flow.host.environment,
         FRAME_SECONDS,
     )
+    evidence["mutation_command"] = flow.public_command_evidence(
+        ("git", "commit", "--allow-empty", "-m", B11_LOCAL_COMMIT_MESSAGE), commit_result
+    )
     if commit_result.exit_status != 0:
         raise creation.binding_failure(DETAIL_BINDING.format(detail=commit_result.output[-300:]))
-    temporary = _git(flow, "rev-parse", "HEAD", cwd=worktree)
-    current_refs = _b11_ref_state(flow, worktree)
+    temporary = _git(flow, "rev-parse", "HEAD", cwd=worktree, evidence=changed)
+    evidence["temporary_head"] = temporary
+    current_refs = _b11_ref_state(flow, worktree, changed)
     if (
         temporary == c2
         or current_refs[0] != original_refs[0]
         or current_refs[1] != temporary
         or current_refs[2] != f"{temporary} refs/heads/{flow_module.ITEM}"
-        or _git(flow, "rev-parse", f"{temporary}^", cwd=worktree) != c2
-        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
+        or _git(flow, "rev-parse", f"{temporary}^", cwd=worktree, evidence=changed) != c2
+        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree, evidence=changed)
     ):
         raise creation.binding_failure(DETAIL_BINDING.format(detail="B11 local-only commit is not isolated from C2"))
     flow.require_ledger().record_effect(effect, f"temporary local-only head {temporary} with parent C2 {c2}")
@@ -1038,7 +1125,7 @@ def _b11_worktree_head_probe(flow: flow_module.WorkflowFlow, w2: str, c2: str, w
         flow.retain(flow_module.RETAINED_MARKER.format(path=flow.root))
         raise
     try:
-        _b11_restore_local_head(flow, worktree, effect, c2, temporary, snapshot, parsed_log, original_refs)
+        _b11_restore_local_head(flow, worktree, effect, c2, temporary, snapshot, parsed_log, original_refs, evidence)
     except BaseException:
         flow.retain(flow_module.RETAINED_MARKER.format(path=flow.root))
         raise
