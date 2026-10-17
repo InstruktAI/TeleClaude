@@ -124,6 +124,16 @@ applies independently of whether a provider object already exists
 (`general/principle/trust-and-guardrails`). Per-computer project resources retain
 their own computer's reconciliation owner.
 
+### Session-thread cleanup
+
+The owner of each forum reconciles its session threads: a computer handles its
+project forums, and the master alone handles desk customer-session and escalation
+forums. Cleanup removes a thread only after a complete provider listing. Project
+forum cleanup also requires the stored launcher identity and always retains that
+thread. A customer-session thread remains while an open local session maps to it;
+an escalation thread remains while its relay is active. Closed or unmapped threads
+are removed by their forum owner; peers do not mutate them.
+
 ### Use cases
 
 #### UC-DARS-1: Discord provider IDs are persisted only as database reflection state
