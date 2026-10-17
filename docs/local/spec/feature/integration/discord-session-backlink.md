@@ -71,41 +71,16 @@ capability rather than building URLs independently.
 
 ### Use cases
 
-#### UC-DSB-1: Backlink rendered for a resolvable origin
+#### UC-DSB-1: A person can return to the session behind a Discord message
 
 ```gherkin
-Given a person whose resolved delivery channel is discord
-And an originating session whose Discord origin metadata records a guild id and a thread id
-When a person-addressed message carrying that origin is delivered
-Then the delivered Discord message ends with the native jump link for that guild and thread
-And after the provider send succeeds a structured log line records the origin session, the built backlink decision, and the provider's returned message id
+Scenario: Follow a message backlink to its session
+  Given a person receives a Discord message from a session with a stored destination they can access
+  When the person follows the session backlink
+  Then Discord opens that session's conversation context
 ```
 
 #### UC-DSB-2: Unconstructable backlink is observable, delivery proceeds
-
-```gherkin
-Given a person-addressed discord message carrying an origin session with no stored Discord context
-When the message is delivered
-Then the message is delivered without a backlink
-And a structured, body-free log line records the origin session and the miss reason
-```
-
-#### UC-DSB-3: No origin, no decision
-
-```gherkin
-Given a person-addressed discord message that carries no originating session
-When the message is delivered
-Then it renders no backlink
-And no backlink decision is logged
-```
-
-#### UC-DSB-4: DM-scoped origin builds a direct-message link
-
-```gherkin
-Given an originating session whose Discord origin metadata records a channel id and no guild id
-When a person-addressed message carrying that origin is delivered on discord
-Then the delivered message ends with the @me-form jump link for that DM channel
-```
 
 ## Known caveats
 
