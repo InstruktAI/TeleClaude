@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Final
 
 from tools.ci.enclosure_actions import Template
-from tools.ci.enclosure_configuration import VENDOR_TEMPLATE
+from tools.ci.enclosure_configuration import VENDOR_TEMPLATE, InstanceConfiguration
 from tools.ci.enclosure_configuration import Key as ConfigurationKey
 from tools.ci.enclosure_contract import (
     Action,
@@ -26,7 +26,7 @@ from tools.ci.enclosure_contract import (
     parse_object,
     text,
 )
-from tools.ci.enclosure_graph import DependencyGraph
+from tools.ci.enclosure_graph import DependencyGraph, SourceKind
 from tools.ci.enclosure_host import Key as HostKey
 from tools.ci.enclosure_host import Kind, _locked_file
 from tools.ci.enclosure_manager import ManagerRead
@@ -70,6 +70,7 @@ class Key(StrEnum):
     SOURCES = "sources"
     SETTINGS = "settings"
     BEGIN_SEQUENCE = "begin_sequence"
+    DROP_INS = "drop_ins"
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,8 @@ class ActivationSources:
     manager_sequence: int
     manager_observed_ns: int
     observed_ns: int
+    drop_ins: tuple[JsonObject, ...]
+    settings: tuple[JsonObject, ...]
 
     def record(self) -> JsonObject:
         """Keep facts separate from native job settlement, helper closure and the eventual seal."""
@@ -108,6 +111,8 @@ class ActivationSources:
             Key.MANAGER_SEQUENCE: self.manager_sequence,
             Key.MANAGER_OBSERVED_NS: self.manager_observed_ns,
             Key.OBSERVED_NS: self.observed_ns,
+            Key.DROP_INS: list[JsonValue](self.drop_ins),
+            Key.SETTINGS: list[JsonValue](self.settings),
         }
 
 
@@ -248,13 +253,15 @@ def _scope(graph: DependencyGraph, owned_names: frozenset[str]) -> tuple[frozens
         if node.read.name not in owned_names:
             continue
         fragment = node.read.unit.get(ConfigurationKey.FRAGMENT_PATH)
-        if isinstance(fragment, str) and fragment:
+        if node.source_kind is not SourceKind.MASKED and isinstance(fragment, str) and fragment:
             critical_names.add(Path(fragment).name)
         mounts = node.read.unit.get(ConfigurationKey.REQUIRES_MOUNTS_FOR)
         if not isinstance(mounts, list) or any(not isinstance(value, str) for value in mounts):
             raise ValueError(ERROR_CENSUS)
         critical_names.update(Path(value).name for value in mounts if isinstance(value, str))
-    return frozenset(critical_names), frozenset(name + suffix for name in names for suffix in LINK_SUFFIXES)
+    return frozenset(critical_names), frozenset(
+        name + suffix for name in names for suffix in (*LINK_SUFFIXES, DROP_IN_SUFFIX)
+    )
 
 
 def _known_sources(package: StaticPackage) -> dict[Path, JsonObject]:
@@ -266,6 +273,36 @@ def _known_sources(package: StaticPackage) -> dict[Path, JsonObject]:
         for value in rows
         if (row := object_value(value)).get(HostKey.SCOPE) == HostKey.HOST
     }
+
+
+def _settings_sources(
+    rootfs: Path, deadline: AdmittedDeadline, expected: JsonObject | None
+) -> tuple[list[JsonObject], list[JsonObject], tuple[str, ...]]:
+    """Read the three native same-name settings locations; pre-start expects absence, later reads expect the owned file."""
+    expected_path = _address(Path(text(expected, Field.PATH))) if expected is not None else None
+    directories: list[JsonObject] = []
+    settings: list[JsonObject] = []
+    unknown: set[str] = set()
+    found = False
+    name = rootfs.name + SETTINGS_SUFFIX
+    for directory_path in (*SETTINGS_DIRECTORIES, rootfs.parent):
+        directory, entries = _directory(directory_path, deadline)
+        directories.append(directory)
+        for entry in entries:
+            if entry.name != name:
+                continue
+            address = _address(directory_path / entry.name)
+            settings.append({Field.PATH: str(address), HostKey.TARGET: entry.target})
+            if address != expected_path or expected is None:
+                unknown.add(str(address))
+                continue
+            _locked_file(
+                {**expected, Field.PATH: str(address.relative_to(ROOT)), HostKey.KIND: Kind.FILE.value}, deadline
+            )
+            found = True
+    if expected_path is not None and not found:
+        unknown.add(str(expected_path))
+    return directories, settings, tuple(sorted(unknown))
 
 
 def inspect_start_sources(
@@ -354,16 +391,10 @@ def inspect_start_sources(
                 else:
                     _locked_file(row, deadline)
     unknown.update(str(path) for path in allowed_fragments - seen_fragments)
-    # All three native settings locations must be free for the one new runtime file created by start-guest.
-    settings_name = rootfs.name + SETTINGS_SUFFIX
-    for directory_path in (*SETTINGS_DIRECTORIES, rootfs.parent):
-        directory, entries = _directory(directory_path, deadline)
-        directories.append(directory)
-        for entry in entries:
-            if entry.name == settings_name:
-                address = directory_path / entry.name
-                settings.append({Field.PATH: str(address), HostKey.TARGET: entry.target})
-                unknown.add(str(address))
+    settings_directories, observed_settings, settings_unknown = _settings_sources(rootfs, deadline, None)
+    directories.extend(settings_directories)
+    settings.extend(observed_settings)
+    unknown.update(settings_unknown)
     _time(deadline)
     return {
         Key.ACTION: action.value,
@@ -384,15 +415,29 @@ def inspect_activation_sources(
     package: StaticPackage,
     graph: DependencyGraph,
     manager: ManagerRead,
-    owned_names: frozenset[str],
+    owner: RunOwner,
     deadline: AdmittedDeadline,
+    *,
+    configuration: InstanceConfiguration,
+    previous: DependencyGraph | None = None,
 ) -> ActivationSources:
     """Inspect each manager unit-path root once and each relevant native activation directory once."""
     _time(deadline)
+    record = parse_object(owner.manifest_bytes)
+    owned_names = frozenset({text(record, OwnerKey.PARENT_UNIT), text(record, OwnerKey.GUEST_UNIT)})
     critical_names, relevant = _scope(graph, owned_names)
+    if previous is not None:
+        earlier_critical, earlier_relevant = _scope(previous, owned_names)
+        critical_names |= earlier_critical
+        relevant |= earlier_relevant
     known = _known_sources(package)
+    for row in configuration.files:
+        address = _address(Path(text(row, Field.PATH)))
+        known[address] = {**row, Field.PATH: str(address.relative_to(ROOT)), HostKey.KIND: Kind.FILE.value}
     directories: list[JsonObject] = []
     links: list[JsonObject] = []
+    drop_ins: list[JsonObject] = []
+    settings: list[JsonObject] = []
     aliases: list[JsonObject] = []
     unknown: set[str] = set()
     visited: set[Path] = set()
@@ -420,7 +465,10 @@ def inspect_activation_sources(
                 continue
             directory, children = _directory(address, deadline)
             directories.append(directory)
+            drop_in = entry.name.endswith(DROP_IN_SUFFIX)
             for child in children:
+                if drop_in and not child.name.endswith(CONFIG_SUFFIX):
+                    continue
                 child_path = address / child.name
                 row = known.get(_address(child_path))
                 fact: JsonObject = {
@@ -429,11 +477,23 @@ def inspect_activation_sources(
                     Key.UID: child.uid,
                     HostKey.TARGET: child.target,
                 }
-                links.append(fact)
-                if row is None or not stat.S_ISLNK(child.mode) or row.get(HostKey.KIND) != Kind.SYMLINK:
+                (drop_ins if drop_in else links).append(fact)
+                expected = Kind.FILE if drop_in else Kind.SYMLINK
+                if row is None or row.get(HostKey.KIND) != expected:
                     unknown.add(str(child_path))
                     continue
                 _locked_file(row, deadline)
+                if drop_in:
+                    fact[Field.SHA256] = row[Field.SHA256]
+                    fact[Field.BYTES] = row[Field.BYTES]
+    owned_settings = [row for row in configuration.files if Path(text(row, Field.PATH)).suffix == SETTINGS_SUFFIX]
+    if len(owned_settings) != 1:
+        raise ValueError(ERROR_CENSUS)
+    rootfs = Path(text(record, OwnerKey.ROOTFS))
+    settings_directories, observed_settings, settings_unknown = _settings_sources(rootfs, deadline, owned_settings[0])
+    directories.extend(settings_directories)
+    settings.extend(observed_settings)
+    unknown.update(settings_unknown)
     _time(deadline)
     return ActivationSources(
         tuple(directories),
@@ -445,4 +505,6 @@ def inspect_activation_sources(
         manager.sequence,
         manager.observed_ns,
         time.monotonic_ns(),
+        tuple(drop_ins),
+        tuple(settings),
     )

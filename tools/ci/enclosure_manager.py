@@ -50,6 +50,8 @@ UNIT_REFERENCE_PROPERTIES: Final = (
     "ConsistsOf",
     "OnSuccess",
     "OnFailure",
+    "OnSuccessOf",
+    "OnFailureOf",
     "RequiredBy",
     "WantedBy",
     "RequisiteOf",

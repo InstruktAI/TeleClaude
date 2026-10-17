@@ -10,7 +10,11 @@ from typing import Final
 from tools.ci.enclosure_actions import JOB_START, Authority, Key, NativeMutation
 from tools.ci.enclosure_activation import ActivationSources, inspect_activation_sources, inspect_start_sources
 from tools.ci.enclosure_activation import Key as ActivationKey
-from tools.ci.enclosure_configuration import InstanceConfiguration, inspect_instance_configuration
+from tools.ci.enclosure_configuration import (
+    InstanceConfiguration,
+    inspect_instance_configuration,
+    inspect_masked_instance_configuration,
+)
 from tools.ci.enclosure_contract import (
     Action,
     AdmittedDeadline,
@@ -74,6 +78,8 @@ class Evidence(StrEnum):
     JOB_RESULT = "job_result"
     HELPER = "helper"
     START_SOURCES = "start_sources"
+    PRE_MASK_GRAPH = "pre_mask_graph"
+    PRE_MASK_ACTIVATION_SOURCES = "pre_mask_activation_sources"
 
 
 def _unit(read: UnitRead) -> JsonObject:
@@ -108,6 +114,7 @@ class BindingPhases:
         self.activation_sources: ActivationSources | None = None
         self._startups: list[HelperStartup] = []
         self.start_sources: dict[Action, JsonObject] = {}
+        self.masked_sources: JsonObject | None = None
 
     @property
     def startups(self) -> tuple[HelperStartup, ...]:
@@ -176,8 +183,85 @@ class BindingPhases:
         names = {text(record, OwnerKey.PARENT_UNIT), text(record, OwnerKey.GUEST_UNIT)}
         names.update(job.unit_name for job in self._accepted)
         if self.graph is not None:
-            names.update(node.read.name for node in self.graph.nodes)
+            names.update(self.graph.creators)
         return frozenset(names)
+
+    async def read_masked_sources(self, mutation: NativeMutation, deadline: AdmittedDeadline) -> JsonObject:
+        """Compose original post-mask observations and retained history without advancing admission or certifying creators."""
+        if (
+            mutation.action is not Action.MASK_GUEST
+            or self.configuration is None
+            or self.graph is None
+            or self.activation_sources is None
+            or self.population is None
+            or deadline.outer_end_ns != self.owner.journal.deadline.end_ns
+        ):
+            raise ValueError(ERROR_BINDING)
+        end_ns = min(
+            deadline.effective_end(), self.owner.journal.deadline.end_ns - self.owner.journal.deadline.reserve_ns
+        )
+        deadline = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
+        if time.monotonic_ns() >= end_ns:
+            raise TimeoutError(ERROR_BINDING)
+        self.owner.journal.binding.controller.require_alive()
+        await self.manager.check_identity(end_ns)
+        parent, guest = await self.manager.read_active_boundary(end_ns)
+        configuration = inspect_masked_instance_configuration(
+            self.owner, self.configuration, parent, guest, mutation, deadline
+        )
+        evidence: JsonObject = {
+            Evidence.NATIVE_RECEIPT: dict(mutation.evidence),
+            Evidence.CONFIGURATION: configuration.record(),
+            Evidence.PARENT: _unit(parent),
+            Evidence.GUEST: _unit(guest),
+            Evidence.PRE_MASK_GRAPH: self.graph.record(),
+            Evidence.PRE_MASK_ACTIVATION_SOURCES: self.activation_sources.record(),
+        }
+        self.masked_sources = evidence
+        graph = await inspect_dependency_graph(
+            self.manager,
+            self.package,
+            configuration.current,
+            deadline,
+            tuple(self._accepted),
+            masked=configuration,
+            previous=self.graph,
+        )
+        evidence[Evidence.DEPENDENCY_GRAPH] = graph.record()
+        metadata = await self.manager.read_manager(end_ns)
+        activation = inspect_activation_sources(
+            self.package,
+            graph,
+            metadata,
+            self.owner,
+            deadline,
+            configuration=configuration.current,
+            previous=self.graph,
+        )
+        evidence[Evidence.ACTIVATION_SOURCES] = activation.record()
+        await self.manager.check_identity(end_ns)
+        sample = self.population.sample(end_ns)
+        if self.manager.faults or sample.faults or sample.populated is None:
+            raise ValueError(ERROR_BINDING)
+        jobs = self.manager.reconcile_jobs(self._job_scope() | frozenset(graph.creators), tuple(self._accepted))
+        evidence[Evidence.JOBS] = [
+            {
+                Key.JOB_IDENTIFIER: job.accepted.identifier,
+                Key.JOB_PATH: job.accepted.object_path,
+                Key.UNIT_NAME: job.accepted.unit_name,
+                Evidence.JOB_RESULT: job.result,
+                Evidence.SEQUENCE: [job.new_sequence, job.removed_sequence],
+            }
+            for job in jobs.settled
+        ]
+        evidence[Evidence.POPULATION] = {
+            Evidence.RAW: sample.raw.decode(UTF8),
+            Evidence.POPULATED: sample.populated,
+            Evidence.READ_STARTED_NS: sample.read_started_ns,
+            Evidence.READ_FINISHED_NS: sample.read_finished_ns,
+            Evidence.SEQUENCE: sample.last_notification_sequence,
+        }
+        return evidence
 
     async def _settle(self, mutation: NativeMutation, name: str, end_ns: int) -> JobBoundary:
         evidence = mutation.evidence
@@ -303,8 +387,9 @@ class BindingPhases:
                 self.package,
                 self.graph,
                 metadata,
-                frozenset({self.parent.name, self.guest.name}),
+                self.owner,
                 AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns),
+                configuration=self.configuration,
             )
         sample = self.population.sample(end_ns)
         if self.manager.faults or sample.faults or sample.populated is None:

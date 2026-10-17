@@ -8,7 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
-from tools.ci.enclosure_configuration import InstanceConfiguration
+from tools.ci.enclosure_configuration import InstanceConfiguration, MaskedInstanceConfiguration
 from tools.ci.enclosure_configuration import Key as ConfigurationKey
 from tools.ci.enclosure_contract import (
     AdmittedDeadline,
@@ -32,7 +32,7 @@ LOADED: Final = "loaded"
 NATIVE_SLICES: Final = frozenset({"-.slice", "system.slice", "tc.slice", "tc-ra.slice"})
 ROOT_MOUNT: Final = "-.mount"
 MOUNTINFO: Final = "/proc/self/mountinfo"
-# These edges can create or propagate work. Ordering neighbors are read but do not recursively expand the host's order graph.
+# Follow start/trigger creation. PartOf and ordering endpoints stay metadata: starting this unit does not start them.
 CREATION_EDGES: Final = (
     "Requires",
     "Wants",
@@ -41,9 +41,17 @@ CREATION_EDGES: Final = (
     "OnSuccess",
     "OnFailure",
     "Triggers",
-    "PartOf",
 )
-ROOT_ACTIVATORS: Final = ("RequiredBy", "WantedBy", "RequisiteOf", "BoundBy", "UpheldBy", "TriggeredBy")
+ROOT_ACTIVATORS: Final = (
+    "RequiredBy",
+    "WantedBy",
+    "RequisiteOf",
+    "BoundBy",
+    "UpheldBy",
+    "TriggeredBy",
+    "OnSuccessOf",
+    "OnFailureOf",
+)
 INSTANCE_SEPARATOR: Final = "@"
 UNIT_FIELDS: Final = (
     "Id",
@@ -66,6 +74,7 @@ class SourceKind(StrEnum):
 
     LOCKED = "locked-vendor-unit"
     RECIPE = "owned-recipe-unit"
+    MASKED = "owned-masked-instance"
     MANAGER_NATIVE = "native-manager-unit"
     UNCLASSIFIED = "unclassified"
 
@@ -87,6 +96,7 @@ class Key(StrEnum):
     SEQUENCE = "sequence"
     OBSERVED_NS = "observed_ns"
     UNCLASSIFIED = "unclassified"
+    CREATORS = "creators"
 
 
 @dataclass(frozen=True)
@@ -131,6 +141,7 @@ class DependencyGraph:
     begin_sequence: int
     sequence: int
     observed_ns: int
+    creators: tuple[str, ...]
 
     @property
     def unclassified(self) -> tuple[str, ...]:
@@ -142,6 +153,7 @@ class DependencyGraph:
         return {
             Key.NODES: [node.record() for node in self.nodes],
             Key.UNCLASSIFIED: list[JsonValue](self.unclassified),
+            Key.CREATORS: list[JsonValue](self.creators),
             Key.BEGIN_SEQUENCE: self.begin_sequence,
             Key.SEQUENCE: self.sequence,
             Key.OBSERVED_NS: self.observed_ns,
@@ -165,7 +177,11 @@ class GraphSources:
     """The existing static/recipe file checker, shared only within this one finite native census."""
 
     def __init__(
-        self, package: StaticPackage, configuration: InstanceConfiguration, deadline: AdmittedDeadline
+        self,
+        package: StaticPackage,
+        configuration: InstanceConfiguration,
+        deadline: AdmittedDeadline,
+        masked: MaskedInstanceConfiguration | None,
     ) -> None:
         rows = parse_object(package.lock_bytes)[HostKey.ACTIVATION_SOURCES]
         if not isinstance(rows, list):
@@ -175,6 +191,9 @@ class GraphSources:
         self._checked: dict[Path, JsonObject] = {}
         self._owned: dict[Path, JsonObject] = {}
         self.deadline = deadline
+        self.masked = masked
+        if masked is not None and configuration is not masked.current:
+            raise ValueError(ERROR_GRAPH)
         for value in rows:
             row = object_value(value)
             relative = Path(text(row, Field.PATH))
@@ -190,6 +209,9 @@ class GraphSources:
     def classify(self, read: UnitRead) -> tuple[SourceKind, tuple[JsonObject, ...]]:
         """Unknown source/alias/drop-in facts remain unknown; no generated or transient wildcard is approved."""
         unit = read.unit
+        if self.masked is not None and read is self.masked.current.guest:
+            # Only this positively checked owned mask uses the post-mask predicates; there is no masked-unit wildcard.
+            return SourceKind.MASKED, (self.masked.mask, *self.masked.current.files)
         if (
             unit.get(ConfigurationKey.LOAD_STATE) != LOADED
             or unit.get(ConfigurationKey.TRANSIENT) is not False
@@ -258,17 +280,33 @@ async def inspect_dependency_graph(
     configuration: InstanceConfiguration,
     deadline: AdmittedDeadline,
     accepted: tuple[AcceptedJob, ...],
+    *,
+    masked: MaskedInstanceConfiguration | None = None,
+    previous: DependencyGraph | None = None,
 ) -> DependencyGraph:
     """Read each reached object once on the original connection; neither resubscribe nor repeat a manager scan."""
     end_ns = deadline.effective_end()
     begin = manager.sequence
-    sources = GraphSources(package, configuration, deadline)
+    if (masked is None) != (previous is None):
+        raise ValueError(ERROR_GRAPH)
+    sources = GraphSources(package, configuration, deadline, masked)
     roots = {configuration.parent.name, configuration.guest.name}
     reads: dict[str, UnitRead] = {
         configuration.parent.name: configuration.parent,
         configuration.guest.name: configuration.guest,
     }
+    prior = {node.read.name: node for node in previous.nodes} if previous is not None else {}
+    if previous is not None:
+        manager.reconcile_jobs(
+            frozenset(previous.creators) | frozenset(roots) | frozenset(job.unit_name for job in accepted), accepted
+        )
     for job in accepted:
+        if job.unit_name not in roots and previous is not None:
+            # Its earlier source/lifecycle evidence stays in the prior graph. A finished auxiliary may already be GC'd.
+            node = prior.get(job.unit_name)
+            if node is None or node.read.object_path != job.unit_path:
+                raise ValueError(ERROR_GRAPH)
+            continue
         if job.unit_name not in reads:
             reads[job.unit_name] = await manager.read_unit(job.unit_name, None, end_ns)
         if reads[job.unit_name].object_path != job.unit_path:
@@ -300,4 +338,4 @@ async def inspect_dependency_graph(
         nodes.append(GraphNode(read, kind, files, await manager.read_unit_job(read, end_ns)))
     if manager.faults or time.monotonic_ns() >= end_ns:
         raise ValueError(ERROR_GRAPH)
-    return DependencyGraph(tuple(nodes), begin, manager.sequence, time.monotonic_ns())
+    return DependencyGraph(tuple(nodes), begin, manager.sequence, time.monotonic_ns(), tuple(sorted(expanded)))

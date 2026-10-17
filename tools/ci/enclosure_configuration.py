@@ -81,6 +81,8 @@ class Key(StrEnum):
     STOP_WHEN_UNNEEDED = "StopWhenUnneeded"
     ON_SUCCESS = "OnSuccess"
     ON_FAILURE = "OnFailure"
+    ON_SUCCESS_OF = "OnSuccessOf"
+    ON_FAILURE_OF = "OnFailureOf"
     REQUIRES = "Requires"
     WANTS = "Wants"
     REQUISITE = "Requisite"
@@ -144,6 +146,8 @@ RELATIONSHIPS: Final = (
     Key.AFTER,
     Key.ON_SUCCESS,
     Key.ON_FAILURE,
+    Key.ON_SUCCESS_OF,
+    Key.ON_FAILURE_OF,
 )
 EMPTY_EXEC: Final = (
     Key.EXEC_START_PRE,
@@ -153,7 +157,16 @@ EMPTY_EXEC: Final = (
     Key.EXEC_RELOAD,
     Key.EXEC_CONDITION,
 )
-NO_ACTIVATORS: Final = (Key.WANTED_BY, Key.REQUIRED_BY, Key.REQUISITE_OF, Key.BOUND_BY, Key.UPHELD_BY, Key.TRIGGERED_BY)
+NO_ACTIVATORS: Final = (
+    Key.WANTED_BY,
+    Key.REQUIRED_BY,
+    Key.REQUISITE_OF,
+    Key.BOUND_BY,
+    Key.UPHELD_BY,
+    Key.TRIGGERED_BY,
+    Key.ON_SUCCESS_OF,
+    Key.ON_FAILURE_OF,
+)
 
 
 @dataclass(frozen=True)
