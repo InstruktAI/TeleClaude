@@ -60,6 +60,7 @@ from tools.ci.enclosure_inner import (
 from tools.ci.enclosure_journal import Outcome as EnclosureOutcome
 from tools.ci.enclosure_report import (
     validate_flow_session_closure,
+    validate_flow_start_inputs,
     validate_provisional_bindings,
     validate_provisional_cleanup,
 )
@@ -6303,6 +6304,7 @@ def validate_provisional_payload_inputs(report_bytes: bytes, manifest: bytes, pa
         "selected_run": bool(selected),
         "inner_cleanup": cleanup,
         "shared_flow_sessions": validate_flow_session_closure(report),
+        "shared_flow_starts": validate_flow_start_inputs(report),
     }
 
 

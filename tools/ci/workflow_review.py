@@ -16,7 +16,6 @@ from tools.ci import workflow_events
 from tools.ci import workflow_flow as flow_module
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_ledger as start_ledger
-from tools.ci import workflow_publication as publication
 from tools.ci import workflow_waiting as waiting
 
 TELEC: Final = "telec"
@@ -125,7 +124,7 @@ def _operation(
     identifier = receipt.get(FIELD_OPERATION) if receipt is not None else None
     if not isinstance(identifier, str) or not identifier:
         _fail(DETAIL_FRAME.format(name=name, frame=frame))
-    state = publication.await_terminal(flow.observer, identifier, OPERATION_SECONDS)
+    state = flow.operation(identifier, OPERATION_SECONDS)
     return identifier, state
 
 
@@ -227,7 +226,7 @@ def _operation_command(
         flow.require_ledger().unknown(attempt_id)
         raise creation.binding_failure(DETAIL_BINDING.format(detail=f"{frame_name} receipt is missing"))
     flow.require_ledger().record_operation(attempt_id, operation)
-    terminal = publication.await_terminal(flow.observer, operation, OPERATION_SECONDS)
+    terminal = flow.operation(operation, OPERATION_SECONDS)
     return frame, terminal
 
 
@@ -413,7 +412,7 @@ def _negative_stamp(flow: flow_module.WorkflowFlow, builder: str, commit: str, w
         flow.require_ledger().unknown(attempt)
         raise creation.binding_failure(DETAIL_BINDING.format(detail=f"stamp-performer receipt missing: {frame!r}"))
     flow.require_ledger().record_operation(attempt, operation)
-    terminal = publication.await_terminal(flow.observer, operation, OPERATION_SECONDS)
+    terminal = flow.operation(operation, OPERATION_SECONDS)
     error = terminal.get(FIELD_ERROR)
     if (
         terminal.get(FIELD_STATE) != STATE_FAILED
@@ -436,7 +435,7 @@ def _end(flow: flow_module.WorkflowFlow, session: str) -> None:
     operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
     if outcome.exit_status != 0 or not isinstance(operation, str) or not operation:
         raise creation.binding_failure(DETAIL_BINDING.format(detail=f"sessions end {session}: {outcome.output[-300:]}"))
-    terminal = publication.await_terminal(flow.observer, operation, START_SECONDS)
+    terminal = flow.operation(operation, START_SECONDS)
     if terminal.get(FIELD_STATE) != STATE_COMPLETED:
         _fail(
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))
@@ -469,7 +468,7 @@ def _start_work(
         flow.require_ledger().unknown(parent_id)
         raise creation.binding_failure(DETAIL_BINDING.format(detail=outcome.output[-300:]))
     flow.require_ledger().record_operation(parent_id, operation)
-    terminal = publication.await_terminal(flow.observer, operation, START_SECONDS)
+    terminal = flow.operation(operation, START_SECONDS)
     if terminal.get(FIELD_STATE) != STATE_COMPLETED:
         _fail(
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))
@@ -1082,7 +1081,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
         flow.require_ledger().unknown(attempt)
         raise creation.binding_failure(DETAIL_BINDING.format(detail=outcome.output[-300:]))
     flow.require_ledger().record_operation(attempt, operation)
-    terminal = publication.await_terminal(flow.observer, operation, START_SECONDS)
+    terminal = flow.operation(operation, START_SECONDS)
     if terminal.get(FIELD_STATE) != STATE_COMPLETED:
         _fail(
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))

@@ -30,8 +30,9 @@ from tools.ci.enclosure_contract import (
 from tools.ci.enclosure_guest import Key as GuestKey
 from tools.ci.enclosure_guest import Purpose
 from tools.ci.enclosure_inner import PROVISIONAL_REPORT_SCHEMA, PROVISIONAL_STAGE, LedgerEvidence, PendingReason
-from tools.ci.workflow_flow import declared_chain
-from tools.ci.workflow_ledger import RECORD_SESSION
+from tools.ci.workflow_flow import B5_ACTIONS, B6_ACTIONS, B7_ACTIONS, declared_chain
+from tools.ci.workflow_ledger import RECORD_OPERATION, RECORD_SESSION, RECORD_TRIGGER
+from tools.ci.workflow_publication import TERMINAL_STATES
 
 ERROR_REPORT: Final = "the new provisional report binding or original ledger evidence is inconsistent"
 LEDGER_ADDRESS: Final = Path("starts.jsonl")
@@ -62,6 +63,7 @@ OBSERVATION_FIELDS: Final = frozenset(
         "flow_finalizer_errors",
     }
 )
+CLOSED_ACTIONS: Final = {"B5": B5_ACTIONS, "B7": B7_ACTIONS, "B6": B6_ACTIONS}
 
 
 def _strings(value: JsonValue) -> tuple[str, ...]:
@@ -389,4 +391,102 @@ def validate_flow_session_closure(report: JsonObject) -> JsonObject:
         "state": "public_closed",
         "session_ids": list(owned),
         "end_evidence_count": len(proofs),
+    }
+
+
+def _operation_results(finalizer: JsonObject, created: int, public_finished: int) -> dict[str, list[JsonValue]]:
+    evidence = finalizer["public_operation_evidence"]
+    if not isinstance(evidence, list):
+        raise ValueError(ERROR_REPORT)
+    results: dict[str, list[JsonValue]] = {}
+    for value in evidence:
+        row = object_value(value)
+        if (
+            set(row) != {"operation_id", "started_ns", "finished_ns", "terminal", "error"}
+            or row["error"] is not None
+            or not created
+            <= positive_integer(row, "started_ns")
+            <= positive_integer(row, "finished_ns")
+            <= public_finished
+        ):
+            raise ValueError(ERROR_REPORT)
+        operation_id = text(row, "operation_id")
+        terminal = object_value(row["terminal"])
+        state = terminal.get("state")
+        if terminal.get("operation_id") != operation_id or not isinstance(state, str) or state not in TERMINAL_STATES:
+            raise ValueError(ERROR_REPORT)
+        results.setdefault(operation_id, []).append(terminal)
+    return results
+
+
+def _declared_snapshot(value: JsonValue, cases: tuple[str, ...]) -> LedgerEvidence:
+    snapshot = _ledger(value, cases)
+    if (
+        snapshot is None
+        or snapshot.ledger is None
+        or snapshot.error is not None
+        or snapshot.missing_cases
+        or snapshot.extra_cases
+        or tuple(snapshot.ledger.closed_lists) != cases
+    ):
+        raise ValueError(ERROR_REPORT)
+    for case in cases:
+        expected = {row["label"]: (row["kind"], row.get("parent")) for row in CLOSED_ACTIONS[case]}
+        if snapshot.ledger.closed_lists[case] != expected:
+            raise ValueError(ERROR_REPORT)
+    return snapshot
+
+
+def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
+    """Join declared attempts to actual terminal operation data; receipts alone do not establish semantic settlement."""
+    provisional = object_value(report["payload_provisional"])
+    binding = object_value(provisional["binding"])
+    observations = object_value(provisional["observations"])
+    cases = declared_chain(frozenset(_strings(binding[GuestKey.SELECTED_SCENARIOS])))
+    if not cases:
+        if observations["flow_finalizer"] is not None:
+            raise ValueError(ERROR_REPORT)
+        return {"scope": "shared-workflow-flow", "state": "not_selected"}
+    finalizer = object_value(observations["flow_finalizer"])
+    before = _declared_snapshot(finalizer["start_ledger_before_closure"], cases)
+    after = _declared_snapshot(finalizer["start_ledger_after_closure"], cases)
+    if not after.data.startswith(before.data) or after.flow_id != before.flow_id or after.blocking_attempts:
+        raise ValueError(ERROR_REPORT)
+    created = positive_integer(binding, "created_ns")
+    public_finished = positive_integer(object_value(observations["inner_cleanup"]), "public_cleanup_finished_ns")
+    operations = _operation_results(finalizer, created, public_finished)
+    if after.ledger is None:
+        raise ValueError(ERROR_REPORT)
+    matched: list[JsonValue] = []
+    effects: list[JsonValue] = []
+    for attempt in after.ledger.attempts.values():
+        if attempt.kind in (RECORD_OPERATION, RECORD_TRIGGER):
+            if attempt.operation_id is None or attempt.operation_id not in operations:
+                raise ValueError(ERROR_REPORT)
+            matched.append(
+                {
+                    "attempt_id": attempt.identifier,
+                    "kind": attempt.kind,
+                    "recorded_state": attempt.state,
+                    "operation_id": attempt.operation_id,
+                    "terminal_records": operations[attempt.operation_id],
+                }
+            )
+        elif attempt.kind != RECORD_SESSION:
+            effects.append(
+                {
+                    "attempt_id": attempt.identifier,
+                    "recorded_state": attempt.state,
+                    "recorded_evidence": attempt.evidence,
+                }
+            )
+    return {
+        "scope": "shared-workflow-flow",
+        "state": "recorded_inputs_matched",
+        "flow_id": after.flow_id,
+        "case_order": list(cases),
+        "operations": matched,
+        "effects": effects,
+        "pending_trigger_ids": list(after.pending_triggers),
+        "semantic_settlement": "unproven",
     }

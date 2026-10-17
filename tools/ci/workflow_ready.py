@@ -16,7 +16,6 @@ from tools.ci import workflow_flow as flow_module
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_items as items
 from tools.ci import workflow_ledger as start_ledger
-from tools.ci import workflow_publication as publication
 from tools.ci.workflow_review import (
     FIELD_ACTIVE,
     FIELD_ADMITTED,
@@ -137,7 +136,7 @@ def _owner_refusal(
         flow.require_ledger().unknown(attempt)
         raise creation.binding_failure(f"{label} did not return its public operation receipt: {output.output[-300:]}")
     flow.require_ledger().record_operation(attempt, operation)
-    result = publication.await_terminal(flow.observer, operation, OPERATION_SECONDS)
+    result = flow.operation(operation, OPERATION_SECONDS)
     error = result.get(FIELD_ERROR)
     if (
         result.get(FIELD_STATE) != STATE_FAILED
@@ -182,7 +181,7 @@ def _operation_call(
         flow.require_ledger().unknown(attempt)
         raise creation.binding_failure(f"{attempt_label} returned no operation id")
     flow.require_ledger().record_operation(attempt, operation)
-    return publication.await_terminal(flow.observer, operation, START_SECONDS)
+    return flow.operation(operation, START_SECONDS)
 
 
 def _note(flow: flow_module.WorkflowFlow, session: str, expected_text: str, expected_hash: str | None = None) -> str:

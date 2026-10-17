@@ -11,7 +11,6 @@ from tools.ci import workflow_creation as creation
 from tools.ci import workflow_events
 from tools.ci import workflow_flow as flow_module
 from tools.ci import workflow_ledger as start_ledger
-from tools.ci import workflow_publication as publication
 from tools.ci.workflow_prepared import text_capability_enabled
 from tools.ci.workflow_review import (
     FIELD_ACTIVE,
@@ -80,7 +79,7 @@ def _operation_result(flow: flow_module.WorkflowFlow, session: str, name: str, l
         flow.require_ledger().unknown(attempt)
         raise creation.binding_failure(f"{name} returned no public operation receipt")
     flow.require_ledger().record_operation(attempt, operation)
-    return publication.await_terminal(flow.observer, operation, START_SECONDS)
+    return flow.operation(operation, START_SECONDS)
 
 
 def _acting_integrator(flow: flow_module.WorkflowFlow) -> str:
@@ -112,7 +111,7 @@ def _refused_work(
         flow.require_ledger().unknown(attempt)
         raise creation.binding_failure(f"admission refusal returned no receipt: {outcome.output[-300:]}")
     flow.require_ledger().record_operation(attempt, operation)
-    terminal = publication.await_terminal(flow.observer, operation, START_SECONDS)
+    terminal = flow.operation(operation, START_SECONDS)
     error = terminal.get(FIELD_ERROR)
     if (
         terminal.get(FIELD_STATE) != STATE_FAILED
