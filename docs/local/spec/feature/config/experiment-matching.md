@@ -27,95 +27,27 @@ the side-file appending to the primary list.
 
 ## Canonical fields
 
+Within one entry, every supplied constrained dimension must match. If no entry
+matches the queried name and context, the experiment is inactive and the
+resolver returns false without raising. Reloading rebuilds the effective list
+from the primary configuration and appended side-file entries, preserving both
+sources.
+
 ### Use cases
 
 #### UC-CFG-EXP-1: Unconstrained entry matches any agent and adapter
 
-```
-Given the configured experiments contain one entry:
-  {name: "feature_x"}  (no agent or adapter constraint)
-When the experiment resolver is queried for "feature_x"
-Then the loop visits the entry
-And the agent dimension is unconstrained (the entry sets no agents)
-And the adapter dimension is unconstrained (the entry sets no adapters)
-And the resolver returns True
-And the same query returns True with any agent= and/or adapter= arguments
-```
-
 #### UC-CFG-EXP-2: Agent dimension is strict
-
-```
-Given the configured experiments contain:
-  {name: "feature_x", agents: ["gemini"]}
-When the experiment resolver is queried for "feature_x" with agent="gemini"
-Then the entry matches and the resolver returns True
-When the resolver is queried for "feature_x" with agent="claude"
-Then the entry's agents list does not contain "claude" and the entry is skipped
-And the resolver returns False
-When the resolver is queried for "feature_x" with no agent argument
-Then no agent was supplied, and a constrained-agents entry treats the missing agent as a non-match
-And the entry is skipped, the resolver returns False
-```
 
 #### UC-CFG-EXP-3: Adapter dimension is optimistic when caller omits adapter
 
-```
-Given the configured experiments contain:
-  {name: "feature_x", adapters: ["discord"]}
-When the experiment resolver is queried for "feature_x" with adapter="discord"
-Then the adapter matches and the resolver returns True
-When the resolver is queried for "feature_x" with adapter="telegram"
-Then the entry constrains adapters, an adapter was provided, and it is not in the entry's adapter list
-And the entry is skipped, the resolver returns False
-When the resolver is queried for "feature_x" with no adapter argument
-Then the adapter dimension check is skipped
-And the resolver returns True (optimistic: coordinator asking "does any adapter want this?")
-```
-
 #### UC-CFG-EXP-4: Same-name entries are OR'd
-
-```
-Given the configured experiments contain:
-  {name: "feature_x", agents: ["claude"]}
-  {name: "feature_x", agents: ["gemini"]}
-When the experiment resolver is queried for "feature_x" with agent="gemini"
-Then the first entry's agents list does not contain "gemini" — skipped
-And the second entry's agents list contains "gemini" — matches
-And the resolver returns True
-```
 
 #### UC-CFG-EXP-5: Within an entry, dimensions AND
 
-```
-Given the configured experiments contain:
-  {name: "feature_x", agents: ["claude"], adapters: ["discord"]}
-When the experiment resolver is queried for "feature_x" with agent="claude" and adapter="discord"
-Then both dimensions match and the resolver returns True
-When the resolver is queried for "feature_x" with agent="claude" and adapter="telegram"
-Then the agent matches but the adapter does not and the entry is skipped
-And no other entry matches the name, so the resolver returns False
-```
-
 #### UC-CFG-EXP-6: Unknown experiment name returns False
 
-```
-Given the configured experiments contain entries only for "feature_x" and "feature_y"
-When the experiment resolver is queried for "feature_z"
-Then the loop visits no entries with matching name
-And the resolver returns False without raising
-```
-
 #### UC-CFG-EXP-7: experiments.yml side-file appends to the experiments list
-
-```
-Given config.yml contains experiments: [ {name: "feature_x", agents: ["claude"]} ]
-And the sibling experiments.yml contains experiments: [ {name: "feature_y"} ]
-When the config bounded context loads
-Then env-var expansion runs over both files
-And the experiments side-file list extends the primary experiments list
-And the config build parses the combined list into the experiments registry
-And both feature_x and feature_y become queryable via the experiment resolver
-```
 
 ### Cross-context references
 
