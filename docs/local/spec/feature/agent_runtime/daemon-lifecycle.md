@@ -201,15 +201,6 @@ But when adoption fails the response carries the reason and a folder the request
 
 #### UC-DL5: Operations abandoned by a previous run do not abort the boot
 
-```
-Given durable operations were left queued or running when a previous daemon run stopped
-When startup runs
-Then the operations stage normalizes them to their stale outcome
-And the post-adapter completion stage delivers each of those outcomes to its recorded caller
-And startup proceeds to its running state
-And no stage is skipped, reordered, or added
-```
-
 #### UC-DL9: Session startups left unfinished by a previous run neither abort nor hold the boot
 
 ```gherkin
