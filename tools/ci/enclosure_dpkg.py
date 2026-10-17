@@ -840,11 +840,13 @@ def interpret_registered_instances(
     explicit_registrations: list[JsonValue] = []
     deferred_requests: list[JsonValue] = []
     prior_requests: list[JsonValue] = []
+    prior_deletions: list[JsonValue] = []
     result: JsonObject = {
         "registrations": registrations,
         "explicit_registrations": explicit_registrations,
         "deferred_requests": deferred_requests,
         "prior_control_requests": prior_requests,
+        "prior_interest_deletions": prior_deletions,
         "inventory_sha256": host.inventory_sha256,
         "deferred_and_pending_work": "unproven",
         "prior_control_effect_admission": "unproven",
@@ -941,6 +943,7 @@ def _activation_instances(
     activations = prior["activation_requests"]
     deferred_requests = captured["deferred_requests"]
     prior_requests = captured["prior_control_requests"]
+    prior_deletions = captured["prior_interest_deletions"]
     if (
         deferred["error"] is not None
         or prior["error"] is not None
@@ -948,6 +951,7 @@ def _activation_instances(
         or not isinstance(activations, list)
         or not isinstance(deferred_requests, list)
         or not isinstance(prior_requests, list)
+        or not isinstance(prior_deletions, list)
     ):
         raise ValueError(ERROR_INPUT)
     files = {text(object_value(value), "path"): object_value(value) for value in explicit_registrations}
@@ -1030,6 +1034,62 @@ def _activation_instances(
         )
         # The callback always runs once per actual directive invocation; this is no observed invocation count.
         match_interests(trigger, kind, candidates)
+    _prior_interest_deletions(prior, files, file_interests, deadline, prior_deletions)
+
+
+def _prior_interest_deletions(
+    prior: JsonObject,
+    files: dict[str, JsonObject],
+    file_interests: dict[bytes, list[JsonValue]],
+    deadline: AdmittedDeadline,
+    prior_deletions: list[JsonValue],
+) -> None:
+    directives = prior["directives"]
+    if not isinstance(directives, list):
+        raise ValueError(ERROR_INPUT)
+    for value in directives:
+        _before_cutoff(deadline)
+        directive = object_value(value)
+        if not text(directive, "directive").startswith("interest"):
+            continue
+        trigger = base64.b64decode(text(directive, "trigger_base64"), validate=True)
+        kind = _deferred_kind(trigger)
+        if kind != directive["kind"]:
+            raise ValueError(ERROR_INPUT)
+        source_rows: list[JsonValue] = []
+        change: JsonObject = {
+            **directive,
+            "origin": "prior_container_interest_delete",
+            "source_registrations": source_rows,
+            "native_metadata_effect": "unproven",
+        }
+        prior_deletions.append(change)
+        if kind == "file":
+            # Native interest change uses the exact node, without activation's parent traversal.
+            source = file_interests.get(_fsys_name(trigger), [])
+            change["native_metadata_effect"] = "remove_same_instance_if_present_then_save_or_remove_edited_File"
+        elif kind == "explicit":
+            explicit_rows = files[str(Path("/var/lib/dpkg/triggers") / trigger.decode("ascii"))]["interests"]
+            if not isinstance(explicit_rows, list):
+                raise ValueError(ERROR_INPUT)
+            source = explicit_rows
+            change["native_metadata_effect"] = (
+                "drop_same_instance_and_normalize_remaining_qualifiers_or_remove_empty_file"
+            )
+        else:
+            change["native_metadata_effect"] = "native_unknown_kind_noop"
+            continue
+        for source_value in source:
+            _before_cutoff(deadline)
+            registration = object_value(source_value)
+            instance = object_value(registration["instance"])
+            same: bool | None = None
+            if instance["package_name"] != CONTAINER_PACKAGE:
+                same = False
+            elif instance["identity_state"] in ("resolved", "resolved_qualified_not_installed"):
+                same = instance["architecture"] == prior["selected_architecture"]
+            # Interest deletion compares pointers, not activation eligibility; inactive rows remain relevant.
+            source_rows.append({**registration, "same_container_instance": same})
 
 
 def _deferred_kind(trigger: bytes) -> str:
@@ -1145,12 +1205,12 @@ def read_explicit_interests(
         result["native_state"] = deferred["native_state"]
         existing = _input_files(snapshot)
         entries = deferred["entries"]
-        activations = prior["activation_requests"]
+        directives = prior["directives"]
         if (
             deferred["error"] is not None
             or prior["error"] is not None
             or not isinstance(entries, list)
-            or not isinstance(activations, list)
+            or not isinstance(directives, list)
         ):
             raise ValueError(ERROR_INPUT)
         indices: dict[str, int] = {}
@@ -1189,9 +1249,15 @@ def read_explicit_interests(
             if not isinstance(entry["awaiters"], list):
                 raise ValueError(ERROR_INPUT)
             capture(entry, bool(entry["awaiters"]), "preexisting_deferred")
-        for value in activations:
-            # A noawait control directive still makes one activate_awaiter(NULL) call and consumes its body.
-            capture(object_value(value), True, "prior_container_control")
+        for value in directives:
+            directive = object_value(value)
+            # Both interest deletion and activate_awaiter(NULL) consume explicit bodies.
+            origin = (
+                "prior_container_interest_delete"
+                if text(directive, "directive").startswith("interest")
+                else "prior_container_control"
+            )
+            capture(directive, True, origin)
         _before_cutoff(deadline)
         return result
     except (KeyError, OSError, ValueError, RuntimeError) as error:
@@ -1618,6 +1684,7 @@ def inspect_container_prior_control(package: StaticPackage, work: JsonObject, de
         if len(declarations) != 1:
             raise ValueError(ERROR_INPUT)
         architecture = text(declarations[0], "architecture")
+        result["selected_architecture"] = architecture
         slots: list[JsonObject] = []
         for value in rows:
             _before_cutoff(deadline)
