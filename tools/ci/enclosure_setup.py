@@ -261,6 +261,34 @@ class GuestOSFacts:
     package_service_policy_removed: bool
 
 
+def setup_admission_binding(admission: JsonObject) -> JsonObject:
+    """The setup producer and its reader bind the same existing protected manifest fields."""
+    binding = {
+        str(key): admission[key]
+        for key in (
+            GuestKey.RUN_TOKEN,
+            GuestKey.SOURCE_COMMIT,
+            GuestKey.SOURCE_TREE,
+            GuestKey.REALIZATION_SHA256,
+            GuestKey.STATIC_LOCK_SHA256,
+            GuestKey.RECIPE_SHA256,
+            GuestKey.QUALIFICATION_SHA256,
+            GuestKey.ADMISSION_SEAL_SHA256,
+            GuestKey.PURPOSE,
+            GuestKey.GUEST_BOOT_ID,
+            GuestKey.UID_MAP,
+            GuestKey.GID_MAP,
+            GuestKey.PID_NAMESPACE,
+            GuestKey.CGROUP_NAMESPACE,
+            Cutoff.OUTER_END_NS,
+            Cutoff.VECTOR_END_NS,
+            Cutoff.COMMAND_END_NS,
+        )
+    }
+    binding[GuestKey.QUALIFICATION_VECTOR] = admission.get(GuestKey.QUALIFICATION_VECTOR)
+    return binding
+
+
 def _credential(credentials: JsonObject, key: Key) -> int:
     # Native busctl preserves the variant's wire type and scalar value in its JSON representation.
     value = credentials.get(key)
@@ -548,30 +576,6 @@ class _SetupCommands:
             )
         except FileExistsError as error:
             raise RuntimeError(ERROR_DUPLICATE) from error
-        admission = self.context.record
-        binding = {
-            str(key): admission[key]
-            for key in (
-                GuestKey.RUN_TOKEN,
-                GuestKey.SOURCE_COMMIT,
-                GuestKey.SOURCE_TREE,
-                GuestKey.REALIZATION_SHA256,
-                GuestKey.STATIC_LOCK_SHA256,
-                GuestKey.RECIPE_SHA256,
-                GuestKey.QUALIFICATION_SHA256,
-                GuestKey.ADMISSION_SEAL_SHA256,
-                GuestKey.PURPOSE,
-                GuestKey.GUEST_BOOT_ID,
-                GuestKey.UID_MAP,
-                GuestKey.GID_MAP,
-                GuestKey.PID_NAMESPACE,
-                GuestKey.CGROUP_NAMESPACE,
-                Cutoff.OUTER_END_NS,
-                Cutoff.VECTOR_END_NS,
-                Cutoff.COMMAND_END_NS,
-            )
-        }
-        binding[GuestKey.QUALIFICATION_VECTOR] = admission.get(GuestKey.QUALIFICATION_VECTOR)
         _append(
             self.journal_fd,
             {
@@ -581,7 +585,7 @@ class _SetupCommands:
                 Key.UNIT_END_NS: self.unit_end_ns,
                 GuestKey.MANIFEST_SHA256: hashlib.sha256(self.context.manifest_bytes).hexdigest(),
                 Key.ROLE: Role.GUEST_SETUP.value,
-                Key.ADMISSION: binding,
+                Key.ADMISSION: setup_admission_binding(self.context.record),
             },
         )
         os.fsync(self.directory_fd)

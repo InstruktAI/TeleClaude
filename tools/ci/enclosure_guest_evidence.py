@@ -7,13 +7,35 @@ import os
 import stat
 import time
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Final
 
-from tools.ci.enclosure_contract import AdmittedDeadline
+from tools.ci.enclosure_contract import (
+    NANOSECONDS,
+    AdmittedDeadline,
+    Field,
+    JsonObject,
+    StaticPackage,
+    object_value,
+    parse_object,
+    positive_integer,
+    require_hex,
+    text,
+)
 from tools.ci.enclosure_data import CONTROL_ROOT
-from tools.ci.enclosure_guest import close_evidence_descriptors
-from tools.ci.enclosure_native import READ_LIMIT
-from tools.ci.enclosure_setup import SETUP_JOURNAL
+from tools.ci.enclosure_guest import Key as GuestKey
+from tools.ci.enclosure_guest import Purpose, Record, Role, close_evidence_descriptors
+from tools.ci.enclosure_native import INVENTORY_ARGUMENTS, READ_LIMIT
+from tools.ci.enclosure_setup import (
+    COREPACK,
+    PNPM,
+    PRETTIER,
+    SETUP_JOURNAL,
+    GuestManagerFacts,
+    GuestOSFacts,
+    setup_admission_binding,
+)
+from tools.ci.enclosure_setup import Key as SetupKey
 
 ERROR_PROTECTION: Final = "the named guest setup evidence is not protected in the admitted mount view"
 ERROR_READ: Final = "the guest setup journal read is incomplete, changed or outside the original allowance"
@@ -21,6 +43,21 @@ DIRECTORY_FLAGS: Final = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLO
 FILE_FLAGS: Final = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
 SHARED_WRITE: Final = stat.S_IWGRP | stat.S_IWOTH
 UID_UNMAPPED: Final = 2**32 - 1
+ERROR_SETUP: Final = "the captured guest setup journal does not establish the admitted setup result"
+
+
+class FactKey(StrEnum):
+    """Fields of the existing setup facts, not additional guest observations."""
+
+    INVENTORY_SHA256 = "inventory_sha256"
+    BOOTSTRAP_ARCHIVE_DIGESTS = "bootstrap_archive_digests"
+    COREPACK_METADATA_SHA256 = "corepack_metadata_sha256"
+    SYSTEM_MANAGER = "system_manager"
+    USER_MANAGER = "user_manager"
+    POLICY_REMOVED = "package_service_policy_removed"
+    START_TICKS = "start_ticks"
+    CGROUP = "cgroup"
+    OBSERVED_NS = "observed_ns"
 
 
 @dataclass(frozen=True)
@@ -76,6 +113,206 @@ class SetupJournalRead:
             or self.finished_ns >= self.end_ns
         ):
             raise ValueError(ERROR_READ)
+
+
+@dataclass(frozen=True)
+class GuestSetupEvidence:
+    """Validated setup evidence; original outside identity/continuity and phase admission remain separate."""
+
+    journal: SetupJournalRead
+    manifest_sha256: str
+    unit_end_ns: int
+    completed_ns: int
+    command_count: int
+    facts: GuestOSFacts
+
+
+def _digest(record: JsonObject, key: str) -> str:
+    value = text(record, key)
+    require_hex(value, 64)
+    return value
+
+
+def _manager_facts(
+    record: JsonObject, admission: JsonObject, uid: int, first_ns: int, completed_ns: int
+) -> GuestManagerFacts:
+    pid = positive_integer(record, GuestKey.PID)
+    observed = positive_integer(record, FactKey.OBSERVED_NS)
+    if (
+        type(record.get(SetupKey.UID)) is not int
+        or record[SetupKey.UID] != uid
+        or (uid == 0 and pid != 1)
+        or (uid != 0 and pid <= 1)
+        or text(record, GuestKey.PID_NAMESPACE) != text(admission, GuestKey.PID_NAMESPACE)
+        or text(record, GuestKey.CGROUP_NAMESPACE) != text(admission, GuestKey.CGROUP_NAMESPACE)
+        or not first_ns <= observed <= completed_ns
+    ):
+        raise ValueError(ERROR_SETUP)
+    return GuestManagerFacts(
+        uid,
+        pid,
+        positive_integer(record, FactKey.START_TICKS),
+        text(record, GuestKey.PID_NAMESPACE),
+        text(record, GuestKey.CGROUP_NAMESPACE),
+        text(record, FactKey.CGROUP),
+        observed,
+    )
+
+
+def _setup_facts(
+    record: JsonObject,
+    admission: JsonObject,
+    package: StaticPackage,
+    first_ns: int,
+    completed_ns: int,
+) -> GuestOSFacts:
+    recipe = parse_object(package.recipe_bytes)
+    account = object_value(object_value(recipe[SetupKey.GUEST])[SetupKey.ACCOUNT])
+    uid, gid = positive_integer(account, SetupKey.UID), positive_integer(account, SetupKey.GID)
+    policy_removed = Purpose(text(admission, GuestKey.PURPOSE)) is Purpose.APPLICATION
+    if (
+        text(record, SetupKey.ACCOUNT) != text(account, SetupKey.NAME)
+        or positive_integer(record, SetupKey.UID) != uid
+        or positive_integer(record, SetupKey.GID) != gid
+        or text(record, SetupKey.HOME) != text(account, SetupKey.HOME)
+        or text(record, SetupKey.SHELL) != text(account, SetupKey.SHELL)
+        or record.get(FactKey.POLICY_REMOVED) is not policy_removed
+    ):
+        raise ValueError(ERROR_SETUP)
+    tools = parse_object(package.lock_bytes)[SetupKey.NPM_TOOLS]
+    if not isinstance(tools, list):
+        raise ValueError(ERROR_SETUP)
+    digests: dict[str, str] = {}
+    for value in tools:
+        tool = object_value(value)
+        name = text(tool, SetupKey.PACKAGE)
+        if name in digests:
+            raise ValueError(ERROR_SETUP)
+        digests[name] = _digest(tool, Field.SHA256)
+    bootstrap = tuple(digests[name] for name in (COREPACK, PRETTIER, PNPM))
+    if record.get(FactKey.BOOTSTRAP_ARCHIVE_DIGESTS) != list(bootstrap):
+        raise ValueError(ERROR_SETUP)
+    return GuestOSFacts(
+        _digest(record, FactKey.INVENTORY_SHA256),
+        text(record, SetupKey.ACCOUNT),
+        uid,
+        gid,
+        text(record, SetupKey.HOME),
+        text(record, SetupKey.SHELL),
+        bootstrap,
+        _digest(record, FactKey.COREPACK_METADATA_SHA256),
+        _manager_facts(object_value(record[FactKey.SYSTEM_MANAGER]), admission, 0, first_ns, completed_ns),
+        _manager_facts(object_value(record[FactKey.USER_MANAGER]), admission, uid, first_ns, completed_ns),
+        policy_removed,
+    )
+
+
+def _commands(rows: list[JsonObject], unit_end: int, cap: int) -> tuple[int, str]:
+    """Consume each original one-shot intent/start/outcome, without replaying the setup command recipe."""
+    if not rows or len(rows) % 3:
+        raise ValueError(ERROR_SETUP)
+    inventory = None
+    for index in range(0, len(rows), 3):
+        intent, started, outcome = rows[index : index + 3]
+        sequence = index // 3 + 1
+        for row, expected in zip(
+            (intent, started, outcome), (Record.INTENT, Record.STARTED, Record.ACKNOWLEDGED), strict=True
+        ):
+            if (
+                row.get(SetupKey.SCOPE) != SetupKey.COMMAND
+                or row.get(GuestKey.RECORD) != expected
+                or positive_integer(row, SetupKey.SEQUENCE) != sequence
+            ):
+                raise ValueError(ERROR_SETUP)
+        argv = intent.get(GuestKey.COMMAND)
+        if not isinstance(argv, list) or not argv or any(not isinstance(part, str) or not part for part in argv):
+            raise ValueError(ERROR_SETUP)
+        requested = positive_integer(intent, SetupKey.REQUESTED_COMMAND_END_NS)
+        end = positive_integer(intent, SetupKey.COMMAND_END_NS)
+        timestamp = positive_integer(intent, GuestKey.MONOTONIC_NS)
+        if (
+            end != min(requested, unit_end)
+            or not timestamp < end <= timestamp + cap * NANOSECONDS
+            or positive_integer(outcome, GuestKey.MONOTONIC_NS) >= end
+            or type(outcome.get(GuestKey.EXIT_STATUS)) is not int
+            or outcome[GuestKey.EXIT_STATUS] != 0
+            or outcome.get(GuestKey.ERROR_CLASS) is not None
+            or type(outcome.get(SetupKey.STDOUT_COMPLETE)) is not bool
+        ):
+            raise ValueError(ERROR_SETUP)
+        positive_integer(started, GuestKey.PID)
+        if outcome[SetupKey.STDOUT_COMPLETE]:
+            _digest(outcome, SetupKey.STDOUT_SHA256)
+        elif outcome.get(SetupKey.STDOUT_SHA256) is not None:
+            raise ValueError(ERROR_SETUP)
+        if argv == list(INVENTORY_ARGUMENTS):
+            if inventory is not None or outcome[SetupKey.STDOUT_COMPLETE] is not True:
+                raise ValueError(ERROR_SETUP)
+            inventory = _digest(outcome, SetupKey.STDOUT_SHA256)
+    if inventory is None:
+        raise ValueError(ERROR_SETUP)
+    return len(rows) // 3, inventory
+
+
+def validate_setup_journal(
+    read: SetupJournalRead, admitted_manifest: bytes, package: StaticPackage
+) -> GuestSetupEvidence:
+    """Validate captured setup semantics against the caller's admitted manifest; perform no guest action.
+
+    This does not admit a manifest, root descriptor or manager. The phase caller
+    must already own those original bindings and still check their continuity.
+    Invalid data remains in the caller's separate SetupJournalRead on failure.
+    """
+    read.require_complete()
+    _before_cutoff(read.end_ns)
+    if not read.data.endswith(b"\n"):
+        raise ValueError(ERROR_SETUP)
+    rows = [parse_object(line) for line in read.data.split(b"\n")[:-1]]
+    if len(rows) < 5:
+        raise ValueError(ERROR_SETUP)
+    admission = parse_object(admitted_manifest)
+    purpose = Purpose(text(admission, GuestKey.PURPOSE))
+    if purpose is Purpose.QUALIFICATION and admission.get(GuestKey.QUALIFICATION_VECTOR) != "Q2":
+        raise ValueError(ERROR_SETUP)
+    first, terminal = rows[0], rows[-1]
+    manifest_digest = hashlib.sha256(admitted_manifest).hexdigest()
+    if (
+        first.get(SetupKey.SCOPE) != SetupKey.ADMISSION
+        or first.get(GuestKey.RECORD) != Record.INTENT
+        or first.get(SetupKey.ROLE) != Role.GUEST_SETUP
+        or first.get(GuestKey.MANIFEST_SHA256) != manifest_digest
+        or first.get(SetupKey.ADMISSION) != setup_admission_binding(admission)
+        or terminal.get(SetupKey.SCOPE) != SetupKey.SETUP
+        or terminal.get(GuestKey.RECORD) != Record.ACKNOWLEDGED
+        or GuestKey.ERROR_CLASS not in terminal
+        or terminal.get(GuestKey.ERROR_CLASS) is not None
+    ):
+        raise ValueError(ERROR_SETUP)
+    original = AdmittedDeadline.from_record(admission, require_vector=purpose is Purpose.QUALIFICATION)
+    budget = object_value(parse_object(package.recipe_bytes)[Field.BUDGET_SECONDS])
+    first_ns = positive_integer(first, GuestKey.MONOTONIC_NS)
+    unit_end = positive_integer(first, SetupKey.UNIT_END_NS)
+    if (
+        not first_ns
+        < unit_end
+        <= min(
+            original.effective_end(),
+            first_ns + positive_integer(budget, Field.GUEST_BOOT_OR_CONFIGURATION_MAX) * NANOSECONDS,
+        )
+    ):
+        raise ValueError(ERROR_SETUP)
+    previous = first_ns
+    for row in rows:
+        observed = positive_integer(row, GuestKey.MONOTONIC_NS)
+        if not previous <= observed < unit_end or observed > read.finished_ns:
+            raise ValueError(ERROR_SETUP)
+        previous = observed
+    count, inventory = _commands(rows[1:-1], unit_end, positive_integer(budget, Field.NORMAL_COMMAND_MAX))
+    facts = _setup_facts(object_value(terminal[SetupKey.FACTS]), admission, package, first_ns, previous)
+    if facts.inventory_sha256 != inventory:
+        raise ValueError(ERROR_SETUP)
+    _before_cutoff(min(read.end_ns, original.effective_end()))
+    return GuestSetupEvidence(read, manifest_digest, unit_end, previous, count, facts)
 
 
 def _protected_directory(descriptor: int, root_uid: int, *, control: bool) -> None:
