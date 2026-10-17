@@ -82,19 +82,6 @@ Scenario Outline: An operator chooses alpha or beta enrollment
 
 #### UC-CFG-PIN-6: Existing pins migrate to the selected compatibility boundary
 
-```gherkin
-Scenario Outline: An operator's stable installation keeps its series current
-  Given an operator has an existing stable deployment pin <pin>
-  When its configuration migration completes
-  Then the effective compatibility series is <series>
-  And a repeated migration leaves that selection unchanged
-
-  Examples:
-    | pin | series |
-    | 0.8 | 0.8    |
-    | 1.8 | 1      |
-```
-
 ## Known caveats
 
 - Selecting another series changes release eligibility. Availability and health
