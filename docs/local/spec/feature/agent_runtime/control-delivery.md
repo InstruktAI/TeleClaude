@@ -113,22 +113,7 @@ And the session transcript remains the inspectable record of what the agent rece
 
 #### UC-CDL12:
 
-```gherkin
-Given an agent has both ordinary control traffic and activation events restricted to wake entry pending
-When the agent reaches an in-turn delivery boundary
-Then it receives the eligible ordinary control traffic
-And the wake-restricted events remain pending in their original order
-And the delivery outcome accounts only for the selected payloads
-```
-
 #### UC-CDL13:
-
-```gherkin
-Given an agent receives a permitted selection from its pending activation events
-When the hook handoff succeeds or fails
-Then only that selection reaches the corresponding terminal delivery outcome
-And unselected events remain pending for their own eligible boundary
-```
 
 ## Known caveats
 
