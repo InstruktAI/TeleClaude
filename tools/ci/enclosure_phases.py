@@ -127,6 +127,7 @@ class BindingPhases:
         self.masked_activation_sources: ActivationSources | None = None
         self.results: dict[Action, ActionResult] = {}
         self.seal: ActionResult | None = None
+        self.seal_boundary: JobBoundary | None = None
         self.completion_failure: BaseException | None = None
 
     @property
@@ -184,9 +185,12 @@ class BindingPhases:
                 self._helper_frontier(None)
                 if result.evidence.get(Evidence.PHASE) != Phase.ADMISSION_SEALED:
                     raise ValueError(ERROR_BINDING)
+                # Ack/EOF/exit awaited the original loop after the callback's reconciliation.
+                boundary = self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
                 if time.monotonic_ns() >= end_ns:
                     raise TimeoutError(ERROR_BINDING)
                 # Only the actual durable receipt plus positive helper exit exposes this seal to the supervisor.
+                self.seal_boundary = boundary
                 self.seal = result
             return result
         except HelperUncertain as error:
