@@ -355,13 +355,35 @@ class _Prepared:
             if effect is not None:
                 cast(list[creation.EvidenceValue], effect["list_observed_ns"]).append(time.monotonic_ns())
 
-    def _git(self, step: str, *args: str) -> str:
-        outcome = self.host.process((GIT, *args), self.project, self.host.environment, GIT_TIMEOUT_SECONDS)
-        if outcome.exit_status != 0:
-            raise creation.binding_failure(
-                DETAIL_GIT.format(step=step, args=list(args), status=outcome.exit_status, output=outcome.output[-300:])
-            )
-        return outcome.output.strip()
+    def _git(self, step: str, *args: str, effect: creation.EvidenceObject | None = None) -> str:
+        packet: creation.EvidenceObject | None = None
+        if effect is not None:
+            packet = {
+                "step": step,
+                "started_ns": time.monotonic_ns(),
+                "finished_ns": None,
+                "command": None,
+                "error": None,
+            }
+            cast(list[creation.EvidenceValue], effect["git"]).append(packet)
+        try:
+            outcome = self.host.process((GIT, *args), self.project, self.host.environment, GIT_TIMEOUT_SECONDS)
+            if packet is not None:
+                packet["command"] = creation.command_evidence((GIT, *args), outcome)
+            if outcome.exit_status != 0:
+                raise creation.binding_failure(
+                    DETAIL_GIT.format(
+                        step=step, args=list(args), status=outcome.exit_status, output=outcome.output[-300:]
+                    )
+                )
+            return outcome.output.strip()
+        except Exception as error:
+            if packet is not None:
+                packet["error"] = f"{type(error).__name__}: {error}"
+            raise
+        finally:
+            if packet is not None:
+                packet["finished_ns"] = time.monotonic_ns()
 
     def _git_ok(self, *args: str) -> bool:
         outcome = self.host.process((GIT, *args), self.project, self.host.environment, GIT_TIMEOUT_SECONDS)
@@ -807,20 +829,23 @@ class _Prepared:
     def b9_positive_input(self, intaker: str) -> None:
         """C2's successful BODY_C write binds the in-group intent edit before the owner BODY_A write."""
         attempt = self._b4_begin(EFFECT_C2_INPUT, start_ledger.RECORD_EFFECT)
-        before = self.snapshot()
+        effect = self._effect(EFFECT_C2_INPUT, intaker)
+        if effect is not None:
+            effect["attempt_id"] = attempt
+        before = self.snapshot(effect)
         before_log = self._public_log_entries(before)
         self._late(3, ARGV_C2_INPUT, [NATIVE_TELEC_COMMAND, TODO, "artifacts", "write", ITEM, INPUT, B9_BODY_C])
         self._gate(3, GATE_C2_INPUT)
         journey = self.journeys["child"]
-        status, output = self._frame_output(journey, "cmd_inputc")
+        status, output = self._frame_output(journey, "cmd_inputc", effect=effect)
         if status != 0 or WROTE_PHRASE not in output:
             raise creation.platform_failure(
                 DETAIL_WRITE.format(status=status, phrase=WROTE_PHRASE, output=output[-300:])
             )
-        after = self._shown()
+        after = self._shown(effect)
         items.require_only_changes("B9 C2 intent body", before, after, OWNER_WRITE_PATHS)
-        if self._input() != B9_BODY_C:
-            raise creation.platform_failure(DETAIL_BODY.format(found=self._input(), expected=B9_BODY_C))
+        if self._input(effect) != B9_BODY_C:
+            raise creation.platform_failure(DETAIL_BODY.format(found=self._input(effect), expected=B9_BODY_C))
         found, updated_by = creation.dig(after, UPDATED_BY)
         if not found or updated_by != intaker:
             raise creation.platform_failure(DETAIL_UPDATED_SESSION.format(found=updated_by))
@@ -830,8 +855,10 @@ class _Prepared:
                     when="after C2's positive input", before=before_log, after=self._public_log_entries(after)
                 )
             )
-        self.require_live(intaker, "after C2's positive input")
+        self.require_live(intaker, "after C2's positive input", effect)
         self._b4_discharge(attempt, "C2 command succeeded, BODY_C is public, and updated_by names C2")
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
 
     def _b9_refusal(
         self,
@@ -842,42 +869,60 @@ class _Prepared:
         frame: str,
         argv: list[str],
         expected: tuple[str, ...],
+        *,
+        actor: str,
     ) -> None:
         attempt = self._b4_begin(label, start_ledger.RECORD_EFFECT)
-        snapshot = self.snapshot()
+        effect = self._effect(label, actor)
+        if effect is not None:
+            effect["attempt_id"] = attempt
+            effect["slot"] = index
+        snapshot = self.snapshot(effect)
         entries = self._public_log_entries(snapshot)
-        sessions = self.observer.sessions()
+        sessions = self._sessions(effect)
         self._late(index, argv_file, argv)
         self._gate(index, gate)
         journey = self._journey("outsider", 1 if index == 1 else index)
-        status, output = self._frame_output(journey, frame)
+        status, output = self._frame_output(journey, frame, effect=effect)
         if status in (None, 0) or any(needle not in output for needle in expected) or "Performed " in output:
             raise creation.platform_failure(
                 DETAIL_B9_REFUSAL.format(act=label, status=status, expected=expected, output=output[-400:])
             )
-        self.require_snapshot(snapshot, f"B9 {label}")
-        if self._public_log_entries(self._shown()) != entries:
+        self.require_snapshot(snapshot, f"B9 {label}", effect)
+        if self._public_log_entries(self._shown(effect)) != entries:
             raise creation.platform_failure(
                 DETAIL_LOG_HEADERS.format(
-                    when=f"B9 {label}", before=entries, after=self._public_log_entries(self._shown())
+                    when=f"B9 {label}", before=entries, after=self._public_log_entries(self._shown(effect))
                 )
             )
-        creation.require_sessions_equal(sessions, self.observer.sessions(retain=False), f"B9 {label}")
+        creation.require_sessions_equal(sessions, self._sessions(effect, retain=False), f"B9 {label}")
         self._b4_discharge(attempt, f"public refusal {expected!r}; complete show, log and session set unchanged")
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
 
     def b9_wrong_performers(self, author: str, intaker: str, r1: str) -> None:
         """Run X and C2's phase-valid refused probes before D2's successful prepared."""
-        if self._record(author).get(waiting.FIELD_ROLE) != "prepare-orchestrator":
-            raise creation.platform_failure(DETAIL_B9_SESSION.format(label="D2", record=self._record(author)))
+        effect = self._effect("b9-performer-context", author)
+        if effect is not None:
+            effect["R1"] = r1
+            effect["person"] = self.owner_slug
+        if self._record(author, effect=effect).get(waiting.FIELD_ROLE) != "prepare-orchestrator":
+            raise creation.platform_failure(
+                DETAIL_B9_SESSION.format(label="D2", record=self._record(author, effect=effect))
+            )
         if (
-            self._record(intaker).get(waiting.FIELD_ROLE) != "intaker"
-            or self._record(intaker).get(waiting.FIELD_INITIATOR) != author
+            self._record(intaker, effect=effect).get(waiting.FIELD_ROLE) != "intaker"
+            or self._record(intaker, effect=effect).get(waiting.FIELD_INITIATOR) != author
         ):
-            raise creation.platform_failure(DETAIL_B9_SESSION.format(label="C2", record=self._record(intaker)))
-        creation.require_value(ITEM, self._shown(), "state.active_runner", author)
+            raise creation.platform_failure(
+                DETAIL_B9_SESSION.format(label="C2", record=self._record(intaker, effect=effect))
+            )
+        creation.require_value(ITEM, self._shown(effect), "state.active_runner", author)
         x = self.outsider_sessions.get("X")
         if x is None:
             raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail="X was not recorded"))
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
         self._b9_refusal(
             EFFECT_X_INPUT,
             1,
@@ -886,6 +931,7 @@ class _Prepared:
             "cmd_inputforeign",
             [NATIVE_TELEC_COMMAND, TODO, "artifacts", "write", ITEM, INPUT, B9_X_INPUT],
             ("409", f"{ITEM} is held by session {author}", "holder or a session of its claiming group"),
+            actor=x,
         )
         self._b9_refusal(
             EFFECT_C2_PREPARED,
@@ -895,6 +941,7 @@ class _Prepared:
             "cmd_preparedwrong",
             [NATIVE_TELEC_COMMAND, TODO, "act", ITEM, "prepared", "--revision", r1, B9_PREPARED_TEXT],
             ("Error: 409 — prepared requires the holding driver",),
+            actor=intaker,
         )
         self._b9_refusal(
             EFFECT_C2_WAITING,
@@ -904,6 +951,7 @@ class _Prepared:
             "cmd_waitingwrong",
             [NATIVE_TELEC_COMMAND, TODO, "act", ITEM, "waiting", "--person", self.owner_slug, B9_WAITING_TEXT],
             ("Error: 409 — waiting requires the holding driver",),
+            actor=intaker,
         )
 
     def _end_b9_session(self, label: str, session: str) -> None:
@@ -1492,7 +1540,11 @@ class _Prepared:
                 raise creation.platform_failure(DETAIL_INSTRUCTION.format(needle=needle, text=instruction[-600:]))
         case.observe_claim(worker, known_entries=self.known_claims + 1)
         self.starts[operation] = publication.START_CLAIMED
-        _, log = creation.dig(self._shown(), "artifact_content.log")
+        effect = self._effect("worker-claim-and-worktree", worker)
+        if effect is not None:
+            effect["start_operation_id"] = operation
+            effect["git"] = []
+        _, log = creation.dig(self._shown(effect), "artifact_content.log")
         claims = driver.claim_entries(str(log))
         branch_note = f"on branch {ITEM}"
         if not claims or branch_note not in claims[-1][1]:
@@ -1502,15 +1554,17 @@ class _Prepared:
         roles = [
             session
             for session in (author, child, worker)
-            if self._record(session).get(waiting.FIELD_ROLE) == "work-orchestrator"
+            if self._record(session, effect=effect).get(waiting.FIELD_ROLE) == "work-orchestrator"
         ]
         if roles != [worker]:
             raise creation.platform_failure(DETAIL_ROLE_COUNT.format(count=len(roles), found=roles))
-        shown = self._shown()
+        shown = self._shown(effect)
         creation.require_value(ITEM, shown, "state.lifecycle_phase", WORK_PHASE)
         creation.require_value(ITEM, shown, "standing.phase", WORK_PHASE)
         creation.require_value(ITEM, shown, "standing.held_by", worker)
-        self.worktree(worker)
+        self.worktree(worker, effect)
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
         return case, worker
 
     def _worktree_block(self) -> str:
@@ -1521,14 +1575,16 @@ class _Prepared:
         block = next((lines for lines in blocks if lines and lines[0] == f"worktree {expected}"), [])
         return "\n".join(block)
 
-    def worktree(self, worker: str) -> None:
+    def worktree(self, worker: str, effect: creation.EvidenceObject | None = None) -> None:
         """The worktree and the opening commit the claim queued, read with real `git`."""
         deadline = time.monotonic() + WORKTREE_SECONDS
+        if effect is not None:
+            effect["worktree_end"] = deadline
         expected = str(self.project / "trees" / ITEM)
         listing = ""
         block: list[str] = []
         while time.monotonic() < deadline:
-            listing = self._git("worktree list", "worktree", "list", "--porcelain")
+            listing = self._git("worktree list", "worktree", "list", "--porcelain", effect=effect)
             blocks = [chunk.split("\n") for chunk in listing.replace("\r\n", "\n").split("\n\n")]
             block = next((lines for lines in blocks if lines and lines[0] == f"worktree {expected}"), [])
             if block:
@@ -1542,21 +1598,22 @@ class _Prepared:
             raise creation.platform_failure(
                 DETAIL_WORKTREE.format(what="the worktree's branch", found=block, expected=f"refs/heads/{ITEM}")
             )
-        count = self._git("opening commit count", "rev-list", "--count", f"{ORIGIN}/{MAIN}..{ITEM}")
+        count = self._git("opening commit count", "rev-list", "--count", f"{ORIGIN}/{MAIN}..{ITEM}", effect=effect)
         if count != "1":
             raise creation.platform_failure(
                 DETAIL_WORKTREE.format(what="commits beyond origin/main", found=count, expected="1")
             )
-        parent = self._git("opening commit parent", "rev-parse", f"{ITEM}^")
-        tip = self._git("origin tip", "rev-parse", f"{ORIGIN}/{MAIN}")
+        parent = self._git("opening commit parent", "rev-parse", f"{ITEM}^", effect=effect)
+        tip = self._git("origin tip", "rev-parse", f"{ORIGIN}/{MAIN}", effect=effect)
         if parent != tip:
             raise creation.platform_failure(
                 DETAIL_WORKTREE.format(what="parent of the opening commit", found=parent, expected=tip)
             )
         self.require_declared(
-            "the worktree's HEAD", self._git("worktree declaration", "-C", expected, "show", f"HEAD:{BASE_FILE}")
+            "the worktree's HEAD",
+            self._git("worktree declaration", "-C", expected, "show", f"HEAD:{BASE_FILE}", effect=effect),
         )
-        message = self._git("opening commit message", "log", "-1", "--format=%B", ITEM)
+        message = self._git("opening commit message", "log", "-1", "--format=%B", ITEM, effect=effect)
         if not message.startswith(OPENING_SUBJECT) or f"Session: {worker}" not in message:
             raise creation.platform_failure(
                 DETAIL_WORKTREE.format(
@@ -1572,16 +1629,19 @@ class _Prepared:
         self.handover.after([ITEM])
         if self.baseline is None:
             raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail="B0 was not retained"))
+        effect = self._effect("post-close-inventory", worker)
         expected = frozenset((*self.known_sessions, worker))
-        current = self.observer.sessions(retain=False)
+        current = self._sessions(effect, retain=False)
         if current.ids - self.baseline.ids != expected:
             raise creation.platform_failure(
                 DETAIL_B9_SESSION.format(label="B4 post-B0 session set", record=sorted(current.ids - self.baseline.ids))
             )
         for session in sorted(expected):
-            record = self._record(session)
+            record = self._record(session, effect=effect)
             if record.get(waiting.FIELD_CLOSED_AT) is None or record.get(waiting.FIELD_LIFECYCLE) != foundation.CLOSED:
                 raise creation.platform_failure(DETAIL_B9_END.format(session=session, record=record))
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
 
 
 def run_prepared(
