@@ -63,6 +63,8 @@ Scenario: A removed or renamed project matches the current listing
   And a renamed project appears under its new display name
 ```
 
+#### UC-TUI-PL2: A project the listing drops or renames is redrawn as it now is
+
 #### UC-TUI-PL3: Adding a project asks only for its folder and shows it everywhere
 
 ```gherkin
