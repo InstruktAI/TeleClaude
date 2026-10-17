@@ -11,7 +11,7 @@ visibility: 'public'
 
 ## What it is
 
-The agent_runtime bounded context is hosted by a single long-running service process per computer. This spec covers the deterministic startup and shutdown ordering of that process, and the recovery loop that re-launches the embedded request surface if it exits unexpectedly. Everything that binds per-session machinery (output polling, host-pane orchestration, listeners, conversation links, hook ingest, mirrors) into one runtime hangs off of this lifecycle: it warms the in-memory caches that other surfaces read from, reconciles deliveries that might have been in flight when the previous process died, and starts the background workers that maintain liveness afterwards.
+The agent_runtime bounded context is hosted by a single long-running service process per computer. This spec covers the deterministic startup and shutdown ordering of that process, and the recovery loop that re-launches the embedded request surface if it exits unexpectedly. The webhook ingress listener belongs to the same recovery boundary as the API task. Everything that binds per-session machinery (output polling, host-pane orchestration, listeners, conversation links, hook ingest, mirrors) into one runtime hangs off of this lifecycle: it warms the in-memory caches that other surfaces read from, reconciles deliveries that might have been in flight when the previous process died, and starts the background workers that maintain liveness afterwards.
 
 ## Canonical fields
 
@@ -69,35 +69,6 @@ lifecycle's configured observations. These readiness boundaries follow
 
 #### UC-DL2 — Turn delivery state is reconciled before adapters can emit output
 
-#### Orphan sweeps run from the cleanup task, not from startup
-
-```
-Given the periodic-cleanup task started after lifecycle startup completed
-When the first iteration executes (no initial sleep)
-Then it sweeps:
-  - Orphan host-pane sessions — terminates host panes absent from durable storage
-  - Orphan workspace directories — removes workspace dirs whose session is not active in storage
-  - Orphan per-session tmpdirs — removes per-session tmpdirs not referenced by live sessions
-  - In-process hook-receiver caller→session entries
-  - Orphan inbound rows, session listeners
-  - Voice-transcription rows in terminal states past the runtime retention window
-  - Orphan voice temp audio — removes old voice files with no recoverable durable row
-  - Retention sweeps for inbound, terminal operations, webhook outbox, hook outbox (7-day cutoff)
-And subsequent iterations sleep an hour between sweeps
-And the lifecycle's own startup does NOT perform any orphan sweep — this is intentional, the sweep is amortized into the steady-state loop
-```
-
-#### Startup retry policy
-
-```
-Given the service start raises an exception
-When the error is classified as retryable (network errors, connect errors, timeouts, OS errors, or messages mentioning "name resolution" / "connection refused" / "timed out" / "temporary failure")
-Then the service retries up to a bounded attempt count with exponential backoff
-And non-retryable errors (configuration, authentication, lock errors) exit immediately
-And exhausting retries exits abnormally
-And every startup attempt acquires the single-instance lock idempotently; failure during start releases the lock before re-raise
-```
-
 #### An operator can stop the daemon without losing accepted work
 
 ```gherkin
@@ -113,31 +84,6 @@ And independently running agent turns continue without being terminated
 Given the service has no active playback generation to cancel
 When a human operator stops the service
 Then shutdown completes without reporting a playback-cancellation validation failure
-```
-
-#### Request-surface exit detection
-
-```
-Given the embedded request-surface task, or the webhook ingress listener it starts, exits while the service is NOT shutting down
-When the wired exit-handler callback fires with the relevant flags
-Then if the shutdown event is set, it returns immediately
-And if the should-exit flag is true, it logs "request surface exited cleanly; skipping restart" and returns
-And otherwise it logs a warning identifying which surface exited and whether the exit was a crash or a clean task completion, and schedules a restart
-And external watchdogs may also request a restart via the schedule-restart hook
-```
-
-#### Request-surface restart loop
-
-```
-Given a restart is scheduled while the loop is alive
-When the restart task acquires the restart lock
-Then it tracks a sliding restart window: if the time since window-start exceeds the configured window, the counter resets and the window restarts
-And it increments the attempt counter
-And if attempts exceed the configured maximum, it logs that the restart limit is exhausted and requests the service's ordinary shutdown, which the service manager follows with a relaunch
-And otherwise it sleeps the backoff and asks the request-surface to restart
-And on success returns success
-And on failure logs the exception and schedules another restart, counted in the same window
-And the service never stays up with its request surface left down
 ```
 
 #### UC-CW1: Chiptunes registry paths are durable home-root control files
