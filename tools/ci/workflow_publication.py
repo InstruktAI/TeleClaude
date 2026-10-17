@@ -123,6 +123,31 @@ def docs_body(output: str) -> str | None:
     return body.split(PENDING_NOTE_MARKER)[0].strip()
 
 
+def file_body(source: str) -> str:
+    """The original body extraction from already-decoded candidate text."""
+    parts = source.split("---", 2)
+    return _text(parts[2]).strip() if len(parts) == 3 else ""
+
+
+def classify_bodies(
+    pending: Mapping[str, str], current: Mapping[str, str], files: Mapping[str, str]
+) -> tuple[str, str]:
+    """Apply the original publication generation classifier to its already-read bodies."""
+    if all(current[identity] == pending[identity] for identity in FOLD_IDS):
+        return GENERATION_FIXTURE, "all four current bodies equal the pending bodies"
+    if all(current[identity] != pending[identity] and current[identity] == files[identity] for identity in FOLD_IDS):
+        return GENERATION_CANDIDATE, "all four current bodies equal the candidate live files and differ from pending"
+    detail = {
+        identity: {
+            "equals_pending": current[identity] == pending[identity],
+            "equals_candidate_file": current[identity] == files[identity],
+            "first_difference": _first_difference(current[identity], files[identity]),
+        }
+        for identity in FOLD_IDS
+    }
+    return GENERATION_INCONSISTENT, repr(detail)
+
+
 def operation_state(
     observer: creation.Observer,
     operation: str,
@@ -461,8 +486,7 @@ class Publication:
             text = path.read_text(encoding="utf-8")
             if packet is not None:
                 packet["text"] = text
-            parts = text.split("---", 2)
-            return _text(parts[2]).strip() if len(parts) == 3 else ""
+            return file_body(text)
         except Exception as error:
             if packet is not None:
                 packet["error"] = f"{type(error).__name__}: {error}"
@@ -480,24 +504,7 @@ class Publication:
         pending = {identity: self.body_of(identity, pending=True) for identity in FOLD_IDS}
         current = {identity: self.body_of(identity, pending=False) for identity in FOLD_IDS}
         files = {identity: self._file_body(identity) for identity in FOLD_IDS}
-        if all(current[identity] == pending[identity] for identity in FOLD_IDS):
-            return GENERATION_FIXTURE, "all four current bodies equal the pending bodies"
-        if all(
-            current[identity] != pending[identity] and current[identity] == files[identity] for identity in FOLD_IDS
-        ):
-            return (
-                GENERATION_CANDIDATE,
-                "all four current bodies equal the candidate live files and differ from pending",
-            )
-        detail = {
-            identity: {
-                "equals_pending": current[identity] == pending[identity],
-                "equals_candidate_file": current[identity] == files[identity],
-                "first_difference": _first_difference(current[identity], files[identity]),
-            }
-            for identity in FOLD_IDS
-        }
-        return GENERATION_INCONSISTENT, repr(detail)
+        return classify_bodies(pending, current, files)
 
     def release_candidate_files(self) -> None:
         """Take the candidate\'s live bodies from its checkout, so a restoration can be verified from the start."""
@@ -540,7 +547,19 @@ class Publication:
     def _reusable(self) -> bool:
         """Whether an earlier journey of the profile left a verified owned clone: same commit, clean tree."""
         recorded = self._verified.get(self.candidate)
-        if not recorded or not (self.clone / ".git").exists():
+        packet = self._input_record("cache_state", candidate=self.candidate, recorded=recorded, git_exists=None)
+        try:
+            exists = (self.clone / ".git").exists() if recorded else None
+            if packet is not None:
+                packet["git_exists"] = exists
+        except Exception as error:
+            if packet is not None:
+                packet["error"] = f"{type(error).__name__}: {error}"
+            raise
+        finally:
+            if packet is not None:
+                packet["finished_ns"] = time.monotonic_ns()
+        if not recorded or not exists:
             return False
         try:
             clean = not self._run(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import io
 import math
 import re
 from collections.abc import Mapping
@@ -16,6 +17,7 @@ from tools.ci import workflow_events as events
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_items as items
 from tools.ci import workflow_prepared as prepared
+from tools.ci import workflow_publication as publication
 from tools.ci import workflow_waiting as waiting
 from tools.ci.enclosure_contract import (
     NANOSECONDS,
@@ -33,8 +35,8 @@ from tools.ci.enclosure_contract import (
     positive_integer,
     text,
 )
+from tools.ci.enclosure_guest import SOURCE_ROOT, Purpose
 from tools.ci.enclosure_guest import Key as GuestKey
-from tools.ci.enclosure_guest import Purpose
 from tools.ci.enclosure_inner import PROVISIONAL_REPORT_SCHEMA, PROVISIONAL_STAGE, LedgerEvidence, PendingReason
 from tools.ci.workflow_creation import collect_slugs
 from tools.ci.workflow_driver import DRIVER_ID as PROC_PREPARE
@@ -2301,6 +2303,421 @@ def _early_owner_inputs(
     }
 
 
+def _publication_cache(events: list[JsonObject], clone: Path, candidate: str) -> tuple[JsonObject, set[int]]:
+    positions = [index for index, event in enumerate(events) if event["kind"] == "cache_state"]
+    if len(positions) != 1:
+        raise ValueError(ERROR_REPORT)
+    index = positions[0]
+    state = events[index]
+    if (
+        set(state) != {"kind", "started_ns", "finished_ns", "error", "candidate", "recorded", "git_exists"}
+        or state["candidate"] != candidate
+    ):
+        raise ValueError(ERROR_REPORT)
+    recorded, exists = state["recorded"], state["git_exists"]
+    if recorded is not None and not isinstance(recorded, str):
+        raise ValueError(ERROR_REPORT)
+    if (not recorded and exists is not None) or (recorded and type(exists) is not bool):
+        raise ValueError(ERROR_REPORT)
+    failures: list[JsonValue] = []
+    probes: set[int] = set()
+    reused = False
+    if recorded and exists:
+        if index + 1 >= len(events):
+            raise ValueError(ERROR_REPORT)
+        index += 1
+        event = events[index]
+        command = object_value(event["command"])
+        argv = [publication.GIT, "status", "--porcelain"]
+        if event["kind"] != "process" or event.get("cwd") != str(clone) or command.get("argv") != argv:
+            raise ValueError(ERROR_REPORT)
+        probes.add(index)
+        successful = type(command.get("exit_status")) is int and command["exit_status"] == 0
+        output = _command_output(event["command"], argv, successful=successful)
+        if not successful:
+            if not isinstance(event["error"], str) or not event["error"]:
+                raise ValueError(ERROR_REPORT)
+            failures.append(event)
+        elif not output.strip():
+            if index + 1 >= len(events):
+                raise ValueError(ERROR_REPORT)
+            index += 1
+            event = events[index]
+            command = object_value(event["command"])
+            argv = [publication.GIT, "rev-parse", "HEAD"]
+            if event["kind"] != "process" or event.get("cwd") != str(clone) or command.get("argv") != argv:
+                raise ValueError(ERROR_REPORT)
+            probes.add(index)
+            successful = type(command.get("exit_status")) is int and command["exit_status"] == 0
+            output = _command_output(event["command"], argv, successful=successful)
+            if successful:
+                reused = output.strip() == recorded
+            else:
+                if not isinstance(event["error"], str) or not event["error"]:
+                    raise ValueError(ERROR_REPORT)
+                failures.append(event)
+    if index + 1 >= len(events):
+        raise ValueError(ERROR_REPORT)
+    following = object_value(events[index + 1]["command"])
+    expected = (
+        [publication.GIT, "rev-parse", "HEAD"]
+        if reused
+        else [publication.GIT, "clone", "--quiet", "--shared", str(SOURCE_ROOT), str(clone)]
+    )
+    if following.get("argv") != expected:
+        raise ValueError(ERROR_REPORT)
+    return {
+        "state": "original_cache_reuse" if reused else "original_cache_rebuild",
+        "recorded": recorded,
+        "retained_probe_failures": failures,
+        "failure_resolution": "not_inferred",
+    }, probes
+
+
+def _publication_process(event: JsonObject, root: Path, clone: Path, *, failed_probe: bool) -> tuple[str, str]:
+    if set(event) != {"kind", "started_ns", "finished_ns", "error", "cwd", "timeout_seconds", "what", "command"}:
+        raise ValueError(ERROR_REPORT)
+    what, cwd = text(event, "what"), text(event, "cwd")
+    command = object_value(event["command"])
+    argv = list(_strings(command["argv"]))
+    cap = publication.CLONE_TIMEOUT_SECONDS
+    tag = what
+    fixed = {
+        "git rev-parse HEAD": [publication.GIT, "rev-parse", "HEAD"],
+        "git rev-parse tree": [publication.GIT, "rev-parse", "HEAD^{tree}"],
+        "git status": [publication.GIT, "status", "--porcelain"],
+        "git diff": [publication.GIT, "diff", "--name-status", "HEAD~1", "HEAD"],
+        "git config user.name": [publication.GIT, "config", "user.name", publication.GIT_AUTHOR],
+        "git config user.email": [publication.GIT, "config", "user.email", publication.GIT_EMAIL],
+        "git commit": [publication.GIT, "commit", "--quiet", "-m", "fold the four driver procedures"],
+        "telec code lint --all": [
+            str(SOURCE_ROOT / publication.TELEC),
+            publication.CODE,
+            publication.LINT,
+            publication.ALL_FLAG,
+        ],
+    }
+    if what in fixed:
+        expected_cwd = str(SOURCE_ROOT) if what == "git rev-parse tree" else str(clone)
+        if what == "git rev-parse HEAD" and cwd == str(SOURCE_ROOT):
+            expected_cwd, tag = str(SOURCE_ROOT), "source_head"
+        if argv != fixed[what] or cwd != expected_cwd:
+            raise ValueError(ERROR_REPORT)
+        if what == "telec code lint --all":
+            cap = publication.LINT_TIMEOUT_SECONDS
+    elif what in ("git rm", "git add"):
+        paths = {
+            str(
+                publication.DOCS_ROOT
+                / f"{identity}{publication.COMPANION_SUFFIX if what == 'git rm' else publication.LIVE_SUFFIX}"
+            )
+            for identity in publication.FOLD_IDS
+        }
+        prefix = [publication.GIT, "rm", "--quiet"] if what == "git rm" else [publication.GIT, "add"]
+        if argv[:-1] != prefix or argv[-1] not in paths or cwd != str(clone):
+            raise ValueError(ERROR_REPORT)
+    elif what == "git clone --shared":
+        if len(argv) != 6 or argv[:4] != [publication.GIT, "clone", "--quiet", "--shared"] or cwd != str(root):
+            raise ValueError(ERROR_REPORT)
+        if argv[5] == str(clone):
+            if argv[4] != str(SOURCE_ROOT):
+                raise ValueError(ERROR_REPORT)
+            tag = "clone_fixture"
+        else:
+            match = re.fullmatch(
+                re.escape(str(root / publication.CLONE_NAME)) + r"-(ensure|fold|restore)-([1-9][0-9]*)", argv[5]
+            )
+            if match is None or argv[4] != str(clone if match.group(1) == "fold" else SOURCE_ROOT):
+                raise ValueError(ERROR_REPORT)
+            tag = "copy_" + match.group(1)
+    elif what == "install_publication":
+        match = re.fullmatch(
+            re.escape(str(root / publication.CLONE_NAME)) + r"-(ensure|fold|restore)-([1-9][0-9]*)", cwd
+        )
+        if match is None or argv != [
+            publication.UV,
+            "run",
+            "--project",
+            str(SOURCE_ROOT),
+            "--no-sync",
+            "python",
+            "-m",
+            publication.INSTALL_MODULE,
+        ]:
+            raise ValueError(ERROR_REPORT)
+        tag, cap = "publish_" + match.group(1), publication.PUBLISH_TIMEOUT_SECONDS
+    else:
+        raise ValueError(ERROR_REPORT)
+    if (
+        type(event["timeout_seconds"]) not in (int, float)
+        or event["timeout_seconds"] != cap
+        or (event["error"] is not None and not failed_probe)
+    ):
+        raise ValueError(ERROR_REPORT)
+    output = _command_output(event["command"], argv, successful=not failed_probe)
+    return tag, output.strip()
+
+
+def _publication_build(
+    processes: list[tuple[int, str, str]],
+    cache: JsonObject,
+    probes: set[int],
+    copies: dict[str, str],
+) -> str:
+    builds = [value for value in processes if value[1] == "clone_fixture"]
+    reused = cache["state"] == "original_cache_reuse"
+    if len(builds) != (0 if reused else 1) or bool(copies) != (not reused):
+        raise ValueError(ERROR_REPORT)
+    heads = [value for value in processes if value[1] == "git rev-parse HEAD" and value[0] not in probes]
+    if len(heads) != (1 if reused else 2) or not heads[0][2] or any(value[2] != heads[0][2] for value in heads):
+        raise ValueError(ERROR_REPORT)
+    if reused and heads[0][2] != cache["recorded"]:
+        raise ValueError(ERROR_REPORT)
+    expected = {
+        "git config user.name": 1,
+        "git config user.email": 1,
+        "git rm": 4,
+        "git add": 4,
+        "git commit": 1,
+        "git status": 1,
+        "git diff": 1,
+        "telec code lint --all": 1,
+    }
+    for tag, count in expected.items():
+        matching = [value for value in processes if value[1] == tag and value[0] not in probes]
+        if len(matching) != (0 if reused else count):
+            raise ValueError(ERROR_REPORT)
+    if not reused:
+        status = next(value for value in processes if value[1] == "git status" and value[0] not in probes)
+        diff = next(value for value in processes if value[1] == "git diff")
+        lint = next(value for value in processes if value[1] == "telec code lint --all")
+        expected_diff = sorted(
+            [
+                *[
+                    ["M", str(publication.DOCS_ROOT / f"{identity}{publication.LIVE_SUFFIX}")]
+                    for identity in publication.FOLD_IDS
+                ],
+                *[
+                    ["D", str(publication.DOCS_ROOT / f"{identity}{publication.COMPANION_SUFFIX}")]
+                    for identity in publication.FOLD_IDS
+                ],
+            ]
+        )
+        if (
+            status[2]
+            or sorted(line.split() for line in diff[2].splitlines() if line.strip()) != expected_diff
+            or not status[0] < diff[0] < lint[0] < heads[0][0]
+        ):
+            raise ValueError(ERROR_REPORT)
+    return heads[0][2]
+
+
+def _publication_generations(
+    row: JsonObject,
+    events: list[JsonObject],
+    processes: list[tuple[int, str, str]],
+    current: list[tuple[int, str, str]],
+    pending: dict[str, str],
+    files: dict[str, str],
+    cache: JsonObject,
+    probes: set[int],
+    copies: dict[str, str],
+) -> JsonObject:
+    if (
+        len(processes) < 4
+        or [value[1] for value in processes[:2]] != ["source_head", "git rev-parse tree"]
+        or [value[1] for value in processes[-2:]] != ["source_head", "git rev-parse tree"]
+        or [value[0] for value in processes[:2]] != [0, 1]
+        or [value[0] for value in processes[-2:]] != [len(events) - 2, len(events) - 1]
+    ):
+        raise ValueError(ERROR_REPORT)
+    fold_revision = _publication_build(processes, cache, probes, copies)
+    publications = [value for value in processes if value[1].startswith("publish_")]
+    purposes = [value[1].removeprefix("publish_") for value in publications]
+    if purposes not in (["fold", "restore"], ["ensure", "fold", "restore"]):
+        raise ValueError(ERROR_REPORT)
+    by_index = {value[0]: value for value in processes}
+    copy_processes = [value for value in processes if value[1].startswith("copy_")]
+    if len(copy_processes) != len(publications):
+        raise ValueError(ERROR_REPORT)
+    for number, (index, tag, _) in enumerate(publications, start=1):
+        prior = by_index.get(index - 1)
+        if prior is None or prior[1] != tag.replace("publish_", "copy_", 1):
+            raise ValueError(ERROR_REPORT)
+        command = object_value(events[index - 1]["command"])
+        argv = _strings(command["argv"])
+        if argv[-1] != events[index]["cwd"] or not argv[-1].endswith(f"-{number}"):
+            raise ValueError(ERROR_REPORT)
+    if len(current) % len(publication.FOLD_IDS):
+        raise ValueError(ERROR_REPORT)
+    groups: list[tuple[int, int, dict[str, str]]] = []
+    for offset in range(0, len(current), len(publication.FOLD_IDS)):
+        group = current[offset : offset + len(publication.FOLD_IDS)]
+        if tuple(value[1] for value in group) != publication.FOLD_IDS:
+            raise ValueError(ERROR_REPORT)
+        groups.append((group[0][0], group[-1][0], {value[1]: value[2] for value in group}))
+    folded = next(value[0] for value in publications if value[1] == "publish_fold")
+    restored = next(value[0] for value in publications if value[1] == "publish_restore")
+    before = [value for value in groups if value[1] < folded]
+    during = [value for value in groups if folded < value[0] and value[1] < restored]
+    after = [value for value in groups if restored < value[0]]
+    ensured = purposes[0] == "ensure"
+    if (
+        len(before) != (3 if ensured else 2)
+        or len(during) != 1
+        or len(after) != 1
+        or len(groups) != len(before) + len(during) + len(after)
+    ):
+        raise ValueError(ERROR_REPORT)
+    for index, (_, _, bodies) in enumerate(before):
+        expected_state = publication.GENERATION_FIXTURE if ensured and index == 0 else publication.GENERATION_CANDIDATE
+        if publication.classify_bodies(pending, bodies, files)[0] != expected_state:
+            raise ValueError(ERROR_REPORT)
+    if (
+        publication.classify_bodies(pending, during[0][2], files)[0] != publication.GENERATION_FIXTURE
+        or publication.classify_bodies(pending, after[0][2], files)[0] != publication.GENERATION_CANDIDATE
+        or after[0][2] != before[-1][2]
+    ):
+        raise ValueError(ERROR_REPORT)
+    if ensured and not before[0][1] < publications[0][0] < before[1][0]:
+        raise ValueError(ERROR_REPORT)
+    actors = cast(list[JsonValue], row["actors"])
+    first_actor = min(positive_integer(object_value(value), "started_ns") for value in actors)
+    ends = cast(list[JsonValue], row["ends"])
+    final_end = max(positive_integer(object_value(value), "finished_ns") for value in ends)
+    if positive_integer(events[during[0][1]], "finished_ns") > first_actor or final_end > positive_integer(
+        events[restored], "started_ns"
+    ):
+        raise ValueError(ERROR_REPORT)
+    return {
+        "initial": publication.GENERATION_FIXTURE if ensured else publication.GENERATION_CANDIDATE,
+        "before_journey": publication.GENERATION_FIXTURE,
+        "after_restoration": publication.GENERATION_CANDIDATE,
+        "fold_revision": fold_revision,
+    }
+
+
+def _publication_public_body(event: JsonObject) -> tuple[str, bool, str]:
+    identity = text(event, "identity")
+    flag = event["pending"]
+    if (
+        set(event)
+        != {"kind", "started_ns", "finished_ns", "error", "identity", "pending", "directory_command", "command"}
+        or identity not in publication.FOLD_IDS
+        or type(flag) is not bool
+    ):
+        raise ValueError(ERROR_REPORT)
+    _command_output(event["directory_command"], ["cd", str(SOURCE_ROOT)])
+    argv = [publication.TELEC, publication.DOCS, publication.GET, identity]
+    if flag:
+        argv.extend((publication.TARGET_OPTION, publication.PENDING_TARGET))
+    body = publication.docs_body(_command_output(event["command"], argv))
+    if not body:
+        raise ValueError(ERROR_REPORT)
+    return identity, flag, body
+
+
+def _publication_inputs(row: JsonObject, report: JsonObject, root: str) -> JsonObject:
+    value = object_value(row["publication"])
+    values = value["events"]
+    clone = Path(root) / publication.CLONE_NAME
+    if (
+        set(value) != {"source_root", "clone", "events"}
+        or value["source_root"] != str(SOURCE_ROOT)
+        or value["clone"] != str(clone)
+        or not isinstance(values, list)
+        or not values
+    ):
+        raise ValueError(ERROR_REPORT)
+    events = [object_value(value) for value in values]
+    previous = positive_integer(row, "started_ns")
+    for event in events:
+        if (
+            event["kind"] not in ("process", "public_body", "candidate_file", "fold_copy", "cache_state")
+            or not previous
+            <= positive_integer(event, "started_ns")
+            <= positive_integer(event, "finished_ns")
+            <= positive_integer(row, "finished_ns")
+            or (event["kind"] != "process" and event["error"] is not None)
+        ):
+            raise ValueError(ERROR_REPORT)
+        previous = positive_integer(event, "finished_ns")
+    candidate = f"commit {text(report, 'source_revision')} tree {text(report, 'source_tree')}"
+    cache, probes = _publication_cache(events, clone, candidate)
+    processes: list[tuple[int, str, str]] = []
+    pending: dict[str, str] = {}
+    files: dict[str, str] = {}
+    copies: dict[str, str] = {}
+    current: list[tuple[int, str, str]] = []
+    for index, event in enumerate(events):
+        kind = event["kind"]
+        if kind == "process":
+            failed_probe = index in probes and object_value(event["command"]).get("exit_status") != 0
+            tag, output = _publication_process(event, Path(root), clone, failed_probe=failed_probe)
+            processes.append((index, tag, output))
+            if (tag == "source_head" and output != report["source_revision"]) or (
+                tag == "git rev-parse tree" and output != report["source_tree"]
+            ):
+                raise ValueError(ERROR_REPORT)
+        elif kind == "public_body":
+            identity, flag, body = _publication_public_body(event)
+            if flag:
+                if identity in pending and pending[identity] != body:
+                    raise ValueError(ERROR_REPORT)
+                pending[identity] = body
+            else:
+                current.append((index, identity, body))
+        elif kind == "candidate_file":
+            identity = text(event, "identity")
+            if (
+                set(event) != {"kind", "started_ns", "finished_ns", "error", "identity", "path", "text"}
+                or identity not in publication.FOLD_IDS
+                or event["path"] != str(SOURCE_ROOT / publication.DOCS_ROOT / f"{identity}{publication.LIVE_SUFFIX}")
+            ):
+                raise ValueError(ERROR_REPORT)
+            body = publication.file_body(text(event, "text"))
+            if not body or (identity in files and files[identity] != body):
+                raise ValueError(ERROR_REPORT)
+            files[identity] = body
+        elif kind == "fold_copy":
+            identity = text(event, "identity")
+            if (
+                set(event) != {"kind", "started_ns", "finished_ns", "error", "identity", "source", "target", "data"}
+                or identity not in publication.FOLD_IDS
+                or identity in copies
+                or event["source"] != str(clone / publication.DOCS_ROOT / f"{identity}{publication.COMPANION_SUFFIX}")
+                or event["target"] != str(clone / publication.DOCS_ROOT / f"{identity}{publication.LIVE_SUFFIX}")
+            ):
+                raise ValueError(ERROR_REPORT)
+            data = base64.b64decode(text(event, "data"), validate=True)
+            with io.TextIOWrapper(io.BytesIO(data), encoding="utf-8") as stream:
+                copies[identity] = stream.read()
+    if (
+        set(pending) != set(publication.FOLD_IDS)
+        or set(files) != set(publication.FOLD_IDS)
+        or (copies and set(copies) != set(publication.FOLD_IDS))
+    ):
+        raise ValueError(ERROR_REPORT)
+    if any(publication.file_body(source) != pending[identity] for identity, source in copies.items()):
+        raise ValueError(ERROR_REPORT)
+    generations = _publication_generations(row, events, processes, current, pending, files, cache, probes, copies)
+    for driver_value in cast(list[JsonValue], row["drivers"]):
+        packet = object_value(driver_value)
+        declaration = object_value(cast(list[JsonValue], packet["declarations"])[0])
+        procedure = text(packet, "procedure")
+        source = text(declaration, "text")
+        if publication.file_body(source) != pending[procedure] or (procedure in copies and source != copies[procedure]):
+            raise ValueError(ERROR_REPORT)
+    return {
+        "state": "original_publication_inputs_matched",
+        "cache_inputs": cache,
+        "generations": generations,
+        "fold_copy_inputs": bool(copies),
+        "declaration_body_binding": "matched",
+        "protected_source_generation_binding": "unproven",
+    }
+
+
 def validate_early_inputs(report: JsonObject, *, owner_email: str, owner_slug: str) -> JsonObject:
     """Reparse original B3/B4 accounting inputs; listings/legacy labels/PIDs establish no physical closure or P2."""
     provisional = object_value(report["payload_provisional"])
@@ -2408,6 +2825,7 @@ def validate_early_inputs(report: JsonObject, *, owner_email: str, owner_slug: s
             "explicit_end_inputs": _early_end_inputs(row, case, drivers, other_actors, ledger),
             "effect_inputs": effects,
             "owner_inputs": owner,
+            "publication_inputs": _publication_inputs(row, report, root),
             "originating_start_inputs": _early_start_inputs(row, case, drivers, starts),
             "attempt_ledger_inputs": ledger,
             "semantic_settlement": "unproven",
