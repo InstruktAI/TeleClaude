@@ -18,296 +18,151 @@ A **conversation link** is the agent_runtime aggregate that turns two (or more) 
 
 The link is established by a single act of _ignition_: any party — typically the caller of `telec sessions send <peer> "<msg>" --direct` — creates the link, the receiving session is added as the second member, and from that moment forward the active-conversation channel supersedes passive listener notifications between the pair. A member severs the link with `--close-link`, which closes it for all members at once; a member whose peer sits above it in the dispatch chain cannot, because no session acts on the session above it (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`).
 
+The ignition intro carries the shared no-output guidance, so an agent with nothing to add ends its turn without a peer-facing acknowledgement.
+
 The link is an associative aggregate of a link record and its member records, persisted durably by agent_runtime; it survives service restarts and is the canonical record of "these sessions are currently talking to each other."
+
+When an opening message has no resolved peer member, it is delivered to the originally addressed target; a resolved member that is missing or closed is skipped.
+
+Each cross-share preserves the source, author, and occurrence time carried by a complete peer envelope and suppresses it only when that source is the destination. The original segment order is retained; a trailing peer segment is not local-human input, and delivery progress is independent of the carried occurrence time and advances only after successful handoff. Other spans remain their source session's content, while control, command-loader, runtime-artifact, and teammate instructions are not forwarded. An unrecognized envelope-like span does not block adjacent content. A turn consisting solely of `NOOP` produces no peer message but still advances its completed-turn position.
 
 ## Canonical fields
 
 ### Use cases
 
-#### Ignition: link creation via `--direct`
+#### A person starts a direct conversation with an existing session
 
 ```
-Given session A (caller) and session B (target) both exist and are open
-And no direct link is currently active between A and B
-When the caller invokes `telec sessions send B "<message>" --direct`
-Then the agent_runtime service resolves caller identity
-And dispatches a direct-link creation request for (caller=A, target=B)
-And a new direct-mode link is recorded with creator=A
-And two member entries are upserted: A as participant 1, B as participant 2, both with role "peer"
-And per-link delivery cursors are anchored at link-creation time so the first cross-share never includes pre-link transcript content
-And the initial message is wrapped with a peer header and a rules block before delivery
-And the wrapped message is delivered to peer B
-And the response reports a successful create, with the count of members and the count of peers the message reached
+Given a person asks their agent to start a direct conversation with an existing session
+When the agent sends an opening message with `--direct`
+Then the target receives the message as a peer contribution
+And the sessions become peers whose later turns are shared automatically
 ```
 
-#### Ignition: link creation at session-start with `--direct`
-
-```
-Given the caller spawns a new session via the create-session flow with the direct flag set
-When session creation completes and returns the new session id
-Then the agent_runtime service ignites a direct link for (caller_session_id, new_session_id)
-And the same two-member link aggregate is written
-And the launch message is wrapped with the direct-conversation intro before delivery
-And the listener axis is untouched — the two subscription axes (listeners and links) remain orthogonal
+```gherkin
+Scenario: An existing conversation does not accept a third peer
+  Given the person's session is already in a direct conversation with another peer
+  When they ask to start a direct conversation with a third session
+  Then the request is refused with the active peer identified
+  And the existing conversation remains unchanged and no new message is sent
+  And no new direct conversation is established
 ```
 
-#### Reuse semantics
-
-```
-Given a direct link is already active between sessions A and B
-When the caller calls `telec sessions send B "<msg>" --direct` again
-Then the ignition path first resolves any existing active link for the (A, B) pair
-And finds the existing link
-And returns an error response indicating the link is already active, identifying the link
-And the message body explains: "A direct link is already active with this peer. We agreed not to use send during direct conversation as it obfuscates the exchange from the observer. Your turn-complete output is automatically shared — just talk."
-And NO new link is created, NO duplicate members are written, and the original message is NOT delivered via this path
+```gherkin
+Scenario: A participant continues an active conversation without re-igniting it
+  Given the person's session already shares a direct conversation with the peer
+  When they try to send another message with direct ignition
+  Then they are told to continue the conversation normally
+  And no duplicate link or message is created
 ```
 
-```
-Given a stale duplicate link row exists for the same pair (e.g., a prior crash mid-creation)
-When the ignition path runs under the locks that serialize link establishment
-Then it selects the first active link as the survivor
-And severs every duplicate
-And re-upserts both members on the survivor (idempotent: caller stays participant 1, target stays participant 2)
-And returns the survivor link as reused
-```
-
-#### UC-DCL22: Cross-sharing of turn-complete outputs
+#### A person starts a new session as a direct conversation peer
 
 ```
-Given an active direct link exists between members A and B
-And the per-link delivery cursors were anchored at link-creation time
-When member A's agent completes a turn (turn-complete signal from the agent CLI hook stream)
-Then the conversation-delivery pipeline scans A's transcript since A's outbound delivery cursor
-And bundles the new turn-complete segments for delivery
-And routes the bundle into peer B's host pane as the next input
-And advances the (link, A→B) delivery cursor to the latest bundled timestamp
-And the symmetric path applies for B → A
-And neither party needs to re-invoke `telec sessions send` for follow-up turns
+Given a person asks their agent to start a new session in a direct conversation
+When the new session is created with direct ignition
+Then it joins the conversation and receives the opening message from its peer
+And the listener subscription remains a separate relationship
+```
+
+#### UC-DCL22: A person can converse across linked agent sessions
+
+```
+Given a person has asked their agent to start a direct conversation with a peer session
+When either peer agent completes a turn with conversational content
+Then the counterpart session receives the new contribution without the person reissuing a send command
+And both agents can continue the same conversation in their respective sessions
+
+Scenario: Rate limiting does not reorder or duplicate peer messages
+  Given a person's direct conversation is delivering a multi-part peer turn and the platform rate-limits it
+  When deferred messages are delivered or their delivery ultimately fails
+  Then delivered messages remain in their original order and appear once
+  And an undelivered message has a durable failure outcome
+
+Scenario: A peer message waits for a working agent to yield
+  Given a person sends a peer message while their agent is still working
+  When the new peer contribution becomes pending
+  Then the current work is not interrupted and the agent is told that peer input is pending
+  When the agent chooses to yield
+  Then it receives the peer contribution as its next input with peer authorship preserved
+  And its unfinished work remains available to resume
 ```
 
 #### UC-DCL1: Peer segments are filtered by original source for each destination
 
-```
-Given an active direct link exists between members A and B
-And B's transcript contains a canonical peer segment whose original source session is A
-And B's transcript contains an orchestrator-authored segment local to B
-When the cross-delivery collector bundles B's turn for A
-Then the A-origin peer segment is suppressed
-And the orchestrator segment is delivered as a real B-origin segment
-And no A-to-B-to-A echo segment is produced
-```
-
 #### UC-DCL17: A third-party peer segment retains its original source
-
-```
-Given B's transcript contains a canonical peer segment whose original source session is C
-And the segment was authored by the same human who participates in A and B
-When the cross-delivery collector bundles B's turn for A
-Then the C-origin segment remains eligible
-And its complete original peer header and body are preserved
-And human identity does not cause the segment to be suppressed or reassigned to B
-```
 
 #### UC-DCL18: A trailing peer segment is not held as unanswered local input
 
-```
-Given a C-origin peer segment is the last visible user-channel segment in B's transcript
-And B's turn-complete delivery runs for A
-When the collector applies unanswered-turn handling
-Then the C-origin segment is not treated as a locally-authored human turn
-And it remains eligible without waiting for later local activity in B
-```
-
 #### UC-DCL19: Eligibility is evaluated per peer segment
-
-```
-Given one peer bundle in B's transcript contains an A-origin segment followed by a C-origin segment
-When the cross-delivery collector bundles B's turn for A
-Then eligibility is evaluated for each embedded segment
-And the A-origin segment is suppressed
-And the C-origin segment remains in its original order with its original attribution
-```
 
 #### UC-DCL20: Forwarded occurrence time is independent of replay progress
 
-```
-Given a C-origin peer segment carries original occurrence time C1 in its canonical header
-And B recorded the containing transcript entry at replay time B1
-When B cross-delivers that segment to A
-Then the rendered segment retains occurrence time C1
-And B-to-A pending bounds, delivery cursors, and deterministic dedupe use B1
-And the inner header time is never used as the replay progress clock
-```
-
-#### UC-DCL21: Mixed local and peer text preserves ordered authorship
+#### UC-DCL21: A person can send local text alongside a peer contribution
 
 ```gherkin
-Given a human has local text before or after a complete peer envelope in one native prompt
-And any other envelope-looking text in that prompt has no complete registered shape
-When the prompt is projected, reflected, or relayed
-Then the complete peer envelope keeps its peer authorship and opaque body
-And every span outside complete recognized envelopes is attributed to the human in the viewing session
-And all spans remain eligible for their normal delivery path
-And recognition produces no conflict, refusal, or dropped neighboring content
+Given a person adds local text around a complete peer contribution in one prompt
+And another span resembles an envelope but does not form a complete registered one
+When the prompt is delivered to the other participant
+Then the peer contribution retains its original authorship
+And the local and incomplete-envelope-looking text remains the person's content
+And all eligible content arrives in order without blocking neighboring text
 ```
 
-#### Listener suppression while linked
+#### UC-DCL24: A person can end the direct conversation for everyone
 
 ```
-Given a one-shot or persistent listener is registered with caller=A, target=B
-And an active direct link of mode "direct_link" exists between A and B
-When B's stop event fires and listener notification iterates
-Then the active-link check between A and B returns the active link
-And the per-listener delivery is skipped (NOT removed — the listener row is preserved)
-And listener delivery resumes on the next event after the link is severed
-```
+Scenario: Close a direct conversation
+  Given a person asks their agent to end a direct conversation it belongs to
+  When the agent closes it, optionally with a final message
+  Then all members stop cross-sharing turns
+  And the final message reaches the peer before closure when one was supplied
 
-#### UC-DCL24: Closure severs for ALL members, and never reaches upward
-
-```
-Given a direct link exists between A and B (and conceivably more members in a multi-member scenario)
-When a member whose peer does not sit above it in the dispatch chain invokes `telec sessions send B --close-link` (optionally with a final message)
-Then the close path requires caller session identity
-And resolves any active direct link for the (caller, target) pair — responding "no active direct link found" if none
-And, if a final message was supplied, processes it via the normal message pipeline before severing
-And invokes the closure path for the caller against the target, enumerating every active link between (caller, target) and severing each
-And severance closes the link for EVERY member of that link, not only the caller
-And subsequent turn-complete outputs are no longer cross-shared
-And suppressed listener rows resume firing on the next stop event
-And the response reports a successful close, identifying the closed link
-But a member whose peer sits above it in the dispatch chain is refused, and the link stays open
-```
-
-#### Race rejection on a non-direct send
-
-```
-Given an active direct link exists between caller A and target B
-When A attempts `telec sessions send B "<msg>"` WITHOUT `--direct`
-Then the plain-send path rejects with an error identifying the active link
-And NO message is delivered through the plain-send path
-And the link remains intact
-```
-
-#### Member roster & multi-peer model
-
-```
-Given a conversation-link aggregate with one or more member entries
-When any consumer asks for the link's members
-Then it returns every member entry in join order
-And asking for peer members against a given sender returns all members EXCEPT the sender — making fan-out trivially N-way
-And the direct-delivery path iterates the resolved peers; if all peer sessions are missing/closed, delivery falls back to the originally-addressed target session
-And v1 creates exclusively two-member direct links via the standard ignition path; the aggregate shape itself is associative and not restricted to two
-```
-
-#### Lifecycle interaction: peer ended mid-conversation
-
-```
-Given a direct link exists between A and B
-And session B ends (explicit close, idle timeout, or crash-driven termination)
-When session termination runs and the resource-cleanup path executes
-Then the link-cleanup step is invoked for B
-And every active link involving B is severed
-And the link with A is closed for all members
-And any subsequent direct send from A toward B is rejected via the normal "no active target sessions" / closed-session path
-```
-
-```
-Given a delivery attempt fans out to multiple peers
-When one peer session is missing or its lifecycle status is closed or closing
-Then the direct-delivery path logs and skips that peer
-And continues delivering to the remaining live peers
-And reports the count of live peers actually delivered
-And if no peers were reached, the response is an error: "No active target sessions available for delivery"
-```
-
-#### Concurrency safety
-
-```
-Given two callers concurrently attempt to ignite a direct link for the same (A,B) pair
-When both reach the ignition path
-Then a canonical per-pair lock keyed by sorted (session_a, session_b) serializes them
-And whichever runs first creates the link
-And the second observes the existing active link and reuses it, severing any duplicate
-And no concurrent path produces orphaned link rows or split member rosters
+Scenario: A child cannot close a conversation with its dispatcher
+  Given a person directs an agent to close a conversation with its dispatcher
+  When the caller tries to close their direct conversation
+  Then the request is refused and the conversation remains open
 ```
 
 #### UC-DCL2: Cross-delivered segments preserve envelope authorship without a shadow record
 
+#### UC-DCL6: A person can recognize each participant in a direct conversation
+
 ```gherkin
-Given an active direct link exists between sessions A and B
-And a native entry contains complete peer envelopes with role, human, or agent author tokens
-When the conversation-delivery pipeline projects, reflects, or relays the entry for A
-Then one shared shape recognizer identifies each complete envelope and treats its body as opaque
-And the header fields as written supply the original source, occurrence label, and author presentation
-And a token outside the reader's known vocabulary is presented from its carried text rather than rejected
-And loop prevention suppresses only a segment whose carried source session equals A
-And no duplicate bundle record or content-validation result is required for delivery
-```
+Scenario: Peer messages show their original speaker
+  Given a direct conversation contains messages from agents and a person
+  When the person reads the conversation in Discord
+  Then each contribution appears separately and in order under its speaker's resolved identity
+  And peer-envelope framing and thinking mode are not shown
 
-#### UC-DCL6: Discord renders each peer segment as its own message under the author's aliased identity and avatar
+Scenario: Adjacent messages from one speaker remain distinct
+  Given a peer contributes two consecutive messages
+  When the conversation is rendered
+  Then each message appears separately in its original order
 
-```
-Given an accepted structured peer bundle contains a Codex-authored segment, a human-authored segment, and a role-bearing Claude segment in that order
-And the bundle is projected into session A's Discord thread
-When Discord delivery resolves presentation relative to A
-Then it receives three ordered webhook messages containing only the respective bodies
-And their aliases are `Codex (peer)`, `<human display name> (peer)`, and `Claude - <raw JobRole> (peer)`
-And each message carries its resolved avatar without exposing the readable peer header or footer as Discord copy
-And thinking mode does not appear in any Discord alias
-And body-free structured logs identify the source session, segment ordinal, alias, avatar selection, target thread, operation, result, and platform message ID
+Scenario: A human speaker remains identifiable without an avatar
+  Given a human peer message has no available avatar
+  When Discord renders it
+  Then the human's display identity remains visible
+  And the default avatar does not relabel the speaker as an agent or TeleClaude
 ```
 
 #### UC-DCL7: Same-author adjacency never merges peer segments into one Discord message
 
-```
-Given an accepted peer bundle contains two eligible Gemini-authored segments
-When Discord renders the reflected conversation
-Then each segment becomes a distinct ordered Discord message under the Gemini alias and avatar
-And same-author adjacency does not merge segment bodies into one Discord message
-```
-
 #### UC-DCL8: A human peer segment without an avatar keeps its human identity
 
-```
-Given a human-authored peer segment has an original human display identity but no available avatar URL
-When Discord renders that reflected segment
-Then the human display identity remains the webhook alias
-And the message may use the webhook default avatar
-But it is not relabelled as TeleClaude, the intermediary session, or an agent
-```
-
-#### UC-DCL9: Multi-hop forwarding preserves the original envelope source and suppresses echo
+#### UC-DCL9: A participant can recognize an original speaker after a peer message is forwarded
 
 ```gherkin
-Given session B receives a complete A-origin peer envelope and later forwards its turn to C
-When B-to-C delivery runs
-Then the forwarded segment retains the source, author token, occurrence label, and opaque body carried by that envelope
-And C sees the carried author and occurrence label
-And any later delivery toward A suppresses that segment by the carried source session identity
-And no separate provenance record or content validation participates in the decision
+Given a person receives a peer contribution forwarded through another session
+When they read the contribution
+Then it still identifies its original speaker and content
+And it is not delivered back to that speaker as a new message
 ```
 
 #### UC-DCL13: A bare NOOP turn is never cross-shared
 
-```
-Given an active direct link exists between members A and B
-And member A completes a turn whose entire turn-complete output is the sentinel `NOOP`
-When the cross-delivery collector bundles A's turn for B
-Then no segment is delivered to B for that turn
-And the (link, A→B) delivery cursor still advances past the turn
-And A's transcript retains the `NOOP` turn as source truth
-```
-
 #### UC-DCL23: The ignition intro tells a joining peer how to close a turn that owes nothing
-
-```gherkin
-Given an agent session is ignited into a direct link
-When it receives the direct-conversation intro
-Then the intro states that a turn owing no output closes with the no-output sentinel and no other text
-And it states that a prose stand-in for silence is delivered to the peer and is therefore the acknowledgement it was written to avoid
-And this holds for ignition from an existing session and for ignition at session start alike
-```
 
 #### UC-DCL10: Legacy pre-cutover cursor ranges migrate with durable dispositions
 
@@ -315,107 +170,19 @@ Superseded by the single-registry envelope contract.
 
 #### UC-DCL3: Agent-harness teammate framing never crosses the link
 
-```
-Given an active direct link exists between members A and B
-And B's transcript carries an agent-harness teammate-message envelope on the user channel
-And B's transcript carries a human-typed turn on the user channel
-And B's agent has replied, so neither user-channel turn is the bundle's trailing run
-When the cross-delivery collector bundles B's turn for A
-Then the teammate-message envelope is excluded from the bundle
-And the human-typed turn is delivered
-And the envelope is excluded wherever the framing sits in the turn, not only when it opens it
-```
-
-```
-Given an active direct link exists between members A and B
-And the only content in B's transcript since the delivery cursor is an agent-harness teammate-message envelope
-When the cross-delivery collector runs for A
-Then no bundle is delivered to A
-```
-
 #### UC-DCL4: The agent CLI's AGENTS.md instruction injection never crosses the link
-
-```
-Given an active direct link exists between members A and B
-And B's transcript carries the agent CLI's AGENTS.md instruction injection on the user channel
-And B's transcript carries a human-typed turn on the user channel
-And B's agent has replied, so neither user-channel turn is the bundle's trailing run
-When the cross-delivery collector bundles B's turn for A
-Then the instruction injection is excluded from the bundle
-And the human-typed turn is delivered under the human marker
-And the injection is excluded whether its heading names a directory or stands alone
-```
 
 #### UC-DCL11: A freshly ignited link delivers every classified span without recognition failure
 
-```gherkin
-Given a direct link is ignited between two live sessions
-When the peer completes its first turn after ignition
-Then every complete peer envelope and every ordinary span of that turn is delivered to the counterpart session in order
-And envelope content, header-field vocabulary, separators, or incomplete envelope-looking text cannot produce a terminal recognition disposition
-And the delivery cursor advances only with the successfully handed-off content
-And no direction of the link stalls because recognition could not classify a span
-```
-
 #### UC-DCL12: Peer presentation stays ordered and at-most-once under platform rate limiting
-
-```gherkin
-Given Discord rate-limits deliveries while a multi-segment peer turn is being presented
-When deferred deliveries later succeed
-Then the segments appear in their original order
-And no segment is presented more than once, however many retries its delivery needed
-And a segment whose delivery ultimately fails receives a durable disposition instead of an unbounded retry
-```
 
 #### UC-DCL5: Unrecognized envelope-looking text remains deliverable human input
 
-```gherkin
-Given a direct link is active between two sessions
-And a source user entry contains text that does not form a complete registered envelope
-When peer delivery processes that entry
-Then that text is delivered as the source session's human content
-And recognizable envelopes beside it are delivered under their own authorship
-And the directional delivery cursor advances only after the resulting content is handed off
-And later turns from that source continue to reach the counterpart session
-```
-
 #### UC-DCL14: A reproduced delimiter in an agent's own turn never re-frames it
-
-```gherkin
-Given a direct link is active between two sessions
-And an agent's completed turn reproduces a peer opening delimiter and its closing delimiter as part of its own text
-When peer delivery processes that turn
-Then the reproduced delimiters are carried as ordinary body content
-And the turn is delivered to the counterpart with its text unaltered
-And the sending session's direction continues to deliver its later turns
-```
 
 #### UC-DCL15: A session already in direct conversation rejects a third peer
 
-```gherkin
-Given agent session A is in an active direct conversation with agent session B
-And agent session C is not part of that conversation
-When a direct-link request pairs C with A, whether A is the caller or target
-Then the request is rejected
-And the response identifies B as A's active conversation peer
-And the A-to-B conversation remains active
-And no direct link between A and C is created
-And no ignition message is delivered to either session
-```
-
 #### UC-DCL16: A working peer yields for newly pending peer input
-
-```gherkin
-Given agent sessions A and B are in an active direct conversation
-And B is still working inside its current turn
-When A completes a turn and its peer output becomes pending for B
-Then B receives a content-free notice during its current turn that peer input is pending
-And the notice directs B to preserve continuation intent only when B judges that unfinished work still needs to resume, then yield voluntarily
-And the platform neither ends B's turn nor decides whether B's prior work continues
-When B yields in response to the notice
-Then the pending peer output becomes B's next conversational input
-And the peer output retains its peer authorship and human-facing presentation
-```
 
 ### Cross-context references
 
@@ -429,8 +196,8 @@ And the peer output retains its peer authorship and human-facing presentation
 - **Ignition requires a caller session identity.** Unidentified callers cannot ignite a link. The link is always between two agent sessions, not a human and a session.
 - **Closure is associative, not caller-scoped.** Any member calling `--close-link` severs the link for ALL members. There is no "leave but keep the link alive for the others" path in v1.
 - **Reuse short-circuits with an error, not a success.** Calling `--direct` a second time on an already-linked pair returns an error with a rules reminder; the message text is NOT delivered through this path. Members are expected to "just talk" — turn-complete outputs are cross-shared automatically.
-- **Plain-send during an active link is rejected.** A non-direct send toward a peer with whom a direct link is active is refused to prevent obfuscating the exchange from observers.
-- **Exclusivity applies no locality condition, and sees only local link records.** Whether two sessions share a computer is never a reason to accept or refuse a direct link. The refusal in UC-DCL15 is decided against the link records held by the runtime deciding the request; a conversation recorded on another computer is not visible to that decision. Cross-computer direct establishment remains the pre-existing limitation of the ignition paths, not something this rule narrows or repairs.
+- **Plain-send during an active link is rejected.** A non-direct send toward a peer with whom a direct link is active is refused to prevent obfuscating the exchange from observers; no message is delivered through that path, and the link remains open.
+- **Exclusivity applies no locality condition, and sees only local link records.** Whether two sessions share a computer is never a reason to accept or refuse a direct link. A third-peer refusal is decided against the link records held by the runtime deciding the request; a conversation recorded on another computer is not visible to that decision. Cross-computer direct establishment remains the pre-existing limitation of the ignition paths, not something this rule narrows or repairs.
 - **Multi-member is structurally supported, not exposed.** The aggregate can represent N>=2 members, and the peer-resolution and delivery paths already fan out N-way; v1 only exposes a two-member direct ignition. Gathering-mode links use the same aggregate.
 - **Per-link delivery cursors are anchored at creation, not at first turn.** Pre-link transcript content never appears in the first cross-share. This is the explicit reason the cursors are upserted at ignition rather than lazily at first delivery.
 - **Stale duplicate rows are silently healed on next ignition.** If durable storage contains more than one active link for the same pair (e.g., a prior crash mid-creation), the ignition path keeps the first and severs the rest under the locks that serialize link establishment. No external reconciliation pass is needed.
