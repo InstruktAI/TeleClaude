@@ -61,6 +61,7 @@ from tools.ci.enclosure_journal import Outcome as EnclosureOutcome
 from tools.ci.enclosure_report import (
     validate_early_inputs,
     validate_event_inputs,
+    validate_flow_inventory_inputs,
     validate_flow_session_closure,
     validate_flow_start_inputs,
     validate_provisional_bindings,
@@ -6356,6 +6357,7 @@ def validate_provisional_payload_inputs(report_bytes: bytes, manifest: bytes, pa
         "inner_cleanup": cleanup,
         "shared_flow_sessions": sessions,
         "shared_flow_starts": starts,
+        "shared_flow_inventory": validate_flow_inventory_inputs(report, sessions, starts),
         "early_workflow_inputs": early,
         "public_event_inputs": validate_event_inputs(report, sessions, starts, early),
     }

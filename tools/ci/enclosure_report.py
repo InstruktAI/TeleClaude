@@ -3422,6 +3422,128 @@ def validate_flow_session_closure(report: JsonObject) -> JsonObject:
     }
 
 
+def _flow_inventory_packet(packet: JsonObject, created: int, public_finished: int) -> list[JsonValue]:
+    commands = packet["commands"]
+    if (
+        packet["error"] is not None
+        or not created
+        <= positive_integer(packet, "started_ns")
+        <= positive_integer(packet, "finished_ns")
+        <= public_finished
+        or not isinstance(commands, list)
+        or not commands
+    ):
+        raise ValueError(ERROR_REPORT)
+    return commands
+
+
+def _flow_inventory_records(
+    commands: list[JsonValue], owned_paths: set[str]
+) -> tuple[dict[str, Mapping[str, object]], set[str], set[str]]:
+    listed = _early_session_list(commands[0])
+    if len(commands) != len(listed) + 1:
+        raise ValueError(ERROR_REPORT)
+    records: dict[str, Mapping[str, object]] = {}
+    matched: set[str] = set()
+    unscoped: set[str] = set()
+    # The producer iterates a frozenset: native order is retained, never guessed from sorted IDs.
+    for value in commands[1:]:
+        argv = object_value(value)["argv"]
+        if not isinstance(argv, list) or len(argv) != 5 or not isinstance(argv[3], str):
+            raise ValueError(ERROR_REPORT)
+        session = argv[3]
+        if session not in listed or session in records:
+            raise ValueError(ERROR_REPORT)
+        record = _public_session_command(value, [creation.TELEC, "sessions", "show", session, "--full"])
+        if record.get("session_id") != session or "project_path" not in record:
+            raise ValueError(ERROR_REPORT)
+        project = record["project_path"]
+        if project is None:
+            # The public DTO permits null; it does not establish a foreign creator or an owned one.
+            unscoped.add(session)
+        elif not isinstance(project, str) or not project:
+            raise ValueError(ERROR_REPORT)
+        elif project in owned_paths:
+            matched.add(session)
+        records[session] = record
+    return records, matched, unscoped
+
+
+def validate_flow_inventory_inputs(report: JsonObject, sessions: JsonObject, starts: JsonObject) -> JsonObject:
+    """Interpret original finite inventory inputs; second-read closure and creator completeness remain separate."""
+    provisional = object_value(report["payload_provisional"])
+    binding = object_value(provisional["binding"])
+    observations = object_value(provisional["observations"])
+    cases = declared_chain(frozenset(_strings(binding[GuestKey.SELECTED_SCENARIOS])))
+    if not cases:
+        if (
+            observations["flow_finalizer"] is not None
+            or sessions.get("state") != "not_selected"
+            or starts.get("state") != "not_selected"
+        ):
+            raise ValueError(ERROR_REPORT)
+        return {"scope": "shared-workflow-flow", "state": "not_selected"}
+    if sessions.get("state") != "public_closed" or starts.get("state") != "recorded_inputs_matched":
+        raise ValueError(ERROR_REPORT)
+    children = starts["children"]
+    if not isinstance(children, list) or len(children) != 1:
+        raise ValueError(ERROR_REPORT)
+    child = object_value(children[0])
+    project = text(child, "project_path")
+    owned_paths = {project, text(child, "worktree"), f"{project}/{INTEGRATION_TREE}"}
+    owned = set(_strings(sessions["session_ids"]))
+    finalizer = object_value(observations["flow_finalizer"])
+    baseline = object_value(finalizer["baseline_inventory"])
+    if finalizer["project_path"] != project or set(baseline) != {"started_ns", "finished_ns", "commands", "error"}:
+        raise ValueError(ERROR_REPORT)
+    created = positive_integer(binding, "created_ns")
+    public_finished = positive_integer(object_value(observations["inner_cleanup"]), "public_cleanup_finished_ns")
+    baseline_commands = _flow_inventory_packet(baseline, created, public_finished)
+    if len(baseline_commands) != 1:
+        raise ValueError(ERROR_REPORT)
+    baseline_ids = set(_early_session_list(baseline_commands[0]))
+    if baseline_ids & owned:
+        raise ValueError(ERROR_REPORT)
+    packets = finalizer["public_inventory_evidence"]
+    # One initial read and the unchanged maximum three finalizer sweep passes.
+    if not isinstance(packets, list) or not 2 <= len(packets) <= 4:
+        raise ValueError(ERROR_REPORT)
+    previous = positive_integer(baseline, "finished_ns")
+    snapshots: list[JsonValue] = []
+    for value in packets:
+        packet = object_value(value)
+        if (
+            set(packet) != {"project_path", "started_ns", "finished_ns", "commands", "matched_session_ids", "error"}
+            or packet["project_path"] != project
+            or positive_integer(packet, "started_ns") < previous
+        ):
+            raise ValueError(ERROR_REPORT)
+        commands = _flow_inventory_packet(packet, created, public_finished)
+        records, matched, unscoped = _flow_inventory_records(commands, owned_paths)
+        if packet["matched_session_ids"] != sorted(matched) or not matched - baseline_ids <= owned:
+            raise ValueError(ERROR_REPORT)
+        snapshots.append(
+            {
+                "started_ns": packet["started_ns"],
+                "finished_ns": packet["finished_ns"],
+                "listed_session_ids": list[JsonValue](sorted(records)),
+                "matched_session_ids": list[JsonValue](sorted(matched)),
+                "new_matched_session_ids": list[JsonValue](sorted(matched - baseline_ids)),
+                "unscoped_session_ids": list[JsonValue](sorted(unscoped)),
+            }
+        )
+        previous = positive_integer(packet, "finished_ns")
+    return {
+        "scope": "shared-workflow-flow",
+        "state": "inventory_inputs_matched",
+        "project_path": project,
+        "baseline_session_ids": list[JsonValue](sorted(baseline_ids)),
+        "snapshots": snapshots,
+        "creator_classification": "unproven",
+        "sweep_second_read_closure": "unproven",
+    }
+
+
 def _operation_results(finalizer: JsonObject, created: int, public_finished: int) -> dict[str, list[JsonValue]]:
     evidence = finalizer["public_operation_evidence"]
     if not isinstance(evidence, list):
