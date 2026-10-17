@@ -53,60 +53,11 @@ optional env-file path override, and returns the written path.
 
 #### UC-AEFW-1: Successful set replaces target file atomically
 
-```
-Given a valid (name, value) pair and the resolved .env path
-And the target path may or may not already exist
-When the env-file writer runs
-Then the existing line list is read (if the file exists) and edited
-And a tmp_path of .env.tmp (or equivalent .tmp sibling) is computed
-And the tmp file is opened for write with utf-8 encoding
-And the line-edited content is written to the tmp file
-And the output is flushed and durably synced at the kernel level
-And the tmp file is atomically renamed into place at the target path
-And the in-process environment is updated with the new value
-And the call returns the resolved target path
-And no concurrent reader observes a partially-written .env file
-```
-
 #### UC-AEFW-2: Failure mid-write cleans up tmp and re-raises
-
-```
-Given the env-file writer has opened the tmp file and started writing
-And an exception occurs (disk full, permission failure, fsync failure)
-When an exception is raised mid-write
-Then the temp file's presence is checked
-And the partial temp file is removed if present
-And the original exception is re-raised unchanged
-And the target .env file is unchanged from its prior state
-And the in-process environment is NOT updated (the update only fires after a successful write)
-```
 
 #### UC-AEFW-3: Input validation runs before any file I/O
 
-```
-Given a (name, value) pair where name contains `=`, `\r`, or `\n`
-When the env-file writer runs
-Then a validation error is raised before any tmp file is opened
-And the on-disk .env file is unchanged
-And the in-process environment is unchanged
-
-Given a (name, value) pair where value contains `\r` or `\n`
-When the env-file writer runs
-Then a validation error is raised before any tmp file is opened
-And the on-disk .env file is unchanged
-And the in-process environment is unchanged
-```
-
 #### UC-AEFW-4: Idempotent set is byte-stable through atomic replace
-
-```
-Given a .env file containing a line `TELEGRAM_BOT_TOKEN=abc123`
-When the env-file writer runs with ("TELEGRAM_BOT_TOKEN", "abc123")
-Then the line-edit step replaces the existing line with the identical content
-And the atomic-replace pattern writes a byte-stable file
-And the in-process environment is updated: TELEGRAM_BOT_TOKEN = "abc123"
-And the call returns successfully
-```
 
 ### Cross-context references
 

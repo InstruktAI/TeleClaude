@@ -44,44 +44,11 @@ then fills the value during registration.
 
 #### UC-CFG-SLUG-1: Well-formed slug accepted and stripped
 
-```
-Given a project config under load with project_slug = "  my-project  "
-When the project overlay's slug validator runs
-Then the value is stripped to "my-project"
-And validate_slug("my-project") matches SLUG_PATTERN and returns without error
-And the project overlay's project_slug is set to "my-project"
-```
-
 #### UC-CFG-SLUG-2: None passes through unchanged
-
-```
-Given a project config under load that omits the project_slug key
-When the project overlay's slug validator receives value = None
-Then the validator returns None immediately
-And no slug format check runs
-And the project overlay's project_slug remains None
-```
 
 #### UC-CFG-SLUG-3: Empty string normalizes to None (legacy compatibility)
 
-```
-Given a legacy project config under load with project_slug = ""
-When the project overlay's slug validator runs
-Then trimming the value yields ""
-And the validator returns None (not a validation error)
-And the project overlay's project_slug is None
-And the project is accepted so it can be registered by telec config project adopt
-```
-
 #### UC-CFG-SLUG-4: Whitespace-only string normalizes to None
-
-```
-Given a project config under load with project_slug = "   "
-When the project overlay's slug validator runs
-Then trimming the value yields ""
-And the validator returns None
-And the project overlay's project_slug is None
-```
 
 #### UC-CFG-SLUG-5: Invalid slug format rejected
 

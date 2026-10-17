@@ -53,32 +53,11 @@ renders and saves these leaves like any other per-person overlay field
 
 #### UC-CHIP-COLOR-1: Whole block absent is the default
 
-```
-Given a PersonConfig with no color key
-When PersonConfig validation runs
-Then color is None
-And the entry is accepted
-```
-
 #### UC-CHIP-COLOR-2: A single cell sets without its siblings
-
-```
-Given a PersonConfig where only color.background.light is provided
-When PersonConfig validation runs
-Then the color block instantiates with background.light set
-And background.dark, text.light, and text.dark each remain None
-And the entry is accepted
-```
 
 #### UC-CHIP-COLOR-3: Color cells are editable in the People subtab
 
 #### UC-CHIP-COLOR-4: A set cell is stored verbatim
-
-```
-Given a PersonConfig with color.text.dark set to a color string
-When PersonConfig validation runs and the value is persisted
-Then the stored color.text.dark equals the provided string unchanged
-```
 
 ## Known caveats
 
