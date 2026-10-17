@@ -12,143 +12,77 @@ visibility: 'public'
 
 ## What it is
 
-The v1 surface that lets a human authenticate to TeleClaude from an interactive terminal — outside of any agent session — by binding an email address to the controlling TTY. `telec auth login <email>` writes a small structured document scoped to the current TTY, and nothing else: there is no machine-global login record. Subsequent `telec` invocations from the same TTY — or from a process with no terminal of its own whose nearest terminal-bearing ancestor runs on that TTY — read the document, and the client resolves the email against the configured `people` list to derive the caller's Principal and role; the resolved person is the identity the client clears and carries on its requests (`local/projects/teleclaude/spec/identity-and-auth` §6). While exactly one person is registered, a terminal with no document of its own resolves to that person. A process inside a session — one whose session identity document is present — reads no terminal login at all: a session carries its own identity, and the terminal login serves only callers arriving from outside. Logout removes the per-TTY document. This is the v1 binding between a real person at a real terminal and the identity context's authorization model.
+The v1 surface that lets a human authenticate to TeleClaude from an interactive terminal — outside of any agent session — by binding an email address to the controlling TTY. `telec auth login <email>` writes a small structured document scoped to the current TTY, and nothing else: there is no machine-global login record. Subsequent `telec` invocations from the same TTY — or from a process with no terminal of its own whose nearest terminal-bearing ancestor runs on that TTY — read the document, and the client resolves the email against the configured `people` list to derive the caller's Principal and role; the resolved person is the identity the client clears and carries on its requests (`local/projects/teleclaude/spec/identity-and-auth` §6). While exactly one person is registered, a terminal with no document of its own resolves to that person. A process inside a session — one whose session identity document is present — reads no terminal login at all: a session carries its own identity, and the terminal login serves only callers arriving from outside. Logout removes the per-TTY document. A successful login also prunes records for terminal devices that have disappeared while leaving live terminals' bindings untouched, including other people's bindings. This is the v1 binding between a real person at a real terminal and the identity context's authorization model. The per-TTY login document is replaced atomically and is intended to remain private to its owner.
 
 ## Canonical fields
 
 ### Use cases
 
-#### UC-TEL1: Login records the terminal device's allocation identity alongside the email
+#### UC-TEL1: An operator binds a terminal to their identity
 
-```
-Given an interactive terminal with a detectable controlling TTY (e.g. /dev/ttys003)
-And the operator runs `telec auth login alice@example.com`
-When the login writer normalizes and validates the address
-Then a structured payload carrying the email, the terminal device, the write time, and the device's current allocation token is atomically written to the per-TTY auth location with private file mode
-And the CLI prints "Logged in as alice@example.com[ (<role>)]." plus the TTY and file path
-```
+```gherkin
+Scenario: Sign in a terminal as the selected person
+  Given an operator has a registered identity and an interactive terminal
+  When they sign in on that terminal
+  Then commands from the terminal are recognized as that person
+  And the login confirms which person was selected
+  And the saved terminal binding is private to its owner
 
-```
-Given a process with no terminal of its own, no SSH_TTY, and no ancestor process with a terminal
-When it runs `telec auth login alice@example.com`
-Then no document is written
-And the CLI reports that no terminal was detected and exits with a failure status
+Scenario: A recycled terminal does not inherit an old login
+  Given a terminal name has been reused for a new device allocation
+  And its saved login belongs to the previous allocation
+  When the operator runs a TeleClaude command from that terminal
+  Then the previous login is not accepted as the terminal's identity
+
+Scenario: Login requires an interactive terminal
+  Given a process has no terminal to bind
+  When it attempts to sign in
+  Then no terminal identity is recorded
+  And it is told that a terminal is required
 ```
 
 #### UC-TEL2: Login releases documents whose terminal device is gone and leaves live ones alone
 
-```
-Given per-TTY login documents exist for several terminals
-And the device node of some of those terminals no longer exists
-When any operator completes `telec auth login`
-Then every per-TTY document whose device node no longer exists is removed
-And every per-TTY document whose device node still exists is left untouched, including documents belonging to another person
-```
-
-```
-Given a person whose email is listed under `people` in the global config
-When `telec auth login` resolves their role
-Then the login banner appends the matched role in parentheses
-And a missing or unmatched email still completes login but prints no role suffix
-```
-
-```
-Given an input lacking an "@" sign or containing only whitespace
-When the login writer normalizes the value
-Then a validation error "A valid email address is required." is raised
-And the CLI prints the error and exits with a failure status
-And no file is written
-```
-
 #### UC-TEL3: A live per-TTY document answers for its own terminal
-
-```
-Given a telec invocation from a TTY whose per-TTY login document records the device's current allocation token
-When the CLI resolves its caller
-Then the session-auth reader returns that document's email
-And the caller resolves to the registered person that email names
-And every request the command sends carries that person's identity
-```
 
 #### UC-TEL4: A per-TTY document outlives neither its device nor its allocation
 
-```
-Given a per-TTY login document whose terminal device no longer exists, or exists with a different allocation token than the one recorded at login
-When the CLI resolves its caller from that TTY
-Then the session-auth reader does not return that document's email
-And the terminal is treated as carrying no login document of its own
+#### UC-TEL5: A sole registered person is recognized on a fresh terminal
+
+```gherkin
+Scenario: Recognize the only registered person without another login
+  Given exactly one person is registered and the terminal has no saved login
+  When the operator starts a TeleClaude command there
+  Then the terminal is recognized as that person without another login step
+
+Scenario: No registered person supplies no terminal identity
+  Given no person is registered and the terminal has no saved login
+  When the operator starts a TeleClaude command there
+  Then no person identity is assigned to the terminal
 ```
 
-#### UC-TEL5: The sole registered person answers a fresh terminal
+#### UC-TEL6: A fresh terminal asks which registered person is using it
 
-```
-Given a telec invocation from a TTY that carries no login document of its own
-And exactly one person is registered
-When the CLI resolves its caller
-Then the session-auth reader returns that person's email from the people registry
-And the human is spared logging in on a shell they just opened
-```
-
-```
-Given a telec invocation from a TTY that carries no login document of its own
-And no person is registered
-When the CLI resolves its caller
-Then the session-auth reader returns no email
-```
-
-#### UC-TEL6: A fresh terminal must authenticate once more than one person is registered
-
-```
-Given a telec invocation from a TTY that carries no login document of its own
-And more than one person is registered
-When the CLI resolves its caller
-Then the session-auth reader returns no email
-And the caller resolves to no person
-And the operator is told that login is required before the command can proceed
+```gherkin
+Scenario: Choose an identity before protected work
+  Given more than one person is registered and the terminal has no saved login
+  When the operator starts a protected TeleClaude command there
+  Then no person identity is selected
+  And the operator is told to log in before continuing
 ```
 
 #### UC-TEL7: A process with no terminal presents no human identity
 
-```
-Given a process with no detectable TTY (no ttyname on fd 0/1/2, no SSH_TTY, and no ancestor process with a terminal)
-When it resolves its caller
-Then the session-auth reader returns no email
-And the caller resolves to no person
-And this holds for the daemon and for every process it spawns with no terminal
-```
-
-```
-Given a process with no terminal on fd 0/1/2 and no SSH_TTY, and no session identity document
-And an ancestor process runs on a terminal (e.g. an agent CLI started from /dev/ttys003 running a detached tool shell)
-When it resolves its caller
-Then the session-auth reader resolves the nearest such ancestor's terminal
-And reads that terminal's login document on the same liveness terms as the terminal itself
-And the email it returns is that terminal's human identity, never a session identity
-```
-
 #### UC-TEL8: A process inside a session presents no terminal login
 
-```
-Given a process whose session identity document is present, whether well-formed or not
-And its own terminal, or its nearest terminal-bearing ancestor's, carries a live login document
-When the process resolves its caller, or any consumer reads the terminal login
-Then the session-auth reader returns no email
-And the caller resolves to no terminal person
-And with exactly one person registered, that person is not presented either
-```
+#### UC-TEL9: An operator signs out of the current terminal
 
-```
-Given a legacy auth document containing a bare email string (pre-structured format)
-When the reader parses it
-Then the raw text is normalized (lowercased, trimmed) and returned as the email
-And the legacy document remains readable without rewrite
-```
-
-```
-Given a logged-in TTY
-When the operator runs `telec auth logout`
-Then the per-TTY auth document is removed
-And the CLI prints "Cleared login for TTY <tty>." (or a "not found" notice)
+```gherkin
+Scenario: Sign out one terminal
+  Given a terminal has a saved login
+  When the operator signs out from that terminal
+  Then future commands there no longer use the saved person identity
+  And logins on other terminals remain intact
 ```
 
 ### Cross-context references
@@ -172,3 +106,7 @@ And the CLI prints "Cleared login for TTY <tty>." (or a "not found" notice)
 - A tmux pane is a terminal like any other: login writes a document for it and the reader honours that document on the same device terms as any other terminal, for a process that carries no session identity. A process inside a session reads no terminal login, whichever pane it runs on. The trusted-TUI marker gates one thing only — whether an identity carried in the environment is honoured — and never what a terminal's own document answers.
 - A terminal login is a local convenience: it answers only for a client running on this host, and v2 hardens it with an explicit config-gated production toggle (see the Known caveats in `docs/local/spec/domain/identity.md`).
 - Legacy plaintext auth documents (a bare email string instead of structured form) are still readable for backward compatibility. There is no automatic rewrite — the document is upgraded only on the next successful login.
+- The writer attempts mode `0600` for each login file and `0700` for the
+  containing directory but ignores `OSError` from either permission change. If
+  the host refuses them, owner-only permissions are not guaranteed even though
+  private access remains the contract.
