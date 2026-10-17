@@ -208,7 +208,95 @@ def _event_records(raw: bytes, cases: JsonObject, expected: tuple[str, ...], sha
     return records
 
 
-def validate_event_inputs(report: JsonObject) -> JsonObject:
+def _labeled_inputs(inputs: JsonObject, key: str) -> dict[str, JsonObject]:
+    values = inputs[key]
+    if not isinstance(values, list):
+        raise ValueError(ERROR_REPORT)
+    rows: dict[str, JsonObject] = {}
+    for value in values:
+        row = object_value(value)
+        label = text(row, "label")
+        if label in rows:
+            raise ValueError(ERROR_REPORT)
+        rows[label] = row
+    return rows
+
+
+def _event_flow_links(
+    binding: events.EventWindowBinding,
+    records: list[Mapping[str, object]],
+    sessions: JsonObject,
+    starts: JsonObject,
+) -> JsonObject:
+    """Join already validated native facts to event witnesses without another read or result reclassification."""
+    data = {str(row[events.FIELD_CASE]): object_value(cast(JsonObject, row)[events.FIELD_DATA]) for row in records}
+    if "B5" not in data:
+        if sessions.get("state") != "not_selected" or starts.get("state") != "not_selected":
+            raise ValueError(ERROR_REPORT)
+        return {"state": "shared_flow_not_selected"}
+    if sessions.get("state") != "public_closed" or starts.get("state") != "recorded_inputs_matched":
+        raise ValueError(ERROR_REPORT)
+    closed = set(_strings(sessions["session_ids"]))
+    children = starts["children"]
+    if not isinstance(children, list) or len(children) != 1:
+        raise ValueError(ERROR_REPORT)
+    child = object_value(children[0])
+    claims = _labeled_inputs(starts, "accepted_start_claims")
+    direct = _labeled_inputs(starts, "direct_acts")
+    b5 = data["B5"]
+    w2 = text(claims["w2-start"], "actor")
+    w3 = text(claims["w3-start"], "actor")
+    builder = text(child, "session_id")
+    if (
+        b5.get("w2") != w2
+        or b5.get("w3") != w3
+        or b5.get("builder") != builder
+        or not {w2, w3, builder} <= closed
+        or child["project_path"] != binding.project_path
+        or child["worktree"] != f"{binding.project_path}/trees/{ITEM}"
+        or direct["reviewed"]["bound"] != b5.get("C1")
+        or direct["finding"]["bound"] != b5.get("C1")
+        or direct["finding"]["finding_key"] != b5.get("finding_key")
+        or direct["reply"]["bound"] != b5.get("finding_key")
+    ):
+        raise ValueError(ERROR_REPORT)
+    restorations = starts["local_restoration"]
+    if (
+        not isinstance(restorations, list)
+        or len(restorations) != 2
+        or any(object_value(value)["commit"] != b5.get("C2") for value in restorations)
+    ):
+        raise ValueError(ERROR_REPORT)
+    linked: list[JsonValue] = ["B5 actors, C1 review/finding/reply and restored C2"]
+    if "B7" in data:
+        b7 = data["B7"]
+        reasons = _labeled_inputs(starts, "reason_notes")
+        one, two = reasons["reasonone"], reasons["reasontwo"]
+        holder = text(claims["reasonone"], "actor")
+        messages = object_value(sessions["message_sessions"])
+        if (
+            b7.get("first") != one["actor"]
+            or b7.get("second") != two["actor"]
+            or set(messages) != {text(one, "actor"), text(two, "actor")}
+            or b7.get("w4") != holder
+            or holder not in closed
+            or one["holder"] != holder
+            or two["holder"] != holder
+            or b7.get("reason_one_note") != one["note"]
+            or b7.get("reason_two_note") != two["note"]
+            or b7.get("reason_one") != REASON_ONE
+            or b7.get("reason_two") != REASON_TWO
+            or any(
+                row["ready_at_commit"] != b5.get("C3") or row["ready_since"] != b5.get("ready_since_C3")
+                for row in (one, two)
+            )
+        ):
+            raise ValueError(ERROR_REPORT)
+        linked.append("B7 message authors, W4 claim, written notes and C3 ready context")
+    return {"state": "shared_flow_inputs_linked", "matched": linked, "remaining_settlement": "unproven"}
+
+
+def validate_event_inputs(report: JsonObject, sessions: JsonObject, starts: JsonObject) -> JsonObject:
     """Check original prefix bytes and, only with B6 coverage, rerun the existing positive event/log oracle."""
     selection = frozenset(_strings(report["selection"]))
     expected = tuple(case for case in events.CASE_SEQUENCE if not selection or f"UC-WF-{case}" in selection)
@@ -261,6 +349,7 @@ def validate_event_inputs(report: JsonObject) -> JsonObject:
     if evidence["case_report_path"] != str(binding.report_path):
         raise ValueError(ERROR_REPORT)
     records = _event_records(witness_bytes, object_value(case_report["cases"]), expected, sha)
+    links = _event_flow_links(binding, records, sessions, starts)
     if expected == events.CASE_SEQUENCE:
         terminal = object_value(cast(JsonObject, records[-1])[events.FIELD_DATA])
         pages = terminal["pages"]
@@ -287,6 +376,7 @@ def validate_event_inputs(report: JsonObject) -> JsonObject:
         "window_sha256": sha,
         "witness_sha256": hashlib.sha256(witness_bytes).hexdigest(),
         "full_event_assertions": "proven" if expected == events.CASE_SEQUENCE else "not_covered",
+        "shared_flow_links": links,
     }
 
 
@@ -922,6 +1012,7 @@ def _claim_record(row: JsonObject, attempt: Attempt, created: int, public_finish
     _claimed_holder(object_value(claim["held"]), actor, phase)
     return {
         "attempt_id": attempt.identifier,
+        "label": attempt.label,
         "actor": actor,
         "phase": phase,
         "native_session_id": native,
@@ -1227,11 +1318,14 @@ def _reason_record(
     return {
         "attempt_id": attempt.identifier,
         "operation_id": attempt.operation_id,
+        "label": attempt.label,
         "actor": actor,
         "holder": holder,
         "note": notes[-1],
         "state": "public_note_matched",
         "native_result_credit": credits,
+        "ready_at_commit": current["ready_at_commit"],
+        "ready_since": current["ready_since"],
     }
 
 
@@ -1379,6 +1473,8 @@ def _child_record(
         "parent_actor": actor,
         "native_session_id": native,
         "state": "public_child_started",
+        "project_path": project,
+        "worktree": worktree,
     }
 
 
@@ -1511,6 +1607,9 @@ def _direct_record(
     return {
         "attempt_id": attempt.identifier,
         "actor": actor,
+        "label": attempt.label,
+        "bound": row["bound"],
+        "finding_key": finding if label == "finding" else None,
         "state": "public_direct_refusal_matched" if refused else "public_direct_append_matched",
     }
 

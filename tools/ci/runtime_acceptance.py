@@ -6312,14 +6312,16 @@ def validate_provisional_payload_inputs(report_bytes: bytes, manifest: bytes, pa
     _validate_provisional_matrices(report, covered)
     cleanup = validate_provisional_cleanup(report)
     _validate_provisional_cleanup_commands(report)
+    sessions = validate_flow_session_closure(report)
+    starts = validate_flow_start_inputs(report)
     return {
         "binding_and_ledger_structure": structure,
         "functional_coverage": list(covered),
         "selected_run": bool(selected),
         "inner_cleanup": cleanup,
-        "shared_flow_sessions": validate_flow_session_closure(report),
-        "shared_flow_starts": validate_flow_start_inputs(report),
-        "public_event_inputs": validate_event_inputs(report),
+        "shared_flow_sessions": sessions,
+        "shared_flow_starts": starts,
+        "public_event_inputs": validate_event_inputs(report, sessions, starts),
     }
 
 
