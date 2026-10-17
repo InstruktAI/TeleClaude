@@ -160,6 +160,11 @@ class PopulationObserver:
         """The original manager-provided address used at descriptor construction."""
         return self._control_group
 
+    @property
+    def faults(self) -> tuple[Fault, ...]:
+        """Expose existing sticky facts without another population read or queue drain."""
+        return tuple(self._faults.values())
+
     def invalidate(
         self,
         cause: Invalidation,

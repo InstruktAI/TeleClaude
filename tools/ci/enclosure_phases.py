@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from enum import StrEnum
+from pathlib import Path
 from typing import Final
 
 from tools.ci.enclosure_actions import JOB_START, Authority, Key, NativeMutation
@@ -12,12 +13,15 @@ from tools.ci.enclosure_activation import ActivationSources, inspect_activation_
 from tools.ci.enclosure_activation import Key as ActivationKey
 from tools.ci.enclosure_configuration import (
     InstanceConfiguration,
+    MaskedInstanceConfiguration,
     inspect_instance_configuration,
     inspect_masked_instance_configuration,
+    read_runtime_mask,
 )
 from tools.ci.enclosure_contract import (
     Action,
     AdmittedDeadline,
+    Field,
     JsonObject,
     JsonValue,
     Phase,
@@ -80,6 +84,9 @@ class Evidence(StrEnum):
     START_SOURCES = "start_sources"
     PRE_MASK_GRAPH = "pre_mask_graph"
     PRE_MASK_ACTIVATION_SOURCES = "pre_mask_activation_sources"
+    HELPERS = "helpers"
+    RECEIPT_STATUS = "receipt_status"
+    MASK_TOMBSTONE = "mask_tombstone"
 
 
 def _unit(read: UnitRead) -> JsonObject:
@@ -115,6 +122,12 @@ class BindingPhases:
         self._startups: list[HelperStartup] = []
         self.start_sources: dict[Action, JsonObject] = {}
         self.masked_sources: JsonObject | None = None
+        self.masked_configuration: MaskedInstanceConfiguration | None = None
+        self.masked_graph: DependencyGraph | None = None
+        self.masked_activation_sources: ActivationSources | None = None
+        self.results: dict[Action, ActionResult] = {}
+        self.seal: ActionResult | None = None
+        self.completion_failure: BaseException | None = None
 
     @property
     def startups(self) -> tuple[HelperStartup, ...]:
@@ -125,12 +138,16 @@ class BindingPhases:
         self, action: Action, deadline: AdmittedDeadline, maximum_seconds: int, qualification_vector: str | None
     ) -> ActionResult:
         """Compose the actual separate helper with this process's original observations, without a new observer."""
-        if action not in (Action.CREATE_PARENT, Action.START_GUEST):
+        if action not in (Action.CREATE_PARENT, Action.START_GUEST, Action.MASK_GUEST) or self.seal is not None:
             raise ValueError(ERROR_PHASE.format(action=action))
         if self.uncertain is not None:
             raise self.uncertain
         if self.helper_failure is not None:
             raise self.helper_failure
+        if self.completion_failure is not None:
+            raise self.completion_failure
+        if any(result.status is not Outcome.SUCCEEDED for result in self.results.values()):
+            raise ValueError(ERROR_BINDING)
         # Preserve outer closure time before any read; do not subtract it from the original vector/command ends.
         end_ns = AdmittedDeadline(
             deadline.outer_end_ns,
@@ -142,26 +159,46 @@ class BindingPhases:
         ).command_end(maximum_seconds)
         action_deadline = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
         await self.manager.check_identity(end_ns)
-        metadata = await self.manager.read_manager(end_ns)
-        sources = inspect_start_sources(self.owner, self.package, metadata, action, action_deadline)
-        self.start_sources[action] = sources
-        if sources[ActivationKey.UNCLASSIFIED]:
-            raise ValueError(ERROR_BINDING)
+        if action is Action.MASK_GUEST:
+            self._helper_frontier(None)
+            self._require_source_closure(masked=False)
+        else:
+            metadata = await self.manager.read_manager(end_ns)
+            sources = inspect_start_sources(self.owner, self.package, metadata, action, action_deadline)
+            self.start_sources[action] = sources
+            if sources[ActivationKey.UNCLASSIFIED]:
+                raise ValueError(ERROR_BINDING)
         await self.manager.check_identity(end_ns)
 
         async def observe(mutation: NativeMutation, end_ns: int, startup: HelperStartup) -> ActionResult:
             return await self.observe(mutation, end_ns, action_deadline, startup)
 
         try:
-            return await run_privileged(
+            result = await run_privileged(
                 self.owner, action, action_deadline, maximum_seconds, qualification_vector, observe, self._startups
             )
+            self.results[action] = result
+            if time.monotonic_ns() >= end_ns:
+                raise TimeoutError(ERROR_BINDING)
+            if action is Action.MASK_GUEST and result.status is Outcome.SUCCEEDED:
+                self._helper_frontier(None)
+                if result.evidence.get(Evidence.PHASE) != Phase.ADMISSION_SEALED:
+                    raise ValueError(ERROR_BINDING)
+                if time.monotonic_ns() >= end_ns:
+                    raise TimeoutError(ERROR_BINDING)
+                # Only the actual durable receipt plus positive helper exit exposes this seal to the supervisor.
+                self.seal = result
+            return result
         except HelperUncertain as error:
             # Preserve the original startup/Process even if an outer caller only renders the raised diagnostic.
             self.uncertain = error
             raise
         except HelperExitFailed as error:
             self.helper_failure = error
+            raise
+        except BaseException as error:
+            # Keep a known receipt separate from failed/late supervision; neither permits another normal action.
+            self.completion_failure = error
             raise
 
     def _population_ready(self) -> None:
@@ -184,7 +221,61 @@ class BindingPhases:
         names.update(job.unit_name for job in self._accepted)
         if self.graph is not None:
             names.update(self.graph.creators)
+        if self.masked_graph is not None:
+            names.update(self.masked_graph.creators)
         return frozenset(names)
+
+    def _helper_frontier(self, current: HelperStartup | None) -> list[JsonValue]:
+        """Account for each original startup and native Process without taking the current helper's journal flock."""
+        loop = asyncio.get_running_loop()
+        if self._loop is not loop or self.population is None or self.population.faults or self.manager.faults:
+            raise ValueError(ERROR_BINDING)
+        if current is not None and (current not in self._startups or current.action is not Action.MASK_GUEST):
+            raise ValueError(ERROR_BINDING)
+        facts: list[JsonValue] = []
+        for startup in self._startups:
+            if (
+                startup.task.get_loop() is not loop
+                or startup.task.cancelled()
+                or not startup.task.done()
+                or startup.task.exception() is not None
+                or startup.process is None
+                or startup.task.result() is not startup.process
+                or startup.identity is None
+                or startup.identity.pid != startup.process.pid
+                or startup.identity.uid != 0
+                or startup.identity.boot_id != self.owner.journal.binding.controller.boot_id
+            ):
+                raise ValueError(ERROR_BINDING)
+            receipt = self.results.get(startup.action)
+            if startup is current:
+                if receipt is not None or startup.process.returncode is not None:
+                    raise ValueError(ERROR_BINDING)
+                startup.identity.require_alive()
+            elif receipt is None or receipt.status is not Outcome.SUCCEEDED or startup.process.returncode != 0:
+                raise ValueError(ERROR_BINDING)
+            facts.append(
+                {
+                    **startup.record(),
+                    Evidence.RECEIPT_STATUS: receipt.status.value if receipt is not None else None,
+                }
+            )
+        return facts
+
+    def _require_source_closure(self, *, masked: bool) -> None:
+        """Old and current source unknowns remain blocking; current pending creator jobs supply no settlement proof."""
+        if self.configuration is None or self.graph is None or self.activation_sources is None:
+            raise ValueError(ERROR_BINDING)
+        if self.graph.unclassified or self.activation_sources.unclassified:
+            raise ValueError(ERROR_BINDING)
+        if masked:
+            if self.masked_configuration is None or self.masked_graph is None or self.masked_activation_sources is None:
+                raise ValueError(ERROR_BINDING)
+            if self.masked_graph.unclassified or self.masked_activation_sources.unclassified:
+                raise ValueError(ERROR_BINDING)
+            creators = frozenset(self.masked_graph.creators)
+            if any(node.current_job is not None for node in self.masked_graph.nodes if node.read.name in creators):
+                raise ValueError(ERROR_BINDING)
 
     async def read_masked_sources(self, mutation: NativeMutation, deadline: AdmittedDeadline) -> JsonObject:
         """Compose original post-mask observations and retained history without advancing admission or certifying creators."""
@@ -209,6 +300,7 @@ class BindingPhases:
         configuration = inspect_masked_instance_configuration(
             self.owner, self.configuration, parent, guest, mutation, deadline
         )
+        self.masked_configuration = configuration
         evidence: JsonObject = {
             Evidence.NATIVE_RECEIPT: dict(mutation.evidence),
             Evidence.CONFIGURATION: configuration.record(),
@@ -227,6 +319,7 @@ class BindingPhases:
             masked=configuration,
             previous=self.graph,
         )
+        self.masked_graph = graph
         evidence[Evidence.DEPENDENCY_GRAPH] = graph.record()
         metadata = await self.manager.read_manager(end_ns)
         activation = inspect_activation_sources(
@@ -238,6 +331,7 @@ class BindingPhases:
             configuration=configuration.current,
             previous=self.graph,
         )
+        self.masked_activation_sources = activation
         evidence[Evidence.ACTIVATION_SOURCES] = activation.record()
         await self.manager.check_identity(end_ns)
         sample = self.population.sample(end_ns)
@@ -315,7 +409,7 @@ class BindingPhases:
         self, mutation: NativeMutation, end_ns: int, deadline: AdmittedDeadline, startup: HelperStartup
     ) -> ActionResult:
         """Establish only implemented original-object phases; no path or observer replacement on failure."""
-        if mutation.action not in (Action.CREATE_PARENT, Action.START_GUEST):
+        if mutation.action not in (Action.CREATE_PARENT, Action.START_GUEST, Action.MASK_GUEST):
             raise ValueError(ERROR_PHASE.format(action=mutation.action))
         if startup not in self._startups or startup.action is not mutation.action or startup.identity is None:
             raise ValueError(ERROR_BINDING)
@@ -324,6 +418,22 @@ class BindingPhases:
         if time.monotonic_ns() >= end_ns or end_ns > self.owner.journal.deadline.end_ns:
             raise TimeoutError(ERROR_BINDING)
         await self.manager.check_identity(end_ns)
+        if mutation.action is Action.MASK_GUEST:
+            self._helper_frontier(startup)
+            evidence = await self.read_masked_sources(
+                mutation, AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
+            )
+            self._require_source_closure(masked=True)
+            if self.masked_configuration is None:
+                raise ValueError(ERROR_BINDING)
+            evidence[Evidence.MASK_TOMBSTONE] = read_runtime_mask(
+                Path(text(self.masked_configuration.mask, Field.PATH)),
+                AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns),
+            )
+            evidence[Evidence.HELPERS] = self._helper_frontier(startup)
+            evidence[Evidence.HELPER] = startup.record()
+            evidence[Evidence.PHASE] = Phase.ADMISSION_SEALED.value
+            return ActionResult(Outcome.SUCCEEDED, evidence)
         record = parse_object(self.owner.manifest_bytes)
         name = text(record, OwnerKey.PARENT_UNIT if mutation.action is Action.CREATE_PARENT else OwnerKey.GUEST_UNIT)
         jobs = await self._settle(mutation, name, end_ns)

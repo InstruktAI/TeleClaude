@@ -126,6 +126,8 @@ class Key(StrEnum):
     PRE_MASK = "pre_mask"
     POST_MASK = "post_mask"
     MASK = "mask"
+    READ_STARTED_NS = "read_started_ns"
+    READ_FINISHED_NS = "read_finished_ns"
 
 
 RELATIONSHIPS: Final = (
@@ -348,6 +350,27 @@ def inspect_instance_configuration(
     )
 
 
+def read_runtime_mask(path: Path, deadline: AdmittedDeadline) -> JsonObject:
+    """Read the exact protected tombstone at a declared frontier; no future lifetime or creator claim is implied."""
+    started = time.monotonic_ns()
+    if started >= deadline.effective_end():
+        raise TimeoutError(ERROR_MASK)
+    row: JsonObject = {
+        Field.PATH: str(path.relative_to(ROOT)),
+        HostKey.KIND: Kind.SYMLINK.value,
+        HostKey.TARGET: NULL_TARGET,
+    }
+    descriptor = _runtime_directory(path.parent)
+    try:
+        _locked_file(row, deadline)
+    finally:
+        close_evidence_descriptors(descriptor)
+    finished = time.monotonic_ns()
+    if finished >= deadline.effective_end():
+        raise TimeoutError(ERROR_MASK)
+    return {**row, Field.PATH: str(path), Key.READ_STARTED_NS: started, Key.READ_FINISHED_NS: finished}
+
+
 def inspect_masked_instance_configuration(
     owner: RunOwner,
     before: InstanceConfiguration,
@@ -412,18 +435,7 @@ def inspect_masked_instance_configuration(
         [[SYMLINK_CHANGE, str(mask), NULL_TARGET]]
     ]:
         raise ValueError(ERROR_MASK)
-    row: JsonObject = {
-        Field.PATH: str(mask.relative_to(ROOT)),
-        HostKey.KIND: Kind.SYMLINK.value,
-        HostKey.TARGET: NULL_TARGET,
-    }
-    descriptor = _runtime_directory(mask.parent)
-    try:
-        _locked_file(row, deadline)
-    finally:
-        close_evidence_descriptors(descriptor)
-    if time.monotonic_ns() >= deadline.effective_end():
-        raise TimeoutError(ERROR_MASK)
+    mask_fact = read_runtime_mask(mask, deadline)
     current = InstanceConfiguration(
         parent,
         guest,
@@ -432,4 +444,4 @@ def inspect_masked_instance_configuration(
         max(parent.sequence, guest.sequence),
         time.monotonic_ns(),
     )
-    return MaskedInstanceConfiguration(before, current, {**row, Field.PATH: str(mask)})
+    return MaskedInstanceConfiguration(before, current, mask_fact)
