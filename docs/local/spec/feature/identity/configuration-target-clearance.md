@@ -82,62 +82,17 @@ a refused read returns no configuration.
 
 #### UC-CTC1: A person's agent edits all of that person's configuration
 
-```gherkin
-Given a person directs an agent bound to their verified principal
-And the agent's system role permits configuration patching
-When the agent patches that person's own configuration, their registry identity fields included
-Then the operation is accepted
-And the resulting state belongs to that person
-```
-
 #### UC-CTC2: Person ownership does not confer platform-role authority
 
 #### UC-CTC3: An agent cannot edit another person's instance by naming it
 
-```gherkin
-Given an agent acts for a person without administrator standing
-When the agent addresses another person's configuration instance
-Then the change is refused before persistence
-And the other person's stored state is unchanged
-```
-
 #### UC-CTC4: A company roster requires the standing of its target
-
-```gherkin
-Given an agent acts for a person whose effective role for a company is not admin
-When the agent patches that company's membership or project assignments
-Then the change is refused before persistence
-And neither a permissive system role nor a named company widens the principal's authority
-```
 
 #### UC-CTC5: An administrator can maintain a company roster
 
-```gherkin
-Given an agent acts for a verified platform administrator
-And its system role permits configuration patching
-When it patches a registered company's roster with valid relationships
-Then clearance accepts the targeted operation
-And the config owner validates and persists the requested change
-```
-
 #### UC-CTC6: A person cannot read another person's configuration
 
-```gherkin
-Given an agent acts for a person without administrator standing
-When the agent reads another person's configuration view
-Then the read is refused
-And no part of that person's configuration is returned
-```
-
 #### UC-CTC7: A system principal holds no person or administrator standing
-
-```gherkin
-Given an agent session whose principal is a system principal
-And its system role permits configuration patching
-When it patches a person's settings or a company
-Then the change is refused before persistence
-And the refusal names the standing the target requires
-```
 
 #### UC-CTC8: Computer configuration stays repairable while it is invalid
 
@@ -154,40 +109,11 @@ And the refusal names the standing the target requires
 
 #### UC-CTC9: A company administrator maintains their own company
 
-```gherkin
-Given an agent acts for a person holding no platform role and the admin role in one company
-When it reads or patches that company's roster with valid relationships
-Then clearance accepts the targeted operation
-And the same person's read or patch of a different company is refused
-And their attempt to list every company is refused
-```
-
 #### UC-CTC10: A company's help-desk links need that company's administrator
-
-```gherkin
-Given an agent acts for a person whose effective role for a company is member
-When it asks for that company's help-desk links
-Then the request is refused before any configuration is read
-And the refusal names the company administrator standing it requires
-And the same request for a person holding that company's admin role is accepted
-```
 
 #### UC-CTC11: Whoever may work in a project changes its declaration
 
-```gherkin
-Given an agent acts for a person whose effective role for a project is member
-When it patches that project's declaration, its help-desk declaration included
-Then clearance accepts the targeted operation
-And the same patch for a person whose effective role for that project is below member is refused before persistence
-```
-
 #### UC-CTC12: Machine configuration reads the same for every admitted caller
-
-```gherkin
-Given a machine configuration holding fields its schema marks sensitive
-When an agent acting for a platform administrator and an agent acting for a person below administrator each read it
-Then both receive the same view of every field
-```
 
 ## Known caveats
 
