@@ -40,6 +40,11 @@ without the declaration gains it through the configuration migration list
 (`local/projects/teleclaude/spec/feature/config/document-migration`). A load supplies the absent
 declaration in memory and writes nothing.
 
+Installation may load the schema-derived generation contract before this file
+exists; that load creates no file. Installation explicitly generates the
+configuration, while runtime access to effective settings fails if the file is
+still absent.
+
 ## Canonical fields
 
 ### Use cases
@@ -74,14 +79,6 @@ And the configuration migrations it has not yet passed are applied to it
 
 #### UC-CFG-LOAD-13: Installation can load generation before runtime configuration exists
 
-```gherkin
-Given a host carrying no machine configuration at <RuntimeConfig.home>/config.yml
-When an installation agent loads the config-owned generation contract
-Then loading that contract neither reads nor creates the machine configuration
-And the agent can explicitly create the machine configuration through that contract
-But a runtime consumer requesting the effective configuration still fails fast while the file is absent
-```
-
 #### UC-CFG-LOAD-3: Missing config.yml is a fail-fast import error
 
 #### UC-CFG-LOAD-14: Missing machine configuration fails runtime aggregate access
@@ -94,16 +91,17 @@ But a runtime consumer requesting the effective configuration still fails fast w
 
 #### UC-CFG-LOAD-7: Empty or non-dict YAML degrades into empty user config
 
-#### UC-CFG-LOAD-8: Env-backed credentials remain file-declared and service-available
+#### UC-CFG-LOAD-8: An operator configures a service without storing its secret
 
 ```gherkin
-Given the configuration schema declares a service credential or externally supplied service identifier sensitive, and the machine configuration carries its derived environment reference
-And the referenced value exists in the runtime secret environment
-When the runtime loads configuration and starts the configured service
-Then the typed effective configuration contains the resolved value
-And the service is available using that effective configuration
-And the machine configuration retains the placeholder rather than the resolved secret
-And changing the process environment after configuration loading does not bypass the effective configuration
+Scenario: Start a service with its environment-backed setting
+  Given an operator declares an environment reference for a sensitive service setting
+  And the referenced value is available to the runtime
+  When TeleClaude loads the configuration and starts the service
+  Then the service uses the resolved value
+  And the configured service is available
+  And the machine configuration retains the reference instead of the secret
+  And later environment changes do not bypass the loaded configuration
 ```
 
 #### UC-CFG-LOAD-9: Machine configuration governs runtime settings
@@ -119,35 +117,36 @@ And ambient process environment values cannot override the selected value
 #### UC-CFG-LOAD-12: A live-reloadable machine change applies without restarting the daemon
 
 ```gherkin
-Given a human operator changes only a live-reloadable machine setting while TeleClaude is running
-When the running service processes the changed machine configuration
-Then the next behavior governed by that setting uses the changed value
-And the daemon process remains running without a restart
+Scenario: Apply a live-reloadable machine change
+  Given a human operator changes a live-reloadable machine setting while TeleClaude is running
+  When the running service processes the changed configuration
+  Then the next behavior governed by that setting uses the changed value
+  And the daemon process remains running without a restart
+
+Scenario: Keep the last working settings after an invalid change
+  Given TeleClaude is running on a machine configuration that loads
+  When an operator changes the configuration so it no longer loads
+  Then the running service keeps the configuration it was running on
+  And `teleclaude.config.validation.failed` is reported once with the file and failure location but no configuration values
+  And a start or restart is refused with the same finding while a running service stays running
+
+Scenario: Apply a corrected live change
+  Given a previous machine configuration change was refused as invalid
+  When the operator corrects the configuration
+  Then the new settings are applied
+  And `teleclaude.config.validation.recovered` is reported
 ```
 
-#### UC-CFG-LOAD-17: Machine schema-error detail masks sensitive and undeclared input
+#### UC-CFG-LOAD-17: An operator can diagnose invalid machine settings without exposing secrets
 
 ```gherkin
-Given an agent loads an operator-authored machine configuration holding schema-invalid values
-When the machine schema rejects the input
-Then the raised configuration-load error names the configuration file
-And its schema-error detail identifies the dotted paths of rejected fields
-And that detail has the same validation-error form as a rejected teleclaude.yml overlay
-And rejected input values of schema-declared sensitive fields and undeclared keys are masked
-And other rejected input values remain in that detail
+Given an operator's machine configuration contains schema-invalid values
+When they validate the configuration
+Then the error identifies the configuration file and invalid field paths
+And sensitive values and undeclared keys are masked
 ```
 
 #### UC-CFG-LOAD-18: A machine configuration change that does not load is refused, not applied
-
-```gherkin
-Given TeleClaude is running on a machine configuration that loads
-When an operator or agent changes the machine configuration so that it no longer loads
-Then the running service keeps the configuration it was running on
-And the refusal is reported once as teleclaude.config.validation.failed, naming the file and where it fails without any value
-And starting or restarting the service is refused with the same finding, leaving a running service running
-When a later change makes the configuration load again
-Then the change is applied and teleclaude.config.validation.recovered is reported
-```
 
 ### Cross-context references
 
