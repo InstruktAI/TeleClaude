@@ -59,6 +59,7 @@ def execute_native(
     stderr_fd: int,
     end_ns: int,
     started: Callable[[int], None],
+    preserve: Callable[[subprocess.Popen[bytes]], None] | None = None,
 ) -> int:
     """Start one real native executable and preserve one cutoff through the started receipt and wait."""
     remaining = (end_ns - time.monotonic_ns()) / NANOSECONDS
@@ -75,6 +76,8 @@ def execute_native(
         close_fds=True,
         umask=0o022,
     )
+    if preserve is not None:
+        preserve(process)
     started(process.pid)
     remaining = (end_ns - time.monotonic_ns()) / NANOSECONDS
     if remaining <= 0:

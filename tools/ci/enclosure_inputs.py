@@ -26,7 +26,7 @@ from tools.ci.enclosure_contract import (
 )
 from tools.ci.enclosure_data import _archive, _command, _require_time
 from tools.ci.enclosure_native import NativeCommand
-from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, RunOwner, _require_private_directory
+from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, HelperOwner, _require_private_directory
 
 CURL: Final = "/usr/bin/curl"
 CURL_ARGUMENTS: Final = (
@@ -189,15 +189,14 @@ def acquire_fixed_inputs(
 
 
 def stage_observer_library(
-    owner: RunOwner,
-    package: StaticPackage,
+    owner: HelperOwner,
     inputs: Mapping[str, Path],
     run: NativeCommand,
     deadline: AdmittedDeadline,
 ) -> Path:
     """Extract the one authenticated wheel as data, without executing or installing its package."""
     controller = owner.journal.binding.controller
-    if os.geteuid() != 0 or controller.pid != os.getpid() or deadline.outer_end_ns != owner.journal.deadline.end_ns:
+    if deadline.outer_end_ns != owner.journal.deadline.end_ns:
         raise ValueError(ERROR_OWNER)
     deadline = AdmittedDeadline(
         deadline.outer_end_ns,
@@ -205,8 +204,9 @@ def stage_observer_library(
         min(deadline.effective_end(), deadline.outer_end_ns - owner.journal.deadline.reserve_ns),
     )
     _require_time(deadline)
-    controller.require_alive()
+    owner.require_original_parent()
     _require_private_directory(owner.journal.directory_fd)
+    package = owner.package
     library = object_value(parse_object(package.lock_bytes)[Key.OBSERVER_LIBRARY])
     archive = _archive(library, inputs, deadline)
     recipe = parse_object(package.recipe_bytes)
@@ -221,5 +221,5 @@ def stage_observer_library(
     # The existing bounded adapter runs only the locked interpreter's stdlib ZIP
     # command; this does not import wheel code or connect a manager observer.
     _command((interpreter, *ZIP_EXTRACT, str(archive), str(destination)), run, deadline, cap)
-    controller.require_alive()
+    owner.require_original_parent()
     return destination

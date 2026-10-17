@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -66,6 +67,12 @@ class PrivilegedCommands:
         self.deadline = deadline
         self.journal_fd = -1
         self.sequence = 0
+        self._processes: list[subprocess.Popen[bytes]] = []
+
+    @property
+    def processes(self) -> tuple[subprocess.Popen[bytes], ...]:
+        """Original native handles, including a process whose started receipt or bounded wait failed."""
+        return tuple(self._processes)
 
     def _open(self) -> None:
         if self.journal_fd >= 0:
@@ -160,6 +167,7 @@ class PrivilegedCommands:
                     stderr_fd=stderr_fd,
                     end_ns=end,
                     started=self._started,
+                    preserve=self._processes.append,
                 )
             except BaseException as error:
                 try:
@@ -198,7 +206,7 @@ class PrivilegedCommands:
             close_evidence_descriptors(stderr_fd, stdout_fd)
 
     def close(self) -> None:
-        """Close only this helper's command journal; its inherited ownership is closed by its owner."""
+        """Close only the command journal; original processes stay available for the owner's bounded closure."""
         close_evidence_descriptors(self.journal_fd)
 
 
