@@ -24,10 +24,3 @@ client is present.
 ### Use cases
 
 #### UC-PTHEME-1: TUI pane theming completes when the tmux server has no attached client
-
-```
-Given the TUI pane manager runs against a tmux server with no client attached
-When it applies the TUI pane background theming
-Then the theming operation completes without raising
-And the pane window and border style options are applied
-```
