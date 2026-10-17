@@ -667,6 +667,31 @@ class ManagerObserver:
             raise RuntimeError(CONNECTION_ERROR)
         return guest
 
+    async def read_active_boundary(self, deadline_ns: int) -> tuple[UnitRead, UnitRead]:
+        """Read the active originals at an explicit phase frontier, retaining the first binding as the comparison basis."""
+        original_parent, original_guest = self._parent, self._guest
+        if original_parent is None or original_guest is None or self._population is None:
+            raise ValueError(BINDING_ERROR)
+        parent = await self.read_unit(
+            original_parent.name, Interface.SLICE, deadline_ns, original_path=original_parent.object_path
+        )
+        guest = await self.read_unit(
+            original_guest.name, Interface.SERVICE, deadline_ns, original_path=original_guest.object_path
+        )
+        if parent.unit.get(Property.ACTIVE_STATE) != ACTIVE:
+            self.invalidate(Invalidation.PARENT_DEACTIVATED)
+        if parent.specific.get(Property.CONTROL_GROUP) != self._population.control_group:
+            self.invalidate(Invalidation.PARENT_REPLACED)
+        if guest.unit.get(Property.INVOCATION_ID) != original_guest.unit.get(Property.INVOCATION_ID):
+            self.invalidate(Invalidation.INVOCATION_CHANGED)
+        if guest.specific.get(Property.CONTROL_GROUP) != original_guest.specific.get(Property.CONTROL_GROUP):
+            self.invalidate(Invalidation.MOVED)
+        if self._faults:
+            raise RuntimeError(CONNECTION_ERROR)
+        if guest.unit.get(Property.ACTIVE_STATE) != ACTIVE:
+            raise ValueError(BINDING_ERROR)
+        return parent, guest
+
     def _on_message(self, message: Message) -> None:
         """Contain malformed signal handling as a sticky loss rather than a dropped callback."""
         if message.message_type is not MessageType.SIGNAL:

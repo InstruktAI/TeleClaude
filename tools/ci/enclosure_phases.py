@@ -269,9 +269,13 @@ class BindingPhases:
                 self.manager.invalidate(Invalidation.INVOCATION_CHANGED)
                 raise ValueError(ERROR_BINDING)
             phase = Phase.GUEST_STARTED
-        current_parent = await self.manager.read_unit(
-            self.parent.name, Interface.SLICE, end_ns, original_path=self.parent.object_path
-        )
+        current_guest = None
+        if self.guest is not None:
+            current_parent, current_guest = await self.manager.read_active_boundary(end_ns)
+        else:
+            current_parent = await self.manager.read_unit(
+                self.parent.name, Interface.SLICE, end_ns, original_path=self.parent.object_path
+            )
         if (
             current_parent.unit.get(Property.ACTIVE_STATE) != ACTIVE
             or current_parent.specific.get(Property.CONTROL_GROUP) != self.population.control_group
@@ -279,12 +283,12 @@ class BindingPhases:
         ):
             self.manager.invalidate(Invalidation.PARENT_REPLACED)
             raise ValueError(ERROR_BINDING)
-        if mutation.action is Action.START_GUEST and self.guest is not None:
+        if mutation.action is Action.START_GUEST and current_guest is not None:
             self.configuration = inspect_instance_configuration(
                 self.owner,
                 self.package,
                 current_parent,
-                self.guest,
+                current_guest,
                 AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns),
             )
             self.graph = await inspect_dependency_graph(
@@ -332,7 +336,7 @@ class BindingPhases:
                 Evidence.PHASE: phase.value,
                 Evidence.IDENTITY: identity,
                 Evidence.PARENT: _unit(current_parent),
-                Evidence.GUEST: _unit(self.guest) if self.guest is not None else None,
+                Evidence.GUEST: _unit(current_guest) if current_guest is not None else None,
                 Evidence.CONFIGURATION: self.configuration.record() if self.configuration is not None else None,
                 Evidence.DEPENDENCY_GRAPH: self.graph.record() if self.graph is not None else None,
                 Evidence.ACTIVATION_SOURCES: self.activation_sources.record()
