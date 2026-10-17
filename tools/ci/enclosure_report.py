@@ -39,7 +39,7 @@ from tools.ci.enclosure_inner import PROVISIONAL_REPORT_SCHEMA, PROVISIONAL_STAG
 from tools.ci.workflow_creation import collect_slugs
 from tools.ci.workflow_driver import DRIVER_ID as PROC_PREPARE
 from tools.ci.workflow_driver import ROLE as ROLE_PREPARE
-from tools.ci.workflow_driver import assert_claim_observation, assert_instruction
+from tools.ci.workflow_driver import assert_claim_observation, assert_instruction, claim_entries
 from tools.ci.workflow_flow import (
     B5_ACTIONS,
     B6_ACTIONS,
@@ -387,7 +387,10 @@ def _event_early_links(
             actors = _strings(data["sessions"])
             effects = object_value(inputs["effect_inputs"])
             if (
-                any(data.get(key) != effects[key] for key in ("R0", "R1", "R2"))
+                data.get("selected_variant") != "B9"
+                or text(object_value(effects["B9_inputs"]), "person")
+                != text(object_value(object_value(early["B3"])["effect_inputs"]), "person")
+                or any(data.get(key) != effects[key] for key in ("R0", "R1", "R2"))
                 or data.get("BODY_C") != prepared.B9_BODY_C
                 or data.get("BODY_A") != prepared.BODY_A
                 or data.get("BODY_B") != prepared.BODY_B
@@ -1598,11 +1601,18 @@ def _b3_effect_order(row: JsonObject, packets: dict[str, JsonObject], actors: di
 
 def _b4_effect_packets(row: JsonObject, actors: dict[str, JsonObject]) -> dict[str, JsonObject]:
     expected = {
+        prepared.EFFECT_C2_INPUT: ("child", 1, 4, 1, 0),
         "body-move": (None, 0, 5, 1, 1),
+        "b9-performer-context": ("author", 0, 1, 3, 0),
+        prepared.EFFECT_X_INPUT: ("X", 1, 5, 0, 0),
+        prepared.EFFECT_C2_PREPARED: ("child", 1, 5, 0, 0),
+        prepared.EFFECT_C2_WAITING: ("child", 1, 5, 0, 0),
         "old-prepared-refused": ("author", 1, 7, 1, 0),
         "prepared-current": ("author", 1, 3, 1, 0),
         "moved-work-refused": (None, 0, 9, 0, 1),
         "body-restore": (None, 0, 5, 0, 1),
+        "worker-claim-and-worktree": ("worker", 0, 2, 3, 0),
+        "post-close-inventory": ("worker", 0, 0, 5, 0),
     }
     values = row["effects"]
     if not isinstance(values, list) or len(values) != len(expected):
@@ -1623,12 +1633,33 @@ def _b4_effect_packets(row: JsonObject, actors: dict[str, JsonObject]) -> dict[s
             "commands",
             "lists",
             "list_observed_ns",
-            "R1",
         }
+        if name in (
+            "body-move",
+            "old-prepared-refused",
+            "prepared-current",
+            "moved-work-refused",
+            "body-restore",
+            "b9-performer-context",
+        ):
+            fields.add("R1")
         if name in ("body-move", "old-prepared-refused", "moved-work-refused"):
             fields.add("R0")
         if name == "moved-work-refused":
             fields |= {"R2", "start_calls", "operation_reads", "observation_end"}
+        if name == "b9-performer-context":
+            fields.add("person")
+        if name in (
+            prepared.EFFECT_C2_INPUT,
+            prepared.EFFECT_X_INPUT,
+            prepared.EFFECT_C2_PREPARED,
+            prepared.EFFECT_C2_WAITING,
+        ):
+            fields.add("attempt_id")
+        if name in (prepared.EFFECT_X_INPUT, prepared.EFFECT_C2_PREPARED, prepared.EFFECT_C2_WAITING):
+            fields.add("slot")
+        if name == "worker-claim-and-worktree":
+            fields |= {"git", "start_operation_id", "worktree_end"}
         if (
             set(packet) != fields
             or packet["name"] != name
@@ -1708,11 +1739,18 @@ def _b4_owner_write(
     )
 
 
-def _b4_snapshot(positions: list[int], views: list[JsonObject], first: int, after: int) -> None:
+def _b4_snapshot_pair(positions: list[int], views: list[JsonObject], first: int) -> None:
     if (
         creation.differences(views[first], views[first + 1])
         or positions[first + 1] - positions[first] < creation.QUIESCENCE_GAP_SECONDS * NANOSECONDS
-        or creation.differences(views[first + 1], views[after])
+    ):
+        raise ValueError(ERROR_REPORT)
+
+
+def _b4_snapshot(positions: list[int], views: list[JsonObject], first: int, after: int) -> None:
+    _b4_snapshot_pair(positions, views, first)
+    if (
+        creation.differences(views[first + 1], views[after])
         or creation.differences(views[first + 1], views[after + 1])
         or positions[after + 1] - positions[after] < items.SETTLE_SECONDS * NANOSECONDS
     ):
@@ -1821,7 +1859,7 @@ def _b4_effect_order(row: JsonObject, packets: dict[str, JsonObject], actors: di
         object_value(value) for value in cast(list[JsonValue], row["actors"]) if object_value(value)["name"] == "child"
     )
     if (
-        positive_integer(child_start, "finished_ns") > positive_integer(packets["body-move"], "started_ns")
+        positive_integer(child_start, "finished_ns") > positive_integer(packets[prepared.EFFECT_C2_INPUT], "started_ns")
         or positive_integer(packets["old-prepared-refused"], "finished_ns")
         > positive_integer(ends[text(actors["X"], "session_id")], "started_ns")
         or positive_integer(ends[text(actors["S_P"], "session_id")], "finished_ns")
@@ -1835,7 +1873,239 @@ def _b4_effect_order(row: JsonObject, packets: dict[str, JsonObject], actors: di
         raise ValueError(ERROR_REPORT)
 
 
-def _b4_effect_inputs(row: JsonObject, actors: dict[str, JsonObject]) -> JsonObject:
+def _b9_log(view: JsonObject) -> list[tuple[str, str]]:
+    found, log = creation.dig(view, "artifact_content.log")
+    if not found or not isinstance(log, str):
+        raise ValueError(ERROR_REPORT)
+    return waiting.log_entries(log)
+
+
+def _b9_effect_inputs(
+    packets: dict[str, JsonObject], actors: dict[str, JsonObject], ledger: JsonObject, project: str, r1: str
+) -> JsonObject:
+    attempts = {
+        text(object_value(value), "label"): object_value(value) for value in cast(list[JsonValue], ledger["attempts"])
+    }
+    labels = (
+        prepared.EFFECT_C2_INPUT,
+        prepared.EFFECT_X_INPUT,
+        prepared.EFFECT_C2_PREPARED,
+        prepared.EFFECT_C2_WAITING,
+    )
+    for label in labels:
+        attempt, packet = attempts[label], packets[label]
+        if attempt.get("kind") != RECORD_EFFECT or packet["attempt_id"] != attempt.get("attempt_id"):
+            raise ValueError(ERROR_REPORT)
+    positive = packets[prepared.EFFECT_C2_INPUT]
+    positions, views = _b4_items(positive)
+    _b4_snapshot_pair(positions, views, 0)
+    output = _early_effect_frame(
+        positive, 0, "cmd_inputc", ["telec", "todo", "artifacts", "write", ITEM, prepared.INPUT, prepared.B9_BODY_C]
+    )
+    if (
+        prepared.WROTE_PHRASE not in output
+        or _b4_input(views[3]) != prepared.B9_BODY_C
+        or _b9_log(views[1]) != _b9_log(views[2])
+    ):
+        raise ValueError(ERROR_REPORT)
+    items.require_only_changes("B9 C2 intent body", views[1], views[2], prepared.OWNER_WRITE_PATHS)
+    found, updated_by = creation.dig(views[2], prepared.UPDATED_BY)
+    if not found or updated_by != text(actors["child"], "session_id"):
+        raise ValueError(ERROR_REPORT)
+    child = _early_effect_sessions(positive, ("child",), actors, project)[0]
+    if (
+        child.get("closed_at") is not None
+        or child.get("lifecycle_status") != foundation.ACTIVE
+        or _b4_lists(positive) != ([], [])
+    ):
+        raise ValueError(ERROR_REPORT)
+    context = packets["b9-performer-context"]
+    records = _early_effect_sessions(context, ("author", "child", "child"), actors, project)
+    author = text(actors["author"], "session_id")
+    if (
+        records[0].get("role") != ROLE_PREPARE
+        or records[1].get("role") != CHILD_ROLE
+        or records[2].get("initiator_session_id") != author
+        or context["R1"] != r1
+        or _b4_lists(context) != ([], [])
+    ):
+        raise ValueError(ERROR_REPORT)
+    creation.require_value(ITEM, _b4_items(context)[1][0], "state.active_runner", author)
+    person = text(context, "person")
+    calls = {
+        prepared.EFFECT_X_INPUT: (
+            1,
+            "cmd_inputforeign",
+            ["telec", "todo", "artifacts", "write", ITEM, prepared.INPUT, prepared.B9_X_INPUT],
+            ("409", f"{ITEM} is held by session {author}", "holder or a session of its claiming group"),
+        ),
+        prepared.EFFECT_C2_PREPARED: (
+            3,
+            "cmd_preparedwrong",
+            ["telec", "todo", "act", ITEM, "prepared", "--revision", r1, prepared.B9_PREPARED_TEXT],
+            ("Error: 409 — prepared requires the holding driver",),
+        ),
+        prepared.EFFECT_C2_WAITING: (
+            3,
+            "cmd_waitingwrong",
+            ["telec", "todo", "act", ITEM, "waiting", "--person", person, prepared.B9_WAITING_TEXT],
+            ("Error: 409 — waiting requires the holding driver",),
+        ),
+    }
+    for label, (slot, frame, argv, expected) in calls.items():
+        packet = packets[label]
+        positions, views = _b4_items(packet)
+        _b4_snapshot(positions, views, 0, 2)
+        output = _early_effect_frame(packet, 0, frame, argv, successful=False)
+        _, lists = _b4_lists(packet)
+        if (
+            type(packet["slot"]) is not int
+            or packet["slot"] != slot
+            or any(needle not in output for needle in expected)
+            or "Performed " in output
+            or _b9_log(views[1]) != _b9_log(views[4])
+            or len(lists) != 2
+            or lists[0] != lists[1]
+        ):
+            raise ValueError(ERROR_REPORT)
+    return {
+        "state": "original_B9_effect_inputs_matched",
+        "person": person,
+        "attempt_ids": [packets[label]["attempt_id"] for label in labels],
+    }
+
+
+def _b4_git_inputs(packet: JsonObject, project: str, worker: str) -> None:
+    values = packet["git"]
+    if not isinstance(values, list) or len(values) < 6:
+        raise ValueError(ERROR_REPORT)
+    expected = str(Path(project) / "trees" / ITEM)
+    suffix = (
+        ("opening commit count", ["git", "rev-list", "--count", f"{prepared.ORIGIN}/{prepared.MAIN}..{ITEM}"]),
+        ("opening commit parent", ["git", "rev-parse", f"{ITEM}^"]),
+        ("origin tip", ["git", "rev-parse", f"{prepared.ORIGIN}/{prepared.MAIN}"]),
+        ("worktree declaration", ["git", "-C", expected, "show", f"HEAD:{prepared.BASE_FILE}"]),
+        ("opening commit message", ["git", "log", "-1", "--format=%B", ITEM]),
+    )
+    outputs: list[str] = []
+    previous = positive_integer(packet, "started_ns")
+    for index, value in enumerate(values):
+        row = object_value(value)
+        step, argv = (
+            ("worktree list", ["git", "worktree", "list", "--porcelain"])
+            if index < len(values) - len(suffix)
+            else suffix[index - len(values) + len(suffix)]
+        )
+        if (
+            set(row) != {"step", "started_ns", "finished_ns", "command", "error"}
+            or row["step"] != step
+            or row["error"] is not None
+            or not previous
+            <= positive_integer(row, "started_ns")
+            <= positive_integer(row, "finished_ns")
+            <= positive_integer(packet, "finished_ns")
+        ):
+            raise ValueError(ERROR_REPORT)
+        previous = positive_integer(row, "finished_ns")
+        outputs.append(_command_output(row["command"], argv).strip())
+    for index, listing in enumerate(outputs[:-5]):
+        blocks = [chunk.split("\n") for chunk in listing.replace("\r\n", "\n").split("\n\n")]
+        block = next((lines for lines in blocks if lines and lines[0] == f"worktree {expected}"), [])
+        if index < len(outputs) - 6:
+            if block:
+                raise ValueError(ERROR_REPORT)
+        elif not block or f"branch refs/heads/{ITEM}" not in block:
+            raise ValueError(ERROR_REPORT)
+    if (
+        outputs[-5] != "1"
+        or outputs[-4] != outputs[-3]
+        or not outputs[-1].startswith(prepared.OPENING_SUBJECT)
+        or f"Session: {worker}" not in outputs[-1]
+    ):
+        raise ValueError(ERROR_REPORT)
+    prepared.assert_declared("the worktree's HEAD", outputs[-2])
+    end = packet["worktree_end"]
+    if type(end) not in (int, float) or not isinstance(end, (int, float)) or not math.isfinite(end) or end <= 0:
+        raise ValueError(ERROR_REPORT)
+    start_ns = int((end - prepared.WORKTREE_SECONDS) * NANOSECONDS)
+    positions, _ = _b4_items(packet)
+    first = object_value(values[0])
+    if start_ns < positions[1] or positive_integer(first, "started_ns") < start_ns:
+        raise ValueError(ERROR_REPORT)
+    # The original reader checks its loop before each request; a late return is not a new failure rule.
+
+
+def _b4_worker_inputs(row: JsonObject, packets: dict[str, JsonObject], actors: dict[str, JsonObject]) -> JsonObject:
+    packet = packets["worker-claim-and-worktree"]
+    worker = text(actors["worker"], "session_id")
+    project = text(row, "project_path")
+    start = next(
+        object_value(value)
+        for value in cast(list[JsonValue], row["start_calls"])
+        if object_value(value)["label"] == "work"
+    )
+    driver = next(
+        object_value(value)
+        for value in cast(list[JsonValue], row["drivers"])
+        if object_value(value)["name"] == "worker"
+    )
+    instruction = text(object_value(driver["instruction"]), "text")
+    if (
+        packet["start_operation_id"] != start["operation_id"]
+        or any(needle not in instruction for needle in (ITEM, str(Path(project) / "trees" / ITEM)))
+        or positive_integer(object_value(driver["claim"]), "observed_ns") > positive_integer(packet, "started_ns")
+    ):
+        raise ValueError(ERROR_REPORT)
+    _, views = _b4_items(packet)
+    claims = claim_entries(str(creation.dig(views[0], "artifact_content.log")[1]))
+    if not claims or f"on branch {ITEM}" not in claims[-1][1]:
+        raise ValueError(ERROR_REPORT)
+    records = _early_effect_sessions(packet, ("author", "child", "worker"), actors, project)
+    if [
+        text(actors[name], "session_id")
+        for name, record in zip(("author", "child", "worker"), records, strict=True)
+        if record.get("role") == ROLE_WORK
+    ] != [worker]:
+        raise ValueError(ERROR_REPORT)
+    for path, expected in (
+        ("state.lifecycle_phase", prepared.WORK_PHASE),
+        ("standing.phase", prepared.WORK_PHASE),
+        ("standing.held_by", worker),
+    ):
+        creation.require_value(ITEM, views[1], path, expected)
+    if _b4_lists(packet) != ([], []):
+        raise ValueError(ERROR_REPORT)
+    _b4_git_inputs(packet, project, worker)
+    inventory = packets["post-close-inventory"]
+    _, lists = _b4_lists(inventory)
+    baseline = _early_session_list(cast(list[JsonValue], row["baseline"])[0])
+    owned = {text(actor, "session_id") for actor in actors.values()}
+    if len(lists) != 1 or lists[0] - set(baseline) != owned:
+        raise ValueError(ERROR_REPORT)
+    names = tuple(sorted(actors, key=lambda name: text(actors[name], "session_id")))
+    closed = _early_effect_sessions(inventory, names, actors, project)
+    if any(
+        not _public_closed(record, text(actors[name], "session_id")) for name, record in zip(names, closed, strict=True)
+    ):
+        raise ValueError(ERROR_REPORT)
+    worker_end = next(
+        object_value(value)
+        for value in cast(list[JsonValue], row["ends"])
+        if object_value(value)["session_id"] == worker
+    )
+    if positive_integer(packet, "finished_ns") > positive_integer(worker_end, "started_ns") or positive_integer(
+        worker_end, "finished_ns"
+    ) > positive_integer(inventory, "started_ns"):
+        raise ValueError(ERROR_REPORT)
+    return {
+        "state": "original_worker_worktree_and_public_inventory_inputs_matched",
+        "session_id": worker,
+        "public_closed_session_ids": list[JsonValue](sorted(owned)),
+        "creator_classification": "unproven",
+    }
+
+
+def _b4_effect_inputs(row: JsonObject, actors: dict[str, JsonObject], ledger: JsonObject) -> JsonObject:
     packets = _b4_effect_packets(row, actors)
     move, restore = packets["body-move"], packets["body-restore"]
     _, views = _b4_items(move)
@@ -1871,6 +2141,8 @@ def _b4_effect_inputs(row: JsonObject, actors: dict[str, JsonObject]) -> JsonObj
     ):
         raise ValueError(ERROR_REPORT)
     _b4_effect_order(row, packets, actors)
+    b9 = _b9_effect_inputs(packets, actors, ledger, project, r1)
+    worker = _b4_worker_inputs(row, packets, actors)
     return {
         "state": "original_B4_body_effect_inputs_matched",
         "R0": r0,
@@ -1878,15 +2150,19 @@ def _b4_effect_inputs(row: JsonObject, actors: dict[str, JsonObject]) -> JsonObj
         "R2": r2,
         "refused_work_operation_id": operation,
         "observed_body_handoff_order": "matched",
+        "B9_inputs": b9,
+        "worker_inputs": worker,
         "semantic_settlement": "unproven",
         "physical_P4": "unproven",
     }
 
 
-def _early_effect_inputs(row: JsonObject, case: str, drivers: JsonObject, other_actors: JsonObject) -> JsonObject:
+def _early_effect_inputs(
+    row: JsonObject, case: str, drivers: JsonObject, other_actors: JsonObject, ledger: JsonObject
+) -> JsonObject:
     actors = {name: object_value(value) for name, value in {**drivers, **other_actors}.items()}
     if case == "B4":
-        return _b4_effect_inputs(row, actors)
+        return _b4_effect_inputs(row, actors, ledger)
     packets = _b3_effect_packets(row, actors)
     baseline = _b3_wait_inputs(packets, actors, text(row, "project_path"))
     operation = _b3_entry_refusal(packets["entry-refused"], baseline, row, actors)
@@ -2009,7 +2285,7 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
             "driver_inputs": drivers,
             "other_actor_inputs": other_actors,
             "explicit_end_inputs": _early_end_inputs(row, case, drivers, other_actors, ledger),
-            "effect_inputs": _early_effect_inputs(row, case, drivers, other_actors),
+            "effect_inputs": _early_effect_inputs(row, case, drivers, other_actors, ledger),
             "originating_start_inputs": _early_start_inputs(row, case, drivers, starts),
             "attempt_ledger_inputs": ledger,
             "semantic_settlement": "unproven",

@@ -259,6 +259,14 @@ def assert_owner_write(before: Json, after: Json, known_sessions: Sequence[str])
         raise creation.platform_failure(DETAIL_CLOCK.format(before=stamps[0], after=stamps[1]))
 
 
+def assert_declared(where: str, text: str) -> None:
+    """Apply the original committed docs-only capability predicate to captured Git text."""
+    if not text_capability_enabled(text, CAPABILITY_DOCS) or any(
+        text_capability_enabled(text, name) for name in (CAPABILITY_CODE, CAPABILITY_AGENTS)
+    ):
+        raise creation.binding_failure(DETAIL_CAPABILITY.format(where=where, found=text[-400:]))
+
+
 class _Prepared:
     """One run of journey B4."""
 
@@ -624,10 +632,7 @@ class _Prepared:
 
     def require_declared(self, where: str, text: str) -> None:
         """A committed declaration carries docs enabled and neither code nor agents."""
-        if not text_capability_enabled(text, CAPABILITY_DOCS) or any(
-            text_capability_enabled(text, name) for name in (CAPABILITY_CODE, CAPABILITY_AGENTS)
-        ):
-            raise creation.binding_failure(DETAIL_CAPABILITY.format(where=where, found=text[-400:]))
+        assert_declared(where, text)
 
     def hook_preflight(self) -> None:
         """No hook path and no executable hook: a present hook is a binding failure, never a reason to relax a floor."""
