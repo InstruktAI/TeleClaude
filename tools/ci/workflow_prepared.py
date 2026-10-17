@@ -295,20 +295,42 @@ class _Prepared:
         self.journeys[name] = journey
         return journey
 
-    def _shown(self) -> Json:
-        return driver.shown_with_content(self.observer, ITEM)
+    def _effect(self, name: str, actor: str | None) -> creation.EvidenceObject | None:
+        packet = driver.effect_inputs(self.accounting, name, actor)
+        if packet is not None:
+            packet["commands"] = []
+            packet["lists"] = []
+            packet["list_observed_ns"] = []
+        return packet
 
-    def _input(self) -> str:
-        found, text = creation.dig(self._shown(), f"artifact_content.{INPUT}")
+    def _shown(self, effect: creation.EvidenceObject | None = None) -> Json:
+        shown = driver.shown_with_content(self.observer, ITEM)
+        if effect is not None:
+            cast(list[creation.EvidenceValue], effect["shown"]).append(
+                {"observed_ns": time.monotonic_ns(), "item": cast(creation.EvidenceValue, dict(shown))}
+            )
+        return shown
+
+    def _input(self, effect: creation.EvidenceObject | None = None) -> str:
+        found, text = creation.dig(self._shown(effect), f"artifact_content.{INPUT}")
         if not found or not isinstance(text, str):
             raise creation.trace_failure(
                 creation.DETAIL_PATH_ABSENT.format(slug=ITEM, path=f"artifact_content.{INPUT}")
             )
         return text
 
-    def _headers(self) -> list[str]:
-        _, log = creation.dig(self._shown(), "artifact_content.log")
+    def _headers(self, effect: creation.EvidenceObject | None = None) -> list[str]:
+        _, log = creation.dig(self._shown(effect), "artifact_content.log")
         return [header for header, _ in waiting.log_entries(str(log))]
+
+    def _sessions(self, effect: creation.EvidenceObject | None = None, *, retain: bool = True) -> creation.SessionView:
+        try:
+            return self.observer.sessions(
+                retain=retain, evidence=cast(list[creation.EvidenceValue], effect["lists"]) if effect else None
+            )
+        finally:
+            if effect is not None:
+                cast(list[creation.EvidenceValue], effect["list_observed_ns"]).append(time.monotonic_ns())
 
     def _git(self, step: str, *args: str) -> str:
         outcome = self.host.process((GIT, *args), self.project, self.host.environment, GIT_TIMEOUT_SECONDS)
@@ -425,12 +447,22 @@ class _Prepared:
             raise creation.trace_failure(creation.DETAIL_PATH_ABSENT.format(slug=ITEM, path="artifact_content.log"))
         return waiting.log_entries(log)
 
-    def _record(self, session: str, *, evidence: list[creation.EvidenceValue] | None = None) -> Json:
+    def _record(
+        self,
+        session: str,
+        *,
+        evidence: list[creation.EvidenceValue] | None = None,
+        effect: creation.EvidenceObject | None = None,
+    ) -> Json:
         started_ns = time.monotonic_ns()
         outcome = self.observer.run((TELEC, "sessions", "show", session, foundation.FULL_FLAG), retain=False)
         finished_ns = time.monotonic_ns()
         if evidence is not None:
             evidence.append(
+                creation.command_evidence((TELEC, "sessions", "show", session, foundation.FULL_FLAG), outcome)
+            )
+        if effect is not None:
+            cast(list[creation.EvidenceValue], effect["session_reads"]).append(
                 creation.command_evidence((TELEC, "sessions", "show", session, foundation.FULL_FLAG), outcome)
             )
         record = foundation.json_object(outcome.output) if outcome.exit_status == 0 else None
@@ -454,11 +486,20 @@ class _Prepared:
         return record
 
     def _frame_output(
-        self, journey: foundation.Journey, name: str, evidence: creation.EvidenceObject | None = None
+        self,
+        journey: foundation.Journey,
+        name: str,
+        evidence: creation.EvidenceObject | None = None,
+        *,
+        effect: creation.EvidenceObject | None = None,
     ) -> tuple[int | None, str]:
         frame = journey.await_frame(name, time.monotonic() + FRAME_SECONDS)
         if evidence is not None:
             evidence["start_frame"] = cast(creation.EvidenceValue, dict(frame))
+        if effect is not None:
+            cast(list[creation.EvidenceValue], effect["frames"]).append(
+                {"name": name, "frame": cast(creation.EvidenceValue, dict(frame))}
+            )
         run = frame.get("run")
         if not isinstance(run, dict):
             raise creation.platform_failure(f"the frame {name} is not a completed public call: {frame!r}")
@@ -1105,9 +1146,9 @@ class _Prepared:
         if stamps[1] < stamps[0]:
             raise creation.platform_failure(DETAIL_CLOCK.format(before=stamps[0], after=stamps[1]))
 
-    def require_live(self, session: str, when: str) -> None:
+    def require_live(self, session: str, when: str, effect: creation.EvidenceObject | None = None) -> None:
         """The live author is active and unclosed: a body write or a refused act ends nothing."""
-        record = self._record(session)
+        record = self._record(session, effect=effect)
         if record.get(waiting.FIELD_CLOSED_AT) is not None or record.get(waiting.FIELD_LIFECYCLE) != foundation.ACTIVE:
             raise creation.platform_failure(
                 DETAIL_LIVE.format(
@@ -1115,32 +1156,35 @@ class _Prepared:
                 )
             )
 
-    def owner_write(self, body: str) -> Json:
-        outcome = self.observer.run((TELEC, TODO, "artifacts", "write", ITEM, INPUT, body))
+    def owner_write(self, body: str, effect: creation.EvidenceObject | None = None) -> Json:
+        argv = (TELEC, TODO, "artifacts", "write", ITEM, INPUT, body)
+        outcome = self.observer.run(argv)
+        if effect is not None:
+            cast(list[creation.EvidenceValue], effect["commands"]).append(creation.command_evidence(argv, outcome))
         if outcome.exit_status != 0 or WROTE_PHRASE not in outcome.output:
             raise creation.platform_failure(
                 DETAIL_WRITE.format(status=outcome.exit_status, phrase=WROTE_PHRASE, output=outcome.output[-300:])
             )
-        after = self._shown()
-        if self._input() != body:
-            raise creation.platform_failure(DETAIL_BODY.format(found=self._input(), expected=body))
+        after = self._shown(effect)
+        if self._input(effect) != body:
+            raise creation.platform_failure(DETAIL_BODY.format(found=self._input(effect), expected=body))
         return after
 
-    def snapshot(self) -> Json:
+    def snapshot(self, effect: creation.EvidenceObject | None = None) -> Json:
         """Two equal reads at least two seconds apart: nothing else is writing the item."""
-        first = self._shown()
+        first = self._shown(effect)
         payload_work.sleep(creation.QUIESCENCE_GAP_SECONDS)
-        second = self._shown()
+        second = self._shown(effect)
         changed = creation.differences(first, second)
         if changed:
             raise creation.binding_failure(creation.DETAIL_NOT_QUIESCENT.format(paths=changed))
         return second
 
-    def require_snapshot(self, expected: Json, when: str) -> None:
+    def require_snapshot(self, expected: Json, when: str, effect: creation.EvidenceObject | None = None) -> None:
         for label, pause in (("immediately", 0.0), ("five seconds later", items.SETTLE_SECONDS)):
             if pause:
                 payload_work.sleep(pause)
-            changed = creation.differences(expected, self._shown())
+            changed = creation.differences(expected, self._shown(effect))
             if changed:
                 raise creation.platform_failure(DETAIL_CHANGED.format(when=f"{when} {label}", paths=changed))
 
@@ -1250,25 +1294,35 @@ class _Prepared:
         )
 
     def step2_move(self, author: str, child: str) -> tuple[str, str]:
-        before = self._shown()
-        original = self._input()
+        effect = self._effect("body-move", None)
+        before = self._shown(effect)
+        original = self._input(effect)
         r0 = digest(original)
-        after = self.owner_write(BODY_A)
-        r1 = digest(self._input())
+        after = self.owner_write(BODY_A, effect)
+        r1 = digest(self._input(effect))
+        if effect is not None:
+            effect["R0"] = r0
+            effect["R1"] = r1
         if r1 == r0:
             raise creation.binding_failure(DETAIL_DIGEST_SAME.format(digest=r0))
         self.require_owner_write(before, after)
         creation.require_value(ITEM, after, "state.active_runner", author)
-        self.require_live(child, "after the body write")
+        self.require_live(child, "after the body write", effect)
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
         return r0, r1
 
     def step3_old_refused(self, author: str, child: str, r0: str, r1: str) -> None:
-        snapshot = self.snapshot()
-        headers = self._headers()
-        sessions = self.observer.sessions()
+        effect = self._effect("old-prepared-refused", author)
+        if effect is not None:
+            effect["R0"] = r0
+            effect["R1"] = r1
+        snapshot = self.snapshot(effect)
+        headers = self._headers(effect)
+        sessions = self._sessions(effect)
         self._late(2, ARGV_OLD, ["telec", TODO, "act", ITEM, "prepared", "--revision", r0])
         self._gate(2, GATE_OLD)
-        status, text = self._frame_output(self.journeys["author"], FRAME_OLD)
+        status, text = self._frame_output(self.journeys["author"], FRAME_OLD, effect=effect)
         problems = []
         if status in (0, None):
             problems.append("was not refused with a non-zero exit")
@@ -1282,20 +1336,27 @@ class _Prepared:
                     case="prepared at the old digest", problem="; ".join(problems), status=status, output=text[-400:]
                 )
             )
-        self.require_snapshot(snapshot, "after the refused prepared")
-        if self._headers() != headers:
+        self.require_snapshot(snapshot, "after the refused prepared", effect)
+        if self._headers(effect) != headers:
             raise creation.platform_failure(
-                DETAIL_LOG_HEADERS.format(when="after the refused prepared", before=headers, after=self._headers())
+                DETAIL_LOG_HEADERS.format(
+                    when="after the refused prepared", before=headers, after=self._headers(effect)
+                )
             )
-        creation.require_value(ITEM, self._shown(), "state.active_runner", author)
-        self.require_live(child, "after the refused prepared")
-        creation.require_sessions_equal(sessions, self.observer.sessions(retain=False), "after the refused prepared")
+        creation.require_value(ITEM, self._shown(effect), "state.active_runner", author)
+        self.require_live(child, "after the refused prepared", effect)
+        creation.require_sessions_equal(sessions, self._sessions(effect, retain=False), "after the refused prepared")
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
 
     def step4_prepared(self, author: str, child: str, r1: str) -> None:
-        headers = self._headers()
+        effect = self._effect("prepared-current", author)
+        if effect is not None:
+            effect["R1"] = r1
+        headers = self._headers(effect)
         self._late(2, ARGV_NEW, ["telec", TODO, "act", ITEM, "prepared", "--revision", r1])
         self._gate(2, GATE_NEW)
-        status, text = self._frame_output(self.journeys["author"], FRAME_NEW)
+        status, text = self._frame_output(self.journeys["author"], FRAME_NEW, effect=effect)
         performed = waiting.PERFORMED.format(act="prepared", item=ITEM)
         if status != 0 or performed not in text or COMPLETE_ENDING.search(text.replace("\r\n", "\n")) is None:
             raise creation.platform_failure(
@@ -1306,24 +1367,26 @@ class _Prepared:
                     output=text[-400:],
                 )
             )
-        shown = self._shown()
+        shown = self._shown(effect)
         for path, expected in (
             ("state.lifecycle_phase", PREPARED_PHASE),
             ("standing.phase", PREPARED_PHASE),
         ):
             creation.require_value(ITEM, shown, path, expected)
         creation.require_unclaimed(ITEM, shown)
-        record = self._record(child)
+        record = self._record(child, effect=effect)
         if record.get(waiting.FIELD_CLOSED_AT) is None or record.get(waiting.FIELD_LIFECYCLE) != foundation.CLOSED:
             raise creation.platform_failure(
                 DETAIL_LIVE.format(actor="author", session=child, problem="is not closed after prepared", record=record)
             )
-        added = [header for header in self._headers() if header not in headers]
+        added = [header for header in self._headers(effect) if header not in headers]
         suffix = f" · prepared ({r1})"
         if len(added) != 1 or not added[0].rstrip().endswith(suffix) or author not in added[0]:
             raise creation.platform_failure(
                 DETAIL_LOG_ADDED.format(when="after prepared", added=added, suffix=suffix, session=author)
             )
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
 
     def step5_end_author(self, case: driver.DriverCase, author: str) -> None:
         case.require_title_stable(author)
@@ -1332,21 +1395,40 @@ class _Prepared:
         journey.end_session()
 
     def step6_moved_refuses_work(self, r0: str, r1: str) -> str:
-        before = self._shown()
-        after = self.owner_write(BODY_B)
-        r2 = digest(self._input())
+        effect = self._effect("moved-work-refused", None)
+        if effect is not None:
+            effect["R0"] = r0
+            effect["R1"] = r1
+            effect["start_calls"] = []
+            effect["operation_reads"] = []
+        before = self._shown(effect)
+        after = self.owner_write(BODY_B, effect)
+        r2 = digest(self._input(effect))
+        if effect is not None:
+            effect["R2"] = r2
         if r2 in (r0, r1):
             raise creation.binding_failure(DETAIL_DIGEST_SAME.format(digest=r2))
         self.require_owner_write(before, after)
         creation.require_value(ITEM, after, "state.lifecycle_phase", PREPARED_PHASE)
-        snapshot = self.snapshot()
-        sessions = self.observer.sessions()
-        outcome, operation = driver.start_call(self.starts, self.observer, (TELEC, TODO, "work", ITEM), "work-moved")
+        snapshot = self.snapshot(effect)
+        sessions = self._sessions(effect)
+        outcome, operation = driver.start_call(
+            self.starts,
+            self.observer,
+            (TELEC, TODO, "work", ITEM),
+            "work-moved",
+            evidence=cast(list[creation.EvidenceValue], effect["start_calls"]) if effect else None,
+        )
         if outcome.exit_status != 0 or operation is None:
             raise creation.platform_failure(
                 waiting.DETAIL_RECEIPT.format(status=outcome.exit_status, output=outcome.output[-300:])
             )
-        state = publication.await_terminal(self.observer, operation, OPERATION_SECONDS)
+        state = publication.await_terminal(
+            self.observer,
+            operation,
+            OPERATION_SECONDS,
+            evidence=cast(list[creation.EvidenceValue], effect["operation_reads"]) if effect else None,
+        )
         error = state.get(publication.FIELD_ERROR)
         needles = (r2, r1)
         if (
@@ -1358,20 +1440,29 @@ class _Prepared:
                 DETAIL_WORK_REFUSED.format(state=state.get(publication.FIELD_STATE), error=error, needles=list(needles))
             )
         self.starts[operation] = publication.START_REFUSED
-        self.require_snapshot(snapshot, "after the refused work")
+        self.require_snapshot(snapshot, "after the refused work", effect)
         deadline = time.monotonic() + OBSERVATION_SECONDS
+        if effect is not None:
+            effect["observation_end"] = deadline
         while time.monotonic() < deadline:
-            creation.require_sessions_equal(sessions, self.observer.sessions(retain=False), "after the refused work")
+            creation.require_sessions_equal(sessions, self._sessions(effect, retain=False), "after the refused work")
             payload_work.sleep(POLL_SECONDS)
-        creation.require_value(ITEM, self._shown(), "state.lifecycle_phase", PREPARED_PHASE)
+        creation.require_value(ITEM, self._shown(effect), "state.lifecycle_phase", PREPARED_PHASE)
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
         return r2
 
     def step7_restore(self, r1: str) -> None:
-        before = self._shown()
-        after = self.owner_write(BODY_A)
-        if self._input() != BODY_A or digest(self._input()) != r1:
-            raise creation.binding_failure(DETAIL_BODY.format(found=digest(self._input()), expected=r1))
+        effect = self._effect("body-restore", None)
+        if effect is not None:
+            effect["R1"] = r1
+        before = self._shown(effect)
+        after = self.owner_write(BODY_A, effect)
+        if self._input(effect) != BODY_A or digest(self._input(effect)) != r1:
+            raise creation.binding_failure(DETAIL_BODY.format(found=digest(self._input(effect)), expected=r1))
         self.require_owner_write(before, after)
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
 
     def step8_work(self, author: str, child: str) -> tuple[driver.DriverCase, str]:
         outcome, operation = driver.start_call(

@@ -937,20 +937,10 @@ class _Waiting:
 
     def _effect(self, name: str, actor: str | None) -> creation.EvidenceObject | None:
         """Keep the original observations of one B3 effect, without another public call."""
-        if self.accounting is None:
-            return None
-        packet: creation.EvidenceObject = {
-            "name": name,
-            "actor": actor,
-            "person": self.person,
-            "wait_key": self.key,
-            "started_ns": time.monotonic_ns(),
-            "finished_ns": None,
-            "frames": [],
-            "shown": [],
-            "session_reads": [],
-        }
-        cast(list[creation.EvidenceValue], self.accounting["effects"]).append(packet)
+        packet = driver.effect_inputs(self.accounting, name, actor)
+        if packet is not None:
+            packet["person"] = self.person
+            packet["wait_key"] = self.key
         return packet
 
     def _shown(self, effect: creation.EvidenceObject | None = None) -> Json:

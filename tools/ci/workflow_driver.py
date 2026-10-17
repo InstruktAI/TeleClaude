@@ -232,6 +232,25 @@ def driver_inputs(
     return record
 
 
+def effect_inputs(
+    accounting: creation.EvidenceObject | None, name: str, actor: str | None
+) -> creation.EvidenceObject | None:
+    """Retain original effect observations in the admitted early case."""
+    if accounting is None:
+        return None
+    packet: creation.EvidenceObject = {
+        "name": name,
+        "actor": actor,
+        "started_ns": time.monotonic_ns(),
+        "finished_ns": None,
+        "frames": [],
+        "shown": [],
+        "session_reads": [],
+    }
+    cast(list[creation.EvidenceValue], accounting["effects"]).append(packet)
+    return packet
+
+
 def actor_inputs(accounting: creation.EvidenceObject | None, name: str, slot: int) -> ledger.JsonObject | None:
     """Retain the original non-driver actor's specific start and identity observations."""
     if accounting is None:
