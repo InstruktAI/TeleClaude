@@ -61,6 +61,12 @@ FIXED_ARGUMENTS: Final = (
 )
 INSTALL_PREFIX: Final = (*FIXED_ARGUMENTS, "--install", "--")
 DBUS_TRIGGER_ARGUMENTS: Final = (*FIXED_ARGUMENTS, "--triggers-only", "--", "dbus")
+PACKAGE_WORK_ARGUMENTS: Final = (
+    "/usr/bin/dpkg-query",
+    "--admindir=/var/lib/dpkg",
+    "--show",
+    "--showformat=${Package}\t${Version}\t${Architecture}\t${Status}\t${Multi-Arch}\t${Triggers-Pending}\t${Triggers-Awaited}\n",
+)
 VALUE_OPTIONS: Final = frozenset(
     {
         "pre-invoke",
@@ -715,6 +721,30 @@ def interpret_trigger_routes(snapshot: JsonObject, basis: JsonObject, deadline: 
         raise DpkgInputError({"inputs": snapshot, "basis": basis, "routes": result}) from error
 
 
+def _inventory_instance(fields: list[str]) -> JsonObject:
+    if len(fields) != 4:
+        raise ValueError(ERROR_INPUT)
+    name, version, architecture, status = fields
+    state_fields = status.split(" ")
+    if (
+        PACKAGE_NAME.fullmatch(name) is None
+        or (architecture and ARCHITECTURE_NAME.fullmatch(architecture) is None)
+        or len(state_fields) != 3
+        or state_fields[0] not in PACKAGE_WANTS
+        or state_fields[1] not in PACKAGE_ERRORS
+        or state_fields[2] not in PACKAGE_STATES
+    ):
+        raise ValueError(ERROR_INPUT)
+    return {
+        "package_name": name.lower(),
+        "version": version,
+        "architecture": architecture,
+        "selection_state": state_fields[0],
+        "error_flag": state_fields[1],
+        "lifecycle": state_fields[2],
+    }
+
+
 def _inventory_instances(host: HostSubstrateFacts, deadline: AdmittedDeadline) -> dict[str, dict[str, JsonObject]]:
     _before_cutoff(deadline)
     raw = base64.b64decode(host.inventory_base64, validate=True)
@@ -723,32 +753,12 @@ def _inventory_instances(host: HostSubstrateFacts, deadline: AdmittedDeadline) -
     instances: dict[str, dict[str, JsonObject]] = {}
     for line in raw.decode("utf-8").splitlines():
         _before_cutoff(deadline)
-        fields = line.split("\t")
-        if len(fields) != 4:
-            raise ValueError(ERROR_INPUT)
-        name, version, architecture, status = fields
-        state_fields = status.split(" ")
-        if (
-            PACKAGE_NAME.fullmatch(name) is None
-            or (architecture and ARCHITECTURE_NAME.fullmatch(architecture) is None)
-            or len(state_fields) != 3
-            or state_fields[0] not in PACKAGE_WANTS
-            or state_fields[1] not in PACKAGE_ERRORS
-            or state_fields[2] not in PACKAGE_STATES
-        ):
-            raise ValueError(ERROR_INPUT)
-        name = name.lower()
+        row = _inventory_instance(line.split("\t"))
+        name, architecture = text(row, "package_name"), text(row, "architecture") if row["architecture"] else ""
         group = instances.setdefault(name, {})
         if architecture in group:
             raise ValueError(ERROR_INPUT)
-        group[architecture] = {
-            "package_name": name,
-            "version": version,
-            "architecture": architecture,
-            "selection_state": state_fields[0],
-            "error_flag": state_fields[1],
-            "lifecycle": state_fields[2],
-        }
+        group[architecture] = row
     return instances
 
 
@@ -1231,3 +1241,80 @@ def inspect_initialization_compatibility(
         raise DpkgInputError(
             {"inputs": snapshot, "inventory_base64": host.inventory_base64, "initialization": result}
         ) from error
+
+
+def _work_tokens(field: str) -> list[str]:
+    # w_trigpend/w_trigaw emit either nothing or one space before each native token, without a field header.
+    if not field:
+        return []
+    if not field.startswith(" "):
+        raise ValueError(ERROR_INPUT)
+    tokens = field[1:].split(" ")
+    if any(VISIBLE_TRIGGER.fullmatch(token.encode("ascii")) is None for token in tokens):
+        raise ValueError(ERROR_INPUT)
+    return tokens
+
+
+def inspect_package_work(query: NativeQuery, deadline: AdmittedDeadline, cap: int) -> JsonObject:
+    """Read actual native package work at one capture point; no script execution, clearing or settlement credit."""
+    rows: list[JsonValue] = []
+    result: JsonObject = {
+        "argv": list[JsonValue](PACKAGE_WORK_ARGUMENTS),
+        "started_ns": time.monotonic_ns(),
+        "finished_ns": None,
+        "rows": rows,
+        "source_and_pending_admission": "unproven",
+        "error": None,
+    }
+    try:
+        raw = query_native(PACKAGE_WORK_ARGUMENTS, query, deadline, cap)
+        result["stdout_base64"] = base64.b64encode(raw).decode("ascii")
+        result["stdout_sha256"] = hashlib.sha256(raw).hexdigest()
+        instances: dict[str, dict[str, JsonObject]] = {}
+        for line in raw.decode("utf-8").splitlines():
+            _before_cutoff(deadline)
+            fields = line.split("\t")
+            if len(fields) != 7 or fields[4] not in ("no", "same", "allowed", "foreign"):
+                raise ValueError(ERROR_INPUT)
+            instance = _inventory_instance(fields[:4])
+            name = text(instance, "package_name")
+            architecture = fields[2]
+            group = instances.setdefault(name, {})
+            if architecture in group:
+                raise ValueError(ERROR_INPUT)
+            group[architecture] = instance
+            rows.append(
+                {
+                    **instance,
+                    "multi_arch": fields[4],
+                    "pending_names": list[JsonValue](_work_tokens(fields[5])),
+                    "awaited_package_specs": list[JsonValue](_work_tokens(fields[6])),
+                    "awaited_instances": [],
+                }
+            )
+        for value in rows:
+            _before_cutoff(deadline)
+            row = object_value(value)
+            specs = row["awaited_package_specs"]
+            resolved = row["awaited_instances"]
+            if not isinstance(specs, list) or not isinstance(resolved, list):
+                raise ValueError(ERROR_INPUT)
+            for specification in specs:
+                _before_cutoff(deadline)
+                if not isinstance(specification, str):
+                    raise ValueError(ERROR_INPUT)
+                instance, identity = _registered_instance(specification.encode("ascii"), instances)
+                resolved.append(
+                    {
+                        "package_spec": specification,
+                        "instance": instance,
+                        "package_identity": "resolved" if identity is not None else "unproven",
+                    }
+                )
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError(result) from error
+    finally:
+        result["finished_ns"] = time.monotonic_ns()
