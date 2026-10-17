@@ -37,17 +37,20 @@ MACHINE_PATTERN: Final = "systemd-nspawn@*.service"
 MACHINE_TEMPLATE: Final = "systemd-nspawn@.service"
 SERVICE_SUFFIX: Final = ".service"
 MACHINES_TARGET: Final = "machines.target"
+INSTALL_UNITS: Final = (MACHINES_TARGET, "var-lib-machines.mount")
 ENABLED_STATES: Final = frozenset({"enabled", "enabled-runtime"})
 ACTIVATION_TYPES: Final = frozenset({"start", "restart"})
 EMPTY: Final = ""
 ZERO: Final = "0"
 STRINGS: Final = "ss"
+STRING: Final = "s"
 ARRAYS: Final = "asas"
 LIST_UNITS_SIGNATURE: Final = "a(ssssssouso)"
 LIST_JOBS_SIGNATURE: Final = "a(usssoo)"
 LIST_FILES_SIGNATURE: Final = "a(ss)"
 VARIANT: Final = "v"
 BOOLEAN: Final = "b"
+PROPERTY_DICTIONARY: Final = "a{sv}"
 TRANSIENT: Final = "Transient"
 TRANSIENT_STATE: Final = "transient"
 NANOSECONDS: Final = 1_000_000_000
@@ -65,6 +68,7 @@ class Member(StrEnum):
     JOBS = "ListJobs"
     FILES = "ListUnitFilesByPatterns"
     GET = "Get"
+    GET_ALL = "GetAll"
 
 
 class Key(StrEnum):
@@ -98,6 +102,7 @@ class Key(StrEnum):
     FOREIGN_TRANSIENT = "foreign_transient"
     FOREIGN_PENDING = "foreign_pending"
     MACHINES_PENDING = "machines_pending"
+    PROPERTIES = "properties"
 
 
 @dataclass(frozen=True)
@@ -166,7 +171,7 @@ def _read(
     end = deadline.command_end(cap)
     started = time.monotonic_ns()
     seconds = (end - started) / NANOSECONDS
-    interface = PROPERTIES if member is Member.GET else MANAGER
+    interface = PROPERTIES if member in (Member.GET, Member.GET_ALL) else MANAGER
     raw = query_native(
         (
             BUSCTL,
@@ -259,6 +264,55 @@ def _job(value: JsonValue) -> JsonObject:
     }
 
 
+def _unit_file(value: JsonValue) -> JsonObject:
+    if not isinstance(value, list) or len(value) != 2 or any(not isinstance(item, str) or not item for item in value):
+        raise ValueError(ERROR_DATA)
+    path, state = value
+    if not isinstance(path, str) or not Path(path).is_absolute():
+        raise ValueError(ERROR_DATA)
+    return {Field.PATH: path, Key.NAME: Path(path).name, Key.STATE: state}
+
+
+def inspect_install_effects(query: NativeQuery, deadline: AdmittedDeadline, cap: int) -> JsonObject:
+    """Read the two named package activation effects once, without loading or settling a unit."""
+    started = time.monotonic_ns()
+    receipts: list[JsonObject] = []
+    arguments = (ZERO, str(len(INSTALL_UNITS)), *INSTALL_UNITS)
+    units: list[JsonValue] = []
+    for value in _array(_read(Member.UNITS, ARRAYS, arguments, LIST_UNITS_SIGNATURE, query, deadline, cap, receipts)):
+        unit = _loaded(value)
+        properties = _read(
+            Member.GET_ALL,
+            STRING,
+            (UNIT_INTERFACE,),
+            PROPERTY_DICTIONARY,
+            query,
+            deadline,
+            cap,
+            receipts,
+            path=_unit_path(unit[Key.UNIT_PATH]),
+        )
+        if len(properties) != 1:
+            raise ValueError(ERROR_DATA)
+        unit[Key.PROPERTIES] = object_value(properties[0])
+        units.append(unit)
+    files: list[JsonValue] = [
+        _unit_file(value)
+        for value in _array(
+            _read(Member.FILES, ARRAYS, arguments, LIST_FILES_SIGNATURE, query, deadline, cap, receipts)
+        )
+    ]
+    if time.monotonic_ns() >= deadline.effective_end():
+        raise TimeoutError(ERROR_DATA)
+    return {
+        Key.UNITS: units,
+        Key.FILES: files,
+        Key.RECEIPTS: list[JsonValue](receipts),
+        Key.STARTED_NS: started,
+        Key.OBSERVED_NS: time.monotonic_ns(),
+    }
+
+
 def inspect_initial_machines(
     owned_units: frozenset[str],
     query: NativeQuery,
@@ -278,18 +332,12 @@ def inspect_initial_machines(
             _read(Member.UNITS, ARRAYS, arguments, LIST_UNITS_SIGNATURE, query, deadline, cap, receipts)
         )
     )
-    files: list[JsonObject] = []
-    for value in _array(_read(Member.FILES, ARRAYS, arguments, LIST_FILES_SIGNATURE, query, deadline, cap, receipts)):
-        if (
-            not isinstance(value, list)
-            or len(value) != 2
-            or any(not isinstance(item, str) or not item for item in value)
-        ):
-            raise ValueError(ERROR_DATA)
-        path, state = value
-        if not isinstance(path, str) or not Path(path).is_absolute():
-            raise ValueError(ERROR_DATA)
-        files.append({Field.PATH: path, Key.NAME: Path(path).name, Key.STATE: state})
+    files = tuple(
+        _unit_file(value)
+        for value in _array(
+            _read(Member.FILES, ARRAYS, arguments, LIST_FILES_SIGNATURE, query, deadline, cap, receipts)
+        )
+    )
     jobs = tuple(
         _job(value)
         for value in _array(_read(Member.JOBS, EMPTY, (), LIST_JOBS_SIGNATURE, query, deadline, cap, receipts))
