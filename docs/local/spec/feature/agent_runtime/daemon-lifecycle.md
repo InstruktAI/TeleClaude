@@ -44,6 +44,12 @@ The producer and reader positions for both event source streams are prepared
 independently of adapter startup. Handler execution remains gated on its own
 dependencies, including request-surface binding where required.
 
+Before adapters, pollers or conversation delivery emit new output, startup
+reconciles durable input, transcript-binding, generation, peer-cursor and
+send-intent state. Each existing session has a pre-cutover generation boundary;
+restart rebuilds scheduling from durable rows, while agent panes and native
+transcripts remain authoritative for work that continued during the outage.
+
 The request surface is constructed before its event callbacks are wired, and
 its listener is bound before consumers that call it execute. Source seeding and
 live session materialization share an explicit coverage handover before the
@@ -62,15 +68,6 @@ lifecycle's configured observations. These readiness boundaries follow
 #### UC-DL6: Post-adapter completion tasks
 
 #### UC-DL2 — Turn delivery state is reconciled before adapters can emit output
-
-```
-Given the daemon starts with accepted inputs, transcript bindings, output generations, peer cursors, or Discord send intents left by an earlier process
-When staged startup reaches runtime reconciliation
-Then it completes schema migration and durable turn-state reconciliation before adapters, per-session pollers, and conversation delivery may emit new output
-And every existing session receives an explicit pre-cutover generation before new-code delivery can write to that session
-And restart reconstructs any in-memory scheduling only from durable rows
-And the independently-running agent panes and native transcripts remain the authority for work that continued while the daemon was absent
-```
 
 #### Orphan sweeps run from the cleanup task, not from startup
 
