@@ -20,6 +20,9 @@ This recovery is distinct from provider availability. Exhaustion scoped to one m
 does not make every model behind the provider unavailable and does not change the
 agent-wide operator status.
 
+Provider-wide quota or instability follows the provider-availability recovery
+contract; it is not recorded as a model-scoped status.
+
 ## Canonical fields
 
 ### Model-scoped availability
@@ -95,92 +98,47 @@ mode token exists on any surface, public or internal.
 
 #### UC-MQR-1: Terminal evidence supports transcriptless startup failure
 
-```gherkin
-Given an orchestrated worker fails during startup before producing a transcript
-When the parent investigates the failed runtime
-Then it reads the supervised terminal before ending the stale session
-And it does not infer a cause from silence alone
-```
-
-#### UC-MQR-2: Model-specific exhaustion is recorded and retried through the chain
+#### UC-MQR-2: An operator's job continues after its model quota is exhausted
 
 ```gherkin
-Given terminal evidence establishes that Claude Fable exhausted its own quota
+Given an operator has a scheduled job whose selected model exhausts its quota during startup
 When the parent recovers the job
-Then it records Claude Fable unavailable until the provider's stated recovery window
-And it ends the stale session
-And it retries the identical dispatch once, which resolution launches on Claude Opus
-And it does not change the agent-wide operator status
+Then the job continues once on the next eligible model
+And its recovery does not change the agent-wide operator status
 ```
 
 #### UC-MQR-3: Recovery preserves the original dispatch
 
-```gherkin
-Given a model-specific quota recovery is eligible
-When the parent retries the job
-Then the job, project, arguments, context, selected agent, and mode are unchanged
-And only chain resolution determines the launched model
-```
-
 #### UC-MQR-4: Recovery never loops
-
-```gherkin
-Given the single recovery retry also fails
-When the parent handles that outcome
-Then it performs no further model-quota retry
-And the job remains an unsuccessful outcome for normal orchestration handling
-```
 
 #### UC-MQR-5: Provider-wide failure keeps provider availability semantics
 
-```gherkin
-Given direct provider evidence establishes provider-wide quota or instability
-When the parent classifies the failure
-Then it uses the provider availability recovery contract
-And it does not use a model-scoped record as a substitute
-```
-
 #### UC-MQR-6: An active model record steers every subsequent dispatch
 
-```gherkin
-Given Claude Fable has an active model-scoped unavailability record
-When any session resolves a Claude slow dispatch
-Then the session launches on Claude Opus without a failed startup
-And one structured warning names the skipped and selected models
-And Claude remains eligible for dispatch selection
-```
-
-#### UC-MQR-7: Expiry restores the primary mapping
+#### UC-MQR-7: An operator's primary model is used again after recovery
 
 ```gherkin
-Given a model-scoped unavailability record has passed its until instant
-When a session resolves a dispatch whose chain lists that model first
-Then the session launches on that primary model
-And no residual fallback behavior remains
+Given the operator's primary model has passed its stated recovery window
+When a later job uses the configured model chain
+Then it launches on the primary model again
+And no stale fallback choice remains
 ```
 
 #### UC-MQR-8: An exhausted chain fails dispatch without touching agent availability
 
+#### UC-MQR-9: An operator can choose the model chain for an agent mode
+
 ```gherkin
-Given every model in an agent's chain for the requested mode has an active unavailable status
-When a session attempts that dispatch
-Then the dispatch fails with a typed error before session creation
-And the agent-wide operator status is unchanged
+Given an operator wants a different model preference for an agent's thinking mode
+When they declare an ordered chain in the operator configuration
+Then future launches follow that configured chain
+And an invalid chain is rejected during configuration validation
 ```
 
-#### UC-MQR-9: Operator configuration overrides a declared chain
+#### UC-MQR-10: An operator's stalled worker continues in place after quota exhaustion
 
 ```gherkin
-Given the operator configuration declares a chain for an agent's mode
-When a session resolves a dispatch for that agent and mode
-Then resolution walks the configured chain instead of the platform default
-And an invalid chain declaration is rejected at configuration validation, not at dispatch
-```
-
-#### UC-MQR-10: A stalled worker recovers mid-session with its transcript intact
-
-```gherkin
-Given a dispatched worker's session derives `stalled` during a turn
+Given an operator's dispatched worker derives `stalled` during a turn
 And the parent captures the pane and intelligence establishes model-specific exhaustion
 When the parent recovers the worker
 Then it records the exhausted model unavailable until the provider's stated window
@@ -189,55 +147,43 @@ And the session's transcript and job context are preserved
 And a failed restart triggers no further model-quota recovery for that job
 ```
 
-#### UC-MQR-11: A human-owned launch keeps its degraded primary model
+#### UC-MQR-11: An operator's interactive session keeps its degraded primary model
 
 ```gherkin
-Given Claude Fable carries an active degraded status
-And a fresh session launch carries no job role
+Given the operator's interactive launch uses Claude Fable and that model carries a degraded status
 When that launch resolves a Claude slow dispatch
-Then the launch runs on Claude Fable
+Then the launch still runs on its configured primary, Claude Fable
 And no chain fallback warning is emitted
 ```
 
-#### UC-MQR-12: A job-role launch skips a degraded model
+#### UC-MQR-12: An operator's scheduled job uses an eligible fallback model
 
 ```gherkin
-Given Claude Fable carries an active degraded status
-And a fresh session launch carries a job role
-When that launch resolves a Claude slow dispatch
-Then the launch runs on Claude Opus
-And one structured warning names the skipped model, the selected model, and the launch ownership
-And Claude remains eligible for agent selection
+Scenario: Continue with an eligible fallback
+  Given an operator configured a scheduled job with a model chain whose primary is degraded
+  When the job is dispatched
+  Then the job runs on the next eligible model
+  And a structured warning names the skipped and selected models
+  And the agent remains eligible for selection
+
+Scenario: Fail when every model is unavailable
+  Given every model in the job's chain is unavailable
+  When the job is dispatched
+  Then dispatch fails before session creation
+  And the agent-wide operator status remains unchanged
 ```
 
 #### UC-MQR-13: Launch ownership survives restart and revival
 
-```gherkin
-Given a session was launched carrying a job role
-And a model earlier in its chain carries an active degraded status
-When that session is restarted or revived
-Then its computed launch skips the degraded model exactly as its original launch did
-And a session launched with no job role keeps its degraded primary across the same operations
-```
-
 #### UC-MQR-14: A job-role launch whose chain holds no eligible model fails typed
 
-```gherkin
-Given every model in an agent's chain for the requested mode is degraded
-And a launch carrying a job role attempts that dispatch
-Then the dispatch fails with a typed error before session creation
-And the agent-wide operator status is unchanged
-And a launch carrying no job role runs on the first entry in that same chain
-```
-
-#### UC-MQR-15: Model status reaches operator surfaces in the agent-wide vocabulary
+#### UC-MQR-15: An operator can inspect and clear model-specific availability
 
 ```gherkin
-Given an operator sets a declared model of an agent to degraded with a reason
-When the operator reads agent availability, or a live availability event reaches a client
-Then that model appears with the same status vocabulary the agent-wide record uses
-And the agent-wide status is unchanged
-And clearing the model returns it to available and removes it from the reported records
+Given an operator sets a model-specific status for an agent
+When they inspect or clear that model's status
+Then they see the model-level status using the agent-wide status vocabulary
+And the agent-wide status remains unchanged
 ```
 
 ## Known caveats
