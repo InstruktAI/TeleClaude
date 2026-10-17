@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -10,6 +11,7 @@ from teleclaude import paths as tc_paths
 from teleclaude.core.db._sync import (
     SessionIdentityError,
     SessionMirrorFacts,
+    SessionMirrorFactsByTranscript,
     get_session_mirror_facts_sync,
     resolve_session_principal,
 )
@@ -143,6 +145,24 @@ def session_context_from_facts(facts: SessionMirrorFacts, transcript_path: str |
         subject_owner=facts.subject_owner,
         channel_identifiers=_extract_channel_identifiers(facts.last_input_origin, facts.adapter_metadata),
     )
+
+
+def session_context_from_selected_facts(
+    facts_by_transcript: Mapping[str, SessionMirrorFacts], transcript_path: str
+) -> SessionMirrorContext | None:
+    """Adapt the owner-selected session facts for one exact transcript path."""
+    facts = facts_by_transcript.get(transcript_path)
+    return session_context_from_facts(facts, transcript_path) if facts is not None else None
+
+
+def session_contexts_from_selected_facts(
+    facts_by_transcript: SessionMirrorFactsByTranscript,
+) -> dict[str, SessionMirrorContext]:
+    """Adapt the selected owner publication without evaluating losing associations."""
+    return {
+        transcript_path: session_context_from_facts(facts, transcript_path)
+        for transcript_path, facts in facts_by_transcript.items()
+    }
 
 
 def get_session_context(
