@@ -30,6 +30,8 @@ from typing import Final, cast
 
 from tools.ci import acceptance_work as payload_work
 from tools.ci.terminal import TerminalFailureCause
+from tools.ci.workflow_foundation import EvidenceObject as EvidenceObject
+from tools.ci.workflow_foundation import EvidenceValue as EvidenceValue
 from tools.ci.workflow_foundation import FoundationHost, Outcome
 
 TELEC: Final = "bin/telec"
@@ -616,20 +618,9 @@ class SessionView:
     closed: frozenset[str] = frozenset()
 
 
-type EvidenceValue = str | int | float | bool | None | list[EvidenceValue] | dict[str, EvidenceValue]
-type EvidenceObject = dict[str, EvidenceValue]
-
-
 def command_evidence(argv: Sequence[str], outcome: Outcome) -> EvidenceObject:
     """Retain the original native result before parsing, including diagnostics and unsuccessful status."""
-    return {
-        "argv": list(argv),
-        "exit_status": outcome.exit_status,
-        "duration_seconds": outcome.duration_seconds,
-        "stdout": outcome.output,
-        "stderr": outcome.stderr,
-        "diagnostics": outcome.diagnostics,
-    }
+    return outcome.evidence(argv)
 
 
 @dataclass

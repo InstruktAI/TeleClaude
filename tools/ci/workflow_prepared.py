@@ -284,7 +284,14 @@ class _Prepared:
         return self.baseline.ids | frozenset(self.known_sessions) | frozenset(sessions)
 
     def _journey(self, name: str, index: int, message: str | None = None) -> foundation.Journey:
-        journey = foundation.Journey(self.host, self.setups[index], self.project, self.owner_email, message=message)
+        journey = foundation.Journey(
+            self.host,
+            self.setups[index],
+            self.project,
+            self.owner_email,
+            message=message,
+            end_evidence=cast(list[creation.EvidenceValue], self.accounting["ends"]) if self.accounting else None,
+        )
         self.journeys[name] = journey
         return journey
 
@@ -418,11 +425,32 @@ class _Prepared:
             raise creation.trace_failure(creation.DETAIL_PATH_ABSENT.format(slug=ITEM, path="artifact_content.log"))
         return waiting.log_entries(log)
 
-    def _record(self, session: str) -> Json:
+    def _record(self, session: str, *, evidence: list[creation.EvidenceValue] | None = None) -> Json:
+        started_ns = time.monotonic_ns()
         outcome = self.observer.run((TELEC, "sessions", "show", session, foundation.FULL_FLAG), retain=False)
+        finished_ns = time.monotonic_ns()
+        if evidence is not None:
+            evidence.append(
+                creation.command_evidence((TELEC, "sessions", "show", session, foundation.FULL_FLAG), outcome)
+            )
         record = foundation.json_object(outcome.output) if outcome.exit_status == 0 else None
         if record is None:
             raise creation.binding_failure(f"session {session} is unreadable: {outcome.output[-300:]!r}")
+        if (
+            self.accounting is not None
+            and record.get(waiting.FIELD_CLOSED_AT) is not None
+            and record.get(waiting.FIELD_LIFECYCLE) == foundation.CLOSED
+        ):
+            cast(list[creation.EvidenceValue], self.accounting["closed_reads"]).append(
+                {
+                    "session_id": session,
+                    "started_ns": started_ns,
+                    "finished_ns": finished_ns,
+                    "command": creation.command_evidence(
+                        (TELEC, "sessions", "show", session, foundation.FULL_FLAG), outcome
+                    ),
+                }
+            )
         return record
 
     def _frame_output(
@@ -819,32 +847,72 @@ class _Prepared:
         attempt = next((row for row in self.b4_ledger.attempts.values() if row.label == label), None)
         if attempt is not None and attempt.state == start_ledger.RECORD_DISCHARGED:
             return
-        if attempt is None:
-            identifier = self._b4_begin(label, start_ledger.RECORD_OPERATION)
-        elif attempt.operation_id:
-            identifier = attempt.identifier
-        else:
-            self.b4_ledger.unknown(attempt.identifier)
-            return
-        if attempt is None or not attempt.operation_id:
-            outcome = self.observer.run((TELEC, "sessions", "end", session))
-            receipt = foundation.json_object(outcome.output)
-            operation = receipt.get("operation_id") if receipt is not None else None
-            if outcome.exit_status != 0 or not isinstance(operation, str) or not operation:
-                self.b4_ledger.unknown(identifier)
+        packet: creation.EvidenceObject | None = None
+        if self.accounting is not None:
+            packet = {
+                "kind": "b4-outsider-end",
+                "label": label,
+                "session_id": session,
+                "started_ns": time.monotonic_ns(),
+                "finished_ns": None,
+                "attempt_id": attempt.identifier if attempt is not None else None,
+                "original_operation_id": attempt.operation_id if attempt is not None else None,
+                "command": None,
+                "operation_reads": [],
+                "closed_reads": [],
+                "error": None,
+            }
+            cast(list[creation.EvidenceValue], self.accounting["ends"]).append(packet)
+        try:
+            if attempt is None:
+                identifier = self._b4_begin(label, start_ledger.RECORD_OPERATION)
+            elif attempt.operation_id:
+                identifier = attempt.identifier
+            else:
+                self.b4_ledger.unknown(attempt.identifier)
+                if packet is not None:
+                    packet["error"] = "original attempt has no operation receipt"
                 return
-            self.b4_ledger.record_operation(identifier, operation)
-        else:
-            operation = attempt.operation_id
-        terminal = publication.await_terminal(self.observer, operation, OPERATION_SECONDS)
-        record = self._record(session)
-        if (
-            terminal.get(publication.FIELD_STATE) != publication.STATE_COMPLETED
-            or record.get(waiting.FIELD_CLOSED_AT) is None
-            or record.get(waiting.FIELD_LIFECYCLE) != foundation.CLOSED
-        ):
-            raise creation.platform_failure(DETAIL_B9_END.format(session=session, record=record))
-        self._b4_discharge(identifier, "public end operation completed and retained session record closed")
+            if packet is not None:
+                packet["attempt_id"] = identifier
+            if attempt is None or not attempt.operation_id:
+                argv = (TELEC, "sessions", "end", session)
+                outcome = self.observer.run(argv)
+                if packet is not None:
+                    packet["command"] = creation.command_evidence(argv, outcome)
+                receipt = foundation.json_object(outcome.output)
+                operation = receipt.get("operation_id") if receipt is not None else None
+                if outcome.exit_status != 0 or not isinstance(operation, str) or not operation:
+                    self.b4_ledger.unknown(identifier)
+                    if packet is not None:
+                        packet["error"] = "end request has no successful operation receipt"
+                    return
+                self.b4_ledger.record_operation(identifier, operation)
+            else:
+                operation = attempt.operation_id
+            terminal = publication.await_terminal(
+                self.observer,
+                operation,
+                OPERATION_SECONDS,
+                evidence=cast(list[creation.EvidenceValue], packet["operation_reads"]) if packet else None,
+            )
+            record = self._record(
+                session, evidence=cast(list[creation.EvidenceValue], packet["closed_reads"]) if packet else None
+            )
+            if (
+                terminal.get(publication.FIELD_STATE) != publication.STATE_COMPLETED
+                or record.get(waiting.FIELD_CLOSED_AT) is None
+                or record.get(waiting.FIELD_LIFECYCLE) != foundation.CLOSED
+            ):
+                raise creation.platform_failure(DETAIL_B9_END.format(session=session, record=record))
+            self._b4_discharge(identifier, "public end operation completed and retained session record closed")
+        except Exception as error:
+            if packet is not None:
+                packet["error"] = f"{type(error).__name__}: {error}"
+            raise
+        finally:
+            if packet is not None:
+                packet["finished_ns"] = time.monotonic_ns()
 
     def close_b9_outsiders(self, *, strict: bool = True) -> None:
         """Close X before S_P with independent receipts and retained records, before D2's valid prepared."""

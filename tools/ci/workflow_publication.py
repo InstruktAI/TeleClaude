@@ -123,9 +123,17 @@ def docs_body(output: str) -> str | None:
     return body.split(PENDING_NOTE_MARKER)[0].strip()
 
 
-def operation_state(observer: creation.Observer, operation: str, *, retain: bool = False) -> Mapping[str, object]:
+def operation_state(
+    observer: creation.Observer,
+    operation: str,
+    *,
+    retain: bool = False,
+    evidence: list[creation.EvidenceValue] | None = None,
+) -> Mapping[str, object]:
     """One public read of an operation; an unreadable read or a state outside the known set fails the case."""
     outcome = observer.run((TELEC, OPERATIONS, GET, operation), retain=retain)
+    if evidence is not None:
+        evidence.append(creation.command_evidence((TELEC, OPERATIONS, GET, operation), outcome))
     state = foundation.json_object(outcome.output)
     value = state.get(FIELD_STATE) if state is not None else None
     if outcome.exit_status != 0 or state is None or value not in KNOWN_STATES:
@@ -133,14 +141,20 @@ def operation_state(observer: creation.Observer, operation: str, *, retain: bool
     return state
 
 
-def await_terminal(observer: creation.Observer, operation: str, seconds: float) -> Mapping[str, object]:
+def await_terminal(
+    observer: creation.Observer,
+    operation: str,
+    seconds: float,
+    *,
+    evidence: list[creation.EvidenceValue] | None = None,
+) -> Mapping[str, object]:
     """Poll one operation to a terminal state; unreadable reads fail, an operation still open at the end fails."""
     deadline = time.monotonic() + seconds
     last: Mapping[str, object] = {}
     while time.monotonic() < deadline:
-        last = operation_state(observer, operation)
+        last = operation_state(observer, operation, evidence=evidence)
         if last.get(FIELD_STATE) in TERMINAL_STATES:
-            return operation_state(observer, operation, retain=True)
+            return operation_state(observer, operation, retain=True, evidence=evidence)
         payload_work.sleep(POLL_SECONDS)
     raise creation.platform_failure(
         DETAIL_OPERATION_TIMEOUT.format(operation=operation, seconds=int(seconds), last=last)

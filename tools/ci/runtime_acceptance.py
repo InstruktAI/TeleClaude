@@ -1100,6 +1100,8 @@ class FullRuntimeResources:
             "drivers": [],
             "start_calls": [],
             "actors": [],
+            "ends": [],
+            "closed_reads": [],
         }
         self.early_workflow[case] = record
         return record

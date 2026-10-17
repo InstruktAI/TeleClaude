@@ -814,7 +814,13 @@ class _Waiting:
         return self.baseline.ids | frozenset(sessions)
 
     def _journey(self, name: str, index: int) -> foundation.Journey:
-        journey = foundation.Journey(self.host, self.setups[index], self.project, self.owner_email)
+        journey = foundation.Journey(
+            self.host,
+            self.setups[index],
+            self.project,
+            self.owner_email,
+            end_evidence=cast(list[creation.EvidenceValue], self.accounting["ends"]) if self.accounting else None,
+        )
         self.journeys[name] = journey
         return journey
 
@@ -828,10 +834,27 @@ class _Waiting:
             raise creation.binding_failure(DETAIL_LATE_ARGV.format(name=name, error=type(error).__name__)) from error
 
     def _record(self, session: str) -> Json:
+        started_ns = time.monotonic_ns()
         outcome = self.observer.run((TELEC, SESSIONS, foundation.SHOW, session, foundation.FULL_FLAG), retain=False)
+        finished_ns = time.monotonic_ns()
         record = foundation.json_object(outcome.output) if outcome.exit_status == 0 else None
         if record is None:
             raise creation.binding_failure(f"session {session} is unreadable: {outcome.output[-300:]!r}")
+        if (
+            self.accounting is not None
+            and record.get(FIELD_CLOSED_AT) is not None
+            and record.get(FIELD_LIFECYCLE) == foundation.CLOSED
+        ):
+            cast(list[creation.EvidenceValue], self.accounting["closed_reads"]).append(
+                {
+                    "session_id": session,
+                    "started_ns": started_ns,
+                    "finished_ns": finished_ns,
+                    "command": creation.command_evidence(
+                        (TELEC, SESSIONS, foundation.SHOW, session, foundation.FULL_FLAG), outcome
+                    ),
+                }
+            )
         return record
 
     def _frame(self, journey: foundation.Journey, name: str) -> Json:

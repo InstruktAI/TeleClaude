@@ -24,9 +24,12 @@ from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Protocol
+from typing import Final, Protocol, cast
 
 from tools.ci import acceptance_work as payload_work
+
+type EvidenceValue = str | int | float | bool | None | list[EvidenceValue] | dict[str, EvidenceValue]
+type EvidenceObject = dict[str, EvidenceValue]
 
 FIXTURE_SOURCE: Final = Path("tools") / "ci" / "native_claude_fixture.py"
 USER_BIN_RELATIVE: Final = Path(".local") / "bin"
@@ -174,6 +177,17 @@ class Outcome:
     stderr: str = ""
     diagnostics: str = ""
     duration_seconds: float = 0.0
+
+    def evidence(self, argv: Sequence[str]) -> EvidenceObject:
+        """Retain the original native result before parsing, including failures and diagnostics."""
+        return {
+            "argv": list(argv),
+            "exit_status": self.exit_status,
+            "duration_seconds": self.duration_seconds,
+            "stdout": self.output,
+            "stderr": self.stderr,
+            "diagnostics": self.diagnostics,
+        }
 
 
 class FoundationHost(Protocol):
@@ -405,6 +419,8 @@ class Journey:
         project: Path,
         owner_email: str,
         message: str | None = None,
+        *,
+        end_evidence: list[EvidenceValue] | None = None,
     ) -> None:
         self.host = host
         self.setup = setup
@@ -413,6 +429,7 @@ class Journey:
         self.message = message if message is not None else f"{MESSAGE_PREFIX}{uuid.uuid4().hex[:MESSAGE_SUFFIX_LENGTH]}"
         self.session_id = ""
         self.start_evidence: tuple[tuple[str, ...], Outcome] | None = None
+        self.end_evidence = end_evidence
 
     def _reset_control(self) -> None:
         for name in (CASE_START_FILE, RELEASE_FILE, COMPOSER_FILE, BARRIER_FILE, LAUNCH_FILE, INPUT_LOG_FILE):
@@ -420,9 +437,15 @@ class Journey:
         shutil.rmtree(self.setup.control / FRAMES_DIRECTORY, ignore_errors=True)
 
     def record(
-        self, timeout_seconds: float = CLI_TIMEOUT_SECONDS, *, retain: bool = True
+        self,
+        timeout_seconds: float = CLI_TIMEOUT_SECONDS,
+        *,
+        retain: bool = True,
+        evidence: list[EvidenceValue] | None = None,
     ) -> Mapping[str, object] | None:
         outcome = self.host.cli((TELEC, SESSIONS, SHOW, self.session_id, FULL_FLAG), timeout_seconds, retain=retain)
+        if evidence is not None:
+            evidence.append(outcome.evidence((TELEC, SESSIONS, SHOW, self.session_id, FULL_FLAG)))
         if outcome.exit_status != 0:
             return None
         return json_object(outcome.output)
@@ -648,28 +671,60 @@ class Journey:
 
     def end_session(self) -> None:
         """Step 8: end the session; acceptance is not closure, so read the operation and the retained record."""
-        outcome = self.host.cli((TELEC, SESSIONS, END, self.session_id), CLI_TIMEOUT_SECONDS)
-        receipt = json_object(outcome.output)
-        operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
-        if outcome.exit_status != 0 or not isinstance(operation, str) or not operation:
-            raise platform_failure(DETAIL_END.format(detail=f"no operation receipt: {outcome.output[-300:]}"))
-        deadline = time.monotonic() + START_OBSERVATION_CAP_SECONDS
-        while True:
-            state_outcome = self.host.cli((TELEC, OPERATIONS, GET, operation), CLI_TIMEOUT_SECONDS, retain=False)
-            state = json_object(state_outcome.output)
-            value = state.get(FIELD_STATE) if state is not None else None
-            if value == OPERATION_COMPLETED:
-                self.host.cli((TELEC, OPERATIONS, GET, operation), CLI_TIMEOUT_SECONDS)
-                break
-            if value in OPERATION_FAILED_STATES or time.monotonic() >= deadline:
-                self.host.cli((TELEC, OPERATIONS, GET, operation), CLI_TIMEOUT_SECONDS)
-                raise platform_failure(
-                    DETAIL_END.format(detail=f"operation state {value!r}: {state_outcome.output[-300:]}")
-                )
-            payload_work.sleep(RECORD_POLL_SECONDS)
-        record = self.record()
-        if record is None or record.get(FIELD_CLOSED_AT) is None or record.get(FIELD_LIFECYCLE) != CLOSED:
-            raise platform_failure(DETAIL_END.format(detail=f"retained record not closed: {record!r}"))
+        packet: EvidenceObject | None = None
+        if self.end_evidence is not None:
+            packet = {
+                "kind": "foundation-end",
+                "session_id": self.session_id,
+                "started_ns": time.monotonic_ns(),
+                "finished_ns": None,
+                "command": None,
+                "operation_reads": [],
+                "retained_terminal": None,
+                "closed_reads": [],
+                "error": None,
+            }
+            self.end_evidence.append(packet)
+        try:
+            argv = (TELEC, SESSIONS, END, self.session_id)
+            outcome = self.host.cli(argv, CLI_TIMEOUT_SECONDS)
+            if packet is not None:
+                packet["command"] = outcome.evidence(argv)
+            receipt = json_object(outcome.output)
+            operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
+            if outcome.exit_status != 0 or not isinstance(operation, str) or not operation:
+                raise platform_failure(DETAIL_END.format(detail=f"no operation receipt: {outcome.output[-300:]}"))
+            deadline = time.monotonic() + START_OBSERVATION_CAP_SECONDS
+            while True:
+                argv = (TELEC, OPERATIONS, GET, operation)
+                state_outcome = self.host.cli(argv, CLI_TIMEOUT_SECONDS, retain=False)
+                if packet is not None:
+                    cast(list[EvidenceValue], packet["operation_reads"]).append(state_outcome.evidence(argv))
+                state = json_object(state_outcome.output)
+                value = state.get(FIELD_STATE) if state is not None else None
+                if value == OPERATION_COMPLETED:
+                    terminal = self.host.cli(argv, CLI_TIMEOUT_SECONDS)
+                    if packet is not None:
+                        packet["retained_terminal"] = terminal.evidence(argv)
+                    break
+                if value in OPERATION_FAILED_STATES or time.monotonic() >= deadline:
+                    terminal = self.host.cli(argv, CLI_TIMEOUT_SECONDS)
+                    if packet is not None:
+                        packet["retained_terminal"] = terminal.evidence(argv)
+                    raise platform_failure(
+                        DETAIL_END.format(detail=f"operation state {value!r}: {state_outcome.output[-300:]}")
+                    )
+                payload_work.sleep(RECORD_POLL_SECONDS)
+            record = self.record(evidence=cast(list[EvidenceValue], packet["closed_reads"]) if packet else None)
+            if record is None or record.get(FIELD_CLOSED_AT) is None or record.get(FIELD_LIFECYCLE) != CLOSED:
+                raise platform_failure(DETAIL_END.format(detail=f"retained record not closed: {record!r}"))
+        except Exception as error:
+            if packet is not None:
+                packet["error"] = f"{type(error).__name__}: {error}"
+            raise
+        finally:
+            if packet is not None:
+                packet["finished_ns"] = time.monotonic_ns()
 
     def release_session(self) -> None:
         """Best-effort cleanup of a session the journey left open; failures are reported by the caller's evidence."""
