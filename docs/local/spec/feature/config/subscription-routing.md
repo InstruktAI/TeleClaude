@@ -30,116 +30,58 @@ content-level validation runs.
 
 ### Use cases
 
-#### UC-CFG-SUB-1: Job subscription parsed via discriminator
+#### UC-CFG-SUB-1: An owner subscribes to job notifications
 
-```
-Given a subscriptions list entry { type: "job", job: "daily-digest" }
-When subscription entry validation runs
-Then the discriminator selects a job subscription
-And the entry's type field equals "job"
-And the entry's job field = "daily-digest"
-And the entry's when field defaults to None
-And the entry's enabled field defaults to True
-And the entry's notification defaults to preferred_channel="telegram", email=None
+```gherkin
+Scenario: The owner subscribes a job at a chosen notification destination
+  Given a global or person configuration owner wants notifications for a configured job
+  When the owner adds an enabled job subscription with a preferred channel
+  Then configuration records the job name and chosen notification preference
+
+Scenario: The default destination applies when no preference is supplied
+  Given a global or person configuration owner adds a job subscription without a notification preference
+  When the configuration loads
+  Then the subscription records the default Telegram preference
+
+Scenario: An invalid subscription definition is refused
+  Given an owner submits a subscription with a missing or unsupported type, or an unsupported notification channel
+  When configuration validates the subscription
+  Then the invalid definition is refused with a validation error
+  And the subscription is not accepted
 ```
 
-#### UC-CFG-SUB-2: YouTube subscription parsed via discriminator
+#### UC-CFG-SUB-2: A person subscribes to a YouTube channel
 
-```
-Given a subscriptions list entry { type: "youtube", source: "@channelhandle", tags: ["ai", "research"] }
-When subscription entry validation runs
-Then the discriminator selects a YouTube subscription
-And the entry's type field equals "youtube"
-And the entry's source field = "@channelhandle"
-And the entry's tags field = ["ai", "research"]
-And the entry's enabled field defaults to True
-And the entry's notification defaults to preferred_channel="telegram", email=None
+```gherkin
+Given a person wants updates from a YouTube channel with selected tags
+When the person adds an enabled YouTube subscription with that channel and tags
+Then configuration records that source and tag selection
+And it records the selected notification preference or the default Telegram preference
 ```
 
 #### UC-CFG-SUB-3: Unknown `type` value rejected by discriminator
 
-```
-Given a subscriptions list entry { type: "rss", source: "https://example.com/feed" }
-When subscription entry validation runs
-Then the discriminator finds no matching subscription type for "rss"
-And validation fails with a discriminator error naming the invalid tag value
-```
-
 #### UC-CFG-SUB-4: Missing `type` field rejected
-
-```
-Given a subscriptions list entry { job: "daily-digest" } (no type)
-When subscription entry validation runs
-Then the discriminator finds no `type` field to dispatch on
-And validation fails with a missing-discriminator error before per-entry validation
-```
 
 #### UC-CFG-SUB-5: Subscription notification defaults to telegram
 
-```
-Given any subscription entry omitting the notification block
-When the entry is constructed
-Then the notification defaults to preferred_channel = "telegram" and email = None
-```
-
 #### UC-CFG-SUB-6: Notification preferred_channel honors enum membership
-
-```
-Given a subscription entry with notification.preferred_channel = "discord"
-When notification validation runs
-Then the channel schema accepts "discord" as a valid delivery channel
-And notification.preferred_channel = "discord"
-```
 
 #### UC-CFG-SUB-7: Notification preferred_channel rejects unknown channels
 
-```
-Given a subscription entry with notification.preferred_channel = "sms"
-When notification validation runs
-Then the channel schema rejects "sms" (not in telegram|discord|whatsapp|email)
-And validation fails with a channel-mismatch error
-```
-
 #### UC-CFG-SUB-8: Job subscription may carry its own `when` schedule
-
-```
-Given a job subscription with a `when` schedule of every="30m"
-When job subscription validation runs
-Then the `when` schedule is validated per the job-schedule contract
-And the subscription's when field holds the validated schedule
-```
 
 #### UC-CFG-SUB-9: Global subscriptions list parses each entry as a discriminated union
 
-```
-Given the global overlay's subscriptions = [
-  { type: "job", job: "daily-digest" },
-  { type: "youtube", source: "@channelhandle" }
-]
-When global overlay validation runs
-Then each entry is independently routed through the subscription discriminator
-And the resulting list mixes job and YouTube subscription entries
-```
-
 #### UC-CFG-SUB-10: Per-person subscriptions list parses with the same shape
 
-```
-Given the per-person overlay's subscriptions = [
-  { type: "youtube", source: "@channelhandle", tags: ["ai"], notification: { preferred_channel: "discord" } }
-]
-When per-person overlay validation runs
-Then subscription entry validation parses the entry as a YouTube subscription
-And the parsed entry carries notification.preferred_channel = "discord"
-```
+#### UC-CFG-SUB-11: An owner pauses or resumes a subscription
 
-#### UC-CFG-SUB-11: Subscription enabled flag defaults true and can be set false
-
-```
-Given a subscription entry with enabled = false
-When validation runs
-Then the enabled field accepts the boolean
-And enabled = False
-And the subscription is registered but suppressed by downstream consumers
+```gherkin
+Given a subscription has a source and notification preference
+When the owner pauses or resumes it
+Then configuration changes only its enabled state
+And retains the source and notification preference
 ```
 
 ### Cross-context references
