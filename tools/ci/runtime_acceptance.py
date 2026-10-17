@@ -46,10 +46,11 @@ from tools.ci import workflow_ready as ready
 from tools.ci import workflow_removal as removal
 from tools.ci import workflow_review as review
 from tools.ci import workflow_waiting as waiting
-from tools.ci.enclosure_contract import Action
+from tools.ci.enclosure_contract import Action, JsonObject
 from tools.ci.enclosure_exchange import run_helper
 from tools.ci.enclosure_guest import GuestContext, Role, request_guest_poweroff
 from tools.ci.enclosure_guest import Record as GuestShutdownRecord
+from tools.ci.enclosure_inner import PROVISIONAL_REPORT_SCHEMA, PROVISIONAL_STAGE, PayloadProvisional
 from tools.ci.enclosure_journal import Outcome as EnclosureOutcome
 from tools.ci.enclosure_setup import run_guest_setup
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
@@ -373,6 +374,8 @@ _SOURCE_REVISION_OPTION = "--source-revision"
 _SOURCE_TREE_OPTION = "--source-tree"
 _CLI_DESCRIPTION = "Run the bounded real-process CLI acceptance profile."
 _REPORT_WRITE_ERROR = "Could not write runtime acceptance report: {error}"
+_REPORT_WRITE_INCOMPLETE = "The serialized report write was incomplete."
+_REPORT_READBACK_MISMATCH = "The persisted report bytes differ from the complete serialized report."
 _B13_REPORT_SEAL_FAILURE = "B13 report delivery seal failed."
 _B13_REPORT_WRITE_FAILURE = "B13 report write failed: {error}"
 _B13_REPORT_READBACK_FAILURE = "B13 report read-back failed: {error}"
@@ -824,12 +827,14 @@ class AcceptanceReport:
     retired_act_delivery_path: Path | None = field(default=None, repr=False)
     workflow_waiting_retired_kickback_delivery_path: Path | None = field(default=None, repr=False)
     workflow_waiting_retired_kickback_marker_directory: Path | None = field(default=None, repr=False)
+    payload_provisional: PayloadProvisional | None = field(default=None, repr=False)
 
     @property
     def passed(self) -> bool:
-        """A pass of the whole inventory; a run that selected a subset never is one."""
+        """A pass of the whole inventory; selected or provisional runs never supply one."""
         return (
-            not self.selection
+            self.payload_provisional is None
+            and not self.selection
             and self.cleanup.status is ScenarioStatus.PASSED
             and len(self.scenarios) == len(self.scenario_inventory)
             and all(result.status is ScenarioStatus.PASSED for result in self.scenarios)
@@ -837,10 +842,11 @@ class AcceptanceReport:
 
     @property
     def selection_passed(self) -> bool:
-        """Whether every scenario a selected run executed passed and its cleanup did; says nothing of the rest."""
+        """A selected result requires cleanup, including outside physical closure for a newly provisional run."""
         executed = [result for result in self.scenarios if result.status is not ScenarioStatus.NOT_RUN]
         return (
-            bool(self.selection)
+            self.payload_provisional is None
+            and bool(self.selection)
             and self.cleanup.status is ScenarioStatus.PASSED
             and bool(executed)
             and all(result.status is ScenarioStatus.PASSED for result in executed)
@@ -876,6 +882,7 @@ def execute_profile(
     scenario_actions: Mapping[str, ScenarioAction],
     cleanup_action: CleanupAction,
     selection: frozenset[str] = frozenset(),
+    payload_provisional: PayloadProvisional | None = None,
 ) -> AcceptanceReport:
     """Run required scenarios in order and retain failures, omissions and cleanup.
 
@@ -980,7 +987,7 @@ def execute_profile(
             commands=_bound_command_evidence(cleanup_evidence),
         )
     return AcceptanceReport(
-        schema_version=_REPORT_SCHEMA_VERSION,
+        schema_version=PROVISIONAL_REPORT_SCHEMA if payload_provisional is not None else _REPORT_SCHEMA_VERSION,
         source_revision=source_revision,
         source_tree=source_tree,
         profile=profile,
@@ -989,6 +996,7 @@ def execute_profile(
         cleanup=cleanup,
         duration_seconds=time.monotonic() - started,
         selection=tuple(sorted(selection)),
+        payload_provisional=payload_provisional,
     )
 
 
@@ -1013,6 +1021,8 @@ class FullRuntimeResources:
     source_revision: str
     source_tree: str
     report_path: Path | None = None
+    payload_provisional: PayloadProvisional | None = None
+    daemon_stop_outcome: str | None = None
     admin_terminal: PersistentTerminal | None = None
     member_terminal: PersistentTerminal | None = None
     install_attempted: bool = False
@@ -2131,6 +2141,16 @@ def _freeze_b13_profile_evidence(resources: FullRuntimeResources) -> None:
         resources.retain_key(waiting.B13_RETENTION_KEY, waiting.B13_RETENTION_REASON)
 
 
+def _remove_legacy_profile_resources(resources: FullRuntimeResources, failures: list[str]) -> None:
+    """Keep the existing fixture/temp removal mechanics together; newly provisional runs retain both."""
+    if resources.fixture_setup is not None and foundation.remove_fixture(resources.fixture_setup):
+        failures.append(_FULL_FIXTURE_CLEANUP_ERROR)
+    try:
+        _remove_temporary_profile_root(resources)
+    except OSError:
+        failures.append(_FULL_TEMP_CLEANUP_ERROR)
+
+
 def _close_full_profile_resources(
     resources: FullRuntimeResources,
     cleanup_evidence: list[CommandEvidence],
@@ -2157,6 +2177,7 @@ def _close_full_profile_resources(
         if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
             failures.append(_FULL_SERVICE_STOP_ERROR)
         recorded = stop_outcome.read_text(encoding=_UTF8).strip() if stop_outcome.is_file() else _EMPTY
+        resources.daemon_stop_outcome = recorded
         if resources.workflow_flow is not None:
             resources.workflow_flow.record_profile_stop(recorded)
         if recorded != _STOPPED_OUTCOME:
@@ -2194,13 +2215,8 @@ def _close_full_profile_resources(
             failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
     if resources.retained:
         failures.append(_FULL_UNPROVEN_RETAINED.format(reasons=_CLEANUP_FAILURE_SEPARATOR.join(resources.retained)))
-    else:
-        if resources.fixture_setup is not None and foundation.remove_fixture(resources.fixture_setup):
-            failures.append(_FULL_FIXTURE_CLEANUP_ERROR)
-        try:
-            _remove_temporary_profile_root(resources)
-        except OSError:
-            failures.append(_FULL_TEMP_CLEANUP_ERROR)
+    elif resources.payload_provisional is None:
+        _remove_legacy_profile_resources(resources, failures)
     if failures:
         raise RuntimeError(_FULL_CLEANUP_FAILURE.format(failures=_CLEANUP_FAILURE_SEPARATOR.join(failures)))
 
@@ -4962,7 +4978,8 @@ def _close_release_world(world: ReleaseWorld, evidence: list[CommandEvidence]) -
             finally:
                 terminal.close()
     finally:
-        _make_removable(world.root)
+        if world.resources.payload_provisional is None:
+            _make_removable(world.root)
 
 
 def _release_version(world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall, ref: str) -> str:
@@ -5166,10 +5183,12 @@ def run_profile(
     payload_admission: GuestContext | None = None,
 ) -> AcceptanceReport:
     """Run the selected profile with disposable state and report cleanup separately."""
+    provisional = None
     if profile is Profile.FULL:
         if payload_admission is None:
             return _unadmitted_full_report(source_revision, source_tree, selection)
         payload_admission.verify_request(source_root, source_revision, source_tree, selection)
+        provisional = PayloadProvisional.from_admitted(payload_admission)
     end_ns = payload_admission.payload_deadline().effective_end() if payload_admission is not None else None
     with payload_work.scope(end_ns):
         return _run_profile(
@@ -5179,6 +5198,7 @@ def run_profile(
             source_tree=source_tree,
             selection=selection,
             report_path=report_path,
+            payload_provisional=provisional,
         )
 
 
@@ -5190,6 +5210,7 @@ def _run_profile(
     source_tree: str,
     selection: frozenset[str],
     report_path: Path | None,
+    payload_provisional: PayloadProvisional | None,
 ) -> AcceptanceReport:
     """Execute the existing profile body inside its caller's admitted work scope."""
     payload_work.check()
@@ -5219,6 +5240,7 @@ def _run_profile(
                 source_revision=source_revision,
                 source_tree=source_tree,
                 report_path=report_path.resolve() if report_path is not None else None,
+                payload_provisional=payload_provisional,
                 retired_act_selected=not selection or _SCENARIO_WORKFLOW_RETIRED_ACTS_B12 in selection,
                 b13_selected=not selection or _SCENARIO_WORKFLOW_WAITING in selection,
                 retired_act_evidence=creation.empty_retired_act_evidence(
@@ -5373,6 +5395,7 @@ def _run_profile(
             scenario_actions=actions,
             cleanup_action=cleanup_action,
             selection=selection,
+            payload_provisional=payload_provisional,
         )
         if resources is not None:
             try:
@@ -5417,10 +5440,26 @@ def _run_profile(
                 retired_act_delivery_path=delivery_path,
                 workflow_waiting_retired_kickback_delivery_path=b13_delivery_path,
                 workflow_waiting_retired_kickback_marker_directory=b13_marker_directory,
+                payload_provisional=payload_provisional.observe(
+                    {
+                        "owned_profile_root": str(temporary_root),
+                        "daemon_stop_outcome": resources.daemon_stop_outcome,
+                        "recorded_retention_reasons": list(resources.retained),
+                        "recorded_retention_keys": dict(resources.retained_keys),
+                        "flow_finalizer": resources.workflow_flow.finalizer_summary
+                        if resources.workflow_flow is not None
+                        else None,
+                        "flow_finalizer_errors": list(resources.workflow_flow.finalizer_errors)
+                        if resources.workflow_flow is not None
+                        else [],
+                    }
+                )
+                if payload_provisional is not None
+                else None,
             )
         return report
     except BaseException:
-        if temporary_root.exists() and (resources is None or not resources.retained):
+        if payload_provisional is None and temporary_root.exists() and (resources is None or not resources.retained):
             shutil.rmtree(temporary_root)
         raise
 
@@ -5444,8 +5483,20 @@ def _write_report_payload(report_path: Path, temporary_path: Path, payload: Mapp
     """Replace the report only after a complete serialized payload is available."""
     try:
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path.write_text(json.dumps(payload, indent=2) + _LINE_BREAK, encoding=_UTF8)
+        data = (json.dumps(payload, indent=2, allow_nan=False) + _LINE_BREAK).encode(_UTF8)
+        with temporary_path.open("wb") as handle:
+            if handle.write(data) != len(data):
+                raise OSError(_REPORT_WRITE_INCOMPLETE)
+            handle.flush()
+            os.fsync(handle.fileno())
         temporary_path.replace(report_path)
+        directory = os.open(report_path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        if report_path.read_bytes() != data:
+            raise OSError(_REPORT_READBACK_MISMATCH)
     except (OSError, TypeError, ValueError) as exc:
         raise RuntimeError(_REPORT_WRITE_ERROR.format(error=exc)) from exc
 
@@ -5487,6 +5538,22 @@ def _b13_report_unproven(
     )
 
 
+def _report_payload(report: AcceptanceReport) -> JsonObject:
+    """Keep legacy bytes/schema shape while serializing only newly admitted reports as a typed provisional stage."""
+    payload = asdict(report)
+    for name in (
+        _REPORT_RETIRED_ACT_DELIVERY_PATH,
+        _B13_REPORT_DELIVERY_PATH_FIELD,
+        _B13_REPORT_MARKER_DIRECTORY_FIELD,
+        "payload_provisional",
+    ):
+        payload.pop(name, None)
+    if report.payload_provisional is not None:
+        payload["stage"] = PROVISIONAL_STAGE
+        payload["payload_provisional"] = report.payload_provisional.record()
+    return cast(JsonObject, payload)
+
+
 def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceReport:
     """Persist a report atomically enough that readers never accept a partial JSON file."""
     b13 = report.workflow_waiting_retired_kickback_evidence
@@ -5509,10 +5576,8 @@ def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceRepor
             export_failure=_B13_REPORT_SEAL_FAILURE,
         )
     temporary_path = report_path.with_suffix(f"{report_path.suffix}{_REPORT_TEMP_SUFFIX}")
-    payload = asdict(report)
-    delivery_path = payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
-    payload.pop(_B13_REPORT_DELIVERY_PATH_FIELD, None)
-    payload.pop(_B13_REPORT_MARKER_DIRECTORY_FIELD, None)
+    payload = _report_payload(report)
+    delivery_path = report.retired_act_delivery_path
     try:
         _write_report_payload(report_path, temporary_path, payload)
     except RuntimeError as error:
@@ -5520,10 +5585,7 @@ def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceRepor
             raise
         safe_error = str(error).replace(str(report_path.parent), _SYNTHETIC_RUNTIME_PLACEHOLDER)
         report = _b13_report_unproven(report, export_failure=_B13_REPORT_WRITE_FAILURE.format(error=safe_error))
-        failure_payload = asdict(report)
-        failure_payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
-        failure_payload.pop(_B13_REPORT_DELIVERY_PATH_FIELD, None)
-        failure_payload.pop(_B13_REPORT_MARKER_DIRECTORY_FIELD, None)
+        failure_payload = _report_payload(report)
         _write_report_payload(report_path, temporary_path, failure_payload)
         return report
     try:
@@ -5539,10 +5601,7 @@ def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceRepor
             raise RuntimeError(waiting.B13_ERROR_SEAL) from error
         safe_error = str(error).replace(str(report_path.parent), _SYNTHETIC_RUNTIME_PLACEHOLDER)
         report = _b13_report_unproven(report, export_failure=_B13_REPORT_READBACK_FAILURE.format(error=safe_error))
-        failure_payload = asdict(report)
-        failure_payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
-        failure_payload.pop(_B13_REPORT_DELIVERY_PATH_FIELD, None)
-        failure_payload.pop(_B13_REPORT_MARKER_DIRECTORY_FIELD, None)
+        failure_payload = _report_payload(report)
         _write_report_payload(report_path, temporary_path, failure_payload)
         return report
     if report.workflow_waiting_retired_kickback_evidence.status == waiting.B13_STATUS_COMPLETE and (
@@ -5561,13 +5620,13 @@ def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceRepor
             evidence_failure=waiting.B13_ERROR_SEAL,
             export_failure=_B13_REPORT_SEAL_FAILURE,
         )
-        failure_payload = asdict(report)
-        failure_payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
-        failure_payload.pop(_B13_REPORT_DELIVERY_PATH_FIELD, None)
-        failure_payload.pop(_B13_REPORT_MARKER_DIRECTORY_FIELD, None)
+        failure_payload = _report_payload(report)
         _write_report_payload(report_path, temporary_path, failure_payload)
         return report
-    if report.workflow_waiting_retired_kickback_evidence.status == waiting.B13_STATUS_COMPLETE:
+    if (
+        report.payload_provisional is None
+        and report.workflow_waiting_retired_kickback_evidence.status == waiting.B13_STATUS_COMPLETE
+    ):
         assert isinstance(b13_marker_directory, Path)
         assert isinstance(b13_delivery_path, Path)
         shutil.rmtree(b13_marker_directory)
@@ -5577,7 +5636,7 @@ def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceRepor
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
-    if isinstance(delivery_path, Path):
+    if report.payload_provisional is None and isinstance(delivery_path, Path):
         _retire_delivered_b12_carrier(delivery_path)
     return report
 

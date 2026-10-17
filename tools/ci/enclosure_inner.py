@@ -4,11 +4,87 @@ from __future__ import annotations
 
 import base64
 import hashlib
-from dataclasses import dataclass
+import json
+import time
+from dataclasses import dataclass, replace
+from enum import StrEnum
 from pathlib import Path
+from typing import Final
 
-from tools.ci.enclosure_contract import JsonObject, JsonValue
+from tools.ci.enclosure_contract import Cutoff, JsonObject, JsonValue, parse_object
+from tools.ci.enclosure_guest import GuestContext
+from tools.ci.enclosure_guest import Key as GuestKey
 from tools.ci.workflow_ledger import RECORD_OPEN, RECORD_TRIGGER, RECORD_UNKNOWN, StartLedger
+
+PROVISIONAL_REPORT_SCHEMA: Final = 4
+PROVISIONAL_STAGE: Final = "payload_provisional"
+JSON_SEPARATORS: Final = (",", ":")
+
+
+class PendingReason(StrEnum):
+    """Only this newly emitted typed reason is eligible for ensuing outside physical resolution."""
+
+    P4_PENDING_OUTER = "P4_PENDING_OUTER"
+
+
+def _encoded(record: JsonObject) -> bytes:
+    return json.dumps(record, sort_keys=True, separators=JSON_SEPARATORS, allow_nan=False).encode("utf-8")
+
+
+@dataclass(frozen=True)
+class PayloadProvisional:
+    """One newly admitted run's immutable binding; its pending physical fact grants no cleanup/functional pass."""
+
+    binding_bytes: bytes
+    observations_bytes: bytes = b"{}"
+
+    @classmethod
+    def from_admitted(cls, context: GuestContext) -> PayloadProvisional:
+        """Capture the request just verified by run_profile, before any product action or old report is read."""
+        record = context.record
+        binding = {
+            str(key): record[key]
+            for key in (
+                GuestKey.RUN_TOKEN,
+                GuestKey.SOURCE_COMMIT,
+                GuestKey.SOURCE_TREE,
+                GuestKey.STATIC_LOCK_SHA256,
+                GuestKey.RECIPE_SHA256,
+                GuestKey.QUALIFICATION_SHA256,
+                GuestKey.REALIZATION_SHA256,
+                GuestKey.ADMISSION_SEAL_SHA256,
+                GuestKey.PURPOSE,
+                GuestKey.GUEST_BOOT_ID,
+                GuestKey.PID_NAMESPACE,
+                GuestKey.CGROUP_NAMESPACE,
+                GuestKey.SELECTED_SCENARIOS,
+                GuestKey.PAYLOAD_END_NS,
+            )
+        }
+        original = context.admitted_deadline()
+        binding.update(
+            {
+                "guest_manifest_sha256": hashlib.sha256(context.manifest_bytes).hexdigest(),
+                Cutoff.OUTER_END_NS: original.outer_end_ns,
+                Cutoff.VECTOR_END_NS: original.vector_end_ns,
+                Cutoff.COMMAND_END_NS: original.command_end_ns,
+                "created_ns": time.monotonic_ns(),
+            }
+        )
+        return cls(_encoded(binding))
+
+    def observe(self, facts: JsonObject) -> PayloadProvisional:
+        """Freeze current structured facts without clearing a pending reason or changing any original verdict."""
+        return replace(self, observations_bytes=_encoded(facts))
+
+    def record(self) -> JsonObject:
+        return {
+            "schema_version": 1,
+            "stage": PROVISIONAL_STAGE,
+            "pending_reasons": [PendingReason.P4_PENDING_OUTER.value],
+            "binding": parse_object(self.binding_bytes),
+            "observations": parse_object(self.observations_bytes),
+        }
 
 
 @dataclass(frozen=True)
