@@ -46,9 +46,7 @@ READ_BYTES: Final = 4096
 NANOSECONDS: Final = 1_000_000_000
 JSON_SEPARATORS: Final = (",", ":")
 ERROR_EXCHANGE: Final = "the original privileged helper exchange is missing, malformed, late or inconsistent"
-ERROR_UNKNOWN: Final = (
-    "privileged helper outcome remains unknown; retain original child {pid} and do not repeat {action}"
-)
+ERROR_UNKNOWN: Final = "privileged helper startup or outcome remains unknown; retain the original startup handle and do not repeat {action}"
 
 
 class Key(StrEnum):
@@ -64,12 +62,17 @@ class Key(StrEnum):
 
 
 class HelperUncertain(RuntimeError):
-    """Keep the original native process handle available to bounded closure and diagnostics."""
+    """Keep the original startup task and its eventual native result available to bounded closure."""
 
-    def __init__(self, process: asyncio.subprocess.Process, action: Action) -> None:
-        super().__init__(ERROR_UNKNOWN.format(pid=process.pid, action=action))
-        self.process = process
+    def __init__(self, startup: HelperStartup, action: Action) -> None:
+        super().__init__(ERROR_UNKNOWN.format(action=action))
+        self.startup = startup
         self.action = action
+
+    @property
+    def process(self) -> asyncio.subprocess.Process | None:
+        """Expose a native handle only after creation returned it, including a later local descriptor-close error."""
+        return self.startup.process
 
 
 def _encode(value: JsonObject) -> bytes:
@@ -176,6 +179,61 @@ async def _line(reader: asyncio.StreamReader, end_ns: int) -> JsonObject:
     return parse_object(data)
 
 
+class HelperStartup:
+    """One retained native startup; caller cancellation never cancels its transport construction."""
+
+    def __init__(self, owner: RunOwner, action: Action, request: JsonObject, end_ns: int) -> None:
+        self.process: asyncio.subprocess.Process | None = None
+        self.task = asyncio.create_task(self._start(owner, action, request, end_ns))
+
+    def abandon_input(self) -> None:
+        """Close only the eventual input pipe, without cancelling startup or closing the process transport."""
+        self.task.add_done_callback(self._close_input)
+
+    def _close_input(self, task: asyncio.Task[asyncio.subprocess.Process]) -> None:
+        if not task.cancelled():
+            task.exception()  # Retrieve native startup errors; the original task retains them for closure.
+        if self.process is not None and self.process.stdin is not None:
+            self.process.stdin.close()
+
+    async def _start(
+        self, owner: RunOwner, action: Action, request: JsonObject, end_ns: int
+    ) -> asyncio.subprocess.Process:
+        # The uncancelled startup task owns this descriptor until native creation resolves, including late completion.
+        _remaining(end_ns)
+        stderr = os.open(
+            STDERR_FILE.format(action=action),
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600,
+            dir_fd=owner.journal.directory_fd,
+        )
+        try:
+            _remaining(end_ns)
+            self.process = await asyncio.create_subprocess_exec(
+                PYTHON,
+                ISOLATED,
+                NO_SITE,
+                str(ACTUAL_SOURCE_ROOT / ENTRY),
+                ROLE_OPTION,
+                Role.PRIVILEGED.value,
+                MANIFEST_OPTION,
+                str(owner.directory / MANIFEST_NAME),
+                ACTION_OPTION,
+                action.value,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=stderr,
+                limit=FRAME_LIMIT,
+                pass_fds=(owner.journal.directory_fd,),
+                cwd=ACTUAL_SOURCE_ROOT,
+                env={**OUTSIDE_ENVIRONMENT, REQUEST_ENVIRONMENT: _encode(request).decode(UTF8)},
+                umask=0o077,
+            )
+            return self.process
+        finally:
+            close_evidence_descriptors(stderr)
+
+
 async def run_privileged(
     owner: RunOwner,
     action: Action,
@@ -201,38 +259,18 @@ async def run_privileged(
         Cutoff.VECTOR_END_NS: deadline.vector_end_ns,
         Cutoff.COMMAND_END_NS: deadline.command_end_ns,
     }
-    stderr = os.open(
-        STDERR_FILE.format(action=action),
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-        0o600,
-        dir_fd=owner.journal.directory_fd,
-    )
+    startup = HelperStartup(owner, action, request, end_ns)
     try:
-        process = await asyncio.create_subprocess_exec(
-            PYTHON,
-            ISOLATED,
-            NO_SITE,
-            str(ACTUAL_SOURCE_ROOT / ENTRY),
-            ROLE_OPTION,
-            Role.PRIVILEGED.value,
-            MANIFEST_OPTION,
-            str(owner.directory / MANIFEST_NAME),
-            ACTION_OPTION,
-            action.value,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=stderr,
-            limit=FRAME_LIMIT,
-            pass_fds=(owner.journal.directory_fd,),
-            cwd=ACTUAL_SOURCE_ROOT,
-            env={**OUTSIDE_ENVIRONMENT, REQUEST_ENVIRONMENT: _encode(request).decode(UTF8)},
-            umask=0o077,
-        )
-    finally:
-        close_evidence_descriptors(stderr)
+        async with asyncio.timeout(_remaining(end_ns)):
+            process = await asyncio.shield(startup.task)
+        _remaining(end_ns)
+    except BaseException as error:
+        startup.abandon_input()
+        raise HelperUncertain(startup, action) from error
     reader, writer = process.stdout, process.stdin
     if reader is None or writer is None:
-        raise HelperUncertain(process, action)
+        startup.abandon_input()
+        raise HelperUncertain(startup, action)
     final: ActionResult | None = None
     try:
         async with asyncio.timeout(_remaining(end_ns)):
@@ -271,6 +309,6 @@ async def run_privileged(
             raise ValueError(ERROR_EXCHANGE)
         return receipt
     except BaseException as error:
-        raise HelperUncertain(process, action) from error
+        raise HelperUncertain(startup, action) from error
     finally:
         writer.close()

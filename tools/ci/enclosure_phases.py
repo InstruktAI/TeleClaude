@@ -18,7 +18,7 @@ from tools.ci.enclosure_contract import (
     positive_integer,
     text,
 )
-from tools.ci.enclosure_exchange import run_privileged
+from tools.ci.enclosure_exchange import HelperUncertain, run_privileged
 from tools.ci.enclosure_journal import ActionResult, Outcome
 from tools.ci.enclosure_manager import (
     ACTIVE,
@@ -88,6 +88,7 @@ class BindingPhases:
         self.guest: UnitRead | None = None
         self._accepted: list[AcceptedJob] = []
         self._loop: asyncio.AbstractEventLoop | None = None
+        self.uncertain: HelperUncertain | None = None
 
     async def perform(
         self, action: Action, deadline: AdmittedDeadline, maximum_seconds: int, qualification_vector: str | None
@@ -95,7 +96,16 @@ class BindingPhases:
         """Compose the actual separate helper with this process's original observations, without a new observer."""
         if action not in (Action.CREATE_PARENT, Action.START_GUEST):
             raise ValueError(ERROR_PHASE.format(action=action))
-        return await run_privileged(self.owner, action, deadline, maximum_seconds, qualification_vector, self.observe)
+        if self.uncertain is not None:
+            raise self.uncertain
+        try:
+            return await run_privileged(
+                self.owner, action, deadline, maximum_seconds, qualification_vector, self.observe
+            )
+        except HelperUncertain as error:
+            # Preserve the original startup/Process even if an outer caller only renders the raised diagnostic.
+            self.uncertain = error
+            raise
 
     def _population_ready(self) -> None:
         if self.population is not None:
