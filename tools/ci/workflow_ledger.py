@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, cast
 
+from tools.ci.enclosure_contract import parse_object
+
 ENCODING: Final = "utf-8"
 LINE_BREAK: Final = "\n"
 RECORD_FIELD: Final = "record"
@@ -99,8 +101,17 @@ class StartLedger:
         if not path.is_file():
             raise ValueError(DETAIL_MISSING)
         try:
-            content = path.read_text(encoding=ENCODING)
-        except (OSError, UnicodeError) as error:
+            data = path.read_bytes()
+        except OSError as error:
+            raise ValueError(DETAIL_INVALID.format(detail=type(error).__name__)) from error
+        return cls.from_bytes(data, path=path)
+
+    @classmethod
+    def from_bytes(cls, data: bytes, *, path: Path) -> StartLedger:
+        """Validate a captured immutable byte sequence without opening its source or any report-supplied path."""
+        try:
+            content = data.decode(ENCODING)
+        except UnicodeError as error:
             raise ValueError(DETAIL_INVALID.format(detail=type(error).__name__)) from error
         lines = content.splitlines(keepends=True)
         if not lines or any(not line.endswith(LINE_BREAK) for line in lines):
@@ -111,13 +122,10 @@ class StartLedger:
         ledger = cls(path=path, flow_id=flow_id, lines=[flow_id])
         for line_number, raw_line in enumerate(lines[1:], start=2):
             try:
-                value = json.loads(raw_line)
-            except json.JSONDecodeError as error:
+                value = parse_object(raw_line.encode(ENCODING))
+            except ValueError as error:
                 raise ValueError(DETAIL_INVALID.format(detail="invalid JSON")) from error
-            if not isinstance(value, Mapping):
-                raise ValueError(DETAIL_INVALID.format(detail="record is not an object"))
-            row = {str(key): item for key, item in value.items()}
-            ledger._read_row(row, line_number)
+            ledger._read_row(value, line_number)
             ledger.lines.append(raw_line[: -len(LINE_BREAK)])
         ledger._validate_parents()
         return ledger

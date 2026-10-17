@@ -24,6 +24,7 @@ from tools.ci import workflow_events as events
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_ledger as start_ledger
 from tools.ci import workflow_publication as publication
+from tools.ci.enclosure_inner import LedgerEvidence
 from tools.ci.workflow_creation import Observer, SessionView
 from tools.ci.workflow_foundation import FixtureSetup, FoundationHost
 
@@ -479,6 +480,8 @@ class WorkflowFlow:
     item_snapshot: Json | None = None
     finalizer_summary: MutableJson = field(default_factory=dict)
     finalizer_ledger_error: str | None = None
+    finalizer_start_ledger: LedgerEvidence | None = None
+    finalizer_end_ledger: LedgerEvidence | None = None
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -1320,7 +1323,11 @@ class WorkflowFlow:
             self.retain(RETAINED_MARKER.format(path=self.root))
         self._run_finalizer_stage("fixture stop markers", lambda: self._finalizer_stop_fixtures(issues), issues)
         try:
-            current = start_ledger.StartLedger.load(self.ledger_path)
+            raw = self.ledger_path.read_bytes()
+            self.finalizer_end_ledger = LedgerEvidence.capture(raw, path=self.ledger_path, expected_cases=self.chain)
+            current = self.finalizer_end_ledger.ledger
+            if current is None:
+                raise ValueError(self.finalizer_end_ledger.error)
             self.ledger = current
             self.finalizer_ledger_error = None
         except (OSError, ValueError) as error:
@@ -1342,6 +1349,12 @@ class WorkflowFlow:
             "start_ledger": cast(JsonValue, starts),
             "open_attempt_ids": cast(JsonValue, open_ids),
             "start_ledger_error": self.finalizer_ledger_error,
+            "start_ledger_before_closure": self.finalizer_start_ledger.record()
+            if self.finalizer_start_ledger is not None
+            else None,
+            "start_ledger_after_closure": self.finalizer_end_ledger.record()
+            if self.finalizer_end_ledger is not None
+            else None,
             "P1_session_lifecycle": "proven"
             if classification_complete
             and all(isinstance(row, Mapping) and row.get("closed") is True for row in session_rows.values())
@@ -1374,7 +1387,11 @@ class WorkflowFlow:
 
     def _finalizer_start_snapshot(self, issues: list[str]) -> list[JsonValue]:
         try:
-            current = start_ledger.StartLedger.load(self.ledger_path)
+            raw = self.ledger_path.read_bytes()
+            self.finalizer_start_ledger = LedgerEvidence.capture(raw, path=self.ledger_path, expected_cases=self.chain)
+            current = self.finalizer_start_ledger.ledger
+            if current is None:
+                raise ValueError(self.finalizer_start_ledger.error)
             self.ledger = current
         except (OSError, ValueError) as error:
             self.ledger = None
