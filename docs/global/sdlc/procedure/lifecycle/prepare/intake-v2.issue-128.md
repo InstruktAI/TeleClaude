@@ -14,8 +14,8 @@ dispatch:
 
 ## Goal
 
-Author the spec for one item in that item's body: what the outcome is, the use
-cases that make it observable, and the invariants that must hold. The preparing
+Author the spec for one item in that item's body: what the outcome is, any
+admitted user-goal use cases, and the invariants that must hold. The preparing
 session that dispatched you challenges what you write; you own the content and
 dispose every challenge with a change or with evidence.
 
