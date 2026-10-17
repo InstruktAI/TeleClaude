@@ -53,26 +53,13 @@ state through the cache owner under
 previously captured startup rows after newer live materialization.
 
 Post-adapter reconciliation, request-surface recovery and project warmup retain
-their owner contracts. Startup remains idempotent and reports completion and
-slow stages through the lifecycle's configured observations. These readiness
-boundaries follow `sdlc/principle/architectural-defaults` and
-`sdlc/policy/domain-ownership`.
+their owner contracts. The post-adapter completion stage finishes before the
+request surface starts; recovery of each included task remains with its owner.
+Startup remains idempotent and reports completion and slow stages through the
+lifecycle's configured observations. These readiness boundaries follow
+`sdlc/principle/architectural-defaults` and `sdlc/policy/domain-ownership`.
 
 #### UC-DL6: Post-adapter completion tasks
-
-```
-Given adapters have started and the event platform is up
-When the post-adapter completion stage runs
-Then the service's in-memory cache is wired into the transport adapter when present
-And the voice handler is initialized
-And voice-transcription recovery resumes any transcription left in flight by a prior process: rows persisted in pending|in_progress|interrupted (see `database#voice-transcription-durability-and-recovery`) are resubmitted idempotently within a bounded retry cap when their audio still exists — editing the original placeholder when a notice identifier was persisted — or transitioned to a terminal failed state with an audio-lost notice when it does not (orphaned temp-audio sweeping is NOT done here — it is owned by the periodic cleanup loop, consistent with this spec's rule that lifecycle startup performs no orphan sweeps)
-And operations normalized to their stale outcome by the operations stage have their outcomes delivered here (see `durable-operation-outcomes#uc-do3-staleness-is-an-outcome-and-reaches-the-caller` for the delivery contract)
-And session startups a prior process left unfinished are taken up as UC-DL9 states
-And the inbound queue manager is brought up
-And conversation-delivery reconciliation re-sends bounded peer bundles for any conversation link with an orphaned pending-through cursor
-And outstanding final-output reconciliation is NOT done here — it is scheduled as a background pass after the request surface starts
-And the request surface starts AFTER these tasks have completed
-```
 
 #### UC-DL2 — Turn delivery state is reconciled before adapters can emit output
 
