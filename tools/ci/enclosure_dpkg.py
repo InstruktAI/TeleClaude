@@ -26,7 +26,7 @@ from tools.ci.enclosure_contract import (
     text,
 )
 from tools.ci.enclosure_data import DPKG_DEB, _archive
-from tools.ci.enclosure_host import CONTAINER_PACKAGE, HostSubstrateFacts
+from tools.ci.enclosure_host import CONTAINER_PACKAGE, HostSubstrateFacts, _package_presence
 from tools.ci.enclosure_native import NativeQuery, query_native, read_native_stdout
 
 CONFIGURATION: Final = Path("/etc/dpkg")
@@ -1523,6 +1523,7 @@ def collect_install_inputs(
         result["dbus_control_sources"] = bind_dbus_control_sources(inputs, package, deadline)
         work = inspect_package_work(query, deadline, cap)
         result["package_work"] = work
+        result["host_package_inputs"] = interpret_work_host_packages(package, work, deadline)
         prior = inspect_container_prior_control(package, work, deadline)
         result["container_prior_control"] = prior
         if prior["state"] == "blocked":
@@ -1899,3 +1900,36 @@ def inspect_info_format(deadline: AdmittedDeadline) -> JsonObject:
         raise DpkgInputError({"info_format": result}) from error
     finally:
         result["finished_ns"] = time.monotonic_ns()
+
+
+def interpret_work_host_packages(package: StaticPackage, work: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Apply the original host-package predicate to the existing native view, with its original status filter."""
+    result: JsonObject = {"state": "unproven", "container_installed": None, "matched_packages": None, "error": None}
+    try:
+        _before_cutoff(deadline)
+        if work["error"] is not None:
+            raise ValueError(ERROR_INPUT)
+        raw = base64.b64decode(text(work, "stdout_base64"), validate=True)
+        if hashlib.sha256(raw).hexdigest() != text(work, "stdout_sha256"):
+            raise ValueError(ERROR_INPUT)
+        projected: list[bytes] = []
+        for line in raw.splitlines():
+            _before_cutoff(deadline)
+            fields = line.split(b"\t")
+            if len(fields) != 7 or len(fields[3].split(b" ")) != 3:
+                raise ValueError(ERROR_INPUT)
+            # Native no-pattern --show skips NOTINSTALLED; wildcard mode retains those slots for control addressing.
+            if fields[3].split(b" ")[2] != b"not-installed":
+                projected.append(b"\t".join(fields[:4]) + b"\n")
+        inventory = b"".join(projected)
+        result["native_view_projection_base64"] = base64.b64encode(inventory).decode("ascii")
+        result["native_view_projection_sha256"] = hashlib.sha256(inventory).hexdigest()
+        installed, matched = _package_presence(parse_object(package.lock_bytes), inventory)
+        result["container_installed"] = installed
+        result["matched_packages"] = matched
+        _before_cutoff(deadline)
+        result["state"] = "original_locked_package_inputs_matched"
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"package_work": work, "host_package_inputs": result}) from error
