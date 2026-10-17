@@ -27,29 +27,26 @@ does not hold, and it grants no visibility listing does not already grant.
 
 ### Use cases
 
-#### UC-SI1: A named session is shown as grouped diagnostic detail
+#### UC-SI1: An operator can diagnose an authorized session
 
 ```gherkin
-Given an agent can list a session
-When the agent inspects that session by its id
-Then it receives that session's stored detail in one answer
-And the detail is grouped as identity, origin, role, state, and wiring
-And every value shown is one the session record stores
-And no value the record does not store, such as a model name, an initial message, or command arguments, is shown
+Given an operator needs to diagnose a session within their reach
+When they inspect that session by its id
+Then one answer shows the stored identity, origin, role, state, and wiring
+And it includes no inferred values or conversation content
 ```
 
-#### UC-SI2: The complete record is shown on request
+#### UC-SI2: An operator can request the complete stored session record
 
 ```gherkin
-Given an agent can list a session
-When the agent inspects that session asking for the complete record
-Then it receives every value the session record stores
-And values the record stores as encoded structures are presented decoded
-And the full text of the last output, the accepted-input comparison fingerprint, the help-desk relay exchange content, and the agent-status concurrency counter are left out
-And the timestamps and digests that accompany the left-out values remain
+Given an operator needs the full stored record of a session within their reach
+When they request its complete detail
+Then they receive its stored values and decoded structures
+And output text, input fingerprints, relay content, and concurrency counters remain excluded
+And accompanying timestamps and digests remain available
 ```
 
-#### UC-SI3: An agent inspects its own session without naming it
+#### UC-SI3: An agent can inspect its own session without naming it
 
 ```gherkin
 Given an agent running inside a TeleClaude session
@@ -57,42 +54,39 @@ When the agent inspects its own session without supplying an id
 Then it receives the record of the session it runs in
 ```
 
-#### UC-SI4: A caller that is not a session is told so
+#### UC-SI4: A terminal operator can tell that no session is bound
 
 ```gherkin
-Given a caller at a terminal that is not a TeleClaude session
-When the caller inspects its own session without supplying an id
-Then the answer states that the caller is not a TeleClaude session
-And the answer names the terminal identity the caller carries
+Given an operator at a terminal that is not a TeleClaude session
+When they ask to inspect their own session without supplying an id
+Then the answer states that no TeleClaude session is bound
+And it names the terminal identity they carry
 And no record and no empty record is returned
 ```
 
-#### UC-SI5: A session outside the caller's reach is refused with its door
+#### UC-SI5: An operator receives a safe door for an out-of-reach session
 
 ```gherkin
-Given a session exists that the caller's reach does not admit
-When the caller inspects that session by its id
-Then the caller is refused with an answer stating that the session is outside its reach
-And the answer directs the caller to listing to see the sessions it can reach
-And no part of the session's record is returned
+Given a session exists outside an operator's reach
+When they inspect that session by its id
+Then inspection refuses and directs them to listing sessions they can reach
+And no part of the inaccessible record is returned
 ```
 
-#### UC-SI9: An id that matches no session is not found
+#### UC-SI9: An operator can distinguish a missing session id
 
 ```gherkin
-Given no session carries the id a caller names
-When the caller inspects that id
-Then the caller receives a not-found answer
-And the answer is distinct from the refusal for a session outside the caller's reach
+Given no session carries the id an operator names
+When they inspect that id
+Then they receive a not-found answer, distinct from an out-of-reach refusal
 ```
 
-#### UC-SI6: A retained closed session can be inspected
+#### UC-SI6: An operator can inspect a retained closed session
 
 ```gherkin
-Given a session that has closed and is still retained
-And the caller's reach admits it
-When the caller inspects that session by its id
-Then the caller receives its record, including when it closed
+Given an operator can reach a session that has closed and is still retained
+When they inspect that session by its id
+Then they receive its record, including when it closed
 ```
 
 #### UC-SI7: A session on another computer is inspected through that computer
@@ -100,9 +94,10 @@ Then the caller receives its record, including when it closed
 #### UC-SI8: Help points to the neighbouring reads
 
 ```gherkin
-Given an agent reads the help for session inspection
-Then the help directs it to the transcript read for what a session said
-And to listing for the roster and a session's children
+Given an agent needs a session's transcript or the session roster
+When it asks for help with session inspection
+Then help directs it to transcript retrieval for what the session said
+And to listing for the roster and the session's children
 ```
 
 ### Cross-context references
