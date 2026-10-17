@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
+from tools.ci import workflow_events as events
 from tools.ci import workflow_foundation as foundation
 from tools.ci.enclosure_contract import (
     NANOSECONDS,
@@ -30,8 +31,24 @@ from tools.ci.enclosure_contract import (
 from tools.ci.enclosure_guest import Key as GuestKey
 from tools.ci.enclosure_guest import Purpose
 from tools.ci.enclosure_inner import PROVISIONAL_REPORT_SCHEMA, PROVISIONAL_STAGE, LedgerEvidence, PendingReason
-from tools.ci.workflow_flow import B5_ACTIONS, B6_ACTIONS, B7_ACTIONS, declared_chain
-from tools.ci.workflow_ledger import RECORD_OPERATION, RECORD_SESSION, RECORD_TRIGGER
+from tools.ci.workflow_flow import (
+    B5_ACTIONS,
+    B6_ACTIONS,
+    B7_ACTIONS,
+    ITEM,
+    PROC_WORK,
+    ROLE_WORK,
+    declared_chain,
+    procedure_key,
+)
+from tools.ci.workflow_ledger import (
+    RECORD_DISCHARGED,
+    RECORD_OPERATION,
+    RECORD_SESSION,
+    RECORD_TRIGGER,
+    Attempt,
+    StartLedger,
+)
 from tools.ci.workflow_publication import TERMINAL_STATES
 
 ERROR_REPORT: Final = "the new provisional report binding or original ledger evidence is inconsistent"
@@ -64,6 +81,11 @@ OBSERVATION_FIELDS: Final = frozenset(
     }
 )
 CLOSED_ACTIONS: Final = {"B5": B5_ACTIONS, "B7": B7_ACTIONS, "B6": B6_ACTIONS}
+CLAIM_STARTS: Final = {
+    ("B5", "w2-start"): ("work", 1),
+    ("B5", "w3-start"): ("work", 2),
+    ("B7", "reasonone"): ("ready", 3),
+}
 
 
 def _strings(value: JsonValue) -> tuple[str, ...]:
@@ -437,6 +459,137 @@ def _declared_snapshot(value: JsonValue, cases: tuple[str, ...]) -> LedgerEviden
     return snapshot
 
 
+def _claimed_holder(held: JsonObject, actor: str, phase: str) -> None:
+    state = object_value(held["state"])
+    standing = object_value(held["standing"])
+    if (
+        state.get("active_runner") != actor
+        or state.get("lifecycle_phase") != phase
+        or state.get("hold") is not False
+        or standing.get("held_by") != actor
+        or standing.get("phase") != phase
+    ):
+        raise ValueError(ERROR_REPORT)
+    text(standing, "held_since")
+    log = text(object_value(held["artifact_content"]), "log")
+    claims = [entry for entry in events.parse_log_entries(log) if entry.act == "claim"]
+    if (
+        not claims
+        or claims[-1].session != actor
+        or claims[-1].role != ROLE_WORK
+        or ITEM not in claims[-1].body
+        or actor not in claims[-1].body
+    ):
+        raise ValueError(ERROR_REPORT)
+
+
+def _claim_record(row: JsonObject, attempt: Attempt, created: int, public_finished: int) -> JsonObject:
+    if set(row) != {"attempt_id", "actor", "phase", "startup_record", "launch_record", "claim"}:
+        raise ValueError(ERROR_REPORT)
+    phase, index = CLAIM_STARTS[attempt.case, attempt.label]
+    actor = text(row, "actor")
+    startup = object_value(row["startup_record"])
+    launch = object_value(row["launch_record"])
+    native = text(startup, "native_session_id")
+    if (
+        row["phase"] != phase
+        or startup.get("session_id") != actor
+        or startup.get("role") != ROLE_WORK
+        or startup.get("job") != PROC_WORK
+        or startup.get("title") != f"{ROLE_WORK} {ITEM}"
+        or launch.get("native_session_id") != native
+        or launch.get("key_kind") != "procedure"
+        or launch.get("key") != procedure_key(PROC_WORK)
+        or type(launch.get("index")) is not int
+        or launch["index"] != index
+    ):
+        raise ValueError(ERROR_REPORT)
+    claim = object_value(row["claim"])
+    if set(claim) != {"started_ns", "returned_ns", "observed_ns", "frame", "terminal", "held"} or not (
+        created
+        <= positive_integer(claim, "started_ns")
+        <= positive_integer(claim, "returned_ns")
+        <= positive_integer(claim, "observed_ns")
+        <= public_finished
+    ):
+        raise ValueError(ERROR_REPORT)
+    frame = object_value(claim["frame"])
+    run = object_value(frame["run"])
+    if (
+        frame.get("argv") != ["telec", "todo", "work", ITEM]
+        or type(run.get("exit_status")) is not int
+        or run["exit_status"] != 0
+        or run.get("timed_out") is True
+        or run.get("diagnostics") not in (None, "")
+    ):
+        raise ValueError(ERROR_REPORT)
+    receipt = foundation.json_object(text(run, "stdout"))
+    operation_id = receipt.get("operation_id") if receipt is not None else None
+    terminal = object_value(claim["terminal"])
+    if (
+        not isinstance(operation_id, str)
+        or not operation_id
+        or operation_id == attempt.operation_id
+        or terminal.get("operation_id") != operation_id
+        or terminal.get("state") != "completed"
+        or terminal.get("error") not in (None, "")
+        or not isinstance(terminal.get("result"), str)
+    ):
+        raise ValueError(ERROR_REPORT)
+    instruction = text(terminal, "result")
+    if any(needle not in instruction for needle in (ITEM, phase, actor)):
+        raise ValueError(ERROR_REPORT)
+    _claimed_holder(object_value(claim["held"]), actor, phase)
+    return {
+        "attempt_id": attempt.identifier,
+        "actor": actor,
+        "phase": phase,
+        "native_session_id": native,
+        "start_operation_id": attempt.operation_id,
+        "claim_operation_id": operation_id,
+        "state": "public_claim_matched",
+    }
+
+
+def _claim_inputs(
+    finalizer: JsonObject,
+    ledger: StartLedger,
+    operations: dict[str, list[JsonValue]],
+    created: int,
+    public_finished: int,
+) -> list[JsonValue]:
+    expected_pairs = {pair for pair in CLAIM_STARTS if pair[0] in ledger.closed_lists}
+    attempts = [attempt for attempt in ledger.attempts.values() if (attempt.case, attempt.label) in expected_pairs]
+    if (
+        {(attempt.case, attempt.label) for attempt in attempts} != expected_pairs
+        or len(attempts) != len(expected_pairs)
+        or any(attempt.kind != RECORD_OPERATION or attempt.state != RECORD_DISCHARGED for attempt in attempts)
+    ):
+        raise ValueError(ERROR_REPORT)
+    expected = {attempt.identifier: attempt for attempt in attempts}
+    values = finalizer["public_claim_evidence"]
+    if not isinstance(values, list) or len(values) != len(expected):
+        raise ValueError(ERROR_REPORT)
+    seen: set[str] = set()
+    matched: list[JsonValue] = []
+    owned = _strings(finalizer["owned_session_ids"])
+    for value in values:
+        row = object_value(value)
+        identifier = text(row, "attempt_id")
+        if identifier not in expected or identifier in seen or text(row, "actor") not in owned:
+            raise ValueError(ERROR_REPORT)
+        attempt = expected[identifier]
+        if attempt.operation_id is None:
+            raise ValueError(ERROR_REPORT)
+        for terminal in operations[attempt.operation_id]:
+            result = object_value(terminal)
+            if result.get("state") != "completed" or result.get("error") not in (None, ""):
+                raise ValueError(ERROR_REPORT)
+        matched.append(_claim_record(row, attempt, created, public_finished))
+        seen.add(identifier)
+    return matched
+
+
 def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
     """Join declared attempts to actual terminal operation data; receipts alone do not establish semantic settlement."""
     provisional = object_value(report["payload_provisional"])
@@ -488,5 +641,6 @@ def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
         "operations": matched,
         "effects": effects,
         "pending_trigger_ids": list(after.pending_triggers),
+        "accepted_start_claims": _claim_inputs(finalizer, after.ledger, operations, created, public_finished),
         "semantic_settlement": "unproven",
     }

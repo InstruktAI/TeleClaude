@@ -15,11 +15,12 @@ import re
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
+from tools.ci import workflow_ledger as ledger
 from tools.ci import workflow_publication as publication
 from tools.ci.workflow_foundation import FoundationHost
 
@@ -206,6 +207,7 @@ class DriverCase:
         driver_id: str = DRIVER_ID,
         verb: str = PREPARE,
         phase: str = PHASE,
+        claim_evidence: ledger.JsonObject | None = None,
     ) -> None:
         self.driver_id = driver_id
         self.phase = phase
@@ -218,6 +220,7 @@ class DriverCase:
         self.baseline = baseline
         self.claim_argv = ("telec", TODO, verb, item)
         self.titles: dict[str, str] = {}
+        self.claim_evidence = claim_evidence
 
     def check_startup(self, session: str, expected_new: frozenset[str]) -> str:
         """The sessions beyond the baseline are exactly those expected; the driver\'s startup is real; returns its native id."""
@@ -280,7 +283,11 @@ class DriverCase:
 
     def claim_call(self, distinct_from: Sequence[str]) -> str:
         """The driver\'s own claim, run in its pane, completes and returns the instruction text."""
+        if self.claim_evidence is not None:
+            self.claim_evidence["started_ns"] = time.monotonic_ns()
         frame = self.journey.await_frame(CLAIM_FRAME, time.monotonic() + CLAIM_OPERATION_SECONDS)
+        if self.claim_evidence is not None:
+            self.claim_evidence["frame"] = cast(ledger.JsonValue, dict(frame))
         run = frame.get("run")
         argv = frame.get("argv")
         stdout = run.get("stdout") if isinstance(run, dict) else None
@@ -296,6 +303,9 @@ class DriverCase:
         if operation is None or operation in distinct_from:
             raise creation.platform_failure(DETAIL_CLAIM_RECEIPT.format(stdout=stdout, others=list(distinct_from)))
         claimed = publication.await_terminal(self.observer, operation, CLAIM_OPERATION_SECONDS)
+        if self.claim_evidence is not None:
+            self.claim_evidence["terminal"] = cast(ledger.JsonValue, dict(claimed))
+            self.claim_evidence["returned_ns"] = time.monotonic_ns()
         if claimed.get(FIELD_STATE) != STATE_COMPLETED:
             raise creation.platform_failure(
                 DETAIL_OPERATION_FAILED.format(operation=operation, error=claimed.get(FIELD_ERROR))
@@ -336,6 +346,9 @@ class DriverCase:
         """
         item = self.item
         held = shown_with_content(self.observer, item)
+        if self.claim_evidence is not None:
+            self.claim_evidence["held"] = cast(ledger.JsonValue, dict(held))
+            self.claim_evidence["observed_ns"] = time.monotonic_ns()
         creation.require_value(item, held, "state.active_runner", session)
         creation.require_value(item, held, f"{FIELD_STANDING}.{FIELD_HELD_BY}", session)
         found, since = creation.dig(held, f"{FIELD_STANDING}.{FIELD_HELD_SINCE}")

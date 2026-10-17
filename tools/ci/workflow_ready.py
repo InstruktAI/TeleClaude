@@ -338,11 +338,12 @@ def _claim_held_ready(
         reasonone_credit = "result names the mapped W4 session and public note"
     else:
         _fail(f"reasonone returned neither the approved pending nor claimed outcome: {result!r}")
-    _startup(flow, w4, ROLE_WORK, flow_module.PROC_WORK)
+    _startup_record, startup_launch, _startup_role = _startup(flow, w4, ROLE_WORK, flow_module.PROC_WORK)
     _actor_delta(flow, baseline, {first, second, w4}, "B7 reasonone")
     record = flow.session_record(w4)
     if record.get(FIELD_ROLE) != ROLE_WORK or record.get("title") != f"{ROLE_WORK} {flow_module.ITEM}":
         _fail(f"W4 has an unexpected role: {record!r}")
+    attempt = next(identifier for identifier, row in flow.require_ledger().attempts.items() if row.label == "reasonone")
     case = driver.DriverCase(
         host=flow.host,
         observer=flow.observer,
@@ -354,6 +355,7 @@ def _claim_held_ready(
         driver_id=flow_module.PROC_WORK,
         verb=WORK,
         phase=flow_module.READY_PHASE,
+        claim_evidence=flow.claim_input(attempt, w4, flow_module.READY_PHASE, record, startup_launch),
     )
     instruction = case.claim_call(())
     case.observe_claim(w4, known_entries=known_claims)
@@ -369,7 +371,6 @@ def _claim_held_ready(
     key = re.search(r"Instruction key\s+([A-Za-z0-9_-]+):", instruction)
     if key is None:
         _fail(DETAIL_KEY.format(text=instruction[-500:]))
-    attempt = next(identifier for identifier, row in flow.require_ledger().attempts.items() if row.label == "reasonone")
     flow.require_ledger().discharge(attempt, "W4 claim and the reason note were observed")
     initial = flow.item()
     initial_log = _public_log(initial)

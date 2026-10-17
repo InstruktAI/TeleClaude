@@ -474,7 +474,7 @@ def _start_work(
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))
         )
     w2 = flow.plan_actor(PROC_WORK, 1, ROLE_WORK)
-    w2_record, _w2_launch, w2_role = _startup(flow, w2, ROLE_WORK, PROC_WORK)
+    w2_record, w2_launch, w2_role = _startup(flow, w2, ROLE_WORK, PROC_WORK)
     child_frame = _frame_success(flow, w2, "child")
     child_run = child_frame.get("run")
     child_stdout = child_run.get("stdout") if isinstance(child_run, Mapping) else None
@@ -505,6 +505,7 @@ def _start_work(
         driver_id=PROC_WORK,
         verb=WORK,
         phase=flow_module.WORK_PHASE,
+        claim_evidence=flow.claim_input(parent_id, w2, flow_module.WORK_PHASE, w2_record, w2_launch),
     )
     case.titles[w2] = case.require_title(w2_record, w2_role)
     instruction = case.claim_call((operation,))
@@ -1087,7 +1088,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))
         )
     w3 = flow.plan_actor(PROC_WORK, 2, ROLE_WORK)
-    w3_record, _w3_launch, w3_role = _startup(flow, w3, ROLE_WORK, PROC_WORK)
+    w3_record, w3_launch, w3_role = _startup(flow, w3, ROLE_WORK, PROC_WORK)
     case = driver.DriverCase(
         host=flow.host,
         observer=flow.observer,
@@ -1099,6 +1100,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
         driver_id=PROC_WORK,
         verb=WORK,
         phase=flow_module.WORK_PHASE,
+        claim_evidence=flow.claim_input(attempt, w3, flow_module.WORK_PHASE, w3_record, w3_launch),
     )
     case.titles[w3] = case.require_title(w3_record, w3_role)
     instruction = case.claim_call((operation,))

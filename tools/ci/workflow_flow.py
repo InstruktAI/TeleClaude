@@ -484,6 +484,7 @@ class WorkflowFlow:
     finalizer_end_ledger: LedgerEvidence | None = None
     public_session_end_evidence: list[JsonValue] = field(default_factory=list)
     public_operation_evidence: list[JsonValue] = field(default_factory=list)
+    public_claim_evidence: list[JsonValue] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -1207,6 +1208,28 @@ class WorkflowFlow:
         finally:
             evidence["finished_ns"] = time.monotonic_ns()
 
+    def claim_input(self, attempt_id: str, actor: str, phase: str, startup: Json, launch: Json) -> MutableJson:
+        """Retain the existing driver's native/public facts for its actual start attempt, before its claim call."""
+        claim: MutableJson = {
+            "started_ns": None,
+            "returned_ns": None,
+            "observed_ns": None,
+            "frame": None,
+            "terminal": None,
+            "held": None,
+        }
+        self.public_claim_evidence.append(
+            {
+                "attempt_id": attempt_id,
+                "actor": actor,
+                "phase": phase,
+                "startup_record": cast(JsonValue, dict(startup)),
+                "launch_record": cast(JsonValue, dict(launch)),
+                "claim": claim,
+            }
+        )
+        return claim
+
     def _read_object(self, path: Path) -> Json | None:
         try:
             value = json.loads(path.read_text(encoding=ENCODING))
@@ -1382,6 +1405,7 @@ class WorkflowFlow:
             "owned_session_ids": list[JsonValue](sorted(self.sessions)),
             "public_session_end_evidence": self.public_session_end_evidence,
             "public_operation_evidence": self.public_operation_evidence,
+            "public_claim_evidence": self.public_claim_evidence,
             "integrators": cast(JsonValue, sorted(integrators)),
             "start_ledger": cast(JsonValue, starts),
             "open_attempt_ids": cast(JsonValue, open_ids),
