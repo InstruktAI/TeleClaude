@@ -84,28 +84,27 @@ And the person's remaining membership declarations are unchanged
 #### UC-CFG-MEMBER-3: An administrator declares a person's project assignments
 
 ```gherkin
-Given a person who belongs to a company
-And a registered project that company owns, to which the person is not assigned
-And a human administrator operating the maintenance surface
-When the administrator assigns the person to that project
-Then the assignment declaration is accepted and persisted
-And the administrator can later withdraw that assignment through the same surface
+Scenario: Assign a member to a project owned by their company
+  Given a person who belongs to a company
+  And a registered project that company owns, to which the person is not assigned
+  And a human administrator operating the maintenance surface
+  When the administrator assigns the person to that project
+  Then the assignment declaration is accepted and persisted
+  And the administrator can later withdraw that assignment through the same surface
+
+Scenario: Require membership before assignment
+  Given a person who does not belong to the company that owns a registered project
+  And a human administrator operating the maintenance surface
+  When the administrator assigns the person to that project
+  Then the assignment is refused and no assignment is persisted
+  And the refusal names the missing company membership
+  When the administrator declares that membership and repeats the assignment
+  Then the assignment declaration is accepted and persisted
 ```
 
 #### UC-CFG-MEMBER-8:
 
 #### UC-CFG-MEMBER-11: An assignment to a company's project requires membership in that company
-
-```gherkin
-Given a registered company that owns a registered project
-And a person who holds no membership in that company
-And a human administrator operating the maintenance surface
-When the administrator assigns that person to that project
-Then the assignment is refused at the point it is written
-And the refusal names the missing membership in the owning company
-And no assignment is persisted for that person
-And declaring the membership first and repeating the assignment succeeds
-```
 
 #### UC-CFG-MEMBER-12: Withdrawing a membership removes the assignments it carried
 
