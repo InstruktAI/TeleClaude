@@ -32,20 +32,25 @@ from tools.ci.enclosure_contract import (
 from tools.ci.enclosure_guest import Key as GuestKey
 from tools.ci.enclosure_guest import Purpose
 from tools.ci.enclosure_inner import PROVISIONAL_REPORT_SCHEMA, PROVISIONAL_STAGE, LedgerEvidence, PendingReason
+from tools.ci.workflow_creation import collect_slugs
 from tools.ci.workflow_flow import (
     B5_ACTIONS,
     B6_ACTIONS,
+    B6_COMMIT,
     B7_ACTIONS,
     ITEM,
     MESSAGE_STARTS,
     PROC_BUILD,
+    PROC_INTEGRATE,
     PROC_WORK,
     ROLE_BUILDER,
+    ROLE_INTEGRATOR,
     ROLE_WORK,
     declared_chain,
     message_key,
     procedure_key,
 )
+from tools.ci.workflow_integration import EXPECTED_FEATURE, EXPECTED_MAKEFILE
 from tools.ci.workflow_ledger import (
     RECORD_DISCHARGED,
     RECORD_EFFECT,
@@ -271,11 +276,13 @@ def _event_flow_links(
     ):
         raise ValueError(ERROR_REPORT)
     stamps = _labeled_inputs(starts, "stamps")
+    integrators = object_value(starts["integrators"])
     if (
         stamps["stamp-ok"]["commit"] != b5.get("C2")
         or stamps["stamp-ok"]["ready_since"] != b5.get("ready_since_C2")
         or stamps["stamp-ok2"]["commit"] != b5.get("C3")
         or stamps["stamp-ok2"]["ready_since"] != b5.get("ready_since_C3")
+        or _identity_list(b5["integrators"]) != tuple(sorted(object_value(integrators["sessions"])))
     ):
         raise ValueError(ERROR_REPORT)
     linked: list[JsonValue] = ["B5 actors, C1 review/finding/reply, restored C2 and C2/C3 stamps"]
@@ -304,6 +311,22 @@ def _event_flow_links(
         ):
             raise ValueError(ERROR_REPORT)
         linked.append("B7 message authors, W4 claim, written notes and C3 ready context")
+    if "B6" in data:
+        integration = object_value(starts["integration"])
+        delivery = object_value(integration["delivery"])
+        main = text(delivery, "main_head")
+        final_item = object_value(data["B6"]["final_item"])
+        roadmap = object_value(final_item["roadmap"])
+        if (
+            integration["candidate"] != b5.get("C3")
+            or data["B6"].get("delivered_commit") != main
+            or final_item.get("stage") != "delivered"
+            or roadmap.get("status") != "delivered"
+            or roadmap.get("delivered_commit") != main
+        ):
+            raise ValueError(ERROR_REPORT)
+        text(roadmap, "delivered_at")
+        linked.append("B6 admitted C3 and delivered public main readback")
     return {"state": "shared_flow_inputs_linked", "matched": linked, "remaining_settlement": "unproven"}
 
 
@@ -2156,6 +2179,237 @@ def _stamp_inputs(
     return result
 
 
+def _integrator_identity(record: JsonObject, launch: JsonObject, project: str) -> tuple[str, str, int]:
+    session = text(record, "session_id")
+    native = text(record, "native_session_id")
+    if (
+        record.get("role") != ROLE_INTEGRATOR
+        or record.get("job") != PROC_INTEGRATE
+        or record.get("project_path") != project
+        or launch.get("native_session_id") != native
+        or launch.get("key_kind") != "procedure"
+        or launch.get("key") != procedure_key(PROC_INTEGRATE)
+    ):
+        raise ValueError(ERROR_REPORT)
+    return session, native, positive_integer(launch, "index")
+
+
+def _integrator_inputs(finalizer: JsonObject, child: JsonObject, created: int, public_finished: int) -> JsonObject:
+    value = finalizer["public_integrator_evidence"]
+    row = object_value(value)
+    if (
+        set(row) != {"started_ns", "finished_ns", "baseline_ids", "excluded_ids", "startup", "inert_item"}
+        or not created <= positive_integer(row, "started_ns") <= positive_integer(row, "finished_ns") <= public_finished
+        or row["excluded_ids"] != [child["parent_actor"], child["session_id"]]
+    ):
+        raise ValueError(ERROR_REPORT)
+    baseline = set(_identity_list(row["baseline_ids"]))
+    excluded = set(_strings(row["excluded_ids"]))
+    values = row["startup"]
+    if not isinstance(values, list) or not values:
+        raise ValueError(ERROR_REPORT)
+    sessions: dict[str, JsonValue] = {}
+    for value in values:
+        packet = object_value(value)
+        if set(packet) != {"session_id", "record", "launch", "control_launch"}:
+            raise ValueError(ERROR_REPORT)
+        record = object_value(packet["record"])
+        session, native, index = _integrator_identity(
+            record, object_value(packet["launch"]), text(child, "project_path")
+        )
+        if (
+            packet["session_id"] != session
+            or session in sessions
+            or session in baseline
+            or session in excluded
+            or session not in _strings(finalizer["owned_session_ids"])
+            or record.get("initiator_session_id") not in (None, "")
+            or record.get("active_agent") != "claude"
+            or record.get("lifecycle_status") != "active"
+            or record.get("runtime_start_observed") is not True
+            or record.get("closed_at") is not None
+            or _integrator_identity(record, object_value(packet["control_launch"]), text(child, "project_path"))
+            != (session, native, index)
+        ):
+            raise ValueError(ERROR_REPORT)
+        sessions[session] = {"native_session_id": native, "index": index}
+    item = object_value(row["inert_item"])
+    standing = object_value(item["standing"])
+    if (
+        standing.get("phase") != "ready"
+        or "admitted" in standing
+        or object_value(item["state"]).get("lifecycle_phase") != "ready"
+    ):
+        raise ValueError(ERROR_REPORT)
+    return {"state": "observed_inert_startups", "sessions": sessions}
+
+
+def _integration_actor(row: JsonObject, project: str, integrators: JsonObject, owned: tuple[str, ...]) -> str:
+    values = row["actor_candidates"]
+    if not isinstance(values, list):
+        raise ValueError(ERROR_REPORT)
+    matches: list[str] = []
+    seen: set[str] = set()
+    prior = object_value(integrators["sessions"])
+    for value in values:
+        packet = object_value(value)
+        if set(packet) != {"session_id", "record", "launch"}:
+            raise ValueError(ERROR_REPORT)
+        session, native, index = _integrator_identity(
+            object_value(packet["record"]), object_value(packet["launch"]), project
+        )
+        if packet["session_id"] != session or session in seen:
+            raise ValueError(ERROR_REPORT)
+        if session in prior and object_value(prior[session]) != {"native_session_id": native, "index": index}:
+            raise ValueError(ERROR_REPORT)
+        seen.add(session)
+        if index == 1:
+            matches.append(session)
+    actor = text(row, "actor")
+    if matches != [actor] or actor not in owned:
+        raise ValueError(ERROR_REPORT)
+    return actor
+
+
+def _delivered_inputs(row: JsonObject, project: str) -> JsonObject:
+    base, main = text(row, "base"), text(row, "main_head")
+    if main == base:
+        raise ValueError(ERROR_REPORT)
+    reads, files = _restoration_reads(row["delivery_git"], project, project)
+    keys = {
+        _git_read(reads, project, ("ls-remote", "origin", "refs/heads/main"), f"{main}\trefs/heads/main"),
+        _git_read(reads, project, ("rev-parse", "main"), main),
+        _git_read(reads, project, ("rev-parse", f"{main}^"), base),
+        _git_read(reads, project, ("show", f"{main}:feature.txt"), EXPECTED_FEATURE.decode("utf-8"), raw=True),
+        _git_read(reads, project, ("show", f"{main}:Makefile"), EXPECTED_MAKEFILE.decode("utf-8"), raw=True),
+    }
+    if files or set(reads) != keys or any(len(values) != 1 for values in reads.values()):
+        raise ValueError(ERROR_REPORT)
+    delivered = object_value(row["delivered_item"])
+    roadmap = object_value(delivered["roadmap"])
+    if (
+        delivered.get("stage") != "delivered"
+        or roadmap.get("status") != "delivered"
+        or roadmap.get("delivered_commit") != main
+    ):
+        raise ValueError(ERROR_REPORT)
+    text(roadmap, "delivered_at")
+    listing = _public_session_command(row["listing"], ["telec", "todo", "list", "--json", "--include-delivered"])
+    if (
+        not isinstance(listing.get("delivered"), list)
+        or ITEM not in collect_slugs(listing["delivered"])
+        or ITEM in collect_slugs(listing.get("active"))
+    ):
+        raise ValueError(ERROR_REPORT)
+    return {"state": "public_delivery_readback", "base": base, "main_head": main, "item": delivered}
+
+
+def _integration_inputs(
+    finalizer: JsonObject,
+    ledger: StartLedger,
+    operations: dict[str, list[JsonValue]],
+    child: JsonObject,
+    integrators: JsonObject,
+    stamps: list[JsonValue],
+    created: int,
+    public_finished: int,
+) -> JsonObject:
+    value = finalizer["public_integration_evidence"]
+    if "B6" not in ledger.closed_lists:
+        if value is not None:
+            raise ValueError(ERROR_REPORT)
+        return {"state": "not_selected"}
+    row = object_value(value)
+    if (
+        set(row)
+        != {
+            "started_ns",
+            "finished_ns",
+            "actor",
+            "actor_candidates",
+            "operations",
+            "before_item",
+            "admitted_item",
+            "base",
+            "candidate",
+            "frame",
+            "integrated_head",
+            "delivered_item",
+            "main_head",
+            "listing",
+            "delivery_git",
+        }
+        or not created <= positive_integer(row, "started_ns") <= positive_integer(row, "finished_ns") <= public_finished
+    ):
+        raise ValueError(ERROR_REPORT)
+    actor = _integration_actor(row, text(child, "project_path"), integrators, _strings(finalizer["owned_session_ids"]))
+    stamp = _labeled_inputs({"stamps": stamps}, "stamps")["stamp-ok2"]
+    candidate = text(row, "candidate")
+    before = object_value(object_value(row["before_item"])["standing"])
+    admitted = object_value(row["admitted_item"])
+    standing, state = object_value(admitted["standing"]), object_value(admitted["state"])
+    if (
+        candidate != stamp["commit"]
+        or before.get("phase") != "ready"
+        or before.get("ready_at_commit") != candidate
+        or object_value(standing["admitted"]).get("commit") != candidate
+        or state.get("lifecycle_phase") != "ready"
+        or state.get("active_runner") not in (None, "")
+    ):
+        raise ValueError(ERROR_REPORT)
+    attempts = {
+        attempt.identifier: attempt
+        for attempt in ledger.attempts.values()
+        if attempt.case == "B6" and attempt.label in ("int1", "int2")
+    }
+    frames = row["operations"]
+    if len(attempts) != 2 or not isinstance(frames, list) or len(frames) != 2:
+        raise ValueError(ERROR_REPORT)
+    seen: set[str] = set()
+    outcomes: list[JsonValue] = []
+    for value in frames:
+        packet = object_value(value)
+        identifier = text(packet, "attempt_id")
+        if (
+            set(packet) != {"attempt_id", "actor", "frame"}
+            or identifier in seen
+            or identifier not in attempts
+            or packet["actor"] != actor
+        ):
+            raise ValueError(ERROR_REPORT)
+        attempt = attempts[identifier]
+        if (
+            attempt.kind != RECORD_TRIGGER
+            or attempt.operation_id is None
+            or _pane_operation(packet["frame"], ["telec", "todo", "integrate", ITEM]) != attempt.operation_id
+        ):
+            raise ValueError(ERROR_REPORT)
+        for value in operations[attempt.operation_id]:
+            terminal = object_value(value)
+            if terminal.get("state") != "completed" or terminal.get("error") not in (None, ""):
+                raise ValueError(ERROR_REPORT)
+            text(terminal, "result")
+        outcomes.append(
+            {
+                "label": attempt.label,
+                "attempt_id": identifier,
+                "operation_id": attempt.operation_id,
+                "recorded_state": attempt.state,
+            }
+        )
+        seen.add(identifier)
+    _pane_run(row["frame"], ["telec", "code", "commit", "--approved", B6_COMMIT])
+    text(row, "integrated_head")
+    return {
+        "state": "admission_and_delivery_inputs",
+        "actor": actor,
+        "candidate": candidate,
+        "operations": outcomes,
+        "delivery": _delivered_inputs(row, text(child, "project_path")),
+        "integration_tree_proof": "unproven",
+    }
+
+
 def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
     """Join declared attempts to actual terminal operation data; receipts alone do not establish semantic settlement."""
     provisional = object_value(report["payload_provisional"])
@@ -2207,6 +2461,10 @@ def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
     restorations = _restoration_inputs(
         finalizer, after.ledger, children, created, public_finished, text(observations, "owned_profile_root")
     )
+    stamps = _stamp_inputs(
+        finalizer, after.ledger, operations, claims, children, direct, restorations, created, public_finished
+    )
+    integrators = _integrator_inputs(finalizer, object_value(children[0]), created, public_finished)
     return {
         "scope": "shared-workflow-flow",
         "state": "recorded_inputs_matched",
@@ -2221,8 +2479,17 @@ def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
         "children": children,
         "direct_acts": direct,
         "local_restoration": restorations,
-        "stamps": _stamp_inputs(
-            finalizer, after.ledger, operations, claims, children, direct, restorations, created, public_finished
+        "stamps": stamps,
+        "integrators": integrators,
+        "integration": _integration_inputs(
+            finalizer,
+            after.ledger,
+            operations,
+            object_value(children[0]),
+            integrators,
+            stamps,
+            created,
+            public_finished,
         ),
         "semantic_settlement": "unproven",
     }

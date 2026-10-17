@@ -495,6 +495,8 @@ class WorkflowFlow:
     public_direct_evidence: list[JsonValue] = field(default_factory=list)
     public_restoration_evidence: list[JsonValue] = field(default_factory=list)
     public_stamp_evidence: list[JsonValue] = field(default_factory=list)
+    public_integrator_evidence: MutableJson | None = None
+    public_integration_evidence: MutableJson | None = None
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -1495,6 +1497,8 @@ class WorkflowFlow:
             "public_direct_evidence": self.public_direct_evidence,
             "public_restoration_evidence": self.public_restoration_evidence,
             "public_stamp_evidence": self.public_stamp_evidence,
+            "public_integrator_evidence": self.public_integrator_evidence,
+            "public_integration_evidence": self.public_integration_evidence,
             "integrators": cast(JsonValue, sorted(integrators)),
             "start_ledger": cast(JsonValue, starts),
             "open_attempt_ids": cast(JsonValue, open_ids),

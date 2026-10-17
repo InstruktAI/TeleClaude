@@ -56,22 +56,44 @@ DETAIL_DELIVERED: Final = "the completed integration did not deliver the item at
 DETAIL_COMMIT: Final = "integration commit {found!r} does not match expected {expected!r}"
 
 
-def _git(flow: flow_module.WorkflowFlow, *args: str, cwd: Path | None = None) -> str:
-    return flow.git(args, cwd=cwd)
+def _git(
+    flow: flow_module.WorkflowFlow,
+    *args: str,
+    cwd: Path | None = None,
+    evidence: list[flow_module.JsonValue] | None = None,
+) -> str:
+    return flow.git(args, cwd=cwd, evidence=evidence)
 
 
-def _git_bytes(flow: flow_module.WorkflowFlow, *args: str, cwd: Path | None = None) -> bytes:
+def _git_bytes(
+    flow: flow_module.WorkflowFlow,
+    *args: str,
+    cwd: Path | None = None,
+    evidence: list[flow_module.JsonValue] | None = None,
+) -> bytes:
     working = cwd if cwd is not None else flow.project
     outcome = flow.host.process(("git", *args), working, flow.host.environment, FRAME_SECONDS)
+    if evidence is not None:
+        evidence.append(
+            {"kind": "command", "cwd": str(working), "value": flow.public_command_evidence(("git", *args), outcome)}
+        )
     if outcome.exit_status != 0:
         raise creation.binding_failure(f"git {' '.join(args)} failed: {outcome.output[-300:]}")
     return outcome.output.encode("utf-8")
 
 
-def _operation_result(flow: flow_module.WorkflowFlow, session: str, name: str, label: str) -> Mapping[str, object]:
+def _operation_result(
+    flow: flow_module.WorkflowFlow,
+    session: str,
+    name: str,
+    label: str,
+    evidence: list[flow_module.JsonValue],
+) -> Mapping[str, object]:
     attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B6, label, start_ledger.RECORD_TRIGGER)
+    packet: flow_module.MutableJson = {"attempt_id": attempt, "actor": session, "frame": None}
+    evidence.append(packet)
     flow.gate(session, f"go_{name}")
-    frame = _frame_success(flow, session, name)
+    frame = _frame_success(flow, session, name, evidence=packet)
     raw_run = frame.get("run")
     run = raw_run if isinstance(raw_run, Mapping) else {}
     receipt = creation.decode_object(str(run.get("stdout", "")))
@@ -83,13 +105,20 @@ def _operation_result(flow: flow_module.WorkflowFlow, session: str, name: str, l
     return flow.operation(operation, START_SECONDS)
 
 
-def _acting_integrator(flow: flow_module.WorkflowFlow) -> str:
+def _acting_integrator(flow: flow_module.WorkflowFlow, evidence: list[flow_module.JsonValue]) -> str:
     matches: list[str] = []
     for session in flow.observer.sessions(retain=False).ids:
         record = flow.session_record(session, retain=False)
         if record.get("role") != ROLE_INTEGRATOR:
             continue
         _setup, launch = flow.control_for_session(session)
+        evidence.append(
+            {
+                "session_id": session,
+                "record": cast(flow_module.JsonValue, dict(record)),
+                "launch": cast(flow_module.JsonValue, dict(launch)),
+            }
+        )
         if (
             launch.get("key_kind") == "procedure"
             and launch.get("key") == flow_module.procedure_key(flow_module.PROC_INTEGRATE)
@@ -206,26 +235,32 @@ def _verify_integration_commit(flow: flow_module.WorkflowFlow, integration: Path
     return head
 
 
-def _verify_delivered_readback(flow: flow_module.WorkflowFlow, base: str) -> tuple[Mapping[str, object], str]:
-    remote_main = _git(flow, "ls-remote", flow_module.ORIGIN, "refs/heads/main")
+def _verify_delivered_readback(
+    flow: flow_module.WorkflowFlow, base: str, evidence: flow_module.MutableJson
+) -> tuple[Mapping[str, object], str]:
+    reads = cast(list[flow_module.JsonValue], evidence["delivery_git"])
+    remote_main = _git(flow, "ls-remote", flow_module.ORIGIN, "refs/heads/main", evidence=reads)
     main_head = remote_main.split()[0] if remote_main.split() else ""
     delivered = flow.item()
+    evidence["delivered_item"] = cast(flow_module.JsonValue, dict(delivered))
+    evidence["main_head"] = main_head
     roadmap = delivered.get(FIELD_ROADMAP)
     if (
         main_head == base
-        or _git(flow, "rev-parse", "main") != main_head
+        or _git(flow, "rev-parse", "main", evidence=reads) != main_head
         or delivered.get(FIELD_STATUS) != FIELD_DELIVERED
         or not isinstance(roadmap, Mapping)
         or roadmap.get(FIELD_ROADMAP_STATUS) != FIELD_DELIVERED
         or roadmap.get(FIELD_DELIVERED_COMMIT) != main_head
         or not isinstance(roadmap.get(FIELD_DELIVERED_AT), str)
         or not roadmap.get(FIELD_DELIVERED_AT)
-        or _git(flow, "rev-parse", f"{main_head}^") != base
-        or _git_bytes(flow, "show", f"{main_head}:{FEATURE_FILE}") != EXPECTED_FEATURE
-        or _git_bytes(flow, "show", f"{main_head}:{MAKE_FILE}") != EXPECTED_MAKEFILE
+        or _git(flow, "rev-parse", f"{main_head}^", evidence=reads) != base
+        or _git_bytes(flow, "show", f"{main_head}:{FEATURE_FILE}", evidence=reads) != EXPECTED_FEATURE
+        or _git_bytes(flow, "show", f"{main_head}:{MAKE_FILE}", evidence=reads) != EXPECTED_MAKEFILE
     ):
         _fail(DETAIL_DELIVERED.format(item=delivered))
     listing = flow.observer.run((TELEC, TODO, "list", "--json", "--include-delivered"))
+    evidence["listing"] = flow.public_command_evidence((TELEC, TODO, "list", "--json", "--include-delivered"), listing)
     payload = creation.decode_object(listing.output) if listing.exit_status == 0 else None
     delivered_section = payload.get("delivered") if payload is not None else None
     active_section = payload.get("active") if payload is not None else None
@@ -274,23 +309,47 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
             raise creation.binding_failure(DETAIL_HANDOVER)
         workflow_events.verify_case(flow.event_window, "B7", flow.event_case_seal)
         flow.begin_case(flow_module.SFC_CHAIN_B6, flow_module.B6_ACTIONS)
+        candidates: list[flow_module.JsonValue] = []
+        operation_frames: list[flow_module.JsonValue] = []
+        evidence: flow_module.MutableJson = {
+            "started_ns": time.monotonic_ns(),
+            "finished_ns": None,
+            "actor": None,
+            "actor_candidates": candidates,
+            "operations": operation_frames,
+            "before_item": None,
+            "admitted_item": None,
+            "base": None,
+            "candidate": None,
+            "frame": None,
+            "integrated_head": None,
+            "delivered_item": None,
+            "main_head": None,
+            "listing": None,
+            "delivery_git": [],
+        }
+        flow.public_integration_evidence = evidence
         item_before = flow.item()
+        evidence["before_item"] = cast(flow_module.JsonValue, dict(item_before))
         standing = item_before.get(FIELD_STANDING)
         if not isinstance(standing, Mapping) or standing.get(FIELD_STANDING_PHASE) != flow_module.READY_PHASE:
             raise creation.binding_failure(DETAIL_HANDOVER)
         candidate = standing.get(FIELD_READY_COMMIT)
         if not isinstance(candidate, str) or not candidate:
             raise creation.binding_failure(DETAIL_HANDOVER)
+        evidence["candidate"] = candidate
         integration = flow.project / INTEGRATION_TREE
         dirty = _git(flow, "status", "--porcelain")
         if FEATURE_FILE in dirty or MAKE_FILE in dirty:
             _fail(DETAIL_DIRTY.format(status=dirty))
         base = _git(flow, "rev-parse", "origin/main")
+        evidence["base"] = base
         if _git(flow, "ls-remote", flow_module.ORIGIN, "refs/heads/main") != f"{base}\trefs/heads/main":
             _fail("origin/main and the local origin/main read differ before admission")
         _verify_root_docs_only_capability(flow)
-        actor = _acting_integrator(flow)
-        admission = _operation_result(flow, actor, "int1", "int1")
+        actor = _acting_integrator(flow, candidates)
+        evidence["actor"] = actor
+        admission = _operation_result(flow, actor, "int1", "int1", operation_frames)
         if (
             admission.get(FIELD_STATE) != STATE_COMPLETED
             or not isinstance(admission.get(FIELD_RESULT), str)
@@ -302,6 +361,7 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
                 )
             )
         admitted = flow.item()
+        evidence["admitted_item"] = cast(flow_module.JsonValue, dict(admitted))
         admitted_standing = admitted.get(FIELD_STANDING)
         state = admitted.get("state")
         if (
@@ -321,12 +381,13 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
         sessions = flow.observer.sessions().ids
         _refused_work(flow, admitted, sessions)
         flow.gate(actor, "go_commit")
-        commit_frame = _frame_success(flow, actor, "commit_int")
+        commit_frame = _frame_success(flow, actor, "commit_int", evidence=evidence)
         del commit_frame
         integrated_head = _verify_integration_commit(flow, integration, base, actor)
+        evidence["integrated_head"] = integrated_head
         if _git(flow, "ls-remote", flow_module.ORIGIN, "refs/heads/main") != f"{base}\trefs/heads/main":
             _fail("integration commit was published before the delivery gate")
-        delivery_operation = _operation_result(flow, actor, "int2", "int2")
+        delivery_operation = _operation_result(flow, actor, "int2", "int2", operation_frames)
         if (
             delivery_operation.get(FIELD_STATE) != STATE_COMPLETED
             or not isinstance(delivery_operation.get(FIELD_RESULT), str)
@@ -339,7 +400,8 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
                     detail=delivery_operation.get(FIELD_ERROR),
                 )
             )
-        delivered, main_head = _verify_delivered_readback(flow, base)
+        delivered, main_head = _verify_delivered_readback(flow, base, evidence)
+        evidence["finished_ns"] = time.monotonic_ns()
         pages, coverages, event_error = workflow_events.read_pages(flow.observer, flow.event_window)
         final_item = flow.item()
         flow.event_case_seal = workflow_events.append_case(

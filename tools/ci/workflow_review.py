@@ -1204,6 +1204,16 @@ def _exercise_b11_stamp_refusals(
 def _observe_integrators(
     flow: flow_module.WorkflowFlow, baseline: creation.SessionView, w2: str, builder: str
 ) -> list[str]:
+    startup: list[flow_module.JsonValue] = []
+    evidence: flow_module.MutableJson = {
+        "started_ns": time.monotonic_ns(),
+        "finished_ns": None,
+        "baseline_ids": list[flow_module.JsonValue](sorted(baseline.ids)),
+        "excluded_ids": [w2, builder],
+        "startup": startup,
+        "inert_item": None,
+    }
+    flow.public_integrator_evidence = evidence
     deadline = time.monotonic() + 120.0
     observed: dict[str, str] = {}
     while time.monotonic() < deadline:
@@ -1216,7 +1226,15 @@ def _observe_integrators(
             record, _launch, _role = _startup(flow, session, ROLE_INTEGRATOR, flow_module.PROC_INTEGRATE)
             if record.get(FIELD_INITIATOR) not in (None, ""):
                 _fail(f"standing integrator {session} has an initiator: {record!r}")
-            flow.control_for_session(session)
+            _, control_launch = flow.control_for_session(session)
+            startup.append(
+                {
+                    "session_id": session,
+                    "record": cast(flow_module.JsonValue, dict(record)),
+                    "launch": cast(flow_module.JsonValue, dict(_launch)),
+                    "control_launch": cast(flow_module.JsonValue, dict(control_launch)),
+                }
+            )
             observed[session] = ROLE_INTEGRATOR
             flow.record_session(session, ROLE_INTEGRATOR)
         if observed:
@@ -1226,6 +1244,7 @@ def _observe_integrators(
         raise creation.binding_failure(DETAIL_INTEGRATOR)
     payload_work.sleep(30.0)
     current = flow.item()
+    evidence["inert_item"] = cast(flow_module.JsonValue, dict(current))
     standing = current.get("standing")
     state = current.get("state")
     if (
@@ -1236,6 +1255,7 @@ def _observe_integrators(
         or state.get(FIELD_PHASE) != flow_module.READY_PHASE
     ):
         _fail(f"an inert integrator changed the unadmitted ready item: {current!r}")
+    evidence["finished_ns"] = time.monotonic_ns()
     return sorted(observed)
 
 
