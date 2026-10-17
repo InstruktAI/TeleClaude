@@ -41,69 +41,49 @@ the prompt accepts it under `sdlc/policy/ai-agent-security`.
 
 ### Use cases
 
-#### UC-WWT1: A worktree of a trusted repository opens without a trust prompt
+#### UC-WWT1: A slug worktree follows its repository's trust decision
 
 ```gherkin
-Given Antigravity trusts the main checkout of a project
-When the platform creates or attaches a slug worktree of that project for dispatch
-Then an Antigravity session started in that worktree reaches its composer without asking whether to trust the folder
-And no other agent runtime's trust state changes
+Scenario: Reuse a trust decision for the main checkout
+  Given Antigravity trusts a project's main checkout
+  When an agent starts in a slug worktree of that project
+  Then the session reaches its composer without asking whether to trust that folder
+  And other agent runtimes' trust state is unchanged
+
+Scenario: Leave a new repository to the operator's trust decision
+  Given Antigravity does not trust a project's main checkout
+  When an agent starts in a slug worktree of that project
+  Then the platform does not add the worktree to trusted workspaces
+  And the operator is asked whether to trust the folder
 ```
 
 #### UC-WWT2: A worktree of an untrusted repository receives no trust
 
-```gherkin
-Given Antigravity does not trust the main checkout of a project
-When the platform creates or attaches a slug worktree of that project for dispatch
-Then Antigravity's trusted workspaces are unchanged
-And an Antigravity session started in that worktree asks whether to trust the folder
-```
-
 #### UC-WWT3: Releasing the worktree removes its trust
-
-```gherkin
-Given a slug worktree's path appears among Antigravity's trusted workspaces
-When the worktree is released at delivery or removal
-Then the worktree's path no longer appears among Antigravity's trusted workspaces
-And every other trusted workspace and every other Antigravity setting is unchanged
-```
 
 #### UC-WWT4
 
-#### UC-WWT5: A renamed todo's worktree keeps its trust
+#### UC-WWT5: A renamed worktree remains usable by Antigravity
 
 ```gherkin
-Given Antigravity trusts a todo's slug worktree
-When the todo is renamed
-Then an Antigravity session started in the renamed worktree reaches its composer without asking whether to trust the folder
-And the former worktree path no longer appears among Antigravity's trusted workspaces
+Given an operator renames a todo whose slug worktree is trusted by Antigravity
+When worktree maintenance moves it to the new slug path
+Then an Antigravity session started there reaches its composer without a trust prompt
+And the former path is removed from Antigravity's trusted workspaces
 ```
 
 #### UC-WWT6: Maintenance removes trust whose worktree is gone
 
-```gherkin
-Given Antigravity's trusted workspaces include the path of a project's slug worktree that no longer exists, at its current location or at the retired location where released worktrees were once parked
-When platform maintenance runs
-Then that path no longer appears among Antigravity's trusted workspaces
-And every entry that is not such a worktree path is unchanged
-```
-
 #### UC-WWT7: An unusable trust store never blocks the worktree
 
 ```gherkin
-Given Antigravity's settings cannot be read, parsed, or written
-When the platform creates, attaches, renames, or releases a slug worktree
-Then that worktree operation completes as it would without a trust update
-And Antigravity's settings are left as they were
+Scenario: Worktree work continues when trust settings are unavailable
+  Given Antigravity's trust settings cannot be read, parsed, or written
+  When an operator creates, attaches, renames, or releases a slug worktree
+  Then the worktree operation completes without changing those settings
 ```
 
 #### UC-WWT8: Folders other than slug worktrees are never touched
-
-```gherkin
-Given Antigravity's trusted workspaces include folders that are not slug worktrees of a project, including the project's main checkout, its integration worktree, a worktree's home clone, and a subfolder of a worktree, whether or not those folders still exist
-When the platform creates, attaches, renames, or releases slug worktrees, or maintenance runs
-Then those entries remain among Antigravity's trusted workspaces
-```
 
 ## Known caveats
 
