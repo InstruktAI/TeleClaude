@@ -232,6 +232,34 @@ def driver_inputs(
     return record
 
 
+def actor_inputs(accounting: creation.EvidenceObject | None, name: str, slot: int) -> ledger.JsonObject | None:
+    """Retain the original non-driver actor's specific start and identity observations."""
+    if accounting is None:
+        return None
+    record: ledger.JsonObject = {
+        "name": name,
+        "slot": slot,
+        "started_ns": time.monotonic_ns(),
+        "finished_ns": None,
+        "session_id": None,
+        "message": None,
+        "parent_actor": None,
+        "expected_principal": None,
+        "launch": None,
+        "hooks": [],
+        "inputs": None,
+        "startup_record": None,
+        "fact_record": None,
+        "parent_record": None,
+        "start_command": None,
+        "start_frame": None,
+        "positive_start": [],
+        "lists": [],
+    }
+    cast(list[creation.EvidenceValue], accounting["actors"]).append(record)
+    return record
+
+
 def assert_instruction(
     item: str, phase: str, session: str, instruction: str, acts: Sequence[tuple[str, str]], child: str
 ) -> None:

@@ -872,16 +872,27 @@ class _Waiting:
             payload_work.sleep(POLL_SECONDS)
         raise creation.platform_failure(DETAIL_SESSIONS.format(when="discovery", found=found, expected="one"))
 
-    def _startup(self, actor: str, session: str, journey: foundation.Journey, index: int) -> None:
+    def _startup(
+        self,
+        actor: str,
+        session: str,
+        journey: foundation.Journey,
+        index: int,
+        evidence: creation.EvidenceObject | None = None,
+    ) -> None:
         """F0 startup evidence for a session another actor started: active, observed, the launch\'s native id."""
         journey.session_id = session
         launch = journey.await_json(self.setups[index].control / foundation.LAUNCH_FILE, LAUNCH_SECONDS)
+        if evidence is not None:
+            evidence["launch"] = cast(creation.EvidenceValue, dict(launch))
         native = str(launch.get("native_session_id"))
         deadline = time.monotonic() + START_CAP_SECONDS
         record: Json | None = None
         while time.monotonic() < deadline:
             record = journey.record(retain=False)
             if journey.started(record, native):
+                if evidence is not None and record is not None:
+                    evidence["startup_record"] = cast(creation.EvidenceValue, dict(record))
                 return
             recorded = record.get(foundation.FIELD_NATIVE) if record is not None else None
             if isinstance(recorded, str) and recorded and recorded != native:
@@ -958,12 +969,27 @@ class _Waiting:
     # -- steps -----------------------------------------------------------------------------------------------------
     def step1_owner_session(self) -> str:
         journey = self._journey("owner", 0)
+        evidence = driver.actor_inputs(self.accounting, "owner", 0)
+        if evidence is not None:
+            evidence["message"] = journey.message
+            evidence["expected_principal"] = f"human:{self.owner_email}"
         attempt = driver.begin_attempt(self.starts, "session-owner")
-        started = journey.start_session()
+        try:
+            started = journey.start_session()
+        finally:
+            if evidence is not None and journey.start_evidence is not None:
+                evidence["start_command"] = creation.command_evidence(*journey.start_evidence)
         owner = journey.session_id
+        if evidence is not None:
+            evidence["session_id"] = owner
         driver.release_attempt(self.starts, attempt)  # the public answer named the session; settlement closes it
-        journey.positive_start(started)
+        journey.positive_start(
+            started,
+            captured=cast(list[Mapping[str, object]], evidence["positive_start"]) if evidence is not None else None,
+        )
         record = self._record(owner)
+        if evidence is not None:
+            evidence["fact_record"] = cast(creation.EvidenceValue, dict(record))
         facts = {
             FIELD_PRINCIPAL: record.get(FIELD_PRINCIPAL),
             FIELD_INITIATOR: record.get(FIELD_INITIATOR) or None,
@@ -980,11 +1006,18 @@ class _Waiting:
             raise creation.binding_failure(
                 DETAIL_FACTS.format(actor="owner session", session=owner, found=facts, expected=expected)
             )
-        created = self.observer.sessions().ids - self._known()
+        created = (
+            self.observer.sessions(
+                evidence=cast(list[creation.EvidenceValue], evidence["lists"]) if evidence is not None else None
+            ).ids
+            - self._known()
+        )
         if created != frozenset({owner}):
             raise creation.platform_failure(
                 DETAIL_SESSIONS.format(when="step 1", found=sorted(created), expected=[owner])
             )
+        if evidence is not None:
+            evidence["finished_ns"] = time.monotonic_ns()
         return owner
 
     def step2_first_driver(self, owner: str) -> tuple[driver.DriverCase, str, str]:
@@ -1011,22 +1044,32 @@ class _Waiting:
         case.observe_claim(first, holds_nothing=[owner])
         self.starts[starter] = publication.START_CLAIMED
         self.b13_first_claimed = True
+        child_evidence = driver.actor_inputs(self.accounting, "child", 2)
         frame = self._frame(self.journeys["first"], FRAME_CHILD)
+        if child_evidence is not None:
+            child_evidence["start_frame"] = cast(creation.EvidenceValue, dict(frame))
+            child_evidence["parent_actor"] = first
         status, text = self._output(frame)
         started = STARTED_CHILD.search(text)
         if status != 0 or started is None or started.group("procedure") != CHILD_PROCEDURE:
             raise creation.platform_failure(DETAIL_CHILD.format(stdout=text[-300:], procedure=CHILD_PROCEDURE))
         child = started.group("session")
+        if child_evidence is not None:
+            child_evidence["session_id"] = child
         driver.release_attempt(self.starts, child_attempt)
         child_journey = self._journey("child", 2)
-        self._startup("child", child, child_journey, 2)
+        self._startup("child", child, child_journey, 2, child_evidence)
         record = self._record(child)
+        if child_evidence is not None:
+            child_evidence["fact_record"] = cast(creation.EvidenceValue, dict(record))
         for field, expected in ((FIELD_ROLE, CHILD_ROLE), (FIELD_INITIATOR, first)):
             if record.get(field) != expected:
                 raise creation.platform_failure(
                     DETAIL_CHILD_RECORD.format(session=child, field=field, found=record.get(field), expected=expected)
                 )
         self._require_pool(3)
+        if child_evidence is not None:
+            child_evidence["finished_ns"] = time.monotonic_ns()
         return case, first, child
 
     def _driver_case(self, name: str, index: int) -> driver.DriverCase:
@@ -1404,8 +1447,14 @@ class _Waiting:
 
     def step6_dispatched(self, owner: str, first: str, child: str) -> str:
         dispatch_attempt = driver.begin_attempt(self.starts, "session-dispatched")
+        evidence = driver.actor_inputs(self.accounting, "dispatched", 3)
+        if evidence is not None:
+            evidence["message"] = DISPATCH_MESSAGE
         self._gate(0, GATE_DISPATCH)
         frame = self._frame(self.journeys["owner"], FRAME_DISPATCH)
+        if evidence is not None:
+            evidence["start_frame"] = cast(creation.EvidenceValue, dict(frame))
+            evidence["parent_actor"] = owner
         status, text = self._output(frame)
         result = foundation.json_object(text)
         dispatched = result.get(foundation.FIELD_SESSION_ID) if result is not None else None
@@ -1418,11 +1467,17 @@ class _Waiting:
         ):
             raise creation.platform_failure(DETAIL_FRAME.format(name=FRAME_DISPATCH, frame=frame))
         driver.release_attempt(self.starts, dispatch_attempt)
+        if evidence is not None:
+            evidence["session_id"] = dispatched
         journey = self._journey("dispatched", 3)
-        self._startup("dispatched", dispatched, journey, 3)
+        self._startup("dispatched", dispatched, journey, 3, evidence)
         self._require_pool(4)
         record = self._record(dispatched)
         owner_record = self._record(owner)
+        if evidence is not None:
+            evidence["fact_record"] = cast(creation.EvidenceValue, dict(record))
+            evidence["parent_record"] = cast(creation.EvidenceValue, dict(owner_record))
+            evidence["finished_ns"] = time.monotonic_ns()
         facts = {FIELD_INITIATOR: record.get(FIELD_INITIATOR), FIELD_PRINCIPAL: record.get(FIELD_PRINCIPAL)}
         expected = {FIELD_INITIATOR: owner, FIELD_PRINCIPAL: owner_record.get(FIELD_PRINCIPAL)}
         if facts != expected:

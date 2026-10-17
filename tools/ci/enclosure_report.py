@@ -909,11 +909,13 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
                 "attempt_ledgers",
                 "drivers",
                 "start_calls",
+                "actors",
             }
             or type(row["schema_version"]) is not int
             or row["schema_version"] != 1
             or row["case"] != case
             or row["cleanup_problems"] != []
+            or not isinstance(row["actors"], list)
             or any(row[key] is not None for key in ("journey_error", "cleanup_error", "seal_error"))
             or not created
             <= positive_integer(row, "started_ns")

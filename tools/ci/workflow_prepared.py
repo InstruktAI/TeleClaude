@@ -344,17 +344,28 @@ class _Prepared:
             payload_work.sleep(POLL_SECONDS)
         raise creation.binding_failure(DETAIL_B9_SESSION.format(label=f"d{index}", record="no native launch mapping"))
 
-    def _roleless_startup(self, session: str, index: int, message: str) -> None:
+    def _roleless_startup(
+        self, session: str, index: int, message: str, evidence: creation.EvidenceObject | None = None
+    ) -> None:
         journey = self._journey("S_P" if index == 0 else "X", index, message)
         journey.session_id = session
         launch = journey.await_json(self.setups[index].control / foundation.LAUNCH_FILE, waiting.LAUNCH_SECONDS)
+        if evidence is not None:
+            evidence["launch"] = cast(creation.EvidenceValue, dict(launch))
         native = launch.get(foundation.FIELD_NATIVE)
         if not isinstance(native, str) or not native:
             raise creation.binding_failure(DETAIL_B9_SESSION.format(label=session, record=launch))
         deadline = time.monotonic() + waiting.START_CAP_SECONDS
         for hook in (foundation.FRAME_SESSION_START, foundation.FRAME_PROMPT_SUBMIT):
-            journey.require_hook(hook, journey.await_frame(hook, deadline))
+            frame = journey.await_frame(hook, deadline)
+            if evidence is not None:
+                cast(list[creation.EvidenceValue], evidence["hooks"]).append(
+                    {"name": hook, "frame": cast(creation.EvidenceValue, dict(frame))}
+                )
+            journey.require_hook(hook, frame)
         record = self._record(session)
+        if evidence is not None:
+            evidence["startup_record"] = cast(creation.EvidenceValue, dict(record))
         if (
             record.get(foundation.FIELD_NATIVE) != native
             or not journey.started(record, native)
@@ -363,6 +374,8 @@ class _Prepared:
         ):
             raise creation.platform_failure(DETAIL_B9_SESSION.format(label=session, record=record))
         inputs = journey.inputs()
+        if evidence is not None:
+            evidence["inputs"] = cast(creation.EvidenceValue, inputs)
         first = inputs[0].get("text") if inputs else None
         if index == 0:
             input_matches = first == message
@@ -407,8 +420,12 @@ class _Prepared:
             raise creation.binding_failure(f"session {session} is unreadable: {outcome.output[-300:]!r}")
         return record
 
-    def _frame_output(self, journey: foundation.Journey, name: str) -> tuple[int | None, str]:
+    def _frame_output(
+        self, journey: foundation.Journey, name: str, evidence: creation.EvidenceObject | None = None
+    ) -> tuple[int | None, str]:
         frame = journey.await_frame(name, time.monotonic() + FRAME_SECONDS)
+        if evidence is not None:
+            evidence["start_frame"] = cast(creation.EvidenceValue, dict(frame))
         run = frame.get("run")
         if not isinstance(run, dict):
             raise creation.platform_failure(f"the frame {name} is not a completed public call: {frame!r}")
@@ -607,9 +624,18 @@ class _Prepared:
         if self.baseline is None:
             raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail="B0 was not captured"))
         start_s_p = self._b4_begin(SESSION_S_P, start_ledger.RECORD_SESSION)
+        parent_evidence = driver.actor_inputs(self.accounting, "S_P", 0)
+        if parent_evidence is not None:
+            parent_evidence["message"] = B9_S_P_MESSAGE
         parent_journey = self._journey("S_P", 0, B9_S_P_MESSAGE)
-        parent_journey.start_session(case_start_file=False)
+        try:
+            parent_journey.start_session(case_start_file=False)
+        finally:
+            if parent_evidence is not None and parent_journey.start_evidence is not None:
+                parent_evidence["start_command"] = creation.command_evidence(*parent_journey.start_evidence)
         session_parent = parent_journey.session_id
+        if parent_evidence is not None:
+            parent_evidence["session_id"] = session_parent
         if not session_parent:
             self.b4_ledger.unknown(start_s_p)
             raise creation.binding_failure(DETAIL_B9_SESSION.format(label="S_P", record="missing public session id"))
@@ -618,13 +644,21 @@ class _Prepared:
         self.known_sessions.append(session_parent)
         if self._slot_session(0) != session_parent:
             raise creation.binding_failure(DETAIL_B9_SESSION.format(label="S_P", record=self._record(session_parent)))
-        self._roleless_startup(session_parent, 0, B9_S_P_MESSAGE)
+        self._roleless_startup(session_parent, 0, B9_S_P_MESSAGE, parent_evidence)
         record_parent = self._record(session_parent)
+        if parent_evidence is not None:
+            parent_evidence["fact_record"] = cast(creation.EvidenceValue, dict(record_parent))
         if record_parent.get(waiting.FIELD_INITIATOR) not in (None, ""):
             raise creation.platform_failure(DETAIL_B9_SESSION.format(label="S_P", record=record_parent))
         self._require_pool(1)
+        if parent_evidence is not None:
+            parent_evidence["finished_ns"] = time.monotonic_ns()
 
         start_x = self._b4_begin(SESSION_X, start_ledger.RECORD_SESSION, parent=SESSION_S_P)
+        x_evidence = driver.actor_inputs(self.accounting, "X", 1)
+        if x_evidence is not None:
+            x_evidence["message"] = B9_X_MESSAGE
+            x_evidence["parent_actor"] = session_parent
         self._late(
             0,
             ARGV_X_START,
@@ -643,7 +677,7 @@ class _Prepared:
             ],
         )
         self._gate(0, GATE_X_START)
-        status, output = self._frame_output(parent_journey, "cmd_startx")
+        status, output = self._frame_output(parent_journey, "cmd_startx", x_evidence)
         result = foundation.json_object(output)
         session_from_start = result.get("session_id") if result is not None else None
         if status != 0 or not isinstance(session_from_start, str) or not session_from_start:
@@ -655,16 +689,22 @@ class _Prepared:
             )
         self.b4_ledger.record_session(start_x, session_from_start)
         self.outsider_sessions["X"] = session_from_start
+        if x_evidence is not None:
+            x_evidence["session_id"] = session_from_start
         self.known_sessions.append(session_from_start)
         session_x = self._slot_session(1)
         if session_x != session_from_start:
             raise creation.binding_failure(DETAIL_B9_SESSION.format(label="X", record=self._record(session_x)))
-        self._roleless_startup(session_x, 1, B9_X_MESSAGE)
+        self._roleless_startup(session_x, 1, B9_X_MESSAGE, x_evidence)
         record_x = self._record(session_x)
+        if x_evidence is not None:
+            x_evidence["fact_record"] = cast(creation.EvidenceValue, dict(record_x))
         if record_x.get(waiting.FIELD_INITIATOR) != session_parent:
             raise creation.binding_failure(DETAIL_B9_SESSION.format(label="X initiator", record=record_x))
         self.outsider_sessions["X"] = session_x
         self._require_pool(2)
+        if x_evidence is not None:
+            x_evidence["finished_ns"] = time.monotonic_ns()
         return session_parent, session_x
 
     def b9_positive_input(self, intaker: str) -> None:
@@ -1056,18 +1096,25 @@ class _Prepared:
         case.check_instruction(author, instruction)
         case.observe_claim(author, known_entries=self.known_claims)
         self.starts[starter] = publication.START_CLAIMED
-        status, text = self._frame_output(self.journeys["author"], waiting.FRAME_CHILD)
+        child_evidence = driver.actor_inputs(self.accounting, "child", 3)
+        if child_evidence is not None:
+            child_evidence["parent_actor"] = author
+        status, text = self._frame_output(self.journeys["author"], waiting.FRAME_CHILD, child_evidence)
         started = waiting.STARTED_CHILD.search(text)
         if status != 0 or started is None or started.group("procedure") != waiting.CHILD_PROCEDURE:
             raise creation.platform_failure(
                 waiting.DETAIL_CHILD.format(stdout=text[-300:], procedure=waiting.CHILD_PROCEDURE)
             )
         child = started.group("session")
+        if child_evidence is not None:
+            child_evidence["session_id"] = child
         driver.release_attempt(self.starts, child_attempt)
         self.known_sessions = [author, child]
         child_journey = self._journey("child", 3)
-        self._startup(child, child_journey, 3)
+        self._startup(child, child_journey, 3, child_evidence)
         record = self._record(child)
+        if child_evidence is not None:
+            child_evidence["fact_record"] = cast(creation.EvidenceValue, dict(record))
         for field, expected in (
             (waiting.FIELD_ROLE, "intaker"),
             (waiting.FIELD_INITIATOR, author),
@@ -1079,6 +1126,8 @@ class _Prepared:
                     )
                 )
         self._require_pool(4)
+        if child_evidence is not None:
+            child_evidence["finished_ns"] = time.monotonic_ns()
         self.known_sessions = [*self.outsider_sessions.values(), author, child]
         return case, author, child
 
@@ -1099,15 +1148,21 @@ class _Prepared:
             case_evidence=driver.driver_inputs(self.accounting, name, index, driver_id, verb, phase),
         )
 
-    def _startup(self, session: str, journey: foundation.Journey, index: int) -> None:
+    def _startup(
+        self, session: str, journey: foundation.Journey, index: int, evidence: creation.EvidenceObject | None = None
+    ) -> None:
         journey.session_id = session
         launch = journey.await_json(self.setups[index].control / foundation.LAUNCH_FILE, waiting.LAUNCH_SECONDS)
+        if evidence is not None:
+            evidence["launch"] = cast(creation.EvidenceValue, dict(launch))
         native = str(launch.get("native_session_id"))
         deadline = time.monotonic() + waiting.START_CAP_SECONDS
         record: Json | None = None
         while time.monotonic() < deadline:
             record = journey.record(retain=False)
             if journey.started(record, native):
+                if evidence is not None and record is not None:
+                    evidence["startup_record"] = cast(creation.EvidenceValue, dict(record))
                 return
             recorded = record.get(foundation.FIELD_NATIVE) if record is not None else None
             if isinstance(recorded, str) and recorded and recorded != native:

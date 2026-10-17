@@ -574,20 +574,28 @@ class Journey:
             if outcome.exit_status != 0 or run.get("timed_out") is True:
                 raise platform_failure(DETAIL_HOOK_FAILED.format(frame=name, run=run))
 
-    def positive_start(self, release_at: float) -> str:
+    def positive_start(self, release_at: float, *, captured: list[Mapping[str, object]] | None = None) -> str:
         """Steps 4-5: the hooks run through the installed receivers, the platform delivers MESSAGE, the record turns active."""
         deadline = release_at + START_OBSERVATION_CAP_SECONDS
         launch = self.await_json(self.setup.control / LAUNCH_FILE, POLL_SECONDS * 30)
         owned = str(self.setup.executable.resolve())
+        if captured is not None:
+            captured.append({"kind": "launch", "value": dict(launch), "owned_executable": owned})
         found = str(launch.get("executable"))
         if Path(found).resolve() != Path(owned) or Path(str(launch.get("resolved_command"))).resolve() != Path(owned):
             raise binding_failure(DETAIL_EXECUTABLE.format(found=launch, owned=owned))
         native = str(launch.get("native_session_id"))
         start_frame = self.await_frame(FRAME_SESSION_START, deadline)
+        if captured is not None:
+            captured.append({"kind": "session_start", "value": dict(start_frame)})
         self.require_hook(FRAME_SESSION_START, start_frame)
         prompt_frame = self.await_frame(FRAME_PROMPT_SUBMIT, deadline)
+        if captured is not None:
+            captured.append({"kind": "prompt_submit", "value": dict(prompt_frame)})
         self.require_hook(FRAME_PROMPT_SUBMIT, prompt_frame)
         received = [entry for entry in self.inputs() if entry.get("hook_started") is True]
+        if captured is not None:
+            captured.append({"kind": "inputs", "values": received})
         first = received[0].get("text") if received else None
         if first != self.message:
             raise platform_failure(DETAIL_INPUT_TEXT.format(received=first))

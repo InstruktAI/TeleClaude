@@ -1099,6 +1099,7 @@ class FullRuntimeResources:
             "attempt_ledgers": [],
             "drivers": [],
             "start_calls": [],
+            "actors": [],
         }
         self.early_workflow[case] = record
         return record
