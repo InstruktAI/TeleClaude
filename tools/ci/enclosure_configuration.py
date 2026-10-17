@@ -378,6 +378,8 @@ def inspect_masked_instance_configuration(
     guest: UnitRead,
     mutation: NativeMutation,
     deadline: AdmittedDeadline,
+    *,
+    terminal: bool = False,
 ) -> MaskedInstanceConfiguration:
     """Consume current original-observer reads and independently read the exact tombstone, without declaring a seal."""
     if time.monotonic_ns() >= deadline.effective_end():
@@ -399,12 +401,17 @@ def inspect_masked_instance_configuration(
         or not any(original_id)
         or guest.unit.get(Property.INVOCATION_ID) != original_id
         or parent.specific.get(Property.CONTROL_GROUP) != text(before.parent.specific, Property.CONTROL_GROUP)
-        or guest.specific.get(Property.CONTROL_GROUP) != text(before.guest.specific, Property.CONTROL_GROUP)
+        or guest.specific.get(Property.CONTROL_GROUP)
+        not in (
+            (text(before.guest.specific, Property.CONTROL_GROUP), EMPTY)
+            if terminal
+            else (text(before.guest.specific, Property.CONTROL_GROUP),)
+        )
         or guest.unit.get(Key.ID) != guest.name
         or _strings(guest, Key.NAMES) != frozenset({guest.name})
         or guest.unit.get(Key.LOAD_STATE) != MASKED
         or guest.unit.get(Key.UNIT_FILE_STATE) != MASKED_RUNTIME
-        or guest.unit.get(Property.ACTIVE_STATE) != ACTIVE
+        or guest.unit.get(Property.ACTIVE_STATE) != ("inactive" if terminal else ACTIVE)
         or guest.unit.get(Key.SOURCE_PATH) != EMPTY
         or guest.unit.get(Key.TRANSIENT) is not False
         or type(guest.unit.get(Key.NEED_RELOAD)) is not bool

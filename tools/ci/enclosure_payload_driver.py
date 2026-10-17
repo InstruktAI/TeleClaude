@@ -40,6 +40,7 @@ class PayloadDrive:
     shutdown_receipt: ActionResult | None
     work_observation: JsonObject | None
     closure_observation: JsonObject | None
+    closure_sources: JsonObject | None
     primary_error: BaseException | None
     closure_errors: tuple[BaseException, ...]
     helpers: tuple[HelperCollection, ...]
@@ -56,6 +57,7 @@ class PayloadDrive:
             else None,
             "work_observation": self.work_observation,
             "closure_observation": self.closure_observation,
+            "closure_sources": self.closure_sources,
             "primary_error_class": type(self.primary_error).__name__ if self.primary_error is not None else None,
             "closure_error_classes": [type(error).__name__ for error in self.closure_errors],
             "helpers": [helper.record() for helper in self.helpers],
@@ -87,6 +89,7 @@ async def drive_payload(phases: BindingPhases, original: AdmittedDeadline) -> Pa
     shutdown = None
     work_observation = None
     closure_observation = None
+    closure_sources = None
     primary = None
     closure_errors: list[BaseException] = []
     helpers: list[HelperCollection] = []
@@ -137,6 +140,12 @@ async def drive_payload(phases: BindingPhases, original: AdmittedDeadline) -> Pa
             helpers.append(HelperCollection(startup, retained, ()))
         else:
             helpers.append(await collect_helper_startup(startup, owner, closure))
+    if shutdown is not None and shutdown.status is Outcome.SUCCEEDED:
+        try:
+            closure_sources = await phases.read_closure_sources(closure)
+        except BaseException as error:
+            closure_errors.append(error)
+            closure_sources = phases.closure_sources
     return PayloadDrive(
         work_end,
         closure_end,
@@ -144,6 +153,7 @@ async def drive_payload(phases: BindingPhases, original: AdmittedDeadline) -> Pa
         shutdown,
         work_observation,
         closure_observation,
+        closure_sources,
         primary,
         tuple(closure_errors),
         tuple(helpers),

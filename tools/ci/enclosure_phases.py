@@ -119,6 +119,20 @@ def _unit(read: UnitRead) -> JsonObject:
     }
 
 
+def _normal_service_exit(guest: UnitRead) -> bool:
+    """Keep native exit facts separate from the poweroff receipt, population and complete P4."""
+    return (
+        guest.unit.get(Property.ACTIVE_STATE) == "inactive"
+        and guest.specific.get("Result") == "success"
+        and type(guest.specific.get("ExecMainCode")) is int
+        and guest.specific["ExecMainCode"] == 1
+        and type(guest.specific.get("ExecMainStatus")) is int
+        and guest.specific["ExecMainStatus"] == 0
+        and type(guest.specific.get("NRestarts")) is int
+        and guest.specific["NRestarts"] == 0
+    )
+
+
 class BindingPhases:
     """Keep the original bus and cgroup handles in this process while its child holds the action flock."""
 
@@ -162,6 +176,10 @@ class BindingPhases:
         self.payload_observations: list[JsonObject] = []
         self.automatic_cleanup_read: GuestFileRead | None = None
         self.shutdown_requested: ActionResult | None = None
+        self.closure_configuration: MaskedInstanceConfiguration | None = None
+        self.closure_graph: DependencyGraph | None = None
+        self.closure_activation_sources: ActivationSources | None = None
+        self.closure_sources: JsonObject | None = None
 
     @property
     def startups(self) -> tuple[HelperStartup, ...]:
@@ -461,6 +479,8 @@ class BindingPhases:
             names.update(self.graph.creators)
         if self.masked_graph is not None:
             names.update(self.masked_graph.creators)
+        if self.closure_graph is not None:
+            names.update(self.closure_graph.creators)
         return frozenset(names)
 
     def _helper_frontier(self, current: HelperStartup | None) -> list[JsonValue]:
@@ -596,6 +616,95 @@ class BindingPhases:
             Evidence.READ_FINISHED_NS: sample.read_finished_ns,
             Evidence.SEQUENCE: sample.last_notification_sequence,
         }
+        return evidence
+
+    async def read_closure_sources(self, deadline: AdmittedDeadline) -> JsonObject:
+        """Take one explicit terminal source cut on the original connection, without issuing P4 or an action receipt."""
+        if (
+            self.seal is None
+            or self.seal.status is not Outcome.SUCCEEDED
+            or self.shutdown_requested is None
+            or self.shutdown_requested.status is not Outcome.SUCCEEDED
+            or self.configuration is None
+            or self.masked_configuration is None
+            or self.masked_graph is None
+            or self.population is None
+            or deadline.outer_end_ns != self.owner.journal.deadline.end_ns
+        ):
+            raise ValueError(ERROR_BINDING)
+        self._require_source_closure(masked=True)
+        budget = object_value(parse_object(self.package.recipe_bytes)[Field.BUDGET_SECONDS])
+        end = deadline.command_end(positive_integer(budget, Field.NORMAL_COMMAND_MAX))
+        admitted = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end)
+        self.owner.journal.binding.controller.require_alive()
+        self._helper_frontier(None)
+        await self.manager.check_identity(end)
+        parent, guest = await self.manager.read_active_boundary(end, allow_terminal=True)
+        native = NativeMutation(Action.MASK_GUEST, object_value(self.seal.evidence[Evidence.NATIVE_RECEIPT]))
+        configuration = inspect_masked_instance_configuration(
+            self.owner, self.configuration, parent, guest, native, admitted, terminal=True
+        )
+        self.closure_configuration = configuration
+        evidence: JsonObject = {
+            "admission_seal": self.seal.record(Action.MASK_GUEST),
+            "shutdown_receipt": self.shutdown_requested.record(Action.POWEROFF),
+            Evidence.CONFIGURATION: configuration.record(),
+            Evidence.PARENT: _unit(parent),
+            Evidence.GUEST: _unit(guest),
+            "normal_service_exit": _normal_service_exit(guest),
+            "sealed_dependency_graph": self.masked_graph.record(),
+            "sealed_activation_sources": self.masked_activation_sources.record()
+            if self.masked_activation_sources is not None
+            else None,
+        }
+        self.closure_sources = evidence
+        graph = await inspect_dependency_graph(
+            self.manager,
+            self.package,
+            configuration.current,
+            admitted,
+            tuple(self._accepted),
+            masked=configuration,
+            previous=self.masked_graph,
+        )
+        self.closure_graph = graph
+        evidence[Evidence.DEPENDENCY_GRAPH] = graph.record()
+        metadata = await self.manager.read_manager(end)
+        activation = inspect_activation_sources(
+            self.package,
+            graph,
+            metadata,
+            self.owner,
+            admitted,
+            configuration=configuration.current,
+            previous=self.masked_graph,
+        )
+        self.closure_activation_sources = activation
+        evidence[Evidence.ACTIVATION_SOURCES] = activation.record()
+        if (
+            graph.unclassified
+            or activation.unclassified
+            or any(node.current_job is not None for node in graph.nodes if node.read.name in graph.creators)
+        ):
+            raise ValueError(ERROR_BINDING)
+        await self.manager.check_identity(end)
+        evidence[Evidence.MASK_TOMBSTONE] = read_runtime_mask(Path(text(configuration.mask, Field.PATH)), admitted)
+        sample = self.population.sample(end)
+        evidence[Evidence.POPULATION] = {
+            Evidence.RAW: sample.raw.decode(UTF8),
+            Evidence.POPULATED: sample.populated,
+            Evidence.READ_STARTED_NS: sample.read_started_ns,
+            Evidence.READ_FINISHED_NS: sample.read_finished_ns,
+            Evidence.SEQUENCE: sample.last_notification_sequence,
+        }
+        if sample.faults or sample.populated is None:
+            raise ValueError(ERROR_BINDING)
+        evidence[Evidence.HELPERS] = self._helper_frontier(None)
+        boundary = self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
+        evidence[Evidence.SEQUENCE] = boundary.sequence
+        evidence[Evidence.OBSERVED_NS] = boundary.observed_ns
+        if time.monotonic_ns() >= end:
+            raise TimeoutError(ERROR_BINDING)
         return evidence
 
     async def _settle(self, mutation: NativeMutation, name: str, end_ns: int) -> JobBoundary:
@@ -941,14 +1050,7 @@ class BindingPhases:
             Evidence.OBSERVED_NS: boundary.observed_ns,
             Evidence.POPULATION: {Evidence.RAW: sample.raw.decode(UTF8), Evidence.POPULATED: sample.populated},
             "completion_capture": completion.record() if completion is not None else None,
-            "normal_service_exit": guest.unit.get(Property.ACTIVE_STATE) == "inactive"
-            and guest.specific.get("Result") == "success"
-            and type(guest.specific.get("ExecMainCode")) is int
-            and guest.specific["ExecMainCode"] == 1
-            and type(guest.specific.get("ExecMainStatus")) is int
-            and guest.specific["ExecMainStatus"] == 0
-            and type(guest.specific.get("NRestarts")) is int
-            and guest.specific["NRestarts"] == 0,
+            "normal_service_exit": _normal_service_exit(guest),
         }
         self.payload_observations.append(evidence)
         if time.monotonic_ns() >= end:
