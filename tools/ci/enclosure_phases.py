@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import Final
 
 from tools.ci.enclosure_actions import Authority, Key, NativeMutation
+from tools.ci.enclosure_activation import ActivationSources, inspect_activation_sources
 from tools.ci.enclosure_configuration import InstanceConfiguration, inspect_instance_configuration
 from tools.ci.enclosure_contract import (
     Action,
@@ -67,6 +68,7 @@ class Evidence(StrEnum):
     BOOT_ID = "boot_id"
     CONFIGURATION = "configuration"
     DEPENDENCY_GRAPH = "dependency_graph"
+    ACTIVATION_SOURCES = "activation_sources"
 
 
 def _unit(read: UnitRead) -> JsonObject:
@@ -97,6 +99,7 @@ class BindingPhases:
         self.uncertain: HelperUncertain | None = None
         self.configuration: InstanceConfiguration | None = None
         self.graph: DependencyGraph | None = None
+        self.activation_sources: ActivationSources | None = None
 
     async def perform(
         self, action: Action, deadline: AdmittedDeadline, maximum_seconds: int, qualification_vector: str | None
@@ -213,6 +216,14 @@ class BindingPhases:
                 self.configuration,
                 AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns),
             )
+            metadata = await self.manager.read_manager(end_ns)
+            self.activation_sources = inspect_activation_sources(
+                self.package,
+                self.graph,
+                metadata,
+                frozenset({self.parent.name, self.guest.name}),
+                AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns),
+            )
         sample = self.population.sample(end_ns)
         if self.manager.faults or sample.faults or sample.populated is None:
             raise ValueError(ERROR_BINDING)
@@ -243,6 +254,9 @@ class BindingPhases:
                 Evidence.GUEST: _unit(self.guest) if self.guest is not None else None,
                 Evidence.CONFIGURATION: self.configuration.record() if self.configuration is not None else None,
                 Evidence.DEPENDENCY_GRAPH: self.graph.record() if self.graph is not None else None,
+                Evidence.ACTIVATION_SOURCES: self.activation_sources.record()
+                if self.activation_sources is not None
+                else None,
                 Evidence.JOBS: settled,
                 Evidence.POPULATION: {
                     Evidence.RAW: sample.raw.decode(UTF8),
