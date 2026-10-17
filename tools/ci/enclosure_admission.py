@@ -49,6 +49,9 @@ REV_PARSE: Final = ("rev-parse", "--verify")
 HEAD: Final = "HEAD"
 HEAD_TREE: Final = "HEAD^{tree}"
 REALIZATION_SCHEMA: Final = 1
+HARNESS_MODULE: Final = "tools.ci."
+HARNESS_NAMESPACES: Final = frozenset({"tools", "tools.ci"})
+OBSERVER_MODULE: Final = "dbus_next"
 QUALIFICATION_SETUP_VECTOR: Final = "Q2"
 QUALIFICATION_SETUP_ACTIONS: Final = frozenset(
     {Action.PROVISION, Action.CREATE_PARENT, Action.START_GUEST, Action.MASK_GUEST, Action.GUEST_SETUP}
@@ -118,7 +121,8 @@ class SourceAdmission:
         if root != ACTUAL_SOURCE_ROOT or Path(sys.argv[0]).resolve(strict=True) != root / ENTRY:
             raise ValueError(ERROR_SOURCE)
         sources = object_value(record[Key.SOURCE_FILES])
-        if not REQUIRED_SOURCES <= set(sources):
+        loaded_sources, loaded_observer = _loaded_inputs(root)
+        if not (REQUIRED_SOURCES | loaded_sources) <= set(sources):
             raise ValueError(ERROR_SOURCE)
         for relative, value in sources.items():
             path = Path(relative)
@@ -158,6 +162,9 @@ class SourceAdmission:
                 raise ValueError(ERROR_PATH.format(path=path))
             seen.add(path)
             _verify_file(path, row, deadline)
+            loaded_observer.discard(path.resolve(strict=True))
+        if loaded_observer:
+            raise ValueError(ERROR_SOURCE)
         cap = positive_integer(
             object_value(parse_object(self.package.recipe_bytes)[Field.BUDGET_SECONDS]), Field.NORMAL_COMMAND_MAX
         )
@@ -167,6 +174,38 @@ class SourceAdmission:
         if commit != self.binding.candidate_commit or tree != self.binding.candidate_tree:
             raise ValueError(ERROR_SOURCE)
         _require_time(deadline)
+
+
+def _loaded_inputs(root: Path) -> tuple[set[str], set[Path]]:
+    """Bind already imported harness/library files, without importing or searching for another module."""
+    sources: set[str] = set()
+    observer: set[Path] = set()
+    # Native import state supplies the actual dependencies of this role. A snapshot
+    # avoids iterating a dictionary that imports elsewhere could resize.
+    for name in tuple(sys.modules):
+        harness = name in HARNESS_NAMESPACES or name.startswith(HARNESS_MODULE)
+        library = name == OBSERVER_MODULE or name.startswith(OBSERVER_MODULE + ".")
+        if not harness and not library:
+            continue
+        module = sys.modules.get(name)
+        if module is None:
+            raise ValueError(ERROR_SOURCE)
+        if name in HARNESS_NAMESPACES and module.__file__ is None:
+            # The checked tree uses namespace packages: there is no package file to hash.
+            if module.__spec__ is None or module.__spec__.origin is not None:
+                raise ValueError(ERROR_SOURCE)
+            continue
+        if not module.__file__:
+            raise ValueError(ERROR_SOURCE)
+        path = Path(module.__file__).resolve(strict=True)
+        if harness:
+            allowed = root / ("tools" if name == "tools" else "tools/ci")
+            if not path.is_relative_to(allowed):
+                raise ValueError(ERROR_SOURCE)
+            sources.add(path.relative_to(root).as_posix())
+        else:
+            observer.add(path)
+    return sources, observer
 
 
 @dataclass(frozen=True)
