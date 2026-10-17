@@ -30,6 +30,7 @@ private store and imports no application module.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -833,13 +834,41 @@ class _Prepared:
             )
 
     def _b9_open_attempts(self) -> tuple[list[start_ledger.JsonObject], str | None]:
-        if self.b4_ledger is None:
-            return [], "the B4 attempt ledger was not established"
+        captured: list[bytes] | None = [] if self.accounting is not None else None
+        packet: creation.EvidenceObject | None = None
+        if self.accounting is not None:
+            packet = {
+                "started_ns": time.monotonic_ns(),
+                "finished_ns": None,
+                "path": str(
+                    self.b4_ledger.path if self.b4_ledger is not None else self.controls.root / B4_ATTEMPT_LEDGER
+                ),
+                "raw_reads": [],
+                "error": None,
+            }
+            cast(list[creation.EvidenceValue], self.accounting["attempt_ledgers"]).append(packet)
         try:
-            loaded = start_ledger.StartLedger.load(self.b4_ledger.path)
+            if self.b4_ledger is None:
+                if packet is not None:
+                    packet["error"] = "the B4 attempt ledger was not established"
+                return [], "the B4 attempt ledger was not established"
+            loaded = start_ledger.StartLedger.load(self.b4_ledger.path, captured=captured)
             self.b4_ledger = loaded
         except (OSError, ValueError) as error:
+            if packet is not None:
+                packet["error"] = str(error)
             return [], str(error)
+        finally:
+            if packet is not None and captured is not None:
+                packet["raw_reads"] = [
+                    {
+                        "raw_data": base64.b64encode(data).decode("ascii"),
+                        "raw_sha256": hashlib.sha256(data).hexdigest(),
+                        "raw_byte_count": len(data),
+                    }
+                    for data in captured
+                ]
+                packet["finished_ns"] = time.monotonic_ns()
         return [
             {
                 "id": attempt.identifier,

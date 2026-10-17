@@ -96,7 +96,7 @@ class StartLedger:
         return cls(path=path, flow_id=identifier, lines=[identifier])
 
     @classmethod
-    def load(cls, path: Path) -> StartLedger:
+    def load(cls, path: Path, *, captured: list[bytes] | None = None) -> StartLedger:
         """Read and validate every line; missing, truncated or malformed history never becomes an empty ledger."""
         if not path.is_file():
             raise ValueError(DETAIL_MISSING)
@@ -104,6 +104,8 @@ class StartLedger:
             data = path.read_bytes()
         except OSError as error:
             raise ValueError(DETAIL_INVALID.format(detail=type(error).__name__)) from error
+        if captured is not None:
+            captured.append(data)
         return cls.from_bytes(data, path=path)
 
     @classmethod

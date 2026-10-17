@@ -61,8 +61,15 @@ from tools.ci.workflow_ledger import (
     Attempt,
     StartLedger,
 )
+from tools.ci.workflow_prepared import (
+    B4_ATTEMPT_LEDGER,
+    B4_B9_ACTIONS,
+    B4_CASE,
+    SESSION_S_P,
+    SESSION_X,
+    text_capability_enabled,
+)
 from tools.ci.workflow_prepared import CONTROL_NAME as PREPARED_CONTROLS
-from tools.ci.workflow_prepared import text_capability_enabled
 from tools.ci.workflow_publication import START_CLAIMED, START_REFUSED, TERMINAL_STATES
 from tools.ci.workflow_ready import FINDING_DOOR, FINDING_WORK, REASON_ONE, REASON_TWO
 from tools.ci.workflow_review import (
@@ -344,6 +351,7 @@ def _event_early_links(
         if case not in ("B3", "B4"):
             continue
         data = object_value(cast(JsonObject, record)[events.FIELD_DATA])
+        inputs = object_value(early[case])
         if case == "B3":
             actors = tuple(text(data, key) for key in ("owner", "first_driver", "child", "dispatched", "second_driver"))
         else:
@@ -356,7 +364,10 @@ def _event_early_links(
                 != {text(data, key) for key in ("author", "child", "worker")} | set(_strings(list(outsiders.values())))
             ):
                 raise ValueError(ERROR_REPORT)
-        inputs = object_value(early[case])
+            ledger = object_value(inputs["attempt_ledger_inputs"])
+            sessions = object_value(ledger["session_ids"])
+            if sessions != {SESSION_S_P: outsiders["S_P"], SESSION_X: outsiders["X"]}:
+                raise ValueError(ERROR_REPORT)
         if (
             len(actors) != len(set(actors))
             or inputs["project_path"] != binding.project_path
@@ -473,6 +484,99 @@ def _early_launches(value: JsonValue, root: str, case: str) -> list[JsonValue]:
     return result
 
 
+def _b4_ledger_inputs(row: JsonObject, root: str, case: str) -> JsonObject:
+    reads = row["attempt_ledgers"]
+    if case != B4_CASE:
+        if reads != []:
+            raise ValueError(ERROR_REPORT)
+        return {"state": "not_applicable"}
+    if not isinstance(reads, list) or not reads:
+        raise ValueError(ERROR_REPORT)
+    expected = {value["label"]: (value["kind"], value.get("parent")) for value in B4_B9_ACTIONS}
+    previous: bytes | None = None
+    flow_id: str | None = None
+    sessions: JsonObject = {}
+    attempts: list[JsonValue] = []
+    digests: list[JsonValue] = []
+    for value in reads:
+        packet = object_value(value)
+        raw = packet["raw_reads"]
+        if (
+            set(packet) != {"started_ns", "finished_ns", "path", "raw_reads", "error"}
+            or packet["error"] is not None
+            or packet["path"] != f"{root}/{PREPARED_CONTROLS}/{B4_ATTEMPT_LEDGER}"
+            or not positive_integer(row, "started_ns")
+            <= positive_integer(packet, "started_ns")
+            <= positive_integer(packet, "finished_ns")
+            <= positive_integer(row, "finished_ns")
+            or not isinstance(raw, list)
+            or len(raw) != 1
+        ):
+            raise ValueError(ERROR_REPORT)
+        data = _event_bytes(raw)
+        if data is None or (previous is not None and not data.startswith(previous)):
+            raise ValueError(ERROR_REPORT)
+        snapshot = LedgerEvidence.capture(data, path=Path(B4_ATTEMPT_LEDGER), expected_cases=(B4_CASE,))
+        ledger = snapshot.ledger
+        if (
+            snapshot.error is not None
+            or ledger is None
+            or snapshot.missing_cases
+            or snapshot.extra_cases
+            or snapshot.blocking_attempts
+            or snapshot.pending_triggers
+            or ledger.closed_lists != {B4_CASE: expected}
+            or (flow_id is not None and ledger.flow_id != flow_id)
+        ):
+            raise ValueError(ERROR_REPORT)
+        current = {attempt.label: attempt for attempt in ledger.attempts.values()}
+        if set(current) != set(expected) or len(current) != len(ledger.attempts):
+            raise ValueError(ERROR_REPORT)
+        attempts = []
+        current_sessions: JsonObject = {}
+        for label, attempt in current.items():
+            kind, parent = expected[label]
+            if (
+                attempt.case != B4_CASE
+                or attempt.kind != kind
+                or attempt.state != RECORD_DISCHARGED
+                or attempt.parent != (current[parent].identifier if parent is not None else None)
+            ):
+                raise ValueError(ERROR_REPORT)
+            if kind == RECORD_SESSION:
+                if attempt.session_id is None:
+                    raise ValueError(ERROR_REPORT)
+                current_sessions[label] = attempt.session_id
+            attempts.append(
+                {
+                    "attempt_id": attempt.identifier,
+                    "label": label,
+                    "kind": kind,
+                    "parent_attempt_id": attempt.parent,
+                    "operation_id": attempt.operation_id,
+                    "session_id": attempt.session_id,
+                    "recorded_evidence": attempt.evidence,
+                }
+            )
+        if (
+            len(current_sessions) != 2
+            or current_sessions[SESSION_S_P] == current_sessions[SESSION_X]
+            or (sessions and sessions != current_sessions)
+        ):
+            raise ValueError(ERROR_REPORT)
+        sessions = current_sessions
+        flow_id, previous = ledger.flow_id, data
+        digests.append(hashlib.sha256(data).hexdigest())
+    return {
+        "state": "declared_attempt_inputs_checked",
+        "flow_id": flow_id,
+        "read_sha256": digests,
+        "session_ids": sessions,
+        "attempts": attempts,
+        "semantic_settlement": "unproven",
+    }
+
+
 def validate_early_inputs(report: JsonObject) -> JsonObject:
     """Reparse original B3/B4 accounting inputs; listings/legacy labels/PIDs establish no physical closure or P2."""
     provisional = object_value(report["payload_provisional"])
@@ -502,6 +606,7 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
                 "journey_error",
                 "cleanup_error",
                 "seal_error",
+                "attempt_ledgers",
             }
             or type(row["schema_version"]) is not int
             or row["schema_version"] != 1
@@ -556,6 +661,7 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
             "public_end_inputs": closures,
             "recorded_start_states": starts,
             "launch_inputs": _early_launches(settlement["launches"], root, case),
+            "attempt_ledger_inputs": _b4_ledger_inputs(row, root, case),
             "semantic_settlement": "unproven",
             "creator_classification": "unproven",
             "physical_P4": "unproven",
