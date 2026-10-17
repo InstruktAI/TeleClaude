@@ -17,131 +17,53 @@ Agent restart is the verb that swaps the agent CLI process inside an already-bou
 
 A special `self` form is dispatched by orchestrators that want to restart themselves. The CLI verb `telec sessions restart self` resolves the caller's own session identity from the local identity record and asks the agent_runtime service to restart that session. The handler subscribes to a session-ready signal before issuing the relaunch (the agent's session start event can race the relaunch and emit readiness before any post-hoc subscriber attaches), waits for readiness, and hands the continuation stimulus to control delivery. The resumed prompt receives only the standard wake marker; submitting that marker delivers the continuation as platform control context for the fresh turn. Non-self restarts skip the stimulus — the existing transcript is allowed to dictate behavior.
 
+A restart requires a bound agent, its recorded native session, and that agent's continued enablement; it never selects a replacement agent. A self-restart readiness timeout leaves the session alive and reports that no continuation was sent. After control delivery accepts a continuation, the payload remains pending if its wake is not accepted, so a later boundary can deliver it once. A continuation supplied after maintenance restores a missing host pane follows the same control-delivery contract and remains platform control rather than foreground composer text.
+
+Restart-failure notices remain actionable, coalesce repeated failures for one session, and remain distinct from other notifications for that session.
+
 ## Canonical fields
 
 ### Use cases
 
 #### UC-AR13: Restart eligibility requires a resumable native binding
 
-```
-Given a caller asks the agent_runtime service to restart the agent for a session
-When the service loads the session row
-Then if the row does not exist, the request is refused with a "session not found" error
-And if no active agent is bound to the session, the request is refused with a "no active agent for this session" error
-And if no native session identifier has been recorded, the request is refused with a "no native session ID — start agent first" error
-And restart performs no fresh-agent selection or cross-agent handoff behavior
-```
-
 #### UC-AR14: Accepted restart returns a durable receipt
 
 ```
-Given the eligibility gates pass
-When the service accepts the request
-Then the service persists a durable operation row before the restart begins and returns immediately
-And the response carries the operation receipt: its identity, its state, where to read it, the computer that owns it, and the success and failure events it will emit
-And the caller recorded on that row is woken when the restart reaches its outcome
-And no readiness information is encoded in the acceptance response
+Given a person asks to restart an eligible session without waiting for the restart to finish
+When the request is accepted
+Then the person receives a receipt they can use to inspect the eventual success or failure
 ```
 
 #### UC-AR15: Restart waits for direct process termination before relaunch
 
-```
-Given the restart has been dispatched
-When the handler stops the running agent
-Then it resolves the host pane's child process and sends a termination signal directly to that process
-And it does NOT route the termination through pane keystrokes (that path is swallowed when the agent is mid-tool-execution)
-And it waits for the host shell prompt to return before relaunching
-And if the shell does not become ready, the handler aborts with "Agent did not exit after termination. Restart aborted."
-And the abort is emitted as an error event and as an in-session message
-```
-
 #### UC-AR16: Restart relaunches in place with native transcript continuity
 
 ```
-Given the agent process has exited and the shell is ready
-When the handler relaunches the agent
-Then it constructs the agent command with resume-from-transcript semantics and the session's recorded thinking mode
-And it sends the command into the existing host pane
-And the host pane, session_id, native session identifier, and transcript chain are preserved
-And the agent CLI replays its own transcript on startup so the resumed agent observes its prior context
-And the session's agent status, its reason and the moment it was entered stay as recorded: a restart is not a run start (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle` UC-SL42)
-And the first input delivered after the relaunch waits for the resumed agent's input readiness, as the startup gate in `local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery` requires for resumed sessions
-And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER visibility
+Given a person wants to restart an agent while keeping its existing session
+When the restart succeeds
+Then the same session continues from its native conversation
 ```
 
 #### UC-AR1: Self-restart wakes the resumed agent without foregrounding the continuation
 
 ```gherkin
-Given an agent restarts itself and its resumed prompt becomes ready
-When the platform supplies the fixed continuation stimulus for the fresh turn
-Then the continuation is accepted durably as platform control content
-And the only platform text entered into the foreground composer is `[TeleClaude Wake]`
-And submitting that wake delivers the continuation to the agent as control context
-And no paired restart-continuation block appears in the foreground composer
-And a readiness timeout leaves the session alive and reports that the continuation was not submitted
+Given an agent acting for a person needs to restart its own session
+When the restart succeeds
+Then the same session continues its pending work with the continuation as platform control, not human input
 ```
 
 #### UC-AR2: Self-restart retries only the wake submission
 
-```gherkin
-Given one restart continuation is pending and its wake marker has entered the resumed prompt
-And the wake has not yet started a turn
-When prompt delivery retries submission
-Then it does not accept or paste another continuation payload
-And it does not paste another wake marker
-And it retries submission only while the existing wake remains live in the prompt
-And it stops once the wake has started a turn or no longer occupies the prompt
-```
-
 #### UC-AR3: Self-restart fails loud when the wake cannot start a turn
-
-```gherkin
-Given a self-restart has durably accepted its continuation
-And the standard wake marker cannot start a turn within the bounded retry budget
-When wake delivery is exhausted
-Then the platform reports the delivery failure
-And the session remains alive
-And the continuation remains available for a later valid delivery boundary rather than being duplicated or silently dropped
-```
 
 #### UC-AR4: Non-self restart skips the continuation stimulus
 
-```
-Given the request does NOT set the self-restart flag
-When the handler enters the relaunch phase
-Then the relaunch is issued without subscribing to the readiness signal
-And no continuation stimulus is injected
-And the resumed agent acts on whatever its replayed transcript dictates
-```
-
 #### UC-AR17: Restart revives a closed session as recorded
-
-```
-Given the target session row is marked closed
-When the restart runs
-Then it clears the closed marker and re-reads the row before continuing
-And the session reopens directly as `active`, written once with no intermediate `headless` or `initializing`
-And revival of a closed session is a side effect of restart, not a separate code path
-```
 
 #### UC-AR18: Restart binds a replacement pane for a missing host pane
 
-```
-Given the row's recorded host pane no longer exists
-When the restart runs
-Then it clears the recorded host pane reference and re-reads the row
-And it binds a fresh host pane before relaunch, leaving the session's lifecycle status the one its record supports
-And if binding the pane fails, the restart reports "Failed to adopt headless session."
-```
-
 #### UC-AR19: Restart fails when the target agent is disabled
-
-```
-Given the target agent is no longer enabled in configuration
-When the restart consults the enablement gate
-Then it aborts with that gate's error message
-And an error event is emitted (sourced from agent restart) and a failure-marker message is sent to the session
-```
 
 #### UC-AR5: Restart a session owned by a remote computer
 
@@ -169,43 +91,11 @@ Scenario Outline: Restart failure reaches the operator
 
 #### UC-AR9: Repeated restart failures for one session coalesce into one operator notification
 
-```
-Given several restart failures occur for the same session within the platform's trailing delivery window
-When the failures are reported
-Then the operator receives a single external notification for that session after the window elapses
-And each failure still updates the durable notification record immediately
-```
-
 #### UC-AR10: A restart-failure notification is distinct from other same-session notifications
-
-```
-Given a notification already exists for a session under that session's lifecycle grouping
-When a restart failure occurs for the same session
-Then the restart failure produces its own operator notification
-And it does not update or resolve the pre-existing session notification
-```
 
 #### UC-AR11: Self-restart relaunches only after the terminated agent process is confirmed exited
 
-```
-Given a self-restart has sent the termination signal to the running agent process
-And the host pane's foreground command reports the shell while that terminated process has not yet exited
-When the handler evaluates the kill-side barrier before relaunching
-Then it treats the agent as still running until the terminated process is confirmed exited, not merely because the foreground command reports the shell
-And it does not relaunch the agent nor inject the continuation stimulus while the terminated process remains alive
-And once the terminated process is confirmed exited it relaunches and proceeds to continuation-stimulus delivery
-```
-
 #### UC-AR12: Maintenance restoration wakes the resumed agent without foregrounding the continuation
-
-```gherkin
-Given maintenance restores a missing host pane and its resumed agent reaches a ready prompt
-When the platform supplies the fixed continuation stimulus for the restored session
-Then the continuation is accepted durably as platform control content
-And the only platform text entered into the foreground composer is `[TeleClaude Wake]`
-And submitting that wake delivers the continuation to the agent as control context
-And no paired restart-continuation block appears in the foreground composer
-```
 
 ### Cross-context references
 
