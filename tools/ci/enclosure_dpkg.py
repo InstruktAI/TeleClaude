@@ -643,7 +643,8 @@ def interpret_trigger_routes(snapshot: JsonObject, basis: JsonObject, deadline: 
             # Native tar_extractor removes trailing slashes before fsys_hash_find_node.
             name = _fsys_name(text(member, "archive_name").encode("utf-8").rstrip(b"/"))
             target, owner = mapping.get(name, (name, CONTAINER_PACKAGE.encode("ascii")))
-            effective = target if owner != CONTAINER_PACKAGE.encode("ascii") else name
+            # pkg_hash_find_set applies ASCII c_tolower before comparing the owning package set.
+            effective = target if owner.lower() != CONTAINER_PACKAGE.encode("ascii") else name
             collision = name in destinations
             if not collision:
                 # New archive members use trig_file_activate of this one namenodetouse result.
