@@ -86,211 +86,88 @@ state and run records per project and job name.
 #### UC-JDM-1: Script pointer declares a script job
 
 ```
-Given a named job declaration carrying a `script` pointer and no `job` pointer
-When the config is loaded
-Then the declaration is accepted
-And the job is dispatched as a script (in-process) job
+Given an operator wants a scheduled task to run as a script job
+When they declare that job for a project
+Then the job is available to run on its declared schedule
 ```
 
 #### UC-JDM-2: Job pointer declares an agent job
 
 ```
-Given a named job declaration carrying a `job` pointer and no `script` pointer
-When the config is loaded
-Then the declaration is accepted
-And the job is dispatched as an agent job
+Given an operator wants a scheduled task to run as an agent job
+When they declare a delivered procedure for that job
+Then the job is available for agent dispatch on its declared schedule
 ```
 
 #### UC-JDM-3: Declaration with both pointers rejected
 
-```
-Given a job declaration carrying both a `script` pointer and a `job` pointer
-When the config is loaded
-Then the load fails with an error naming the job
-And no execution class can be silently chosen for it
-```
-
 #### UC-JDM-4: Declaration with neither pointer rejected
 
-```
-Given a published or local job declaration carrying neither a `script` pointer nor a `job` pointer
-When the config is loaded
-Then the load fails with an error naming the job
-```
-
 #### UC-JDM-5: Global job declared in the global registry
-
-```
-Given a job declared under the global config `jobs` registry
-And a project whose overlay does not mention that job
-When the effective job set for the project is composed
-Then the global job is NOT in the project's effective job set
-```
 
 #### UC-JDM-6: Project subscribes to a global job
 
 ```
-Given a job published under the global config `jobs` registry
-And the project's `jobs` list carries an entry with the same name, no execution pointer, and enabled = true
-When the effective job set for the project is composed
-Then the global job IS in the project's effective job set
-And it runs the published execution pointer
-And every setting the subscribing entry leaves unset is the published default
+Given an operator wants a project to run a job published globally
+When they subscribe that project to the job
+Then the job is available to run in that project using its published defaults
 ```
 
 #### UC-JDM-7: Project unsubscribes from a global job
 
 ```
-Given a global job the project subscribes to
-And the project's `jobs` list carries an entry with the same name and enabled = false
-When the effective job set for the project is composed
-Then the global job is NOT in the project's effective job set
+Given an operator wants a project to stop running a subscribed global job
+When they disable that project's subscription
+Then the job is no longer available to run in that project
 ```
 
 #### UC-JDM-8: Subscription overrides the published settings
 
 ```
-Given a job published in the global registry with when.at = "03:00"
-And the project's `jobs` list carries an entry with the same name and when.every = "30m"
-When the effective job set for the project is composed
-Then the load succeeds
-And the job runs in that project every 30 minutes
-And the published declaration is unchanged for every other project
+Scenario: Change a subscribed job's schedule
+  Given an operator wants a project to use a different schedule for a published job
+  When they override the schedule in that project's subscription
+  Then the job uses the project's schedule without changing other projects
+
+Scenario: Change a subscribed job's agent preference
+  Given an operator wants a project to prefer a different eligible agent for a published agent job
+  When they override the agent preference in that project's subscription
+  Then the job uses that preference without changing other projects
 ```
 
 #### UC-JDM-9: Local job declared by a project
 
 ```
-Given a project overlay `jobs` entry whose name is NOT declared in the global registry
-And the entry carries exactly one pointer and a `when` schedule
-When the config is loaded
-Then the declaration is accepted as a local job
-And it is in the project's effective job set without any global registration
+Given an operator wants a scheduled job that is local to a project
+When they declare the job in that project's configuration
+Then it is available to run in that project without a global subscription
 ```
 
 #### UC-JDM-11: Job pointer must resolve to a delivered procedure
 
-```
-Given a job declaration whose `job` pointer names an unknown snippet ID, a snippet that is not a procedure, or a brand-new procedure with no delivered body
-When the config is loaded
-Then the load fails with an error naming the job and the pointer
-And no agent session can be dispatched for it
-```
-
 #### UC-JDM-25: A job's pointer must name a usable entry procedure
-
-```
-Given a job declaration whose `job` pointer names a delivered procedure that the context does not publish as a usable entry procedure
-When the config is loaded
-Then the load fails with an error naming the job, the pointer and the context's reason
-```
 
 #### UC-JDM-12:
 
-```gherkin
-Given an agent observes a due job with a configured ordered set of candidate agents
-And the first candidate is ineligible while a later candidate is eligible
-When the job is dispatched
-Then its session runs on the first eligible candidate in the configured order
-And no agent outside the configured set is selected
-```
-
 #### UC-JDM-13: A subscription may replace the agent preference
-
-```
-Given a global job declaring agent = [a, b]
-And the project's `jobs` list carries an entry with the same name, enabled = true, and agent = [b]
-When the config is loaded and the job is dispatched in that project
-Then the load succeeds
-And the session is created on agent b
-```
 
 #### UC-JDM-14:
 
-```gherkin
-Given an agent observes a due job whose declared candidates are all ineligible
-When the job is due and dispatch is attempted
-Then no session is created
-And the run closes as failed with candidate exhaustion identified as the reason
-And the failure remains available through the established failed-run reporting path
-```
-
 #### UC-JDM-16: A job's identity is its declared name
-
-```
-Given a job declared with name "nightly-scan" and any execution pointer
-When the job is dispatched, its run is recorded, its run directory is written, and it is listed or run on demand through the jobs API
-Then every one of those names the job "nightly-scan"
-And neither the pointer, the module stem, nor a name carried by the job module participates
-```
 
 #### UC-JDM-17: Duplicate name within a tier is rejected
 
-```
-Given two entries in one tier's `jobs` list carrying the same name
-When the config is loaded
-Then the load fails with an error naming the duplicated name
-And neither entry enters the effective job set
-```
-
 #### UC-JDM-18: A subscribed job runs inside the subscribing project
-
-```
-Given two registered projects that both subscribe to the same global job
-When the runner walks the registered projects
-Then each project's due run is opened, executed, and closed under that project — an agent session rooted at that project, a script job told which project it runs in
-And run state and run records are kept per project and job name, so one project's run never closes or blocks the other's
-```
 
 #### UC-JDM-20:
 
-```gherkin
-Given an agent observes existing job history and unfinished runs during a move to project-scoped execution
-When that state is migrated
-Then each attributable run retains its owning project and unfinished or completed state
-And an aggregate dispatch result does not become a successful project run
-And history that cannot be attributed remains recoverable without closing another project's run
-```
-
 #### UC-JDM-21: The commit gate validates a project's jobs declaration
-
-```gherkin
-Given a project's jobs declaration is part of a commit's pathspec
-When the sealed commit surface runs its quality gates
-Then the effective job set for that project is validated
-And a declaration whose name, schedule, execution pointer, or procedure reference is invalid refuses the commit
-And a commit whose pathspec does not carry that declaration does not run the jobs validator
-```
 
 #### UC-JDM-22: A declaration without a valid name is rejected
 
-```
-Given a job declaration carrying no `name`, or a `name` that is not lowercase kebab-case
-When the config is loaded
-Then the load fails with an error identifying the offending entry
-And no name is derived for it from its pointer or module
-And the entry never enters the effective job set
-```
-
 #### UC-JDM-23: One execution pointer backs several named jobs
 
-```
-Given two entries in one tier's `jobs` list with different names and the same execution pointer
-And each entry carries its own `when` schedule
-When the effective job set is composed and the runner walks the project
-Then both jobs are in the effective job set
-And each runs on its own schedule with its own run state
-```
-
 #### UC-JDM-24: A subscription cannot change the published pointer
-
-```
-Given a job published in the global registry with a `job` pointer
-And the project's `jobs` list carries an entry with the same name and a different execution pointer
-When the config is loaded
-Then the load fails with an error naming the job
-And the published job does not run in that project
-```
 
 ## Known caveats
 
@@ -302,3 +179,9 @@ And the published job does not run in that project
   no subscribed-everywhere default.
 - Run history is keyed by name, so renaming a job starts it fresh under the new
   name; nothing carries history across a rename.
+- The sealed commit gate validates effective job declarations when a project's
+  `teleclaude.yml` is in the commit path; other pathsets do not invoke this check.
+- Legacy aggregate run state is migrated to a project-qualified identity only
+  when its former runner project is known. Aggregate dispatch history remains
+  separate, and history without a known project remains recoverable rather than
+  being assigned to another project's run.
