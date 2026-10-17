@@ -36,6 +36,7 @@ from tools.ci.enclosure_inner import PROVISIONAL_REPORT_SCHEMA, PROVISIONAL_STAG
 from tools.ci.workflow_creation import collect_slugs
 from tools.ci.workflow_driver import DRIVER_ID as PROC_PREPARE
 from tools.ci.workflow_driver import ROLE as ROLE_PREPARE
+from tools.ci.workflow_driver import assert_claim_observation, assert_instruction
 from tools.ci.workflow_flow import (
     B5_ACTIONS,
     B6_ACTIONS,
@@ -358,6 +359,10 @@ def _event_early_links(
             actors = tuple(text(data, key) for key in ("owner", "first_driver", "child", "dispatched", "second_driver"))
             driver_actors = {"first": data["first_driver"], "second": data["second_driver"]}
             expected_new = {"first": {text(data, "owner"), text(data, "first_driver")}, "second": set(actors)}
+            claim_contexts = {
+                "first": ([], [text(data, "owner")]),
+                "second": ([text(data, "first_driver")], [text(data, "owner"), text(data, "dispatched")]),
+            }
         else:
             actors = _strings(data["sessions"])
             outsiders = object_value(data["outsider_sessions"])
@@ -377,6 +382,7 @@ def _event_early_links(
                 "author": {text(data, "author"), text(outsiders, "S_P"), text(outsiders, "X")},
                 "worker": set(actors),
             }
+            claim_contexts = {"author": ([], []), "worker": ([], [])}
         driver_inputs = object_value(inputs["driver_inputs"])
         if set(driver_inputs) != set(driver_actors) or any(
             object_value(driver_inputs[name])["session_id"] != actor
@@ -384,6 +390,14 @@ def _event_early_links(
             for name, actor in driver_actors.items()
         ):
             raise ValueError(ERROR_REPORT)
+        for name, (earlier, holds_nothing) in claim_contexts.items():
+            context = object_value(object_value(driver_inputs[name])["claim_context"])
+            if (
+                context["earlier"] != earlier
+                or context["holds_nothing"] != holds_nothing
+                or (case == "B3" and context["known_entries"] != 0)
+            ):
+                raise ValueError(ERROR_REPORT)
         if (
             len(actors) != len(set(actors))
             or inputs["project_path"] != binding.project_path
@@ -692,6 +706,43 @@ def _early_driver_claim(
     return operation
 
 
+def _early_driver_oracles(packet: JsonObject, actor: str, phase: str) -> JsonObject:
+    claim = object_value(packet["claim"])
+    terminal = object_value(claim["terminal"])
+    instruction = object_value(packet["instruction"])
+    context = object_value(packet["claim_context"])
+    if (
+        set(instruction) != {"session_id", "text", "child", "acts"}
+        or instruction["session_id"] != actor
+        or instruction["text"] != terminal["result"]
+        or set(context) != {"session_id", "known_entries", "earlier", "holds_nothing"}
+        or context["session_id"] != actor
+        or type(context["known_entries"]) is not int
+        or context["known_entries"] < 0
+    ):
+        raise ValueError(ERROR_REPORT)
+    values = instruction["acts"]
+    if not isinstance(values, list) or not values:
+        raise ValueError(ERROR_REPORT)
+    acts: list[tuple[str, str]] = []
+    for value in values:
+        pair = _strings(value)
+        if len(pair) != 2 or not all(pair):
+            raise ValueError(ERROR_REPORT)
+        acts.append((pair[0], pair[1]))
+    assert_instruction(ITEM, phase, actor, text(instruction, "text"), acts, text(instruction, "child"))
+    assert_claim_observation(
+        ITEM,
+        phase,
+        actor,
+        object_value(claim["held"]),
+        _strings(context["holds_nothing"]),
+        _strings(context["earlier"]),
+        context["known_entries"],
+    )
+    return context
+
+
 def _early_driver_inputs(
     row: JsonObject, case: str, baseline: set[str], observed: set[str], launches: list[JsonValue]
 ) -> JsonObject:
@@ -715,7 +766,8 @@ def _early_driver_inputs(
         packet = object_value(value)
         name = text(packet, "name")
         if (
-            set(packet) != {"name", "slot", "procedure", "verb", "phase", "startup", "claim"}
+            set(packet)
+            != {"name", "slot", "procedure", "verb", "phase", "startup", "claim", "instruction", "claim_context"}
             or name not in expected
             or name in result
         ):
@@ -765,8 +817,63 @@ def _early_driver_inputs(
             "native_session_id": native,
             "claim_operation_id": operation,
             "expected_new": startup["expected_new"],
+            "claim_context": _early_driver_oracles(packet, actor, phase),
+            "distinct_from": object_value(packet["claim"])["distinct_from"],
             "originating_start_settlement": "unproven",
         }
+    return result
+
+
+def _early_start_inputs(row: JsonObject, case: str, drivers: JsonObject, starts: JsonObject) -> list[JsonValue]:
+    expected = (
+        {"start": ("first", "prepare")}
+        if case == "B3"
+        else {"start": ("author", "prepare"), "work": ("worker", "work")}
+    )
+    values = row["start_calls"]
+    if not isinstance(values, list) or len(values) != len(expected):
+        raise ValueError(ERROR_REPORT)
+    seen: set[str] = set()
+    result: list[JsonValue] = []
+    for value in values:
+        packet = object_value(value)
+        label = text(packet, "label")
+        if (
+            set(packet) != {"label", "attempt_key", "started_ns", "finished_ns", "command", "operation_id", "error"}
+            or label not in expected
+            or label in seen
+            or packet["error"] is not None
+            or not positive_integer(row, "started_ns")
+            <= positive_integer(packet, "started_ns")
+            <= positive_integer(packet, "finished_ns")
+            <= positive_integer(row, "finished_ns")
+        ):
+            raise ValueError(ERROR_REPORT)
+        text(packet, "attempt_key")
+        name, verb = expected[label]
+        receipt = _public_session_command(packet["command"], [creation.TELEC, "todo", verb, ITEM])
+        operation = receipt.get("operation_id")
+        driver = object_value(drivers[name])
+        if (
+            not isinstance(operation, str)
+            or not operation
+            or packet["operation_id"] != operation
+            or starts.get(operation) != START_CLAIMED
+            or driver["distinct_from"] != [operation]
+            or driver["claim_operation_id"] == operation
+        ):
+            raise ValueError(ERROR_REPORT)
+        result.append(
+            {
+                "state": "accepted_start_receipt_and_claim_inputs_matched",
+                "label": label,
+                "operation_id": operation,
+                "session_id": driver["session_id"],
+                "native_session_id": driver["native_session_id"],
+                "claim_operation_id": driver["claim_operation_id"],
+            }
+        )
+        seen.add(label)
     return result
 
 
@@ -801,6 +908,7 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
                 "seal_error",
                 "attempt_ledgers",
                 "drivers",
+                "start_calls",
             }
             or type(row["schema_version"]) is not int
             or row["schema_version"] != 1
@@ -848,6 +956,7 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
             raise ValueError(ERROR_REPORT)
         observed = (set(before) | set(after)) - baseline_ids
         launches = _early_launches(settlement["launches"], root, case)
+        drivers = _early_driver_inputs(row, case, baseline_ids, observed, launches)
         result[case] = {
             "state": "captured_accounting_inputs_checked",
             "project_path": project,
@@ -856,7 +965,8 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
             "public_end_inputs": closures,
             "recorded_start_states": starts,
             "launch_inputs": launches,
-            "driver_inputs": _early_driver_inputs(row, case, baseline_ids, observed, launches),
+            "driver_inputs": drivers,
+            "originating_start_inputs": _early_start_inputs(row, case, drivers, starts),
             "attempt_ledger_inputs": _b4_ledger_inputs(row, root, case),
             "semantic_settlement": "unproven",
             "creator_classification": "unproven",

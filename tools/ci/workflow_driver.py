@@ -216,6 +216,8 @@ def driver_inputs(
             "declared_role": None,
             "inputs": None,
         },
+        "instruction": None,
+        "claim_context": None,
         "claim": {
             "started_ns": None,
             "returned_ns": None,
@@ -228,6 +230,66 @@ def driver_inputs(
     }
     cast(list[creation.EvidenceValue], accounting["drivers"]).append(record)
     return record
+
+
+def assert_instruction(
+    item: str, phase: str, session: str, instruction: str, acts: Sequence[tuple[str, str]], child: str
+) -> None:
+    """Apply the original instruction/ending-act predicates to already captured inputs, without a doc read."""
+    for needle in (item, phase, session, child):
+        if needle not in instruction:
+            raise creation.platform_failure(DETAIL_INSTRUCTION.format(needle=needle, text=instruction[-600:]))
+    rows = [match for match in map(ACT_ROW.match, instruction.split("\n")) if match is not None]
+    for act, phase in acts:
+        targets = [row.group("target") for row in rows if row.group("item") == item and row.group("act") == act]
+        if not targets:
+            raise creation.trace_failure(DETAIL_ACT_ROW_ABSENT.format(item=item, act=act, phase=phase))
+        if any(target != phase for target in targets):
+            raise creation.platform_failure(
+                DETAIL_ACT_ROW.format(item=item, act=act, phase=phase, rows=sorted(set(targets)))
+            )
+
+
+def assert_claim_observation(
+    item: str,
+    phase: str,
+    session: str,
+    held: Json,
+    holds_nothing: Sequence[str],
+    earlier: Sequence[str],
+    known_entries: int,
+) -> None:
+    """Apply the original public claim/log predicates to already captured inputs, without a public read."""
+    creation.require_value(item, held, "state.active_runner", session)
+    creation.require_value(item, held, f"{FIELD_STANDING}.{FIELD_HELD_BY}", session)
+    found, since = creation.dig(held, f"{FIELD_STANDING}.{FIELD_HELD_SINCE}")
+    if not found:
+        raise creation.trace_failure(DETAIL_PATH_ABSENT.format(path=f"{FIELD_STANDING}.{FIELD_HELD_SINCE}"))
+    if not isinstance(since, str) or not since:
+        raise creation.platform_failure(
+            DETAIL_HOLD.format(path="standing.held_since", found=since, expected="non-empty")
+        )
+    creation.require_value(item, held, "state.lifecycle_phase", phase)
+    creation.require_value(item, held, f"{FIELD_STANDING}.phase", phase)
+    creation.require_value(item, held, "state.hold", False)
+    _, log = creation.dig(held, f"artifact_content.{FIELD_LOG}")
+    if not isinstance(log, str):
+        raise creation.trace_failure(DETAIL_PATH_ABSENT.format(path=f"artifact_content.{FIELD_LOG}"))
+    entries = claim_entries(log)
+    if len(entries) != known_entries + len(earlier) + 1:
+        raise creation.platform_failure(DETAIL_LOG_CLAIMS.format(count=len(entries), log=log[-600:]))
+    for previous, (earlier_header, _) in zip(earlier, entries, strict=False):
+        if previous not in earlier_header:
+            raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=previous, entry=earlier_header))
+    header, body = entries[-1]
+    if session not in header:
+        raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=session, entry=header))
+    for needle in (item, session):
+        if needle not in body:
+            raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=needle, entry=body))
+    for other in holds_nothing:
+        if any(other in held_header or other in held_body for held_header, held_body in entries):
+            raise creation.platform_failure(DETAIL_LOG_FORBIDDEN.format(session=other, entry=header))
 
 
 class DriverCase:
@@ -391,20 +453,14 @@ class DriverCase:
     def check_instruction(self, session: str, instruction: str) -> None:
         """The item, phase, session, child procedure and each declared ending act with its phase (amendment A1)."""
         acts, child = declared_acts(self.clone / DOCS_ROOT / f"{self.driver_id}{LIVE_SUFFIX}")
-        for needle in (self.item, self.phase, session, child):
-            if needle not in instruction:
-                raise creation.platform_failure(DETAIL_INSTRUCTION.format(needle=needle, text=instruction[-600:]))
-        rows = [match for match in map(ACT_ROW.match, instruction.split("\n")) if match is not None]
-        for act, phase in acts:
-            targets = [
-                row.group("target") for row in rows if row.group("item") == self.item and row.group("act") == act
-            ]
-            if not targets:
-                raise creation.trace_failure(DETAIL_ACT_ROW_ABSENT.format(item=self.item, act=act, phase=phase))
-            if any(target != phase for target in targets):
-                raise creation.platform_failure(
-                    DETAIL_ACT_ROW.format(item=self.item, act=act, phase=phase, rows=sorted(set(targets)))
-                )
+        if self.case_evidence is not None:
+            self.case_evidence["instruction"] = {
+                "session_id": session,
+                "text": instruction,
+                "child": child,
+                "acts": [list[ledger.JsonValue](row) for row in acts],
+            }
+        assert_instruction(self.item, self.phase, session, instruction, acts, child)
 
     def observe_claim(
         self,
@@ -422,36 +478,14 @@ class DriverCase:
         if self.claim_evidence is not None:
             self.claim_evidence["held"] = cast(ledger.JsonValue, dict(held))
             self.claim_evidence["observed_ns"] = time.monotonic_ns()
-        creation.require_value(item, held, "state.active_runner", session)
-        creation.require_value(item, held, f"{FIELD_STANDING}.{FIELD_HELD_BY}", session)
-        found, since = creation.dig(held, f"{FIELD_STANDING}.{FIELD_HELD_SINCE}")
-        if not found:
-            raise creation.trace_failure(DETAIL_PATH_ABSENT.format(path=f"{FIELD_STANDING}.{FIELD_HELD_SINCE}"))
-        if not isinstance(since, str) or not since:
-            raise creation.platform_failure(
-                DETAIL_HOLD.format(path="standing.held_since", found=since, expected="non-empty")
-            )
-        creation.require_value(item, held, "state.lifecycle_phase", self.phase)
-        creation.require_value(item, held, f"{FIELD_STANDING}.phase", self.phase)
-        creation.require_value(item, held, "state.hold", False)
-        _, log = creation.dig(held, f"artifact_content.{FIELD_LOG}")
-        if not isinstance(log, str):
-            raise creation.trace_failure(DETAIL_PATH_ABSENT.format(path=f"artifact_content.{FIELD_LOG}"))
-        entries = claim_entries(log)
-        if len(entries) != known_entries + len(earlier) + 1:
-            raise creation.platform_failure(DETAIL_LOG_CLAIMS.format(count=len(entries), log=log[-600:]))
-        for previous, (earlier_header, _) in zip(earlier, entries, strict=False):
-            if previous not in earlier_header:
-                raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=previous, entry=earlier_header))
-        header, body = entries[-1]
-        if session not in header:
-            raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=session, entry=header))
-        for needle in (item, session):
-            if needle not in body:
-                raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=needle, entry=body))
-        for other in holds_nothing:
-            if any(other in held_header or other in held_body for held_header, held_body in entries):
-                raise creation.platform_failure(DETAIL_LOG_FORBIDDEN.format(session=other, entry=header))
+        if self.case_evidence is not None:
+            self.case_evidence["claim_context"] = {
+                "session_id": session,
+                "known_entries": known_entries,
+                "earlier": list(earlier),
+                "holds_nothing": list(holds_nothing),
+            }
+        assert_claim_observation(item, self.phase, session, held, holds_nothing, earlier, known_entries)
 
     def close(self, session: str) -> None:
         """Ending the session releases the claim and leaves the phase unchanged."""

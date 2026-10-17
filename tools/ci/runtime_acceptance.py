@@ -1098,6 +1098,7 @@ class FullRuntimeResources:
             "seal_error": None,
             "attempt_ledgers": [],
             "drivers": [],
+            "start_calls": [],
         }
         self.early_workflow[case] = record
         return record

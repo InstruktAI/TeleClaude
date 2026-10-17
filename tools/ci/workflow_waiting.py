@@ -989,7 +989,15 @@ class _Waiting:
 
     def step2_first_driver(self, owner: str) -> tuple[driver.DriverCase, str, str]:
         child_attempt = driver.begin_attempt(self.starts, "session-child")  # the driver\'s plan starts it unsupervised
-        outcome, starter = driver.start_call(self.starts, self.observer, (TELEC, TODO, "prepare", ITEM), "start")
+        outcome, starter = driver.start_call(
+            self.starts,
+            self.observer,
+            (TELEC, TODO, "prepare", ITEM),
+            "start",
+            evidence=cast(list[creation.EvidenceValue], self.accounting["start_calls"])
+            if self.accounting is not None
+            else None,
+        )
         if outcome.exit_status != 0 or starter is None:
             raise creation.platform_failure(
                 DETAIL_RECEIPT.format(status=outcome.exit_status, output=outcome.output[-300:])

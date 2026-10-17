@@ -1033,7 +1033,15 @@ class _Prepared:
 
     # -- steps -----------------------------------------------------------------------------------------------------
     def step1_driver(self) -> tuple[driver.DriverCase, str, str]:
-        outcome, starter = driver.start_call(self.starts, self.observer, (TELEC, TODO, "prepare", ITEM), "start")
+        outcome, starter = driver.start_call(
+            self.starts,
+            self.observer,
+            (TELEC, TODO, "prepare", ITEM),
+            "start",
+            evidence=cast(list[creation.EvidenceValue], self.accounting["start_calls"])
+            if self.accounting is not None
+            else None,
+        )
         if outcome.exit_status != 0 or starter is None:
             raise creation.platform_failure(
                 waiting.DETAIL_RECEIPT.format(status=outcome.exit_status, output=outcome.output[-300:])
@@ -1238,7 +1246,15 @@ class _Prepared:
         self.require_owner_write(before, after)
 
     def step8_work(self, author: str, child: str) -> tuple[driver.DriverCase, str]:
-        outcome, operation = driver.start_call(self.starts, self.observer, (TELEC, TODO, "work", ITEM), "work")
+        outcome, operation = driver.start_call(
+            self.starts,
+            self.observer,
+            (TELEC, TODO, "work", ITEM),
+            "work",
+            evidence=cast(list[creation.EvidenceValue], self.accounting["start_calls"])
+            if self.accounting is not None
+            else None,
+        )
         if outcome.exit_status != 0 or operation is None:
             raise creation.platform_failure(
                 waiting.DETAIL_RECEIPT.format(status=outcome.exit_status, output=outcome.output[-300:])

@@ -717,13 +717,42 @@ def release_attempt(starts: MutableMapping[str, str], key: str) -> None:
 
 
 def start_call(
-    starts: MutableMapping[str, str], observer: creation.Observer, argv: Sequence[str], label: str
+    starts: MutableMapping[str, str],
+    observer: creation.Observer,
+    argv: Sequence[str],
+    label: str,
+    *,
+    evidence: list[creation.EvidenceValue] | None = None,
 ) -> tuple[Outcome, str | None]:
     """One public start verb on the owner terminal, owned before it runs; the operation is parsed whatever its status."""
     key = begin_attempt(starts, label)
-    outcome = observer.run(argv)
-    operation = receipt_operation(outcome.output)
-    settle_attempt(starts, key, operation)
+    packet: creation.EvidenceObject | None = None
+    if evidence is not None:
+        packet = {
+            "label": label,
+            "attempt_key": key,
+            "started_ns": time.monotonic_ns(),
+            "finished_ns": None,
+            "command": None,
+            "operation_id": None,
+            "error": None,
+        }
+        evidence.append(packet)
+    try:
+        outcome = observer.run(argv)
+        if packet is not None:
+            packet["command"] = creation.command_evidence(argv, outcome)
+        operation = receipt_operation(outcome.output)
+        if packet is not None:
+            packet["operation_id"] = operation
+        settle_attempt(starts, key, operation)
+    except BaseException as error:
+        if packet is not None:
+            packet["error"] = f"{type(error).__name__}: {error}"
+        raise
+    finally:
+        if packet is not None:
+            packet["finished_ns"] = time.monotonic_ns()
     return outcome, operation
 
 
