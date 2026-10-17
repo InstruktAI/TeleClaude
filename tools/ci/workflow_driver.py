@@ -114,6 +114,11 @@ def declared_acts(
     source = path.read_text(encoding="utf-8")
     if evidence is not None:
         evidence.append({"kind": "workflow", "path": str(path), "text": source})
+    return parse_declared_acts(source, path)
+
+
+def parse_declared_acts(source: str, path: Path) -> tuple[list[tuple[str, str]], str]:
+    """Apply the original workflow header parser to already-read text; path is diagnostic only."""
     parts = source.split("---", 2)
     lines = parts[1].splitlines() if len(parts) >= 3 else []
     start = next((index for index, line in enumerate(lines) if line.rstrip() == "workflow:"), None)
@@ -150,6 +155,11 @@ def declared_role(path: Path, evidence: list[creation.EvidenceValue] | None = No
         raise creation.trace_failure(DETAIL_ROLE_UNREADABLE.format(path=path)) from error
     if evidence is not None:
         evidence.append({"kind": "role", "path": str(path), "text": source})
+    return parse_declared_role(source, path)
+
+
+def parse_declared_role(source: str, path: Path) -> str:
+    """Apply the original role header parser to already-read text; path is diagnostic only."""
     parts = source.split("---", 2)
     lines = parts[1].splitlines() if len(parts) >= 3 else []
     role = next((m.group("role") for m in map(_ROLE_LINE.match, lines) if m), None)

@@ -6347,7 +6347,7 @@ def validate_provisional_payload_inputs(report_bytes: bytes, manifest: bytes, pa
     _validate_provisional_cleanup_commands(report)
     sessions = validate_flow_session_closure(report)
     starts = validate_flow_start_inputs(report)
-    early = validate_early_inputs(report)
+    early = validate_early_inputs(report, owner_email=_OWNER_SEED_EMAIL, owner_slug=_OWNER_SEED_SLUG)
     return {
         "binding_and_ledger_structure": structure,
         "functional_coverage": list(covered),

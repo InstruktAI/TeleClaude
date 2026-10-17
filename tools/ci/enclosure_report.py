@@ -39,7 +39,13 @@ from tools.ci.enclosure_inner import PROVISIONAL_REPORT_SCHEMA, PROVISIONAL_STAG
 from tools.ci.workflow_creation import collect_slugs
 from tools.ci.workflow_driver import DRIVER_ID as PROC_PREPARE
 from tools.ci.workflow_driver import ROLE as ROLE_PREPARE
-from tools.ci.workflow_driver import assert_claim_observation, assert_instruction, claim_entries
+from tools.ci.workflow_driver import (
+    assert_claim_observation,
+    assert_instruction,
+    claim_entries,
+    parse_declared_acts,
+    parse_declared_role,
+)
 from tools.ci.workflow_flow import (
     B5_ACTIONS,
     B6_ACTIONS,
@@ -81,7 +87,14 @@ from tools.ci.workflow_prepared import (
     text_capability_enabled,
 )
 from tools.ci.workflow_prepared import CONTROL_NAME as PREPARED_CONTROLS
-from tools.ci.workflow_publication import START_CLAIMED, START_REFUSED, TERMINAL_STATES
+from tools.ci.workflow_publication import (
+    CLONE_NAME,
+    DOCS_ROOT,
+    LIVE_SUFFIX,
+    START_CLAIMED,
+    START_REFUSED,
+    TERMINAL_STATES,
+)
 from tools.ci.workflow_ready import FINDING_DOOR, FINDING_WORK, REASON_ONE, REASON_TWO
 from tools.ci.workflow_review import (
     B11_BASE_FEATURE_BYTES,
@@ -933,8 +946,33 @@ def _early_driver_oracles(packet: JsonObject, actor: str, phase: str) -> JsonObj
     return context
 
 
+def _early_declaration_inputs(packet: JsonObject, root: str, procedure: str, role: str) -> JsonObject:
+    reads = packet["declarations"]
+    if not isinstance(reads, list) or len(reads) != 2:
+        raise ValueError(ERROR_REPORT)
+    expected = Path(root) / CLONE_NAME / DOCS_ROOT / f"{procedure}{LIVE_SUFFIX}"
+    sources: list[str] = []
+    for kind, value in zip(("role", "workflow"), reads, strict=True):
+        row = object_value(value)
+        if set(row) != {"kind", "path", "text"} or row["kind"] != kind or row["path"] != str(expected):
+            raise ValueError(ERROR_REPORT)
+        sources.append(text(row, "text"))
+    if sources[0] != sources[1] or parse_declared_role(sources[0], expected) != role:
+        raise ValueError(ERROR_REPORT)
+    acts, child = parse_declared_acts(sources[1], expected)
+    instruction = object_value(packet["instruction"])
+    if instruction["acts"] != [list[JsonValue](pair) for pair in acts] or instruction["child"] != child:
+        raise ValueError(ERROR_REPORT)
+    return {
+        "state": "original_declaration_text_reparsed",
+        "procedure": procedure,
+        "decoded_text_sha256": hashlib.sha256(sources[0].encode("utf-8")).hexdigest(),
+        "publication_binding": "unproven",
+    }
+
+
 def _early_driver_inputs(
-    row: JsonObject, case: str, baseline: set[str], observed: set[str], launches: list[JsonValue]
+    row: JsonObject, case: str, baseline: set[str], observed: set[str], launches: list[JsonValue], root: str
 ) -> JsonObject:
     expected = (
         {
@@ -1020,6 +1058,7 @@ def _early_driver_inputs(
             "claim_operation_id": operation,
             "expected_new": startup["expected_new"],
             "claim_context": _early_driver_oracles(packet, actor, phase),
+            "declaration_inputs": _early_declaration_inputs(packet, root, procedure, role),
             "distinct_from": object_value(packet["claim"])["distinct_from"],
             "originating_start_settlement": "unproven",
         }
@@ -2196,7 +2235,73 @@ def _early_effect_inputs(
     }
 
 
-def validate_early_inputs(report: JsonObject) -> JsonObject:
+def _early_owner_inputs(
+    row: JsonObject,
+    case: str,
+    expected_email: str,
+    expected_person: str,
+    effects: JsonObject,
+    previous: JsonObject,
+) -> JsonObject:
+    value = row["owner_auth"]
+    if case == "B4":
+        b3 = object_value(previous["B3"])
+        owner = object_value(b3["owner_inputs"])
+        if (
+            value is not None
+            or owner.get("email") != expected_email
+            or owner.get("person_slug") != expected_person
+            or object_value(effects["B9_inputs"]).get("person") != expected_person
+        ):
+            raise ValueError(ERROR_REPORT)
+        return {
+            "state": "same_profile_B3_public_owner_inputs",
+            "email": expected_email,
+            "person_slug": expected_person,
+            "runtime_generation_binding": "unproven",
+        }
+    packet = object_value(value)
+    commands = packet["commands"]
+    actors = cast(list[JsonValue], row["actors"])
+    owner = next(object_value(value) for value in actors if object_value(value)["name"] == "owner")
+    if (
+        set(packet) != {"started_ns", "finished_ns", "expected_email", "person_slug", "commands"}
+        or packet["expected_email"] != expected_email
+        or packet["person_slug"] != expected_person
+        or effects["person"] != expected_person
+        or owner["expected_principal"] != f"human:{expected_email}"
+        or not positive_integer(row, "started_ns")
+        <= positive_integer(packet, "started_ns")
+        <= positive_integer(packet, "finished_ns")
+        <= positive_integer(owner, "started_ns")
+        or not isinstance(commands, list)
+        or len(commands) != 2
+    ):
+        raise ValueError(ERROR_REPORT)
+    who = _command_output(commands[0], [creation.TELEC, "auth", "whoami"])
+    emails = [
+        line.partition(": ")[2].strip() for line in who.replace("\r\n", "\n").split("\n") if line.startswith("Email: ")
+    ]
+    person = _public_session_command(
+        commands[1], [creation.TELEC, "config", "person", "get", expected_person, "--format", "json"]
+    )
+    roles = person.get("roles")
+    if (
+        emails != [expected_email]
+        or not isinstance(roles, list)
+        or not any(isinstance(role, Mapping) and role.get("platform") == "admin" for role in roles)
+    ):
+        raise ValueError(ERROR_REPORT)
+    return {
+        "state": "original_B3_public_owner_inputs_matched",
+        "email": expected_email,
+        "person_slug": expected_person,
+        "owner_session_id": owner["session_id"],
+        "runtime_generation_binding": "unproven",
+    }
+
+
+def validate_early_inputs(report: JsonObject, *, owner_email: str, owner_slug: str) -> JsonObject:
     """Reparse original B3/B4 accounting inputs; listings/legacy labels/PIDs establish no physical closure or P2."""
     provisional = object_value(report["payload_provisional"])
     binding, observations = object_value(provisional["binding"]), object_value(provisional["observations"])
@@ -2284,9 +2389,11 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
             raise ValueError(ERROR_REPORT)
         observed = (set(before) | set(after)) - baseline_ids
         launches = _early_launches(settlement["launches"], root, case)
-        drivers = _early_driver_inputs(row, case, baseline_ids, observed, launches)
+        drivers = _early_driver_inputs(row, case, baseline_ids, observed, launches, root)
         other_actors = _other_actor_inputs(row, case, baseline_ids, observed, launches, drivers)
         ledger = _b4_ledger_inputs(row, root, case)
+        effects = _early_effect_inputs(row, case, drivers, other_actors, ledger)
+        owner = _early_owner_inputs(row, case, owner_email, owner_slug, effects, result)
         result[case] = {
             "state": "captured_accounting_inputs_checked",
             "project_path": project,
@@ -2298,7 +2405,8 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
             "driver_inputs": drivers,
             "other_actor_inputs": other_actors,
             "explicit_end_inputs": _early_end_inputs(row, case, drivers, other_actors, ledger),
-            "effect_inputs": _early_effect_inputs(row, case, drivers, other_actors, ledger),
+            "effect_inputs": effects,
+            "owner_inputs": owner,
             "originating_start_inputs": _early_start_inputs(row, case, drivers, starts),
             "attempt_ledger_inputs": ledger,
             "semantic_settlement": "unproven",
