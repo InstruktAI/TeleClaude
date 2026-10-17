@@ -11,7 +11,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Final
+from typing import Final, Never
 
 from tools.ci.enclosure_contract import (
     Action,
@@ -32,14 +32,15 @@ from tools.ci.enclosure_data import (
     stage_guest_archives,
     stage_guest_declarations,
 )
+from tools.ci.enclosure_dpkg import DpkgInputError, collect_install_inputs
 from tools.ci.enclosure_guest import close_evidence_descriptors
 from tools.ci.enclosure_guest_evidence import EvidenceLeaf, read_guest_evidence
 from tools.ci.enclosure_guest_manifest import publish_guest_manifest
-from tools.ci.enclosure_host import inspect_host_substrate
+from tools.ci.enclosure_host import HostSubstrateFacts, inspect_host_substrate
 from tools.ci.enclosure_inputs import acquire_fixed_inputs, stage_observer_library
 from tools.ci.enclosure_journal import ActionResult
 from tools.ci.enclosure_native import query_native
-from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, selection_argument
+from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, _write_private_file, selection_argument
 from tools.ci.enclosure_owner import Key as OwnerKey
 from tools.ci.enclosure_payload_completion import validate_shutdown_journal
 from tools.ci.enclosure_privileged import PrivilegedAction
@@ -94,6 +95,7 @@ HOST_NETWORK_ARGUMENTS: Final = (
 )
 ERROR_HOST_NETWORK: Final = "the reviewed host network manager is not active"
 ERROR_HOST_INSTALL: Final = "the absent-container installation branch is not yet implemented"
+INSTALL_INPUTS_FILE: Final = "host-install-inputs.json"
 
 
 class Key(StrEnum):
@@ -349,6 +351,37 @@ def _create_parent(context: PrivilegedAction, end_ns: int) -> NativeMutation:
     return NativeMutation(Action.CREATE_PARENT, evidence)
 
 
+def _record_install_inputs(context: PrivilegedAction, inputs: JsonObject, deadline: AdmittedDeadline) -> None:
+    if time.monotonic_ns() >= deadline.effective_end():
+        raise TimeoutError(ERROR_NATIVE)
+    record: JsonObject = {"binding": context.owner.journal.owner_record, "package_inputs": inputs}
+    _write_private_file(
+        context.owner.journal.directory_fd,
+        INSTALL_INPUTS_FILE,
+        json.dumps(record, sort_keys=True, separators=(",", ":"), allow_nan=False).encode(UTF8),
+    )
+    if time.monotonic_ns() >= deadline.effective_end():
+        raise TimeoutError(ERROR_NATIVE)
+
+
+def _absent_container_inputs(
+    context: PrivilegedAction, substrate: HostSubstrateFacts, deadline: AdmittedDeadline, cap: int
+) -> Never:
+    try:
+        inputs = collect_install_inputs(context.owner.package, substrate, context.commands.query, deadline, cap)
+    except DpkgInputError as error:
+        try:
+            _record_install_inputs(context, error.snapshot, deadline)
+        except (OSError, ValueError, RuntimeError, TypeError) as secondary:
+            error.add_note(f"retaining package inputs also failed: {type(secondary).__name__}: {secondary}")
+        raise
+    _record_install_inputs(context, inputs, deadline)
+    if inputs["state"] == "blocked":
+        raise DpkgInputError(inputs)
+    # Actual affected-recipient/source/pending admission and package command composition are still owed.
+    raise NotImplementedError(ERROR_HOST_INSTALL)
+
+
 def _provision(context: PrivilegedAction, end_ns: int) -> NativeMutation:
     """Compose fixed offline data staging; native receipts remain separate from the parent's preflight proof."""
     owner = context.owner
@@ -370,8 +403,7 @@ def _provision(context: PrivilegedAction, end_ns: int) -> NativeMutation:
         frozenset({text(record, OwnerKey.PARENT_UNIT), text(record, OwnerKey.GUEST_UNIT)}),
     )
     if not substrate.container_installed:
-        # This source prefix must not claim the still-owed host installation or its observed effects.
-        raise NotImplementedError(ERROR_HOST_INSTALL)
+        _absent_container_inputs(context, substrate, deadline, cap)
     base = Path(PARENT_DESCRIPTOR.format(pid=binding.controller.pid, descriptor=owner.inherited_directory_fd))
     inputs = acquire_fixed_inputs(package, base / ARCHIVE_DIRECTORY, context.commands.run, deadline)
     library = stage_observer_library(owner, inputs, context.commands.run, deadline)

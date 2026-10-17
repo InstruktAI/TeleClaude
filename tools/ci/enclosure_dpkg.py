@@ -1318,3 +1318,61 @@ def inspect_package_work(query: NativeQuery, deadline: AdmittedDeadline, cap: in
         raise DpkgInputError(result) from error
     finally:
         result["finished_ns"] = time.monotonic_ns()
+
+
+def collect_install_inputs(
+    package: StaticPackage, host: HostSubstrateFacts, query: NativeQuery, deadline: AdmittedDeadline, cap: int
+) -> JsonObject:
+    """Compose actual pre-effect inputs, stopping known incompatible branches without admitting a package action."""
+    result: JsonObject = {
+        "started_ns": time.monotonic_ns(),
+        "finished_ns": None,
+        "state": "unproven",
+        "mode": "unproven",
+        "recipient_source_and_pending_admission": "unproven",
+        "error": None,
+    }
+    try:
+        _before_cutoff(deadline)
+        if host.container_installed:
+            raise ValueError("absent-container input collection was requested for an installed container")
+        inputs = read_install_inputs(deadline)
+        result["inputs"] = inputs
+        configuration = parse_install_configuration(inputs, deadline)
+        result["configuration"] = configuration
+        effects = bound_configuration_effects(configuration, deadline)
+        result["configuration_scope"] = effects
+        if effects["state"] != "bounded_for_fixed_commands":
+            result["state"] = "blocked"
+            result["reason"] = "native configuration does not bound the permitted package effects"
+            return result
+        options = effects["effects"]
+        if not isinstance(options, list):
+            raise ValueError(ERROR_INPUT)
+        if any(object_value(option)["option"] in ("no-act", "dry-run", "simulate") for option in options):
+            result["mode"] = "native_nonwriting_simulation"
+            result["state"] = "blocked"
+            result["reason"] = "native simulation cannot satisfy actual installation of the absent required container"
+            return result
+        result["mode"] = "ordinary_writing_installation_if_native_action_reached"
+        result["deferred"] = parse_deferred_inputs(inputs, deadline)
+        initialization = inspect_initialization_compatibility(inputs, host, package, deadline)
+        result["initialization"] = initialization
+        if initialization["writing_initialization_compatibility"] == "incompatible":
+            result["state"] = "blocked"
+            result["reason"] = initialization["reason"]
+            return result
+        result["dbus_control_sources"] = bind_dbus_control_sources(inputs, package, deadline)
+        result["package_work"] = inspect_package_work(query, deadline, cap)
+        result["state"] = "inputs_collected_not_admitted"
+        _before_cutoff(deadline)
+        return result
+    except DpkgInputError as error:
+        result["failed_input"] = error.snapshot
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError(result) from error
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError(result) from error
+    finally:
+        result["finished_ns"] = time.monotonic_ns()
