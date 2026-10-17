@@ -18,6 +18,10 @@ the agent_runtime store, unique per caller-target pair. Notifications are
 semantic control payloads handed to the control-delivery surface. They are an
 asymmetric, passive channel: the target neither subscribes back nor sees who
 is listening. The use cases below define which observations reach each audience.
+Turn-end notices are deduplicated per target, caller, and target turn: an
+accepted new input from the caller opens one new notice opportunity, while
+hook-side feedback and internal reminders neither reopen it nor create a
+duplicate notice.
 
 This is distinct from — and intentionally separated from — the bidirectional **direct conversation link** mechanism. A direct link is a symmetric, peered conversation channel between two sessions; a listener is a one-way notification subscription. The unsubscribe surface (`telec sessions unsubscribe`) is the umbrella verb that severs BOTH for the caller against a target, but the two state planes are independent. While an active direct link exists between caller and target, turn-end notifications for that pair are suppressed at delivery time — the active conversation channel supersedes passive notification for the duration of the link, and the listener row is preserved for resumption after the link is severed. Distress notifications are not suppressed. The direct-link mechanism gets its own spec.
 
@@ -61,29 +65,16 @@ And nonterminal attention preserves distinct source occurrences through the exis
 And a runtime signal the platform admits into none of those states reaches no audience at all
 ```
 
-#### UC-SS1: Re-poke clears the per-turn dedup flag
+#### UC-SS1: A caller receives one completion notice for each new target turn
 
 ```
-Given target session T has a registered listener for caller session C
-And C has already been notified once in T's current turn
-When C re-pokes T via `telec sessions send` and the `[Orchestrator ...]` message is typed into T
-And T finishes its next turn
-Then T's `user_prompt_submit` for the orchestrator message is treated as a real turn
-And the prompt event is enqueued for daemon processing
-And T's per-target notification dedup flag is cleared
-And `notify-stop(T)` delivers exactly one new stop notification to C for that completed turn
+Scenario: A new turn is reported after the caller sends input
+  Given caller C has already received a completion notice for target T's previous turn
+  When C sends new input to T and T completes its next turn
+  Then C receives exactly one completion notice for that new turn
 ```
 
 #### UC-SS2: Hook side-channel artifacts do not clear the dedup flag
-
-```
-Given target session T has its per-target notification dedup flag set for the current turn
-When a checkpoint Stop-hook feedback prompt or a CLI-internal `<system-reminder>` artifact arrives at the hook receiver
-Then the prompt artifact is dropped as a hook side-channel artifact
-And no `user_prompt_submit` event is enqueued for daemon processing
-And T's per-target notification dedup flag remains set
-And no duplicate stop notification is delivered for the same turn
-```
 
 #### UC-SS11: A caller in a live conversation with its target is not also sent that target's turn-end notice
 
