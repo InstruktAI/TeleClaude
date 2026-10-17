@@ -86,6 +86,8 @@ And no change of session role is needed to retrieve that help
 
 #### UC-CH3: A restricted agent receives only permitted help
 
+#### UC-CH4: A roleless session receives a useful expansion refusal
+
 #### UC-CH5: An operator explores a command namespace before choosing a command
 
 ```gherkin
