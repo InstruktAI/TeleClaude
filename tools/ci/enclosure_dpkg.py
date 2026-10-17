@@ -1954,7 +1954,7 @@ def interpret_work_host_packages(package: StaticPackage, work: JsonObject, deadl
         raise DpkgInputError({"package_work": work, "host_package_inputs": result}) from error
 
 
-def _info_link_input(path: Path, deadline: AdmittedDeadline, captures: list[JsonValue]) -> None:
+def _info_link_input(path: Path, deadline: AdmittedDeadline, captures: list[JsonValue]) -> JsonObject:
     """Capture native link/unlink operands without reading arbitrary control-file bodies or following link sources."""
     row: JsonObject = {"path": str(path), "present": None, "started_ns": time.monotonic_ns(), "finished_ns": None}
     captures.append(row)
@@ -1965,17 +1965,19 @@ def _info_link_input(path: Path, deadline: AdmittedDeadline, captures: list[Json
         except FileNotFoundError:
             row["present"] = False
             _before_cutoff(deadline)
-            return
+            return row
         row["present"] = True
-        row["before"] = _identity(before)
+        row["before"] = {**_identity(before), "links": before.st_nlink}
         if stat.S_ISLNK(before.st_mode):
             row["link_target_base64"] = base64.b64encode(os.fsencode(os.readlink(path))).decode("ascii")
         _before_cutoff(deadline)
-        after = _identity(path.lstat())
+        native_after = path.lstat()
+        after: JsonObject = {**_identity(native_after), "links": native_after.st_nlink}
         row["after"] = after
         if row["before"] != after:
             raise ValueError(ERROR_INPUT)
         _before_cutoff(deadline)
+        return row
     finally:
         row["finished_ns"] = time.monotonic_ns()
 
@@ -2017,14 +2019,17 @@ def inspect_info_upgrade_inputs(info_format: JsonObject, work: JsonObject, deadl
         result["directory_before"] = _identity(before)
         # atomic_file_open truncates format-new before the native directory walk, and follows an existing symlink.
         new_format = directory / "format-new"
-        _info_link_input(new_format, deadline, operands)
-        result["format_new_physical_path"] = str(_protected_path(new_format, deadline))
-        captured: set[Path] = {new_format}
+        captured = {new_format: _info_link_input(new_format, deadline, operands)}
+        physical_format = _protected_path(new_format, deadline)
+        result["format_new_physical_path"] = str(physical_format)
 
-        def capture(path: Path) -> None:
+        def capture(path: Path) -> JsonObject:
             if path not in captured:
-                captured.add(path)
-                _info_link_input(path, deadline, operands)
+                captured[path] = _info_link_input(path, deadline, operands)
+            return captured[path]
+
+        # Native fopen follows this address, whereas native link/unlink use the named source object itself.
+        capture(physical_format)
 
         with os.scandir(directory) as stream:
             for entry in stream:
@@ -2058,9 +2063,19 @@ def inspect_info_upgrade_inputs(info_format: JsonObject, work: JsonObject, deadl
                         + name[dot + 1 :]
                     )
                     target = directory / os.fsdecode(target_name)
-                    destinations.append({"source": str(source), "destination": str(target)})
-                    capture(source)
-                    capture(target)
+                    link: JsonObject = {
+                        "source": str(source),
+                        "destination": str(target),
+                        "same_nofollow_object_at_capture": None,
+                    }
+                    destinations.append(link)
+                    source_input, target_input = capture(source), capture(target)
+                    if source_input["present"] is True and target_input["present"] is True:
+                        source_identity = object_value(source_input["before"])
+                        target_identity = object_value(target_input["before"])
+                        link["same_nofollow_object_at_capture"] = all(
+                            source_identity[key] == target_identity[key] for key in ("device", "inode")
+                        )
         after = _identity(directory.stat())
         result["directory_after"] = after
         if result["directory_before"] != after:
