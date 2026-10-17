@@ -170,7 +170,7 @@ Scenario: Use a remote service with environment-backed headers
   Given an operator has configured a remote MCP server with headers that refer to available environment secrets
   When their assistant lists the server's tools
   Then the remote server starts and returns its advertised tools
-  And resolved header values reach the server through its process environment, not its launch arguments
+  And resolved header values are supplied to the local proxy process through its environment and sent to the remote server as headers, not as process arguments
   And server-provided tool metadata and results are returned unchanged rather than secret-redacted
 ```
 

@@ -55,11 +55,13 @@ deciding host availability from close intent.
 
 ### Process and startup ownership
 
-The host-pane process tree exits before its per-session temporary directory is
-removed. If the reap cannot confirm exit within its bound, cleanup records the
-surviving process ids and continues toward the final lifecycle write. During
-startup, the expected host-pane name for a session whose binding is not yet
-persisted still counts as owned, so the orphan sweep cannot terminate it.
+Cleanup attempts to resolve and reap the host-pane process tree within a bound
+before removing its per-session temporary directory. If the tree cannot be
+resolved or exit remains unconfirmed at timeout, cleanup proceeds with
+temporary-directory removal and the final lifecycle write; known surviving
+process ids are recorded. During startup, the expected host-pane name for a
+session whose binding is not yet persisted still counts as owned, so the orphan
+sweep cannot terminate it.
 
 ### Use cases
 
