@@ -35,42 +35,25 @@ message and then ends. Its conduct is governed by `personal/policy/assistant-con
 #### UC-PWD1: An agent starts a person's assistant with only a brief
 
 ```gherkin
-Given an agent session is authenticated and resolves to a person
-When that agent invokes the personal-assistant launch command with a brief
-Then a new agent session starts in that person's own workspace
-And the session receives the brief as its opening instruction
-And the agent supplied no path, no subfolder, no computer, and no person
+Scenario: Start the caller's assistant with a brief
+  Given an agent session is authenticated and resolves to a person
+  When that agent invokes the personal-assistant launch command with a brief
+  Then a new agent session starts in that person's own workspace
+  And the session receives the brief as its opening instruction
+  And the agent supplied no path, no subfolder, no computer, and no person
+
+Scenario: Refuse when no person resolves for the caller
+  Given an authenticated session whose caller resolves to no person
+  When it invokes the personal-assistant launch command
+  Then the launch is refused with a reason that no person could be resolved
+  And no session is started in any person's workspace
 ```
 
 #### UC-PWD2: The launch surface offers no way to name a person
 
-```gherkin
-Given an agent inspects the personal-assistant launch command
-When the agent reads its accepted arguments
-Then an optional brief is the only value the command accepts
-And no argument, flag, or alternate form names a person
-And an invocation that attempts to name a person is rejected rather than honored or ignored
-```
-
 #### UC-PWD3: Platform authority does not widen the call
 
-```gherkin
-Given an authenticated agent session whose caller holds the platform administrator role
-When that agent invokes the personal-assistant launch command
-Then the session starts in the administrator's own person workspace
-And the command behaves identically to any other caller's invocation
-And no other person's workspace becomes reachable through the launch by virtue of that role
-```
-
 #### UC-PWD4: A caller that resolves to no person is refused
-
-```gherkin
-Given an authenticated session whose caller resolves to no person
-When that session invokes the personal-assistant launch command
-Then the launch is refused
-And the refusal states that no person could be resolved for the caller
-And no session is started in any person's workspace
-```
 
 #### UC-PWD5: The general session verbs still reach a person workspace
 
@@ -92,22 +75,7 @@ And the launched session determines for itself which of the person's procedures 
 
 #### UC-PWD7: The launched session has no parent and ends itself
 
-```gherkin
-Given an agent invokes the personal-assistant launch command
-When the session it starts finishes the work the brief described
-Then no parent was recorded for that session
-And the session ends itself rather than waiting to be ended
-And anything the person needs to see was delivered as a message rather than as a result a caller collects
-```
-
 #### UC-PWD8: The brief arrives without added framing
-
-```gherkin
-Given an authenticated agent session resolves to a person
-When that agent invokes the personal-assistant launch command with a brief
-Then the launched assistant receives the supplied brief unchanged
-And the launch adds no instructions or framing to the brief
-```
 
 #### UC-PWD9: A caller starts an assistant without a brief
 
