@@ -34,6 +34,8 @@ from tools.ci.enclosure_guest import Key as GuestKey
 from tools.ci.enclosure_guest import Purpose
 from tools.ci.enclosure_inner import PROVISIONAL_REPORT_SCHEMA, PROVISIONAL_STAGE, LedgerEvidence, PendingReason
 from tools.ci.workflow_creation import collect_slugs
+from tools.ci.workflow_driver import DRIVER_ID as PROC_PREPARE
+from tools.ci.workflow_driver import ROLE as ROLE_PREPARE
 from tools.ci.workflow_flow import (
     B5_ACTIONS,
     B6_ACTIONS,
@@ -354,6 +356,8 @@ def _event_early_links(
         inputs = object_value(early[case])
         if case == "B3":
             actors = tuple(text(data, key) for key in ("owner", "first_driver", "child", "dispatched", "second_driver"))
+            driver_actors = {"first": data["first_driver"], "second": data["second_driver"]}
+            expected_new = {"first": {text(data, "owner"), text(data, "first_driver")}, "second": set(actors)}
         else:
             actors = _strings(data["sessions"])
             outsiders = object_value(data["outsider_sessions"])
@@ -368,6 +372,18 @@ def _event_early_links(
             sessions = object_value(ledger["session_ids"])
             if sessions != {SESSION_S_P: outsiders["S_P"], SESSION_X: outsiders["X"]}:
                 raise ValueError(ERROR_REPORT)
+            driver_actors = {"author": data["author"], "worker": data["worker"]}
+            expected_new = {
+                "author": {text(data, "author"), text(outsiders, "S_P"), text(outsiders, "X")},
+                "worker": set(actors),
+            }
+        driver_inputs = object_value(inputs["driver_inputs"])
+        if set(driver_inputs) != set(driver_actors) or any(
+            object_value(driver_inputs[name])["session_id"] != actor
+            or set(_strings(object_value(driver_inputs[name])["expected_new"])) != expected_new[name]
+            for name, actor in driver_actors.items()
+        ):
+            raise ValueError(ERROR_REPORT)
         if (
             len(actors) != len(set(actors))
             or inputs["project_path"] != binding.project_path
@@ -577,6 +593,183 @@ def _b4_ledger_inputs(row: JsonObject, root: str, case: str) -> JsonObject:
     }
 
 
+def _early_driver_startup(
+    startup: JsonObject, project: str, procedure: str, role: str, baseline: set[str], started: int, finished: int
+) -> tuple[str, str]:
+    if (
+        set(startup)
+        != {
+            "started_ns",
+            "observed_ns",
+            "session_id",
+            "expected_new",
+            "list",
+            "launch",
+            "owned_executable",
+            "hooks",
+            "record",
+            "declared_role",
+            "inputs",
+        }
+        or not started
+        <= positive_integer(startup, "started_ns")
+        <= positive_integer(startup, "observed_ns")
+        <= finished
+    ):
+        raise ValueError(ERROR_REPORT)
+    actor = text(startup, "session_id")
+    lists = startup["list"]
+    expected = set(_identity_list(startup["expected_new"]))
+    if (
+        not isinstance(lists, list)
+        or len(lists) != 1
+        or actor not in expected
+        or set(_early_session_list(lists[0])) - baseline != expected
+    ):
+        raise ValueError(ERROR_REPORT)
+    launch = object_value(startup["launch"])
+    record = object_value(startup["record"])
+    owned = text(startup, "owned_executable")
+    native = text(launch, "native_session_id")
+    if (
+        launch.get("executable") != owned
+        or launch.get("resolved_command") != owned
+        or record.get("session_id") != actor
+        or record.get("native_session_id") != native
+        or record.get("project_path") != project
+        or record.get("active_agent") != "claude"
+        or record.get("lifecycle_status") != "active"
+        or record.get("runtime_start_observed") is not True
+        or record.get("closed_at") is not None
+        or record.get("role") != role
+        or startup["declared_role"] != role
+        or record.get("job") != procedure
+        or record.get("title") != f"{role} {ITEM}"
+    ):
+        raise ValueError(ERROR_REPORT)
+    hooks = startup["hooks"]
+    inputs = startup["inputs"]
+    if not isinstance(hooks, list) or len(hooks) != 2 or not isinstance(inputs, list) or not inputs:
+        raise ValueError(ERROR_REPORT)
+    frames: JsonObject = {}
+    for value, name in zip(hooks, ("session_start", "prompt_submit"), strict=True):
+        packet = object_value(value)
+        if set(packet) != {"name", "frame"} or packet["name"] != name:
+            raise ValueError(ERROR_REPORT)
+        frames[name] = packet["frame"]
+    first = text(object_value(inputs[0]), "text")
+    if procedure not in first:
+        raise ValueError(ERROR_REPORT)
+    _message_hooks({"hooks": frames, "inputs": inputs}, native, first)
+    return actor, native
+
+
+def _early_driver_claim(
+    claim: JsonObject, actor: str, role: str, verb: str, phase: str, started: int, finished: int
+) -> str:
+    if (
+        set(claim) != {"started_ns", "returned_ns", "observed_ns", "frame", "terminal", "held", "distinct_from"}
+        or not started
+        <= positive_integer(claim, "started_ns")
+        <= positive_integer(claim, "returned_ns")
+        <= positive_integer(claim, "observed_ns")
+        <= finished
+    ):
+        raise ValueError(ERROR_REPORT)
+    operation = _pane_operation(claim["frame"], ["telec", "todo", verb, ITEM])
+    terminal = object_value(claim["terminal"])
+    if (
+        operation in _strings(claim["distinct_from"])
+        or terminal.get("operation_id") != operation
+        or terminal.get("state") != "completed"
+        or terminal.get("error") not in (None, "")
+    ):
+        raise ValueError(ERROR_REPORT)
+    instruction = text(terminal, "result")
+    if any(needle not in instruction for needle in (ITEM, actor, phase)):
+        raise ValueError(ERROR_REPORT)
+    _claimed_holder(object_value(claim["held"]), actor, phase, role)
+    return operation
+
+
+def _early_driver_inputs(
+    row: JsonObject, case: str, baseline: set[str], observed: set[str], launches: list[JsonValue]
+) -> JsonObject:
+    expected = (
+        {
+            "first": (1, PROC_PREPARE, "prepare", "preparation", ROLE_PREPARE),
+            "second": (4, PROC_PREPARE, "prepare", "preparation", ROLE_PREPARE),
+        }
+        if case == "B3"
+        else {
+            "author": (2, PROC_PREPARE, "prepare", "preparation", ROLE_PREPARE),
+            "worker": (4, PROC_WORK, "work", "work", ROLE_WORK),
+        }
+    )
+    values = row["drivers"]
+    if not isinstance(values, list) or len(values) != len(expected):
+        raise ValueError(ERROR_REPORT)
+    result: JsonObject = {}
+    native_ids: set[str] = set()
+    for value in values:
+        packet = object_value(value)
+        name = text(packet, "name")
+        if (
+            set(packet) != {"name", "slot", "procedure", "verb", "phase", "startup", "claim"}
+            or name not in expected
+            or name in result
+        ):
+            raise ValueError(ERROR_REPORT)
+        slot, procedure, verb, phase, role = expected[name]
+        if (
+            type(packet["slot"]) is not int
+            or packet["slot"] != slot
+            or packet["procedure"] != procedure
+            or packet["verb"] != verb
+            or packet["phase"] != phase
+        ):
+            raise ValueError(ERROR_REPORT)
+        startup = object_value(packet["startup"])
+        actor, native = _early_driver_startup(
+            startup,
+            text(row, "project_path"),
+            procedure,
+            role,
+            baseline,
+            positive_integer(row, "started_ns"),
+            positive_integer(row, "finished_ns"),
+        )
+        if actor not in observed or native in native_ids:
+            raise ValueError(ERROR_REPORT)
+        native_ids.add(native)
+        slot_input = object_value(launches[slot])
+        recorded = slot_input.get("launches")
+        pid = positive_integer(object_value(startup["launch"]), "pid")
+        if not isinstance(recorded, list) or not any(
+            object_value(value).get("native_session_id") == native and object_value(value).get("pid") == pid
+            for value in recorded
+        ):
+            raise ValueError(ERROR_REPORT)
+        operation = _early_driver_claim(
+            object_value(packet["claim"]),
+            actor,
+            role,
+            verb,
+            phase,
+            positive_integer(row, "started_ns"),
+            positive_integer(row, "finished_ns"),
+        )
+        result[name] = {
+            "state": "native_startup_and_claim_inputs_matched",
+            "session_id": actor,
+            "native_session_id": native,
+            "claim_operation_id": operation,
+            "expected_new": startup["expected_new"],
+            "originating_start_settlement": "unproven",
+        }
+    return result
+
+
 def validate_early_inputs(report: JsonObject) -> JsonObject:
     """Reparse original B3/B4 accounting inputs; listings/legacy labels/PIDs establish no physical closure or P2."""
     provisional = object_value(report["payload_provisional"])
@@ -607,6 +800,7 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
                 "cleanup_error",
                 "seal_error",
                 "attempt_ledgers",
+                "drivers",
             }
             or type(row["schema_version"]) is not int
             or row["schema_version"] != 1
@@ -653,6 +847,7 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
         if any(not key or value not in (START_CLAIMED, START_REFUSED) for key, value in starts.items()):
             raise ValueError(ERROR_REPORT)
         observed = (set(before) | set(after)) - baseline_ids
+        launches = _early_launches(settlement["launches"], root, case)
         result[case] = {
             "state": "captured_accounting_inputs_checked",
             "project_path": project,
@@ -660,7 +855,8 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
             "missing_after_session_ids": list[JsonValue](sorted(set(before) - set(after) - baseline_ids)),
             "public_end_inputs": closures,
             "recorded_start_states": starts,
-            "launch_inputs": _early_launches(settlement["launches"], root, case),
+            "launch_inputs": launches,
+            "driver_inputs": _early_driver_inputs(row, case, baseline_ids, observed, launches),
             "attempt_ledger_inputs": _b4_ledger_inputs(row, root, case),
             "semantic_settlement": "unproven",
             "creator_classification": "unproven",
@@ -1299,7 +1495,7 @@ def _declared_snapshot(value: JsonValue, cases: tuple[str, ...]) -> LedgerEviden
     return snapshot
 
 
-def _claimed_holder(held: JsonObject, actor: str, phase: str) -> None:
+def _claimed_holder(held: JsonObject, actor: str, phase: str, role: str = ROLE_WORK) -> None:
     state = object_value(held["state"])
     standing = object_value(held["standing"])
     if (
@@ -1316,7 +1512,7 @@ def _claimed_holder(held: JsonObject, actor: str, phase: str) -> None:
     if (
         not claims
         or claims[-1].session != actor
-        or claims[-1].role != ROLE_WORK
+        or claims[-1].role != role
         or ITEM not in claims[-1].body
         or actor not in claims[-1].body
     ):

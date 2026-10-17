@@ -1088,6 +1088,7 @@ class _Prepared:
             driver_id=driver_id,
             verb=verb,
             phase=phase,
+            case_evidence=driver.driver_inputs(self.accounting, name, index, driver_id, verb, phase),
         )
 
     def _startup(self, session: str, journey: foundation.Journey, index: int) -> None:

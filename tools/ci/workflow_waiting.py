@@ -1032,6 +1032,9 @@ class _Waiting:
             launch_setup=self.setups[index],
             clone=self.clone,
             baseline=self.baseline,
+            case_evidence=driver.driver_inputs(
+                self.accounting, name, index, driver.DRIVER_ID, "prepare", PHASE_PREPARATION
+            ),
         )
 
     def step3_before_waiting(self, first: str, child: str) -> None:

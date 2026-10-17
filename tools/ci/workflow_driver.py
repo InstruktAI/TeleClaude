@@ -191,6 +191,45 @@ start_call = publication.start_call
 release_attempt = publication.release_attempt
 
 
+def driver_inputs(
+    accounting: creation.EvidenceObject | None, name: str, slot: int, procedure: str, verb: str, phase: str
+) -> ledger.JsonObject | None:
+    """Retain the existing early driver's actual startup and claim inputs, without another invocation."""
+    if accounting is None:
+        return None
+    record: ledger.JsonObject = {
+        "name": name,
+        "slot": slot,
+        "procedure": procedure,
+        "verb": verb,
+        "phase": phase,
+        "startup": {
+            "started_ns": None,
+            "observed_ns": None,
+            "session_id": None,
+            "expected_new": [],
+            "list": [],
+            "launch": None,
+            "owned_executable": None,
+            "hooks": [],
+            "record": None,
+            "declared_role": None,
+            "inputs": None,
+        },
+        "claim": {
+            "started_ns": None,
+            "returned_ns": None,
+            "observed_ns": None,
+            "frame": None,
+            "terminal": None,
+            "held": None,
+            "distinct_from": None,
+        },
+    }
+    cast(list[creation.EvidenceValue], accounting["drivers"]).append(record)
+    return record
+
+
 class DriverCase:
     """The evidence of one driver session of one item."""
 
@@ -208,6 +247,7 @@ class DriverCase:
         verb: str = PREPARE,
         phase: str = PHASE,
         claim_evidence: ledger.JsonObject | None = None,
+        case_evidence: ledger.JsonObject | None = None,
     ) -> None:
         self.driver_id = driver_id
         self.phase = phase
@@ -220,11 +260,26 @@ class DriverCase:
         self.baseline = baseline
         self.claim_argv = ("telec", TODO, verb, item)
         self.titles: dict[str, str] = {}
-        self.claim_evidence = claim_evidence
+        self.case_evidence = case_evidence
+        self.claim_evidence = (
+            claim_evidence
+            if claim_evidence is not None
+            else (cast(ledger.JsonObject, case_evidence["claim"]) if case_evidence is not None else None)
+        )
 
     def check_startup(self, session: str, expected_new: frozenset[str]) -> str:
         """The sessions beyond the baseline are exactly those expected; the driver\'s startup is real; returns its native id."""
-        created = self.observer.sessions().ids - self.baseline.ids
+        evidence = cast(ledger.JsonObject, self.case_evidence["startup"]) if self.case_evidence is not None else None
+        if evidence is not None:
+            evidence.update(
+                {"started_ns": time.monotonic_ns(), "session_id": session, "expected_new": list(sorted(expected_new))}
+            )
+        created = (
+            self.observer.sessions(
+                evidence=cast(list[creation.EvidenceValue], evidence["list"]) if evidence is not None else None
+            ).ids
+            - self.baseline.ids
+        )
         if created != expected_new:
             raise creation.platform_failure(
                 DETAIL_SESSIONS.format(found=sorted(created), expected=sorted(expected_new))
@@ -233,20 +288,32 @@ class DriverCase:
         journey.session_id = session
         launch = journey.await_json(self.launch_setup.control / foundation.LAUNCH_FILE, foundation.POLL_SECONDS * 30)
         owned = str(self.launch_setup.executable.resolve())
+        if evidence is not None:
+            evidence["launch"] = cast(ledger.JsonValue, dict(launch))
+            evidence["owned_executable"] = owned
         found = (Path(str(launch.get("executable"))).resolve(), Path(str(launch.get("resolved_command"))).resolve())
         if found != (Path(owned), Path(owned)):
             raise creation.binding_failure(foundation.DETAIL_EXECUTABLE.format(found=launch, owned=owned))
         native = str(launch.get("native_session_id"))
         frames_deadline = time.monotonic() + START_CAP_SECONDS
         for name in (foundation.FRAME_SESSION_START, foundation.FRAME_PROMPT_SUBMIT):
-            journey.require_hook(name, journey.await_frame(name, frames_deadline))
+            frame = journey.await_frame(name, frames_deadline)
+            if evidence is not None:
+                cast(list[ledger.JsonValue], evidence["hooks"]).append(
+                    {"name": name, "frame": cast(ledger.JsonValue, dict(frame))}
+                )
+            journey.require_hook(name, frame)
         record = journey.record()
+        if evidence is not None:
+            evidence["record"] = cast(ledger.JsonValue, dict(record)) if record is not None else None
         recorded = record.get(foundation.FIELD_NATIVE) if record is not None else None
         if isinstance(recorded, str) and recorded and recorded != native:
             raise creation.binding_failure(DETAIL_MAPPING.format(session=session, recorded=recorded, launched=native))
         if record is None or not journey.started(record, native):
             raise creation.platform_failure(DETAIL_RECORD_START.format(record=record))
         role = declared_role(self.clone / DOCS_ROOT / f"{self.driver_id}{LIVE_SUFFIX}")
+        if evidence is not None:
+            evidence["declared_role"] = role
         for field, expected in ((FIELD_ROLE, role), (FIELD_JOB, self.driver_id)):
             if record.get(field) != expected:
                 raise creation.platform_failure(
@@ -254,9 +321,13 @@ class DriverCase:
                 )
         self.titles[session] = self.require_title(record, role)
         inputs = journey.inputs()
+        if evidence is not None:
+            evidence["inputs"] = cast(ledger.JsonValue, inputs)
         first = inputs[0].get("text") if inputs else None
         if not isinstance(first, str) or self.driver_id not in first:
             raise creation.platform_failure(DETAIL_FIRST_INPUT.format(identity=self.driver_id, text=first))
+        if evidence is not None:
+            evidence["observed_ns"] = time.monotonic_ns()
         return native
 
     def require_title(self, record: Json, role: str) -> str:
@@ -285,6 +356,8 @@ class DriverCase:
         """The driver\'s own claim, run in its pane, completes and returns the instruction text."""
         if self.claim_evidence is not None:
             self.claim_evidence["started_ns"] = time.monotonic_ns()
+            if self.case_evidence is not None:
+                self.claim_evidence["distinct_from"] = list(distinct_from)
         frame = self.journey.await_frame(CLAIM_FRAME, time.monotonic() + CLAIM_OPERATION_SECONDS)
         if self.claim_evidence is not None:
             self.claim_evidence["frame"] = cast(ledger.JsonValue, dict(frame))
