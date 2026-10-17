@@ -13,6 +13,7 @@ The controller imports no application module and reads no private index: every o
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -22,7 +23,7 @@ from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_creation as creation
@@ -152,8 +153,12 @@ def _session_closed(record: Mapping[str, object] | None) -> bool:
     )
 
 
-def _session_record(observer: creation.Observer, session_id: str) -> Mapping[str, object] | None:
+def _session_record(
+    observer: creation.Observer, session_id: str, evidence: list[creation.EvidenceValue] | None = None
+) -> Mapping[str, object] | None:
     outcome = observer.run((TELEC, SESSIONS, SHOW, session_id, FULL_FLAG), retain=False)
+    if evidence is not None:
+        evidence.append(creation.command_evidence((TELEC, SESSIONS, SHOW, session_id, FULL_FLAG), outcome))
     return foundation.json_object(outcome.output) if outcome.exit_status == 0 else None
 
 
@@ -170,22 +175,38 @@ START_CLAIMED: Final = "claimed"
 START_REFUSED: Final = "refused"
 
 
-def _close_owned(observer: creation.Observer, owned: Sequence[str], problems: list[str]) -> None:
+def _close_owned(
+    observer: creation.Observer,
+    owned: Sequence[str],
+    problems: list[str],
+    evidence: list[creation.EvidenceValue] | None = None,
+) -> None:
     """End each owned open session through the public command and prove its retained record closed."""
     for session_id in owned:
+        reads: list[creation.EvidenceValue] | None = [] if evidence is not None else None
+        packet: creation.EvidenceObject | None = None
+        if evidence is not None:
+            packet = {"session_id": session_id, "command": None, "terminal": None, "reads": reads, "error": None}
+            evidence.append(packet)
         try:
             ended = observer.run((TELEC, SESSIONS, END, session_id))
+            if packet is not None:
+                packet["command"] = creation.command_evidence((TELEC, SESSIONS, END, session_id), ended)
             receipt = foundation.json_object(ended.output)
             operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
             if ended.exit_status != 0 or not isinstance(operation, str) or not operation:
                 problems.append(DETAIL_SESSION_OPEN.format(session=session_id, detail=ended.output[-200:]))
                 continue
             outcome = await_terminal(observer, operation, SETTLE_SECONDS)
+            if packet is not None:
+                packet["terminal"] = cast(creation.EvidenceValue, dict(outcome))
             if outcome.get(FIELD_STATE) != STATE_COMPLETED or not _session_closed(
-                _session_record(observer, session_id)
+                _session_record(observer, session_id, reads)
             ):
                 problems.append(DETAIL_SESSION_OPEN.format(session=session_id, detail=str(outcome.get(FIELD_ERROR))))
         except BaseException as error:
+            if packet is not None:
+                packet["error"] = f"{type(error).__name__}: {error}"
             problems.append(DETAIL_SESSION_OPEN.format(session=session_id, detail=str(error)))
 
 
@@ -199,7 +220,7 @@ def _process_alive(pid: int) -> bool:
     return True
 
 
-def _launch_pids(control: Path, problems: list[str]) -> list[int]:
+def _launch_pids(control: Path, problems: list[str], evidence: list[creation.EvidenceValue] | None = None) -> list[int]:
     """Every fixture process the directory\'s launches recorded, from the append-only record of each launch.
 
     A directory that holds no launch has no fixture process, which is legitimate. A directory that shows a launch
@@ -207,14 +228,33 @@ def _launch_pids(control: Path, problems: list[str]) -> list[int]:
     whose processes are unknown, which is never read as none.
     """
     shown = control / "launch.json"
-    if not shown.exists():
+    exists = shown.exists()
+    packet: creation.EvidenceObject | None = None
+    if evidence is not None:
+        packet = {
+            "control": str(control),
+            "shown_exists": exists,
+            "launches_data": None,
+            "shown_data": None,
+            "read_error": None,
+        }
+        evidence.append(packet)
+    if not exists:
         return []
     try:
-        lines = (control / "launches.jsonl").read_text(encoding="utf-8").splitlines()
+        data = (control / "launches.jsonl").read_bytes()
+        if packet is not None:
+            packet["launches_data"] = base64.b64encode(data).decode("ascii")
+        lines = data.decode("utf-8").splitlines()
         records = [json.loads(line) for line in lines if line.strip()]
         pids = [record["pid"] for record in records if isinstance(record, dict) and isinstance(record.get("pid"), int)]
-        current = json.loads(shown.read_text(encoding="utf-8")).get("pid")
-    except (OSError, ValueError, KeyError, AttributeError):
+        data = shown.read_bytes()
+        if packet is not None:
+            packet["shown_data"] = base64.b64encode(data).decode("ascii")
+        current = json.loads(data.decode("utf-8")).get("pid")
+    except (OSError, ValueError, KeyError, AttributeError) as error:
+        if packet is not None:
+            packet["read_error"] = f"{type(error).__name__}: {error}"
         problems.append(DETAIL_LEDGER_UNREADABLE.format(control=control))
         return []
     if len(pids) != len(records) or not isinstance(current, int) or current not in pids:
@@ -222,12 +262,14 @@ def _launch_pids(control: Path, problems: list[str]) -> list[int]:
     return pids
 
 
-def _fixture_processes_gone(controls: Sequence[Path], problems: list[str]) -> None:
+def _fixture_processes_gone(
+    controls: Sequence[Path], problems: list[str], evidence: list[creation.EvidenceValue] | None = None
+) -> None:
     """The owned fixture processes of every launch have exited, after the controller asked each directory to stop."""
     for control in controls:
         with suppress(OSError):
             (control / "stop").write_text("stop\n", encoding="utf-8")
-        for pid in _launch_pids(control, problems):
+        for pid in _launch_pids(control, problems, evidence):
             deadline = time.monotonic() + PROCESS_EXIT_SECONDS
             while _process_alive(pid) and time.monotonic() < deadline:
                 payload_work.sleep(POLL_SECONDS)
@@ -240,6 +282,8 @@ def settle_sessions(
     baseline: creation.SessionView | None,
     starts: Mapping[str, str],
     controls: Sequence[Path] = (),
+    *,
+    evidence: creation.EvidenceObject | None = None,
 ) -> Settlement:
     """End what the journey owns and prove closure from the evidence that can prove it, never from waiting.
 
@@ -250,22 +294,46 @@ def settle_sessions(
     spawn after any final listing), so it keeps the settlement unproven however long nothing appears, and the caller
     keeps the resources needed to settle or diagnose it.
     """
-    if baseline is None:
-        return Settlement([], True)
+    lists: list[creation.EvidenceValue] | None = [] if evidence is not None else None
+    closures: list[creation.EvidenceValue] | None = [] if evidence is not None else None
+    launches: list[creation.EvidenceValue] | None = [] if evidence is not None else None
     problems: list[str] = []
+    if evidence is not None:
+        evidence.update(
+            {
+                "baseline_ids": list(sorted(baseline.ids)) if baseline is not None else None,
+                "starts": dict(starts),
+                "lists": lists,
+                "closures": closures,
+                "launches": launches,
+                "read_error": None,
+                "problems": cast(list[creation.EvidenceValue], problems),
+                "legacy_proven": None,
+            }
+        )
+    if baseline is None:
+        if evidence is not None:
+            evidence["legacy_proven"] = True
+        return Settlement([], True)
     try:
-        view = observer.sessions(retain=False)
-        _close_owned(observer, sorted(view.ids - baseline.ids - view.closed), problems)
-        after = observer.sessions(retain=False)
+        view = observer.sessions(retain=False, evidence=lists)
+        _close_owned(observer, sorted(view.ids - baseline.ids - view.closed), problems, closures)
+        after = observer.sessions(retain=False, evidence=lists)
         still_open = sorted(after.ids - baseline.ids - after.closed)
     except BaseException as error:  # settlement reports the read failure beside the journey's own
+        if evidence is not None:
+            evidence["read_error"] = f"{type(error).__name__}: {error}"
+            evidence["problems"] = [f"reading the actors to settle failed: {error}"]
+            evidence["legacy_proven"] = False
         return Settlement([f"reading the actors to settle failed: {error}"], False)
     if still_open:
         problems.append(DETAIL_UNSETTLED_SESSIONS.format(owned=still_open))
-    _fixture_processes_gone(controls, problems)
+    _fixture_processes_gone(controls, problems, launches)
     unresolved = sorted(operation for operation, state in starts.items() if state == START_OPEN)
     if unresolved:
         problems.append(DETAIL_UNRESOLVED_START.format(operations=unresolved))
+    if evidence is not None:
+        evidence["legacy_proven"] = not problems
     return Settlement(problems, not problems)
 
 

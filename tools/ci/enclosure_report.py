@@ -109,6 +109,7 @@ OBSERVATION_FIELDS: Final = frozenset(
         "recorded_retention_keys",
         "flow_finalizer",
         "flow_finalizer_errors",
+        "early_workflow",
     }
 )
 CLOSED_ACTIONS: Final = {"B5": B5_ACTIONS, "B7": B7_ACTIONS, "B6": B6_ACTIONS}
@@ -524,6 +525,7 @@ def validate_provisional_bindings(report: JsonObject, manifest: bytes, package: 
     observations = object_value(provisional["observations"])
     if frozenset(observations) != OBSERVATION_FIELDS:
         raise ValueError(ERROR_REPORT)
+    object_value(observations["early_workflow"])
     text(observations, "owned_profile_root")
     _strings(observations["recorded_retention_reasons"])
     _strings(observations["flow_finalizer_errors"])

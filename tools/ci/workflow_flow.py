@@ -654,14 +654,7 @@ class WorkflowFlow:
 
     @staticmethod
     def public_command_evidence(argv: Sequence[str], outcome: foundation.Outcome) -> MutableJson:
-        return {
-            "argv": list(argv),
-            "exit_status": outcome.exit_status,
-            "duration_seconds": outcome.duration_seconds,
-            "stdout": outcome.output,
-            "stderr": outcome.stderr,
-            "diagnostics": outcome.diagnostics,
-        }
+        return creation.command_evidence(argv, outcome)
 
     def _public_session_observation(
         self, session_id: str, timeout_seconds: float

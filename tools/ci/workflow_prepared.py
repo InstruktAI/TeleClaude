@@ -260,6 +260,7 @@ class _Prepared:
         self.outsider_sessions: dict[str, str] = {}
         self.b4_retained = False
         self.handover = handover.Handover(self.observer, host, worktree=self._worktree_block)
+        self.accounting: creation.EvidenceObject | None = None
 
     # -- helpers ---------------------------------------------------------------------------------------------------
     def _known(self, *sessions: str) -> frozenset[str]:
@@ -1327,6 +1328,7 @@ def run_prepared(
     event_binding: events.EventWindowBinding,
     register_company: Callable[[], None],
     retain: Callable[[str], None],
+    accounting: creation.EvidenceObject | None = None,
 ) -> None:
     """Journey B4; raises JourneyFailure leading with its class."""
     prepared = _Prepared(
@@ -1335,13 +1337,16 @@ def run_prepared(
     events.verify_case(event_binding, events.FIRST_CASE)
     retain(f"B10 event evidence retained at {event_binding.carrier_root}")
     observer = prepared.observer
+    prepared.accounting = accounting
     failure: BaseException | None = None
     event_seal: start_ledger.JsonObject | None = None
     try:
         creation.require_manual_runner(observer)
         prepared.publication.begin(own_generation=True)
         creation.enter_project(observer, project)
-        prepared.baseline = observer.sessions()
+        prepared.baseline = observer.sessions(
+            evidence=cast(list[creation.EvidenceValue], accounting["baseline"]) if accounting is not None else None
+        )
         prepared.declare_docs_capability(project_slug)
         prepared.git_fixture()
         prepared.setup_pool()
@@ -1389,20 +1394,33 @@ def run_prepared(
         )
     except BaseException as error:
         failure = error
+        if accounting is not None:
+            accounting["journey_error"] = f"{type(error).__name__}: {error}"
         raise
     finally:
         try:
-            _cleanup(prepared, failure)
+            problems = _cleanup(prepared, failure)
+            if accounting is not None:
+                accounting["cleanup_problems"] = list(problems)
+        except BaseException as error:
+            if accounting is not None:
+                accounting["cleanup_error"] = f"{type(error).__name__}: {error}"
+            raise
         finally:
             try:
                 events.verify_case(event_binding, "B4", event_seal if failure is None else None)
-            except BaseException:
+            except BaseException as error:
+                if accounting is not None:
+                    accounting["seal_error"] = f"{type(error).__name__}: {error}"
                 prepared.retain(DETAIL_B9_RETAINED.format(path=event_binding.carrier_root))
                 if failure is None:
                     raise
+            finally:
+                if accounting is not None:
+                    accounting["finished_ns"] = time.monotonic_ns()
 
 
-def _cleanup(prepared: _Prepared, failure: BaseException | None) -> None:
+def _cleanup(prepared: _Prepared, failure: BaseException | None) -> list[str]:
     """Settle the sessions the journey owns, restore the candidate publication and the sidecar, report every failure."""
     b9_problems: list[str] = []
     try:
@@ -1412,7 +1430,13 @@ def _cleanup(prepared: _Prepared, failure: BaseException | None) -> None:
     settlement_proven = False
     try:
         settlement = publication.settle_sessions(
-            prepared.observer, prepared.baseline, prepared.starts, prepared.controls.directories
+            prepared.observer,
+            prepared.baseline,
+            prepared.starts,
+            prepared.controls.directories,
+            evidence=cast(creation.EvidenceObject, prepared.accounting["settlement"])
+            if prepared.accounting is not None
+            else None,
         )
         settlement_proven = settlement.proven
         problems = list(settlement.problems)
@@ -1485,3 +1509,4 @@ def _cleanup(prepared: _Prepared, failure: BaseException | None) -> None:
             prepared.publication.note("cleanup-problems", "; ".join(problems))
         except BaseException:
             prepared.retain(DETAIL_B9_RETAINED.format(path=retained_marker.resolve()))
+    return problems

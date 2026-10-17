@@ -806,6 +806,7 @@ class _Waiting:
         self.b13_child_closed = False
         self.b13_first_live = False
         self.handover = handover.Handover(self.observer, host)
+        self.accounting: creation.EvidenceObject | None = None
 
     # -- helpers ---------------------------------------------------------------------------------------------------
     def _known(self, *sessions: str) -> frozenset[str]:
@@ -1541,6 +1542,7 @@ def run_waiting(
     source_tree: str,
     b13_evidence: WaitingKickbackEvidence,
     sanitize: Callable[[str], str],
+    accounting: creation.EvidenceObject | None = None,
 ) -> None:
     """Journey B3; raises JourneyFailure leading with its class."""
     waiting = _Waiting(
@@ -1559,13 +1561,16 @@ def run_waiting(
         sanitize,
     )
     observer = waiting.observer
+    waiting.accounting = accounting
     failure: BaseException | None = None
     event_binding: events.EventWindowBinding | None = None
     try:
         creation.require_manual_runner(observer)
         waiting.publication.begin(own_generation=True)
         creation.enter_project(observer, project)
-        waiting.baseline = observer.sessions()
+        waiting.baseline = observer.sessions(
+            evidence=cast(list[creation.EvidenceValue], accounting["baseline"]) if accounting is not None else None
+        )
         waiting.verify_owner()
         waiting.setup_pool()
         creation.require_created(creation.create_item(observer, ITEM, CONTENT, "feature", approved=True), ITEM)
@@ -1613,13 +1618,23 @@ def run_waiting(
         )
     except BaseException as error:
         failure = error
+        if accounting is not None:
+            accounting["journey_error"] = f"{type(error).__name__}: {error}"
         retain(
             f"B10 event interval remains unproven at "
             f"{event_binding.carrier_root if event_binding else setup.control.parent}"
         )
         raise
     finally:
-        _cleanup(waiting, failure)
+        try:
+            _cleanup(waiting, failure)
+        except BaseException as error:
+            if accounting is not None:
+                accounting["cleanup_error"] = f"{type(error).__name__}: {error}"
+            raise
+        finally:
+            if accounting is not None:
+                accounting["finished_ns"] = time.monotonic_ns()
 
 
 def _cleanup(waiting: _Waiting, failure: BaseException | None) -> None:
@@ -1647,7 +1662,13 @@ def _cleanup(waiting: _Waiting, failure: BaseException | None) -> None:
         if not b13_safe:
             waiting.retain_key(B13_RETENTION_KEY, B13_RETENTION_REASON)
     settlement = publication.settle_sessions(
-        waiting.observer, waiting.baseline, waiting.starts, waiting.controls.directories
+        waiting.observer,
+        waiting.baseline,
+        waiting.starts,
+        waiting.controls.directories,
+        evidence=cast(creation.EvidenceObject, waiting.accounting["settlement"])
+        if waiting.accounting is not None
+        else None,
     )
     problems = list(settlement.problems)
     if b13_safe:
@@ -1669,6 +1690,8 @@ def _cleanup(waiting: _Waiting, failure: BaseException | None) -> None:
     except BaseException as error:
         problems.append(f"returning the owner terminal failed: {error}")
     problems.extend(waiting.publication.candidate_unchanged())
+    if waiting.accounting is not None:
+        waiting.accounting["cleanup_problems"] = list(problems)
     if problems and failure is None:
         raise creation.binding_failure("; ".join(problems))
     if problems:

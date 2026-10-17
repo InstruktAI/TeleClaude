@@ -620,6 +620,18 @@ type EvidenceValue = str | int | float | bool | None | list[EvidenceValue] | dic
 type EvidenceObject = dict[str, EvidenceValue]
 
 
+def command_evidence(argv: Sequence[str], outcome: Outcome) -> EvidenceObject:
+    """Retain the original native result before parsing, including diagnostics and unsuccessful status."""
+    return {
+        "argv": list(argv),
+        "exit_status": outcome.exit_status,
+        "duration_seconds": outcome.duration_seconds,
+        "stdout": outcome.output,
+        "stderr": outcome.stderr,
+        "diagnostics": outcome.diagnostics,
+    }
+
+
 @dataclass
 class RetiredActEvidence:
     """Typed, upload-carried B12 evidence retained independently of temporary files."""
@@ -749,9 +761,11 @@ class Observer:
             raise binding_failure(DETAIL_UNDECODABLE.format(what="todo list", output=outcome.output[-300:]))
         return collect_slugs(payload)
 
-    def sessions(self, *, retain: bool = True) -> SessionView:
+    def sessions(self, *, retain: bool = True, evidence: list[EvidenceValue] | None = None) -> SessionView:
         """O3: every session, unattended procedure agents and closed ones included."""
         outcome = self.run((TELEC, SESSIONS, LIST, ALL_FLAG, CLOSED_FLAG), retain=retain)
+        if evidence is not None:
+            evidence.append(command_evidence((TELEC, SESSIONS, LIST, ALL_FLAG, CLOSED_FLAG), outcome))
         records = decode_array(outcome.output)
         if outcome.exit_status != 0 or records is None:
             raise binding_failure(DETAIL_UNDECODABLE_LIST.format(what="sessions list", output=outcome.output[-300:]))

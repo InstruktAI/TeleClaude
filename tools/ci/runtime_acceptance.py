@@ -1067,6 +1067,7 @@ class FullRuntimeResources:
     fixture_setup: foundation.FixtureSetup | None = None
     workflow_flow: full_flow.WorkflowFlow | None = None
     workflow_chain: tuple[str, ...] = ()
+    early_workflow: JSONObject = field(default_factory=dict)
     retained: list[str] = field(default_factory=list)
     retired_act_selected: bool = False
     retired_act_evidence: creation.RetiredActEvidence = field(default_factory=creation.empty_retired_act_evidence)
@@ -1077,6 +1078,26 @@ class FullRuntimeResources:
     b13_carrier_path: Path | None = None
     retained_keys: dict[str, str] = field(default_factory=dict)
     owner_identity_facts: JSONObject = field(default_factory=dict)
+
+    def early_accounting(self, case: str) -> creation.EvidenceObject | None:
+        """Retain existing B3/B4 observations only for the admitted new-run report."""
+        if self.payload_provisional is None:
+            return None
+        record: creation.EvidenceObject = {
+            "schema_version": 1,
+            "case": case,
+            "project_path": str(self.project_path),
+            "started_ns": time.monotonic_ns(),
+            "finished_ns": None,
+            "baseline": [],
+            "settlement": {},
+            "cleanup_problems": None,
+            "journey_error": None,
+            "cleanup_error": None,
+            "seal_error": None,
+        }
+        self.early_workflow[case] = record
+        return record
 
     def open_admin_terminal(self) -> PersistentTerminal:
         """Create the one administrator PTY retained for fresh CLI processes."""
@@ -2697,6 +2718,7 @@ def _full_workflow_waiting(resources: FullRuntimeResources, evidence: list[Comma
         resources.source_tree,
         resources.b13_evidence,
         resources.sanitize,
+        accounting=resources.early_accounting("B3"),
     )
 
 
@@ -2721,6 +2743,7 @@ def _full_workflow_prepared(resources: FullRuntimeResources, evidence: list[Comm
         event_binding,
         lambda: _register_procedure_fixture_company(resources, evidence),
         resources.retained.append,
+        accounting=resources.early_accounting("B4"),
     )
 
 
@@ -5549,6 +5572,7 @@ def _run_profile(
                         "flow_finalizer_errors": list(resources.workflow_flow.finalizer_errors)
                         if resources.workflow_flow is not None
                         else [],
+                        "early_workflow": resources.early_workflow,
                     }
                 )
                 if payload_provisional is not None
