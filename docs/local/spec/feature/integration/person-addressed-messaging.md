@@ -74,32 +74,18 @@ And the agent is told which admins received it and on which channel
 
 #### UC-PAM4: A default recipient that resolves to nobody is refused
 
-```gherkin
-Given an agent session whose authority traces to no addressable person on the people roster
-When the agent sends a person-addressed message without naming a recipient
-Then the send is refused with an error stating the default recipient did not resolve and that a recipient can be named
-And nothing is delivered
-```
-
-#### UC-PAM5: Admins reached in part are reported, not failed
+#### UC-PAM5: An agent learns which admins received its message
 
 ```gherkin
-Given an agent session running under system authority
-And one platform admin is reachable and another has no usable credential for their routed channel
-When the agent sends a person-addressed message without naming a recipient
-Then the reachable admin receives it
-And the send succeeds while naming the admin who was not reached and why
+Scenario: Report partial delivery to platform admins
+  Given an agent session runs under system authority
+  And at least one platform admin is reachable and another is not
+  When the agent sends a person-addressed message without naming a recipient
+  Then every reachable admin receives the message on their own channel
+  And the send succeeds while naming admins who were not reached and why
 ```
 
 #### UC-PAM6: Reaching no admin fails the send
-
-```gherkin
-Given an agent session running under system authority
-And no platform admin is reachable on their routed channel
-When the agent sends a person-addressed message without naming a recipient
-Then the send fails, naming each admin and why they were not reached
-And nothing is delivered
-```
 
 ## See Also
 
