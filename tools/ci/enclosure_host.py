@@ -24,6 +24,7 @@ from tools.ci.enclosure_contract import (
 )
 from tools.ci.enclosure_journal import Controller
 from tools.ci.enclosure_native import INVENTORY_ARGUMENTS, NativeQuery, query_native
+from tools.ci.enclosure_preflight import InitialMachines, inspect_initial_machines, require_initial_machines
 
 ROOT: Final = Path("/")
 PROC_PYTHON: Final = Path("/proc/self/exe")
@@ -86,6 +87,7 @@ class HostSubstrateFacts:
     activation_files: int
     python_sha256: str
     observed_ns: int
+    initial_machines: InitialMachines
 
 
 def _require_time(deadline: AdmittedDeadline) -> None:
@@ -168,7 +170,11 @@ def _locked_file(row: JsonObject, deadline: AdmittedDeadline) -> None:
 
 
 def inspect_host_substrate(
-    package: StaticPackage, image_version: str, query: NativeQuery, deadline: AdmittedDeadline
+    package: StaticPackage,
+    image_version: str,
+    query: NativeQuery,
+    deadline: AdmittedDeadline,
+    owned_units: frozenset[str],
 ) -> HostSubstrateFacts:
     """Check fixed declarations without installing, enabling, starting or repairing anything."""
     _require_time(deadline)
@@ -190,6 +196,8 @@ def inspect_host_substrate(
         raise ValueError(ERROR_HOST)
     inventory = query_native(INVENTORY_ARGUMENTS, query, deadline, cap)
     container_installed, matched_packages = _package_presence(lock, inventory)
+    initial_machines = inspect_initial_machines(owned_units, query, deadline, cap)
+    require_initial_machines(initial_machines, container_installed=container_installed)
     python_rows = lock[Key.PYTHON_BINARY]
     activation_rows = lock[Key.ACTIVATION_SOURCES]
     if not isinstance(python_rows, list) or len(python_rows) != 1 or not isinstance(activation_rows, list):
@@ -225,4 +233,5 @@ def inspect_host_substrate(
         activation_count,
         text(python, Field.SHA256),
         time.monotonic_ns(),
+        initial_machines,
     )
