@@ -10,7 +10,8 @@ visibility: public
 A help-desk agent that cannot help its visitor runs `telec sessions escalate`.
 The core's agent_runtime context owns the escalation and its relay.
 Escalation is a help-desk act: it is accepted from a session running in a help
-desk and refused from anywhere else.
+desk and refused from anywhere else with a message naming this help-desk-only
+boundary.
 The refusal occurs before anyone is notified or relay state changes, so no
 notification is sent and no relay starts.
 
