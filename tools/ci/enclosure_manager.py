@@ -221,6 +221,21 @@ class ManagerObserver:
         self._event_bytes = 0
         self._faults: dict[Invalidation, int] = {}
         self._connect_attempted = False
+        self._changed = asyncio.Event()
+
+    @property
+    def sequence(self) -> int:
+        """Position readiness waits in the original stream, without a new subscription."""
+        return self._sequence
+
+    async def wait_for_change(self, sequence: int, deadline_ns: int) -> None:
+        """Await an original signal or sticky loss; never poll or renew the supplied cutoff."""
+        if sequence == self._sequence and not self._faults:
+            self._changed.clear()
+            async with asyncio.timeout(_remaining(deadline_ns)):
+                await self._changed.wait()
+        if self._faults:
+            raise RuntimeError(CONNECTION_ERROR)
 
     @property
     def identity(self) -> ManagerIdentity:
@@ -243,6 +258,7 @@ class ManagerObserver:
         """Propagate every original-connection loss to the original population observer."""
         if cause not in self._faults:
             self._faults[cause] = time.monotonic_ns()
+        self._changed.set()
         if self._population is not None:
             self._population.invalidate(cause)
 
@@ -548,21 +564,33 @@ class ManagerObserver:
             time.monotonic_ns(),
         )
 
-    async def bind_parent(self, name: str, population: PopulationObserver, deadline_ns: int) -> UnitRead:
+    async def bind_parent(
+        self, name: str, population: PopulationObserver, deadline_ns: int, *, initial: UnitRead | None = None
+    ) -> UnitRead:
         """Bind one active original parent to the already-open native observation handles."""
         if self._parent is not None or self._population is not None:
             raise ValueError(BINDING_ERROR)
-        parent = await self.read_unit(name, Interface.SLICE, deadline_ns)
+        parent = await self.read_unit(
+            name, Interface.SLICE, deadline_ns, original_path=initial.object_path if initial is not None else None
+        )
         if (
             parent.unit.get(Property.ACTIVE_STATE) != ACTIVE
             or parent.specific.get(Property.CONTROL_GROUP) != population.control_group
+            or (
+                initial is not None
+                and (
+                    initial.name != name
+                    or initial.unit.get(Property.ACTIVE_STATE) != ACTIVE
+                    or initial.specific.get(Property.CONTROL_GROUP) != population.control_group
+                )
+            )
         ):
             self.invalidate(Invalidation.PARENT_DEACTIVATED)
             raise ValueError(BINDING_ERROR)
         self._parent = parent
         self._population = population
         for event in self._events:
-            if event.sequence > parent.begin_sequence:
+            if event.sequence > (initial.begin_sequence if initial is not None else parent.begin_sequence):
                 self._check_bound_event(event, parent, True)
         for fault in self._faults:
             population.invalidate(fault)
@@ -661,6 +689,7 @@ class ManagerObserver:
         )
         self._event_bytes += encoded_size
         self._events.append(event)
+        self._changed.set()
         for bound, is_parent in ((self._parent, True), (self._guest, False)):
             if bound is None:
                 continue

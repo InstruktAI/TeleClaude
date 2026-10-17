@@ -46,8 +46,10 @@ from tools.ci import workflow_removal as removal
 from tools.ci import workflow_review as review
 from tools.ci import workflow_waiting as waiting
 from tools.ci.enclosure_contract import Action
+from tools.ci.enclosure_exchange import run_helper
 from tools.ci.enclosure_guest import GuestContext, Role, request_guest_poweroff
 from tools.ci.enclosure_guest import Record as GuestShutdownRecord
+from tools.ci.enclosure_journal import Outcome as EnclosureOutcome
 from tools.ci.enclosure_setup import run_guest_setup
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
@@ -58,6 +60,7 @@ _ENCLOSURE_ACTION_OPTION = "--enclosure-action"
 _OBSERVATION_KEY_OPTION = "--observation-key"
 _ENCLOSURE_MANIFEST_REQUIRED = "An enclosure role requires its protected manifest."
 _ENCLOSURE_ACTION_ROLE = "An enclosure action belongs only to the privileged role."
+_ENCLOSURE_ACTION_REQUIRED = "The privileged role requires its closed enclosure action."
 _PROFILE_ARGUMENTS_REQUIRED = "Profile execution requires profile, source-revision and source-tree."
 _ENCLOSED_FULL_REQUIRED = "Supervisor and payload roles require the full profile."
 _ENCLOSURE_UNAVAILABLE = "The selected enclosure role is not yet implemented: {role}"
@@ -6042,6 +6045,16 @@ def main(arguments: list[str] | None = None) -> int:
     """Run the requested profile and write a structured result for the checked source."""
     parsed = _parse_arguments(sys.argv[1:] if arguments is None else arguments)
     role = Role(parsed.enclosure_role) if parsed.enclosure_role is not None else None
+    if role is Role.PRIVILEGED:
+        if parsed.enclosure_action is None:
+            print(_ENCLOSURE_ACTION_REQUIRED, file=sys.stderr)
+            return _PROCESS_FAILURE
+        try:
+            result = run_helper(parsed.enclosure_manifest, Action(parsed.enclosure_action))
+        except (OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError) as error:
+            print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
+            return _PROCESS_FAILURE
+        return _PROCESS_SUCCESS if result.status is EnclosureOutcome.SUCCEEDED else _PROCESS_FAILURE
     if role is Role.GUEST_POWEROFF:
         try:
             outcome = request_guest_poweroff(GuestContext.load(parsed.enclosure_manifest))
