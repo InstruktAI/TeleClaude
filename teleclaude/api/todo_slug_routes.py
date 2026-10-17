@@ -18,7 +18,7 @@ from teleclaude.api.person_display import with_person_chips_on_todos
 from teleclaude.api.todo_routes import _default_cwd, _get_workflow_store_from_cwd
 from teleclaude.api_models import TodoDTO
 from teleclaude.constants import SLUG_NOT_FOUND_DETAIL
-from teleclaude.core.todos_db._show import assemble_show_payload
+from teleclaude.core.workflow_machine.standing import assemble_item_show
 from teleclaude.project_root import resolve_project_root
 from teleclaude.services.work import get_work_service
 from teleclaude.services.work.slug_actions import SlugActionResult, deliver_todo, freeze_todo, unfreeze_todo
@@ -64,7 +64,7 @@ async def show_todo(
 ) -> object:
     """Return the diagnostic state payload of one todo."""
     todos_db = await _get_workflow_store_from_cwd(str(request_project_root(cwd)))
-    payload = await assemble_show_payload(
+    payload = await assemble_item_show(
         todos_db,
         slug,
         include_removed=include_removed,

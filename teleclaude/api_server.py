@@ -55,12 +55,15 @@ from teleclaude.api.bugs_routes import router as bugs_router
 from teleclaude.api.commit_review_stamp_routes import router as commit_review_stamp_router
 from teleclaude.api.config_routes import router as config_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
+from teleclaude.api.event_trail_routes import router as event_trail_router
 from teleclaude.api.ingress_listener import WebhookIngressListener
 from teleclaude.api.operations_routes import router as operations_router
 from teleclaude.api.relay_boundary import relay_boundary
 from teleclaude.api.shutdown_refusal import STATE_CHANGING_METHODS, shutdown_refusal_response
+from teleclaude.api.todo_act_routes import router as todo_act_router
 from teleclaude.api.todo_artifact_routes import router as todo_artifact_router
 from teleclaude.api.todo_by_id_routes import router as todo_by_id_router
+from teleclaude.api.todo_head_routes import router as todo_head_router
 from teleclaude.api.todo_routes import router as todo_router
 from teleclaude.api.todo_slug_routes import router as todo_slug_router
 from teleclaude.api.todo_stamp_routes import router as todo_stamp_router
@@ -98,6 +101,7 @@ from teleclaude.core.events import (
     ProjectRefreshTrigger,
 )
 from teleclaude.core.models import JsonDict, MessageMetadata
+from teleclaude.core.next_machine.state_mutation import StateConflict
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operations._kinds import outcome_events_for
 from teleclaude.core.origins import InputOrigin
@@ -230,11 +234,14 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
         self.app.include_router(todo_router)
         self.app.include_router(todo_slug_router)
+        self.app.include_router(event_trail_router)
         self.app.include_router(bugs_router)
         self.app.include_router(config_router)
         self.app.include_router(todo_by_id_router)
         self.app.include_router(todo_artifact_router)
         self.app.include_router(todo_stamp_router)
+        self.app.include_router(todo_act_router)
+        self.app.include_router(todo_head_router)
         self.app.include_router(commit_review_stamp_router)
 
         self.socket_path = socket_path or API_SOCKET_PATH
@@ -474,6 +481,11 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 work_feedback=exc.work_feedback,
                 headers=exc.headers,
             )
+
+        @self.app.exception_handler(StateConflict)
+        async def _claim_changed(request, exc):  # type: ignore[no-untyped-def]
+            """A write refused because the claim changed under it: explicit, with the holder now, and safe to repeat."""
+            return declared_refusal_response(status_code=409, detail=str(exc), work_feedback=str(exc))
 
         @self.app.middleware("http")
         async def _track_requests(request, call_next):  # type: ignore[no-untyped-def]

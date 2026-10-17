@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
-from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, adopt_prepare_handoff_phase
 from teleclaude.core.next_machine.state_mutation import ApprovalsManager, StateWriter
 
 if TYPE_CHECKING:
@@ -21,11 +21,12 @@ async def seed_plan_drafting(todos_db: WorkflowStore, slug: str, *, repo_root: s
     """Mark a supplied ``--plan`` implementation-plan as a plan-drafting seed.
 
     A supplied plan is an unverified draft basis, not an approved artifact: set
-    the implementation-plan entry's ``seeded`` flag so phase derivation holds it
-    in ``plan_drafting`` for a full plan-draft pass (grounding, blast radius, doc
-    reflection) before plan-review, instead of bypassing prepare. Must run AFTER
-    the seeding write's provenance sync, which runs ``_clear_rewrite_drift_state``
-    and would otherwise wipe the flag. Returns the derived ``lifecycle_phase``.
+    the implementation-plan entry's ``seeded`` flag so the preparation driver holds
+    it for a full plan-draft pass (grounding, blast radius, doc reflection)
+    instead of bypassing prepare. The item stays in ``preparation``, the phase it
+    was created in; the driver's acts move it. Must run AFTER the seeding write's
+    provenance sync, which runs ``_clear_rewrite_drift_state`` and would otherwise
+    wipe the flag. Returns the stored ``lifecycle_phase``.
     """
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
@@ -33,16 +34,9 @@ async def seed_plan_drafting(todos_db: WorkflowStore, slug: str, *, repo_root: s
         raise RuntimeError(msg)
     writer = StateWriter(raw_state)
     writer.state.artifacts.implementation_plan.seeded = True
-    artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
-    phase = adopt_prepare_handoff_phase(
-        writer.state,
-        repo_root=repo_root,
-        report_digests={},
-        artifact_write_timestamps=artifact_write_timestamps,
-    )
-    writer.state.lifecycle_phase = phase
+    _ = repo_root
     await writer.commit(todos_db, slug)
-    return phase.value
+    return writer.state.lifecycle_phase.value
 
 
 async def seed_task_plan_authorization(
@@ -59,12 +53,17 @@ async def seed_task_plan_authorization(
         raise RuntimeError(msg)
     writer = StateWriter(raw_state)
     artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
-    phase = adopt_prepare_handoff_phase(
-        writer.state,
-        report_digests={},
-        artifact_write_timestamps=artifact_write_timestamps,
-        prepared_session_id=prepared_session_id,
-    )
+    if prepared_session_id:
+        phase = adopt_prepare_handoff_phase(
+            writer.state,
+            report_digests={},
+            artifact_write_timestamps=artifact_write_timestamps,
+            prepared_session_id=prepared_session_id,
+        )
+    else:
+        # A person at a terminal carries no session, so no completing session exists to record. The task-plan this
+        # request just wrote makes the task prepared by construction; the derivation would refuse without a session.
+        phase = LifecyclePhase.PREPARED
     writer.state.lifecycle_phase = phase
     ApprovalsManager(writer).approve(
         "task_approved",

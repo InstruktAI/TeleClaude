@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 from teleclaude.core.models._types import JsonDict
 from teleclaude.docs_subscriptions import EventDeliveryMode
@@ -18,6 +18,7 @@ class BindingField(StrEnum):
     PROCEDURE = "procedure"
     HOME = "home"
     SUBJECT = "subject"
+    SESSION_MODE = "session_mode"
 
 
 class ActivationOutcome(StrEnum):
@@ -26,13 +27,26 @@ class ActivationOutcome(StrEnum):
     STARTED = "started"
     WOKEN = "woken"
     REVIVED = "revived"
+    NOT_DELIVERED = "not_delivered"
+
+
+class NotDeliveredReason(StrEnum):
+    """The closed reasons an activation of a single-claim responsibility ends as ``not delivered``."""
+
+    STALE_REQUEST = "stale request"
+    NO_HOLDER = "no holder"
+    SESSION_CLOSED = "session closed"
 
 
 class ProcedureActivationResult(TypedDict):
-    """Outcome of starting, waking or reviving a procedure's agent."""
+    """Outcome of an activation: it started, woke or revived a procedure's agent, or delivered nothing by decision.
+
+    A ``not delivered`` outcome names no session and carries its reason; it is a completed activation, not a failure.
+    """
 
     session_id: str
     outcome: ActivationOutcome
+    reason: NotRequired[str]
 
 
 class ProcedureDeliveryInitializationField(StrEnum):

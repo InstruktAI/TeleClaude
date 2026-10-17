@@ -8,6 +8,7 @@ from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import MessageMetadata
+from teleclaude.core.operation_caller_identity import relayed_caller_computer
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import (
     CallerProvenance,
@@ -124,7 +125,9 @@ class CommandMapper:
                     company=metadata.company,
                     skip_listener_registration=skip_listener_registration,
                     initiator_session_id=initiator_session_id,
-                    initiator_computer=config.computer.name if initiator_session_id else None,
+                    initiator_computer=(relayed_caller_computer(initiator_session_id) or config.computer.name)
+                    if initiator_session_id
+                    else None,
                     startup_work_expected=bool(payload.get("startup_work_expected", False)),
                     command=command,
                     working_slug=working_slug,

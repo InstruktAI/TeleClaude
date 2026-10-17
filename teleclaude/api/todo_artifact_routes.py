@@ -16,9 +16,12 @@ from pydantic import BaseModel, ConfigDict
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.todo_artifact_authority import (
+    IntentBodyRefused,
+    intent_body_mutation,
     refuse_foreign_claim,
     refuse_non_prepare_writer,
     resolved_write_principal,
+    session_ancestry,
 )
 from teleclaude.api.todo_routes import (
     _DRIFT_TRACKED_ARTIFACT_NAMES,
@@ -28,6 +31,7 @@ from teleclaude.api.todo_routes import (
 )
 from teleclaude.api.todo_update_support import require_slug_in_todo
 from teleclaude.constants import (
+    ARTIFACT_DESIGN_SPEC,
     ARTIFACT_INPUT,
     ARTIFACT_NAMES_RETIRED,
     ARTIFACT_NAMES_WRITABLE,
@@ -38,7 +42,11 @@ from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFAC
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todos_db._artifacts import malformed_digest_detail
 from teleclaude.core.todos_db._errors import HolderWriteRefused
+from teleclaude.core.workflow_machine.creative import CreativeCapability, CreativeRefused
+from teleclaude.core.workflow_machine.creative_commit import creative_facts, episode_mutation
+from teleclaude.core.workflow_machine.phase_reading import in_task_lane as task_lane_of
 from teleclaude.project_root import resolve_project_root
+from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -164,12 +172,42 @@ async def write_artifact(
     todos_db = await _get_workflow_store_from_cwd(project_root)
     await _refuse_holder_mutation(todos_db, slug)
     await require_slug_in_todo(todos_db, slug)
-    await refuse_foreign_claim(todos_db, identity, slug)
-    if name in PREPARE_ARTIFACT_NAMES:
-        await refuse_non_prepare_writer(identity, slug, name)
+    raw_for_lane = await todos_db.read_state(slug) if name == ARTIFACT_INPUT else None
+    lane_state = TodoState.model_validate(raw_for_lane) if raw_for_lane is not None else None
+    in_task_lane = lane_state is not None and task_lane_of(lane_state)
+    retained = lane_state.workflow.remote_members if lane_state is not None else []
+    intent_body_write = name == ARTIFACT_INPUT and bool(identity.session_id)
+    if not intent_body_write or in_task_lane:
+        await refuse_foreign_claim(todos_db, identity, slug)
+        if name in PREPARE_ARTIFACT_NAMES:
+            await refuse_non_prepare_writer(identity, slug, name)
     effective_updated_by = resolved_write_principal(identity)
     try:
-        await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
+        if intent_body_write:
+            await todos_db.write_artifact_with_state_change(
+                slug,
+                name,
+                content,
+                updated_by=effective_updated_by,
+                mutate=intent_body_mutation(
+                    slug, await session_ancestry(identity.session_id, retained), expect_task=in_task_lane
+                ),
+            )
+        elif name == ARTIFACT_DESIGN_SPEC:
+            await todos_db.write_artifact_with_state_change(
+                slug,
+                name,
+                content,
+                updated_by=effective_updated_by,
+                mutate=episode_mutation(
+                    slug,
+                    CreativeCapability.DESIGN_SPEC_WRITE,
+                    identity.session_id or "",
+                    facts=await creative_facts(todos_db, slug),
+                ),
+            )
+        else:
+            await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
         _ = codebase_sha_at_write, referenced_paths
         if name in _DRIFT_TRACKED_ARTIFACT_NAMES:
             await _sync_artifact_provenance_state(
@@ -180,7 +218,7 @@ async def write_artifact(
                 artifact_body=content,
                 prepared_session_id=identity.session_id,
             )
-    except HolderWriteRefused as exc:
+    except (HolderWriteRefused, CreativeRefused, IntentBodyRefused) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if name in {artifacts.report_artifact_name for artifacts in REVIEW_EVIDENCE_ARTIFACTS.values()}:
         logger.info(

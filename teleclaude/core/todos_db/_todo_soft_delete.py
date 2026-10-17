@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -19,6 +21,7 @@ from teleclaude.core.next_machine.marker_reconciliation import (
     reconcile_lifecycle_markers,
     restore_lifecycle_markers,
 )
+from teleclaude.core.todos_db._activation import apply_rewrite, fetch_activation_rows
 from teleclaude.core.todos_db._errors import HolderWriteRefused
 from teleclaude.core.todos_db._exceptions import RemoveRefused
 from teleclaude.core.todos_db._identity_pin import apply_todo_identity_pin
@@ -30,6 +33,7 @@ from teleclaude.core.todos_db._models import (
     TodoStateModel,
 )
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
+from teleclaude.core.workflow_store.types import ActivationRow, ConversionPath, RowRewrite, WorkItemId
 from teleclaude.core.workflow_store.types import (
     ExpiredRemovedItem as ExpiredRemovedRow,
 )
@@ -42,7 +46,6 @@ from teleclaude.core.workflow_store.types import (
 from teleclaude.core.workflow_store.types import (
     RemovalRequest as RemovalContext,
 )
-from teleclaude.core.workflow_store.types import WorkItemId
 from teleclaude.docs_reconcile import (
     ReconciliationCarrier,
     ReconciliationMode,
@@ -350,6 +353,7 @@ class TodosDbTodoSoftDeleteMixin:
         *,
         cwd: str,
         session: SqlAsyncSession | None = None,
+        classify_restored: Callable[[ActivationRow], RowRewrite | None] | None = None,
     ) -> str:
         """Restore a soft-removed todo row addressed by its durable row id.
 
@@ -372,6 +376,9 @@ class TodosDbTodoSoftDeleteMixin:
         resurrected — only the entry's own footprint is restored. State,
         artifacts, and version history were retained at soft-remove and
         become addressable again through the default resolvers.
+
+        ``classify_restored`` is the activation's classification of the restored row: where it names a rewrite, the
+        row is converted or normalized in this same transaction, before any reader can act on it.
 
         Returns the restored slug.
         """
@@ -443,6 +450,14 @@ class TodosDbTodoSoftDeleteMixin:
                 db_session.add(TodoDep(slug=entry.slug, depends_on=dep))
 
             slug = entry.slug
+            if classify_restored is not None:
+                await db_session.flush()
+                restored_rows = await fetch_activation_rows(cast(Any, self), db_session, row_id=todo_id)
+                rewrite = classify_restored(restored_rows[0]) if restored_rows else None
+                if rewrite is not None:
+                    await apply_rewrite(
+                        db_session, replace(rewrite, path=ConversionPath.RESTORE), datetime.now(UTC).isoformat()
+                    )
             if owns_session:
                 await db_session.commit()
                 cast(Any, self)._on_mutation("todo_updated", None)

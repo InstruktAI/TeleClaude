@@ -31,6 +31,7 @@ class RunnerSkipReason(StrEnum):
     DELIVERED = "delivered"
     DEPENDENCY_BLOCKED = "dependency-blocked"
     FINALIZE_READY = "finalize-ready"
+    READY = "ready"
     HELD = "held"
     ICEBOX = "icebox"
     INVALID_KIND = "invalid-kind"
@@ -40,6 +41,9 @@ class RunnerSkipReason(StrEnum):
     SCHEDULE_BLOCKED = "schedule-blocked"
     TASK_AUTHORIZATION_MISSING = "task-authorization-missing"
     UNKNOWN_PHASE = "unknown-phase"
+    WAITING = "waiting"
+    DESIGN = "design"
+    HEAD_UNREADABLE = "head-unreadable"
 
 
 class ManualLifecycleStatus(StrEnum):
@@ -70,6 +74,8 @@ class RunnerTodo:
     current_plan_digest: str = ""
     reviewed_plan_digest: str = ""
     dependency_drift_pending_on: tuple[str, ...] = ()
+    item_phase: str | None = None
+    head_unreadable: bool = False
 
 
 @dataclass(frozen=True)

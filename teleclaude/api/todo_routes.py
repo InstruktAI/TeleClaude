@@ -50,7 +50,6 @@ from teleclaude.constants import (
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
-    SLUG_NOT_FOUND_DETAIL,
     TodoStatus,
 )
 from teleclaude.core.db import db as runtime_db
@@ -59,6 +58,7 @@ from teleclaude.core.human_involvement import (
     HumanInvolvementSurface,
     resolve_human_involvement,
 )
+from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
 from teleclaude.core.next_machine.documentation_evidence import (
     DocumentationEvidenceRefused,
@@ -74,14 +74,16 @@ from teleclaude.core.next_machine.kind_migration import (
 from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
 from teleclaude.core.next_machine.provenance import sync_artifact_provenance
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
+from teleclaude.core.next_machine.started_build import BuildAlreadyStarted, refuse_if_build_started
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db._errors import HolderReconciliationRefused, HolderTransitionRefused
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
+from teleclaude.core.workflow_machine.activation import restore_classifier
 from teleclaude.core.workflow_store.store import get_workflow_store
-from teleclaude.core.workflow_store.types import DocumentationAdmission, ReviewedDocumentationSource
+from teleclaude.core.workflow_store.types import ActivationRefused, DocumentationAdmission, ReviewedDocumentationSource
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.envelope_facts import home_for_project_path
 from teleclaude.events.producer import publish_event
@@ -91,7 +93,6 @@ from teleclaude.events.wire import LegacyFacts
 from teleclaude.slug import validate_slug
 from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.creation_record import EntryPoint
-from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import HoldAuditSource
 
@@ -235,6 +236,7 @@ async def todo_work(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
+    reason: Annotated[str | None, Body()] = None,
     identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation:
     """Run the Phase B (work) state machine.
@@ -252,6 +254,7 @@ async def todo_work(  # pyright: ignore
         cwd=cwd,
         caller_session_id=identity.session_id,
         client_request_id=client_request_id,
+        reason=reason,
     )
 
 
@@ -356,10 +359,8 @@ async def todo_update(  # pyright: ignore
     if requested_after and (normalized_schedule is not None or (existing_schedule and not clearing_schedule)):
         raise HTTPException(status_code=400, detail="clear schedule before setting dependencies")
 
-    if (new_slug is not None or kind is not None) and await _todo_build_started(todos_db, slug):
-        raise HTTPException(
-            status_code=409, detail=f"slug and kind updates are refused after build starts for '{slug}'"
-        )
+    if new_slug is not None or kind is not None:
+        _refuse_started_build(slug, raw_state)
 
     if group_present:
         await apply_group_membership_update(
@@ -374,7 +375,7 @@ async def todo_update(  # pyright: ignore
     if kind is not None:
         try:
             migration_result = await migrate_todo_kind(todos_db, slug, target_kind=kind, force=force)
-        except KindMigrationRequiresForce as exc:
+        except (KindMigrationRequiresForce, BuildAlreadyStarted) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except StateMutationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -555,17 +556,6 @@ async def _require_creation_documentation_evidence(
     )
 
 
-async def _todo_build_started(todos_db: WorkflowStore, slug: str) -> bool:
-    raw_state = await todos_db.read_state(slug)
-    if raw_state is None:
-        raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
-    writer = StateWriter(raw_state)
-    phase = writer.state.lifecycle_phase
-    if writer.state.build_start_base_sha:
-        return True
-    return phase in {work_phase.value for work_phase in WORK_LIFECYCLE_PHASES}
-
-
 # ---------------------------------------------------------------------------
 # Shared todos.db helpers (artifact routes import these; see todo_artifact_routes)
 # ---------------------------------------------------------------------------
@@ -585,6 +575,23 @@ async def _get_workflow_store_from_cwd(cwd: str) -> WorkflowStore:
     return await get_workflow_store(project_root)
 
 
+async def _reactivate_classified(todos_db: WorkflowStore, todo_id: str, cwd: str) -> str:
+    """Restore the row and, in the same transaction, classify it as the store's activation would."""
+    try:
+        classify = await restore_classifier(cwd, todo_id, todos_db)
+    except ActivationRefused as refusal:
+        raise HTTPException(status_code=409, detail=str(refusal)) from refusal
+    return await todos_db.reactivate_removed(todo_id, cwd=cwd, classify_restored=classify)
+
+
+def _refuse_started_build(slug: str, raw_state: dict[str, StateValue] | None) -> None:
+    """Refuse a slug or kind update once the build has started, as a conflict."""
+    try:
+        refuse_if_build_started(slug, raw_state)
+    except BuildAlreadyStarted as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 async def _sync_artifact_provenance_state(
     todos_db: WorkflowStore,
     slug: str,
@@ -593,7 +600,9 @@ async def _sync_artifact_provenance_state(
     repo_root: str,
     artifact_body: str,
     prepared_session_id: str | None,
+    adopt_phase: bool = True,
 ) -> None:
+    """Sync one artifact's provenance; a task-plan also moves the phase unless the caller adopts it itself."""
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
         return
@@ -607,7 +616,7 @@ async def _sync_artifact_provenance_state(
         artifact_body=artifact_body,
         snippet_digest_fn=snippet_body_digest_for(repo_root),
     )
-    if artifact_name == ARTIFACT_TASK_PLAN:
+    if artifact_name == ARTIFACT_TASK_PLAN and adopt_phase:
         artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
         writer.state.lifecycle_phase = adopt_prepare_handoff_phase(
             writer.state,
@@ -754,6 +763,8 @@ async def todo_content_create(
                 repo_root=effective_cwd,
                 artifact_body=written_artifact_body,
                 prepared_session_id=identity.session_id,
+                # A task created with its plan is placed and pre-authorized by seed_task_plan_authorization below.
+                adopt_phase=not (request.plan and request.kind == TodoKind.TASK),
             )
 
         if request.plan and request.kind == TodoKind.CHANGE:
@@ -873,7 +884,7 @@ async def todo_reactivate(
 
     todo_id = matches[0]["id"]
     try:
-        await todos_db.reactivate_removed(todo_id, cwd=effective_cwd)
+        await _reactivate_classified(todos_db, todo_id, effective_cwd)
     except ReactivateRefused as exc:
         if exc.work_feedback is not None:
             raise DeclaredWorkRefusal(
@@ -896,7 +907,7 @@ async def todo_reactivate_by_id(
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_workflow_store_from_cwd(effective_cwd)
     try:
-        slug = await todos_db.reactivate_removed(todo_id, cwd=effective_cwd)
+        slug = await _reactivate_classified(todos_db, todo_id, effective_cwd)
     except ReactivateRefused as exc:
         if exc.work_feedback is not None:
             raise DeclaredWorkRefusal(

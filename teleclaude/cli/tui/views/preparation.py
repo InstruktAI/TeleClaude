@@ -298,6 +298,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 "1" if getattr(t, "held", False) else "0",
                 getattr(t, "hold_source", None) or "",
                 getattr(t, "active_runner", None) or "",
+                getattr(t, "standing", None).model_dump_json() if getattr(t, "standing", None) else "",
                 getattr(t, "schedule", None) or "",
                 getattr(t, "task_plan_digest", None) or "",
                 getattr(t, "task_approved_digest", None) or "",
@@ -512,6 +513,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 person_chip=dto.person_chip,
                 entry_point=dto.entry_point,
                 human_involved=dto.human_involved,
+                standing=dto.standing,
             )
 
         # Sectioned dependency trees come from the projection — the view renders;

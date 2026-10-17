@@ -400,6 +400,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
         include_headless: bool = False,
         all_open: bool = False,
         initiator_session_id: str | None = None,
+        working_slug: str | None = None,
     ) -> list[Session]:
         """List sessions with optional filters.
 
@@ -411,6 +412,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
             include_headless: Include headless sessions when True
             all_open: Include every session without a close timestamp
             initiator_session_id: Filter to sessions spawned by this session
+            working_slug: Filter to sessions whose persisted working slug is this
 
         Returns:
             List of Session objects
@@ -450,6 +452,8 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
             stmt = stmt.where(db_models.Session.last_input_origin == last_input_origin)
         if initiator_session_id:
             stmt = stmt.where(db_models.Session.initiator_session_id == initiator_session_id)
+        if working_slug:
+            stmt = stmt.where(db_models.Session.working_slug == working_slug)
         stmt = stmt.order_by(db_models.Session.last_activity.desc())
         stmt_built_dt = time.perf_counter() - started_at
         logger.trace(

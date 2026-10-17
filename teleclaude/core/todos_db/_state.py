@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import cast
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import update
+from sqlalchemy import Update, update
 from sqlmodel import Session as SqlSession
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
@@ -18,6 +18,7 @@ from teleclaude.constants import ARTIFACT_DEFERRALS, WORKTREE_DIR, TodoStatus
 from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG
 from teleclaude.core.next_machine.lifecycle import READY_BAND_PHASES, coerce_lifecycle_phase, is_ready_band_eligible
 from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
+from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, stored_holder, with_claim_change
 from teleclaude.types.state_value import StateValue
 
 from ._errors import HolderWriteRefused
@@ -27,6 +28,7 @@ from ._models import TODO_DEPS_TABLE, TODO_STATE_TABLE, TODO_TABLE, Todo, TodoDe
 from ._upcycle import _detect_schema_version, canonicalize_state_for_storage, upcycle_state_dict
 
 logger = get_logger(__name__)
+_BEGIN_IMMEDIATE_SQL = "BEGIN IMMEDIATE"
 
 _V2_PREPARE_PHASES = {
     "draft",
@@ -67,11 +69,26 @@ def _rename_breakdown_todos(
     return renamed_state
 
 
+def _v2_upcycle_statement(todo_id: str, original_json: str, payload: dict[str, StateValue], now: str) -> Update:
+    """Persist an upcycled payload only while the row still holds the JSON the read upcycled.
+
+    The read upcycled a state it saw; a writer that committed since holds newer state, and the old JSON upcycled would
+    overwrite it. The expected-original condition makes the persistence a no-op then; the next read upcycles again.
+    """
+    return (
+        update(TODO_STATE_TABLE)
+        .where(TODO_STATE_TABLE.c.id == todo_id)
+        .where(TODO_STATE_TABLE.c.state == original_json)
+        .values(state=json.dumps(payload, default=str), updated_at=now)
+    )
+
+
 class TodosDbStateMixin:
     """Read/write todo lifecycle state (replaces state_io.py)."""
 
     _on_mutation: Callable[[str, Mapping[str, object] | None], None]
     _on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None]
+    _on_claim_changed: Callable[[str, str | None, str | None], None]
     db_path: str
 
     def _stored_lifecycle_phase(self, state_model: TodoStateModel | None) -> str:
@@ -81,6 +98,27 @@ class TodosDbStateMixin:
         payload = upcycle_state_dict(raw_state)
         phase = payload.get("lifecycle_phase")
         return phase if isinstance(phase, str) else ""
+
+    def _stored_holder(self, state_model: TodoStateModel | None) -> str | None:
+        """The claim holder recorded in a persisted state row, or None."""
+        if state_model is None:
+            return None
+        raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
+        return self._payload_holder(raw_state)
+
+    def _payload_holder(self, payload: Mapping[str, StateValue]) -> str | None:
+        return stored_holder(payload)
+
+    def _carry_workflow_record(
+        self, payload: dict[str, StateValue], state_model: TodoStateModel | None
+    ) -> dict[str, StateValue]:
+        """Keep the machine-owned workflow record the row already holds; only the machine's own commit replaces it."""
+        if state_model is None:
+            return payload
+        stored = cast(dict[str, StateValue], json.loads(state_model.state)).get(WORKFLOW_STATE_KEY)
+        if stored is None:
+            return payload
+        return {**payload, WORKFLOW_STATE_KEY: stored}
 
     def _payload_lifecycle_phase(self, payload: Mapping[str, StateValue]) -> str:
         phase = payload.get("lifecycle_phase")
@@ -260,11 +298,14 @@ class TodosDbStateMixin:
             raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
             payload = upcycle_state_dict(raw_state)
             if self._record_v2_to_v3_if_needed(slug, raw_state, payload):
-                state_model.state = json.dumps(payload, default=str)
-                state_model.updated_at = datetime.now(UTC).isoformat()
-                session.add(state_model)
+                persisted = await session.exec(
+                    _v2_upcycle_statement(
+                        str(state_model.id), state_model.state, payload, datetime.now(UTC).isoformat()
+                    )
+                )
                 await session.commit()
-                self._on_mutation("todo_updated", None)
+                if persisted.rowcount:
+                    self._on_mutation("todo_updated", None)
             return payload
 
     async def read_state_in_session(self, slug: str, session: SqlAsyncSession) -> dict[str, StateValue] | None:
@@ -290,11 +331,14 @@ class TodosDbStateMixin:
             raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
             payload = upcycle_state_dict(raw_state)
             if self._record_v2_to_v3_if_needed(entry.slug, raw_state, payload):
-                state_model.state = json.dumps(payload, default=str)
-                state_model.updated_at = datetime.now(UTC).isoformat()
-                session.add(state_model)
+                persisted = await session.exec(
+                    _v2_upcycle_statement(
+                        str(state_model.id), state_model.state, payload, datetime.now(UTC).isoformat()
+                    )
+                )
                 await session.commit()
-                self._on_mutation("todo_updated", None)
+                if persisted.rowcount:
+                    self._on_mutation("todo_updated", None)
             return payload
 
     async def read_status_and_state_by_id(self, todo_id: str) -> TodoStatusStateRead:
@@ -312,11 +356,14 @@ class TodosDbStateMixin:
             raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
             payload = upcycle_state_dict(raw_state)
             if self._record_v2_to_v3_if_needed(entry.slug, raw_state, payload):
-                state_model.state = json.dumps(payload, default=str)
-                state_model.updated_at = datetime.now(UTC).isoformat()
-                session.add(state_model)
+                persisted = await session.exec(
+                    _v2_upcycle_statement(
+                        str(state_model.id), state_model.state, payload, datetime.now(UTC).isoformat()
+                    )
+                )
                 await session.commit()
-                self._on_mutation("todo_updated", None)
+                if persisted.rowcount:
+                    self._on_mutation("todo_updated", None)
             return TodoStatusStateRead(status=entry.status, state=payload, is_structural_group_holder=is_holder)
 
     async def read_status_and_states_by_id(self, todo_ids: list[str]) -> dict[str, TodoStatusStateRead]:
@@ -342,10 +389,12 @@ class TodosDbStateMixin:
                 raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
                 payload = upcycle_state_dict(raw_state)
                 if self._record_v2_to_v3_if_needed(entry.slug, raw_state, payload):
-                    state_model.state = json.dumps(payload, default=str)
-                    state_model.updated_at = datetime.now(UTC).isoformat()
-                    session.add(state_model)
-                    migrated = True
+                    persisted = await session.exec(
+                        _v2_upcycle_statement(
+                            str(state_model.id), state_model.state, payload, datetime.now(UTC).isoformat()
+                        )
+                    )
+                    migrated = migrated or bool(persisted.rowcount)
                 reads[entry.id] = TodoStatusStateRead(
                     status=entry.status, state=payload, is_structural_group_holder=False
                 )
@@ -379,6 +428,8 @@ class TodosDbStateMixin:
 
             # Upsert state model
             state_model = await db_session.get(TodoStateModel, todo_id)
+            prior_holder = self._stored_holder(state_model)
+            canonical = with_claim_change(self._carry_workflow_record(canonical, state_model), prior_holder)
             if state_model is None:
                 state_model = TodoStateModel(
                     id=todo_id,
@@ -396,9 +447,48 @@ class TodosDbStateMixin:
             if owns_session:
                 await db_session.commit()
                 self._on_mutation("todo_updated", None)
+                holder = self._payload_holder(canonical)
+                if prior_holder != holder:
+                    self._on_claim_changed(entry.slug, prior_holder, holder)
         finally:
             if owns_session:
                 await db_session.close()
+
+    async def merge_state_by_id(
+        self,
+        todo_id: str,
+        merge: Callable[[dict[str, StateValue]], dict[str, StateValue] | None],
+    ) -> bool:
+        """Turn a row\'s stored state into the state to write, decided on the state this transaction reads.
+
+        The row is addressed by its durable id, whatever its status. The write transaction is taken up front, so no
+        other writer commits between the read and the write; ``merge`` may raise to write nothing, and returns None
+        when the state needs no write. True when a state was written.
+        """
+        async with self._session() as session:  # type: ignore[attr-defined]
+            connection = await session.connection()
+            await connection.exec_driver_sql(_BEGIN_IMMEDIATE_SQL)
+            try:
+                state_model = await session.get(TodoStateModel, todo_id)
+                if state_model is None:
+                    await session.rollback()
+                    return False
+                prior_holder = self._stored_holder(state_model)
+                merged = merge(upcycle_state_dict(cast(dict[str, StateValue], json.loads(state_model.state))))
+                if merged is None:
+                    await session.rollback()
+                    return False
+                await self.write_state_by_id(todo_id, merged, session=session)
+                await session.commit()
+            except BaseException:
+                await session.rollback()
+                raise
+        slug = str(state_model.slug)
+        self._on_mutation("todo_updated", None)
+        holder = self._payload_holder(merged)
+        if prior_holder != holder:
+            self._on_claim_changed(slug, prior_holder, holder)
+        return True
 
     async def write_state(
         self,
@@ -406,8 +496,13 @@ class TodosDbStateMixin:
         state: dict[str, StateValue],
         *,
         session: SqlAsyncSession | None = None,
+        owns_workflow_record: bool = False,
     ) -> None:
-        """Upsert state JSON for a slug."""
+        """Upsert state JSON for a slug.
+
+        The item's workflow record is carried forward from the stored row unless the caller is the
+        workflow machine's own commit (``owns_workflow_record``).
+        """
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
@@ -423,6 +518,10 @@ class TodosDbStateMixin:
             now = datetime.now(UTC).isoformat()
             state_model = await db_session.get(TodoStateModel, row_id)
             prior_phase = self._stored_lifecycle_phase(state_model)
+            prior_holder = self._stored_holder(state_model)
+            if not owns_workflow_record:
+                payload = self._carry_workflow_record(payload, state_model)
+            payload = with_claim_change(payload, prior_holder)
             if state_model is None:
                 state_model = TodoStateModel(
                     id=row_id,
@@ -452,6 +551,9 @@ class TodosDbStateMixin:
             new_phase = self._payload_lifecycle_phase(payload)
             if prior_phase != new_phase:
                 self._on_phase_transition(slug, prior_phase, new_phase, payload)
+            holder = self._payload_holder(payload)
+            if prior_holder != holder:
+                self._on_claim_changed(slug, prior_holder, holder)
         finally:
             if owns_session:
                 await db_session.close()
@@ -596,17 +698,32 @@ class TodosDbStateMixin:
             raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
             payload = upcycle_state_dict(raw_state)
             if self._record_v2_to_v3_if_needed(slug, raw_state, payload):
-                state_model.state = json.dumps(payload, default=str)
-                state_model.updated_at = datetime.now(UTC).isoformat()
-                session.add(state_model)
+                persisted = session.exec(
+                    _v2_upcycle_statement(
+                        str(state_model.id), state_model.state, payload, datetime.now(UTC).isoformat()
+                    )
+                )
                 session.commit()
-                self._on_mutation("todo_updated", None)
+                if persisted.rowcount:
+                    self._on_mutation("todo_updated", None)
             return payload
 
-    def write_state_sync(self, slug: str, state: dict[str, StateValue]) -> None:
-        """Sync version of write_state for use from worker threads."""
-        payload = canonicalize_state_for_storage(state)
+    def write_state_sync(
+        self,
+        slug: str,
+        state: dict[str, StateValue],
+        *,
+        merge: Callable[[dict[str, StateValue]], dict[str, StateValue]] | None = None,
+    ) -> None:
+        """Sync version of write_state for use from worker threads.
+
+        ``merge``, when given, turns the stored state into the state to write, inside the same write transaction that
+        reads it (taken up front, so no other writer commits between the read and the write); ``state`` is written
+        as it is when the row has no stored state yet.
+        """
         with self._sync_session() as session:  # type: ignore[attr-defined]
+            if merge is not None:
+                session.connection().exec_driver_sql(_BEGIN_IMMEDIATE_SQL)
             row_id = session.exec(
                 apply_todo_identity_pin(
                     select(Todo.id).where(TODO_TABLE.c.slug == slug),
@@ -634,7 +751,12 @@ class TodosDbStateMixin:
 
             now = datetime.now(UTC).isoformat()
             state_model = session.get(TodoStateModel, str(row_id))
+            if merge is not None and state_model is not None:
+                state = merge(upcycle_state_dict(cast(dict[str, StateValue], json.loads(state_model.state))))
+            payload = canonicalize_state_for_storage(state)
             prior_phase = self._stored_lifecycle_phase(state_model)
+            prior_holder = self._stored_holder(state_model)
+            payload = with_claim_change(self._carry_workflow_record(payload, state_model), prior_holder)
             if state_model is None:
                 state_model = TodoStateModel(
                     id=str(row_id),
@@ -661,3 +783,6 @@ class TodosDbStateMixin:
         new_phase = self._payload_lifecycle_phase(payload)
         if prior_phase != new_phase:
             self._on_phase_transition(slug, prior_phase, new_phase, payload)
+        holder = self._payload_holder(payload)
+        if prior_holder != holder:
+            self._on_claim_changed(slug, prior_holder, holder)

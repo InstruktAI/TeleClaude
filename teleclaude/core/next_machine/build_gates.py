@@ -26,6 +26,7 @@ logger = get_logger(__name__)
 # Ceiling only — the project's own test harness enforces its real budgets
 # (tiered session timeouts); this bound exists to reap a wedged make process.
 _TEST_GATE_TIMEOUT_SECONDS = 600
+_CLEANUP_TIMEOUT_SECONDS = 10
 _OUTPUT_TAIL_CHARS = 2000
 _STDERR_TAIL_CHARS = 500
 
@@ -46,8 +47,13 @@ def _has_make_test_target(worktree_root: Path) -> bool:
     return re.search(r"^test\s*:", content, re.MULTILINE) is not None
 
 
-def _run_make_test(worktree_root: Path, *, timeout_seconds: int) -> _TestRunResult:
-    """Run `make test` in the worktree's own environment and capture the result."""
+def _run_make_test(worktree_root: Path, *, timeout_seconds: int, own_session: bool = True) -> _TestRunResult:
+    """Run `make test` in the worktree's own environment and capture the result.
+
+    By default ``make`` leads a session of its own and its whole group is killed at the limit. A caller that
+    already leads the group it supervises passes ``own_session=False``: ``make`` then joins that group and only
+    ``make`` is killed at the limit, the caller settling the rest of its group itself.
+    """
     # Strip platform-environment leakage so the project resolves its own
     # interpreter and packages exactly as it would standalone.
     env = {
@@ -66,17 +72,20 @@ def _run_make_test(worktree_root: Path, *, timeout_seconds: int) -> _TestRunResu
         stderr=subprocess.PIPE,
         stdin=subprocess.DEVNULL,
         text=True,
-        start_new_session=True,
+        start_new_session=own_session,
         env=env,
     )
     try:
         stdout, stderr = process.communicate(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         try:
-            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            if own_session:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            else:
+                process.kill()
         except (ProcessLookupError, PermissionError):
             pass
-        stdout, stderr = process.communicate()
+        stdout, stderr = _drain_after_kill(process)
         return _TestRunResult(
             returncode=124,
             stdout=stdout or "",
@@ -85,7 +94,24 @@ def _run_make_test(worktree_root: Path, *, timeout_seconds: int) -> _TestRunResu
     return _TestRunResult(returncode=process.returncode, stdout=stdout or "", stderr=stderr or "")
 
 
-def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
+def _drain_after_kill(process: subprocess.Popen[str]) -> tuple[str, str]:
+    """Collect what a killed gate wrote, within a bound.
+
+    A descendant outside the killed group can keep the pipes open indefinitely; the output is then given up
+    and the pipes closed, so the cleanup always ends.
+    """
+    try:
+        stdout, stderr = process.communicate(timeout=_CLEANUP_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
+        return "", ""
+    return stdout or "", stderr or ""
+
+
+def run_build_gates(worktree_cwd: str, slug: str, *, own_session: bool = True) -> tuple[bool, str]:
     """Run build gates in the worktree.
 
     Returns (all_passed, output_details).
@@ -104,7 +130,7 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
 
     logger.info("build_gate_make_test", slug=slug, worktree=str(worktree_root))
     try:
-        test_result = _run_make_test(worktree_root, timeout_seconds=_TEST_GATE_TIMEOUT_SECONDS)
+        test_result = _run_make_test(worktree_root, timeout_seconds=_TEST_GATE_TIMEOUT_SECONDS, own_session=own_session)
     except OSError as exc:
         return False, f"GATE FAILED: native tests (error: {exc})"
 

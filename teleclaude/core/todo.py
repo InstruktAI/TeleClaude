@@ -4,9 +4,12 @@ DB-backed todo list assembly for CLI, API, and TUI.
 """
 
 import time
+from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from typing import Final
 
 from instrukt_ai_logging import get_logger
 
@@ -23,9 +26,14 @@ from teleclaude.core.next_machine.lifecycle import (
     prepare_review_verdict_from_state,
     require_lifecycle_phase,
 )
-from teleclaude.core.workflow_store.store import get_workflow_store_sync
+from teleclaude.core.workflow_machine.held_standing import held_ready_standing, item_reading
+from teleclaude.core.workflow_machine.phase_reading import PhaseReading
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store_sync
+from teleclaude.core.workflow_store.types import TodoProjectionItem
+from teleclaude.types.claim_change import workflow_record_of
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY, TodoState
+from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY, HoldAuditSource, TodoState
+from teleclaude.types.workflow_record import Phase
 
 logger = get_logger(__name__)
 
@@ -112,8 +120,70 @@ def parse_since_to_cutoff(value: str) -> str:
     return parsed.astimezone(UTC).isoformat()
 
 
+def _public_hold_source(hold_audit: StateValue) -> str | None:
+    """What set the hold, as the audit records it; a start\'s reservation mark is internal and reports nothing."""
+    if not isinstance(hold_audit, dict):
+        return None
+    source = hold_audit.get(_ProjectionStateKey.HOLD_SOURCE)
+    if not isinstance(source, str) or source == HoldAuditSource.START_RESERVATION:
+        return None
+    return source
+
+
+READING_WORKERS: Final = 8
+_LIVE_STATUSES: Final = (TodoStatus.ACTIVE.value, TodoStatus.ICEBOX.value)
+
+
+def _ready_readings(
+    store: WorkflowStore, project_path: str, items: Sequence[TodoProjectionItem]
+) -> dict[str, PhaseReading]:
+    """The machine\'s reading of every live item that is not a task, the remote reads taken together.
+
+    Keyed by the row\'s durable store address, never by slug: a removed or delivered row may share its slug with a
+    live one, and only a live row has a reading (the resolver addresses the item by slug, which names the live row).
+    """
+    live = [
+        (str(item.store_address), str(item.item_id), item.state)
+        for item in items
+        if item.state is not None and item.state_error is None and item.status in _LIVE_STATUSES
+    ]
+    if not live:
+        return {}
+
+    def read(entry: tuple[str, str, dict[str, StateValue]]) -> tuple[str, PhaseReading | None]:
+        address, slug, state = entry
+        return address, item_reading(store, project_path, slug, state)
+
+    with ThreadPoolExecutor(max_workers=READING_WORKERS) as pool:
+        results = list(pool.map(read, live))
+    return {address: reading for address, reading in results if reading is not None}
+
+
+def _read_phase_value(stored: LifecyclePhase, reading: PhaseReading | None) -> str:
+    """The phase the item reads, as the machine\'s reading gives it; the stored value for an item it does not read.
+
+    The list and the item\'s detail say the same thing: a stamp the head moved past reads ``work`` (``preparation``
+    for a carried stamp nobody holds), and an item whose creative episode is open reads ``design``.
+    """
+    if reading is None or reading.phase is None or reading.phase is Phase.DELIVERED:
+        return stored.value
+    return reading.phase.value
+
+
 def _non_empty_str(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _prepared_session_id(state: dict[str, StateValue]) -> str | None:
+    """The session that completed the item's preparation.
+
+    The record of the lifecycle machine is the authority when it holds a prepared revision: the session that performed
+    the prepared act. Otherwise the value stored before that machine is published as it was.
+    """
+    prepared = workflow_record_of(state).prepared
+    if prepared is not None:
+        return _non_empty_str(prepared.session_id)
+    return _non_empty_str(state.get(PREPARED_SESSION_ID_STATE_KEY))
 
 
 def _artifact_digest(state: dict[str, StateValue] | None, artifact_key: str) -> str | None:
@@ -342,6 +412,7 @@ def _derive_projection_fields(
     state: dict[str, StateValue] | None,
     *,
     artifact_write_timestamps: dict[str, str],
+    reading: PhaseReading | None = None,
 ) -> _ProjectionFields:
     if state is None:
         return _ProjectionFields(
@@ -365,7 +436,7 @@ def _derive_projection_fields(
         state.get("lifecycle_phase"),
         context=f"assemble_todo_from_db({slug})",
     )
-    current_value = lifecycle.value
+    current_value = _read_phase_value(lifecycle, reading)
     is_draft_lifecycle = lifecycle == LifecyclePhase.DRAFT
 
     state_phase = state.get("phase", "")
@@ -504,6 +575,7 @@ def assemble_todo_from_db(
     deps_map = {str(item_id): [str(dep) for dep in deps] for item_id, deps in snapshot.dependencies.items()}
     holder_slug_by_id = {str(address): str(slug) for address, slug in snapshot.structural_group_slugs.items()}
 
+    readings = _ready_readings(store, project_path, snapshot.items)
     todos: list[TodoDTO] = []
     raw_status_by_id: dict[str, str] = {}
     todo_build_total_dt = 0.0
@@ -544,11 +616,13 @@ def assemble_todo_from_db(
             for artifact in item.artifact_files
             if artifact.updated_at is not None
         }
+        reading = readings.get(row_id)
         projection = _derive_projection_fields(
             slug,
             raw_status,
             state,
             artifact_write_timestamps=artifact_write_timestamps,
+            reading=reading,
         )
         hold_audit = state.get(_ProjectionStateKey.HOLD_AUDIT)
         held = effective_hold(hold=bool(state.get(_ProjectionStateKey.HOLD)))
@@ -581,17 +655,13 @@ def assemble_todo_from_db(
                 prepare_review_verdict=projection.prepare_review_verdict,
                 hold=bool(state.get(_ProjectionStateKey.HOLD)),
                 held=held,
-                hold_source=(
-                    str(hold_audit.get(_ProjectionStateKey.HOLD_SOURCE))
-                    if isinstance(hold_audit, dict) and isinstance(hold_audit.get(_ProjectionStateKey.HOLD_SOURCE), str)
-                    else None
-                ),
+                hold_source=_public_hold_source(hold_audit),
                 active_runner=(
                     str(state.get(_ProjectionStateKey.ACTIVE_RUNNER))
                     if isinstance(state.get(_ProjectionStateKey.ACTIVE_RUNNER), str)
                     else None
                 ),
-                prepared_session_id=_non_empty_str(state.get(PREPARED_SESSION_ID_STATE_KEY)),
+                prepared_session_id=_prepared_session_id(state),
                 files=[artifact.name for artifact in item.artifact_files],
                 artifact_updated_at={
                     artifact.name: artifact.updated_at
@@ -605,6 +675,7 @@ def assemble_todo_from_db(
                 entry_point=item.entry_point,
                 human_involved=item.human_involved,
                 context=item.context,
+                standing=held_ready_standing(state, reading),
             )
         )
         todo_build_total_dt += time.perf_counter() - build_started_at

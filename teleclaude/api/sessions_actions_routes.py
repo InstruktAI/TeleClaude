@@ -55,7 +55,7 @@ from teleclaude.api_session_actions_models import AgentRestartRequest, AgentRest
 from teleclaude.config.machine import config
 from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.registered_homes import project_folder
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL, WORKTREE_DIR
 from teleclaude.core import agents as agents_module
 from teleclaude.core.agent_dispatch import (
     AgentDispatchFailure,
@@ -94,6 +94,7 @@ from teleclaude.core.session_message_projection import (
     build_session_messages_dto,
 )
 from teleclaude.core.session_utils import split_project_path_and_subdir
+from teleclaude.entry_declarations import EntryDeclarations
 from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.project_manifest_runtime import load_registered_entries
 from teleclaude.types.commands import (
@@ -103,10 +104,12 @@ from teleclaude.types.commands import (
     ReviveAgentCommand,
     UnsubscribeSessionCommand,
 )
+from teleclaude.types.creation_record import EntryPoint
 from teleclaude.utils.transcript_discovery import discover_transcripts, extract_session_id, recover_native_project
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
 from teleclaude.types.commands import SystemCommand
 
 logger = get_logger(__name__)
@@ -251,6 +254,8 @@ def _prepare_run_session(
     request: RunSessionRequest,
     identity: CallerIdentity,
     entry_point: SessionEntryPoint,
+    pinned: EntryDeclarations | None = None,
+    session_id: str | None = None,
 ) -> RunSessionPlan:
     """Resolve a run-session request through the procedure entry into a create-session plan."""
     effective_agent = resolve_run_session_agent(request)
@@ -268,7 +273,7 @@ def _prepare_run_session(
         if activation is not None:
             entry, company = activation.entry, activation.company
             entry_point = SessionEntryPoint.PROCEDURE_ACTIVATION
-    session_id = str(uuid.uuid4())
+    session_id = session_id or str(uuid.uuid4())
     try:
         resolved = resolve_entry(
             procedure_token=procedure_token,
@@ -278,6 +283,7 @@ def _prepare_run_session(
             entry=entry,
             caller_mode=caller_mode,
             additional_context=request.additional_context,
+            pinned=pinned,
         )
     except EntryRefusal as exc:
         raise RunSessionRefusal(status_code=exc.status_code, detail=exc.detail, reason=exc.reason) from exc
@@ -535,8 +541,14 @@ async def _run_session(
     identity: CallerIdentity,
     *,
     entry_point: SessionEntryPoint,
+    pinned: EntryDeclarations | None = None,
+    fixed_session_id: str | None = None,
 ) -> CreateSessionResponseDTO:
-    """Run a published entry procedure on a new agent session."""
+    """Run a published entry procedure on a new agent session.
+
+    ``pinned`` is set only by a daemon-side caller that resolved it from the authenticated holder's own record.
+    ``fixed_session_id`` is set only by the platform's own idempotent starts (``run_platform_session``), never by a request.
+    """
     request_id = str(uuid.uuid4())
     command_kind = request.command.lstrip(COMMAND_PREFIX) or None
     request_entry_point = SessionEntryPoint.CRON if request.job is not None else entry_point
@@ -572,7 +584,7 @@ async def _run_session(
                 status_code=400, detail="project required", reason=AgentDispatchReason.PROJECT_REQUIRED
             )
         request = _with_project_folder(request)
-        plan = _prepare_run_session(request, identity, request_entry_point)
+        plan = _prepare_run_session(request, identity, request_entry_point, pinned, fixed_session_id)
     except RunSessionRefusal as exc:
         emit_run_outcome(
             selected_agent=None,
@@ -627,14 +639,21 @@ async def _run_session(
         if cmd.launch_intent is not None:
             cmd.launch_intent.accepted_at_origin = True
     try:
-        guard_result = await enforce_driver_start_guard(
-            project_path=request.project,
-            working_slug=plan.working_slug,
-            procedure_id=plan.command,
-            role=plan.role,
-            caller_session_id=plan.initiator_session_id,
-            caller_human_email=terminal_driver_email(identity),
-            thinking_mode=plan.launch_intent.thinking_mode if plan.launch_intent else "",
+        # A child the holding driver starts for its own item (pinned declarations, resolved from the holder's record) is
+        # a member of that driver's claiming group, not a second driver: the duplicate-driver guard does not apply.
+        guard_result = (
+            DriverStartGuardResult()
+            if pinned is not None
+            else await enforce_driver_start_guard(
+                project_path=request.project,
+                working_slug=plan.working_slug,
+                procedure_id=plan.command,
+                role=plan.role,
+                caller_session_id=plan.initiator_session_id,
+                caller_human_email=terminal_driver_email(identity),
+                thinking_mode=plan.launch_intent.thinking_mode if plan.launch_intent else "",
+                handoff_session_id=fixed_session_id,
+            )
         )
     except RunSessionRefusal as exc:
         emit_run_outcome(
@@ -705,6 +724,52 @@ async def _run_session(
             raise refusal from e
         logger.error("run_session failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to run session: {e}") from e
+
+
+PLATFORM_IDENTITY = CallerIdentity(
+    session_id="", role=None, human_role=None, principal=SYSTEM_DAEMON_PRINCIPAL, entry_point=EntryPoint.AGENT
+)
+PLATFORM_RUN_MISMATCH = "session {session} exists but is not the platform start of {command} in {project}"
+
+
+def platform_run_matches(existing: Session, request: RunSessionRequest) -> bool:
+    """Whether an existing session is the platform's own run of this request: same command, same project, no initiator."""
+    same_project = (
+        bool(existing.project_path) and Path(str(existing.project_path)).resolve() == Path(request.project).resolve()
+    )
+    return existing.command == request.command and not existing.initiator_session_id and same_project
+
+
+async def run_platform_session(request: RunSessionRequest, *, session_id: str) -> CreateSessionResponseDTO:
+    """The platform's own idempotent session start, in process, under a session identity it chose.
+
+    Not routed and not reachable from a request. A session of that identity, open or ended, is the same start only when
+    it is the platform's own run of the same command in the same project; anything else is a conflict and starts nothing.
+    """
+    existing = await db.get_session(session_id)
+    if existing is None:
+        return await _run_session(
+            request, PLATFORM_IDENTITY, entry_point=SessionEntryPoint.RUN_SESSION_API, fixed_session_id=session_id
+        )
+    if not platform_run_matches(existing, request):
+        raise RunSessionRefusal(
+            status_code=409,
+            detail=PLATFORM_RUN_MISMATCH.format(session=session_id, command=request.command, project=request.project),
+            reason=AgentDispatchReason.COMMAND_INVALID,
+        )
+    return CreateSessionResponseDTO(
+        status="success",
+        session_id=existing.session_id,
+        tmux_session_name=existing.tmux_session_name or "",
+        agent=existing.active_agent,
+    )
+
+
+async def run_pinned_session(
+    request: RunSessionRequest, identity: CallerIdentity, pinned: EntryDeclarations
+) -> CreateSessionResponseDTO:
+    """Run a published entry procedure with declarations a daemon-side caller resolved from the holder's record."""
+    return await _run_session(request, identity, entry_point=SessionEntryPoint.RUN_SESSION_API, pinned=pinned)
 
 
 @router.post("/sessions/run", response_model_exclude_none=True)

@@ -79,6 +79,8 @@ from teleclaude.core.next_machine.state_mutation import (
 from teleclaude.core.next_machine.work_lane_release import WorkLaneReturnReason, work_lane_return_follow_through
 from teleclaude.core.operation_follow_through import FollowThrough
 from teleclaude.core.roles import RoleName
+from teleclaude.core.workflow_machine.creative import CreativeCapability, CreativeRefused
+from teleclaude.core.workflow_machine.creative_commit import creative_facts, episode_mutation
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_project_root
@@ -122,6 +124,7 @@ _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     STATE_KEY_TASK_PLAN: STATE_KEY_TASK_PLAN,
 }
 _EMPTY_TEXT = ""
+_CREATIVE_STATE_KEY = "creative"
 _KICKBACK_REQUEST_ACCEPTED_EVENT = "todo_kickback_request_accepted"
 _KICKBACK_APPLIED_EVENT = "todo_kickback_applied"
 _KICKBACK_REQUEST_ACCEPTED_MESSAGE = "todo kickback request accepted"
@@ -264,7 +267,9 @@ async def _apply_mutation_stamp(
         writer.state.deferrals_processed = True
     elif stamp_type in _CREATIVE_GATE_STAMPS:
         section, flag = _CREATIVE_GATE_STAMPS[stamp_type]
-        _apply_creative_gate_stamp(writer, section=section, flag=flag)
+        return await _commit_creative_gate_stamp(
+            todos_db, slug, section=section, flag=flag, caller_session_id=caller_session_id or _EMPTY_TEXT
+        )
     elif stamp_type == "requirements_ready":
         await _apply_readiness_stamp(
             todos_db,
@@ -641,16 +646,35 @@ def _apply_diagnosis_unresolved_stamp(writer: StateWriter, *, reason: str, calle
     hold_todo_for_diagnosis_unresolved(writer, reason=reason, caller_session_id=caller_session_id or "")
 
 
-def _apply_creative_gate_stamp(writer: StateWriter, *, section: str, flag: str) -> None:
-    creative = writer.state.creative
-    if creative is None:
-        creative = {}
-        writer.state.creative = creative
+async def _commit_creative_gate_stamp(
+    todos_db: WorkflowStore, slug: str, *, section: str, flag: str, caller_session_id: str
+) -> dict[str, StateValue]:
+    """Set the gate flag and open the creative episode in one row transaction, or refuse and write neither."""
 
-    raw_section = creative.get(section)
-    section_state: dict[str, StateValue] = dict(raw_section) if isinstance(raw_section, dict) else {}
-    section_state[flag] = True
-    creative[section] = section_state
+    def set_flag(opened: dict[str, StateValue]) -> dict[str, StateValue]:
+        raw_creative = opened.get(_CREATIVE_STATE_KEY)
+        creative: dict[str, StateValue] = dict(raw_creative) if isinstance(raw_creative, dict) else {}
+        raw_section = creative.get(section)
+        section_state: dict[str, StateValue] = dict(raw_section) if isinstance(raw_section, dict) else {}
+        section_state[flag] = True
+        creative[section] = section_state
+        return {**opened, _CREATIVE_STATE_KEY: creative}
+
+    mutate = episode_mutation(
+        slug, CreativeCapability.GATE_STAMP, caller_session_id, set_flag, facts=await creative_facts(todos_db, slug)
+    )
+    try:
+        change = await todos_db.commit_item_change(
+            slug,
+            expect_digests={},
+            mutate=lambda current, _digests: mutate(current),
+            updated_by=caller_session_id or None,
+        )
+    except CreativeRefused as refusal:
+        raise StateMutationError(str(refusal)) from refusal
+    if change is None:
+        raise StateMutationError(f"no state found for slug '{slug}'")
+    return change.state
 
 
 async def _apply_drift_reviewed_stamp(

@@ -68,6 +68,7 @@ from teleclaude.core.supervisory_silence import (
     SilenceObservationKind,
     SilenceTimeoutOwner,
 )
+from teleclaude.core.workflow_machine.peer_start_intake import PEER_START_COMMANDS, serve_peer_start
 from teleclaude.history.service import HistoryRelayCommand
 
 if TYPE_CHECKING:
@@ -101,6 +102,7 @@ _RELAYED_READ_COMMANDS = frozenset(
         RelayRead.SESSION_RECORD.value,
         HistoryRelayCommand.SEARCH.value,
         HistoryRelayCommand.SHOW.value,
+        *PEER_START_COMMANDS,
     }
 )
 
@@ -504,7 +506,11 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 return
             if cmd_name in _RELAYED_READ_COMMANDS:
                 try:
-                    payload = await execute_relayed_read(cmd_name, parsed)
+                    payload = (
+                        await serve_peer_start(cmd_name, parsed)
+                        if cmd_name in PEER_START_COMMANDS
+                        else await execute_relayed_read(cmd_name, parsed)
+                    )
                     response_envelope: JsonDict = {
                         _STATUS_FIELD: _SUCCESS_STATUS,
                         _DATA_FIELD: payload,

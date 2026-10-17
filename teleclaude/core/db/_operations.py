@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import and_, delete, or_, update
+from sqlalchemy import and_, delete, func, or_, update
 from sqlmodel import select
 
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
@@ -23,6 +23,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _NONTERMINAL_STATES = ("queued", "running")
+_EVENT_JSON_PATH = "$.event_json"
+_EVENT_ID_PATH = "$.id"
 _OPERATION_SUBJECT_BACKFILL_SETTING = "operation_subject_backfill_complete"
 _OPERATION_SUBJECT_BACKFILL_COMPLETE = "true"
 _OPERATION_SUBJECT_BACKFILL_FAILED = "operation_subject_backfill_failed"
@@ -197,6 +199,18 @@ class DbOperationsMixin:
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             return result.first()
+
+    async def list_operations_for_event(self, *, kind: str, event_id: str) -> list[db_models.Operation]:
+        """The command-backed operations of a kind that were accepted for one event, by the event's own id."""
+        event_json = func.json_extract(db_models.Operation.payload_json, _EVENT_JSON_PATH)
+        stmt = (
+            select(db_models.Operation)
+            .where(db_models.Operation.kind == kind)
+            .where(func.json_extract(event_json, _EVENT_ID_PATH) == event_id)
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            return list(result.all())
 
     async def find_matching_nonterminal_operation(
         self,

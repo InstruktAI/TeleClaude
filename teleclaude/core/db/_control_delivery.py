@@ -661,6 +661,29 @@ class DbControlDeliveryMixin:
             rows = (await db_session.exec(statement)).all()
         return [_procedure_event_record(row) for row in rows]
 
+    async def list_session_procedure_activations(
+        self,
+        *,
+        session_id: str,
+        outcomes: Sequence[db_models.ProcedureEventDeliveryOutcome],
+    ) -> list[ProcedureEventRecord]:
+        """Read the activations assigned to one session in the given outcomes, in enqueue order.
+
+        The pending-only reads drop an activation once it was handed off; the session's own accepted activation
+        is what a later claim must be able to name.
+        """
+        if not outcomes:
+            return []
+        statement = (
+            select(db_models.ProcedureEventInbox)
+            .where(db_models.ProcedureEventInbox.assigned_session_id == session_id)
+            .where(db_models.ProcedureEventInbox.outcome.in_([outcome.value for outcome in outcomes]))
+            .order_by(db_models.ProcedureEventInbox.enqueue_order.asc())
+        )
+        async with self._session() as db_session:
+            rows = (await db_session.exec(statement)).all()
+        return [_procedure_event_record(row) for row in rows]
+
     async def assign_procedure_events(self, *, activation_ids: list[str], session_id: str) -> int:
         """Assign retained work to the current session without changing activation identity or order."""
         if not activation_ids:

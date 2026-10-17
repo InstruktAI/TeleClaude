@@ -9,14 +9,13 @@ helpers; ``lifecycle_runner`` never imports this module.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import DriverLaunchClass
+from teleclaude.constants import RUNNER_NOT_DISPATCHED, DriverLaunchClass
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
 from teleclaude.core.next_machine.git_ops import get_ref_commit
@@ -24,11 +23,11 @@ from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATU
 from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES, WORK_LANE_ROLES
 from teleclaude.core.next_machine.lifecycle import pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
-    SessionRunner,
+    LifecycleItemUnavailable,
+    LifecycleLinkLost,
     approval_from_state,
     artifact_digest_from_state,
     command_for_lane,
-    default_session_runner,
     dispatch_lifecycle_session,
     load_runner_todos,
     make_intent,
@@ -51,6 +50,7 @@ from teleclaude.core.next_machine.runtime.sessions import (
     find_live_commit_reviewer_for_initiator,
     find_live_commit_reviewer_for_terminal_human,
     find_live_reviewer_for_slug,
+    is_start_in_flight,
     resolve_slug_holders,
 )
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
@@ -68,6 +68,7 @@ from teleclaude.core.todos_db._exceptions import (
     ReviewerConflict,
     ReviewerIdentityUnresolved,
 )
+from teleclaude.core.workflow_machine.dispatch import handoff_holder
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
@@ -123,6 +124,11 @@ _MANUAL_SKIP_FEEDBACK: dict[RunnerSkipReason, str] = {
 _CONFLICTING_SESSION_BINDING_FEEDBACK = (
     "This session already owns another todo; finish or release that lifecycle claim before starting this one."
 )
+
+
+def not_dispatched_text(slug: str, reason: str) -> str:
+    """The result text of a manual start that dispatched nothing, naming the item and the reason."""
+    return f"{RUNNER_NOT_DISPATCHED}: {slug} {reason}"
 
 
 def work_feedback_for_manual_skip(reason: RunnerSkipReason | str | None) -> str | None:
@@ -225,6 +231,7 @@ async def _target_for_manual_start(
     *,
     check_dependencies: bool = True,
     caller_session_id: str | None = None,
+    ignore_session_id: str | None = None,
 ) -> tuple[RunnerTodo | None, RunnerSkipReason | None, str | None]:
     todos, _ = await load_runner_todos(todos_db, runtime_db)
     todo = todos.get(slug)
@@ -242,9 +249,10 @@ async def _target_for_manual_start(
     # own slug is not self-blocked. The active_runner check is caller-independent
     # so a live task runner refuses a duplicate even for the dispatching caller.
     holders = await resolve_slug_holders(runtime_db, project_path, slug, todo.active_runner)
-    if holders.orchestrator_owner is not None and holders.orchestrator_owner != caller_session_id:
-        return todo, RunnerSkipReason.ALREADY_DRIVEN, holders.orchestrator_owner
-    if holders.live_runner is not None:
+    owner = holders.orchestrator_owner
+    if owner is not None and owner != caller_session_id and owner != ignore_session_id:
+        return todo, RunnerSkipReason.ALREADY_DRIVEN, owner
+    if holders.live_runner is not None and holders.live_runner != ignore_session_id:
         return todo, RunnerSkipReason.ALREADY_DRIVEN, holders.live_runner
     if not check_dependencies:
         return todo, None, None
@@ -319,6 +327,25 @@ async def _guard_reviewer_start(
     raise ReviewerConflict(subject=subject, holder=holder, reuse_command=f"telec sessions send {holder}")
 
 
+async def _platform_start_discount(
+    todos_db: WorkflowStore, project_root: str, slug: str, session_id: str | None
+) -> str | None:
+    """The one session the duplicate-driver check discounts for a start under an identity the platform fixed.
+
+    Two starts qualify, each exactly: the start the platform is making right now whose link it has already reserved on
+    the item (the identity is in flight in this process and is the item\'s current link, so the check does not refuse the
+    link the start itself wrote), and the creative orchestrator a pending handoff fixed, which discounts the closing
+    holder. Any other identity, and every other live owner of the item, is checked as before.
+    """
+    if not session_id:
+        return None
+    if is_start_in_flight(session_id):
+        state = await todos_db.read_state(slug)
+        if state is not None and state.get("active_runner") == session_id:
+            return session_id
+    return await handoff_holder(project_root, slug, session_id) or None
+
+
 async def guard_driver_start(
     project_path: str | Path,
     slug: str | None,
@@ -329,6 +356,7 @@ async def guard_driver_start(
     command: str | None = None,
     thinking_mode: str,
     db: Db | None = None,
+    handoff_session_id: str | None = None,
 ) -> DriverStartGuardResult:
     """Refuse a create-door driver start that would duplicate a live driver.
 
@@ -352,6 +380,10 @@ async def guard_driver_start(
     - ``REVIEWER`` → refuse against a live reviewer already open for the same
       review subject (see :func:`_guard_reviewer_start`), reached even when
       ``slug`` is ``None`` — commit review carries no todo slug at all.
+
+    ``handoff_session_id`` is set only by the platform's own start of a handoff's creative orchestrator; when a pending
+    handoff of the item's current holder fixed exactly that session's identity, the check discounts that closing holder
+    alone and every other live owner of the item still refuses.
 
     Raises :class:`ClaimConflict` (carrying the holder) when a live driver already
     holds the slug, :class:`ReviewerConflict` when a live reviewer already holds
@@ -380,6 +412,7 @@ async def guard_driver_start(
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
     todos_db = await get_workflow_store(project_root)
+    ignored = await _platform_start_discount(todos_db, str(project_root), slug, handoff_session_id)
     effective_caller = None if launch_class is DriverLaunchClass.ORCHESTRATOR else caller_session_id
     todo, reason, holder = await _target_for_manual_start(
         todos_db,
@@ -389,6 +422,7 @@ async def guard_driver_start(
         project_root,
         check_dependencies=False,
         caller_session_id=effective_caller,
+        ignore_session_id=ignored,
     )
     if reason is RunnerSkipReason.ALREADY_DRIVEN:
         raise ClaimConflict(slug=slug, holder=holder)
@@ -401,7 +435,6 @@ async def manual_start_lifecycle_session(
     *,
     lane: RunnerLane,
     db: Db | None = None,
-    client_factory: Callable[[], SessionRunner] = default_session_runner,
 ) -> ManualLifecycleSessionResult:
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
@@ -418,19 +451,26 @@ async def manual_start_lifecycle_session(
             reason=reason,
         )
 
-    client = client_factory()
-    await client.connect()
     try:
         session_id = await dispatch_lifecycle_session(
-            client=client,
             runtime_db=runtime_db,
             todos_db=todos_db,
             project_path=str(project_root),
             intent=make_intent(slug, lane),
             origin=DispatchOrigin.MANUAL,
         )
-    finally:
-        await client.close()
+    except LifecycleLinkLost as lost:
+        return ManualLifecycleSessionResult(
+            slug=slug,
+            lane=lane,
+            status=ManualLifecycleStatus.ALREADY_DRIVEN,
+            reason=RunnerSkipReason.ALREADY_DRIVEN,
+            session_id=lost.owner,
+        )
+    except LifecycleItemUnavailable:
+        return ManualLifecycleSessionResult(
+            slug=slug, lane=lane, status=ManualLifecycleStatus.SKIPPED, reason=RunnerSkipReason.MISSING_STATE
+        )
 
     return ManualLifecycleSessionResult(
         slug=slug,

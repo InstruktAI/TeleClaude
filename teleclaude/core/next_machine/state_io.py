@@ -8,6 +8,7 @@ core.py (circular-import guard).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -51,6 +52,7 @@ from teleclaude.core.next_machine.review_evidence import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store_sync
+from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import BreakdownState, FinalizeModel, FinalizeStatus
 
@@ -63,7 +65,7 @@ def initial_todo_state_for_kind(kind: TodoKind) -> dict[str, StateValue]:
     canonical = canonical_kind(kind)
     state["kind"] = canonical
     entry_phase = KIND_ENTRY_PHASE[canonical]
-    state["lifecycle_phase"] = entry_phase.value
+    state["lifecycle_phase"] = (entry_phase if canonical == TodoKind.TASK else LifecyclePhase.PREPARATION).value
     return state
 
 
@@ -164,10 +166,16 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     return raw
 
 
-def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
-    """Write state to todos.db."""
+def write_phase_state(
+    cwd: str,
+    slug: str,
+    state: dict[str, StateValue],
+    *,
+    merge: Callable[[dict[str, StateValue]], dict[str, StateValue]] | None = None,
+) -> None:
+    """Write state to todos.db; ``merge`` derives the written state from the stored one inside the write transaction."""
     db = get_workflow_store_sync(cwd)
-    db.write_state_sync(slug, state)
+    db.write_state_sync(slug, state, merge=merge)
 
 
 # ---------------------------------------------------------------------------

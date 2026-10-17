@@ -8,6 +8,8 @@ live here so the route module stays focused on request routing.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
@@ -16,8 +18,15 @@ from teleclaude.api.auth import CallerIdentity
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
-from teleclaude.core.session_utils import session_in_claiming_group
+from teleclaude.core.operation_caller_identity import relayed_caller_computer
+from teleclaude.core.session_utils import cached_remote_session, session_in_claiming_group
+from teleclaude.core.workflow_machine.phase_reading import in_task_lane
+from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX, Lineage
+from teleclaude.types.lifecycle import LifecyclePhase
+from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import TodoState
+from teleclaude.types.workflow_record import RemoteMember
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -168,3 +177,89 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
                 f"role-bearing session; caller role '{session.role}' is refused"
             ),
         )
+
+
+INTENT_UNCLAIMED = "{slug} has no holder: the intent body is edited only by the driver that holds the item"
+INTENT_FOREIGN = "{slug} is held by session {holder}; the intent body is edited only by the holder or a session of its claiming group"
+INTENT_KIND_CHANGED = "{slug}: its kind changed while the write was deciding; repeat the write"
+INTENT_GROUP_CHANGED = "{slug}: its retained claiming group changed while the write was deciding; repeat the write"
+INTENT_HELD_READY = "{slug} is ready: a held ready item admits no edit of its intent body"
+SESSION_ANCESTRY_CAP = 32
+
+
+class IntentBodyRefused(Exception):
+    """An agent session's write of the intent body was refused for one named cause; nothing was written."""
+
+
+@dataclass(frozen=True)
+class Ancestry:
+    """A session\'s lineage and the retained remote edges the walk had to rely on to complete it."""
+
+    sessions: frozenset[str]
+    edges: frozenset[RemoteMember] = field(default_factory=frozenset)
+
+
+async def session_ancestry(session_id: str, retained: Sequence[RemoteMember] = ()) -> Ancestry:
+    """The session and every session it descends from through its persisted initiator links.
+
+    A session of another computer that has ended is in no store and no cache; the item retained it with its parent while
+    it was open, so the walk continues through that retained edge. Each edge relied on is returned, so the write can
+    verify it is still retained on the row it decides on.
+    """
+    by_session = {member.session_id: member for member in retained}
+    source = relayed_caller_computer(session_id)
+    if source is not None and cached_remote_session(session_id) is None and by_session.get(session_id) is None:
+        return Ancestry(frozenset())  # the carried id is not known to be held by the computer that carried it
+    chain = {session_id}
+    edges: set[RemoteMember] = set()
+    current = session_id
+    for _ in range(SESSION_ANCESTRY_CAP):
+        session = None if source is not None and current == session_id else await runtime_db.get_session(current)
+        if session is not None:
+            initiator = session.initiator_session_id
+        else:
+            snapshot = cached_remote_session(current)
+            initiator = snapshot.initiator_session_id if snapshot is not None else None
+            if not initiator and current in by_session:
+                edges.add(by_session[current])
+                initiator = by_session[current].parent
+        if not initiator or initiator in chain:
+            break
+        current = initiator
+        chain.add(current)
+    return Ancestry(frozenset(chain), frozenset(edges))
+
+
+def intent_body_mutation(
+    slug: str, ancestry: Ancestry, *, expect_task: bool
+) -> Callable[[dict[str, StateValue] | None], ItemChange | None]:
+    """The authority of an agent session over the intent body of an item outside the task lane, on the row read.
+
+    Only the holder, or a session of its claiming group, edits the body; no role alone grants it. An unclaimed item,
+    a session with no claim and a session of an earlier claiming group have none, and a held ready item admits no
+    edit; a person writing without a session is not an agent session and keeps the artifact-versioning contract\'s
+    write permissions (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``, Helpers of a driver). The mutation
+    changes no state: it only refuses, before the body is written.
+    """
+
+    def decide(current: dict[str, StateValue] | None) -> ItemChange | None:
+        if current is None:
+            raise IntentBodyRefused(INTENT_UNCLAIMED.format(slug=slug))
+        state = TodoState.model_validate(current)
+        task_lane = in_task_lane(state)
+        if task_lane != expect_task:
+            raise IntentBodyRefused(INTENT_KIND_CHANGED.format(slug=slug))
+        if task_lane:
+            return None
+        holder = state.active_runner
+        if not holder:
+            raise IntentBodyRefused(INTENT_UNCLAIMED.format(slug=slug))
+        if not ancestry.edges <= set(state.workflow.remote_members):
+            raise IntentBodyRefused(INTENT_GROUP_CHANGED.format(slug=slug))
+        if holder not in ancestry.sessions:
+            raise IntentBodyRefused(INTENT_FOREIGN.format(slug=slug, holder=holder))
+        if state.lifecycle_phase is LifecyclePhase.READY or state.workflow.admitted is not None:
+            raise IntentBodyRefused(INTENT_HELD_READY.format(slug=slug))
+        return None
+
+    return decide

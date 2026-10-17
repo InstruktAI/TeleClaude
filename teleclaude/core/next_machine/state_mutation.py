@@ -11,8 +11,9 @@ flows — persistence is always driven by ``StateWriter``.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from pydantic import ValidationError
 
@@ -27,6 +28,7 @@ from teleclaude.constants import (
     STATE_KEY_PRD,
 )
 from teleclaude.core.next_machine._types import StateValue
+from teleclaude.core.next_machine.state_merge import apply_changes, changed_fields
 from teleclaude.types.todos import (
     ApprovalsState,
     ApprovalStamp,
@@ -41,6 +43,7 @@ from teleclaude.types.todos import (
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
+    from teleclaude.core.workflow_store.types import ItemChange
 
 
 __all__ = [
@@ -64,6 +67,17 @@ _DRIFT_REVIEW_CASCADE: dict[str, tuple[str, ...]] = {
 
 class StateMutationError(ValueError):
     """Raised when a mutation violates the validated state contract."""
+
+
+class StateConflict(StateMutationError):
+    """A writer changed the claim on a row whose claim is no longer the one it read; nothing was written."""
+
+
+_CLAIM_FIELD: Final = "active_runner"
+_CLAIM_CONFLICT: Final = (
+    "the claim changed while the write was deciding: it read the holder {read!r} and the row now records {now!r}; "
+    "repeat the call against the current state"
+)
 
 
 def _validate_full_state(state: dict[str, StateValue]) -> TodoState:
@@ -95,6 +109,7 @@ class StateWriter:
 
     def __init__(self, raw_state: dict[str, StateValue]) -> None:
         self._model = _validate_full_state(raw_state)
+        self._baseline = _dump_state(self._model)
 
     @property
     def state(self) -> TodoState:
@@ -143,31 +158,128 @@ class StateWriter:
         validated = _validate_full_state(_dump_state(self._model))
         return _dump_state(validated)
 
+    def _merged_onto(self, stored: dict[str, StateValue], final: dict[str, StateValue]) -> dict[str, StateValue]:
+        """The stored state with this writer\'s changed fields applied.
+
+        A change of the claim holder is applied only to the holder the writer read: a writer that releases or moves a
+        claim it no longer holds would otherwise clear the claim of the session that took it since, so it is refused.
+        """
+        changes = changed_fields(self._baseline, final)
+        if any(change.path == (_CLAIM_FIELD,) for change in changes):
+            read_holder = self._baseline.get(_CLAIM_FIELD) or None
+            stored_holder = stored.get(_CLAIM_FIELD) or None
+            if read_holder != stored_holder:
+                raise StateConflict(_CLAIM_CONFLICT.format(read=read_holder, now=stored_holder))
+        return _dump_state(_validate_full_state(apply_changes(stored, changes)))
+
     async def commit(
         self,
         todos_db: WorkflowStore,
         slug: str,
     ) -> dict[str, StateValue]:
-        """Validate and persist the current state through the workflow store."""
-        payload = self.to_dict()
-        await todos_db.write_state(slug, payload)
-        return payload
+        """Validate the state and persist what this writer changed, merged onto the row the commit reads.
+
+        Only the fields that differ from the state this writer was built from are written, in one transaction that
+        reads the stored state, so a field another writer committed in between is kept, not overwritten.
+        """
+        from teleclaude.core.workflow_store.types import ItemChange  # noqa: PLC0415 - the store types read this package
+
+        final = self.to_dict()
+        merged: list[dict[str, StateValue]] = []
+
+        def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+            if current is None:
+                merged.append(final)
+                return ItemChange(state=final)
+            combined = self._merged_onto(current, final)
+            merged.append(combined)
+            return ItemChange(state=combined) if combined != current else None
+
+        await todos_db.commit_item_change(slug, expect_digests={}, mutate=mutate, updated_by=None)
+        return merged[-1]
 
     async def commit_by_id(
         self,
         todos_db: WorkflowStore,
         todo_id: str,
     ) -> dict[str, StateValue]:
-        """Validate and persist the current state by durable todo row id."""
-        payload = self.to_dict()
-        await todos_db.write_state_by_id(todo_id, payload)
-        return payload
+        """Validate the state and persist what this writer changed, merged onto the row read inside the transaction."""
+        final = self.to_dict()
+        merged: list[dict[str, StateValue]] = []
+
+        def merge(stored: dict[str, StateValue]) -> dict[str, StateValue] | None:
+            combined = self._merged_onto(stored, final)
+            merged.append(combined)
+            return combined if combined != stored else None
+
+        if not await todos_db.merge_state_by_id(todo_id, merge) and not merged:
+            await todos_db.write_state_by_id(todo_id, final)
+            return final
+        return merged[-1]
 
     def commit_sync(self, todos_db: WorkflowStore, slug: str) -> dict[str, StateValue]:
-        """Validate and persist the current state via the sync DB path."""
-        payload = self.to_dict()
-        todos_db.write_state_sync(slug, payload)
-        return payload
+        """Validate the state and persist what this writer changed, merged onto the stored row inside the transaction."""
+        final = self.to_dict()
+        merged: list[dict[str, StateValue]] = []
+
+        def merge(stored: dict[str, StateValue]) -> dict[str, StateValue]:
+            combined = self._merged_onto(stored, final)
+            merged.append(combined)
+            return combined
+
+        todos_db.write_state_sync(slug, final, merge=merge)
+        return merged[-1] if merged else final
+
+
+async def commit_on_current(
+    todos_db: WorkflowStore,
+    slug: str,
+    change: Callable[[StateWriter], None],
+    *,
+    updated_by: str | None = None,
+) -> TodoState:
+    """Apply ``change`` to the item's state as the write's own transaction reads it, and persist the result.
+
+    The previous machine's writers read the state, mutated it and wrote the whole of it back, so a claim, a hold or a
+    phase that landed in between was overwritten. This reads and writes in one row transaction under the writer lock:
+    ``change`` sees the state as it is now, may raise to write nothing, and every field it does not touch is carried.
+    """
+    from teleclaude.core.workflow_store.types import ItemChange  # noqa: PLC0415 - the store types read this package
+
+    outcome: list[TodoState] = []
+
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            raise StateMutationError(f"slug {slug!r} not found in todo list")
+        writer = StateWriter(current)
+        change(writer)
+        outcome.append(writer.state.model_copy(deep=True))
+        return ItemChange(state=writer.to_dict())
+
+    await todos_db.commit_item_change(slug, expect_digests={}, mutate=mutate, updated_by=updated_by)
+    return outcome[-1]
+
+
+async def commit_on_current_by_id(
+    todos_db: WorkflowStore, todo_id: str, change: Callable[[StateWriter], None]
+) -> TodoState | None:
+    """Apply ``change`` to the state of the row with this durable id, as the write\'s own transaction reads it.
+
+    The by-id counterpart of :func:`commit_on_current` for a row that is not live (removed or delivered): ``change``
+    sees the state as it is when the transaction reads it, may raise to write nothing, and every field it does not
+    touch is carried. None when the row has no state.
+    """
+    outcome: list[TodoState] = []
+
+    def merge(stored: dict[str, StateValue]) -> dict[str, StateValue] | None:
+        writer = StateWriter(stored)
+        change(writer)
+        outcome.append(writer.state.model_copy(deep=True))
+        combined = writer.to_dict()
+        return combined if combined != stored else None
+
+    await todos_db.merge_state_by_id(todo_id, merge)
+    return outcome[-1] if outcome else None
 
 
 class ApprovalsManager:

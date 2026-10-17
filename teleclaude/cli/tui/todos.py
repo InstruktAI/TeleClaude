@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from teleclaude.api_models_identity import PersonChipDTO
 from teleclaude.constants import TodoStatus
+from teleclaude.types.todo_standing import TodoStandingDTO
 
 
 @dataclass
@@ -50,3 +51,4 @@ class TodoItem:
     person_chip: PersonChipDTO | None = None
     entry_point: str | None = None
     human_involved: bool = False
+    standing: TodoStandingDTO | None = None

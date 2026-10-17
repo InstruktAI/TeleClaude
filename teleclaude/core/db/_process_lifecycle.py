@@ -100,6 +100,61 @@ class DbProcessLifecycleMixin:
             await db_session.commit()
             return previous_copy
 
+    async def insert_identified_registry_entry(
+        self,
+        *,
+        owner: str,
+        pid: int,
+        lease_expires_at: str,
+        identity: str,
+        host: str,
+        boot: str,
+        generation: str,
+    ) -> bool:
+        """Insert a row that carries a process identity; refuse, and change nothing, when the owner already has one.
+
+        The generic replace path kills a stale registrant by overwriting it. A row with an identity is evidence of a
+        unit that has to be classified first, so it is never overwritten here.
+        """
+        stmt = (
+            sqlite_insert(db_models.ProcessSpawnRegistryEntry)
+            .values(
+                owner=owner,
+                pid=pid,
+                lease_expires_at=lease_expires_at,
+                registered_at=datetime.now(UTC).isoformat(),
+                identity=identity,
+                host=host,
+                boot=boot,
+                generation=generation,
+            )
+            .on_conflict_do_nothing(index_elements=["owner"])
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            return bool(result.rowcount)
+
+    async def list_identified_registry_entries(self) -> list[db_models.ProcessSpawnRegistryEntry]:
+        """Return the registry rows that carry a process identity, whatever their lease."""
+        stmt = select(db_models.ProcessSpawnRegistryEntry).where(
+            db_models.ProcessSpawnRegistryEntry.identity.is_not(None)  # type: ignore[union-attr]
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            return list(result.all())
+
+    async def delete_identified_registry_entry(self, *, owner: str, generation: str) -> bool:
+        """Delete the row only if it is still the one that generation registered."""
+        async with self._session() as db_session:
+            result = await db_session.exec(
+                delete(db_models.ProcessSpawnRegistryEntry)
+                .where(db_models.ProcessSpawnRegistryEntry.owner == owner)
+                .where(db_models.ProcessSpawnRegistryEntry.generation == generation)
+            )
+            await db_session.commit()
+            return bool(result.rowcount)
+
     async def delete_process_spawn_registry_entry(self, owner: str) -> None:
         """Delete a spawn registry row by owner."""
         async with self._session() as db_session:

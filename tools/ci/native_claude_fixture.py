@@ -1,0 +1,884 @@
+#!/usr/bin/env python3
+"""Inert stand-in for the Claude Code executable at the external agent-CLI process boundary.
+
+The runtime-acceptance profile installs this program as ``claude`` in the disposable home's user-bin directory. It is
+what the platform's own session start launches in the pane it creates: it draws a framed composer, reports its
+SessionStart and UserPromptSubmit hooks by running the receiver commands the supported installation registered in the
+disposable Claude settings, accepts the platform's input through that composer, and asks the platform who it is with a
+fresh ``telec sessions show self --full`` process from inside the pane.
+
+It imports only the standard library. It creates no session record, caller identity, authentication state or
+application event, and imports no application module: everything it reports is the output of the public executables it
+runs. Metadata queries (``--version``, ``update``) print or do nothing and exit; they emit no hooks and start no loop.
+
+Control files live in the directory named by the sidecar configuration the controller wrote beside the profile's home.
+The controller writes the case-start timestamp and the barrier release there; this program writes the composer marker,
+its input log and its frames there. All timestamps are ``time.monotonic()`` readings, which share one clock across
+the processes of a machine.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import selectors
+import shutil
+import signal
+import subprocess
+import sys
+import termios
+import threading
+import time
+import tty
+import uuid
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from types import FrameType
+from typing import Final, cast
+
+CONFIG_RELATIVE_PATH: Final = Path(".local") / "share" / "claude-fixture" / "config.json"
+SETTINGS_RELATIVE_PATH: Final = Path(".claude") / "settings.json"
+PROJECTS_RELATIVE_PATH: Final = Path(".claude") / "projects"
+CONFIG_CONTROL_DIRECTORY: Final = "control_directory"
+CONFIG_CONTROL_POOL: Final = "control_directories"
+CONFIG_PLAN_REGISTRY: Final = "plan_registry"
+CONFIG_PLAN_CLAIMS: Final = "plan_claims"
+CONFIG_PLAN_CONTROL_COUNT: Final = "plan_control_count"
+CONFIG_PLAN_SPARE_COUNT: Final = "plan_spare_count"
+CLAIM_MARKER: Final = "claimed"
+UNCLAIMED_REPORT: Final = "pool-exhausted.json"
+CONFIG_VERSION: Final = "version"
+VERSION_FLAG: Final = "--version"
+UPDATE_COMMAND: Final = "update"
+USER_FACING_NAME: Final = "claude"
+TELEC_COMMAND: Final = "telec"
+SELF_PROBE_ARGUMENTS: Final = ("sessions", "show", "self", "--full")
+
+CASE_START_FILE: Final = "case_start"
+RELEASE_FILE: Final = "release"
+COMPOSER_FILE: Final = "composer_at"
+BARRIER_FILE: Final = "barrier.json"
+LAUNCH_FILE: Final = "launch.json"
+INPUT_LOG_FILE: Final = "inputs.jsonl"
+FRAMES_DIRECTORY: Final = "frames"
+FRAME_TEMP_PREFIX: Final = "."
+FRAME_SUFFIX: Final = ".json"
+FRAME_COMPLETE_SUFFIX: Final = ".complete"
+FRAME_SESSION_START: Final = "session_start"
+FRAME_PROMPT_SUBMIT: Final = "prompt_submit"
+FRAME_SELF_PROBE: Final = "self_probe"
+PLAN_FILE: Final = "plan.json"
+PLAN_REGISTRY_FILE: Final = "plans.json"
+PLAN_CLAIMS_DIRECTORY: Final = "claims"
+PLAN_SETS_FIELD: Final = "plan_sets"
+PLAN_REGISTRY_INDEX_FIELD: Final = "index"
+PLAN_REGISTRY_KEY_FIELD: Final = "key"
+PLAN_REGISTRY_STATUS_FIELD: Final = "plan_status"
+PLAN_REGISTRY_ERROR_FIELD: Final = "plan_error"
+PLAN_KEY_KIND_FIELD: Final = "key_kind"
+PLAN_KEY_PROCEDURE: Final = "procedure"
+PLAN_KEY_MESSAGE: Final = "message"
+PLAN_FIRST_LINE_FIELD: Final = "first_line"
+PLAN_UNBOUND_STATUS: Final = "unbound"
+PLAN_MISSING_STATUS: Final = "missing"
+PLAN_CLAIMED_STATUS: Final = "claimed"
+PLAN_EXHAUSTED_STATUS: Final = "exhausted"
+PLAN_PREFIX: Final = "TELECLAUDE COMMAND: "
+MESSAGE_KEY_PREFIX: Final = "message:"
+PLAN_DIGEST_SIZE: Final = 32
+PLAN_WRITE_FIELD: Final = "writes"
+PLAN_WRITE_MODE_FIELD: Final = "mode"
+PLAN_WRITE_PATH_FIELD: Final = "path"
+PLAN_WRITE_TEXT_FIELD: Final = "text"
+PLAN_WRITE_CREATE: Final = "create"
+PLAN_WRITE_APPEND: Final = "append"
+PLAN_WRITE_BYTES_FIELD: Final = "bytes"
+PLAN_WRITE_SHA_FIELD: Final = "sha256"
+PLAN_WRITE_SUCCESS_FIELD: Final = "ok"
+PLAN_WRITE_ERROR_FIELD: Final = "error"
+PLAN_WRITE_WRITTEN_FIELD: Final = "written"
+PLAN_CWD_FIELD: Final = "cwd"
+PLAN_CWD_RESOLVED_FIELD: Final = "cwd"
+PATH_ROOT: Final = "/"
+PATH_PARENT: Final = ".."
+PATH_CURRENT: Final = "."
+PATH_SEPARATOR: Final = "/"
+WRITE_MODE_CREATE: Final = "xb"
+WRITE_MODE_APPEND: Final = "ab"
+WRITE_PERMISSION: Final = 0o644
+WRITE_FRAME_PREFIX: Final = "write"
+PLAN_NAME_SEPARATOR: Final = "_"
+PLAN_INVALID_STATUS: Final = "invalid"
+LATE_ARGV_UNREADABLE: Final = "late argument list unreadable"
+WRITE_DEADLINE_SECONDS: Final = 10.0
+WRITE_FRAME_DEADLINE: Final = "fixture write deadline exceeded"
+WRITE_ENCODING: Final = "utf-8"
+DETAIL_CWD_BINDING: Final = "working directory binding failed"
+FRAME_NAME_FIELD: Final = "name"
+FRAME_ARGV_FIELD: Final = "argv"
+FRAME_TELEC_FIELD: Final = "telec"
+FRAME_RUN_FIELD: Final = "run"
+RUN_EXIT_STATUS_FIELD: Final = "exit_status"
+RUN_ERROR_FIELD: Final = "error"
+RUN_TIMED_OUT_FIELD: Final = "timed_out"
+DETAIL_PLAN_PREFIX: Final = "the first input line does not name a procedure"
+DETAIL_PLAN_REGISTRY: Final = "the shared plan registry is unreadable"
+DETAIL_PLAN_KEY_MISSING: Final = "the procedure has no plan set"
+DETAIL_PLAN_CLAIM: Final = "the shared plan claim could not be recorded"
+DETAIL_PLAN_INVALID: Final = "the selected plan is unreadable"
+DETAIL_WRITE_INVALID: Final = "the fixture write plan is invalid"
+DETAIL_WRITE_PATH: Final = "the fixture write path is outside its starting directory"
+DETAIL_WRITE_MODE: Final = "the fixture write precondition is not met"
+DETAIL_WRITE_FAILED: Final = "the fixture write failed"
+STOP_FILE: Final = "stop"
+LAUNCHES_FILE: Final = "launches.jsonl"
+PLAN_COMMANDS_FIELD: Final = "commands"
+PLAN_NAME_FIELD: Final = "name"
+PLAN_WAIT_FIELD: Final = "wait_for"
+WRITE_ENTRY_KEYS: Final = frozenset({PLAN_WRITE_PATH_FIELD, PLAN_WRITE_MODE_FIELD, PLAN_WRITE_TEXT_FIELD})
+PLAN_ARGV_FROM_FIELD: Final = "argv_from"
+ARGV_FILE_CHARACTERS: Final = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
+PLAN_HOLD_FIELD: Final = "barrier_hold_seconds"
+PLAN_ARGV_FIELD: Final = "argv"
+PLAN_FRAME_PREFIX: Final = "cmd_"
+PLAN_TIMEOUT_SECONDS: Final = 60
+
+HOOK_SESSION_START: Final = "SessionStart"
+HOOK_PROMPT_SUBMIT: Final = "UserPromptSubmit"
+HOOKS_FIELD: Final = "hooks"
+COMMAND_FIELD: Final = "command"
+SHELL_PATH: Final = "/bin/sh"
+SHELL_COMMAND_OPTION: Final = "-c"
+PERMISSION_MODE: Final = "bypassPermissions"
+SESSION_START_SOURCE: Final = "startup"
+
+BARRIER_AFTER_CASE_START_SECONDS: Final = 45.0
+BARRIER_AFTER_COMPOSER_SECONDS: Final = 15.0
+HOOK_TIMEOUT_SECONDS: Final = 60
+PROBE_TIMEOUT_SECONDS: Final = 60
+CAPTURE_LIMIT: Final = 4096
+POLL_SECONDS: Final = 0.05
+WORKER_JOIN_SECONDS: Final = 10.0
+READ_SIZE: Final = 65536
+DEFAULT_COLUMNS: Final = 120
+ENCODING: Final = "utf-8"
+
+RULE_CHARACTER: Final = chr(0x2500)
+PROMPT_MARKER: Final = chr(0x276F)
+BANNER_LINES: Final = ("claude (runtime acceptance fixture)",)
+ESC: Final = "\x1b"
+CLEAR_AND_HOME: Final = f"{ESC}[2J{ESC}[H"
+BRACKETED_PASTE_ON: Final = f"{ESC}[?2004h"
+BRACKETED_PASTE_OFF: Final = f"{ESC}[?2004l"
+PASTE_START: Final = f"{ESC}[200~"
+PASTE_END: Final = f"{ESC}[201~"
+CARRIAGE_RETURN: Final = "\r"
+LINE_FEED: Final = "\n"
+CRLF: Final = "\r\n"
+
+type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
+type JsonObject = dict[str, JsonValue]
+
+
+def _is_argv_file_name(name: str) -> bool:
+    """A plain file name in the control directory: no separator, no parent reference."""
+    return bool(name) and not name.startswith(".") and all(character in ARGV_FILE_CHARACTERS for character in name)
+
+
+def _home() -> Path:
+    return Path(os.path.expanduser("~"))
+
+
+def _load_config() -> Mapping[str, JsonValue]:
+    raw = json.loads((_home() / CONFIG_RELATIVE_PATH).read_text(encoding=ENCODING))
+    return {str(key): value for key, value in raw.items()}
+
+
+def _claim_control(config: Mapping[str, JsonValue]) -> _Control | None:
+    """The launch\'s control directory: the first of the pool this launch claims atomically, else the single one.
+
+    A pool lets several platform-launched fixtures run at once without any rewrite of the configuration between
+    launches. ``os.mkdir`` of a ``claimed`` marker succeeds for exactly one launch per directory. A launch that finds
+    the whole pool claimed reports it beside the pool and exits non-zero.
+    """
+    registry_value = config.get(CONFIG_PLAN_REGISTRY)
+    claims_value = config.get(CONFIG_PLAN_CLAIMS)
+    registry = Path(registry_value) if isinstance(registry_value, str) and registry_value else None
+    claims = Path(claims_value) if isinstance(claims_value, str) and claims_value else None
+    pool = config.get(CONFIG_CONTROL_POOL)
+    if isinstance(pool, list):
+        directories = [Path(str(entry)) for entry in pool]
+        active_count_value = config.get(CONFIG_PLAN_CONTROL_COUNT)
+        active_count = (
+            active_count_value
+            if isinstance(active_count_value, int) and not isinstance(active_count_value, bool)
+            else len(directories)
+        )
+        for pool_index, directory in enumerate(directories):
+            try:
+                os.mkdir(directory / CLAIM_MARKER)
+            except FileExistsError:
+                continue
+            return _Control(directory, registry, claims, plan_enabled=pool_index < active_count)
+        if directories:
+            report = directories[0].parent / UNCLAIMED_REPORT
+            report.write_text(
+                json.dumps({"pool": [str(entry) for entry in directories], "pid": os.getpid()}) + LINE_FEED,
+                encoding=ENCODING,
+            )
+        return None
+    return _Control(Path(str(config[CONFIG_CONTROL_DIRECTORY])), registry, claims)
+
+
+def _bounded(text: str) -> str:
+    return text[:CAPTURE_LIMIT]
+
+
+class _Control:
+    """The controller-owned directory this program reports into and reads its barrier from."""
+
+    def __init__(
+        self,
+        directory: Path,
+        registry: Path | None = None,
+        claims: Path | None = None,
+        *,
+        plan_enabled: bool = True,
+    ) -> None:
+        self.directory = directory
+        self.frames = directory / FRAMES_DIRECTORY
+        self.registry = registry
+        self.claims = claims
+        self.plan_enabled = plan_enabled
+        self.frames.mkdir(parents=True, exist_ok=True)
+
+    def write_json(self, name: str, payload: JsonObject) -> None:
+        temporary = self.directory / f"{FRAME_TEMP_PREFIX}{name}.tmp"
+        with temporary.open("w", encoding=ENCODING) as handle:
+            handle.write(json.dumps(payload) + LINE_FEED)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, self.directory / name)
+
+    def write_frame(self, name: str, payload: JsonObject) -> None:
+        """Install a whole frame atomically, then emit its distinct completion marker."""
+        temporary = self.frames / f"{FRAME_TEMP_PREFIX}{name}{FRAME_SUFFIX}.tmp"
+        with temporary.open("w", encoding=ENCODING) as handle:
+            handle.write(json.dumps(payload) + LINE_FEED)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, self.frames / f"{name}{FRAME_SUFFIX}")
+        marker = self.frames / f"{name}{FRAME_COMPLETE_SUFFIX}"
+        marker.write_text(LINE_FEED, encoding=ENCODING)
+
+    def append_launch(self, entry: JsonObject) -> None:
+        """Append one launch record; a later launch into the same directory never overwrites an earlier one."""
+        with (self.directory / LAUNCHES_FILE).open("a", encoding=ENCODING) as handle:
+            handle.write(json.dumps(entry) + LINE_FEED)
+            handle.flush()
+            os.fsync(handle.fileno())
+
+    def append_input(self, entry: JsonObject) -> None:
+        with (self.directory / INPUT_LOG_FILE).open("a", encoding=ENCODING) as handle:
+            handle.write(json.dumps(entry) + LINE_FEED)
+            handle.flush()
+            os.fsync(handle.fileno())
+
+    def write_number(self, name: str, value: float) -> None:
+        """Install a plain monotonic reading atomically, so a reader never sees it half written."""
+        temporary = self.directory / f"{FRAME_TEMP_PREFIX}{name}.tmp"
+        temporary.write_text(f"{value!r}{LINE_FEED}", encoding=ENCODING)
+        os.replace(temporary, self.directory / name)
+
+    def read_number(self, name: str) -> float | None:
+        try:
+            return float((self.directory / name).read_text(encoding=ENCODING).strip())
+        except (OSError, ValueError):
+            return None
+
+    def read_json(self, name: str) -> JsonObject | None:
+        try:
+            value = json.loads((self.directory / name).read_text(encoding=ENCODING))
+        except (OSError, ValueError):
+            return None
+        return value if isinstance(value, dict) else None
+
+    def _read_path(self, path: Path) -> JsonObject | None:
+        try:
+            value = json.loads(path.read_text(encoding=ENCODING))
+        except (OSError, ValueError):
+            return None
+        return value if isinstance(value, dict) else None
+
+    def select_plan(self, first_line: str, launch: JsonObject) -> JsonObject | None:
+        """Claim the next plan in the flow-wide namespace from the first procedure or message key."""
+        if self.registry is None and self.claims is None:
+            return None
+        if self.registry is None or self.claims is None:
+            launch[PLAN_REGISTRY_STATUS_FIELD] = PLAN_MISSING_STATUS
+            launch[PLAN_REGISTRY_ERROR_FIELD] = DETAIL_PLAN_REGISTRY
+            self._record_plan_selection(launch)
+            return None
+        if first_line.startswith(PLAN_PREFIX):
+            key_kind = PLAN_KEY_PROCEDURE
+            key_parts = first_line[len(PLAN_PREFIX) :].split(maxsplit=1)
+            key_text = key_parts[0] if key_parts else ""
+            key_source = key_text.encode(ENCODING)
+        else:
+            key_kind = PLAN_KEY_MESSAGE
+            key_source = f"{MESSAGE_KEY_PREFIX}{first_line}".encode(ENCODING)
+        if not key_source:
+            launch[PLAN_REGISTRY_STATUS_FIELD] = PLAN_UNBOUND_STATUS
+            launch[PLAN_REGISTRY_ERROR_FIELD] = DETAIL_PLAN_PREFIX
+            self._record_plan_selection(launch)
+            return None
+        key = hashlib.sha256(key_source).hexdigest()
+        launch[PLAN_KEY_KIND_FIELD] = key_kind
+        launch[PLAN_REGISTRY_KEY_FIELD] = key
+        launch[PLAN_FIRST_LINE_FIELD] = first_line
+        if not self.plan_enabled:
+            launch[PLAN_REGISTRY_STATUS_FIELD] = "inert-spare"
+            self._record_plan_selection(launch)
+            return None
+        registry = self._read_path(self.registry)
+        sets = registry.get(PLAN_SETS_FIELD) if registry is not None else None
+        if not isinstance(sets, dict):
+            launch[PLAN_REGISTRY_STATUS_FIELD] = PLAN_MISSING_STATUS
+            launch[PLAN_REGISTRY_ERROR_FIELD] = DETAIL_PLAN_REGISTRY
+            self._record_plan_selection(launch)
+            return None
+        plans = sets.get(key)
+        if not isinstance(plans, list):
+            launch[PLAN_REGISTRY_STATUS_FIELD] = PLAN_MISSING_STATUS
+            launch[PLAN_REGISTRY_ERROR_FIELD] = DETAIL_PLAN_KEY_MISSING
+            self._record_plan_selection(launch)
+            return None
+        try:
+            claim_directory = self.claims / key
+            claim_directory.mkdir(parents=True, exist_ok=True)
+            selected: JsonObject | None = None
+            for index, raw_plan in enumerate(plans, start=1):
+                try:
+                    (claim_directory / str(index)).mkdir()
+                except FileExistsError:
+                    continue
+                if isinstance(raw_plan, dict):
+                    selected = {str(name): value for name, value in raw_plan.items()}
+                launch[PLAN_REGISTRY_STATUS_FIELD] = (
+                    PLAN_CLAIMED_STATUS if selected is not None else PLAN_MISSING_STATUS
+                )
+                launch[PLAN_REGISTRY_INDEX_FIELD] = index
+                self._record_plan_selection(launch)
+                return selected
+        except OSError:
+            launch[PLAN_REGISTRY_STATUS_FIELD] = PLAN_MISSING_STATUS
+            launch[PLAN_REGISTRY_ERROR_FIELD] = DETAIL_PLAN_CLAIM
+            self._record_plan_selection(launch)
+            return None
+        launch[PLAN_REGISTRY_STATUS_FIELD] = PLAN_EXHAUSTED_STATUS
+        self._record_plan_selection(launch)
+        return None
+
+    def _record_plan_selection(self, launch: JsonObject) -> None:
+        self.write_json(LAUNCH_FILE, launch)
+        self.append_launch(launch)
+
+    def exists(self, name: str) -> bool:
+        return (self.directory / name).exists()
+
+
+def _registered_commands(event: str) -> list[str]:
+    """The receiver commands the supported installation registered for a hook event in the Claude settings."""
+    try:
+        settings = json.loads((_home() / SETTINGS_RELATIVE_PATH).read_text(encoding=ENCODING))
+    except (OSError, ValueError):
+        return []
+    blocks = settings.get(HOOKS_FIELD, {}).get(event, []) if isinstance(settings, dict) else []
+    commands: list[str] = []
+    for block in blocks if isinstance(blocks, list) else []:
+        for hook in block.get(HOOKS_FIELD, []) if isinstance(block, dict) else []:
+            if isinstance(hook, dict) and isinstance(hook.get(COMMAND_FIELD), str):
+                commands.append(str(hook[COMMAND_FIELD]))
+    return commands
+
+
+def _run(argv: Sequence[str], *, timeout_seconds: float, stdin_text: str = "", cwd: Path | None = None) -> JsonObject:
+    """Run one command in this pane's environment and report its bounded outcome."""
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(
+            list(argv),
+            input=stdin_text,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+            cwd=cwd,
+        )
+        outcome: JsonObject = {
+            "argv": [_bounded(part) for part in argv],
+            "exit_status": completed.returncode,
+            "stdout": _bounded(completed.stdout),
+            "stderr": _bounded(completed.stderr),
+            "timed_out": False,
+        }
+    except subprocess.TimeoutExpired:
+        outcome = {"argv": [_bounded(part) for part in argv], "exit_status": None, "timed_out": True}
+    except OSError as error:
+        outcome = {"argv": [_bounded(part) for part in argv], "exit_status": None, "error": type(error).__name__}
+    outcome["duration_seconds"] = time.monotonic() - started
+    return outcome
+
+
+class _Fixture:
+    """One launch of the inert agent: its terminal, its barrier, its hooks and its self probe."""
+
+    def __init__(self, control: _Control) -> None:
+        self.control = control
+        self.native_session_id = str(uuid.uuid4())
+        self.cwd = os.path.realpath(os.getcwd())
+        self.transcript_path = self._transcript_path()
+        self.draft = ""
+        self.composer_at: float | None = None
+        self.hook_started = False
+        self.first_prompt_handled = False
+        self.running = True
+        self.row = len(BANNER_LINES) + 2
+        self.launch_record: JsonObject | None = None
+        self.selected_plan: JsonObject | None = None
+        plan = control.read_json(PLAN_FILE)
+        hold = plan.get(PLAN_HOLD_FIELD) if plan is not None else None
+        self.hold_seconds = float(hold) if isinstance(hold, int | float) and not isinstance(hold, bool) else None
+        self.worker: threading.Thread | None = None
+
+    def _transcript_path(self) -> Path:
+        project_directory = self.cwd.replace(os.sep, "-")
+        return _home() / PROJECTS_RELATIVE_PATH / project_directory / f"{self.native_session_id}.jsonl"
+
+    def _payload(self, event: str, **extra: JsonValue) -> JsonObject:
+        payload: JsonObject = {
+            "session_id": self.native_session_id,
+            "transcript_path": str(self.transcript_path),
+            "cwd": self.cwd,
+            "permission_mode": PERMISSION_MODE,
+            "hook_event_name": event,
+        }
+        payload.update(extra)
+        return payload
+
+    def record_launch(self) -> None:
+        resolved = shutil.which(USER_FACING_NAME)
+        record: JsonObject = {
+            "executable": os.path.realpath(__file__),
+            "resolved_command": os.path.realpath(resolved) if resolved else None,
+            "native_session_id": self.native_session_id,
+            "transcript_path": str(self.transcript_path),
+            "cwd": self.cwd,
+            "pid": os.getpid(),
+            "launched_at": time.monotonic(),
+        }
+        self.launch_record = record
+        self.control.write_json(LAUNCH_FILE, record)
+        self.control.append_launch(record)
+
+    def draw(self) -> None:
+        columns = shutil.get_terminal_size((DEFAULT_COLUMNS, 40)).columns
+        rule = RULE_CHARACTER * columns
+        rows = [*BANNER_LINES, rule, f"{PROMPT_MARKER} {self.draft}", rule]
+        screen = CLEAR_AND_HOME + CRLF.join(rows)
+        cursor = f"{ESC}[{self.row};{3 + len(self.draft)}H"
+        sys.stdout.write(screen + cursor)
+        sys.stdout.flush()
+
+    def deadline(self) -> float | None:
+        """The barrier's hard deadline: the earlier of case-start+45 s and composer-marker+15 s."""
+        if self.composer_at is None:
+            return None
+        deadline = self.composer_at + (
+            self.hold_seconds if self.hold_seconds is not None else BARRIER_AFTER_COMPOSER_SECONDS
+        )
+        case_start = self.control.read_number(CASE_START_FILE)
+        if case_start is not None:
+            deadline = min(deadline, case_start + BARRIER_AFTER_CASE_START_SECONDS)
+        return deadline
+
+    def _run_hook(self, event: str, frame: str, **extra: JsonValue) -> JsonObject:
+        commands = _registered_commands(event)
+        payload = json.dumps(self._payload(event, **extra))
+        runs = [
+            _run([SHELL_PATH, SHELL_COMMAND_OPTION, command], timeout_seconds=HOOK_TIMEOUT_SECONDS, stdin_text=payload)
+            for command in commands
+        ]
+        frame_payload: JsonObject = {
+            "event": event,
+            "registered": bool(commands),
+            "native_session_id": self.native_session_id,
+            "input": dict(extra),
+            "runs": list(runs),
+        }
+        self.control.write_frame(frame, frame_payload)
+        return frame_payload
+
+    def release_if_due(self) -> None:
+        if self.hook_started or self.composer_at is None:
+            return
+        now = time.monotonic()
+        deadline = self.deadline()
+        released = self.control.exists(RELEASE_FILE)
+        if not released and (deadline is None or now < deadline):
+            return
+        self.control.write_json(
+            BARRIER_FILE,
+            {"released_by": "controller" if released else "deadline", "at": now, "deadline": deadline},
+        )
+        self.hook_started = True
+        self.transcript_path.parent.mkdir(parents=True, exist_ok=True)
+        self._run_hook(HOOK_SESSION_START, FRAME_SESSION_START, source=SESSION_START_SOURCE)
+        self.transcript_path.touch()
+
+    def submit(self, text: str) -> None:
+        entry: JsonObject = {"at": time.monotonic(), "text": text, "hook_started": self.hook_started}
+        self.control.append_input(entry)
+        self.draft = ""
+        self.draw()
+        if not self.hook_started or self.first_prompt_handled:
+            return
+        self.first_prompt_handled = True
+        with self.transcript_path.open("a", encoding=ENCODING) as transcript:
+            line: JsonObject = {
+                "type": "user",
+                "sessionId": self.native_session_id,
+                "message": {"role": "user", "content": text},
+            }
+            transcript.write(json.dumps(line) + LINE_FEED)
+        self._run_hook(HOOK_PROMPT_SUBMIT, FRAME_PROMPT_SUBMIT, prompt=text)
+        telec = shutil.which(TELEC_COMMAND)
+        probe = _run([telec or TELEC_COMMAND, *SELF_PROBE_ARGUMENTS], timeout_seconds=PROBE_TIMEOUT_SECONDS)
+        self.control.write_frame(FRAME_SELF_PROBE, {"telec": telec, "run": probe})
+        self._run_plan(text)
+
+    def _run_plan(self, first_prompt: str) -> None:
+        """Run the controller\'s reviewed public commands, each as a fresh process of this pane, and report each.
+
+        The plan names only the public ``telec`` executable with its arguments. It carries no identity, token, header
+        or environment: the pane\'s own environment is the caller\'s identity, as for any command a driver runs. A
+        command that names a file to wait for is held until the controller creates that file in this directory. From
+        the first such command on, the whole remaining plan runs in its written order on one worker beside the terminal
+        loop, each command only after the previous one has finished; before it, commands run now, in order.
+        """
+        if self.control.registry is not None:
+            first_line = first_prompt.splitlines()[0] if first_prompt.splitlines() else ""
+            launch = self.launch_record if self.launch_record is not None else {}
+            launch[PLAN_FIRST_LINE_FIELD] = first_line
+            self.selected_plan = self.control.select_plan(first_line, launch)
+            plan = self.selected_plan
+        else:
+            plan = self.control.read_json(PLAN_FILE)
+        commands = plan.get(PLAN_COMMANDS_FIELD) if plan is not None else None
+        if not isinstance(commands, list):
+            return
+        deferred: list[tuple[str | None, str, object]] = []
+        for command in commands:
+            if self.control.exists(STOP_FILE):
+                return  # the controller has asked this launch to run nothing more
+            if not isinstance(command, dict):
+                continue
+            name = command.get(PLAN_NAME_FIELD)
+            argv = command.get(PLAN_ARGV_FIELD)
+            late = command.get(PLAN_ARGV_FROM_FIELD)
+            writes = command.get(PLAN_WRITE_FIELD)
+            wait = command.get(PLAN_WAIT_FIELD)
+            if not isinstance(name, str) or not name.replace(PLAN_NAME_SEPARATOR, "").isalnum():
+                continue
+            source: object
+            if isinstance(writes, list) and argv is None and late is None:
+                source = command
+            elif isinstance(late, str) and _is_argv_file_name(late) and argv is None and writes is None:
+                source = command
+            elif isinstance(argv, list) and argv and writes is None:
+                if not all(isinstance(part, str) for part in argv) or argv[0] != TELEC_COMMAND:
+                    continue
+                source = command
+            else:
+                continue
+            gate = wait if isinstance(wait, str) and wait.isidentifier() else None
+            if gate is not None or deferred:
+                deferred.append((gate, name, source))
+            else:
+                self._execute(name, source)
+        if deferred:
+            self.worker = threading.Thread(target=self._drain, args=(deferred,), daemon=True)
+            self.worker.start()
+
+    def _drain(self, queue: list[tuple[str | None, str, object]]) -> None:
+        """Run the deferred commands one at a time in plan order, each after its gate file exists."""
+        for gate, name, source in queue:
+            while gate is not None and not self.control.exists(gate):
+                if self.control.exists(STOP_FILE) or not self.running:
+                    return
+                time.sleep(POLL_SECONDS)
+            if self.control.exists(STOP_FILE) or not self.running:
+                return
+            self._execute(name, source)
+
+    def _late_argv(self, file_name: str) -> list[str] | None:
+        """The argument list the controller wrote for a late-bound command, read only when its gate has opened."""
+        try:
+            value = json.loads((self.control.directory / file_name).read_text(encoding=ENCODING))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(value, list) or not value or not all(isinstance(part, str) for part in value):
+            return None
+        return value if value[0] == TELEC_COMMAND else None
+
+    def _execute(self, name: str, source: object) -> None:
+        if not isinstance(source, Mapping):
+            self._write_command_failure(name, [], PLAN_INVALID_STATUS)
+            return
+        if PLAN_WRITE_FIELD in source:
+            self._execute_writes(name, source)
+            return
+        late = source.get(PLAN_ARGV_FROM_FIELD)
+        raw_argv = source.get(PLAN_ARGV_FIELD)
+        arguments = self._late_argv(late) if isinstance(late, str) else raw_argv
+        if not isinstance(arguments, list) or not arguments or not all(isinstance(part, str) for part in arguments):
+            self._write_command_failure(name, [], LATE_ARGV_UNREADABLE)
+            return
+        resolved = shutil.which(TELEC_COMMAND)
+        cwd = self._working_directory(source.get(PLAN_CWD_FIELD))
+        if cwd is None:
+            self._write_command_failure(name, [str(part) for part in arguments], DETAIL_CWD_BINDING)
+            return
+        run = _run([resolved or TELEC_COMMAND, *arguments[1:]], timeout_seconds=PLAN_TIMEOUT_SECONDS, cwd=cwd)
+        reported: list[JsonValue] = [*arguments]
+        self.control.write_frame(
+            f"{PLAN_FRAME_PREFIX}{name}",
+            {
+                FRAME_NAME_FIELD: name,
+                FRAME_ARGV_FIELD: reported,
+                FRAME_TELEC_FIELD: resolved,
+                FRAME_RUN_FIELD: run,
+            },
+        )
+
+    def _working_directory(self, value: object) -> Path | None:
+        """Resolve a plan's relative working directory under the real launch directory."""
+        root = Path(self.cwd)
+        if value is None:
+            return root
+        if not isinstance(value, str):
+            return None
+        relative = Path(value)
+        if relative.is_absolute() or PATH_PARENT in relative.parts or PATH_CURRENT in relative.parts:
+            return None
+        candidate = root / relative
+        current = root
+        for part in relative.parts:
+            current = current / part
+            if current.is_symlink():
+                return None
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            return None
+        if not resolved.is_dir() or not resolved.is_relative_to(root):
+            return None
+        return resolved
+
+    def _prepare_writes(self, raw_writes: object) -> list[tuple[Path, str, bytes]] | None:
+        """Validate all fixture file writes before applying any of them."""
+        if not isinstance(raw_writes, list) or not raw_writes:
+            return None
+        root = Path(self.cwd)
+        prepared: list[tuple[Path, str, bytes]] = []
+        for raw in raw_writes:
+            if not isinstance(raw, dict) or frozenset(raw) != WRITE_ENTRY_KEYS:
+                return None
+            path_text = raw.get(PLAN_WRITE_PATH_FIELD)
+            mode = raw.get(PLAN_WRITE_MODE_FIELD)
+            text = raw.get(PLAN_WRITE_TEXT_FIELD)
+            if not isinstance(path_text, str) or not path_text or not isinstance(text, str):
+                return None
+            relative = Path(path_text)
+            if relative.is_absolute() or PATH_PARENT in relative.parts or PATH_CURRENT in relative.parts:
+                return None
+            if mode not in (PLAN_WRITE_CREATE, PLAN_WRITE_APPEND):
+                return None
+            target = root / relative
+            current = root
+            for part in relative.parts[:-1]:
+                current = current / part
+                if current.is_symlink() or not current.is_dir():
+                    return None
+            if target.is_symlink():
+                return None
+            try:
+                resolved_parent = target.parent.resolve(strict=True)
+            except OSError:
+                return None
+            if not resolved_parent.is_relative_to(root):
+                return None
+            if mode == PLAN_WRITE_CREATE and target.exists():
+                return None
+            if mode == PLAN_WRITE_APPEND and not target.is_file():
+                return None
+            prepared.append((target, str(mode), text.encode(WRITE_ENCODING)))
+        return prepared
+
+    def _execute_writes(self, name: str, plan: Mapping[str, object]) -> None:
+        """Execute the approved external fixture write operation and report exact bytes and digests."""
+        started = time.monotonic()
+        prepared = self._prepare_writes(plan.get(PLAN_WRITE_FIELD))
+        if prepared is None or PLAN_CWD_FIELD in plan:
+            self._write_writes_failure(name, DETAIL_WRITE_INVALID, [])
+            return
+        written: list[JsonValue] = []
+        details: list[JsonValue] = []
+        for path, mode, payload in prepared:
+            if time.monotonic() - started > WRITE_DEADLINE_SECONDS:
+                self._write_writes_failure(name, WRITE_FRAME_DEADLINE, written)
+                return
+            try:
+                file_mode = WRITE_MODE_CREATE if mode == PLAN_WRITE_CREATE else WRITE_MODE_APPEND
+                with path.open(file_mode) as handle:
+                    handle.write(payload)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                path_text = path.relative_to(Path(self.cwd)).as_posix()
+                written.append(path_text)
+                if mode == PLAN_WRITE_CREATE:
+                    path.chmod(WRITE_PERMISSION)
+            except OSError as error:
+                self._write_writes_failure(name, type(error).__name__, written)
+                return
+            path_text = path.relative_to(Path(self.cwd)).as_posix()
+            details.append(
+                {
+                    PLAN_WRITE_PATH_FIELD: path_text,
+                    PLAN_WRITE_MODE_FIELD: mode,
+                    PLAN_WRITE_BYTES_FIELD: len(payload),
+                    PLAN_WRITE_SHA_FIELD: hashlib.sha256(payload).hexdigest(),
+                }
+            )
+        self.control.write_frame(
+            f"{PLAN_FRAME_PREFIX}{name}",
+            {PLAN_WRITE_SUCCESS_FIELD: True, PLAN_CWD_RESOLVED_FIELD: self.cwd, PLAN_WRITE_FIELD: details},
+        )
+
+    def _write_writes_failure(self, name: str, error: str, written: list[JsonValue]) -> None:
+        """Write the exact failure frame for a refused or partial fixture file operation."""
+        self.control.write_frame(
+            f"{PLAN_FRAME_PREFIX}{name}",
+            {PLAN_WRITE_SUCCESS_FIELD: False, PLAN_WRITE_ERROR_FIELD: error, PLAN_WRITE_WRITTEN_FIELD: written},
+        )
+
+    def _write_command_failure(self, name: str, argv: list[str], error: str) -> None:
+        """Write a command frame that lets the controller distinguish a fixture binding failure."""
+        run: JsonObject = {RUN_EXIT_STATUS_FIELD: None, RUN_ERROR_FIELD: error, RUN_TIMED_OUT_FIELD: False}
+        self.control.write_frame(
+            f"{PLAN_FRAME_PREFIX}{name}",
+            {
+                FRAME_NAME_FIELD: name,
+                FRAME_ARGV_FIELD: cast(list[JsonValue], argv),
+                FRAME_TELEC_FIELD: None,
+                FRAME_RUN_FIELD: run,
+            },
+        )
+
+    def join_worker(self) -> None:
+        """Give the worker a bounded moment to finish; an exited fixture still proves nothing about its children."""
+        if self.worker is not None:
+            self.worker.join(timeout=WORKER_JOIN_SECONDS)
+
+    def feed(self, data: str, state: _InputState) -> None:
+        """Consume terminal input: pasted or typed text builds the draft, Enter submits it."""
+        index = 0
+        while index < len(data):
+            if data.startswith(PASTE_START, index):
+                state.pasting = True
+                index += len(PASTE_START)
+            elif data.startswith(PASTE_END, index):
+                state.pasting = False
+                index += len(PASTE_END)
+            elif data[index] in (CARRIAGE_RETURN, LINE_FEED) and not state.pasting:
+                if self.draft:
+                    self.submit(self.draft)
+                index += 1
+            elif data[index] == ESC:
+                index += 1
+            else:
+                self.draft += data[index]
+                index += 1
+        self.draw()
+
+
+class _InputState:
+    """Whether the terminal is inside a bracketed paste."""
+
+    def __init__(self) -> None:
+        self.pasting = False
+
+
+def _interactive(control: _Control) -> int:
+    fixture = _Fixture(control)
+    fixture.record_launch()
+    descriptor = sys.stdin.fileno()
+    saved = termios.tcgetattr(descriptor)
+
+    def stop(signum: int, frame: FrameType | None) -> None:
+        del signum, frame
+        fixture.running = False
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGHUP, stop)
+    tty.setraw(descriptor)
+    try:
+        sys.stdout.write(BRACKETED_PASTE_ON)
+        fixture.draw()
+        fixture.composer_at = time.monotonic()
+        control.write_number(COMPOSER_FILE, fixture.composer_at)
+        selector = selectors.DefaultSelector()
+        selector.register(descriptor, selectors.EVENT_READ)
+        state = _InputState()
+        pending = b""
+        while fixture.running:
+            if control.exists(STOP_FILE):
+                break
+            fixture.release_if_due()
+            if not selector.select(POLL_SECONDS):
+                continue
+            chunk = os.read(descriptor, READ_SIZE)
+            if not chunk:
+                break
+            pending += chunk
+            try:
+                text = pending.decode(ENCODING)
+            except UnicodeDecodeError:
+                continue
+            pending = b""
+            fixture.feed(text, state)
+    finally:
+        fixture.running = False
+        fixture.join_worker()
+        sys.stdout.write(BRACKETED_PASTE_OFF)
+        sys.stdout.flush()
+        termios.tcsetattr(descriptor, termios.TCSADRAIN, saved)
+    return 0
+
+
+def main(arguments: Sequence[str]) -> int:
+    """Answer metadata queries, or run the interactive inert agent."""
+    config = _load_config()
+    first = arguments[0] if arguments else ""
+    if first == VERSION_FLAG:
+        print(config[CONFIG_VERSION])
+        return 0
+    if first == UPDATE_COMMAND:
+        return 0
+    control = _claim_control(config)
+    return _interactive(control) if control is not None else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

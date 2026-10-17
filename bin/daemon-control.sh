@@ -33,6 +33,9 @@ fi
 source "$SCRIPT_DIR/init/install_services.sh"
 CRON_TIMER_UNIT="${CRON_LABEL}.timer"
 CRON_SERVICE_UNIT="${CRON_LABEL}.service"
+# The Linux config watcher the service installer deploys: it starts the daemon when config.yml changes, even
+# while the service unit is disabled, so stopping the service alone does not hold the daemon stopped.
+CONFIG_WATCHER_UNIT="${SERVICE_LABEL}-config.path"
 _SYSTEMD_ACTIVE_STATE="active"
 _SYSTEMD_INACTIVE_STATE="inactive"
 _SYSTEMD_FAILED_STATE="failed"
@@ -618,6 +621,10 @@ start_daemon() {
                 log_error "Failed to activate the periodic job timer: $CRON_TIMER_UNIT"
                 return 1
             fi
+            if ! restore_config_watcher; then
+                stop_startup_log_stream
+                return 1
+            fi
         fi
         stop_startup_log_stream
         if [ -f "$PID_FILE" ]; then
@@ -786,6 +793,86 @@ systemd_unit_active() {
     esac
 }
 
+# The watcher's runtime state as the service manager reports it: prints running, stopped or absent, and fails when the
+# state cannot be established. Installation is not the question: a masked or not-yet-reloaded unit can still be running,
+# so the runtime state is read whatever its load state, and only a unit the manager reports as not found is absent.
+config_watcher_runtime_state() {
+    local active_state=""
+    local load_state=""
+    if ! active_state="$(systemctl show "$CONFIG_WATCHER_UNIT" --property=ActiveState --value 2>/dev/null)"; then
+        return 1
+    fi
+    case "$active_state" in
+        active | activating | reloading | deactivating | maintenance | refreshing)
+            printf 'running'
+            return 0
+            ;;
+        inactive | failed)
+            if ! load_state="$(systemctl show "$CONFIG_WATCHER_UNIT" --property=LoadState --value 2>/dev/null)"; then
+                return 1
+            fi
+            if [ "$load_state" = "not-found" ]; then
+                printf 'absent'
+            else
+                printf 'stopped'
+            fi
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+# Stops the config watcher and verifies it inactive, whatever its load state. A unit the manager reports as not found
+# owes no action; a state that cannot be established is a failure, never an absence. Installation and enablement are
+# left unchanged.
+stop_config_watcher() {
+    local runtime_state=""
+    if ! runtime_state="$(config_watcher_runtime_state)"; then
+        log_error "Could not establish the runtime state of $CONFIG_WATCHER_UNIT"
+        return 1
+    fi
+    case "$runtime_state" in
+        absent | stopped)
+            return 0
+            ;;
+    esac
+    if ! _tc_sudo "stop the config watcher" systemctl stop "$CONFIG_WATCHER_UNIT"; then
+        log_error "The service manager refused to stop $CONFIG_WATCHER_UNIT"
+        return 1
+    fi
+    if ! runtime_state="$(config_watcher_runtime_state)" || [ "$runtime_state" = "running" ]; then
+        log_error "The config watcher $CONFIG_WATCHER_UNIT is not shown inactive after stop"
+        return 1
+    fi
+    return 0
+}
+
+# Restores the config watcher once the daemon is up. An enabled watcher is started; a deliberately disabled, masked or
+# linked one is left as the operator set it; a unit the manager reports as not found owes nothing; an enablement that
+# cannot be established is a failure. Installation and enablement are not touched.
+restore_config_watcher() {
+    local enablement=""
+    local runtime_state=""
+    enablement="$(systemctl is-enabled "$CONFIG_WATCHER_UNIT" 2>/dev/null)" || true
+    case "$enablement" in
+        enabled | enabled-runtime | static | indirect | generated | alias)
+            if ! _tc_sudo "restore the config watcher" systemctl start "$CONFIG_WATCHER_UNIT"; then
+                log_error "Failed to restore the config watcher: $CONFIG_WATCHER_UNIT"
+                return 1
+            fi
+            return 0
+            ;;
+        disabled | masked | masked-runtime | linked | linked-runtime)
+            return 0
+            ;;
+    esac
+    if runtime_state="$(config_watcher_runtime_state)" && [ "$runtime_state" = "absent" ]; then
+        return 0
+    fi
+    log_error "Could not establish whether the config watcher $CONFIG_WATCHER_UNIT is to be restored"
+    return 1
+}
+
 stop_systemd_periodic_units() {
     local timer_state=0
     local service_state=0
@@ -837,6 +924,7 @@ stop_daemon() {
     local entry
     local prepare_rc=0
     local periodic_cleanup_failed=0
+    local watcher_stop_failed=0
 
     prepare_daemon_for_shutdown || prepare_rc=$?
     if [ "$prepare_rc" -eq "$PREPARE_DEFERRED_RETURN" ]; then
@@ -854,6 +942,12 @@ stop_daemon() {
     if [ "$PLATFORM" != "macos" ] && ! stop_systemd_periodic_units; then
         log_error "Periodic job unit cleanup failed; continuing daemon shutdown"
         periodic_cleanup_failed=1
+    fi
+
+    # The watcher goes first: while it is active, a config change can start the daemon that is being stopped.
+    if [ "$PLATFORM" != "macos" ] && ! stop_config_watcher; then
+        log_error "Config watcher stop failed; continuing daemon shutdown, the stopped outcome is withheld"
+        watcher_stop_failed=1
     fi
 
     if [ "$PLATFORM" = "macos" ]; then
@@ -928,7 +1022,7 @@ stop_daemon() {
         record_stop_outcome "$STOP_OUTCOME_WITHHELD"
         return 1
     fi
-    if [ "$stop_command_failed" -ne 0 ] || [ "$disable_command_failed" -ne 0 ]; then
+    if [ "$stop_command_failed" -ne 0 ] || [ "$disable_command_failed" -ne 0 ] || [ "$watcher_stop_failed" -ne 0 ]; then
         record_stop_outcome "$STOP_OUTCOME_WITHHELD"
         return 1
     fi

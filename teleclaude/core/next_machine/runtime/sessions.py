@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -101,8 +103,34 @@ async def find_all_live_sessions_for_slug(
     ]
 
 
+_STARTS_IN_FLIGHT: set[str] = set()
+
+
+@contextmanager
+def start_in_flight(session_id: str) -> Iterator[None]:
+    """Mark a session identity the platform is starting in this process, from its link until its start has returned.
+
+    A driver link is written before the session exists, so for that span the identity names a session that is on its
+    way. Every liveness reading counts it live; a clock decides nothing. A start that does not survive its process
+    leaves a link to a session that never was, which is dead as soon as the process is gone and is cleared like any
+    dead link.
+    """
+    _STARTS_IN_FLIGHT.add(session_id)
+    try:
+        yield
+    finally:
+        _STARTS_IN_FLIGHT.discard(session_id)
+
+
+def is_start_in_flight(session_id: str) -> bool:
+    """Whether the platform is starting this session identity in this process."""
+    return session_id in _STARTS_IN_FLIGHT
+
+
 async def is_live_session_id(db: Db, session_id: str) -> bool:
-    """Return whether a concrete TeleClaude session id still names a live session."""
+    """Return whether a concrete TeleClaude session id still names a live session, or one being started."""
+    if session_id in _STARTS_IN_FLIGHT:
+        return True
     session = await db.get_session(session_id)
     if session is None:
         return False

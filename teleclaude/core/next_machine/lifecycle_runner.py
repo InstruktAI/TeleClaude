@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+import uuid
+from collections.abc import Mapping
+from contextlib import suppress
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple, Protocol, Unpack
+from typing import Final, NamedTuple
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api_models import CreateSessionResponseDTO
-from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.cli.api_session_args import RunSessionArgs
 from teleclaude.config._models import WorkflowRunnerMode
 from teleclaude.config.machine import config
 from teleclaude.constants import TodoStatus
@@ -27,9 +27,8 @@ from teleclaude.core.next_machine.git_ops import (
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lanes import LANE_ENTRY_PROCEDURES
 from teleclaude.core.next_machine.lifecycle import (
-    coerce_lifecycle_phase,
+    ApprovalGate,
     effective_hold,
-    lifecycle_phase_index,
     pending_approval_gate,
     plan_review_current,
 )
@@ -45,22 +44,38 @@ from teleclaude.core.next_machine.runner_types import (
     RunnerSkipReason,
     RunnerTodo,
 )
-from teleclaude.core.next_machine.runtime.sessions import is_live_session_id, live_orchestrator_owned_slugs
-from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
-from teleclaude.core.next_machine.slug_resolution import (
-    effective_delivered_slugs_for_dependencies,
-    effective_prepared_slugs_for_dependencies,
+from teleclaude.core.next_machine.runtime.sessions import (
+    is_live_session_id,
+    live_orchestrator_owned_slugs,
+    start_in_flight,
 )
-from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
+from teleclaude.core.next_machine.start_reservation import (
+    give_back,
+    mark_session_id,
+    record_reservation,
+    settle_mark_on_any_row,
+)
+from teleclaude.core.next_machine.state_mutation import (
+    StateMutationError,
+    StateWriter,
+    commit_on_current,
+    commit_on_current_by_id,
+)
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db._rows import TodoRow
+from teleclaude.core.workflow_machine.dependencies import delivered_slugs as delivered_slugs_of
+from teleclaude.core.workflow_machine.dependencies import prepared_slugs as prepared_slugs_of
+from teleclaude.core.workflow_machine.lane import resolve_lane
+from teleclaude.core.workflow_machine.phase_reading import awaits_readable_head, read_phase
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import HoldAuditState, TodoState
+from teleclaude.types.workflow_record import Phase
 
 logger = get_logger(__name__)
 
@@ -89,16 +104,6 @@ class _RunnerTodoRead(NamedTuple):
     todo: RunnerTodo | None
     current_status: str | None
     is_holder: bool
-
-
-class SessionRunner(Protocol):
-    async def connect(self) -> None: ...
-    async def close(self) -> None: ...
-    async def run_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO: ...
-
-
-def default_session_runner() -> SessionRunner:
-    return TelecAPIClient(daemon_credential=True)
 
 
 def _command_for_lane(lane: RunnerLane) -> tuple[str, str]:
@@ -167,30 +172,35 @@ def _resolve_kinded_dispatch(
         return RunnerLane.TASK_RUN, None
     if kind not in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
         return None, RunnerSkipReason.INVALID_KIND
-    phase = coerce_lifecycle_phase(todo.lifecycle_phase)
-    if phase is None:
+    if todo.item_phase is None:
         return None, RunnerSkipReason.UNKNOWN_PHASE
-    if phase == LifecyclePhase.FINALIZE_READY and todo.plan_review_current:
-        return None, RunnerSkipReason.FINALIZE_READY
-    if lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED) and todo.plan_review_current:
-        if todo.dependency_drift_pending_on:
-            # Re-derive a prepared dependent before its work runtime resumes.
-            unmet = [dep for dep in todo.after if dep not in prepared_slugs]
-            lane = RunnerLane.PREPARE
-        else:
-            # Work lane — entering the execution runtime. Autostart gates this only.
-            if not _autostart_enabled(kind, autostart):
-                return None, RunnerSkipReason.POLICY_DISABLED
-            unmet = [dep for dep in todo.after if dep not in delivered_slugs]
-            lane = RunnerLane.WORK
-    else:
-        # Prepare lane — preparation always runs regardless of autostart; agents
-        # park at the human approval gates (PRD) at the right moments anyway.
-        unmet = [dep for dep in todo.after if dep not in prepared_slugs]
+    if todo.head_unreadable:
+        return None, RunnerSkipReason.HEAD_UNREADABLE
+    phase = Phase(todo.item_phase)
+    skipped = _PHASE_SKIPS.get(phase)
+    if skipped is not None:
+        return None, skipped
+    if phase is Phase.PREPARATION:
+        # Preparation always runs regardless of autostart; agents park at the human gates themselves.
         lane = RunnerLane.PREPARE
+        unmet = [dep for dep in todo.after if dep not in prepared_slugs]
+    else:
+        # A prepared item, or one in work (a stale stamp reads as work), enters the execution runtime.
+        if not _autostart_enabled(kind, autostart):
+            return None, RunnerSkipReason.POLICY_DISABLED
+        lane = RunnerLane.WORK
+        unmet = [dep for dep in todo.after if dep not in delivered_slugs]
     if unmet:
         return None, RunnerSkipReason.DEPENDENCY_BLOCKED
     return lane, None
+
+
+_PHASE_SKIPS: Final[Mapping[Phase, RunnerSkipReason]] = {
+    Phase.WAITING: RunnerSkipReason.WAITING,
+    Phase.READY: RunnerSkipReason.READY,
+    Phase.DESIGN: RunnerSkipReason.DESIGN,
+    Phase.DELIVERED: RunnerSkipReason.DELIVERED,
+}
 
 
 def decide_dispatches(
@@ -268,29 +278,6 @@ def decide_dispatches(
         if _at_capacity():
             decision.skip(RunnerSkipReason.AT_CAPACITY, slug)
             continue
-        if lane is RunnerLane.PREPARE and todo.dependency_drift_pending_on:
-            logger.info(
-                _RUNNER_REPREPARE_MESSAGE,
-                event=_RUNNER_REPREPARE_EVENT,
-                outcome=_RUNNER_REPREPARE_OUTCOME,
-                reason=_RUNNER_DEPENDENCY_ARTIFACT_DRIFT_REASON,
-                slug=slug,
-                lifecycle_phase=todo.lifecycle_phase or "",
-                dependencies=sorted(todo.dependency_drift_pending_on),
-            )
-        elif (
-            lane is RunnerLane.PREPARE and coerce_lifecycle_phase(todo.lifecycle_phase) is LifecyclePhase.FINALIZE_READY
-        ):
-            logger.info(
-                _RUNNER_REPREPARE_MESSAGE,
-                event=_RUNNER_REPREPARE_EVENT,
-                outcome=_RUNNER_REPREPARE_OUTCOME,
-                reason=_RUNNER_REPREPARE_REASON,
-                slug=slug,
-                lifecycle_phase=LifecyclePhase.FINALIZE_READY.value,
-                current_plan_digest=todo.current_plan_digest,
-                reviewed_plan_digest=todo.reviewed_plan_digest,
-            )
         decision.intents.append(_intent(slug, lane))
     return decision
 
@@ -346,6 +333,12 @@ def _read_runner_todo(row: TodoRow, status_read: TodoStatusStateRead) -> _Runner
     )
 
 
+def _creative_approval_pending(model: TodoState) -> bool:
+    """Whether a creative approval is pending; the retired PRD human approval gate no longer holds an item back."""
+    gate = pending_approval_gate(model)
+    return gate is not None and gate is not ApprovalGate.PRD
+
+
 def _todo_from_state(row: TodoRow, status: str, state: Mapping[str, StateValue]) -> RunnerTodo:
     model = TodoState.model_validate(state)
     active_runner = state.get("active_runner")
@@ -356,7 +349,7 @@ def _todo_from_state(row: TodoRow, status: str, state: Mapping[str, StateValue])
         status=status,
         kind=model.kind,
         lifecycle_phase=model.lifecycle_phase.value,
-        human_approval_pending=pending_approval_gate(model) is not None,
+        human_approval_pending=_creative_approval_pending(model),
         hold=state.get("hold") is True,
         active_runner=active_runner if isinstance(active_runner, str) and active_runner else None,
         manually_started=state.get("manually_started") is True,
@@ -393,14 +386,82 @@ def _approval_from_state(state: Mapping[str, StateValue], approval_key: str) -> 
     return approval.get("approved") is True, approved_digest if isinstance(approved_digest, str) else ""
 
 
-async def _clear_active_runner(todos_db: WorkflowStore, row: TodoRow) -> None:
-    state = await todos_db.read_state_by_id(row["id"])
-    if state is None:
-        return
-    writer = StateWriter(state)
-    writer.state.active_runner = None
-    writer.state.manually_started = False
-    await writer.commit_by_id(todos_db, row["id"])
+_LIVE_ROW_STATUSES: Final = frozenset({"active", "icebox"})
+LINK_SKIPPED_LOG: Final = "lifecycle runner: the started session was not linked, the row is held by another session"
+
+
+class LifecycleLinkLost(Exception):
+    """The row has another owner, so no driver was started; the winning owner is named."""
+
+    def __init__(self, slug: str, owner: str) -> None:
+        super().__init__(slug, owner)
+        self.slug = slug
+        self.owner = owner
+
+
+async def _release_reserved_link(todos_db: WorkflowStore, slug: str, session_id: str) -> None:
+    """Withdraw the link reserved for a session that was never created, only while it is still that session\'s.
+
+    What the reservation replaced (a cleared hold, the task phase) goes back with it, each only while the row still
+    carries the reservation\'s mark, so a refused start leaves the row as it found it and a later operator change stands.
+    """
+
+    def change(writer: StateWriter) -> None:
+        if writer.state.active_runner != session_id:
+            return
+        writer.state.active_runner = None
+        writer.state.manually_started = False
+        give_back(writer, session_id, accepted=False)
+
+    with suppress(StateMutationError):  # the item left the store: there is no row to give anything back to
+        await commit_on_current(todos_db, slug, change)
+
+
+async def _confirm_reserved_start(todos_db: WorkflowStore, slug: str, session_id: str) -> None:
+    """Settle the reservation\'s mark once the start is accepted; any other audit is left alone."""
+
+    def change(writer: StateWriter) -> None:
+        give_back(writer, session_id, accepted=True)
+
+    try:
+        await commit_on_current(todos_db, slug, change)
+    except StateMutationError:
+        # The item left the live rows while the start was being accepted: settle the mark on the row wherever it is.
+        await settle_mark_on_any_row(todos_db, slug, session_id)
+
+
+class LifecycleItemUnavailable(Exception):
+    """The item is missing, removed or delivered, so no driver link could be committed and no session was started."""
+
+    def __init__(self, slug: str) -> None:
+        super().__init__(slug)
+        self.slug = slug
+
+
+class LinkSkipped(Exception):
+    """The row was claimed by another session before the started driver could be linked; nothing was written."""
+
+
+async def _clear_active_runner(
+    todos_db: WorkflowStore, row: TodoRow, expected_runner: str, *, session_exists: bool
+) -> TodoState | None:
+    """Clear the dead driver's link, and only that link: a replacement that claimed the row meanwhile is left alone.
+
+    A link whose session never came to exist was a reservation that no start accepted, so what it replaced goes back
+    with it; a session that exists was accepted, and only the reservation's mark is settled. The state the clearing
+    left on the row is returned, so the caller reads the hold and phase the row now has, not the ones it loaded.
+    """
+
+    def change(writer: StateWriter) -> None:
+        if writer.state.active_runner != expected_runner:
+            return
+        writer.state.active_runner = None
+        writer.state.manually_started = False
+        give_back(writer, expected_runner, accepted=session_exists)
+
+    if row["status"] in _LIVE_ROW_STATUSES:
+        return await commit_on_current(todos_db, row["slug"], change)
+    return await commit_on_current_by_id(todos_db, row["id"], change)
 
 
 async def _set_active_runner(
@@ -411,26 +472,61 @@ async def _set_active_runner(
     lane: RunnerLane,
     manually_started: bool,
     release_hold: bool,
-) -> None:
-    """Write the driver link and its manual marker as one guarded mutation.
+    reserve: bool = False,
+    require_row: bool = False,
+) -> str:
+    """Write the driver link and its manual marker as one guarded mutation; the winning owner when the row has one.
+
+    ``reserve`` records what the same mutation replaced (a cleared hold, the task phase) on the row, so a start that is
+    never accepted can give it back, also after a crash.
+    ``require_row`` makes a missing item an outcome of its own (``LifecycleItemUnavailable``) rather than an empty
+    answer a caller could read as linked: a start that must have its link committed before it begins needs the row.
 
     ``active_runner`` and ``manually_started`` are always written together so a
     todo never carries a driver link without its origin marker. ``release_hold``
     is the caller-owned intent to clear a stored hold: true only for a fresh
     claim/start of a held unclaimed todo, false for a live owner's continuation.
     """
-    state = await todos_db.read_state(slug)
-    if state is None:
-        return
-    writer = StateWriter(state)
-    writer.state.active_runner = session_id
-    writer.state.manually_started = manually_started
-    if release_hold:
-        writer.state.hold = False
-        writer.state.hold_audit = HoldAuditState()
-    if lane is RunnerLane.TASK_RUN:
-        writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING
-    await writer.commit(todos_db, slug)
+    stored = await todos_db.read_state(slug)
+    if stored is None:
+        if require_row:
+            raise LifecycleItemUnavailable(slug)
+        return ""
+    left_over = mark_session_id(TodoState.model_validate(stored).hold_audit) if reserve else ""
+    left_over_accepted = bool(left_over) and await (await get_db()).get_session(left_over) is not None
+
+    def change(writer: StateWriter) -> None:
+        owner = writer.state.active_runner
+        if owner and owner != session_id:
+            raise LinkSkipped(owner)
+        writer.state.active_runner = session_id
+        writer.state.manually_started = manually_started
+        if reserve:
+            record_reservation(
+                writer,
+                session_id,
+                clears_hold=release_hold,
+                task_run=lane is RunnerLane.TASK_RUN,
+                left_over_accepted=left_over_accepted,
+            )
+            return
+        if release_hold:
+            writer.state.hold = False
+            writer.state.hold_audit = HoldAuditState()
+        if lane is RunnerLane.TASK_RUN:
+            writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING
+
+    try:
+        await commit_on_current(todos_db, slug, change)
+    except LinkSkipped as moved:
+        winner = str(moved)
+        logger.warning(LINK_SKIPPED_LOG, slug=slug, started=session_id, owner=winner)
+        return winner
+    except StateMutationError as vanished:
+        if require_row:
+            raise LifecycleItemUnavailable(slug) from vanished
+        raise
+    return ""
 
 
 async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, RunnerTodo], list[str]]:
@@ -477,26 +573,17 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                     current_status=read.current_status,
                 )
             continue
-        todo = RunnerTodo(
-            slug=todo.slug,
-            status=todo.status,
-            kind=todo.kind,
-            lifecycle_phase=todo.lifecycle_phase,
-            human_approval_pending=todo.human_approval_pending,
-            hold=todo.hold,
-            active_runner=todo.active_runner,
-            manually_started=todo.manually_started,
-            after=tuple(deps.get(todo.slug, [])),
-            schedule=todo.schedule,
-            task_plan_digest=todo.task_plan_digest,
-            task_approved=todo.task_approved,
-            task_approved_digest=todo.task_approved_digest,
-            plan_review_current=todo.plan_review_current,
-            current_plan_digest=todo.current_plan_digest,
-            reviewed_plan_digest=todo.reviewed_plan_digest,
-            dependency_drift_pending_on=todo.dependency_drift_pending_on,
-        )
+        todo = replace(todo, after=tuple(deps.get(todo.slug, [])))
         state = states_by_slug.get(todo.slug)
+        if state is not None and todo.kind != KIND_TASK:
+            raw_state = status_reads[row["id"]].state or {}
+            lane = await resolve_lane(todos_db, str(todos_db.project_root), todo.slug, raw_state, state)
+            reading = read_phase(state, lane)
+            todo = replace(
+                todo,
+                item_phase=reading.phase.value if reading.phase is not None else None,
+                head_unreadable=awaits_readable_head(state, lane),
+            )
         if state is not None and todo.kind in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
             dependency_snapshot = build_dependency_artifact_snapshot(
                 [
@@ -511,47 +598,15 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                     state.artifacts.implementation_plan.dependency_artifact_digests,
                     dependency_snapshot,
                 )
-                todo = RunnerTodo(
-                    slug=todo.slug,
-                    status=todo.status,
-                    kind=todo.kind,
-                    lifecycle_phase=todo.lifecycle_phase,
-                    human_approval_pending=todo.human_approval_pending,
-                    hold=todo.hold,
-                    active_runner=todo.active_runner,
-                    manually_started=todo.manually_started,
-                    after=todo.after,
-                    schedule=todo.schedule,
-                    task_plan_digest=todo.task_plan_digest,
-                    task_approved=todo.task_approved,
-                    task_approved_digest=todo.task_approved_digest,
-                    plan_review_current=todo.plan_review_current,
-                    current_plan_digest=todo.current_plan_digest,
-                    reviewed_plan_digest=todo.reviewed_plan_digest,
-                    dependency_drift_pending_on=tuple(sorted(moved_dependencies)),
-                )
+                todo = replace(todo, dependency_drift_pending_on=tuple(sorted(moved_dependencies)))
         if todo.active_runner and not await _is_live_runner(db, todo.active_runner):
-            await _clear_active_runner(todos_db, row)
-            reconciled.append(todo.slug)
-            todo = RunnerTodo(
-                slug=todo.slug,
-                status=todo.status,
-                kind=todo.kind,
-                lifecycle_phase=todo.lifecycle_phase,
-                human_approval_pending=todo.human_approval_pending,
-                hold=todo.hold,
-                active_runner=None,
-                manually_started=False,
-                after=todo.after,
-                schedule=todo.schedule,
-                task_plan_digest=todo.task_plan_digest,
-                task_approved=todo.task_approved,
-                task_approved_digest=todo.task_approved_digest,
-                plan_review_current=todo.plan_review_current,
-                current_plan_digest=todo.current_plan_digest,
-                reviewed_plan_digest=todo.reviewed_plan_digest,
-                dependency_drift_pending_on=todo.dependency_drift_pending_on,
+            cleared = await _clear_active_runner(
+                todos_db, row, todo.active_runner, session_exists=await db.get_session(todo.active_runner) is not None
             )
+            reconciled.append(todo.slug)
+            todo = replace(todo, active_runner=None, manually_started=False)
+            if cleared is not None and cleared.active_runner is None:
+                todo = replace(todo, hold=cleared.hold, lifecycle_phase=cleared.lifecycle_phase.value)
         loaded[todo.slug] = todo
     return loaded, reconciled
 
@@ -576,43 +631,105 @@ async def _live_active_runners(db: Db, todos: Mapping[str, RunnerTodo]) -> tuple
 
 async def dispatch_lifecycle_session(
     *,
-    client: SessionRunner,
     runtime_db: Db,
     todos_db: WorkflowStore,
     project_path: str,
     intent: DispatchIntent,
     origin: DispatchOrigin,
 ) -> str:
-    """Start a lifecycle driver and record its ownership directly."""
-    kwargs: RunSessionArgs = {
-        "command": intent.command,
-        "project_path": project_path,
-        "args": intent.slug,
-        "detach": True,
-    }
-    if intent.additional_context:
-        kwargs["additional_context"] = intent.additional_context
-    response = await client.run_session(**kwargs)
-    await _set_active_runner(
-        todos_db,
-        intent.slug,
-        response.session_id,
-        lane=intent.lane,
-        manually_started=origin.manually_started,
-        release_hold=origin.manually_started,
+    """Start a lifecycle driver under a session identity chosen first and linked before the session is created.
+
+    The link is reserved on the item before the session exists, in the one conditional write that decides who owns the
+    row: the loser starts nothing and learns the winner, so no accepted start can be left unlinked, and a crash after
+    the reservation leaves a link to a session that never was, which the next pass clears like any dead driver link. The
+    session is then started in process under that identity through the platform\'s one session-run path.
+    """
+    from teleclaude.api.sessions_actions_routes import (  # noqa: PLC0415 - deferred cycle: the routes read this package
+        run_platform_session,
     )
-    session = await runtime_db.get_session(response.session_id)
+    from teleclaude.api_models import RunSessionRequest  # noqa: PLC0415 - deferred cycle: the models read this package
+
+    session_id = str(uuid.uuid4())
+    with start_in_flight(session_id):
+        winner = await _set_active_runner(
+            todos_db,
+            intent.slug,
+            session_id,
+            lane=intent.lane,
+            manually_started=origin.manually_started,
+            release_hold=origin.manually_started,
+            reserve=True,
+            require_row=True,
+        )
+        if winner:
+            raise LifecycleLinkLost(intent.slug, winner)
+        request = RunSessionRequest(
+            command=intent.command,
+            args=intent.slug,
+            project=project_path,
+            detach=True,
+            additional_context=intent.additional_context,
+        )
+        try:
+            await run_platform_session(request, session_id=session_id)
+        except BaseException:
+            if await runtime_db.get_session(session_id) is None:
+                await _release_reserved_link(todos_db, intent.slug, session_id)
+            else:
+                await _confirm_reserved_start(todos_db, intent.slug, session_id)
+            raise
+        await _confirm_reserved_start(todos_db, intent.slug, session_id)
+    session = await runtime_db.get_session(session_id)
     if session is not None and is_session_terminal(
         lifecycle_status=session.lifecycle_status,
         closed_at=session.closed_at,
     ):
-        reconciliation = await reconcile_driver_ownership_for_session(todos_db, response.session_id)
+        reconciliation = await reconcile_driver_ownership_for_session(todos_db, session_id)
         logger.info(
             "terminal lifecycle spawn reconciled",
-            session_id=response.session_id,
+            session_id=session_id,
             cleared_slugs=",".join(reconciliation.cleared_slugs),
         )
-    return response.session_id
+    return session_id
+
+
+_ITEM_LANES: Final = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
+_REFUSED_LOG: Final = "lifecycle runner: the driver request was refused"
+_REQUEST_FAILED_LOG: Final = "lifecycle runner: the driver request failed"
+
+
+async def _request_item_driver(project_path: str, intent: DispatchIntent) -> bool:
+    """Ask the lifecycle machine to start the driver of a prepare or work intent; False when it refuses or fails.
+
+    The request is recorded and returns without waiting for the driver to claim; the driver claims for itself.
+    """
+    from teleclaude.core.workflow_machine.entry import (  # noqa: PLC0415 - deferred cycle: the machine reads this package
+        EntryRefused,
+        EntryRequest,
+        EntryVerb,
+        StartOrigin,
+        enter,
+    )
+
+    verb = EntryVerb.PREPARE if intent.lane is RunnerLane.PREPARE else EntryVerb.WORK
+    try:
+        await enter(
+            EntryRequest(
+                project_root=project_path,
+                item=intent.slug,
+                verb=verb,
+                caller_session_id="",
+                wait_for_claim=False,
+                origin=StartOrigin.RUNNER,
+            )
+        )
+    except EntryRefused as refusal:
+        logger.info(_REFUSED_LOG, slug=intent.slug, lane=intent.lane.value, reason=str(refusal))
+        return False
+    except Exception:  # supervision boundary: one failing request must not stop the pass
+        logger.exception(_REQUEST_FAILED_LOG, slug=intent.slug, lane=intent.lane.value)
+        return False
+    return True
 
 
 async def run_lifecycle_runner(
@@ -620,14 +737,13 @@ async def run_lifecycle_runner(
     *,
     trigger: str = "manual",
     db: Db | None = None,
-    client_factory: Callable[[], SessionRunner] = default_session_runner,
 ) -> RunnerResult:
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
     todos_db = await get_workflow_store(project_root)
     todos, reconciled = await _load_todos(todos_db, runtime_db)
-    prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
-    delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
+    prepared_slugs = await prepared_slugs_of(todos_db)
+    delivered_slugs = await delivered_slugs_of(todos_db)
     workflow = config.workflow
     autostart = {
         KIND_FEATURE: workflow.autostart.feature,
@@ -658,21 +774,22 @@ async def run_lifecycle_runner(
     )
 
     dispatched: list[DispatchIntent] = []
-    client = client_factory()
-    await client.connect()
-    try:
-        for intent in decision.intents:
+    for intent in decision.intents:
+        if intent.lane in _ITEM_LANES:
+            if await _request_item_driver(str(project_root), intent):
+                dispatched.append(intent)
+            continue
+        try:
             await dispatch_lifecycle_session(
-                client=client,
                 runtime_db=runtime_db,
                 todos_db=todos_db,
                 project_path=str(project_root),
                 intent=intent,
                 origin=DispatchOrigin.RUNNER,
             )
-            dispatched.append(intent)
-    finally:
-        await client.close()
+        except (LifecycleLinkLost, LifecycleItemUnavailable):
+            continue
+        dispatched.append(intent)
 
     result = RunnerResult(
         project_path=str(project_root),
@@ -719,6 +836,7 @@ set_active_runner = _set_active_runner
 __all__ = [
     "DispatchIntent",
     "DispatchOrigin",
+    "LifecycleItemUnavailable",
     "ManualLifecycleSessionResult",
     "ManualLifecycleStatus",
     "RunnerDecision",
@@ -730,7 +848,6 @@ __all__ = [
     "artifact_digest_from_state",
     "command_for_lane",
     "decide_dispatches",
-    "default_session_runner",
     "dispatch_lifecycle_session",
     "load_runner_todos",
     "make_intent",

@@ -46,6 +46,7 @@ from teleclaude.resource_validation._models import (
     _first_out_of_order_ref,
 )
 from teleclaude.resource_validation._todo_status import TodoStatusFact, build_todo_status_facts, is_pending_marker_stale
+from teleclaude.resource_validation._workflow import collect_procedure_rows, validate_workflow_drivers
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, iter_tier_snippet_roots
 from teleclaude.snippet_validation import (
     UNREGISTERED_DOMAIN_REF,
@@ -749,6 +750,13 @@ def _iter_reachable_refs(start: Path, project_root: Path, seen: set[Path]) -> It
         yield from _iter_reachable_refs(resolved, project_root, seen)
 
 
+def _validate_workflow_drivers(project_root: Path) -> None:
+    """Check the lifecycle driver declarations across every published procedure, per coherent view."""
+    validate_workflow_drivers(
+        collect_procedure_rows(_iter_snippet_roots(project_root), project_root, load_domains(project_root))
+    )
+
+
 def _validate_baseline_dedup(project_root: Path, *, paths: list[Path] | None = None) -> None:
     """Fail when either baseline delivery mechanism also includes baseline content."""
     domains = load_domains(project_root)
@@ -971,4 +979,5 @@ def _validate_all_snippets(
             validate_snippet(path, text, project_root, domains=domains, todo_status_facts=todo_status_facts)
     _validate_tier_roots(tier_roots, domains=domains, todo_status_facts=todo_status_facts)
     _validate_baseline_dedup(project_root)
+    _validate_workflow_drivers(project_root)
     validate_third_party_docs(project_root)

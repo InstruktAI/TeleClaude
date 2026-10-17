@@ -115,9 +115,11 @@ class InvocationKey(StrEnum):
     ENTRY_JOB = "entry_job"
     ENTRY_FACTS = "entry_facts"
     ADDITIONAL_CONTEXT = "additional_context"
+    WORKFLOW_PUBLICATION = "workflow_publication"
 
 
 NO_ADDITIONAL_CONTEXT: Final = ""
+NO_WORKFLOW_PUBLICATION: Final = ""
 
 
 @dataclass(frozen=True)
@@ -126,7 +128,8 @@ class ProcedureInvocation:
 
     A continuation (restart, revival, handoff) rebuilds the loader from it: the procedure, raw argument
     text, bound parameters, entry facts, and additional context supplied at launch. A record stored without
-    the additional-context key reads as carrying none.
+    the additional-context key reads as carrying none. A lifecycle driver also carries the workflow
+    publication it was initialized under, which is no part of its loader.
     """
 
     procedure_id: str
@@ -136,6 +139,7 @@ class ProcedureInvocation:
     entry_job: str | None
     entry_facts: tuple[tuple[str, str], ...] = ()
     additional_context: str = NO_ADDITIONAL_CONTEXT
+    workflow_publication: str = NO_WORKFLOW_PUBLICATION
 
     def to_dict(self) -> JsonDict:
         """Serialize the invocation into a JSON-compatible dictionary."""
@@ -147,6 +151,7 @@ class ProcedureInvocation:
             InvocationKey.ENTRY_JOB: self.entry_job,
             InvocationKey.ENTRY_FACTS: [[name, value] for name, value in self.entry_facts],
             InvocationKey.ADDITIONAL_CONTEXT: self.additional_context,
+            InvocationKey.WORKFLOW_PUBLICATION: self.workflow_publication,
         }
 
     @classmethod
@@ -165,6 +170,7 @@ class ProcedureInvocation:
                 for pair in cast(list[list[str]], data.get(InvocationKey.ENTRY_FACTS) or [])
             ),
             additional_context=str(data.get(InvocationKey.ADDITIONAL_CONTEXT) or NO_ADDITIONAL_CONTEXT),
+            workflow_publication=str(data.get(InvocationKey.WORKFLOW_PUBLICATION) or NO_WORKFLOW_PUBLICATION),
         )
 
 

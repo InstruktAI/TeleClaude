@@ -45,6 +45,7 @@ _DONE_PHASE_VALUES: frozenset[str] = frozenset(
         LifecyclePhase.BUILD_COMPLETE.value,
         LifecyclePhase.REVIEW_APPROVED.value,
         LifecyclePhase.FINALIZE_READY.value,
+        LifecyclePhase.READY.value,
         LifecyclePhase.DELIVERED.value,
     }
 )
@@ -52,7 +53,7 @@ _DONE_PHASE_VALUES: frozenset[str] = frozenset(
 # Values belonging to the prepare lifecycle for stage classification.
 _PREPARE_VALUES: frozenset[str] = frozenset(
     phase.value for phase in LIFECYCLE_PHASE_ORDER[: LIFECYCLE_PHASE_ORDER.index(LifecyclePhase.PREPARED)]
-) | frozenset({LifecyclePhase.TASK_PLAN_DRAFTING.value})
+) | frozenset({LifecyclePhase.TASK_PLAN_DRAFTING.value, LifecyclePhase.PREPARATION.value})
 
 _EVENTS_INLINE_LIMIT = 20
 _HOLDER_PHASE: Literal["holder"] = "holder"
@@ -113,6 +114,7 @@ class TodoShowPayload(TypedDict, total=False):
     audit: dict[str, StateValue]
     events: list[dict[str, StateValue]] | dict[str, StateValue]
     next_commands: dict[str, str]
+    standing: dict[str, StateValue]
     artifacts: list[str]
     artifact_content: dict[str, str]
 

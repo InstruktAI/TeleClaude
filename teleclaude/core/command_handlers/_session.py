@@ -54,7 +54,7 @@ from teleclaude.core.models import (
 from teleclaude.core.models._adapter import UNATTENDED_SECTION, unattended_stamp
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.roles import RoleName
-from teleclaude.core.runtime_events import publish_runtime_error, publish_session_source_change
+from teleclaude.core.runtime_events import publish_session_source_change
 from teleclaude.core.session_cleanup import (
     has_pending_channel_cleanup,
     host_pane_name,
@@ -68,6 +68,7 @@ from teleclaude.core.session_snapshot import project_session_snapshot
 from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.session_utils import WorkingDirectoryUnavailableError, resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
+from teleclaude.core.workflow_machine.helpers import helper_start_fence
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.events.envelope import EventHomeMarker
 from teleclaude.events.home_owner import EventHomeOwnerMarker
@@ -83,6 +84,7 @@ from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import TRANSCRIPT_READERS, parse_session_transcript
 
 from ._session_identity import resolve_session_creation_identity
+from ._session_transcript import publish_transcript_format_mismatches
 from ._utils import EndSessionHandlerResult, SessionDataPayload, with_session
 
 if TYPE_CHECKING:
@@ -422,37 +424,39 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
 
     # Create session atomically with all known fields — the SESSION_STARTED
     # event must carry complete data so downstream consumers never see partial state.
-    session = await db.create_session(
-        computer_name=computer_name,
-        tmux_session_name=_UNBOUND_TMUX_NAME,
-        last_input_origin=last_input_origin,
-        title=title,
-        project_path=project_path,
-        subdir=subfolder,
-        config_subject=config_subject,
-        subject_owner=subject_owner,
-        session_id=session_id,
-        command=cmd.command,
-        working_slug=working_slug,
-        initiator_session_id=initiator_session_id,
-        initiator_computer=initiator_computer,
-        detached=cmd.skip_listener_registration,
-        human_email=human_email,
-        human_role=human_role,
-        principal=principal,
-        lifecycle_status="headless" if cmd.headless else "initializing",
-        role=cmd_role,
-        job=cmd_job,
-        company=company,
-        active_agent=launch.agent if launch else None,
-        thinking_mode=launch.thinking_mode if launch else None,
-        native_session_id=cmd.native_session_id or (launch.native_session_id if launch else None),
-        native_log_file=cmd.native_log_file,
-        origin_metadata=creation_metadata,
-        startup_intent=None if cmd.headless else launch,
-        procedure_delivery=cmd.procedure_delivery,
-        emit_session_started=False,
-    )
+    async with helper_start_fence(project_path, working_slug, initiator_session_id) as helper_fence:
+        session = await db.create_session(
+            computer_name=computer_name,
+            tmux_session_name=_UNBOUND_TMUX_NAME,
+            last_input_origin=last_input_origin,
+            title=title,
+            project_path=project_path,
+            subdir=subfolder,
+            config_subject=config_subject,
+            subject_owner=subject_owner,
+            session_id=session_id,
+            command=cmd.command,
+            working_slug=working_slug,
+            initiator_session_id=initiator_session_id,
+            initiator_computer=initiator_computer,
+            detached=cmd.skip_listener_registration,
+            human_email=human_email,
+            human_role=human_role,
+            principal=principal,
+            lifecycle_status="headless" if cmd.headless else "initializing",
+            role=cmd_role,
+            job=cmd_job,
+            company=company,
+            active_agent=launch.agent if launch else None,
+            thinking_mode=launch.thinking_mode if launch else None,
+            native_session_id=cmd.native_session_id or (launch.native_session_id if launch else None),
+            native_log_file=cmd.native_log_file,
+            origin_metadata=creation_metadata,
+            startup_intent=None if cmd.headless else launch,
+            procedure_delivery=cmd.procedure_delivery,
+            emit_session_started=False,
+        )
+        helper_fence.named(session.session_id)
 
     record_session_company_resolved(cmd.request_id, session.session_id, company, company_source, initiator_session_id)
     # An undetached AI-to-AI start establishes persistent supervision.
@@ -610,7 +614,8 @@ async def list_projects_with_todos() -> list[ProjectInfo]:
 async def list_todos(project_path: str) -> list[TodoDTO]:
     """List todos for a project.
 
-    Ephemeral request/response - no DB session required.
+    Ephemeral request/response - no DB session required. The projection reads the store and the remote for items
+    stored ``ready``, so it runs on a worker thread and never on the daemon\'s event loop.
 
     Args:
         project_path: Absolute path to project directory
@@ -618,7 +623,8 @@ async def list_todos(project_path: str) -> list[TodoDTO]:
     Returns:
         List of todo objects.
     """
-    return assemble_todo_from_db(
+    return await asyncio.to_thread(
+        assemble_todo_from_db,
         project_path,
         include_icebox=True,
         include_delivered=True,
@@ -684,22 +690,6 @@ async def get_computer_info() -> ComputerInfo:
 
     logger.debug("get_computer_info() returning info: %s", info)
     return info
-
-
-async def _publish_transcript_format_mismatches(mismatches: list[tuple[str, str]]) -> None:
-    """Publish collected parser diagnostics without changing transcript results."""
-    for agent, filename in mismatches:
-        try:
-            await publish_runtime_error(
-                source="transcript_reader",
-                message=(
-                    f"Transcript parser can't read {agent} session file {filename} — file shape may have changed "
-                    "in the agent CLI. Output/summary/title for this session will be empty until the parser is updated."
-                ),
-                severity="warning",
-            )
-        except Exception:
-            logger.warning("Transcript format error publication failed", exc_info=True)
 
 
 async def get_session_data(
@@ -860,7 +850,7 @@ async def get_session_data(
             tail_chars=cmd.tail_chars if cmd.tail_chars > 0 else 2000,
             on_format_mismatch=lambda agent, path, _error: transcript_mismatches.append((agent, path.name)),
         )
-        await _publish_transcript_format_mismatches(transcript_mismatches)
+        await publish_transcript_format_mismatches(transcript_mismatches)
         logger.info(
             "Parsed %s transcript (%d bytes) for session %s",
             transcript_reader.display_name,

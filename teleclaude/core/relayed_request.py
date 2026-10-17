@@ -50,6 +50,7 @@ from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core.db import db
 from teleclaude.core.models import JsonDict
 from teleclaude.core.operation_caller_identity import RelayedCaller, reset_relayed_caller, set_relayed_caller
+from teleclaude.core.workflow_machine.peer_starts import mark_in_flight, release_in_flight
 from teleclaude.types.commands import RelayedResponse, RelayRequestCommand
 
 logger = get_logger(__name__)
@@ -95,6 +96,10 @@ _REFUSED_EVENT = "relay_request_refused"
 _LATE_DETAIL = "{method} {path} reached {computer} after its deadline; nothing was run."
 _NO_COMMAND_DETAIL = "the request to {computer} names no command it was cleared as; nothing was run."
 _NOT_PERMITTED_DETAIL = "role '{role}' is not permitted to call {command} on {computer}"
+_LOCAL_SESSION_DETAIL = (
+    "{computer} holds session {session}, so a request carried from {source} cannot be that session's; "
+    "nothing was run. Run the request from the computer that holds the session."
+)
 _APP_UNAVAILABLE_DETAIL = "{computer} has no API to carry the request into"
 _REENTRY_FAILED_DETAIL = "the request could not be carried into the API: {error}"
 
@@ -311,6 +316,8 @@ async def handle_relay_request(command: RelayRequestCommand) -> JsonDict:
     response, not a transport error: the caller receives it unchanged.
     """
     computer = config.computer.name
+    creating = [command.start_key] if command.start_key else []
+    mark_in_flight(creating)
     try:
         if time.time() > command.deadline_at:
             raise _RelayRefused(
@@ -319,6 +326,13 @@ async def handle_relay_request(command: RelayRequestCommand) -> JsonDict:
             )
         command = _resolve_project_references(command)
         caller = caller_from_principal(command.relayed_principal)
+        if command.caller_session_id and await db.get_session(command.caller_session_id) is not None:
+            raise _RelayRefused(
+                HTTPStatus.FORBIDDEN,
+                _LOCAL_SESSION_DETAIL.format(
+                    computer=computer, session=command.caller_session_id, source=command.caller_computer
+                ),
+            )
         view = _RelayedRequestView.from_command(command)
         role = await _admit(command, caller, view)
         logger.info(
@@ -342,4 +356,6 @@ async def handle_relay_request(command: RelayRequestCommand) -> JsonDict:
             caller_computer=command.caller_computer,
         )
         response = _refusal_response(refusal.status_code, refusal.detail)
+    finally:
+        release_in_flight(creating)
     return response.to_dict()

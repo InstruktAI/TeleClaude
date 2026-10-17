@@ -1,0 +1,168 @@
+"""The commits of the creative capabilities: the episode opens in the same row transaction as the write it belongs to."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Final
+
+from teleclaude.core.next_machine._types import StateValue
+from teleclaude.core.workflow_machine.creative import CreativeCapability, ObjectFacts, open_episode
+from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
+from teleclaude.core.workflow_machine.phase_reading import LaneFacts, in_task_lane
+from teleclaude.core.workflow_machine.single_claim import started_session_for
+from teleclaude.core.workflow_store.store import WorkflowStore
+from teleclaude.core.workflow_store.types import ConversionPath, ItemChange
+from teleclaude.events.envelope import occurrence_id
+from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
+from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, TodoState
+from teleclaude.types.workflow_record import ActStatus, EffectKind, PendingEffect
+
+HANDOFF_ACT: Final = "creative-handoff"
+EFFECT_SWEEP: Final = "sweep-helpers"
+EFFECT_RELEASE: Final = "release"
+EFFECT_DISPATCH: Final = "creative-dispatch"
+INSTRUCTION_PARAM: Final = "instruction"
+PHASE_PARAM: Final = "creative_phase"
+WORKER_COMMAND_PARAM: Final = "worker_command"
+WORKER_ARGS_PARAM: Final = "worker_args"
+WORKER_PROJECT_PARAM: Final = "worker_project"
+EFFECT_ID_TEMPLATE: Final = "{key}:{name}"
+SESSION_PARAM: Final = "session_id"
+WORKFLOW_PROJECT: Final = "workflow"
+
+
+@dataclass(frozen=True)
+class Handoff:
+    """What the holder's creative handoff dispatches: the instruction, the phase, and the worker the phase starts."""
+
+    instruction: str
+    creative_phase: str
+    worker_command: str = ""
+    worker_args: str = ""
+    worker_project: str = ""
+
+
+def _closing_state(item: str, state: dict[str, StateValue], holder: str, handoff: Handoff) -> dict[str, StateValue]:
+    """The state with the claim marked closing and the sweep, the dispatch and the release recorded as pending effects.
+
+    The dispatch is the durable intent: the instruction the creative lane gives is part of the commit, and the dispatch
+    effect completes only after the sweep found nothing, with the release of the claim last.
+    """
+    record = TodoState.model_validate(state).workflow.model_copy(deep=True)
+    if record.closing:
+        return state
+    key = occurrence_id(WORKFLOW_PROJECT, item, HANDOFF_ACT, str(record.claim_epoch))
+    steps = (
+        (EFFECT_SWEEP, EffectKind.SWEEP_HELPERS, {SESSION_PARAM: holder}),
+        (
+            EFFECT_DISPATCH,
+            EffectKind.CREATIVE_DISPATCH,
+            {
+                SESSION_PARAM: holder,
+                INSTRUCTION_PARAM: handoff.instruction,
+                PHASE_PARAM: handoff.creative_phase,
+                WORKER_COMMAND_PARAM: handoff.worker_command,
+                WORKER_ARGS_PARAM: handoff.worker_args,
+                WORKER_PROJECT_PARAM: handoff.worker_project,
+            },
+        ),
+        (EFFECT_RELEASE, EffectKind.RELEASE_CLAIM, {SESSION_PARAM: holder}),
+    )
+    for name, kind, params in steps:
+        record.pending_effects.append(
+            PendingEffect(id=EFFECT_ID_TEMPLATE.format(key=key, name=name), act_key=key, kind=kind, params=params)
+        )
+    record.act_status[key] = ActStatus.IN_PROGRESS
+    record.closing = True
+    closed = dict(state)
+    closed[WORKFLOW_STATE_KEY] = record.to_state()
+    return closed
+
+
+def episode_mutation(
+    item: str,
+    capability: CreativeCapability,
+    caller_session_id: str,
+    apply: Callable[[dict[str, StateValue]], dict[str, StateValue]] | None = None,
+    *,
+    facts: ObjectFacts,
+    dispatch: Handoff | None = None,
+) -> Callable[[dict[str, StateValue] | None], ItemChange | None]:
+    """The change that decides the capability against the row it reads, opens the episode and applies the write's state.
+
+    ``apply`` carries the stamp's own state change onto the opened state. A refusal raises before anything is written;
+    None means the capability changes no state. A task is never handed off: the handoff controls decide on the row read
+    here by the common task classification, so a task holder's design keeps the task behavior whoever calls.
+    """
+
+    def mutate(current: dict[str, StateValue] | None) -> ItemChange | None:
+        opening = open_episode(item, current, capability=capability, caller_session_id=caller_session_id, facts=facts)
+        state = apply(opening.state) if apply is not None else opening.state
+        if (
+            dispatch is not None
+            and caller_session_id
+            and state.get(ACTIVE_RUNNER_STATE_KEY) == caller_session_id
+            and not in_task_lane(TodoState.model_validate(state))
+        ):
+            state = _closing_state(item, state, caller_session_id, dispatch)
+        if state is current:
+            return None
+        return ItemChange(
+            state=state, converted_from=opening.converted_from, conversion_path=ConversionPath.CAPABILITY.value
+        )
+
+    return mutate
+
+
+async def creative_facts(store: WorkflowStore, item: str) -> ObjectFacts:
+    """The facts a refusal reads, resolved now and before the transaction that will decide the capability on them."""
+    from teleclaude.core.workflow_machine.lane import resolve_lane  # noqa: PLC0415 - deferred cycle: lane reads create
+
+    raw = await store.read_state(item)
+    if raw is None:
+        return ObjectFacts(LaneFacts(creative_incomplete=False, integration_head="", artifact_digests=()))
+    state = TodoState.model_validate(raw)
+    lane = await resolve_lane(store, str(store.project_root), item, raw, state)
+    launch = state.workflow.launch
+    return ObjectFacts(lane, await started_session_for(item, launch.key) if launch is not None else "")
+
+
+async def open_creative_episode(
+    store: WorkflowStore, item: str, capability: CreativeCapability, caller_session_id: str
+) -> None:
+    """Open the item's creative episode for a capability that has no artifact or stamp of its own."""
+    mutate = episode_mutation(item, capability, caller_session_id, facts=await creative_facts(store, item))
+    await store.commit_item_change(
+        item,
+        expect_digests={},
+        mutate=lambda current, _digests: mutate(current),
+        updated_by=caller_session_id or None,
+    )
+
+
+async def hand_off_to_creative(store: WorkflowStore, item: str, holder: str, handoff: Handoff) -> str | None:
+    """The holder's creative handoff: one commit, then the sweep, the dispatch and the release in that order.
+
+    The commit opens the episode, converts a legacy phase, records the dispatch as a durable intent and marks the claim
+    closing. The instruction returned is the dispatch's committed outcome, read from the item; None while an effect
+    cannot finish yet, and repeating the call after the sweep has settled completes the same handoff.
+    """
+    mutate = episode_mutation(
+        item, CreativeCapability.DESIGN, holder, facts=await creative_facts(store, item), dispatch=handoff
+    )
+    await store.commit_item_change(
+        item, expect_digests={}, mutate=lambda current, _digests: mutate(current), updated_by=holder
+    )
+    await reconcile_slug_supervised(str(store.project_root), item)
+    raw = await store.read_state(item)
+    if raw is None:
+        return None
+    state = TodoState.model_validate(raw)
+    owed = {EffectKind.SWEEP_HELPERS, EffectKind.CREATIVE_DISPATCH, EffectKind.RELEASE_CLAIM}
+    finished = state.active_runner != holder and not any(
+        effect.kind in owed for effect in state.workflow.pending_effects
+    )
+    if not finished or not state.workflow.dispatched:
+        return None
+    return list(state.workflow.dispatched.values())[-1]

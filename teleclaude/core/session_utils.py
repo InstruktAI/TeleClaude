@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from teleclaude.constants import RELATIVE_CURRENT
 from teleclaude.core.db import db
+from teleclaude.core.operation_caller_identity import relayed_caller_computer
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session, SessionSnapshot
@@ -401,6 +402,36 @@ def session_display_title(session: object, *, fallback: str = "Untitled") -> str
 _CLAIM_GROUP_WALK_DEPTH_CAP = 64
 
 
+def cached_remote_session(session_id: str, computer: str | None = None) -> "SessionSnapshot | None":
+    """The snapshot of a session this computer does not hold, from the cluster cache of the others\' sessions.
+
+    A session of another computer is not in this computer\'s store; the snapshot the mesh delivered records its role,
+    job, principal and who started it, which is what a claiming group that spans computers is judged by. None when the
+    session is unknown to the cache or there is no cache. A session id is local to the computer that holds it: when the
+    request being run was carried here by a computer naming that id as its caller, only a snapshot of that computer
+    answers, never a same-id snapshot of another.
+    """
+    from teleclaude.core.command_registry import get_command_service  # noqa: PLC0415 - deferred cycle
+
+    try:
+        cache = get_command_service().client.cache
+    except RuntimeError:
+        return None
+    if cache is None:
+        return None
+    source = computer or relayed_caller_computer(session_id)
+    for snapshot in cache.get_sessions():
+        if snapshot.session_id == session_id and (source is None or snapshot.computer == source):
+            return snapshot
+    return None
+
+
+def _cached_initiator(session_id: str) -> str | None:
+    """The initiator of a session this computer does not hold, from the cluster cache."""
+    snapshot = cached_remote_session(session_id)
+    return snapshot.initiator_session_id if snapshot is not None else None
+
+
 async def session_descends_from(descendant_session_id: str, ancestor_session_id: str) -> bool:
     """Return whether ``descendant_session_id`` strictly descends from ``ancestor_session_id``.
 
@@ -411,11 +442,13 @@ async def session_descends_from(descendant_session_id: str, ancestor_session_id:
     """
     current_id = descendant_session_id
     visited = {current_id}
+    carried_from = relayed_caller_computer(descendant_session_id)
     for _ in range(_CLAIM_GROUP_WALK_DEPTH_CAP):
-        session = await db.get_session(current_id)
-        if session is None or not session.initiator_session_id:
+        session = None if carried_from and current_id == descendant_session_id else await db.get_session(current_id)
+        initiator = session.initiator_session_id if session is not None else _cached_initiator(current_id)
+        if not initiator:
             return False
-        current_id = session.initiator_session_id
+        current_id = initiator
         if current_id == ancestor_session_id:
             return True
         if current_id in visited:
@@ -431,5 +464,7 @@ async def session_in_claiming_group(caller_session_id: str, holder_session_id: s
     plus every session it dispatched, transitively through ``initiator_session_id``.
     """
     if caller_session_id == holder_session_id:
-        return True
+        return (
+            relayed_caller_computer(caller_session_id) is None or cached_remote_session(caller_session_id) is not None
+        )
     return await session_descends_from(caller_session_id, holder_session_id)

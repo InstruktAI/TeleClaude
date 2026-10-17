@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from functools import partial
 from typing import cast
 
 from instrukt_ai_logging import get_logger
@@ -22,6 +23,7 @@ from teleclaude.core.next_machine.marker_reconciliation import (
     reconcile_lifecycle_markers,
     restore_lifecycle_markers,
 )
+from teleclaude.core.next_machine.started_build import BuildAlreadyStarted, refuse_if_build_started
 from teleclaude.core.operation_caller_identity import get_caller_session_id
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.workflow_store.store import get_workflow_store
@@ -118,6 +120,10 @@ async def execute_todo_rename(
         return _refusal(f"todo {old_slug!r} was not found")
     if await todos_db.slug_conflicts_non_removed(new_slug):
         return _refusal(f"new slug {new_slug!r} is already held by a non-removed todo")
+    try:
+        refuse_if_build_started(old_slug, await todos_db.read_state(old_slug))
+    except BuildAlreadyStarted as exc:
+        return _refusal(str(exc))
 
     blocking_reason = await _blocking_reason(
         db,
@@ -142,7 +148,7 @@ async def execute_todo_rename(
     try:
         moves = move_todo_slug_surfaces(project_root_str, old_slug, new_slug)
 
-        await todos_db.rename_item(old_slug, new_slug)
+        await todos_db.rename_item(old_slug, new_slug, precondition=partial(refuse_if_build_started, old_slug))
     except Exception:
         if receipt.plan is not None:
             restore_lifecycle_markers(project_root, old_slug, receipt.plan)

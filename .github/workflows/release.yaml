@@ -720,6 +720,7 @@ jobs:
             ${{ runner.temp }}/release-candidate/commit-notes.md
             ${{ runner.temp }}/release-candidate/candidate-check.json
             ${{ runner.temp }}/release-candidate/runtime-acceptance-report.json
+            ${{ runner.temp }}/release-candidate/runtime-acceptance-report.json.b13-waiting-kickback.json
           if-no-files-found: error
           retention-days: 90
       - name: Confirm candidate artifact identity

@@ -223,6 +223,7 @@ def _step_content_gate_blocked(
             key=key,
             reason=_UNGROUNDABLE_CONTENT_GATE_PARK_REASON,
             home=_workflow_home_for_path(cwd),
+            cwd=cwd,
         )
 
     if abandon:
@@ -239,6 +240,7 @@ def _step_content_gate_blocked(
             key=key,
             reason=_UNGROUNDABLE_CONTENT_GATE_PARK_REASON,
             home=_workflow_home_for_path(cwd),
+            cwd=cwd,
         )
 
     outcome = _repush_and_reclassify(checkpoint=checkpoint, checkpoint_path=checkpoint_path, cwd=cwd, key=key)

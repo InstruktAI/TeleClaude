@@ -32,6 +32,7 @@ class EventCommand(StrEnum):
 
     LIST = "list"
     SCHEMA = "schema"
+    TRAIL = "trail"
 
 
 def export_surface_markdown() -> str:
@@ -792,8 +793,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "work": CommandDef(
                 desc="Run the Phase B (work) state machine",
-                args="[<slug>]",
-                flags=[F.FLAG_HELP],
+                args="[<slug>] [--reason <text>]",
+                flags=[F.FLAG_HELP, F.FLAG_TODO_WORK_REASON],
                 notes=[_RECEIPT_RETURN_NOTE],
                 auth=CommandAuth(capability=Capability.TODO_ORCHESTRATION, human=_HR_MEMBER),
             ),
@@ -881,6 +882,54 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "On success: status reverts to prev_status and outgoing dependencies are replayed.",
                 ],
                 examples=["telec todo reactivate my-slug", "telec todo reactivate --id <row-id>"],
+                auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
+            ),
+            "act": CommandDef(
+                desc="Perform one act of an item's lifecycle as the session that holds or serves it",
+                args=(
+                    "<item> <act> [<text>] [--sha <commit>] [--revision <digest>] [--person <slug>] [--finding <key>] [--wait <key>] [--instruction <key>]"
+                ),
+                flags=[
+                    F.FLAG_HELP,
+                    F.FLAG_ACT_SHA,
+                    F.FLAG_ACT_REVISION,
+                    F.FLAG_ACT_PERSON,
+                    F.FLAG_ACT_FINDING,
+                    F.FLAG_ACT_WAIT,
+                    F.FLAG_ACT_INSTRUCTION,
+                ],
+                notes=[
+                    "Acts: note, reviewed, finding, reply, prepared, waiting, decision, stamp, kickback, release.",
+                    "reviewed, finding and stamp bind a commit (--sha); prepared binds the judged intent-body "
+                    "revision (--revision); waiting names the person (--person) and states the question as the "
+                    "text and reports the wait key; decision names that wait (--wait) and answers it; reply names the "
+                    "finding it answers (--finding).",
+                    "Your role and session come from the authenticated session. A refusal names the act and "
+                    "the performer it requires, and writes nothing.",
+                    "Repeating an interrupted act completes what is missing and writes nothing twice.",
+                ],
+                examples=[
+                    'telec todo act my-item note "mechanism: ..."',
+                    "telec todo act my-item reviewed --sha 1a2b3c4",
+                    'telec todo act my-item finding --sha 1a2b3c4 "the guard no longer runs on restart"',
+                    'telec todo act my-item reply --finding <key> "fixed in 5d6e7f8"',
+                    "telec todo act my-item stamp --sha 5d6e7f8",
+                    "telec todo act my-item prepared --revision <digest>",
+                    'telec todo act my-item waiting --person <slug> "Which of these outcomes do you want?"',
+                ],
+                literal_dash_tokens=True,
+                auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
+            ),
+            "child": CommandDef(
+                desc="Start the child session your driver procedure names, from the declarations you were started under",
+                args="<item>",
+                flags=[F.FLAG_HELP],
+                notes=[
+                    "Only the session that holds the item may start its child. The child carries the role, "
+                    "arguments and launch defaults of the declarations the holding driver was initialized under, "
+                    "and joins the driver's claiming group.",
+                ],
+                examples=["telec todo child my-item"],
                 auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
             ),
             "stamp": CommandDef(
@@ -1140,6 +1189,29 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<event>",
                 flags=[F.FLAG_HELP],
                 auth=CommandAuth(human=_HR_MEMBER, caller_independent=True),
+            ),
+            EventCommand.TRAIL.value: CommandDef(
+                desc="Read an item's retained workflow event trail: claim, head, waiting, ready and phase occurrences",
+                args="<item> [--mark | --since <cursor> | --cursor <cursor>] [--limit <n>]",
+                flags=[
+                    F.FLAG_HELP,
+                    F.FLAG_EVENTS_TRAIL_MARK,
+                    F.FLAG_EVENTS_TRAIL_SINCE,
+                    F.FLAG_EVENTS_TRAIL_CURSOR,
+                    F.FLAG_EVENTS_TRAIL_LIMIT,
+                ],
+                notes=[
+                    "Reads the retained event stream of the computer that runs the command, for the project of the invocation directory.",
+                    "A result states the retained interval it covers and any limit on what it establishes; an empty covered interval is not the absence of an emitted event.",
+                    "Capture a cursor with --mark before an operation, then read the finite interval after it with --since; --cursor continues a page inside the interval it pinned.",
+                    "Cursors grant nothing: every read applies the caller's current clearance and reach.",
+                ],
+                examples=[
+                    "telec events trail my-item",
+                    "telec events trail my-item --mark",
+                    "telec events trail my-item --since <cursor>",
+                ],
+                auth=CommandAuth(capability=Capability.TODO_READ, human=_HR_MEMBER),
             ),
         },
     ),
@@ -2081,6 +2153,8 @@ OPERATIONS_GET = CLI_SURFACE["operations"].subcommands["get"]
 TODO_CREATE = CLI_SURFACE["todo"].subcommands["create"]
 TODO_DELIVER = CLI_SURFACE["todo"].subcommands["deliver"]
 TODO_REMOVE = CLI_SURFACE["todo"].subcommands["remove"]
+TODO_ACT = CLI_SURFACE["todo"].subcommands["act"]
+TODO_CHILD = CLI_SURFACE["todo"].subcommands["child"]
 TODO_STAMP = CLI_SURFACE["todo"].subcommands["stamp"]
 TODO_RETURN_TO_WORK = CLI_SURFACE["todo"].subcommands["return-to-work"]
 TODO_REACTIVATE = CLI_SURFACE["todo"].subcommands["reactivate"]
@@ -2124,6 +2198,7 @@ CONTENT_DUMP = CLI_SURFACE["content"].subcommands["dump"]
 
 EVENTS_LIST = CLI_SURFACE["events"].subcommands[EventCommand.LIST.value]
 EVENTS_SCHEMA = CLI_SURFACE["events"].subcommands[EventCommand.SCHEMA.value]
+EVENTS_TRAIL = CLI_SURFACE["events"].subcommands[EventCommand.TRAIL.value]
 
 MCP_LIST = CLI_SURFACE["mcp"].subcommands["list"]
 MCP_LIST_TOOLS = CLI_SURFACE["mcp"].subcommands["list-tools"]

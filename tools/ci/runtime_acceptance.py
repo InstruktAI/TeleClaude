@@ -24,16 +24,68 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from types import FrameType
-from typing import cast
+from typing import Final, cast
 
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from tools.ci import acceptance_work as payload_work
+from tools.ci import workflow_claim as claim
+from tools.ci import workflow_creation as creation
+from tools.ci import workflow_events as events
+from tools.ci import workflow_flow as full_flow
+from tools.ci import workflow_foundation as foundation
+from tools.ci import workflow_holds as holds
+from tools.ci import workflow_integration as integration
+from tools.ci import workflow_plans as plans
+from tools.ci import workflow_prepared as prepared
+from tools.ci import workflow_race as race
+from tools.ci import workflow_ready as ready
+from tools.ci import workflow_removal as removal
+from tools.ci import workflow_review as review
+from tools.ci import workflow_waiting as waiting
+from tools.ci.enclosure_contract import Action, JsonObject, StaticPackage, parse_object, positive_integer
+from tools.ci.enclosure_exchange import run_helper
+from tools.ci.enclosure_guest import GuestContext, Purpose, Role, request_guest_poweroff
+from tools.ci.enclosure_guest import Record as GuestShutdownRecord
+from tools.ci.enclosure_inner import (
+    PROVISIONAL_REPORT_SCHEMA,
+    PROVISIONAL_STAGE,
+    InnerCleanupEvidence,
+    PayloadProvisional,
+    PhysicalCleanupPending,
+)
+from tools.ci.enclosure_journal import Outcome as EnclosureOutcome
+from tools.ci.enclosure_report import (
+    validate_early_inputs,
+    validate_event_inputs,
+    validate_flow_inventory_inputs,
+    validate_flow_session_closure,
+    validate_flow_start_inputs,
+    validate_provisional_bindings,
+    validate_provisional_cleanup,
+)
+from tools.ci.enclosure_setup import run_guest_setup
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
 _UTF8 = "utf-8"
-_REPORT_SCHEMA_VERSION = 1
+_ENCLOSURE_ROLE_OPTION = "--enclosure-role"
+_ENCLOSURE_MANIFEST_OPTION = "--enclosure-manifest"
+_ENCLOSURE_ACTION_OPTION = "--enclosure-action"
+_OBSERVATION_KEY_OPTION = "--observation-key"
+_ENCLOSURE_MANIFEST_REQUIRED = "An enclosure role requires its protected manifest."
+_ENCLOSURE_ACTION_ROLE = "An enclosure action belongs only to the privileged role."
+_ENCLOSURE_ACTION_REQUIRED = "The privileged role requires its closed enclosure action."
+_PROFILE_ARGUMENTS_REQUIRED = "Profile execution requires profile, source-revision and source-tree."
+_ENCLOSED_FULL_REQUIRED = "Supervisor and payload roles require the full profile."
+_ENCLOSURE_UNAVAILABLE = "The selected enclosure role is not yet implemented: {role}"
+_ENCLOSURE_ENTRY_FAILED = "Enclosure entry failed: {error_class}: {detail}"
+_ENCLOSURE_REQUIRED = "Full-profile product work requires the admitted guest payload binding."
+_REPORT_SCHEMA_VERSION = 3
 _DEFAULT_ROOT = "."
 _REPORT_TEMP_SUFFIX = ".tmp"
 _LINE_BREAK = "\n"
@@ -159,6 +211,41 @@ _SCENARIO_RELEASE_DEVELOPMENT_CLONE = "UC-RC6"
 _SCENARIO_RELEASE_DECLARATION = "UC-CFG-MIG-17"
 _SCENARIO_RELEASE_PUBLICATION = "UC-SPO34"
 _SCENARIO_RELEASE_BLUEPRINT = "UC-BPF1"
+_SCENARIO_WORKFLOW_FOUNDATION = "UC-WF-F0"
+_SCENARIO_WORKFLOW_CREATION = "UC-WF-R1"
+_SCENARIO_WORKFLOW_RETIRED_ACTS = "UC-WF-R4"
+_SCENARIO_WORKFLOW_RETIRED_ACTS_B12 = "UC-WF-B12"
+_R4_SNAPSHOT_COMMANDS: Final = (
+    (
+        (creation.TODO, creation.STAMP, creation.SLUG_FEATURE, creation.BUILD_STARTED_FLAG),
+        creation.RETIRED_SNAPSHOT_R4_CLEARANCE,
+    ),
+    (
+        (creation.TODO, creation.STAMP, creation.SLUG_FEATURE, creation.PRD_APPROVED_FLAG),
+        creation.RETIRED_SNAPSHOT_R4_PRD,
+    ),
+    (
+        (
+            creation.TODO,
+            creation.STAMP,
+            creation.SLUG_FEATURE,
+            creation.KICKBACK_FLAG,
+            creation.REASON_OPTION,
+            creation.KICKBACK_REASON,
+        ),
+        creation.RETIRED_SNAPSHOT_R4_KICKBACK,
+    ),
+)
+_SCENARIO_WORKFLOW_PLANS = "UC-WF-R2"
+_SCENARIO_WORKFLOW_HOLDS = "UC-WF-R3"
+_SCENARIO_WORKFLOW_REMOVAL = "UC-WF-R5"
+_SCENARIO_WORKFLOW_CLAIM = "UC-WF-B1"
+_SCENARIO_WORKFLOW_RACE = "UC-WF-B2"
+_SCENARIO_WORKFLOW_WAITING = "UC-WF-B3"
+_SCENARIO_WORKFLOW_PREPARED = "UC-WF-B4"
+_SCENARIO_WORKFLOW_REVIEW = "UC-WF-B5"
+_SCENARIO_WORKFLOW_READY = "UC-WF-B7"
+_SCENARIO_WORKFLOW_INTEGRATION = "UC-WF-B6"
 _COLD_PROFILE_SCENARIOS = (_SCENARIO_COLD,)
 _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_COLD,
@@ -189,12 +276,104 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_RELEASE_DECLARATION,
     _SCENARIO_RELEASE_BLUEPRINT,
     _SCENARIO_RELEASE_PUBLICATION,
+    _SCENARIO_WORKFLOW_FOUNDATION,
+    _SCENARIO_WORKFLOW_CREATION,
+    _SCENARIO_WORKFLOW_RETIRED_ACTS,
+    _SCENARIO_WORKFLOW_RETIRED_ACTS_B12,
+    _SCENARIO_WORKFLOW_PLANS,
+    _SCENARIO_WORKFLOW_HOLDS,
+    _SCENARIO_WORKFLOW_REMOVAL,
+    _SCENARIO_WORKFLOW_CLAIM,
+    _SCENARIO_WORKFLOW_RACE,
+    _SCENARIO_WORKFLOW_WAITING,
+    _SCENARIO_WORKFLOW_PREPARED,
+    _SCENARIO_WORKFLOW_REVIEW,
+    _SCENARIO_WORKFLOW_READY,
+    _SCENARIO_WORKFLOW_INTEGRATION,
 )
+_SCENARIO_PREREQUISITES = {
+    _SCENARIO_WORKFLOW_FOUNDATION: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+    ),
+    _SCENARIO_WORKFLOW_CREATION: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+    ),
+    _SCENARIO_WORKFLOW_RETIRED_ACTS: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+        _SCENARIO_WORKFLOW_CREATION,
+    ),
+    _SCENARIO_WORKFLOW_RETIRED_ACTS_B12: (_SCENARIO_WORKFLOW_RETIRED_ACTS,),
+    _SCENARIO_WORKFLOW_PLANS: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+    ),
+    _SCENARIO_WORKFLOW_HOLDS: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+    ),
+    _SCENARIO_WORKFLOW_REMOVAL: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+    ),
+    _SCENARIO_WORKFLOW_CLAIM: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+        _SCENARIO_WORKFLOW_FOUNDATION,
+    ),
+    _SCENARIO_WORKFLOW_RACE: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+        _SCENARIO_WORKFLOW_FOUNDATION,
+    ),
+    _SCENARIO_WORKFLOW_WAITING: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+        _SCENARIO_WORKFLOW_FOUNDATION,
+    ),
+    _SCENARIO_WORKFLOW_PREPARED: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+        _SCENARIO_WORKFLOW_FOUNDATION,
+        _SCENARIO_WORKFLOW_WAITING,
+    ),
+    _SCENARIO_WORKFLOW_REVIEW: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+        _SCENARIO_WORKFLOW_FOUNDATION,
+        _SCENARIO_WORKFLOW_WAITING,
+        _SCENARIO_WORKFLOW_PREPARED,
+    ),
+    _SCENARIO_WORKFLOW_READY: (_SCENARIO_WORKFLOW_REVIEW,),
+    _SCENARIO_WORKFLOW_INTEGRATION: (_SCENARIO_WORKFLOW_READY,),
+}
 _PROFILE_COLD = "cold"
 _PROFILE_FULL = "full"
 _UNKNOWN_REVISION = "unknown"
 _EMPTY = ""
 _DIAGNOSTIC_LIMIT = 4096
+_COMMAND_EVIDENCE_COMMANDS_FIELD = "commands"
+_COMMAND_EVIDENCE_ARGV_FIELD = "argv"
+_COMMAND_EVIDENCE_EXIT_STATUS_FIELD = "exit_status"
+_COMMAND_EVIDENCE_STDOUT_FIELD = "stdout"
+_COMMAND_EVIDENCE_DIAGNOSTICS_FIELD = "diagnostics"
+_EVIDENCE_SEPARATOR = "\n"
+_EVIDENCE_STDOUT_TRUNCATION = "stdout truncated at diagnostic limit"
+_EVIDENCE_STDERR_TRUNCATION = "stderr truncated at diagnostic limit"
+_EVIDENCE_DIAGNOSTICS_TRUNCATION = "diagnostics truncated at diagnostic limit"
 _INSTALLER_LOG_PATH = Path("install.log")
 _INSTALLER_LOG_LABEL = "Installer log (end): "
 _INSTALLER_LOG_UNAVAILABLE = "Installer log unavailable ({error_class})."
@@ -203,12 +382,34 @@ _DIAGNOSTIC_SEPARATOR = "\n"
 _BINARY_READ_MODE = "rb"
 _PROFILE_OPTION = "--profile"
 _REPORT_OPTION = "--report"
+_SELECT_OPTION = "--select"
+_SELECT_HELP = "Comma-separated scenario ids to run (with their prerequisites); the report is never a full pass."
+_SELECTION_SEPARATOR = ","
+_SELECTION_UNKNOWN = "Unknown scenario id in the selection: {scenario_id}"
+_PARTIAL_PASSED = "PARTIAL: the selected scenarios passed; the full profile did not run and is not claimed."
+_EXIT_PARTIAL = 2
 _ROOT_OPTION = "--root"
 _SOURCE_REVISION_OPTION = "--source-revision"
 _SOURCE_TREE_OPTION = "--source-tree"
 _CLI_DESCRIPTION = "Run the bounded real-process CLI acceptance profile."
 _REPORT_WRITE_ERROR = "Could not write runtime acceptance report: {error}"
+_REPORT_WRITE_INCOMPLETE = "The serialized report write was incomplete."
+_REPORT_READBACK_MISMATCH = "The persisted report bytes differ from the complete serialized report."
+_B13_REPORT_SEAL_FAILURE = "B13 report delivery seal failed."
+_B13_REPORT_WRITE_FAILURE = "B13 report write failed: {error}"
+_B13_REPORT_READBACK_FAILURE = "B13 report read-back failed: {error}"
+_B13_FAILURE_SEPARATOR = "; "
 _SCENARIO_NOT_RUN = "No scenario action was registered."
+_FIXTURE_INSTALLER_WHERE = "the installer environment"
+_FIXTURE_LOGIN_WHERE = "the owner login shell"
+_LOGIN_PROFILE_NOTE = "owner-login-profile"
+_MACHINE_WORKFLOW_SECTION = "workflow"
+_MACHINE_WORKFLOW_RUNNER_FIELD = "runner"
+_WORKFLOW_RUNNER_MANUAL = "manual"
+_FULL_WORKFLOW_RUNNER_NOT_MANUAL = "The public machine configuration does not report workflow.runner=manual."
+_FULL_FOUNDATION_PREREQUISITES = "Journey F0 needs the installed fixture and the registered disposable project."
+_FULL_FIXTURE_CLEANUP_ERROR = "The installed native fixture could not be removed."
+_SCENARIO_NOT_SELECTED = "Not selected for this run; the scenario was not executed."
 _INTERRUPTED = "The profile was interrupted."
 _SYNTHETIC_HOME_DIRECTORY = "home"
 _SYNTHETIC_STATE_DIRECTORY = "state"
@@ -222,6 +423,10 @@ _PROCESS_SUCCESS = 0
 _PROCESS_FAILURE = 1
 _PROCESS_LAUNCH_EXIT_CODE = 127
 _REPORT_NAME_TEMPLATE = "runtime-acceptance-{identifier}.json"
+_REPORT_RETIRED_ACT_DELIVERY_PATH = "retired_act_delivery_path"
+_B13_REPORT_EVIDENCE_FIELD = "workflow_waiting_retired_kickback_evidence"
+_B13_REPORT_DELIVERY_PATH_FIELD = "workflow_waiting_retired_kickback_delivery_path"
+_B13_REPORT_MARKER_DIRECTORY_FIELD = "workflow_waiting_retired_kickback_marker_directory"
 _VENV_CONFIG_FILENAME = "pyvenv.cfg"
 _PYTHON_DIRECTORY = "bin"
 _PATH_SEPARATOR = os.pathsep
@@ -293,6 +498,15 @@ _EXPECTED_READINESS_ERROR = "The supported lifecycle did not report a ready daem
 _FULL_INSTALL_ERROR = "The supported installer failed in the disposable runtime."
 _FULL_SERVICE_STOP_ERROR = "The supported lifecycle could not stop the disposable runtime."
 _FULL_PROJECT_RESTORE_ERROR = "The supported config surface could not restore the project job declarations."
+_FULL_UNPROVEN_RETAINED = (
+    "Closure of the journey's actors is UNPROVEN, so the disposable home and fixture controls are retained: {reasons}"
+)
+_FULL_RETENTION_KEY_COLLISION = "A retention key was reused for a different reason."
+_FULL_RETENTION_KEY_MISSING = "A retention key no longer owns its exact recorded reason."
+_FULL_STOP_UNPROVEN = "the supported stop did not record that the services are down (outcome: {outcome})"
+_STOP_OUTCOME_NAME = "stop-outcome"
+_STOP_OUTCOME_VARIABLE = "STOP_OUTCOME_FILE"
+_STOPPED_OUTCOME = "stopped"
 _FULL_TEMP_CLEANUP_ERROR = "The disposable runtime temporary resources could not be removed."
 _FULL_TERMINAL_SETUP_ERROR = "The owned PTY could not enter the checked source directory."
 _CLEANUP_FAILURE_SEPARATOR = ", "
@@ -681,6 +895,7 @@ class ScenarioStatus(StrEnum):
     PASSED = "passed"
     FAILED = "failed"
     NOT_RUN = "not_run"
+    P4_PENDING_OUTER = "P4_PENDING_OUTER"
 
 
 type JSONValue = str | int | float | bool | None | list[JSONValue] | dict[str, JSONValue]
@@ -765,13 +980,39 @@ class AcceptanceReport:
     scenarios: tuple[ScenarioResult, ...]
     cleanup: CleanupResult
     duration_seconds: float
+    selection: tuple[str, ...] = ()
+    workflow_event_evidence: JSONObject = field(default_factory=dict)
+    retired_act_evidence: creation.RetiredActEvidence = field(default_factory=creation.empty_retired_act_evidence)
+    workflow_waiting_retired_kickback_evidence: waiting.WaitingKickbackEvidence = field(
+        default_factory=waiting.empty_b13_evidence
+    )
+    retired_act_delivery_path: Path | None = field(default=None, repr=False)
+    workflow_waiting_retired_kickback_delivery_path: Path | None = field(default=None, repr=False)
+    workflow_waiting_retired_kickback_marker_directory: Path | None = field(default=None, repr=False)
+    payload_provisional: PayloadProvisional | None = field(default=None, repr=False)
 
     @property
     def passed(self) -> bool:
+        """A pass of the whole inventory; selected or provisional runs never supply one."""
         return (
-            self.cleanup.status is ScenarioStatus.PASSED
+            self.payload_provisional is None
+            and not self.selection
+            and self.cleanup.status is ScenarioStatus.PASSED
             and len(self.scenarios) == len(self.scenario_inventory)
             and all(result.status is ScenarioStatus.PASSED for result in self.scenarios)
+        )
+
+    @property
+    def selection_passed(self) -> bool:
+        """A selected result requires cleanup, including outside physical closure for a newly provisional run."""
+        executed = [result for result in self.scenarios if result.status is not ScenarioStatus.NOT_RUN]
+        return (
+            self.payload_provisional is None
+            and bool(self.selection)
+            and self.cleanup.status is ScenarioStatus.PASSED
+            and bool(executed)
+            and all(result.status is ScenarioStatus.PASSED for result in executed)
+            and {result.scenario_id for result in executed} == set(self.selection)
         )
 
 
@@ -802,12 +1043,28 @@ def execute_profile(
     scenario_inventory: Sequence[str],
     scenario_actions: Mapping[str, ScenarioAction],
     cleanup_action: CleanupAction,
+    selection: frozenset[str] = frozenset(),
+    payload_provisional: PayloadProvisional | None = None,
 ) -> AcceptanceReport:
-    """Run required scenarios in order and retain failures, omissions and cleanup."""
+    """Run required scenarios in order and retain failures, omissions and cleanup.
+
+    A non-empty ``selection`` runs only those scenarios; the others are reported as not run because they were not
+    selected, and the report is never a pass of the whole inventory.
+    """
     started = time.monotonic()
     outcomes: list[ScenarioResult] = []
     cleanup = CleanupResult(status=ScenarioStatus.NOT_RUN)
     for scenario_id in scenario_inventory:
+        if selection and scenario_id not in selection:
+            outcomes.append(
+                ScenarioResult(
+                    scenario_id=scenario_id,
+                    status=ScenarioStatus.NOT_RUN,
+                    duration_seconds=0,
+                    diagnostics=_SCENARIO_NOT_SELECTED,
+                )
+            )
+            continue
         action = scenario_actions.get(scenario_id)
         if action is None:
             outcomes.append(
@@ -821,7 +1078,18 @@ def execute_profile(
             continue
         scenario_started = time.monotonic()
         try:
+            payload_work.check()
             result = action()
+            if (result is None or result.status is ScenarioStatus.PASSED) and payload_work.expired():
+                result = ScenarioResult(
+                    scenario_id=scenario_id,
+                    status=ScenarioStatus.FAILED,
+                    duration_seconds=time.monotonic() - scenario_started,
+                    commands=result.commands if result is not None else (),
+                    diagnostics=f"{result.diagnostics}\n{payload_work.EXPIRED}"
+                    if result is not None and result.diagnostics
+                    else payload_work.EXPIRED,
+                )
             outcomes.append(
                 ScenarioResult(
                     scenario_id=scenario_id,
@@ -856,14 +1124,26 @@ def execute_profile(
                         scenario_id=not_run_id,
                         status=ScenarioStatus.NOT_RUN,
                         duration_seconds=0,
-                        diagnostics=_SCENARIO_NOT_RUN,
+                        diagnostics=_SCENARIO_NOT_SELECTED
+                        if selection and not_run_id not in selection
+                        else _SCENARIO_NOT_RUN,
                     )
                 )
             break
     cleanup_evidence: list[CommandEvidence] = []
     try:
+        payload_work.check()
         cleanup_action(cleanup_evidence)
+        payload_work.check()
         cleanup = CleanupResult(status=ScenarioStatus.PASSED)
+    except PhysicalCleanupPending as exc:
+        expired = payload_work.expired()
+        pending = payload_provisional is not None and not expired
+        cleanup = CleanupResult(
+            status=ScenarioStatus.P4_PENDING_OUTER if pending else ScenarioStatus.FAILED,
+            detail=_EMPTY if pending else payload_work.EXPIRED if expired else str(exc),
+            commands=_bound_command_evidence(cleanup_evidence),
+        )
     except Exception as exc:
         cleanup = CleanupResult(
             status=ScenarioStatus.FAILED,
@@ -877,7 +1157,7 @@ def execute_profile(
             commands=_bound_command_evidence(cleanup_evidence),
         )
     return AcceptanceReport(
-        schema_version=_REPORT_SCHEMA_VERSION,
+        schema_version=PROVISIONAL_REPORT_SCHEMA if payload_provisional is not None else _REPORT_SCHEMA_VERSION,
         source_revision=source_revision,
         source_tree=source_tree,
         profile=profile,
@@ -885,6 +1165,8 @@ def execute_profile(
         scenarios=tuple(outcomes),
         cleanup=cleanup,
         duration_seconds=time.monotonic() - started,
+        selection=tuple(sorted(selection)),
+        payload_provisional=payload_provisional,
     )
 
 
@@ -908,6 +1190,15 @@ class FullRuntimeResources:
     environment: dict[str, str]
     source_revision: str
     source_tree: str
+    report_path: Path | None = None
+    payload_provisional: PayloadProvisional | None = None
+    daemon_stop_outcome: str | None = None
+    inner_cleanup: InnerCleanupEvidence | None = None
+    public_cleanup_finished_ns: int | None = None
+    daemon_stop_started_ns: int | None = None
+    daemon_stop_finished_ns: int | None = None
+    daemon_stop_execution: ProcessExecution | None = None
+    daemon_stop_error: str | None = None
     admin_terminal: PersistentTerminal | None = None
     member_terminal: PersistentTerminal | None = None
     install_attempted: bool = False
@@ -921,6 +1212,49 @@ class FullRuntimeResources:
     expected_timezone: str | None = None
     unrelated_computer_role: str | None = None
     release_world: object | None = None
+    fixture_setup: foundation.FixtureSetup | None = None
+    workflow_flow: full_flow.WorkflowFlow | None = None
+    workflow_chain: tuple[str, ...] = ()
+    early_workflow: JSONObject = field(default_factory=dict)
+    retained: list[str] = field(default_factory=list)
+    retired_act_selected: bool = False
+    retired_act_evidence: creation.RetiredActEvidence = field(default_factory=creation.empty_retired_act_evidence)
+    retired_act_deadline: float | None = None
+    b13_selected: bool = False
+    b13_evidence: waiting.WaitingKickbackEvidence = field(default_factory=waiting.empty_b13_evidence)
+    b13_marker_path: Path | None = None
+    b13_carrier_path: Path | None = None
+    retained_keys: dict[str, str] = field(default_factory=dict)
+    owner_identity_facts: JSONObject = field(default_factory=dict)
+
+    def early_accounting(self, case: str) -> creation.EvidenceObject | None:
+        """Retain existing B3/B4 observations only for the admitted new-run report."""
+        if self.payload_provisional is None:
+            return None
+        record: creation.EvidenceObject = {
+            "schema_version": 1,
+            "case": case,
+            "project_path": str(self.project_path),
+            "started_ns": time.monotonic_ns(),
+            "finished_ns": None,
+            "baseline": [],
+            "settlement": {},
+            "cleanup_problems": None,
+            "journey_error": None,
+            "cleanup_error": None,
+            "seal_error": None,
+            "attempt_ledgers": [],
+            "drivers": [],
+            "start_calls": [],
+            "actors": [],
+            "ends": [],
+            "closed_reads": [],
+            "effects": [],
+            "owner_auth": None,
+            "publication": None,
+        }
+        self.early_workflow[case] = record
+        return record
 
     def open_admin_terminal(self) -> PersistentTerminal:
         """Create the one administrator PTY retained for fresh CLI processes."""
@@ -955,6 +1289,27 @@ class FullRuntimeResources:
         if self.project_path is not None:
             text = text.replace(str(self.project_path), _DISPOSABLE_PROJECT_PLACEHOLDER)
         return text
+
+    def retain_key(self, key: str, reason: str) -> None:
+        """Register an independently owned retention reason without conflating other journeys' holds."""
+        existing = self.retained_keys.get(key)
+        if existing is not None:
+            if existing != reason:
+                raise ValueError(_FULL_RETENTION_KEY_COLLISION)
+            return
+        self.retained_keys[key] = reason
+        self.retained.append(reason)
+
+    def release_key(self, key: str) -> None:
+        """Clear only the exact reason owned by this retention key."""
+        reason = self.retained_keys.pop(key, None)
+        if reason is None:
+            return
+        try:
+            self.retained.remove(reason)
+        except ValueError as error:
+            self.retained_keys[key] = reason
+            raise ValueError(_FULL_RETENTION_KEY_MISSING) from error
 
 
 class _UnixSocketHTTPConnection(http.client.HTTPConnection):
@@ -1162,6 +1517,7 @@ def _run_bounded_process(
 ) -> ProcessExecution:
     """Run one command in an owned process group and retain bounded evidence."""
     started = time.monotonic()
+    command_end = payload_work.command_end(timeout_seconds)
     # A child process is required to exercise the checked public executable and uv as real boundaries.
     try:
         process = subprocess.Popen(
@@ -1184,7 +1540,8 @@ def _run_bounded_process(
         )
     try:
         try:
-            stdout_bytes, stderr_bytes = process.communicate(timeout=timeout_seconds)
+            # Startup may return late; retain its handle and spend no fresh allowance afterwards.
+            stdout_bytes, stderr_bytes = process.communicate(timeout=payload_work.remaining(command_end))
             diagnostics = _EMPTY
         except subprocess.TimeoutExpired:
             _stop_process_group(process)
@@ -1200,6 +1557,8 @@ def _run_bounded_process(
     output_exceeded = len(stdout_bytes) > output_limit_bytes or len(stderr_bytes) > output_limit_bytes
     if output_exceeded:
         diagnostics = _PROCESS_OUTPUT_LIMIT_DETAIL
+    if payload_work.expired():
+        diagnostics = f"{diagnostics}; {payload_work.EXPIRED}" if diagnostics else payload_work.EXPIRED
     return ProcessExecution(
         exit_status=process.returncode if process.returncode is not None else _PROCESS_FAILURE,
         stdout=stdout_bytes[:output_limit_bytes].decode(_UTF8, errors=_UTF8_REPLACEMENT),
@@ -1462,14 +1821,20 @@ def _record_terminal_command(
     terminal: PersistentTerminal,
     argv: Sequence[str],
     evidence: list[CommandEvidence],
+    timeout_seconds: float | None = None,
 ) -> tuple[int | None, str]:
     """Run one fresh CLI command on an owned PTY and retain bounded sanitized evidence."""
     started = time.monotonic()
+    if resources.retired_act_deadline is not None:
+        remaining = resources.retired_act_deadline - started
+        if remaining <= 0:
+            raise creation.binding_failure(creation.B12_ERROR_PREFIX + creation.B12_DETAIL_DEADLINE)
+        timeout_seconds = min(timeout_seconds or _FULL_COMMAND_TIMEOUT_SECONDS, remaining)
     argv_tuple = tuple(argv)
     if argv_tuple and argv_tuple[0] == str(_CLI_EXECUTABLE):
         argv_tuple = (str(resources.source_root / _CLI_EXECUTABLE), *argv_tuple[1:])
     try:
-        result = terminal.run(argv_tuple)
+        result = terminal.run(argv_tuple, timeout_seconds=timeout_seconds)
     except TerminalFailure as exc:
         evidence.append(
             CommandEvidence(
@@ -1477,7 +1842,7 @@ def _record_terminal_command(
                 exit_status=None,
                 duration_seconds=time.monotonic() - started,
                 stdout=resources.sanitize(exc.output)[:_DIAGNOSTIC_LIMIT],
-                diagnostics=_PROCESS_TIMEOUT_DETAIL,
+                diagnostics=exc.diagnostic,
             )
         )
         return None, exc.output
@@ -1546,13 +1911,16 @@ def _capture_scenario(
         duration_seconds=time.monotonic() - started,
         commands=tuple(
             command
-            if status is ScenarioStatus.FAILED
-            and (
-                index == len(evidence) - 1
-                or command.exit_status != _PROCESS_SUCCESS
-                or command.diagnostics
-                or (scenario_id == _SCENARIO_CURATION_REFUSAL and index == 0)
+            if (
+                status is ScenarioStatus.FAILED
+                and (
+                    index == len(evidence) - 1
+                    or command.exit_status != _PROCESS_SUCCESS
+                    or command.diagnostics
+                    or (scenario_id == _SCENARIO_CURATION_REFUSAL and index == 0)
+                )
             )
+            or scenario_id == _SCENARIO_WORKFLOW_RETIRED_ACTS
             else replace(command, stdout=_EMPTY)
             for index, command in enumerate(evidence)
         ),
@@ -1927,14 +2295,281 @@ def _restore_full_profile_changes(resources: FullRuntimeResources, evidence: lis
             raise RuntimeError(_FULL_CONFIG_RESTORE_ERROR) from exc
 
 
-def _close_full_profile_resources(
+def _record_retained_workflow_markers(resources: FullRuntimeResources) -> bool:
+    retained_markers = sorted(resources.temporary_root.rglob("RETAINED.json"))
+    unresolved_marker = False
+    for marker in retained_markers:
+        try:
+            marker_bytes = marker.read_bytes()
+            record = json.loads(marker_bytes)
+            if _is_b12_delivery_marker(resources, marker, record, marker_bytes):
+                continue
+            if _is_b13_delivery_marker(resources, marker, record, marker_bytes):
+                continue
+            reason = record.get(creation.B12Field.REASON) if isinstance(record, Mapping) else None
+            resources.retained.append(
+                f"retained marker {marker}: {reason if isinstance(reason, str) else 'unreadable status'}"
+            )
+            unresolved_marker = True
+        except (OSError, ValueError) as error:
+            resources.retained.append(f"retained marker {marker} cannot be read: {type(error).__name__}")
+            unresolved_marker = True
+    return unresolved_marker
+
+
+def _is_b13_delivery_marker(resources: FullRuntimeResources, marker: Path, record: object, marker_bytes: bytes) -> bool:
+    """Allow only a complete B13 evidence seal to pass the marker scan before report delivery."""
+    expected = resources.b13_marker_path
+    carrier = resources.b13_carrier_path
+    evidence = resources.b13_evidence
+    if expected is None or carrier is None or marker != expected or not isinstance(record, Mapping):
+        return False
+    if not waiting.verify_b13_delivery(evidence, marker, carrier, resources.sanitize):
+        return False
+    return (
+        record.get("schema_version") == waiting.B13_SCHEMA_VERSION
+        and record.get(waiting.B13_STATUS_FIELD) == waiting.B13_STATUS_COMPLETE
+        and record.get(waiting.B13_REASON_FIELD) == waiting.B13_RETENTION_REASON
+        and record.get(waiting.B13_SOURCE_REVISION_FIELD) == resources.source_revision
+        and record.get(waiting.B13_SOURCE_TREE_FIELD) == resources.source_tree
+        and record.get(waiting.B13_ISSUE_REVISION_FIELD) == waiting.B13_ISSUE_REVISION
+        and record.get(waiting.B13_ASSERTION_SHA_FIELD) == waiting.B13_ASSERTION_SHA
+        and record.get(waiting.B13_ITEM_FIELD) == evidence.item
+        and record.get(waiting.B13_ARGV_FIELD) == evidence.argv
+        and record.get(waiting.B13_ACTORS_FIELD) == evidence.prerequisites.get(waiting.B13_ACTORS_FIELD)
+        and record.get(waiting.B13_CANDIDATE_FIELD) == evidence.prerequisites.get(waiting.B13_CANDIDATE_FIELD)
+        and record.get(waiting.B13_CONTROL_PATHS_FIELD) == evidence.prerequisites.get(waiting.B13_CONTROL_PATHS_FIELD)
+        and record.get(waiting.B13_ATTEMPTS_PATH_FIELD) == evidence.carrier.get(waiting.B13_ATTEMPTS_PATH_FIELD)
+        and record.get(waiting.B13_ATTEMPTS_SHA_FIELD) == evidence.attempt_ledger.get("original_sha256")
+        and record.get(waiting.B13_ATTEMPTS_BYTES_FIELD) == evidence.attempt_ledger.get("original_byte_count")
+        and record.get(waiting.B13_CARRIER_SHA_FIELD) == evidence.carrier.get(waiting.B13_CARRIER_SHA_FIELD)
+        and record.get(waiting.B13_CARRIER_BYTES_FIELD) == evidence.carrier.get(waiting.B13_CARRIER_BYTES_FIELD)
+        and hashlib.sha256(marker_bytes).hexdigest() == evidence.carrier.get(waiting.B13_MARKER_SHA_FIELD)
+        and len(marker_bytes) == evidence.carrier.get(waiting.B13_MARKER_BYTES_FIELD)
+    )
+
+
+def _is_b12_delivery_marker(resources: FullRuntimeResources, marker: Path, record: object, marker_bytes: bytes) -> bool:
+    """Recognize only the completed B12 marker retained until report.json is safely written."""
+    expected = resources.temporary_root / creation.B12_MATRIX_DIRECTORY / creation.B12_MARKER_FILE
+    if marker != expected or resources.retired_act_evidence.status != creation.B12_STATUS_COMPLETE:
+        return False
+    if not isinstance(record, Mapping):
+        return False
+    return (
+        record.get(creation.B12Field.SCHEMA_VERSION) == creation.B12_JSON_SCHEMA
+        and record.get(creation.B12Field.REASON) == creation.B12_REASON
+        and record.get(creation.B12Field.SOURCE_REVISION) == resources.source_revision
+        and record.get(creation.B12Field.SOURCE_TREE) == resources.source_tree
+        and record.get(creation.B12Field.ISSUE_REVISION) == creation.B12_ISSUE_REVISION
+        and record.get(creation.B12Field.ASSERTION_SHA256) == creation.B12_ARTIFACT_SHA
+        and record.get(creation.B12Field.ORDERED_CASES) == [case_id for case_id, _, _ in creation.B12_CASES]
+        and record.get(creation.B12Field.ORDERED_CASE_PLAN)
+        == [
+            {
+                creation.B12Field.CASE_ID: case_id,
+                creation.B12Field.ARGV: list(argv),
+                creation.B12Field.RETIRED_TYPE: retired_type,
+            }
+            for case_id, argv, retired_type in creation.B12_CASES
+        ]
+        and record.get(creation.B12Field.ATTEMPTS_PATH) == str((marker.parent / creation.B12_ATTEMPTS_FILE).resolve())
+        and isinstance(record.get(creation.B12Field.S0), Mapping)
+        and isinstance(record.get(creation.B12Field.B0), list)
+        and isinstance(record.get(creation.B12Field.T0), list)
+        and hashlib.sha256(marker_bytes).hexdigest()
+        == resources.retired_act_evidence.carrier.get(creation.B12Field.MARKER_SHA256)
+        and len(marker_bytes) == resources.retired_act_evidence.carrier.get(creation.B12Field.MARKER_BYTE_COUNT)
+        and all(
+            case.get(creation.B12Field.CLASSIFICATION) == creation.B12_CLASS_VERIFIED
+            for case in resources.retired_act_evidence.cases
+        )
+    )
+
+
+def _remove_temporary_root_except_delivery_carriers(resources: FullRuntimeResources) -> None:
+    """Remove ordinary disposable profile contents while preserving complete report-delivery carriers."""
+    retained_carriers = {resources.temporary_root / creation.B12_MATRIX_DIRECTORY}
+    if resources.b13_marker_path is not None:
+        retained_carriers.add(resources.b13_marker_path.parent)
+    for child in resources.temporary_root.iterdir():
+        if child in retained_carriers:
+            continue
+        if child.is_symlink() or not child.is_dir():
+            child.unlink()
+        else:
+            shutil.rmtree(child)
+
+
+def _remove_temporary_profile_root(resources: FullRuntimeResources) -> None:
+    """Preserve complete B12/B13 report-delivery carriers until write_report succeeds."""
+    delivery_marker = resources.temporary_root / creation.B12_MATRIX_DIRECTORY / creation.B12_MARKER_FILE
+    b12_delivery = resources.retired_act_evidence.status == creation.B12_STATUS_COMPLETE and delivery_marker.is_file()
+    b13_delivery = (
+        resources.b13_marker_path is not None
+        and resources.b13_marker_path.is_file()
+        and _is_b13_delivery_marker(
+            resources,
+            resources.b13_marker_path,
+            json.loads(resources.b13_marker_path.read_bytes()),
+            resources.b13_marker_path.read_bytes(),
+        )
+    )
+    if b12_delivery or b13_delivery:
+        _remove_temporary_root_except_delivery_carriers(resources)
+    else:
+        shutil.rmtree(resources.temporary_root)
+
+
+def _freeze_retired_act_evidence(resources: FullRuntimeResources) -> None:
+    """Copy local B12 carrier integrity into its in-memory report before cleanup can remove files."""
+    snapshot = resources.retired_act_evidence
+    if snapshot.status == creation.B12_STATUS_NOT_SELECTED:
+        return
+    path = resources.temporary_root / creation.B12_MATRIX_DIRECTORY / creation.B12_ATTEMPTS_FILE
+    marker_path = path.parent / creation.B12_MARKER_FILE
+    if not path.exists():
+        if marker_path.exists() or snapshot.carrier.get(creation.B12Field.FRAMING) != creation.B12_FRAMING_NOT_CREATED:
+            snapshot.status = creation.B12_STATUS_UNPROVEN
+            snapshot.evidence_failure = creation.B12_DETAIL_MISSING_CARRIER
+            snapshot.carrier[creation.B12Field.READ_ERROR] = snapshot.evidence_failure
+        return
+    try:
+        raw = path.read_bytes()
+        embedded = creation.embedded_b12_evidence_bytes(snapshot)
+        snapshot.carrier.update(
+            {
+                creation.B12Field.ATTEMPTS_PATH: resources.sanitize(str(path.resolve())),
+                creation.B12Field.ORIGINAL_SHA256: hashlib.sha256(raw).hexdigest(),
+                creation.B12Field.ORIGINAL_BYTE_COUNT: len(raw),
+                creation.B12Field.FRAMING: (
+                    creation.B12_FRAMING_COMPLETE
+                    if not raw or raw.endswith(_LINE_BREAK.encode(_UTF8))
+                    else creation.B12_FRAMING_PARTIAL
+                ),
+                creation.B12Field.RAW_TEXT: resources.sanitize(raw.decode(_UTF8, errors=_UTF8_REPLACEMENT))[
+                    :_DIAGNOSTIC_LIMIT
+                ],
+                creation.B12Field.RAW_TEXT_TRUNCATED: len(raw) > _DIAGNOSTIC_LIMIT,
+                creation.B12Field.EMBEDDED_SHA256: hashlib.sha256(embedded).hexdigest(),
+                creation.B12Field.EMBEDDED_BYTE_COUNT: len(embedded),
+                creation.B12Field.EMBEDDED_SCOPE: creation.B12_EMBEDDED_SCOPE,
+            }
+        )
+        try:
+            records = creation.validate_b12_attempts(raw, complete=snapshot.status == creation.B12_STATUS_COMPLETE)
+            snapshot.carrier[creation.B12Field.LINE_COUNT] = len(records)
+        except Exception as error:
+            snapshot.status = creation.B12_STATUS_UNPROVEN
+            snapshot.evidence_failure = creation.B12_EXCEPTION_DETAIL.format(
+                error_class=type(error).__name__, detail=error
+            )
+            snapshot.carrier[creation.B12Field.READ_ERROR] = snapshot.evidence_failure
+    except Exception as error:
+        snapshot.status = creation.B12_STATUS_UNPROVEN
+        snapshot.evidence_failure = creation.B12_EXCEPTION_DETAIL.format(error_class=type(error).__name__, detail=error)
+        snapshot.carrier[creation.B12Field.READ_ERROR] = snapshot.evidence_failure
+    if path.exists():
+        try:
+            marker_raw = marker_path.read_bytes()
+            snapshot.carrier[creation.B12Field.MARKER_PATH] = resources.sanitize(str(marker_path.resolve()))
+            if hashlib.sha256(marker_raw).hexdigest() != snapshot.carrier.get(creation.B12Field.MARKER_SHA256) or len(
+                marker_raw
+            ) != snapshot.carrier.get(creation.B12Field.MARKER_BYTE_COUNT):
+                raise ValueError(creation.B12_CARRIER_ERROR_MARKER)
+        except Exception as error:
+            snapshot.status = creation.B12_STATUS_UNPROVEN
+            snapshot.evidence_failure = creation.B12_EXCEPTION_DETAIL.format(
+                error_class=type(error).__name__, detail=error
+            )
+            snapshot.carrier[creation.B12Field.READ_ERROR] = snapshot.evidence_failure
+    completed_path = path.parent / creation.B12_COMPLETED_FILE
+    if snapshot.status == creation.B12_STATUS_COMPLETE and not completed_path.is_file():
+        snapshot.status = creation.B12_STATUS_UNPROVEN
+        snapshot.evidence_failure = creation.B12_DETAIL_COMPLETED_SNAPSHOT
+        snapshot.carrier[creation.B12Field.COMPLETED_READ_ERROR] = snapshot.evidence_failure
+    elif completed_path.is_file():
+        try:
+            expected_completed_hash = snapshot.carrier.get(creation.B12Field.COMPLETED_SHA256)
+            expected_completed_bytes = snapshot.carrier.get(creation.B12Field.COMPLETED_BYTE_COUNT)
+            completed_raw = completed_path.read_bytes()
+            completed = json.loads(completed_raw)
+            snapshot.carrier.update(
+                {
+                    creation.B12Field.COMPLETED_PATH: resources.sanitize(str(completed_path.resolve())),
+                    creation.B12Field.COMPLETED_SHA256: hashlib.sha256(completed_raw).hexdigest(),
+                    creation.B12Field.COMPLETED_BYTE_COUNT: len(completed_raw),
+                    creation.B12Field.COMPLETED_RAW_TEXT: resources.sanitize(
+                        completed_raw.decode(_UTF8, errors=_UTF8_REPLACEMENT)
+                    )[:_DIAGNOSTIC_LIMIT],
+                    creation.B12Field.COMPLETED_RAW_TEXT_TRUNCATED: len(completed_raw) > _DIAGNOSTIC_LIMIT,
+                    creation.B12Field.COMPLETED_READ_ERROR: _EMPTY,
+                }
+            )
+            if snapshot.status == creation.B12_STATUS_COMPLETE and (
+                not isinstance(completed, dict)
+                or completed.get(creation.B12Field.STATUS) != creation.B12_STATUS_COMPLETE
+                or completed.get(creation.B12Field.ORDERED_RESULTS) != snapshot.cases
+                or completed.get(creation.B12Field.ATTEMPTS_SHA256)
+                != snapshot.carrier.get(creation.B12Field.ORIGINAL_SHA256)
+                or completed.get(creation.B12Field.ATTEMPTS_BYTE_COUNT)
+                != snapshot.carrier.get(creation.B12Field.ORIGINAL_BYTE_COUNT)
+                or completed.get(creation.B12Field.ATTEMPTS_LINE_COUNT)
+                != snapshot.carrier.get(creation.B12Field.LINE_COUNT)
+                or hashlib.sha256(completed_raw).hexdigest() != expected_completed_hash
+                or len(completed_raw) != expected_completed_bytes
+            ):
+                raise ValueError(creation.B12_DETAIL_COMPLETED_SNAPSHOT)
+        except Exception as error:
+            snapshot.status = creation.B12_STATUS_UNPROVEN
+            snapshot.evidence_failure = creation.B12_EXCEPTION_DETAIL.format(
+                error_class=type(error).__name__, detail=error
+            )
+            snapshot.carrier[creation.B12Field.COMPLETED_READ_ERROR] = snapshot.evidence_failure
+
+
+def _freeze_b13_profile_evidence(resources: FullRuntimeResources) -> None:
+    """Validate B13's existing external report seal before any full-profile removal branch."""
+    marker = resources.b13_marker_path
+    carrier = resources.b13_carrier_path
+    if marker is None or carrier is None or resources.b13_evidence.carrier.get("owned") is not True:
+        return
+    try:
+        valid = (
+            waiting.verify_b13_delivery(resources.b13_evidence, marker, carrier, resources.sanitize)
+            if resources.b13_evidence.status == waiting.B13_STATUS_COMPLETE
+            else waiting.verify_b13_seal(resources.b13_evidence, marker, carrier)
+        )
+        if not valid:
+            raise ValueError(waiting.B13_ERROR_SEAL)
+    except Exception as error:
+        resources.b13_evidence.status = waiting.B13_STATUS_UNPROVEN
+        resources.b13_evidence.evidence_failure = resources.sanitize(f"{type(error).__name__}: {error}")
+        waiting.capture_b13_attempt_ledger(resources.b13_evidence, marker, resources.sanitize)
+        resources.retain_key(waiting.B13_RETENTION_KEY, waiting.B13_RETENTION_REASON)
+
+
+def _remove_legacy_profile_resources(resources: FullRuntimeResources, failures: list[str]) -> None:
+    """Keep the existing fixture/temp removal mechanics together; newly provisional runs retain both."""
+    if resources.fixture_setup is not None and foundation.remove_fixture(resources.fixture_setup):
+        failures.append(_FULL_FIXTURE_CLEANUP_ERROR)
+    try:
+        _remove_temporary_profile_root(resources)
+    except OSError:
+        failures.append(_FULL_TEMP_CLEANUP_ERROR)
+
+
+def _finish_public_cleanup(
     resources: FullRuntimeResources,
     cleanup_evidence: list[CommandEvidence],
+    failures: list[str],
+    *,
+    has_retained_marker: bool,
 ) -> None:
-    """Stop the supported runtime, restore temporary declarations and remove owned resources."""
-    failures: list[str] = []
+    """Finish all public restoration/logout and original terminal disposal before the supported stop call."""
     try:
-        _restore_full_profile_changes(resources, cleanup_evidence)
+        if not has_retained_marker and not resources.retained:
+            _restore_full_profile_changes(resources, cleanup_evidence)
     except Exception:
         failures.append(_FULL_CONFIG_RESTORE_ERROR)
     for terminal in (resources.member_terminal, resources.admin_terminal):
@@ -1950,16 +2585,11 @@ def _close_full_profile_resources(
             _require_terminal_success(logout_status, logout_output, cleanup_evidence)
         except Exception:
             failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
-    if resources.install_attempted:
-        result = _record_external_command(
-            resources,
-            _SERVICE_STOP_COMMAND,
-            cwd=resources.source_root,
-            timeout_seconds=_STOP_COMMAND_TIMEOUT_SECONDS,
-            evidence=cleanup_evidence,
-        )
-        if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
-            failures.append(_FULL_SERVICE_STOP_ERROR)
+    if isinstance(resources.release_world, ReleaseWorld):
+        try:
+            _close_release_world(resources.release_world, cleanup_evidence)
+        except Exception:
+            failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
     for terminal in (resources.member_terminal, resources.admin_terminal):
         if terminal is None:
             continue
@@ -1967,17 +2597,90 @@ def _close_full_profile_resources(
             terminal.close()
         except Exception:
             failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
-    if isinstance(resources.release_world, ReleaseWorld):
-        try:
-            _close_release_world(resources.release_world, cleanup_evidence)
-        except Exception:
-            failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
+    resources.public_cleanup_finished_ns = time.monotonic_ns()
+
+
+def _stop_profile_runtime(
+    resources: FullRuntimeResources, cleanup_evidence: list[CommandEvidence], failures: list[str]
+) -> None:
+    """Attempt the supported P3 once after public work; later file/marker errors never erase its actual result."""
+    if not resources.install_attempted:
+        return
+    stop_outcome = resources.temporary_root / _STOP_OUTCOME_NAME
+    resources.daemon_stop_started_ns = time.monotonic_ns()
     try:
-        shutil.rmtree(resources.temporary_root)
-    except OSError:
-        failures.append(_FULL_TEMP_CLEANUP_ERROR)
+        result = _record_external_command(
+            resources,
+            (*_SERVICE_STOP_COMMAND, f"{_STOP_OUTCOME_VARIABLE}={stop_outcome}"),
+            cwd=resources.source_root,
+            timeout_seconds=_STOP_COMMAND_TIMEOUT_SECONDS,
+            evidence=cleanup_evidence,
+        )
+        resources.daemon_stop_execution = result
+        if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
+            failures.append(_FULL_SERVICE_STOP_ERROR)
+    except Exception as error:
+        resources.daemon_stop_error = resources.sanitize(f"{type(error).__name__}: {error}")
+        failures.append(_FULL_SERVICE_STOP_ERROR)
+    try:
+        recorded = stop_outcome.read_text(encoding=_UTF8).strip() if stop_outcome.is_file() else _EMPTY
+        resources.daemon_stop_outcome = recorded
+        if resources.workflow_flow is not None:
+            resources.workflow_flow.record_profile_stop(recorded)
+        if recorded != _STOPPED_OUTCOME:
+            resources.retained.append(_FULL_STOP_UNPROVEN.format(outcome=recorded or "none"))
+    except Exception as error:
+        detail = resources.sanitize(f"{type(error).__name__}: {error}")
+        resources.daemon_stop_error = _CLEANUP_FAILURE_SEPARATOR.join(
+            item for item in (resources.daemon_stop_error, detail) if item
+        )
+        failures.append(_FULL_SERVICE_STOP_ERROR)
+    finally:
+        resources.daemon_stop_finished_ns = time.monotonic_ns()
+
+
+def _close_full_profile_resources(
+    resources: FullRuntimeResources,
+    cleanup_evidence: list[CommandEvidence],
+) -> None:
+    """Perform public cleanup before P3, preserving new-run resources and every independent failure for outside closure."""
+    b12_status_before_freeze = resources.retired_act_evidence.status
+    _freeze_retired_act_evidence(resources)
+    if (
+        b12_status_before_freeze == creation.B12_STATUS_COMPLETE
+        and resources.retired_act_evidence.status != creation.B12_STATUS_COMPLETE
+    ):
+        resources.retained.append(creation.B12_DETAIL_POSTFREEZE)
+    _freeze_b13_profile_evidence(resources)
+    failures: list[str] = []
+    has_retained_marker = _record_retained_workflow_markers(resources)
+    _finish_public_cleanup(resources, cleanup_evidence, failures, has_retained_marker=has_retained_marker)
+    _stop_profile_runtime(resources, cleanup_evidence, failures)
+    if resources.payload_provisional is not None:
+        work_end = positive_integer(parse_object(resources.payload_provisional.binding_bytes), "payload_end_ns")
+        stop = resources.daemon_stop_execution
+        resources.inner_cleanup = InnerCleanupEvidence(
+            resources.public_cleanup_finished_ns or 0,
+            resources.daemon_stop_started_ns,
+            resources.daemon_stop_finished_ns,
+            resources.daemon_stop_outcome,
+            stop.exit_status if stop is not None else None,
+            stop.diagnostics if stop is not None else _EMPTY,
+            resources.daemon_stop_error,
+            work_end,
+            tuple(failures),
+            tuple(resources.retained),
+        )
+    if resources.retained:
+        failures.append(_FULL_UNPROVEN_RETAINED.format(reasons=_CLEANUP_FAILURE_SEPARATOR.join(resources.retained)))
+    elif resources.payload_provisional is None:
+        _remove_legacy_profile_resources(resources, failures)
     if failures:
         raise RuntimeError(_FULL_CLEANUP_FAILURE.format(failures=_CLEANUP_FAILURE_SEPARATOR.join(failures)))
+    if resources.payload_provisional is not None:
+        if resources.inner_cleanup is not None and resources.inner_cleanup.pending_physical:
+            raise PhysicalCleanupPending(ScenarioStatus.P4_PENDING_OUTER.value)
+        raise RuntimeError(_FULL_STOP_UNPROVEN.format(outcome=resources.daemon_stop_outcome or "none"))
 
 
 def _run_readiness_check(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -1992,16 +2695,17 @@ def _run_readiness_check(resources: FullRuntimeResources, evidence: list[Command
         )
         if result.exit_status == _PROCESS_SUCCESS and not result.diagnostics:
             return
-        time.sleep(_READINESS_POLL_INTERVAL_SECONDS)
+        payload_work.sleep(_READINESS_POLL_INTERVAL_SECONDS)
     raise RuntimeError(_EXPECTED_READINESS_ERROR)
 
 
 def _read_health_body(socket_path: str, timeout_seconds: float) -> bytes | None:
     """Read bounded HTTP bytes with one deadline across connect, headers and body."""
+    command_end = payload_work.command_end(timeout_seconds)
     expired = threading.Event()
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-            connection.settimeout(timeout_seconds)
+            connection.settimeout(payload_work.remaining(command_end))
 
             def expire() -> None:
                 expired.set()
@@ -2011,7 +2715,7 @@ def _read_health_body(socket_path: str, timeout_seconds: float) -> bytes | None:
                     # Deadline expiry can race an unconnected or already-closed socket.
                     pass
 
-            timer = threading.Timer(timeout_seconds, expire)
+            timer = threading.Timer(payload_work.remaining(command_end), expire)
             timer.start()
             try:
                 connection.connect(socket_path)
@@ -2064,8 +2768,394 @@ def _await_config_restart(
             return
         remaining = deadline - time.monotonic()
         if remaining > 0:
-            time.sleep(min(_READINESS_POLL_INTERVAL_SECONDS, remaining))
+            payload_work.sleep(min(_READINESS_POLL_INTERVAL_SECONDS, remaining))
     raise RuntimeError(_HEALTH_INSTANCE_UNCHANGED)
+
+
+class _FoundationRunner:
+    """The profile\'s side of journey F0: the owner terminal, bounded child processes and retained evidence."""
+
+    def __init__(self, resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+        self._resources = resources
+        self._evidence = evidence
+
+    @property
+    def environment(self) -> Mapping[str, str]:
+        """The profile\'s allowlisted child environment."""
+        return self._resources.environment
+
+    def cli(self, argv: Sequence[str], timeout_seconds: float, *, retain: bool = True) -> foundation.Outcome:
+        """Run one fresh public CLI process on the authenticated owner terminal."""
+        terminal = self._resources.open_admin_terminal()
+        command_evidence: list[CommandEvidence] = []
+        status, output = _record_terminal_command(self._resources, terminal, argv, command_evidence, timeout_seconds)
+        if retain:
+            self._evidence.extend(command_evidence)
+        recorded = command_evidence[-1] if command_evidence else None
+        return foundation.Outcome(
+            status,
+            output,
+            stderr=recorded.stderr if recorded is not None else _EMPTY,
+            diagnostics=recorded.diagnostics if recorded is not None else _EMPTY,
+            duration_seconds=recorded.duration_seconds if recorded is not None else 0.0,
+        )
+
+    def process(
+        self, argv: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout_seconds: float
+    ) -> foundation.Outcome:
+        """Run one bounded child process and retain its sanitized evidence."""
+        result = _run_bounded_process(argv, cwd=cwd, environment=environment, timeout_seconds=timeout_seconds)
+        self._evidence.append(
+            CommandEvidence(
+                argv=tuple(self._resources.sanitize(value) for value in argv),
+                exit_status=result.exit_status,
+                duration_seconds=result.duration_seconds,
+                stdout=self._resources.sanitize(result.stdout)[:_DIAGNOSTIC_LIMIT],
+                stderr=self._resources.sanitize(result.stderr)[:_DIAGNOSTIC_LIMIT],
+                diagnostics=result.diagnostics,
+            )
+        )
+        return foundation.Outcome(
+            result.exit_status,
+            f"{result.stdout}{result.stderr}",
+            diagnostics=result.diagnostics,
+            duration_seconds=result.duration_seconds,
+        )
+
+    def note(self, argv: Sequence[str], outcome: foundation.Outcome, diagnostics: str) -> None:
+        """Retain bounded evidence of a command the fixture ran inside its pane."""
+        stdout = self._resources.sanitize(outcome.output)
+        stderr = self._resources.sanitize(outcome.stderr)
+        detail = self._resources.sanitize(diagnostics)
+        command_diagnostics = self._resources.sanitize(outcome.diagnostics)
+        truncations: list[str] = []
+        if len(stdout) > _DIAGNOSTIC_LIMIT:
+            truncations.append(_EVIDENCE_STDOUT_TRUNCATION)
+        if len(stderr) > _DIAGNOSTIC_LIMIT:
+            truncations.append(_EVIDENCE_STDERR_TRUNCATION)
+        if len(detail) > _DIAGNOSTIC_LIMIT or len(command_diagnostics) > _DIAGNOSTIC_LIMIT:
+            truncations.append(_EVIDENCE_DIAGNOSTICS_TRUNCATION)
+        diagnostic_parts = tuple(value for value in (detail, command_diagnostics, *truncations) if value)
+        retained_diagnostics = _EVIDENCE_SEPARATOR.join(diagnostic_parts)
+        if len(retained_diagnostics) > _DIAGNOSTIC_LIMIT:
+            marker_size = len(_EVIDENCE_SEPARATOR) + len(_EVIDENCE_DIAGNOSTICS_TRUNCATION)
+            retained_diagnostics = (
+                retained_diagnostics[: _DIAGNOSTIC_LIMIT - marker_size]
+                + _EVIDENCE_SEPARATOR
+                + _EVIDENCE_DIAGNOSTICS_TRUNCATION
+            )
+        self._evidence.append(
+            CommandEvidence(
+                argv=tuple(self._resources.sanitize(value) for value in argv),
+                exit_status=outcome.exit_status,
+                duration_seconds=outcome.duration_seconds,
+                stdout=stdout[:_DIAGNOSTIC_LIMIT],
+                stderr=stderr[:_DIAGNOSTIC_LIMIT],
+                diagnostics=retained_diagnostics[:_DIAGNOSTIC_LIMIT],
+            )
+        )
+
+
+def _install_native_fixture(
+    resources: FullRuntimeResources, installer_environment: dict[str, str], evidence: list[CommandEvidence]
+) -> None:
+    """Install the inert agent executable before the supported installation, and prove the installer will find it."""
+    home = installer_environment.get(_COLD_HOME_VARIABLE)
+    if not home:
+        raise RuntimeError(_FULL_HOME_REQUIRED)
+    setup = foundation.fixture_paths(Path(home), resources.temporary_root)
+    foundation.install_fixture(resources.source_root, setup)
+    resources.fixture_setup = setup
+    installer_environment[_PATH_VARIABLE] = _PATH_SEPARATOR.join(
+        (str(setup.executable.parent), installer_environment.get(_PATH_VARIABLE, _EMPTY))
+    )
+    foundation.require_owned_resolution(
+        _FoundationRunner(resources, evidence),
+        setup,
+        installer_environment,
+        resources.source_root,
+        _FIXTURE_INSTALLER_WHERE,
+        login=False,
+    )
+
+
+def _require_manual_runner(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Read the machine configuration through the public path and require the manual workflow runner."""
+    terminal = resources.open_admin_terminal()
+    computer, _, _ = _read_computer_config(resources, terminal, evidence)
+    workflow = _mapping_value(computer.get(_MACHINE_WORKFLOW_SECTION))
+    if workflow is None or workflow.get(_MACHINE_WORKFLOW_RUNNER_FIELD) != _WORKFLOW_RUNNER_MANUAL:
+        raise ValueError(_FULL_WORKFLOW_RUNNER_NOT_MANUAL)
+
+
+def _full_workflow_foundation(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey F0: native fixture binding, public self identity, startup admission and close."""
+    setup = resources.fixture_setup
+    if setup is None or resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    runner = _FoundationRunner(resources, evidence)
+    _require_manual_runner(resources, evidence)
+    home = resources.environment.get(_COLD_HOME_VARIABLE)
+    if not home:
+        raise RuntimeError(_FULL_HOME_REQUIRED)
+    uv_executable = shutil.which(_UV_EXECUTABLE, path=resources.environment.get(_PATH_VARIABLE))
+    login_directories = [setup.executable.parent]
+    if uv_executable is not None:
+        login_directories.append(Path(uv_executable).parent)
+    written = foundation.put_tools_on_login_path(Path(home), login_directories)
+    if written:
+        runner.note((_LOGIN_PROFILE_NOTE,), foundation.Outcome(_PROCESS_SUCCESS, written), _EMPTY)
+    foundation.require_owned_resolution(
+        runner,
+        setup,
+        foundation.owner_login_environment(resources.environment),
+        resources.source_root,
+        _FIXTURE_LOGIN_WHERE,
+        login=True,
+    )
+    foundation.run_foundation(runner, setup, resources.project_path, _OWNER_SEED_EMAIL)
+
+
+def _full_workflow_creation(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey R1: plain creation, the acknowledgement gate and the manual runner's absence of sessions."""
+    if resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    creation.run_creation(_FoundationRunner(resources, evidence), resources.project_path, resources.source_root)
+
+
+def _full_workflow_retired_acts(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey R4, optionally extended by B12's approved retired-act vocabulary matrix."""
+    if resources.project_path is None:
+        if resources.retired_act_selected:
+            resources.retired_act_evidence.selected_amendment = creation.B12_AMENDMENT
+            resources.retired_act_evidence.status = creation.B12_STATUS_UNPROVEN
+            resources.retired_act_evidence.primary_failure = _FULL_FOUNDATION_PREREQUISITES
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    runner = _FoundationRunner(resources, evidence)
+    if resources.retired_act_selected:
+        started_at = time.monotonic()
+        resources.retired_act_deadline = started_at + creation.B12_SCENARIO_SECONDS
+        resources.retired_act_evidence.selected_amendment = creation.B12_AMENDMENT
+        resources.retired_act_evidence.status = creation.B12_STATUS_PARTIAL
+        try:
+            _full_owner_identity(resources, evidence)
+            resources.retired_act_evidence.prerequisites[creation.B12Field.OWNER_IDENTITY] = dict(
+                resources.owner_identity_facts
+            )
+            creation.run_retired_act_matrix(
+                runner,
+                resources.project_path,
+                resources.source_root,
+                resources.temporary_root,
+                resources.retired_act_evidence,
+                resources.retained.append,
+                lambda reason: resources.retained.remove(reason) if reason in resources.retained else None,
+                resources.sanitize,
+                started_at=started_at,
+            )
+        except KeyboardInterrupt as error:
+            if not resources.retired_act_evidence.primary_failure:
+                resources.retired_act_evidence.status = creation.B12_STATUS_UNPROVEN
+                resources.retired_act_evidence.primary_failure = resources.sanitize(
+                    creation.B12_INTERRUPT_DETAIL.format(detail=error)
+                )
+            resources.retired_act_evidence.duration_seconds = max(
+                resources.retired_act_evidence.duration_seconds, time.monotonic() - started_at
+            )
+            raise
+        except Exception as error:
+            if not resources.retired_act_evidence.primary_failure:
+                resources.retired_act_evidence.status = creation.B12_STATUS_UNPROVEN
+                resources.retired_act_evidence.primary_failure = resources.sanitize(
+                    creation.B12_EXCEPTION_DETAIL.format(error_class=type(error).__name__, detail=error)
+                )
+            resources.retired_act_evidence.duration_seconds = max(
+                resources.retired_act_evidence.duration_seconds, time.monotonic() - started_at
+            )
+            raise
+        finally:
+            resources.retired_act_deadline = None
+    else:
+        creation.run_retired_acts(runner, resources.project_path, resources.source_root)
+
+
+def _full_workflow_b12(resources: FullRuntimeResources, _evidence: list[CommandEvidence]) -> None:
+    """Require R4's amendment run to have a complete, sealed upload-carried matrix snapshot."""
+    del _evidence
+    snapshot = resources.retired_act_evidence
+    if not resources.retired_act_selected or snapshot.status != creation.B12_STATUS_COMPLETE:
+        raise ValueError(creation.B12_DETAIL_MODE)
+    if len(snapshot.cases) != len(creation.B12_CASES) or any(
+        case.get("classification") != creation.B12_CLASS_VERIFIED for case in snapshot.cases
+    ):
+        raise ValueError(creation.B12_DETAIL_SIXTEEN)
+
+
+def _full_workflow_plans(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey R2: plan creation and the task lane outside the v2 machine."""
+    if resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    plans.run_plans(_FoundationRunner(resources, evidence), resources.project_path, resources.source_root)
+
+
+def _full_workflow_holds(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey R3: the public hold and release, with no phase override."""
+    if resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    holds.run_holds(_FoundationRunner(resources, evidence), resources.project_path, resources.source_root)
+
+
+def _full_workflow_removal(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey R5: soft removal and restoration of a plain preparation item."""
+    if resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    removal.run_removal(_FoundationRunner(resources, evidence), resources.project_path, resources.source_root)
+
+
+def _full_workflow_claim(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B1: an explicit prepare starts the real driver, which claims with its reservation."""
+    setup = resources.fixture_setup
+    if setup is None or resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    claim.run_claim(
+        _FoundationRunner(resources, evidence),
+        setup,
+        resources.project_path,
+        resources.source_root,
+        _OWNER_SEED_EMAIL,
+        lambda: _register_procedure_fixture_company(resources, evidence),
+        resources.retained.append,
+    )
+
+
+def _full_workflow_race(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B2: a start in progress refuses a distinct requester, and a race leaves one driver."""
+    setup = resources.fixture_setup
+    if setup is None or resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    race.run_race(
+        _FoundationRunner(resources, evidence),
+        setup,
+        resources.project_path,
+        resources.source_root,
+        _OWNER_SEED_EMAIL,
+        lambda: _register_procedure_fixture_company(resources, evidence),
+        resources.retained.append,
+    )
+
+
+def _full_workflow_waiting(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B3: a driver waits on the owner, a dispatched session cannot decide, the owner's own session can."""
+    setup = resources.fixture_setup
+    if (
+        setup is None
+        or resources.project_path is None
+        or resources.project_slug is None
+        or resources.project_name is None
+    ):
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    resources.b13_marker_path = setup.control.parent / waiting.B13_DIRECTORY / waiting.B13_MARKER_FILE
+    if resources.report_path is not None:
+        resources.b13_carrier_path = resources.report_path.with_name(
+            resources.report_path.name + waiting.B13_CARRIER_SUFFIX
+        )
+    waiting.run_waiting(
+        _FoundationRunner(resources, evidence),
+        setup,
+        resources.project_path,
+        resources.source_root,
+        _OWNER_SEED_EMAIL,
+        _OWNER_SEED_SLUG,
+        resources.project_slug,
+        resources.project_name,
+        lambda: _register_procedure_fixture_company(resources, evidence),
+        resources.retained.append,
+        resources.retain_key,
+        resources.release_key,
+        resources.report_path,
+        resources.source_revision,
+        resources.source_tree,
+        resources.b13_evidence,
+        resources.sanitize,
+        accounting=resources.early_accounting("B3"),
+    )
+
+
+def _full_workflow_prepared(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B4: prepared names the judged body, a moved body refuses prepared and work, the work driver claims."""
+    setup = resources.fixture_setup
+    if setup is None or resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    if resources.project_slug is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    event_binding = events.load_binding(setup.control.parent)
+    resources.retained.append(f"B10 event evidence retained at {event_binding.carrier_root}")
+    prepared.run_prepared(
+        _FoundationRunner(resources, evidence),
+        setup,
+        resources.project_path,
+        resources.source_root,
+        _OWNER_SEED_EMAIL,
+        _OWNER_SEED_SLUG,
+        resources.report_path or resources.temporary_root / "runtime-acceptance-report.json",
+        resources.project_slug,
+        event_binding,
+        lambda: _register_procedure_fixture_company(resources, evidence),
+        resources.retained.append,
+        accounting=resources.early_accounting("B4"),
+    )
+
+
+def _full_workflow_review(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B5: continue the B4 work item through review acts, stamp refusals and re-stamp."""
+    setup = resources.fixture_setup
+    if setup is None or resources.project_path is None or resources.project_slug is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    event_binding = events.load_binding(setup.control.parent)
+    events.verify_case(event_binding, "B4")
+    event_previous_seal = events.seal_for(event_binding, "B4")
+    resources.retained.append(f"B10 event evidence retained at {event_binding.carrier_root}")
+    if resources.workflow_flow is None:
+        resources.workflow_flow = full_flow.WorkflowFlow(
+            host=_FoundationRunner(resources, evidence),
+            setup=setup,
+            source_root=resources.source_root,
+            project=resources.project_path,
+            owner_email=_OWNER_SEED_EMAIL,
+            project_slug=resources.project_slug,
+            chain=resources.workflow_chain,
+            register_company=lambda: _register_procedure_fixture_company(resources, evidence),
+            retain=resources.retained.append,
+            event_window=event_binding,
+            event_previous_seal=event_previous_seal,
+            event_case_seal=event_previous_seal,
+            payload_provisional=resources.payload_provisional,
+        )
+    flow = resources.workflow_flow
+    try:
+        flow.attach(_FoundationRunner(resources, evidence))
+        if flow.ledger is None:
+            flow.setup_flow()
+        review.run_b5(flow)
+    except BaseException as error:
+        flow.finalize(str(error))
+        raise
+
+
+def _full_workflow_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B7: return a held ready item to work, observe exact message keyed requests and re-stamp."""
+    if resources.workflow_flow is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    resources.workflow_flow.attach(_FoundationRunner(resources, evidence))
+    ready.run_b7(resources.workflow_flow)
+
+
+def _full_workflow_integration(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B6: admit only the registry claimant and observe real integration and delivery."""
+    if resources.workflow_flow is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    resources.workflow_flow.attach(_FoundationRunner(resources, evidence))
+    integration.run_b6(resources.workflow_flow)
 
 
 def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -2074,6 +3164,7 @@ def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[Comm
     installer_environment[_ENV_OWNER_NAME_VARIABLE] = _OWNER_SEED_NAME
     installer_environment[_ENV_OWNER_EMAIL_VARIABLE] = _OWNER_SEED_EMAIL
     installer_environment.pop(_CI_VARIABLE, None)
+    _install_native_fixture(resources, installer_environment, evidence)
     install_result = _run_bounded_process(
         (str(resources.source_root / _INSTALLER_COMMAND[0]), *_INSTALLER_COMMAND[1:]),
         cwd=resources.source_root,
@@ -2191,6 +3282,11 @@ def _full_owner_identity(resources: FullRuntimeResources, evidence: list[Command
     _require_terminal_success(person_status, person_output, evidence)
     if not _owner_record_is_administrator(person_output):
         raise ValueError(_EXPECTED_PERSON_IDENTITY_ERROR)
+    resources.owner_identity_facts = {
+        creation.B12Field.EMAIL: whoami.email,
+        creation.B12Field.ROLE: whoami.role,
+        creation.B12Field.PERSON_IS_ADMINISTRATOR: True,
+    }
 
 
 def _full_configuration_change(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -2215,6 +3311,7 @@ def _full_configuration_change(resources: FullRuntimeResources, evidence: list[C
     }
     patch: JSONObject = {
         _CONFIG_COMPUTER_FIELD: {_MACHINE_TIMEZONE_FIELD: timezone},
+        _MACHINE_WORKFLOW_SECTION: {_MACHINE_WORKFLOW_RUNNER_FIELD: _WORKFLOW_RUNNER_MANUAL},
         _CONFIG_BACKUP_SECTION: {
             _CONFIG_BACKUP_KEY_ID_FIELD: f"{_CONFIG_REFERENCE_START}{_CONFIG_ARBITRARY_SECRET_ENV}{_CONFIG_REFERENCE_END}"
         },
@@ -2230,14 +3327,17 @@ def _full_configuration_change(resources: FullRuntimeResources, evidence: list[C
     _patch_configuration(resources, terminal, _CONFIG_COMPUTER_PATCH_PREFIX, revision, patch, evidence)
     _await_config_restart(resources, evidence, previous_instance)
     verified_terminal = resources.open_admin_terminal()
-    verified, new_revision, _ = _read_computer_config(resources, verified_terminal, evidence)
-    verified = _computer_identity(verified)
+    verified_machine, new_revision, _ = _read_computer_config(resources, verified_terminal, evidence)
+    verified = _computer_identity(verified_machine)
     if verified.get(_MACHINE_TIMEZONE_FIELD) != timezone:
         raise ValueError(_EXPECTED_VALID_PATCH_ERROR)
     if verified.get(_COMPUTER_ROLE_FIELD) != unrelated_role:
         raise ValueError(_FULL_STATE_CHANGED)
     if new_revision == revision:
         raise ValueError(_EXPECTED_REVISION_CHANGE_ERROR)
+    verified_workflow = _mapping_value(verified_machine.get(_MACHINE_WORKFLOW_SECTION))
+    if verified_workflow is None or verified_workflow.get(_MACHINE_WORKFLOW_RUNNER_FIELD) != _WORKFLOW_RUNNER_MANUAL:
+        raise ValueError(_FULL_WORKFLOW_RUNNER_NOT_MANUAL)
     _full_configuration_editor_journey(resources, verified_terminal, evidence)
 
 
@@ -3021,6 +4121,12 @@ def _create_procedure_fixture_checkout(
     evidence: list[CommandEvidence],
 ) -> Path:
     """Make a disposable source checkout whose committed docs use the regular publisher."""
+    _register_procedure_fixture_company(resources, evidence)
+    return _clone_procedure_fixture_checkout(resources, fixture_name, evidence)
+
+
+def _register_procedure_fixture_company(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Register the synthetic owner company the source checkout\'s project declaration names, through the public command."""
     company = _mapping_value(_procedure_fixture(resources).get(_PROCEDURE_FIXTURE_COMPANY_FIELD))
     if company is None:
         raise ValueError(_PROCEDURE_FIXTURE_COMPANY_INVALID)
@@ -3035,6 +4141,14 @@ def _create_procedure_fixture_checkout(
         evidence,
     )
     _require_terminal_success(status, output, evidence)
+
+
+def _clone_procedure_fixture_checkout(
+    resources: FullRuntimeResources,
+    fixture_name: str,
+    evidence: list[CommandEvidence],
+) -> Path:
+    """Clone the source checkout into a disposable one with its dependency environment and a git author."""
     checkout = resources.temporary_root / fixture_name
     clone_argv = (
         _GIT_EXECUTABLE,
@@ -3451,7 +4565,7 @@ def _await_archived_conversation(resources: FullRuntimeResources, evidence: list
             identity = row.get("tc_id") if row is not None else None
             if isinstance(identity, str) and identity:
                 return identity
-        time.sleep(_ARCHIVE_POLL_INTERVAL_SECONDS)
+        payload_work.sleep(_ARCHIVE_POLL_INTERVAL_SECONDS)
     raise ValueError(_ARCHIVE_ADOPTION_ERROR)
 
 
@@ -5221,12 +6335,12 @@ def _close_release_world(world: ReleaseWorld, evidence: list[CommandEvidence]) -
                     (_release_python(world), "-m", _RELEASE_TELEC_MODULE, "auth", "logout"),
                     evidence,
                 )
-                if exit_status is None:
-                    raise RuntimeError(_FULL_TERMINAL_CLEANUP_ERROR)
+                _require_terminal_exit(exit_status, evidence)
             finally:
                 terminal.close()
     finally:
-        _make_removable(world.root)
+        if world.resources.payload_provisional is None:
+            _make_removable(world.root)
 
 
 def _release_version(world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall, ref: str) -> str:
@@ -5425,10 +6539,45 @@ def run_profile(
     source_root: Path,
     source_revision: str,
     source_tree: str,
+    selection: frozenset[str] = frozenset(),
+    report_path: Path | None = None,
+    payload_admission: GuestContext | None = None,
 ) -> AcceptanceReport:
     """Run the selected profile with disposable state and report cleanup separately."""
+    provisional = None
+    if profile is Profile.FULL:
+        if payload_admission is None:
+            return _unadmitted_full_report(source_revision, source_tree, selection)
+        payload_admission.verify_request(source_root, source_revision, source_tree, selection)
+        provisional = PayloadProvisional.from_admitted(payload_admission)
+    end_ns = payload_admission.payload_deadline().effective_end() if payload_admission is not None else None
+    with payload_work.scope(end_ns):
+        return _run_profile(
+            profile,
+            source_root=source_root,
+            source_revision=source_revision,
+            source_tree=source_tree,
+            selection=selection,
+            report_path=report_path,
+            payload_provisional=provisional,
+        )
+
+
+def _run_profile(
+    profile: Profile,
+    *,
+    source_root: Path,
+    source_revision: str,
+    source_tree: str,
+    selection: frozenset[str],
+    report_path: Path | None,
+    payload_provisional: PayloadProvisional | None,
+) -> AcceptanceReport:
+    """Execute the existing profile body inside its caller's admitted work scope."""
+    payload_work.check()
     resolved_root = source_root.expanduser().resolve()
     temporary_root = Path(tempfile.mkdtemp(prefix=_ENVIRONMENT_CACHE_DIRECTORY))
+    resources: FullRuntimeResources | None = None
     try:
 
         def cold_action() -> ScenarioResult:
@@ -5451,7 +6600,30 @@ def run_profile(
                 environment=_full_runtime_environment(),
                 source_revision=source_revision,
                 source_tree=source_tree,
+                report_path=report_path.resolve() if report_path is not None else None,
+                payload_provisional=payload_provisional,
+                retired_act_selected=not selection or _SCENARIO_WORKFLOW_RETIRED_ACTS_B12 in selection,
+                b13_selected=not selection or _SCENARIO_WORKFLOW_WAITING in selection,
+                retired_act_evidence=creation.empty_retired_act_evidence(
+                    status=(
+                        creation.B12_STATUS_NOT_RUN
+                        if not selection or _SCENARIO_WORKFLOW_RETIRED_ACTS_B12 in selection
+                        else creation.B12_STATUS_NOT_SELECTED
+                    ),
+                    source_revision=source_revision,
+                    source_tree=source_tree,
+                ),
+                b13_evidence=waiting.empty_b13_evidence(
+                    status=(
+                        waiting.B13_STATUS_NOT_RUN
+                        if not selection or _SCENARIO_WORKFLOW_WAITING in selection
+                        else waiting.B13_STATUS_NOT_SELECTED
+                    ),
+                    source_revision=source_revision,
+                    source_tree=source_tree,
+                ),
             )
+            resources.workflow_chain = full_flow.declared_chain(selection)
             _stage_mirror_fixture(resources)
             actions.update(
                 {
@@ -5530,6 +6702,48 @@ def run_profile(
                     _SCENARIO_RELEASE_BLUEPRINT: _bind_full_scenario(
                         _SCENARIO_RELEASE_BLUEPRINT, resources, _release_blueprint
                     ),
+                    _SCENARIO_WORKFLOW_FOUNDATION: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_FOUNDATION, resources, _full_workflow_foundation
+                    ),
+                    _SCENARIO_WORKFLOW_CREATION: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_CREATION, resources, _full_workflow_creation
+                    ),
+                    _SCENARIO_WORKFLOW_RETIRED_ACTS: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_RETIRED_ACTS, resources, _full_workflow_retired_acts
+                    ),
+                    _SCENARIO_WORKFLOW_RETIRED_ACTS_B12: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_RETIRED_ACTS_B12, resources, _full_workflow_b12
+                    ),
+                    _SCENARIO_WORKFLOW_PLANS: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_PLANS, resources, _full_workflow_plans
+                    ),
+                    _SCENARIO_WORKFLOW_HOLDS: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_HOLDS, resources, _full_workflow_holds
+                    ),
+                    _SCENARIO_WORKFLOW_REMOVAL: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_REMOVAL, resources, _full_workflow_removal
+                    ),
+                    _SCENARIO_WORKFLOW_CLAIM: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_CLAIM, resources, _full_workflow_claim
+                    ),
+                    _SCENARIO_WORKFLOW_RACE: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_RACE, resources, _full_workflow_race
+                    ),
+                    _SCENARIO_WORKFLOW_WAITING: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_WAITING, resources, _full_workflow_waiting
+                    ),
+                    _SCENARIO_WORKFLOW_PREPARED: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_PREPARED, resources, _full_workflow_prepared
+                    ),
+                    _SCENARIO_WORKFLOW_REVIEW: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_REVIEW, resources, _full_workflow_review
+                    ),
+                    _SCENARIO_WORKFLOW_READY: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_READY, resources, _full_workflow_ready
+                    ),
+                    _SCENARIO_WORKFLOW_INTEGRATION: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_INTEGRATION, resources, _full_workflow_integration
+                    ),
                 }
             )
             inventory = _FULL_PROFILE_SCENARIOS
@@ -5538,29 +6752,640 @@ def run_profile(
                 _close_full_profile_resources(resources, evidence)
 
             cleanup_action = cleanup_full
-        return execute_profile(
+        report = execute_profile(
             profile,
             source_revision=source_revision,
             source_tree=source_tree,
             scenario_inventory=inventory,
             scenario_actions=actions,
             cleanup_action=cleanup_action,
+            selection=selection,
+            payload_provisional=payload_provisional,
         )
+        if resources is not None:
+            try:
+                event_evidence = events.profile_report(
+                    temporary_root,
+                    selected_cases=tuple(
+                        case for case in events.CASE_SEQUENCE if not selection or f"UC-WF-{case}" in selection
+                    )
+                    if payload_provisional is not None
+                    else None,
+                )
+            except Exception as error:
+                event_evidence = {
+                    "status": "unproven",
+                    "case_report_path": str(temporary_root / events.CASE_REPORT_FILE),
+                    "error": str(error),
+                }
+            delivery_path: Path | None = None
+            delivery_marker = temporary_root / creation.B12_MATRIX_DIRECTORY / creation.B12_MARKER_FILE
+            if delivery_marker.is_file():
+                try:
+                    marker_bytes = delivery_marker.read_bytes()
+                    marker_record = json.loads(marker_bytes)
+                    if _is_b12_delivery_marker(resources, delivery_marker, marker_record, marker_bytes):
+                        delivery_path = delivery_marker.parent.resolve()
+                except (OSError, ValueError):
+                    delivery_path = None
+            b13_delivery_path: Path | None = None
+            b13_marker_directory: Path | None = None
+            if (
+                resources.b13_marker_path is not None
+                and resources.b13_carrier_path is not None
+                and resources.b13_marker_path.is_file()
+            ):
+                try:
+                    marker_bytes = resources.b13_marker_path.read_bytes()
+                    marker_record = json.loads(marker_bytes)
+                    if _is_b13_delivery_marker(resources, resources.b13_marker_path, marker_record, marker_bytes):
+                        b13_delivery_path = resources.b13_carrier_path.resolve()
+                        b13_marker_directory = resources.b13_marker_path.parent.resolve()
+                except (OSError, ValueError):
+                    b13_delivery_path = None
+                    b13_marker_directory = None
+            return replace(
+                report,
+                workflow_event_evidence=event_evidence,
+                retired_act_evidence=resources.retired_act_evidence,
+                workflow_waiting_retired_kickback_evidence=resources.b13_evidence,
+                retired_act_delivery_path=delivery_path,
+                workflow_waiting_retired_kickback_delivery_path=b13_delivery_path,
+                workflow_waiting_retired_kickback_marker_directory=b13_marker_directory,
+                payload_provisional=payload_provisional.observe(
+                    {
+                        "owned_profile_root": str(temporary_root),
+                        "daemon_stop_outcome": resources.daemon_stop_outcome,
+                        "inner_cleanup": resources.inner_cleanup.record()
+                        if resources.inner_cleanup is not None
+                        else None,
+                        "recorded_retention_reasons": list(resources.retained),
+                        "recorded_retention_keys": dict(resources.retained_keys),
+                        "flow_finalizer": resources.workflow_flow.finalizer_summary
+                        if resources.workflow_flow is not None
+                        else None,
+                        "flow_finalizer_errors": list(resources.workflow_flow.finalizer_errors)
+                        if resources.workflow_flow is not None
+                        else [],
+                        "early_workflow": resources.early_workflow,
+                    }
+                )
+                if payload_provisional is not None
+                else None,
+            )
+        return report
     except BaseException:
-        if temporary_root.exists():
+        if payload_provisional is None and temporary_root.exists() and (resources is None or not resources.retained):
             shutil.rmtree(temporary_root)
         raise
 
 
-def write_report(report: AcceptanceReport, report_path: Path) -> None:
-    """Persist a report atomically enough that readers never accept a partial JSON file."""
-    temporary_path = report_path.with_suffix(f"{report_path.suffix}{_REPORT_TEMP_SUFFIX}")
+def _retire_delivered_b12_carrier(path: Path) -> None:
+    """Remove only B12's delivery marker/carrier after the upload report has been written."""
+    try:
+        shutil.rmtree(path)
+        parent = path.parent
+        descriptor = os.open(parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        parent.rmdir()
+    except OSError:
+        return
+
+
+def _write_report_payload(report_path: Path, temporary_path: Path, payload: Mapping[str, object]) -> None:
+    """Replace the report only after a complete serialized payload is available."""
     try:
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path.write_text(json.dumps(asdict(report), indent=2) + _LINE_BREAK, encoding=_UTF8)
+        data = (json.dumps(payload, indent=2, allow_nan=False) + _LINE_BREAK).encode(_UTF8)
+        with temporary_path.open("wb") as handle:
+            if handle.write(data) != len(data):
+                raise OSError(_REPORT_WRITE_INCOMPLETE)
+            handle.flush()
+            os.fsync(handle.fileno())
         temporary_path.replace(report_path)
-    except OSError as exc:
+        directory = os.open(report_path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        if report_path.read_bytes() != data:
+            raise OSError(_REPORT_READBACK_MISMATCH)
+    except (OSError, TypeError, ValueError) as exc:
         raise RuntimeError(_REPORT_WRITE_ERROR.format(error=exc)) from exc
+
+
+def _append_b13_failure(existing: str, addition: str) -> str:
+    """Preserve an earlier B13 failure while recording an independent later cause."""
+    if not existing:
+        return addition
+    if addition in existing:
+        return existing
+    return existing + _B13_FAILURE_SEPARATOR + addition
+
+
+def _b13_report_unproven(
+    report: AcceptanceReport,
+    *,
+    evidence_failure: str = _EMPTY,
+    export_failure: str = _EMPTY,
+) -> AcceptanceReport:
+    """Downgrade B13 without replacing cleanup facts or claiming unobserved retention."""
+    evidence = report.workflow_waiting_retired_kickback_evidence
+    evidence.status = waiting.B13_STATUS_UNPROVEN
+    evidence.evidence_failure = _append_b13_failure(evidence.evidence_failure, evidence_failure)
+    evidence.export_failure = _append_b13_failure(evidence.export_failure, export_failure)
+    detail = export_failure or evidence_failure or _B13_REPORT_SEAL_FAILURE
+    scenarios = tuple(
+        replace(
+            result,
+            status=ScenarioStatus.FAILED,
+            diagnostics=_append_b13_failure(result.diagnostics, detail),
+        )
+        if result.scenario_id == _SCENARIO_WORKFLOW_WAITING
+        else result
+        for result in report.scenarios
+    )
+    return replace(
+        report,
+        scenarios=scenarios,
+    )
+
+
+def _report_payload(report: AcceptanceReport) -> JsonObject:
+    """Keep legacy bytes/schema shape while serializing only newly admitted reports as a typed provisional stage."""
+    payload = asdict(report)
+    for name in (
+        _REPORT_RETIRED_ACT_DELIVERY_PATH,
+        _B13_REPORT_DELIVERY_PATH_FIELD,
+        _B13_REPORT_MARKER_DIRECTORY_FIELD,
+        "payload_provisional",
+    ):
+        payload.pop(name, None)
+    if report.payload_provisional is not None:
+        payload["stage"] = PROVISIONAL_STAGE
+        payload["payload_provisional"] = report.payload_provisional.record()
+    return cast(JsonObject, payload)
+
+
+def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceReport:
+    """Persist a report atomically enough that readers never accept a partial JSON file."""
+    b13 = report.workflow_waiting_retired_kickback_evidence
+    b13_delivery_path = report.workflow_waiting_retired_kickback_delivery_path
+    b13_marker_directory = report.workflow_waiting_retired_kickback_marker_directory
+    if b13.status == waiting.B13_STATUS_COMPLETE and (
+        not isinstance(b13_delivery_path, Path)
+        or not isinstance(b13_marker_directory, Path)
+        or not (b13_marker_directory / waiting.B13_MARKER_FILE).is_file()
+        or not waiting.verify_b13_delivery(
+            b13,
+            b13_marker_directory / waiting.B13_MARKER_FILE,
+            b13_delivery_path,
+            lambda value: value,
+        )
+    ):
+        report = _b13_report_unproven(
+            report,
+            evidence_failure=waiting.B13_ERROR_SEAL,
+            export_failure=_B13_REPORT_SEAL_FAILURE,
+        )
+    temporary_path = report_path.with_suffix(f"{report_path.suffix}{_REPORT_TEMP_SUFFIX}")
+    payload = _report_payload(report)
+    delivery_path = report.retired_act_delivery_path
+    try:
+        _write_report_payload(report_path, temporary_path, payload)
+    except RuntimeError as error:
+        if report.workflow_waiting_retired_kickback_evidence.status != waiting.B13_STATUS_COMPLETE:
+            raise
+        safe_error = str(error).replace(str(report_path.parent), _SYNTHETIC_RUNTIME_PLACEHOLDER)
+        report = _b13_report_unproven(report, export_failure=_B13_REPORT_WRITE_FAILURE.format(error=safe_error))
+        failure_payload = _report_payload(report)
+        _write_report_payload(report_path, temporary_path, failure_payload)
+        return report
+    try:
+        report_bytes = report_path.read_bytes()
+        report_value = json.loads(report_bytes)
+        if not isinstance(report_value, Mapping):
+            raise ValueError(waiting.B13_ERROR_SEAL)
+        b13_value = report_value.get(_B13_REPORT_EVIDENCE_FIELD)
+        if b13_value != asdict(report.workflow_waiting_retired_kickback_evidence):
+            raise ValueError(waiting.B13_ERROR_SEAL)
+    except (OSError, ValueError, TypeError) as error:
+        if report.workflow_waiting_retired_kickback_evidence.status != waiting.B13_STATUS_COMPLETE:
+            raise RuntimeError(waiting.B13_ERROR_SEAL) from error
+        safe_error = str(error).replace(str(report_path.parent), _SYNTHETIC_RUNTIME_PLACEHOLDER)
+        report = _b13_report_unproven(report, export_failure=_B13_REPORT_READBACK_FAILURE.format(error=safe_error))
+        failure_payload = _report_payload(report)
+        _write_report_payload(report_path, temporary_path, failure_payload)
+        return report
+    if report.workflow_waiting_retired_kickback_evidence.status == waiting.B13_STATUS_COMPLETE and (
+        not isinstance(b13_delivery_path, Path)
+        or not isinstance(b13_marker_directory, Path)
+        or not (b13_marker_directory / waiting.B13_MARKER_FILE).is_file()
+        or not waiting.verify_b13_delivery(
+            report.workflow_waiting_retired_kickback_evidence,
+            b13_marker_directory / waiting.B13_MARKER_FILE,
+            b13_delivery_path,
+            lambda value: value,
+        )
+    ):
+        report = _b13_report_unproven(
+            report,
+            evidence_failure=waiting.B13_ERROR_SEAL,
+            export_failure=_B13_REPORT_SEAL_FAILURE,
+        )
+        failure_payload = _report_payload(report)
+        _write_report_payload(report_path, temporary_path, failure_payload)
+        return report
+    if (
+        report.payload_provisional is None
+        and report.workflow_waiting_retired_kickback_evidence.status == waiting.B13_STATUS_COMPLETE
+    ):
+        assert isinstance(b13_marker_directory, Path)
+        assert isinstance(b13_delivery_path, Path)
+        shutil.rmtree(b13_marker_directory)
+        b13_delivery_path.unlink()
+        descriptor = os.open(b13_delivery_path.parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    if report.payload_provisional is None and isinstance(delivery_path, Path):
+        _retire_delivered_b12_carrier(delivery_path)
+    return report
+
+
+def _validate_b13_report(report: Mapping[str, object], source_revision: str, source_tree: str) -> None:
+    """Validate B13's exact ten-call evidence and embedded external-carrier seal."""
+    b13_value = report.get("workflow_waiting_retired_kickback_evidence")
+    if not isinstance(b13_value, dict):
+        raise ValueError
+    b13 = b13_value
+    b13_fields = {
+        "schema_version",
+        "status",
+        "assertion_path",
+        "assertion_sha256",
+        "issue_revision",
+        "source_revision",
+        "source_tree",
+        "item",
+        "argv",
+        "prerequisites",
+        "before",
+        "response",
+        "readbacks",
+        "attempt_ledger",
+        "carrier",
+        "duration_seconds",
+        "primary_failure",
+        "evidence_failure",
+        waiting.B13_EXPORT_FAILURE_FIELD,
+    }
+    b13_carrier = b13.get("carrier")
+    b13_response = b13.get("response")
+    b13_before = b13.get("before")
+    b13_reads = b13.get("readbacks")
+    b13_ledger = b13.get("attempt_ledger")
+    b13_payload = {key: value for key, value in b13.items() if key != "carrier"}
+    b13_payload_bytes = (
+        json.dumps(b13_payload, sort_keys=True, separators=waiting.B13_JSON_SEPARATORS) + waiting.B13_NEWLINE
+    ).encode(_UTF8)
+    prerequisites = b13.get("prerequisites")
+    actor_data = prerequisites.get(waiting.B13_ACTORS_FIELD, {}) if isinstance(prerequisites, dict) else {}
+    owner_slug = actor_data.get("owner_slug", "") if isinstance(actor_data, dict) else ""
+    waiting_snapshot = b13_before.get("item") if isinstance(b13_before, dict) else None
+    has_admitted, _ = creation.dig(waiting_snapshot, "standing.admitted")
+    if (
+        set(b13) != b13_fields
+        or b13.get("schema_version") != waiting.B13_SCHEMA_VERSION
+        or b13.get("status") != waiting.B13_STATUS_COMPLETE
+        or b13.get("assertion_path") != waiting.B13_ASSERTION_PATH
+        or b13.get("assertion_sha256") != waiting.B13_ASSERTION_SHA
+        or b13.get("issue_revision") != waiting.B13_ISSUE_REVISION
+        or b13.get("source_revision") != source_revision
+        or b13.get("source_tree") != source_tree
+        or b13.get("item") != "b3-item"
+        or b13.get("argv") != list(waiting.B13_CALL_ARGV)
+        or type(b13.get("duration_seconds")) not in (int, float)
+        or not math.isfinite(b13["duration_seconds"])
+        or b13["duration_seconds"] > waiting.B13_SCENARIO_SECONDS
+        or b13.get("primary_failure") != _EMPTY
+        or b13.get("evidence_failure") != _EMPTY
+        or b13.get(waiting.B13_EXPORT_FAILURE_FIELD) != _EMPTY
+        or not isinstance(prerequisites, dict)
+        or actor_data.get("owner") is None
+        or not isinstance(owner_slug, str)
+        or not owner_slug
+        or not isinstance(actor_data.get("first_driver"), str)
+        or not isinstance(actor_data.get("child"), str)
+        or prerequisites.get("first_claim_positive") is not True
+        or prerequisites.get("waiting_act_positive") is not True
+        or prerequisites.get("child_closed") is not True
+        or prerequisites.get("first_driver_live") is not True
+        or prerequisites.get("unresolved_start_attempts") != []
+        or not isinstance(prerequisites.get(waiting.B13_CANDIDATE_FIELD), str)
+        or not prerequisites.get(waiting.B13_CANDIDATE_FIELD)
+        or not isinstance(prerequisites.get(waiting.B13_CONTROL_PATHS_FIELD), list)
+        or not isinstance(b13_before, dict)
+        or creation.dig(waiting_snapshot, "state.lifecycle_phase") != (True, waiting.PHASE_WAITING)
+        or creation.dig(waiting_snapshot, "standing.phase") != (True, waiting.PHASE_WAITING)
+        or creation.dig(waiting_snapshot, "standing.waiting_on") != (True, owner_slug)
+        or creation.dig(waiting_snapshot, "state.active_runner")[1] not in (None, "")
+        or has_admitted
+        or not isinstance(b13_response, dict)
+        or b13_response.get("argv") != list(waiting.B13_CALL_ARGV)
+        or type(b13_response.get("exit_status")) is not int
+        or b13_response.get("exit_status") == 0
+        or b13_response.get("diagnostics") != _EMPTY
+        or b13_response.get(waiting.B13_OPERATION_FIELD) is not None
+        or b13_response.get(waiting.B13_OPERATION_STATUS_FIELD) != waiting.B13_OPERATION_NOT_APPLICABLE
+        or b13_response.get("stdout_sanitized") is not True
+        or b13_response.get("stderr_sanitized") is not True
+        or b13_response.get("diagnostics_sanitized") is not True
+        or b13_response.get("output_truncated") is not False
+        or b13_response.get("stderr_truncated") is not False
+        or not all(isinstance(b13_response.get(key), str) for key in ("output", "stderr", "diagnostics"))
+        or creation.retired_snapshot_state(creation.RETIRED_SNAPSHOT_B13_KICKBACK, b13_response.get("output", ""))
+        is not creation.RetiredSnapshotState.MATCH
+        or not isinstance(b13_reads, list)
+        or len(b13_reads) != 2
+        or not isinstance(b13_ledger, dict)
+        or b13_ledger.get("framing") != waiting.B13_FRAMING_COMPLETE
+        or b13_ledger.get("record_count") != waiting.B13_ATTEMPTS_EXPECTED_RECORDS
+        or b13_ledger.get("read_error") != _EMPTY
+        or b13_ledger.get("parse_error") != _EMPTY
+        or type(b13_ledger.get("original_byte_count")) is not int
+        or b13_ledger.get("original_byte_count") <= 0
+        or not isinstance(b13_ledger.get("original_sha256"), str)
+        or not isinstance(b13_ledger.get("sanitized_text"), str)
+        or type(b13_ledger.get("sanitized_text_truncated")) is not bool
+        or not isinstance(b13_carrier, dict)
+        or b13_carrier.get("carrier_sha256") != hashlib.sha256(b13_payload_bytes).hexdigest()
+        or b13_carrier.get("carrier_byte_count") != len(b13_payload_bytes)
+        or b13_carrier.get("owned") is not True
+        or b13_carrier.get(waiting.B13_ATTEMPTS_PATH_FIELD) != b13_ledger.get("path")
+        or b13_carrier.get(waiting.B13_ATTEMPTS_SHA_FIELD) != b13_ledger.get("original_sha256")
+        or b13_carrier.get(waiting.B13_ATTEMPTS_BYTES_FIELD) != b13_ledger.get("original_byte_count")
+        or type(b13_carrier.get("marker_byte_count")) is not int
+        or b13_carrier.get("marker_byte_count") <= 0
+        or not isinstance(b13_carrier.get("marker_sha256"), str)
+        or b13_carrier.get("sanitized") is not True
+        or b13_carrier.get("carrier_truncated") is not False
+    ):
+        raise ValueError
+    baseline_item = b13_before.get("item")
+    baseline_sessions = b13_before.get("session_ids")
+    baseline_slugs = b13_before.get("slugs")
+    expected_read_argv = [list(argv) for argv in waiting.B13_READ_ARGV]
+    if (
+        b13_before.get("argv") != expected_read_argv
+        or not isinstance(baseline_item, dict)
+        or not isinstance(baseline_sessions, list)
+        or not isinstance(baseline_slugs, list)
+    ):
+        raise ValueError
+    for expected_when, readback in zip(
+        (waiting.B13_OBSERVATION_IMMEDIATE, waiting.B13_OBSERVATION_SETTLED), b13_reads, strict=True
+    ):
+        if (
+            not isinstance(readback, dict)
+            or readback.get("argv") != expected_read_argv
+            or readback.get("when") != expected_when
+            or readback.get("item") != baseline_item
+            or readback.get("session_ids") != baseline_sessions
+            or readback.get("slugs") != baseline_slugs
+        ):
+            raise ValueError
+
+
+def _validate_r4_snapshot_commands(scenario: Mapping[str, object]) -> None:
+    """Require the three retained R4 target commands to match their full reviewed output snapshots."""
+    commands = scenario.get(_COMMAND_EVIDENCE_COMMANDS_FIELD)
+    if not isinstance(commands, list):
+        raise ValueError
+    matched_indices: list[int] = []
+    for expected_arguments, snapshot_id in _R4_SNAPSHOT_COMMANDS:
+        matches = [
+            (index, command)
+            for index, command in enumerate(commands)
+            if isinstance(command, dict)
+            and isinstance(command.get(_COMMAND_EVIDENCE_ARGV_FIELD), list)
+            and command[_COMMAND_EVIDENCE_ARGV_FIELD][1:] == list(expected_arguments)
+        ]
+        if len(matches) != 1:
+            raise ValueError
+        index, command = matches[0]
+        matched_indices.append(index)
+        output = command.get(_COMMAND_EVIDENCE_STDOUT_FIELD)
+        if (
+            type(command.get(_COMMAND_EVIDENCE_EXIT_STATUS_FIELD)) is not int
+            or command[_COMMAND_EVIDENCE_EXIT_STATUS_FIELD] == 0
+            or command.get(_COMMAND_EVIDENCE_DIAGNOSTICS_FIELD) != _EMPTY
+            or not isinstance(output, str)
+            or creation.retired_snapshot_state(snapshot_id, output) is not creation.RetiredSnapshotState.MATCH
+        ):
+            raise ValueError
+    if matched_indices != sorted(matched_indices):
+        raise ValueError
+
+
+def _validate_b12_report(report: Mapping[str, object], source_revision: str, source_tree: str) -> None:
+    """Apply the existing complete B12 evidence checks for either full or selected coverage."""
+    retired = report[creation.B12Field.RETIRED_ACT_EVIDENCE]
+    if not isinstance(retired, dict):
+        raise ValueError
+    retired_fields = {
+        creation.B12Field.SCHEMA_VERSION,
+        creation.B12Field.STATUS,
+        creation.B12Field.SELECTED_AMENDMENT,
+        creation.B12Field.ASSERTION_PATH,
+        creation.B12Field.ASSERTION_SHA256,
+        creation.B12Field.SOURCE_REVISION,
+        creation.B12Field.SOURCE_TREE,
+        creation.B12Field.ISSUE_REVISION,
+        creation.B12Field.ORDERED_CASES,
+        creation.B12Field.ORDERED_CASE_PLAN,
+        creation.B12Field.PREREQUISITES,
+        creation.B12Field.BASELINES,
+        creation.B12Field.CASES,
+        creation.B12Field.CARRIER,
+        creation.B12Field.DURATION_SECONDS,
+        creation.B12Field.PRIMARY_FAILURE,
+        creation.B12Field.EVIDENCE_FAILURE,
+    }
+    if (
+        set(retired) != retired_fields
+        or type(retired[creation.B12Field.SCHEMA_VERSION]) is not int
+        or retired[creation.B12Field.SCHEMA_VERSION] != creation.B12_JSON_SCHEMA
+        or retired[creation.B12Field.STATUS] != creation.B12_STATUS_COMPLETE
+        or retired[creation.B12Field.SELECTED_AMENDMENT] != creation.B12_AMENDMENT
+        or retired[creation.B12Field.ASSERTION_PATH] != creation.B12_ARTIFACT_PATH
+        or retired[creation.B12Field.ASSERTION_SHA256] != creation.B12_ARTIFACT_SHA
+        or retired[creation.B12Field.SOURCE_REVISION] != source_revision
+        or retired[creation.B12Field.SOURCE_TREE] != source_tree
+        or retired[creation.B12Field.ISSUE_REVISION] != creation.B12_ISSUE_REVISION
+        or retired[creation.B12Field.ORDERED_CASES] != [case_id for case_id, _, _ in creation.B12_CASES]
+        or retired[creation.B12Field.ORDERED_CASE_PLAN]
+        != [
+            {
+                creation.B12Field.CASE_ID: case_id,
+                creation.B12Field.ARGV: list(argv),
+                creation.B12Field.RETIRED_TYPE: retired_type,
+            }
+            for case_id, argv, retired_type in creation.B12_CASES
+        ]
+        or not isinstance(retired[creation.B12Field.PREREQUISITES], dict)
+        or not isinstance(retired[creation.B12Field.BASELINES], dict)
+        or not isinstance(retired[creation.B12Field.CARRIER], dict)
+        or retired[creation.B12Field.PRIMARY_FAILURE] != _EMPTY
+        or retired[creation.B12Field.EVIDENCE_FAILURE] != _EMPTY
+        or type(retired[creation.B12Field.DURATION_SECONDS]) not in (int, float)
+        or not math.isfinite(retired[creation.B12Field.DURATION_SECONDS])
+        or retired[creation.B12Field.DURATION_SECONDS] > creation.B12_SCENARIO_SECONDS
+        or retired[creation.B12Field.BASELINES].get(creation.B12Field.STABLE_SHOW_READS) != 2
+        or retired[creation.B12Field.BASELINES].get(creation.B12Field.SEPARATION_SECONDS)
+        != creation.B12_INITIAL_STABILITY_SECONDS
+        or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.S0), dict)
+        or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.B0), list)
+        or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.T0), list)
+        or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.INITIAL_SHOW_READS), list)
+        or len(retired[creation.B12Field.BASELINES][creation.B12Field.INITIAL_SHOW_READS]) != 2
+        or retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.MANUAL_RUNNER) is not True
+        or not isinstance(retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.PROJECT_CWD), str)
+        or not isinstance(retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.CLEARANCE), str)
+        or not isinstance(retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.OWNER_IDENTITY), dict)
+    ):
+        raise ValueError
+    if any(
+        show != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
+        for show in retired[creation.B12Field.BASELINES][creation.B12Field.INITIAL_SHOW_READS]
+    ):
+        raise ValueError
+    retired_cases = retired[creation.B12Field.CASES]
+    if not isinstance(retired_cases, list) or len(retired_cases) != len(creation.B12_CASES):
+        raise ValueError
+    for case, (expected_case_id, expected_argv, expected_type) in zip(retired_cases, creation.B12_CASES, strict=True):
+        if (
+            not isinstance(case, dict)
+            or case.get(creation.B12Field.CASE_ID) != expected_case_id
+            or case.get(creation.B12Field.ARGV) != list(expected_argv)
+            or case.get(creation.B12Field.RETIRED_TYPE) != expected_type
+            or case.get(creation.B12Field.CLASSIFICATION) != creation.B12_CLASS_VERIFIED
+            or case.get(creation.B12Field.OUTCOME) != creation.B12_OUTCOME_COMPLETED
+            or type(case.get(creation.B12Field.EXIT_STATUS)) is not int
+            or case.get(creation.B12Field.EXIT_STATUS) == 0
+            or type(case.get(creation.B12Field.DURATION_SECONDS)) not in (int, float)
+            or not math.isfinite(case[creation.B12Field.DURATION_SECONDS])
+            or case[creation.B12Field.DURATION_SECONDS] < 0
+            or not all(
+                isinstance(case.get(field), str)
+                for field in (creation.B12Field.STDOUT, creation.B12Field.STDERR, creation.B12Field.DIAGNOSTICS)
+            )
+            or case.get(creation.B12Field.OUTPUT_TRUNCATED) is not False
+            or creation.retired_snapshot_state(
+                f"{creation.B12_SNAPSHOT_ID_PREFIX}{expected_case_id}",
+                case.get(creation.B12Field.STDOUT, ""),
+            )
+            is not creation.RetiredSnapshotState.MATCH
+            or type(case.get(creation.B12Field.STDOUT_BYTE_COUNT)) is not int
+            or case.get(creation.B12Field.STDOUT_BYTE_COUNT) < 0
+            or not isinstance(case.get(creation.B12Field.STDOUT_SHA256), str)
+            or case.get(creation.B12Field.EMBEDDED_STDOUT_SHA256)
+            != hashlib.sha256(case[creation.B12Field.STDOUT].encode(_UTF8)).hexdigest()
+            or case.get(creation.B12Field.EMBEDDED_STDOUT_BYTE_COUNT)
+            != len(case[creation.B12Field.STDOUT].encode(_UTF8))
+            or case.get(creation.B12Field.STDERR_CAPTURE) != creation.B12_PTY_CAPTURE
+            or not isinstance(case.get(creation.B12Field.READBACKS), list)
+            or len(case[creation.B12Field.READBACKS]) != 2
+            or not isinstance(case.get(creation.B12Field.BEFORE), dict)
+            or case[creation.B12Field.BEFORE].get(creation.B12Field.ITEM)
+            != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
+            or case[creation.B12Field.BEFORE].get(creation.B12Field.BEFORE_SESSIONS)
+            != retired[creation.B12Field.BASELINES][creation.B12Field.B0]
+            or case[creation.B12Field.BEFORE].get(creation.B12Field.BEFORE_SLUGS)
+            != retired[creation.B12Field.BASELINES][creation.B12Field.T0]
+            or case[creation.B12Field.BEFORE].get(creation.B12Field.PRECALL_DIFFERENCES) != []
+            or not isinstance(case[creation.B12Field.BEFORE].get(creation.B12Field.BEFORE_SHOW_READS), list)
+            or len(case[creation.B12Field.BEFORE][creation.B12Field.BEFORE_SHOW_READS]) != 2
+            or case.get(creation.B12Field.UNCHANGED) is not True
+            or case.get(creation.B12Field.DIFFERENCES) != []
+            or case.get(creation.B12Field.OPERATION_ID) is not None
+            or case.get(creation.B12Field.OPERATION_STATUS) != creation.B12_OPERATION_NOT_APPLICABLE
+            or case.get(creation.B12Field.REFUSAL_FAILURE) != _EMPTY
+            or type(case.get(creation.B12Field.OUTPUT_TRUNCATED)) is not bool
+        ):
+            raise ValueError
+        if any(
+            show != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
+            for show in case[creation.B12Field.BEFORE][creation.B12Field.BEFORE_SHOW_READS]
+        ):
+            raise ValueError
+        for expected_when, readback in zip(
+            (creation.B12_CASE_IMMEDIATE, creation.B12_CASE_SETTLED), case[creation.B12Field.READBACKS], strict=True
+        ):
+            if (
+                not isinstance(readback, dict)
+                or readback.get(creation.B12Field.WHEN) != expected_when
+                or readback.get(creation.B12Field.ITEM) != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
+                or readback.get(creation.B12Field.SESSION_IDS)
+                != retired[creation.B12Field.BASELINES][creation.B12Field.B0]
+                or readback.get(creation.B12Field.SLUGS) != retired[creation.B12Field.BASELINES][creation.B12Field.T0]
+            ):
+                raise ValueError
+    carrier = retired[creation.B12Field.CARRIER]
+    embedded_b12 = json.dumps(
+        {
+            creation.B12Field.BASELINES: retired[creation.B12Field.BASELINES],
+            creation.B12Field.CASES: retired_cases,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=_JSON_SEPARATORS,
+    ).encode(_UTF8)
+    if (
+        carrier.get(creation.B12Field.FRAMING) != creation.B12_FRAMING_COMPLETE
+        or carrier.get(creation.B12Field.LINE_COUNT) != len(creation.B12_CASES) * 3
+        or type(carrier.get(creation.B12Field.ORIGINAL_BYTE_COUNT)) is not int
+        or carrier.get(creation.B12Field.ORIGINAL_BYTE_COUNT) <= 0
+        or not isinstance(carrier.get(creation.B12Field.ORIGINAL_SHA256), str)
+        or type(carrier.get(creation.B12Field.MARKER_BYTE_COUNT)) is not int
+        or carrier.get(creation.B12Field.MARKER_BYTE_COUNT) <= 0
+        or not isinstance(carrier.get(creation.B12Field.MARKER_SHA256), str)
+        or not isinstance(carrier.get(creation.B12Field.MARKER_PATH), str)
+        or type(carrier.get(creation.B12Field.COMPLETED_BYTE_COUNT)) is not int
+        or carrier.get(creation.B12Field.COMPLETED_BYTE_COUNT) <= 0
+        or not isinstance(carrier.get(creation.B12Field.COMPLETED_SHA256), str)
+        or not isinstance(carrier.get(creation.B12Field.COMPLETED_PATH), str)
+        or type(carrier.get(creation.B12Field.COMPLETED_RAW_TEXT_TRUNCATED)) is not bool
+        or carrier.get(creation.B12Field.COMPLETED_READ_ERROR) != _EMPTY
+        or carrier.get(creation.B12Field.EMBEDDED_SCOPE) != creation.B12_EMBEDDED_SCOPE
+        or carrier.get(creation.B12Field.EMBEDDED_SHA256) != hashlib.sha256(embedded_b12).hexdigest()
+        or carrier.get(creation.B12Field.EMBEDDED_BYTE_COUNT) != len(embedded_b12)
+        or carrier.get(creation.B12Field.READ_ERROR) != _EMPTY
+    ):
+        raise ValueError
+
+
+def _validate_report_commands(commands: object) -> None:
+    """Validate the existing command evidence shape without treating expected refusals as successes."""
+    if not isinstance(commands, list):
+        raise ValueError
+    for command in commands:
+        if (
+            not isinstance(command, dict)
+            or set(command) != {"argv", "exit_status", "duration_seconds", "stdout", "stderr", "diagnostics"}
+            or not isinstance(command["argv"], list)
+            or not all(isinstance(part, str) for part in command["argv"])
+            or (command["exit_status"] is not None and type(command["exit_status"]) is not int)
+            or type(command["duration_seconds"]) not in (int, float)
+            or not math.isfinite(command["duration_seconds"])
+            or command["duration_seconds"] < 0
+            or not all(isinstance(command[field], str) for field in ("stdout", "stderr", "diagnostics"))
+        ):
+            raise ValueError
 
 
 def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, source_tree: str) -> None:
@@ -5576,6 +7401,10 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             "scenarios",
             "cleanup",
             "duration_seconds",
+            "selection",
+            "workflow_event_evidence",
+            creation.B12Field.RETIRED_ACT_EVIDENCE,
+            "workflow_waiting_retired_kickback_evidence",
         }
         if (
             not isinstance(report, dict)
@@ -5585,12 +7414,18 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             or report["source_revision"] != source_revision
             or report["source_tree"] != source_tree
             or report["profile"] != _PROFILE_FULL
+            or report["selection"] != []
             or report["scenario_inventory"] != list(_FULL_PROFILE_SCENARIOS)
             or type(report["duration_seconds"]) not in (int, float)
             or not math.isfinite(report["duration_seconds"])
             or report["duration_seconds"] < 0
+            or not isinstance(report["workflow_event_evidence"], dict)
+            or not isinstance(report[creation.B12Field.RETIRED_ACT_EVIDENCE], dict)
+            or not isinstance(report["workflow_waiting_retired_kickback_evidence"], dict)
         ):
             raise ValueError
+        _validate_b12_report(report, source_revision, source_tree)
+        _validate_b13_report(report, source_revision, source_tree)
         scenarios = report["scenarios"]
         if not isinstance(scenarios, list) or len(scenarios) != len(_FULL_PROFILE_SCENARIOS):
             raise ValueError
@@ -5607,19 +7442,9 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
                 or scenario["diagnostics"] != _EMPTY
             ):
                 raise ValueError
-            for command in scenario["commands"]:
-                if (
-                    not isinstance(command, dict)
-                    or set(command) != {"argv", "exit_status", "duration_seconds", "stdout", "stderr", "diagnostics"}
-                    or not isinstance(command["argv"], list)
-                    or not all(isinstance(part, str) for part in command["argv"])
-                    or (command["exit_status"] is not None and type(command["exit_status"]) is not int)
-                    or type(command["duration_seconds"]) not in (int, float)
-                    or not math.isfinite(command["duration_seconds"])
-                    or command["duration_seconds"] < 0
-                    or not all(isinstance(command[field], str) for field in ("stdout", "stderr", "diagnostics"))
-                ):
-                    raise ValueError
+            _validate_report_commands(scenario["commands"])
+            if expected_id == _SCENARIO_WORKFLOW_RETIRED_ACTS:
+                _validate_r4_snapshot_commands(scenario)
         cleanup = report["cleanup"]
         if (
             not isinstance(cleanup, dict)
@@ -5633,15 +7458,218 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
         raise ValueError(_FULL_REPORT_INVALID) from None
 
 
+def _validate_provisional_scenarios(report: JsonObject, selection: frozenset[str]) -> tuple[str, ...]:
+    """Require exact ordered coverage, including honest NOT_RUN entries for unselected journeys."""
+    if selection - set(_FULL_PROFILE_SCENARIOS) or any(
+        not set(_SCENARIO_PREREQUISITES.get(scenario_id, ())) <= selection for scenario_id in selection
+    ):
+        raise ValueError(_FULL_REPORT_INVALID)
+    scenarios = report["scenarios"]
+    if not isinstance(scenarios, list) or len(scenarios) != len(_FULL_PROFILE_SCENARIOS):
+        raise ValueError(_FULL_REPORT_INVALID)
+    covered: list[str] = []
+    for expected_id, value in zip(_FULL_PROFILE_SCENARIOS, scenarios, strict=True):
+        if not isinstance(value, dict) or set(value) != {
+            "scenario_id",
+            "status",
+            "duration_seconds",
+            "commands",
+            "diagnostics",
+        }:
+            raise ValueError(_FULL_REPORT_INVALID)
+        duration = value["duration_seconds"]
+        selected = not selection or expected_id in selection
+        if (
+            value["scenario_id"] != expected_id
+            or type(duration) not in (int, float)
+            or not isinstance(duration, (int, float))
+            or not math.isfinite(duration)
+            or duration < 0
+            or value["status"] != (ScenarioStatus.PASSED.value if selected else ScenarioStatus.NOT_RUN.value)
+            or value["diagnostics"] != (_EMPTY if selected else _SCENARIO_NOT_SELECTED)
+        ):
+            raise ValueError(_FULL_REPORT_INVALID)
+        _validate_report_commands(value["commands"])
+        if not selected:
+            if duration != 0 or value["commands"] != []:
+                raise ValueError(_FULL_REPORT_INVALID)
+            continue
+        covered.append(expected_id)
+        if expected_id == _SCENARIO_WORKFLOW_RETIRED_ACTS:
+            _validate_r4_snapshot_commands(value)
+    return tuple(covered)
+
+
+def _validate_provisional_cleanup_commands(report: JsonObject) -> None:
+    """Require successful recorded public cleanup and the single supported stop, in their actual order."""
+    cleanup = report["cleanup"]
+    if not isinstance(cleanup, dict):
+        raise ValueError(_FULL_REPORT_INVALID)
+    commands = cleanup["commands"]
+    _validate_report_commands(commands)
+    if not isinstance(commands, list) or not commands:
+        raise ValueError(_FULL_REPORT_INVALID)
+    stop_argv = [
+        *_SERVICE_STOP_COMMAND,
+        f"{_STOP_OUTCOME_VARIABLE}={_SYNTHETIC_RUNTIME_PLACEHOLDER}/{_STOP_OUTCOME_NAME}",
+    ]
+    stops: list[int] = []
+    for index, command in enumerate(commands):
+        if (
+            not isinstance(command, dict)
+            or type(command["exit_status"]) is not int
+            or command["exit_status"] != _PROCESS_SUCCESS
+            or command["diagnostics"] != _EMPTY
+        ):
+            raise ValueError(_FULL_REPORT_INVALID)
+        if command["argv"] == stop_argv:
+            stops.append(index)
+    if stops != [len(commands) - 1]:
+        raise ValueError(_FULL_REPORT_INVALID)
+
+
+def _validate_provisional_matrices(report: JsonObject, covered: tuple[str, ...]) -> None:
+    """Reuse the reviewed matrices only for actual coverage; unselected data must remain explicitly unexecuted."""
+    source_revision = report["source_revision"]
+    source_tree = report["source_tree"]
+    if not isinstance(source_revision, str) or not isinstance(source_tree, str):
+        raise ValueError(_FULL_REPORT_INVALID)
+    if _SCENARIO_WORKFLOW_RETIRED_ACTS_B12 in covered:
+        _validate_b12_report(report, source_revision, source_tree)
+    elif report[creation.B12Field.RETIRED_ACT_EVIDENCE] != asdict(
+        creation.empty_retired_act_evidence(source_revision=source_revision, source_tree=source_tree)
+    ):
+        raise ValueError(_FULL_REPORT_INVALID)
+    if _SCENARIO_WORKFLOW_WAITING in covered:
+        _validate_b13_report(report, source_revision, source_tree)
+    elif report["workflow_waiting_retired_kickback_evidence"] != asdict(
+        waiting.empty_b13_evidence(source_revision=source_revision, source_tree=source_tree)
+    ):
+        raise ValueError(_FULL_REPORT_INVALID)
+
+
+def validate_provisional_payload_inputs(report_bytes: bytes, manifest: bytes, package: StaticPackage) -> JsonObject:
+    """Check functional coverage and P3 inputs only; P1/P2, actual P4, retention/release and final acceptance remain separate."""
+    report = parse_object(report_bytes)
+    structure = validate_provisional_bindings(report, manifest, package)
+    if structure["purpose"] != Purpose.APPLICATION.value:
+        raise ValueError(_FULL_REPORT_INVALID)
+    expected_fields = {
+        "schema_version",
+        "source_revision",
+        "source_tree",
+        "profile",
+        "scenario_inventory",
+        "scenarios",
+        "cleanup",
+        "duration_seconds",
+        "selection",
+        "workflow_event_evidence",
+        creation.B12Field.RETIRED_ACT_EVIDENCE,
+        "workflow_waiting_retired_kickback_evidence",
+        "stage",
+        "payload_provisional",
+    }
+    duration = report.get("duration_seconds")
+    if (
+        set(report) != expected_fields
+        or report["scenario_inventory"] != list(_FULL_PROFILE_SCENARIOS)
+        or type(duration) not in (int, float)
+        or not isinstance(duration, (int, float))
+        or not math.isfinite(duration)
+        or duration < 0
+        or not isinstance(report["workflow_event_evidence"], dict)
+    ):
+        raise ValueError(_FULL_REPORT_INVALID)
+    selection = report["selection"]
+    if not isinstance(selection, list) or any(not isinstance(item, str) for item in selection):
+        raise ValueError(_FULL_REPORT_INVALID)
+    selected = frozenset(item for item in selection if isinstance(item, str))
+    if selection != sorted(selected):
+        raise ValueError(_FULL_REPORT_INVALID)
+    covered = _validate_provisional_scenarios(report, selected)
+    _validate_provisional_matrices(report, covered)
+    cleanup = validate_provisional_cleanup(report)
+    _validate_provisional_cleanup_commands(report)
+    sessions = validate_flow_session_closure(report)
+    starts = validate_flow_start_inputs(report)
+    early = validate_early_inputs(report, owner_email=_OWNER_SEED_EMAIL, owner_slug=_OWNER_SEED_SLUG)
+    return {
+        "binding_and_ledger_structure": structure,
+        "functional_coverage": list(covered),
+        "selected_run": bool(selected),
+        "inner_cleanup": cleanup,
+        "shared_flow_sessions": sessions,
+        "shared_flow_starts": starts,
+        "shared_flow_inventory": validate_flow_inventory_inputs(report, sessions, starts),
+        "early_workflow_inputs": early,
+        "public_event_inputs": validate_event_inputs(report, sessions, starts, early),
+    }
+
+
+def _unadmitted_full_report(source_revision: str, source_tree: str, selection: frozenset[str]) -> AcceptanceReport:
+    """Refuse before resource creation; absent enclosure admission supplies no journey or cleanup result."""
+    return AcceptanceReport(
+        schema_version=_REPORT_SCHEMA_VERSION,
+        source_revision=source_revision,
+        source_tree=source_tree,
+        profile=Profile.FULL,
+        scenario_inventory=_FULL_PROFILE_SCENARIOS,
+        scenarios=tuple(
+            ScenarioResult(scenario_id, ScenarioStatus.NOT_RUN, 0.0, diagnostics=_ENCLOSURE_REQUIRED)
+            for scenario_id in _FULL_PROFILE_SCENARIOS
+        ),
+        cleanup=CleanupResult(ScenarioStatus.NOT_RUN, _ENCLOSURE_REQUIRED),
+        duration_seconds=0.0,
+        selection=tuple(sorted(selection)),
+    )
+
+
 def _parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=_CLI_DESCRIPTION)
-    parser.add_argument(_PROFILE_OPTION, choices=[profile.value for profile in Profile], required=True)
+    parser.add_argument(_PROFILE_OPTION, choices=[profile.value for profile in Profile])
     parser.add_argument(_ROOT_OPTION, type=Path, default=Path(_DEFAULT_ROOT))
-    parser.add_argument(_SOURCE_REVISION_OPTION, required=True)
-    parser.add_argument(_SOURCE_TREE_OPTION, required=True)
+    parser.add_argument(_SOURCE_REVISION_OPTION)
+    parser.add_argument(_SOURCE_TREE_OPTION)
+    parser.add_argument(_ENCLOSURE_ROLE_OPTION, choices=[role.value for role in Role])
+    parser.add_argument(_ENCLOSURE_MANIFEST_OPTION, type=Path)
+    parser.add_argument(_ENCLOSURE_ACTION_OPTION, choices=[action.value for action in Action])
+    parser.add_argument(_OBSERVATION_KEY_OPTION)
     default_report = Path(tempfile.gettempdir()) / _REPORT_NAME_TEMPLATE.format(identifier=uuid.uuid4().hex)
     parser.add_argument(_REPORT_OPTION, type=Path, default=default_report)
-    return parser.parse_args(arguments)
+    parser.add_argument(_SELECT_OPTION, default=_EMPTY, help=_SELECT_HELP)
+    parsed = parser.parse_args(arguments)
+    if parsed.enclosure_role is not None and parsed.enclosure_manifest is None:
+        parser.error(_ENCLOSURE_MANIFEST_REQUIRED)
+    if parsed.enclosure_action is not None and parsed.enclosure_role != Role.PRIVILEGED:
+        parser.error(_ENCLOSURE_ACTION_ROLE)
+    if parsed.enclosure_role in (None, Role.PAYLOAD, Role.SUPERVISOR) and not (
+        parsed.profile and parsed.source_revision and parsed.source_tree
+    ):
+        parser.error(_PROFILE_ARGUMENTS_REQUIRED)
+    if parsed.enclosure_role in (Role.PAYLOAD, Role.SUPERVISOR) and parsed.profile != Profile.FULL:
+        parser.error(_ENCLOSED_FULL_REQUIRED)
+    return parsed
+
+
+def _selection_with_prerequisites(requested: str, profile: Profile) -> frozenset[str]:
+    """The scenarios a selected run executes: those asked for and everything they need first."""
+    asked = [part.strip() for part in requested.split(_SELECTION_SEPARATOR) if part.strip()]
+    if not asked:
+        return frozenset()
+    inventory = _FULL_PROFILE_SCENARIOS if profile is Profile.FULL else _COLD_PROFILE_SCENARIOS
+    selected: set[str] = set()
+    for scenario_id in asked:
+        if scenario_id not in inventory:
+            raise SystemExit(_SELECTION_UNKNOWN.format(scenario_id=scenario_id))
+        pending = [scenario_id]
+        while pending:
+            current = pending.pop()
+            if current in selected:
+                continue
+            selected.add(current)
+            pending.extend(_SCENARIO_PREREQUISITES.get(current, ()))
+    return frozenset(selected)
 
 
 def _handle_profile_termination(_signum: int, _frame: FrameType | None) -> None:
@@ -5652,16 +7680,55 @@ def _handle_profile_termination(_signum: int, _frame: FrameType | None) -> None:
 def main(arguments: list[str] | None = None) -> int:
     """Run the requested profile and write a structured result for the checked source."""
     parsed = _parse_arguments(sys.argv[1:] if arguments is None else arguments)
+    role = Role(parsed.enclosure_role) if parsed.enclosure_role is not None else None
+    if role is Role.PRIVILEGED:
+        if parsed.enclosure_action is None:
+            print(_ENCLOSURE_ACTION_REQUIRED, file=sys.stderr)
+            return _PROCESS_FAILURE
+        try:
+            result = run_helper(parsed.enclosure_manifest, Action(parsed.enclosure_action))
+        except (OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError) as error:
+            print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
+            return _PROCESS_FAILURE
+        return _PROCESS_SUCCESS if result.status is EnclosureOutcome.SUCCEEDED else _PROCESS_FAILURE
+    if role is Role.GUEST_POWEROFF:
+        try:
+            outcome = request_guest_poweroff(GuestContext.load(parsed.enclosure_manifest))
+        except (OSError, ValueError, RuntimeError) as error:
+            print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
+            return _PROCESS_FAILURE
+        return _PROCESS_SUCCESS if outcome is GuestShutdownRecord.ACKNOWLEDGED else _PROCESS_FAILURE
+    if role is Role.GUEST_SETUP:
+        try:
+            facts = run_guest_setup(GuestContext.load(parsed.enclosure_manifest, Role.GUEST_SETUP))
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
+            return _PROCESS_FAILURE
+        print(json.dumps(asdict(facts), sort_keys=True))
+        return _PROCESS_SUCCESS
+    if role is not None and role is not Role.PAYLOAD:
+        print(_ENCLOSURE_UNAVAILABLE.format(role=role), file=sys.stderr)
+        return _PROCESS_FAILURE
+    admission = GuestContext.load_payload(parsed.enclosure_manifest) if role is Role.PAYLOAD else None
     selected_profile = Profile(parsed.profile)
     previous_termination_handler = signal.signal(signal.SIGTERM, _handle_profile_termination)
     try:
+        selection = _selection_with_prerequisites(parsed.select, selected_profile)
         report = run_profile(
             selected_profile,
             source_root=parsed.root,
             source_revision=parsed.source_revision,
             source_tree=parsed.source_tree,
+            selection=selection,
+            report_path=parsed.report,
+            payload_admission=admission,
         )
-        write_report(report, parsed.report)
+        report = write_report(report, parsed.report)
+        if report.selection:
+            if report.selection_passed:
+                print(_PARTIAL_PASSED, file=sys.stderr)
+                return _EXIT_PARTIAL
+            return _PROCESS_FAILURE
         return 0 if report.passed else 1
     finally:
         signal.signal(signal.SIGTERM, previous_termination_handler)

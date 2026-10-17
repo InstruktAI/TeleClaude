@@ -31,6 +31,11 @@ from teleclaude.core.reconciliation import FleetCapabilityMap, contraction_answe
 from teleclaude.core.runtime_event_consumers import build_runtime_event_consumers
 from teleclaude.core.runtime_events import INTERNAL_RUNTIME_EVENT_STREAM
 from teleclaude.core.session_cleanup import terminate_session
+from teleclaude.core.workflow_machine.reconciler_consumer import (
+    build_effect_reconciler_consumer,
+    build_head_observer_consumer,
+    observe_and_reconcile,
+)
 from teleclaude.events import (
     Consumer,
     ConsumerRuntime,
@@ -91,6 +96,7 @@ _RETIRED_GROUP_TEMPLATE = "{group}-{computer}"
 _RETIRED_GROUP_DESTROYED_EVENT = "Retired system pipeline consumer group destroyed"
 _RETIRED_GROUP_ABSENT_EVENT = "No stream yet; no retired system pipeline consumer group to destroy"
 _TASK_SCHEDULE_CLOCK_TASK_NAME = "task-schedule-clock"
+_STARTUP_OBSERVATION_TASK = "workflow-startup-observation"
 _EVENT_CONSUMERS_STARTED_EVENT = "Event consumer runtime started"
 _MEMORY_TRANSITION_TASK_NAME = "memory-transition"
 _MEMORY_TRANSITION_LOG_TASK_NAME = "memory_transition"
@@ -222,6 +228,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         return [
             self._build_integration_trigger(),
             build_lifecycle_router_consumer(),
+            build_head_observer_consumer(),
+            build_effect_reconciler_consumer(),
             build_mirror_closure_consumer(),
             build_memory_closure_consumer(),
             build_procedure_activation_consumer(),
@@ -297,6 +305,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             *platform_runtime.supervise(self.task_registry, self.shutdown_event),
             *runtime_runtime.supervise(self.task_registry, self.shutdown_event),
         )
+        self.task_registry.spawn(observe_and_reconcile(), name=_STARTUP_OBSERVATION_TASK)
         logger.info(_EVENT_CONSUMERS_STARTED_EVENT)
 
     async def _handle_discord_runtime_status(self, data: RuntimeSessionStatusData) -> None:

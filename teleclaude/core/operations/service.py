@@ -19,7 +19,6 @@ from sqlalchemy.exc import IntegrityError
 
 from teleclaude.caller_identity import CliCaller
 from teleclaude.config.machine import config
-from teleclaude.constants import RUNNER_NOT_DISPATCHED
 from teleclaude.core.cleanup_step import cleanup_step
 from teleclaude.core.command_dispatch import invoke_command_handler
 from teleclaude.core.dates import parse_iso_datetime
@@ -31,15 +30,16 @@ from teleclaude.core.next_machine.create import next_create
 from teleclaude.core.next_machine.kinds import KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle_runner import (
     DispatchOrigin,
+    LifecycleItemUnavailable,
+    LifecycleLinkLost,
     ManualLifecycleStatus,
     RunnerLane,
     RunnerSkipReason,
-    SessionRunner,
-    default_session_runner,
     dispatch_lifecycle_session,
 )
 from teleclaude.core.next_machine.manual_start import (
     adopt_manual_lifecycle_session,
+    not_dispatched_text,
     resolve_manual_dispatch_intent,
     work_feedback_for_manual_skip,
 )
@@ -70,13 +70,21 @@ from teleclaude.core.operations._outcome import OperationCompletion
 from teleclaude.core.operations._receipt import recovery_command
 from teleclaude.core.operations._relayed_ownership import was_started_by_principal
 from teleclaude.core.operations._rename_payload import ensure_rename_target_matches, rename_payload
+from teleclaude.core.operations.item_verbs import format_manual_lifecycle_reason, run_item_verb
 from teleclaude.core.operations.job_run import JobRunRequest, job_project_path, job_run_payload, run_job_run_operation
 from teleclaude.core.operations.todo_identity import (
+    operation_payload_abandon,
     pin_operation_todo_identity,
     todo_operation_context,
     todo_operation_submission,
 )
 from teleclaude.core.operations.todo_removal import run_todo_remove_operation
+from teleclaude.core.operations.todo_stamp import (
+    StampSubmission,
+    continue_task_run_in_place,
+    run_todo_stamp_operation,
+    todo_stamp_submission,
+)
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.shutdown_drain import OwnedUnit, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
@@ -116,15 +124,8 @@ _HOLDER_AWARE_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
 _FOLLOW_THROUGH_TASK_NAME_TEMPLATE = "operation-follow-through-{operation_id}"
 _OPERATION_WORK_TEMPLATE = "operation:{kind}"
 _FOLLOW_THROUGH_WORK = "operation-follow-through"
-_RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE = "{prefix}: {slug} {reason}"
 _LEASE_TOUCH_FAILED_EVENT = "operation_lease_touch_failed"
 _OPERATION_HEARTBEAT_CLEANUP_COMPONENT = "operation_heartbeat"
-
-
-def _operation_payload_abandon(operation: Operation) -> bool:
-    """Read the ``abandon`` discriminator from a todo-integrate operation's payload; absent reads False."""
-    payload = json.loads(operation.payload_json)
-    return isinstance(payload, dict) and payload.get("abandon") is True
 
 
 _operations_service: OperationsService | None = None
@@ -154,7 +155,6 @@ class OperationsService:
         poll_after_ms: int = 250,
         heartbeat_interval_s: float = 2.0,
         stale_after_s: float = 30.0,
-        lifecycle_client_factory: Callable[[], SessionRunner] = default_session_runner,
     ) -> None:
         self._db = db
         self._task_registry = task_registry
@@ -165,7 +165,6 @@ class OperationsService:
         self._submit_guard = asyncio.Lock()
         self._live_tasks: dict[str, asyncio.Task[None]] = {}
         self._live_guard = asyncio.Lock()
-        self._lifecycle_client_factory = lifecycle_client_factory
         self._pending_startup_recovery: list[Operation] = []
 
     async def start(self) -> None:
@@ -208,13 +207,15 @@ class OperationsService:
         caller_session_id: str,
         client_request_id: str | None,
         addressed_todo_id: str | None = None,
+        reason: str | None = None,
     ) -> SerializedOperation:
         """Create or reattach a receipt-backed manual-start operation.
 
         The single ``/todos/work`` route serves both lanes: the operation kind is
         resolved from the todo's stored ``kind`` so a ``kind=task`` start records a
         ``task_run`` operation (routed to the task-run lane) while every SDLC kind
-        records ``todo_work``. No caller flag selects the lane.
+        records ``todo_work``. No caller flag selects the lane. A reason belongs to the item vocabulary's work verb
+        only: a task run carries none, so its reattachment is the one it always had.
         """
         operation_kind = await self._resolve_work_operation_kind(slug=slug, cwd=cwd)
         payload_json, existing_match_ok, on_existing = todo_operation_submission(
@@ -223,6 +224,7 @@ class OperationsService:
             cwd=cwd,
             addressed_todo_id=addressed_todo_id,
             client_request_id=client_request_id,
+            reason=reason if operation_kind == OperationKind.TODO_WORK else None,
         )
         return await self._submit_operation(
             kind=operation_kind,
@@ -301,7 +303,7 @@ class OperationsService:
             client_request_id=client_request_id,
             payload_json=payload_json,
             abandon=abandon,
-            existing_match_ok=lambda op: _operation_payload_abandon(op) == abandon,
+            existing_match_ok=lambda op: operation_payload_abandon(op) == abandon,
         )
 
     async def submit_todo_create(
@@ -380,6 +382,20 @@ class OperationsService:
             cwd=cwd,
             slug=slug,
             client_request_id=client_request_id,
+            payload_json=payload_json,
+            existing_match_ok=existing_match_ok,
+            on_existing=on_existing,
+        )
+
+    async def submit_todo_stamp(self, request: StampSubmission, caller_session_id: str) -> SerializedOperation:
+        """Create or reattach a receipt-backed todo-stamp operation."""
+        payload_json, existing_match_ok, on_existing = todo_stamp_submission(request)
+        return await self._submit_operation(
+            kind=OperationKind.TODO_STAMP,
+            caller_session_id=caller_session_id,
+            cwd=request.cwd,
+            slug=request.slug,
+            client_request_id=request.client_request_id,
             payload_json=payload_json,
             existing_match_ok=existing_match_ok,
             on_existing=on_existing,
@@ -632,12 +648,13 @@ class OperationsService:
             OperationKind.TODO_WORK: self._run_todo_work,
             OperationKind.TASK_RUN: self._run_task_run,
             OperationKind.TODO_INTEGRATE: lambda op: next_integrate(
-                self._db, op.slug, todo_operation_context(op)[0], abandon=_operation_payload_abandon(op)
+                self._db, op.slug, todo_operation_context(op)[0], abandon=operation_payload_abandon(op)
             ),
-            OperationKind.TODO_CREATE: lambda op: next_create(self._db, op.slug, todo_operation_context(op)[0]),
+            OperationKind.TODO_CREATE: lambda op: next_create(self._db, op.slug, *todo_operation_context(op)),
             OperationKind.TODO_PREPARE: self._run_todo_prepare,
             OperationKind.TODO_RENAME: self._run_todo_rename,
             OperationKind.TODO_REMOVE: lambda op: run_todo_remove_operation(self._db, op),
+            OperationKind.TODO_STAMP: run_todo_stamp_operation,
             OperationKind.SESSION_CLOSE: self._run_command_backed_operation,
             OperationKind.AGENT_RESTART: self._run_command_backed_operation,
             OperationKind.AGENT_HANDOFF: self._run_command_backed_operation,
@@ -848,24 +865,7 @@ class OperationsService:
         return await self._run_todo_lifecycle_operation(
             operation,
             lane=RunnerLane.TASK_RUN,
-            state_machine=lambda op, _cwd: self._continue_task_run_in_place(op),
-        )
-
-    @staticmethod
-    async def _continue_task_run_in_place(operation: Operation) -> str:
-        """In-place continuation for a caller already bound to the task slug.
-
-        A task is normally executed by a dedicated ``/run-task`` worker the
-        bridge dispatches; an operator START is unbound and takes that path. This
-        fallback only fires when the caller session already drives the slug, so it
-        returns the run-task continuation rather than the SDLC work machine.
-        """
-        slug = operation.slug or "<auto>"
-        return (
-            f"TASK_RUNNING: {slug} — execute the next firing from the current task-plan, "
-            "record the result in the log, and stamp the firing's outcome: a success ends "
-            "this session (delivered if one-shot, recorded and resting if recurring); an "
-            "error stays alive as the human-inspection beacon."
+            state_machine=lambda op, _cwd: continue_task_run_in_place(op),
         )
 
     async def _run_todo_lifecycle_operation(
@@ -885,6 +885,9 @@ class OperationsService:
 
         if lane in _HOLDER_AWARE_LANES and await resolve_holder_children_db(todos_db, slug):
             return await state_machine(operation, cwd)
+        item_result = await run_item_verb(operation, lane, caller_session_id, str(project_root), todos_db)
+        if item_result is not None:
+            return item_result
 
         adoption = await adopt_manual_lifecycle_session(
             cwd,
@@ -898,39 +901,31 @@ class OperationsService:
         if adoption.status is ManualLifecycleStatus.ALREADY_DRIVEN:
             raise ClaimConflict(slug=slug, holder=adoption.session_id)
         if adoption.status is ManualLifecycleStatus.SKIPPED:
-            reason = self._format_manual_lifecycle_reason(adoption.reason)
-            return OperationCompletion(
-                _RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE.format(prefix=RUNNER_NOT_DISPATCHED, slug=slug, reason=reason),
-                work_feedback=adoption.work_feedback,
-            )
+            reason = format_manual_lifecycle_reason(adoption.reason)
+            return OperationCompletion(not_dispatched_text(slug, reason), work_feedback=adoption.work_feedback)
 
         intent, skip_reason = await resolve_manual_dispatch_intent(todos_db, slug, requested_lane=lane)
         if intent is None:
             reason = skip_reason.value if skip_reason is not None else RunnerSkipReason.INVALID_KIND.value
             return OperationCompletion(
-                _RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE.format(prefix=RUNNER_NOT_DISPATCHED, slug=slug, reason=reason),
-                work_feedback=work_feedback_for_manual_skip(skip_reason),
+                not_dispatched_text(slug, reason), work_feedback=work_feedback_for_manual_skip(skip_reason)
             )
-        client = self._lifecycle_client_factory()
-        await client.connect()
         try:
             session_id = await dispatch_lifecycle_session(
-                client=client,
                 runtime_db=self._db,
                 todos_db=todos_db,
                 project_path=str(project_root),
                 intent=intent,
                 origin=DispatchOrigin.MANUAL,
             )
-        finally:
-            await client.close()
+        except LifecycleLinkLost as lost:
+            raise ClaimConflict(slug=slug, holder=lost.owner) from lost
+        except LifecycleItemUnavailable:
+            return OperationCompletion(
+                not_dispatched_text(slug, RunnerSkipReason.MISSING_STATE.value),
+                work_feedback=work_feedback_for_manual_skip(RunnerSkipReason.MISSING_STATE),
+            )
         return f"RUNNER_DISPATCHED: {slug} {intent.lane.value} {session_id}"
-
-    @staticmethod
-    def _format_manual_lifecycle_reason(reason: RunnerSkipReason | str | None) -> str:
-        if isinstance(reason, RunnerSkipReason):
-            return reason.value
-        return str(reason)
 
     async def _heartbeat_loop(self, operation_id: str, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():

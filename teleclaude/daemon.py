@@ -41,6 +41,7 @@ _REGISTRY_SHUTDOWN_COMPONENT = "task_registry"
 _LIFECYCLE_SHUTDOWN_COMPONENT = "lifecycle"
 _PREPARED_EXIT_WARNING = "No termination arrived within the grace after drained; completing own shutdown"
 _IDENTITY_DECLARATION_WATCH_ATTR = "identity_declarations_watch_task"
+_CLAIM_RECONCILE_TASK = "reconcile-claim-{slug}"
 _IDENTITY_DECLARATION_WATCH_STOPPED = "Identity declaration watcher stopped"
 _IDENTITY_DECLARATION_WATCHER_STARTED = "Identity declaration watcher started"
 _WORKER_TIMED_OUT = "%s timed out after %.1fs; task was cancelled"
@@ -238,6 +239,7 @@ from teleclaude.core.task_registry import TASK_REGISTRY_SHUTDOWN_TIMEOUT_S, Supe
 _record_import_timing("teleclaude.core.task_registry", _t)
 
 _t = time.perf_counter()
+from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_store.store import WorkflowStore, set_workflow_store_mutation_hook
 
 _record_import_timing("teleclaude.core.todos_db", _t)
@@ -813,6 +815,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     )
                 )
 
+            def _on_claim_changed(slug: str, _prior_holder: str | None, _holder: str | None) -> None:
+                if loop is None or not loop.is_running():
+                    return
+                loop.call_soon_threadsafe(
+                    lambda: self.task_registry.spawn(
+                        reconcile_slug_supervised(project_root, slug), name=_CLAIM_RECONCILE_TASK.format(slug=slug)
+                    )
+                )
+
             def _on_delivered(slug: str, delivery_commit: str | None, delivered_at: str) -> None:
                 if loop is None or not loop.is_running():
                     return
@@ -820,7 +831,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     lambda: asyncio.ensure_future(_emit_delivered(slug, delivery_commit, delivered_at))
                 )
 
-            instance.set_workflow_hooks(_on_mutation, _on_phase_transition, _on_delivered)
+            instance.set_workflow_hooks(_on_mutation, _on_phase_transition, _on_delivered, _on_claim_changed)
 
         set_workflow_store_mutation_hook(_hook)
         logger.info("Todos mutation hook registered (computer=%s)", computer)

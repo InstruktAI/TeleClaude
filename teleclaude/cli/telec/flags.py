@@ -301,6 +301,12 @@ FLAG_TODO_LIST_JSON = Flag(
     "--json", desc="Output as a sectioned JSON object (active/delivered/icebox/removed trees)", arity=SWITCH
 )
 
+FLAG_TODO_WORK_REASON = Flag(
+    "--reason",
+    desc="Why a ready item should not be delivered as it stands; required to work on a ready item, from a session",
+    arity=VALUE,
+)
+
 # =============================================================================
 # todo integrate
 # =============================================================================
@@ -376,6 +382,21 @@ FLAG_TODO_RETURN_REASON = Flag(
     "--reason", desc="Why independently established code-conformance evidence requires another work cycle", arity=VALUE
 )
 FLAG_TODO_RETURN_EVIDENCE = Flag("--evidence", desc="Address of the code-conformance finding", arity=VALUE)
+
+# =============================================================================
+# todo act
+# =============================================================================
+
+FLAG_ACT_SHA = Flag("--sha", desc="The commit the act is bound to (reviewed, finding, stamp)", arity=VALUE)
+FLAG_ACT_REVISION = Flag("--revision", desc="The intent-body revision the prepared act judged", arity=VALUE)
+FLAG_ACT_PERSON = Flag("--person", desc="The person the item waits on, by slug (waiting)", arity=VALUE)
+FLAG_ACT_FINDING = Flag("--finding", desc="The key of the finding a reply answers", arity=VALUE)
+FLAG_ACT_INSTRUCTION = Flag(
+    "--instruction", desc="The key of the instruction a held ready item's release acknowledges", arity=VALUE
+)
+FLAG_ACT_WAIT = Flag(
+    "--wait", desc="The key of the wait a decision answers, as the waiting act reported it", arity=VALUE
+)
 
 # =============================================================================
 # todo stamp
@@ -499,6 +520,14 @@ FLAG_JOB_STATE_JSON = Flag("--state-json", desc="Opaque checkpoint replacement a
 # =============================================================================
 
 FLAG_EVENTS_DOMAIN = Flag("--domain", desc="Filter by owner: the first segment of the type name", arity=VALUE)
+FLAG_EVENTS_TRAIL_MARK = Flag(
+    "--mark", desc="Capture an observation cursor at the end of the retained stream; read nothing", arity=SWITCH
+)
+FLAG_EVENTS_TRAIL_SINCE = Flag(
+    "--since", desc="Read the finite interval after an observation cursor captured with --mark", arity=VALUE
+)
+FLAG_EVENTS_TRAIL_CURSOR = Flag("--cursor", desc="Continue a read inside the interval it pinned", arity=VALUE)
+FLAG_EVENTS_TRAIL_LIMIT = Flag("--limit", desc="Occurrences per page (1-200, default 50)", arity=VALUE)
 
 FLAG_MCP_EXCLUDE = Flag("--exclude", desc="Server slug to omit; repeat for specialized procedures", arity=REPEATED)
 FLAG_MCP_JSON = Flag("--json", desc="Print raw JSON response", arity=SWITCH)

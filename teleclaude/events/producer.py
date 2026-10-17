@@ -28,6 +28,7 @@ from teleclaude.events.envelope import (
 )
 from teleclaude.events.envelope_facts import EnvelopeFactResolver, cli_envelope_fact_resolver, home_owner_of
 from teleclaude.events.references import EventRef, InboundSourceRef, SessionRef
+from teleclaude.events.stream_reader import RedisStreamReader
 from teleclaude.events.wire import LegacyFacts, StreamEvent, encode
 from teleclaude.transport.internal_event_compat import encode_internal_compatibility
 from teleclaude.transport.redis_client import create_redis_client
@@ -165,6 +166,10 @@ class EventProducer:
         result = entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
         logger.info("EventProducer.emit OK: event=%s entry_id=%s", event_type, result)
         return result
+
+    def stream_reader(self) -> RedisStreamReader:
+        """Read the retained stream this producer appends to, through its own client."""
+        return RedisStreamReader(self._redis, self._stream, self._maxlen)
 
     def stream_name(self) -> str:
         """Return the Redis stream used by this producer."""

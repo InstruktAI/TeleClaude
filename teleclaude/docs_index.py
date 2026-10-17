@@ -29,6 +29,7 @@ from teleclaude.entry_declarations import (
     DispatchPayload,
     EntryKey,
     ParameterPayload,
+    WorkflowPayload,
     entry_payload,
     parse_entry_declarations,
 )
@@ -137,6 +138,7 @@ class SnippetEntry(TypedDict):
     role: NotRequired[str]
     parameters: NotRequired[list[ParameterPayload]]
     dispatch: NotRequired[DispatchPayload]
+    workflow: NotRequired[WorkflowPayload]
 
 
 class IndexPayload(TypedDict):
@@ -207,6 +209,8 @@ def _copy_entry_declarations(entry: SnippetEntry, metadata: Mapping[str, object]
         entry[EntryKey.PARAMETERS.value] = payload[EntryKey.PARAMETERS.value]
     if EntryKey.DISPATCH.value in payload:
         entry[EntryKey.DISPATCH.value] = payload[EntryKey.DISPATCH.value]
+    if EntryKey.WORKFLOW.value in payload:
+        entry[EntryKey.WORKFLOW.value] = payload[EntryKey.WORKFLOW.value]
 
 
 def _extract_description_from_md(file_path: Path) -> str:

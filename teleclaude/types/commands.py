@@ -948,6 +948,7 @@ class RelayRequestCommand(InternalCommand):
     caller_session_id: str | None = None
     caller_computer: str | None = None
     cleared_command: str | None = None
+    start_key: str | None = None
 
     def to_payload(self) -> dict[str, object]:
         return {"method": self.method, "path": self.path}

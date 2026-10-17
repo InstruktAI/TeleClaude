@@ -20,7 +20,13 @@ from teleclaude.core.next_machine.code_conformance_return import (
 from teleclaude.core.next_machine.session_hold import notify_runner_of_gate_approval
 from teleclaude.core.next_machine.stamps import apply_todo_stamp, is_human_gate_stamp, stamp_follow_through
 from teleclaude.core.next_machine.state_mutation import StateMutationError
+from teleclaude.core.workflow_machine.previous_acts import (
+    RETURN_TO_WORK,
+    PreviousActRefused,
+    refuse_previous_machine_act,
+)
 from teleclaude.git import GitCommandError
+from teleclaude.project_root import resolve_project_root
 from teleclaude.types.todo_return import (
     TodoReturnToWorkApiRoute,
     TodoReturnToWorkRequestField,
@@ -54,6 +60,12 @@ async def todo_return_to_work(
         raise HTTPException(status_code=400, detail=_RETURN_TO_WORK_CWD_REQUIRED)
     _validate_slug_for_update(slug, field_name=TodoReturnToWorkRequestField.SLUG.value)
     caller_id = identity.session_id or _human_gate_caller_stamp_id(identity)
+    try:
+        await refuse_previous_machine_act(str(resolve_project_root(cwd)), slug, RETURN_TO_WORK)
+    except PreviousActRefused as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         await return_to_work_for_code_conformance(
             cwd=cwd,
@@ -100,6 +112,12 @@ async def todo_stamp(
         caller_id = _human_gate_caller_stamp_id(identity)
     else:
         caller_id = identity.session_id or _human_gate_caller_stamp_id(identity)
+    try:
+        await refuse_previous_machine_act(str(resolve_project_root(cwd)), slug, stamp_type)
+    except PreviousActRefused as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         await apply_todo_stamp(
             cwd=cwd,

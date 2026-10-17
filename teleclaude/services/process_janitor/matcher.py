@@ -146,6 +146,21 @@ def default_policy_specs(default_ttl_seconds: int, *, dry_run_default: bool) -> 
     ]
 
 
+def descriptor_of(pid: int) -> ProcessDescriptor:
+    """Read one process's descriptor now; a process that cannot be read still yields one, so a signal is never unrecorded."""
+    try:
+        proc = psutil.Process(pid)
+        return ProcessDescriptor(
+            pid=pid,
+            ppid=int(proc.ppid()),
+            create_time=float(proc.create_time()),
+            cmdline=tuple(str(part) for part in proc.cmdline()),
+            uid=int(proc.uids().real),
+        )
+    except psutil.Error:
+        return ProcessDescriptor(pid=pid, ppid=0, create_time=0.0, cmdline=(), uid=os.getuid())
+
+
 def load_process_table() -> list[ProcessDescriptor]:
     """Read the host process table into immutable descriptors."""
     rows: list[ProcessDescriptor] = []

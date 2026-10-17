@@ -101,7 +101,7 @@ def handle_todo_prepare(args: list[str]) -> None:
 def handle_todo_work(args: list[str]) -> None:
     """Run the Phase B (work) state machine.
 
-    Usage: telec todo work [<slug>]
+    Usage: telec todo work [<slug>] [--reason <text>]
 
     Executes the build/review/fix cycle for the provided work item slug.
     Dispatches worker agents for build, review, or fix-review phases as
@@ -115,9 +115,11 @@ def handle_todo_work(args: list[str]) -> None:
 
     Options:
       <slug>       Work item slug for the current orchestrator session
+      --reason     Why a ready item should not be delivered as it stands (required on a ready item)
 
     Examples:
       telec todo work my-feature
+      telec todo work my-feature --reason "the spec changed after the stamp"
     """
     parsed = parse_command_args(TODO_WORK, args)
     slug = _parse_single_slug(parsed)
@@ -127,6 +129,9 @@ def handle_todo_work(args: list[str]) -> None:
     }
     if slug is not None:
         body["slug"] = slug
+    reason = parsed.value(F.FLAG_TODO_WORK_REASON)
+    if reason:
+        body["reason"] = reason
 
     render_receipt(tool_api_call("POST", "/todos/work", json_body=body))
 

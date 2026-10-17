@@ -215,6 +215,7 @@ async def todo_work_by_id(
     todo_id: str,
     cwd: Annotated[str, Body()],
     client_request_id: Annotated[str | None, Body()] = None,
+    reason: Annotated[str | None, Body()] = None,
     identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation:
     """Submit work for exactly the identified todo row."""
@@ -229,6 +230,7 @@ async def todo_work_by_id(
             caller_session_id=identity.session_id,
             client_request_id=client_request_id,
             addressed_todo_id=todo_id,
+            reason=reason,
         ),
     )
 

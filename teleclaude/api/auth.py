@@ -231,7 +231,7 @@ async def resolve_caller_provenance(identity: CallerIdentity) -> CallerProvenanc
     """Build session provenance from the caller's session record when present."""
     if not identity.session_id:
         return None
-    session = await db.get_session(identity.session_id)
+    session = None if get_relayed_caller() is not None else await db.get_session(identity.session_id)
     if session is None:
         return _relayed_caller_provenance(identity.session_id)
     author = resolve_session_event_author(

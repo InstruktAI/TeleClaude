@@ -49,6 +49,10 @@ class LifecyclePhase(str, Enum):
     FINALIZE_READY = "finalize_ready"
     DELIVERED = "delivered"
     TASK_RUNNING = "task_running"
+    PREPARATION = "preparation"
+    WAITING = "waiting"
+    WORK = "work"
+    READY = "ready"
 
 
 class DriftClass(StrEnum):

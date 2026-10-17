@@ -20,11 +20,11 @@ from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_REQUIREMENTS,
 )
+from teleclaude.core.integration.admission import admit_candidate
 from teleclaude.core.integration.candidate_scan import (
     CandidateKey,
     CandidateStateReadError,
     _scan_finalize_ready_candidates,
-    _stamp_integration_started,
     _sweep_stale_artifacts,
     _verify_slug_ready,
 )
@@ -34,6 +34,7 @@ from teleclaude.core.integration.checkpoint import (
     _get_candidate_key,
     _now_iso,
     _write_checkpoint,
+    pending_retirements,
 )
 from teleclaude.core.integration.delivery_fold import assert_clean_before_push, reassert_delivered_fold
 from teleclaude.core.integration.formatters import (
@@ -65,6 +66,7 @@ from teleclaude.core.integration.lease import UNKNOWN_LEASE_HOLDER, IntegrationL
 from teleclaude.core.integration.lifecycle_events import (
     _EVENT_INTEGRATION_DRAIN_COMPLETED,
     _emit_lifecycle_event,
+    _tls,
     _workflow_home_for_path,
 )
 from teleclaude.core.integration.park import (
@@ -72,6 +74,7 @@ from teleclaude.core.integration.park import (
     _TEXTUAL_CONFLICT_PARK_REASON,
     _format_content_gate_conflict_or_invariant_error,
     _park_candidate,
+    complete_retirements,
 )
 from teleclaude.core.integration.push_recovery import _is_content_gate_rejection
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
@@ -87,6 +90,7 @@ from teleclaude.runtime.environment import resolve_runtime_environment
 logger = get_logger(__name__)
 
 _INTEGRATION_LEASE_KEY = "integration/main"
+_ADMISSION_RETRY = "\nThe item changed after the scan; call the integration step again to rescan."
 _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 _GIT_DIFF_UNMERGED_ARGS = ("diff", "--name-only", "--diff-filter=U")
@@ -185,15 +189,19 @@ def _step_idle(
     reconcile_worktree_homes(Path(cwd), at_startup=False)
     remove_vanished_worktree_trust(Path(cwd))
 
+    complete_retirements(checkpoint, checkpoint_path, cwd)
     exclude = checkpoint.candidate_slug
     parked_slugs = {parked["slug"] for parked in checkpoint.parked}
+    retiring = pending_retirements(checkpoint)
 
     try:
         if slug is not None:
-            candidate = _verify_slug_ready(cwd, slug, parked_slugs=parked_slugs)
+            candidate = _verify_slug_ready(cwd, slug, parked_slugs=parked_slugs, retiring=retiring)
             candidates = [candidate] if candidate else []
         else:
-            candidates = _scan_finalize_ready_candidates(cwd, parked_slugs=parked_slugs, exclude_slug=exclude)
+            candidates = _scan_finalize_ready_candidates(
+                cwd, parked_slugs=parked_slugs, exclude_slug=exclude, retiring=retiring
+            )
     except CandidateStateReadError as exc:
         return False, _format_error("CANDIDATE_STATE_READ_FAILED", str(exc))
 
@@ -232,14 +240,18 @@ def _step_idle(
     lease_token = acquire_result.lease.lease_token
     key = candidates[0].key
     now = _now_iso()
+    admission = admit_candidate(cwd, key, session_id, getattr(_tls, "loop", None), retiring=retiring)
+    if admission.refused:
+        _try_release_lease(lease_store, session_id, lease_token)
+        return False, _format_error("CANDIDATE_ADMISSION_REFUSED", admission.refused + _ADMISSION_RETRY)
     checkpoint.phase = IntegrationPhase.CANDIDATE_DEQUEUED.value
     checkpoint.candidate_slug = key.slug
     checkpoint.candidate_branch = key.branch
     checkpoint.candidate_sha = key.sha
+    checkpoint.candidate_attempt = admission.attempt or None
     checkpoint.lease_token = lease_token
     checkpoint.started_at = now
     _write_checkpoint(checkpoint_path, checkpoint)
-    _stamp_integration_started(cwd, key.slug)
 
     logger.info("%s slug=%s phase=CANDIDATE_DEQUEUED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
     _emit_lifecycle_event(
@@ -293,7 +305,7 @@ def _do_merge(
         _write_checkpoint(checkpoint_path, checkpoint)
         return True, ""
 
-    rc, _, merge_stderr = _run_git(["merge", "--squash", key.branch], cwd=wt)
+    rc, _, merge_stderr = _run_git(["merge", "--squash", key.sha], cwd=wt)
 
     # Guard: squash merge produced no content changes — candidate already integrated.
     # Catches squash merges where ancestry check (above) doesn't fire because
@@ -349,7 +361,7 @@ def _do_merge(
     if rc == 0:
         # Read stats from integration worktree, context from repo root
         diff_stats = _get_diff_stats(wt)
-        branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
+        branch_log = _get_branch_log(wt, key.sha, base_ref="origin/main")
         requirements = _read_artifact_safe(cwd, key.slug, ARTIFACT_REQUIREMENTS)
         impl_plan = _read_artifact_safe(cwd, key.slug, ARTIFACT_IMPLEMENTATION_PLAN)
 
@@ -435,6 +447,7 @@ def _step_awaiting_commit(
             key=key,
             reason=_HELD_UNCOMMITTED_PARK_REASON,
             home=_workflow_home_for_path(cwd),
+            cwd=cwd,
         )
 
     # Check for unresolved merge conflicts first (in integration worktree)
@@ -465,7 +478,7 @@ def _step_awaiting_commit(
     merge_type = (checkpoint.error_context or {}).get("merge_type", "conflicted")
     if merge_type == "clean":
         diff_stats = _get_diff_stats(wt)
-        branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
+        branch_log = _get_branch_log(wt, key.sha, base_ref="origin/main")
         requirements = _read_artifact_safe(cwd, key.slug, ARTIFACT_REQUIREMENTS)
         impl_plan = _read_artifact_safe(cwd, key.slug, ARTIFACT_IMPLEMENTATION_PLAN)
         return False, _format_commit_decision(
@@ -498,6 +511,7 @@ def _step_awaiting_commit(
                     key=key,
                     reason=_TEXTUAL_CONFLICT_PARK_REASON,
                     home=_workflow_home_for_path(cwd),
+                    cwd=cwd,
                 )
         return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt)
 

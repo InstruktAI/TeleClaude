@@ -31,6 +31,7 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.db._control_delivery import ProcedureEventRecord
 from teleclaude.core.db._sync import SessionIdentityError, resolve_session_principal
+from teleclaude.core.db_models import ProcedureEventDeliveryOutcome
 from teleclaude.core.inbound.models import InboundSessionPolicy
 from teleclaude.core.inbound.resolver import resolve_or_create_bound_session
 from teleclaude.core.models import (
@@ -43,7 +44,7 @@ from teleclaude.core.models import (
 from teleclaude.core.models._adapter import session_is_unattended
 from teleclaude.core.operations._kinds import OperationKind
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.procedure_entry import EntryRefusal, activation_entry, resolve_entry
+from teleclaude.core.procedure_entry import EntryRefusal, activation_entry, declared_parameters, resolve_entry
 from teleclaude.core.procedure_event_delivery import (
     ProcedureActivationFailureReason,
     ProcedureActivationTerminalError,
@@ -52,13 +53,25 @@ from teleclaude.core.procedure_event_delivery import (
 )
 from teleclaude.core.session_revival import revive_session, session_is_resumable
 from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.workflow_machine.publication import DriverInitialization, driver_initialization
+from teleclaude.core.workflow_machine.single_claim import (
+    EventFacts,
+    ItemFacts,
+    declares_single_claim,
+    entitled_to_request,
+    event_facts,
+    judge,
+    read_item_facts,
+)
 from teleclaude.docs_subscriptions import (
     ProcedureDeliverySettings,
     SubscriptionAttendance,
     SubscriptionHomeKind,
     SubscriptionIdentity,
 )
+from teleclaude.entry_declarations import SessionMode
 from teleclaude.events.envelope import ReceivedEvent
+from teleclaude.events.references import EventRef
 from teleclaude.paths import REPO_ROOT
 from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.commands import ActivateProcedureCommand, CreateSessionCommand
@@ -66,6 +79,7 @@ from teleclaude.types.procedure_delivery import (
     BINDING_SECTION,
     ActivationOutcome,
     BindingField,
+    NotDeliveredReason,
     ProcedureActivationResult,
     ProcedureSessionDeliveryInitialization,
 )
@@ -74,6 +88,7 @@ logger = get_logger(__name__)
 
 _PROCEDURE_ACTIVATION_RESOLVED_EVENT = "procedure_activation_resolved"
 _PROCEDURE_ACTIVATION_FAILED_EVENT = "procedure_activation_failed"
+_PROCEDURE_ACTIVATION_NOT_DELIVERED_EVENT = "procedure_activation_not_delivered"
 _PROCEDURE_ACTIVATION_FAILURE_REASON_TEMPLATE = "{reason}: {detail}"
 _CANDIDATE_UNRESOLVABLE_EVENT = "procedure_activation_candidate_unresolvable"
 _SESSION_ID_FIELD = "session_id"
@@ -82,6 +97,7 @@ _CREATE_RETURNED_NO_SESSION_ERROR = "procedure activation session creation retur
 _CREATED_SESSION_MISSING_ERROR = "procedure activation session row missing: {session_id}"
 _REVIVAL_FAILED_ERROR = "procedure activation could not revive session {session_id} bound to {subject}"
 _INITIAL_INPUT_TEMPLATE = "{procedure_id} {home}"
+_INITIAL_INPUT_ARGUMENTS_TEMPLATE = "{procedure_id} {arguments}"
 _NO_SESSION_ERROR = "procedure activation could not resolve a session: {procedure_id} / {home}"
 
 _activation_locks: dict[tuple[str, str], asyncio.Lock] = {}
@@ -207,17 +223,28 @@ async def _create_agent(
     folder: Path,
     attendance: SubscriptionAttendance,
     subject: str | None = None,
+    own_row_only: bool = False,
+    initialization: DriverInitialization | None = None,
+    single_claim: bool = False,
 ) -> Session:
     """Start the procedure's agent in the home's folder and return its session.
 
-    An unattended procedure's agent is stamped unattended in the creating write.
+    An unattended procedure's agent is stamped unattended in the creating write. A procedure that declares
+    parameters and is activated for a subject receives the subject's identity as its argument (a lifecycle driver is
+    started for exactly the item the request names), and its session is titled by that identity; a procedure that
+    declares none receives no argument.
     """
     procedure_id = cmd.procedure_id
     session_id = str(uuid.uuid4())
+    initialization = initialization or driver_initialization(procedure_id)
     try:
+        declared = declared_parameters(
+            procedure_token=procedure_id, project_root=folder, pinned=initialization.declarations
+        )
+        arguments = EventRef.from_token(subject).identity if subject is not None and declared else ""
         resolved = resolve_entry(
             procedure_token=procedure_id,
-            arguments="",
+            arguments=arguments,
             project_root=folder,
             caller=None,
             entry=activation_entry(
@@ -226,16 +253,19 @@ async def _create_agent(
                 subject=subject,
                 attendance=attendance,
                 delivery=ProcedureDeliverySettings(event_delivery=cmd.event_delivery, interruptible=cmd.interruptible),
+                workflow_publication=initialization.snapshot,
             ),
+            pinned=initialization.declarations,
             caller_mode=None,
         )
     except EntryRefusal as exc:
         raise ProcedureActivationTerminalError(
             ProcedureActivationFailureReason.PROCEDURE_UNAVAILABLE, exc.detail
         ) from exc
-    pending_events = await db.list_procedure_events(
-        responsibility_key=activation.responsibility_key,
-        include_suspended=True,
+    pending_events = (
+        []
+        if own_row_only
+        else await db.list_procedure_events(responsibility_key=activation.responsibility_key, include_suspended=True)
     )
     activation_ids = tuple(event.activation_id for event in pending_events)
     if activation.activation_id not in activation_ids:
@@ -244,7 +274,11 @@ async def _create_agent(
         session_id=session_id,
         project_path=str(folder),
         origin=InputOrigin.TERMINAL.value,
-        initial_input=_INITIAL_INPUT_TEMPLATE.format(procedure_id=procedure_id, home=home.to_token()),
+        initial_input=(
+            _INITIAL_INPUT_ARGUMENTS_TEMPLATE.format(procedure_id=procedure_id, arguments=arguments)
+            if arguments
+            else _INITIAL_INPUT_TEMPLATE.format(procedure_id=procedure_id, home=home.to_token())
+        ),
         command=resolved.procedure_id,
         role=resolved.role.name.value,
         job=resolved.entry.job,
@@ -265,6 +299,7 @@ async def _create_agent(
                     BindingField.PROCEDURE.value: procedure_id,
                     BindingField.HOME.value: home.to_token(),
                     BindingField.SUBJECT.value: subject,
+                    **({BindingField.SESSION_MODE.value: SessionMode.SINGLE_CLAIM.value} if single_claim else {}),
                 }
             }
             if subject is not None
@@ -293,6 +328,13 @@ async def _create_agent(
             _CREATED_SESSION_MISSING_ERROR.format(session_id=session_id_raw),
         )
     return session
+
+
+@dataclass(frozen=True)
+class _NotDelivered:
+    """An activation of a single-claim responsibility that delivers nothing, by decision."""
+
+    reason: NotDeliveredReason
 
 
 @dataclass(frozen=True)
@@ -336,8 +378,79 @@ async def _resolve_home_agent(
     return _Resolution(session, ActivationOutcome.STARTED if is_new else ActivationOutcome.WOKEN, candidate_count)
 
 
+async def _item_for_home(folder: Path, facts: EventFacts) -> ItemFacts | None:
+    """The item the event names, only when the event's project is the home's own."""
+    if facts.project_path and Path(facts.project_path).resolve() != folder.resolve():
+        return None
+    return await read_item_facts(folder, facts.slug)
+
+
+async def _resolve_single_claim(
+    cmd: ActivateProcedureCommand,
+    activation: ProcedureEventRecord,
+    home: ActivationHome,
+    folder: Path,
+    initialization: DriverInitialization,
+) -> _Resolution | _NotDelivered:
+    """A request starts or wakes a driver for the current reservation; a notice reaches only the holder.
+
+    A closed session is never revived. A fresh session takes only the row of this activation.
+    """
+    subject = _subject_token(cmd)
+    facts = event_facts(cmd.event_json)
+    item = await _item_for_home(folder, facts)
+    open_session, _closed = await _find_bound_sessions(cmd.procedure_id, home, folder, subject)
+    reason = judge(facts, item, open_session.session_id if open_session is not None else "")
+    if reason is not None:
+        return _NotDelivered(reason)
+    if not facts.is_request:
+        if open_session is None:
+            return _NotDelivered(NotDeliveredReason.NO_HOLDER)
+        return _Resolution(open_session, ActivationOutcome.WOKEN, 1)
+    if open_session is not None and await entitled_to_request(open_session.session_id, facts.slug, facts.request_key):
+        return _Resolution(open_session, ActivationOutcome.WOKEN, 1)
+    created = await _create_agent(
+        cmd,
+        activation,
+        home,
+        folder,
+        cmd.attendance,
+        subject=subject,
+        own_row_only=True,
+        initialization=initialization,
+        single_claim=True,
+    )
+    return _Resolution(created, ActivationOutcome.STARTED, 0)
+
+
+async def _settle_unassigned_backlog(activation: ProcedureEventRecord, folder: Path, session: Session) -> None:
+    """Judge each unassigned row of the responsibility by the same two rules applied to its own event.
+
+    A row that qualifies is the session's own and is assigned to it; a request for another key is ``stale request`` and a
+    notice with no holder yet is ``no holder``. No row is ended as a blanket supersession of a backlog.
+    """
+    rows = await db.list_unassigned_responsibility_events(responsibility_key=activation.responsibility_key)
+    for row in rows:
+        if row.activation_id == activation.activation_id:
+            continue
+        facts = event_facts(row.event_json)
+        reason = judge(facts, await _item_for_home(folder, facts), session.session_id if _is_open(session) else "")
+        if reason is not None:
+            await db.not_deliver_procedure_event(activation_id=row.activation_id, reason=reason.value)
+        else:
+            await db.assign_procedure_events_unless_closed(
+                activation_ids=[row.activation_id],
+                session_id=session.session_id,
+                reason=NotDeliveredReason.SESSION_CLOSED.value,
+            )
+
+
 async def _resolve_subject_agent(
-    cmd: ActivateProcedureCommand, activation: ProcedureEventRecord, home: ActivationHome, folder: Path
+    cmd: ActivateProcedureCommand,
+    activation: ProcedureEventRecord,
+    home: ActivationHome,
+    folder: Path,
+    initialization: DriverInitialization,
 ) -> _Resolution:
     """The agent bound to the event's subject: woken when open, revived when closed and attended, otherwise started and bound."""
     procedure_id = cmd.procedure_id
@@ -359,7 +472,9 @@ async def _resolve_subject_agent(
                 _CREATED_SESSION_MISSING_ERROR.format(session_id=closed_session.session_id),
             )
         return _Resolution(revived, ActivationOutcome.REVIVED, candidate_count)
-    created = await _create_agent(cmd, activation, home, folder, cmd.attendance, subject=subject)
+    created = await _create_agent(
+        cmd, activation, home, folder, cmd.attendance, subject=subject, initialization=initialization
+    )
     return _Resolution(created, ActivationOutcome.STARTED, candidate_count)
 
 
@@ -379,8 +494,31 @@ async def activate(cmd: ActivateProcedureCommand) -> ProcedureActivationResult:
         activation = await accept_procedure_activation(cmd)
         try:
             folder = _home_folder(home)
-            if cmd.identity is SubscriptionIdentity.SUBJECT:
-                resolution = await _resolve_subject_agent(cmd, activation, home, folder)
+            initialization = driver_initialization(procedure_id)
+            single_claim = cmd.identity is SubscriptionIdentity.SUBJECT and declares_single_claim(
+                initialization.declarations
+            )
+            if single_claim:
+                decided = await _resolve_single_claim(cmd, activation, home, folder, initialization)
+                if isinstance(decided, _NotDelivered):
+                    await db.not_deliver_procedure_event(
+                        activation_id=activation.activation_id, reason=decided.reason.value
+                    )
+                    logger.info(
+                        _PROCEDURE_ACTIVATION_NOT_DELIVERED_EVENT,
+                        procedure_id=procedure_id,
+                        home=home.to_token(),
+                        activation_id=activation.activation_id,
+                        reason=decided.reason.value,
+                    )
+                    return {
+                        "session_id": "",
+                        "outcome": ActivationOutcome.NOT_DELIVERED,
+                        "reason": decided.reason.value,
+                    }
+                resolution = decided
+            elif cmd.identity is SubscriptionIdentity.SUBJECT:
+                resolution = await _resolve_subject_agent(cmd, activation, home, folder, initialization)
             else:
                 resolution = await _resolve_home_agent(cmd, activation, home, folder, cmd.attendance)
         except ProcedureActivationTerminalError as exc:
@@ -404,7 +542,22 @@ async def activate(cmd: ActivateProcedureCommand) -> ProcedureActivationResult:
                 reason=exc.reason.value,
             )
             raise
-        if resolution.outcome is not ActivationOutcome.STARTED:
+        if single_claim:
+            if resolution.outcome is not ActivationOutcome.STARTED:
+                assigned = await db.assign_procedure_events_unless_closed(
+                    activation_ids=[activation.activation_id],
+                    session_id=resolution.session.session_id,
+                    reason=NotDeliveredReason.SESSION_CLOSED.value,
+                )
+                if ProcedureEventDeliveryOutcome.NOT_DELIVERED in assigned:
+                    return {
+                        "session_id": "",
+                        "outcome": ActivationOutcome.NOT_DELIVERED,
+                        "reason": NotDeliveredReason.SESSION_CLOSED.value,
+                    }
+            await _settle_unassigned_backlog(activation, folder, resolution.session)
+            await wake_procedure_events_if_pending(session_id=resolution.session.session_id)
+        elif resolution.outcome is not ActivationOutcome.STARTED:
             await db.reassign_procedure_events(
                 responsibility_key=activation.responsibility_key,
                 session_id=resolution.session.session_id,

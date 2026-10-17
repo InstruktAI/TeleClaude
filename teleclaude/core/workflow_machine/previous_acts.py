@@ -1,0 +1,123 @@
+"""The acts only the previous machine knew, refused for an item this machine drives.
+
+``local/projects/teleclaude/spec/feature/workflow/item-lifecycle`` (UC-IL12) is the contract: a verb that applies an approval, return or handoff
+act that only the previous machine knew is refused, naming the item's phase and door, and no phase moves. A replacement act is named only where
+one exists. The creative gate
+stamps and the task stamps belong to lanes that stay, and a todo of kind task or a delivered item is not driven by this machine.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Final
+
+from teleclaude.core.workflow_machine.doors import door_for
+from teleclaude.core.workflow_machine.lane import resolve_lane
+from teleclaude.core.workflow_machine.phase_reading import read_phase
+from teleclaude.core.workflow_machine.single_claim import started_session_for
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
+from teleclaude.types.todos import TodoState
+from teleclaude.types.workflow_record import Act, Phase
+
+
+class PreviousStamp(StrEnum):
+    """The stamp types the previous machine owned."""
+
+    VERDICT = "verdict"
+    FINALIZE_READY = "finalize_ready"
+    DEFERRALS_PROCESSED = "deferrals_processed"
+    REQUIREMENTS_READY = "requirements_ready"
+    PLAN_READY = "plan_ready"
+    PRD_APPROVED = "prd_approved"
+    DIAGNOSIS_SETTLED = "diagnosis_settled"
+    DIAGNOSIS_UNRESOLVED = "diagnosis_unresolved"
+    ARCHITECTURE_SKIPPED = "architecture_skipped"
+    DRIFT_REVIEWED = "drift_reviewed"
+    BUILD_COMPLETE = "build_complete"
+    KICKBACK = "kickback"
+
+
+RETURN_TO_WORK: Final = "return_to_work"
+_REPLACING_ACT: Final[dict[str, str | None]] = {
+    PreviousStamp.VERDICT: None,
+    PreviousStamp.FINALIZE_READY: Act.STAMP.value,
+    PreviousStamp.DEFERRALS_PROCESSED: None,
+    PreviousStamp.REQUIREMENTS_READY: Act.PREPARED.value,
+    PreviousStamp.PLAN_READY: Act.PREPARED.value,
+    PreviousStamp.PRD_APPROVED: None,
+    PreviousStamp.DIAGNOSIS_SETTLED: Act.PREPARED.value,
+    PreviousStamp.DIAGNOSIS_UNRESOLVED: Act.WAITING.value,
+    PreviousStamp.ARCHITECTURE_SKIPPED: Act.PREPARED.value,
+    PreviousStamp.DRIFT_REVIEWED: Act.PREPARED.value,
+    PreviousStamp.BUILD_COMPLETE: Act.STAMP.value,
+    PreviousStamp.KICKBACK: Act.KICKBACK.value,
+    RETURN_TO_WORK: Act.KICKBACK.value,
+}
+_PERFORMER: Final[dict[str, str]] = {
+    Act.PREPARED.value: "the holding driver",
+    Act.WAITING.value: "the holding driver",
+    Act.STAMP.value: "the holding driver",
+    Act.KICKBACK.value: "the holding driver",
+    Act.DECISION.value: "the session of the waited-on person",
+}
+REFUSAL_TEMPLATE: Final = "{verb} is refused: {item} is in {phase}. Door: {door}.{replacement}"
+REPLACEMENT_TEMPLATE: Final = " The act that replaces it is {act}, performed by {performer}."
+DELIVERED_REFUSAL: Final = (
+    "{verb} is refused: {item} is delivered. Door: none: the item was delivered at {commit}; "
+    "follow-up work is a new item, `telec todo create`."
+)
+NO_DELIVERED_COMMIT: Final = "its commit (none is recorded)"
+NOT_DRIVEN_PHASES: Final = frozenset({Phase.DELIVERED})
+
+
+class PreviousActRefused(Exception):
+    """A verb that only the previous machine knew was refused for an item this machine drives; nothing was written."""
+
+
+async def _delivered_commit(store: WorkflowStore, slug: str) -> str:
+    """The commit the item was last delivered at, from the same delivered row the refusal read; a plain statement if none.
+
+    A slug can be delivered more than once; the latest delivery is the row ``read_state_delivered`` reads.
+    """
+    delivered = [row for row in await store.list_todo(delivered_only=True) if row["slug"] == slug]
+    delivered.sort(key=lambda row: row["delivered_at"] or "", reverse=True)
+    commit = delivered[0]["delivered_commit"] if delivered else None
+    return commit[:12] if commit else NO_DELIVERED_COMMIT
+
+
+async def refuse_previous_machine_act(project_root: str, slug: str, verb: str) -> None:
+    """Raise ``PreviousActRefused`` when ``verb`` is an act of the previous machine and the item is one this machine reads.
+
+    Any other verb, an item of the task lane, a delivered item and an item with no stored state pass through unchanged.
+    The refusal names the item's phase as the machine reads it and the door the contract's table gives for its state;
+    where an act of this machine replaces the retired one it names that act and its performer.
+    """
+    if verb not in _REPLACING_ACT:
+        return
+    replacing = _REPLACING_ACT[verb]
+    store = await get_workflow_store(project_root)
+    raw = await store.read_state(slug)
+    if raw is None:
+        if await store.read_state_delivered(slug) is not None:
+            raise PreviousActRefused(
+                DELIVERED_REFUSAL.format(verb=verb, item=slug, commit=await _delivered_commit(store, slug))
+            )
+        return
+    state = TodoState.model_validate(raw)
+    reading = read_phase(state, await resolve_lane(store, project_root, slug, raw, state))
+    launch = state.workflow.launch
+    started = await started_session_for(slug, launch.key) if launch is not None else ""
+    if reading.phase is None or reading.phase in NOT_DRIVEN_PHASES:
+        return
+    replacement = (
+        REPLACEMENT_TEMPLATE.format(act=replacing, performer=_PERFORMER[replacing]) if replacing is not None else ""
+    )
+    raise PreviousActRefused(
+        REFUSAL_TEMPLATE.format(
+            verb=verb,
+            item=slug,
+            phase=reading.phase.value,
+            door=door_for(state, reading.phase, slug, started_session=started),
+            replacement=replacement,
+        )
+    )

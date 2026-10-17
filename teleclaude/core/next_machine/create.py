@@ -6,6 +6,7 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,19 @@ from teleclaude.core.next_machine.output_formatting import (
     format_tool_call,
 )
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
+from teleclaude.core.workflow_machine.creative import CreativeCapability, open_episode
+from teleclaude.core.workflow_machine.creative_commit import (
+    Handoff,
+    creative_facts,
+    hand_off_to_creative,
+    open_creative_episode,
+)
+from teleclaude.core.workflow_machine.dispatch import accepted_orchestrators
+from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
+from teleclaude.core.workflow_machine.phase_reading import in_task_lane
+from teleclaude.types.claim_change import workflow_record_of
+from teleclaude.types.todos import TodoState
+from teleclaude.types.workflow_record import EffectKind
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -31,6 +45,77 @@ from teleclaude.core.workflow_store.store import get_workflow_store
 logger = get_logger(__name__)
 
 _IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".svg"})
+
+
+_ENDED_PHASES = frozenset({CreativePhase.CREATIVE_COMPLETE, CreativePhase.BLOCKED})
+
+
+def _handoff_for(phase: CreativePhase, slug: str, cwd: str, instruction: str) -> Handoff:
+    """The dispatch of a phase: the creative orchestrator the lane already has, or the instruction at its end.
+
+    The creative lane is driven by the creative orchestrator, which calls the machine in a loop. A holder's handoff
+    starts it; when the design is already complete or blocked there is nothing to drive, and the instruction is the
+    dispatch.
+    """
+    if phase in _ENDED_PHASES:
+        return Handoff(instruction=instruction, creative_phase=phase.value)
+    return Handoff(
+        instruction=instruction,
+        creative_phase=phase.value,
+        worker_command=LifecycleProcedure.CREATE.value,
+        worker_args=slug,
+        worker_project=cwd,
+    )
+
+
+async def _awaiting_handoff_release(
+    todos_db: WorkflowStore, slug: str, state: dict[str, StateValue], caller_session_id: str
+) -> bool:
+    """Whether the caller is the creative orchestrator a handoff accepted and the old claim is not released yet.
+
+    The orchestrator may start before the release has run; its first call is not a refusal by the old holder but the
+    handoff still closing. The pending effects are completed here, and the orchestrator is told to call again.
+    """
+    holder = state.get("active_runner")
+    if not caller_session_id or not holder or holder == caller_session_id:
+        return False
+    todo_id = todos_db.resolve_store_address_sync(slug)
+    if todo_id is None or caller_session_id not in accepted_orchestrators(
+        str(todos_db.project_root), todo_id, workflow_record_of(state)
+    ):
+        return False
+    await reconcile_slug_supervised(str(todos_db.project_root), slug)
+    after = await todos_db.read_state(slug)
+    return after is not None and bool(after.get("active_runner")) and after.get("active_runner") != caller_session_id
+
+
+def _committed_dispatch(state: Mapping[str, StateValue], caller_session_id: str, phase: CreativePhase) -> str | None:
+    """The instruction already committed for this caller's handoff when the call repeats it at the same creative phase.
+
+    A repeat of the call that made the handoff, even after the release, returns the committed outcome. A call made at
+    a later creative phase is the next call of the lane and gets its own instruction.
+    """
+    record = workflow_record_of(state)
+    owed = {EffectKind.SWEEP_HELPERS, EffectKind.CREATIVE_DISPATCH, EffectKind.RELEASE_CLAIM}
+    finished = state.get("active_runner") != caller_session_id and not any(
+        effect.kind in owed for effect in record.pending_effects
+    )
+    if (
+        finished
+        and caller_session_id
+        and caller_session_id in record.dispatch_recipients
+        and record.dispatched
+        and record.dispatched_phase == phase.value
+    ):
+        return list(record.dispatched.values())[-1]
+    return None
+
+
+_CLAIM_CLOSING = (
+    "CLAIM_CLOSING: {slug}\n\n"
+    "Your claim is closing and the sessions you started are still ending. No instruction is given until they have;\n"
+    "call `telec todo design {slug}` again."
+)
 
 
 def _human_review_file_list(cwd: str, slug: str, folder: str, suffixes: set[str] | frozenset[str]) -> str:
@@ -151,12 +236,53 @@ def _derive_creative_phase(
     return phase
 
 
+def _creative_state_of(state: Mapping[str, StateValue]) -> dict[str, StateValue]:
+    creative = state.get("creative")
+    return creative if isinstance(creative, dict) else {}
+
+
+def _lane_incomplete(cwd: str, slug: str, creative_state: dict[str, StateValue], has_design_spec: bool) -> bool:
+    """Whether the derivation reads the design as not complete, for a todo that has an input artifact."""
+    if not creative_state and not has_design_spec:
+        return False
+    workspace_dir = Path(cwd) / "workspace" / slug
+    return _derive_creative_phase(workspace_dir, has_design_spec, creative_state) != CreativePhase.CREATIVE_COMPLETE
+
+
+def creative_incomplete_observed(
+    cwd: str, slug: str, state: Mapping[str, StateValue], *, has_input: bool, has_design_spec: bool
+) -> bool:
+    """The creative answer derived from artifact presence the caller observed once, for a caller that fences on it."""
+    if not has_input:
+        return False
+    return _lane_incomplete(cwd, slug, _creative_state_of(state), has_design_spec)
+
+
+async def creative_incomplete(todos_db: WorkflowStore, cwd: str, slug: str, state: Mapping[str, StateValue]) -> bool:
+    """Whether the todo is on the creative lane with its design not complete.
+
+    The phase is never cached: it is re-derived from the workspace artifacts and the stored flags.
+    """
+    if not await todos_db.artifact_exists(slug, ARTIFACT_INPUT):
+        return False
+    has_design_spec = await todos_db.artifact_exists(slug, ARTIFACT_DESIGN_SPEC)
+    return await asyncio.to_thread(_lane_incomplete, cwd, slug, _creative_state_of(state), has_design_spec)
+
+
+def creative_incomplete_sync(todos_db: WorkflowStore, cwd: str, slug: str, state: Mapping[str, StateValue]) -> bool:
+    """The same answer for a caller on a worker thread: one derivation, read through the store's synchronous reads."""
+    if not todos_db.artifact_exists_sync(slug, ARTIFACT_INPUT):
+        return False
+    return _lane_incomplete(
+        cwd, slug, _creative_state_of(state), todos_db.artifact_exists_sync(slug, ARTIFACT_DESIGN_SPEC)
+    )
+
+
 async def _find_next_creative_slug(todos_db: WorkflowStore, cwd: str) -> str | None:
     """Find the next active slug that needs creative work from DB.
 
-    Phase is never cached — each candidate is re-derived from workspace
-    artifacts and DB flags so that CREATIVE_COMPLETE slugs are skipped
-    without trusting stale state.
+    Phase is never cached - each candidate is re-derived from workspace artifacts and DB flags so that
+    CREATIVE_COMPLETE slugs are skipped without trusting stale state.
     """
     entries = await todos_db.list_todo()
     delivered = await todos_db.delivered_slugs()
@@ -165,25 +291,10 @@ async def _find_next_creative_slug(todos_db: WorkflowStore, cwd: str) -> str | N
         slug = entry["slug"]
         if slug in delivered:
             continue
-
-        has_input = await todos_db.artifact_exists(slug, ARTIFACT_INPUT)
-        if not has_input:
-            continue
-
         state = await todos_db.read_state(slug)
         if state is None:
             continue
-
-        creative = state.get("creative")
-        creative_state = creative if isinstance(creative, dict) else {}
-
-        has_design_spec = await todos_db.artifact_exists(slug, ARTIFACT_DESIGN_SPEC)
-        workspace_dir = Path(cwd) / "workspace" / slug
-        phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
-        if phase == CreativePhase.CREATIVE_COMPLETE:
-            continue
-
-        if creative_state or has_design_spec:
+        if await creative_incomplete(todos_db, cwd, slug, state):
             return slug
 
     return None
@@ -289,7 +400,7 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
     return f"UNKNOWN_PHASE: {slug} — phase={phase.value}. Inspect state.yaml."
 
 
-async def next_create(db: Db, slug: str | None, cwd: str) -> str:
+async def next_create(db: Db, slug: str | None, cwd: str, caller_session_id: str = "") -> str:
     """Creative lifecycle state machine.
 
     Derives creative phase from DB state and artifacts,
@@ -318,6 +429,31 @@ async def next_create(db: Db, slug: str | None, cwd: str) -> str:
     phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
 
     logger.info("NEXT_CREATE_PHASE slug=%s phase=%s", resolved_slug, phase.value)
+    replayed = _committed_dispatch(state, caller_session_id, phase)
+    if replayed is not None:
+        return replayed
+    if await _awaiting_handoff_release(todos_db, resolved_slug, state, caller_session_id):
+        return _CLAIM_CLOSING.format(slug=resolved_slug)
+    if (
+        caller_session_id
+        and state.get("active_runner") == caller_session_id
+        and not in_task_lane(TodoState.model_validate(state))
+    ):
+        instruction = await _creative_instruction(db, resolved_slug, cwd, phase)
+        dispatched = await hand_off_to_creative(
+            todos_db, resolved_slug, caller_session_id, _handoff_for(phase, resolved_slug, cwd, instruction)
+        )
+        return dispatched if dispatched is not None else _CLAIM_CLOSING.format(slug=resolved_slug)
+    if phase == CreativePhase.CREATIVE_COMPLETE:
+        open_episode(
+            resolved_slug,
+            state,
+            capability=CreativeCapability.DESIGN,
+            caller_session_id=caller_session_id,
+            facts=await creative_facts(todos_db, resolved_slug),
+        )
+    else:
+        await open_creative_episode(todos_db, resolved_slug, CreativeCapability.DESIGN, caller_session_id)
 
     return await _creative_instruction(db, resolved_slug, cwd, phase)
 
