@@ -7,7 +7,7 @@ import time
 from enum import StrEnum
 from typing import Final
 
-from tools.ci.enclosure_actions import Authority, Key, NativeMutation
+from tools.ci.enclosure_actions import JOB_START, Authority, Key, NativeMutation
 from tools.ci.enclosure_activation import ActivationSources, inspect_activation_sources
 from tools.ci.enclosure_configuration import InstanceConfiguration, inspect_instance_configuration
 from tools.ci.enclosure_contract import (
@@ -17,6 +17,7 @@ from tools.ci.enclosure_contract import (
     JsonValue,
     Phase,
     StaticPackage,
+    object_value,
     parse_object,
     positive_integer,
     text,
@@ -69,6 +70,7 @@ class Evidence(StrEnum):
     CONFIGURATION = "configuration"
     DEPENDENCY_GRAPH = "dependency_graph"
     ACTIVATION_SOURCES = "activation_sources"
+    JOB_RESULT = "job_result"
 
 
 def _unit(read: UnitRead) -> JsonObject:
@@ -134,29 +136,59 @@ class BindingPhases:
                 self._loop.remove_reader(self.population.fileno())
                 self._loop = None
 
+    def _job_scope(self) -> frozenset[str]:
+        record = parse_object(self.owner.manifest_bytes)
+        names = {text(record, OwnerKey.PARENT_UNIT), text(record, OwnerKey.GUEST_UNIT)}
+        names.update(job.unit_name for job in self._accepted)
+        if self.graph is not None:
+            names.update(node.read.name for node in self.graph.nodes)
+        return frozenset(names)
+
     async def _settle(self, mutation: NativeMutation, name: str, end_ns: int) -> JobBoundary:
         evidence = mutation.evidence
-        identifier = positive_integer(evidence, Key.JOB_IDENTIFIER)
-        job = AcceptedJob(identifier, text(evidence, Key.JOB_PATH), name)
+        rows = evidence.get(Key.ACCEPTED_JOBS)
         if (
             evidence.get(Key.AUTHORITY) != Authority.HOST
             or evidence.get(Key.UNIT_NAME) != name
-            or job.object_path != JOB_PREFIX.format(identifier=identifier)
-            or identifier > 0xFFFFFFFF
-            or job in self._accepted
+            or not isinstance(rows, list)
+            or not rows
         ):
             raise ValueError(ERROR_BINDING)
-        self._accepted.append(job)
-        record = parse_object(self.owner.manifest_bytes)
-        units = frozenset({text(record, OwnerKey.PARENT_UNIT), text(record, OwnerKey.GUEST_UNIT)})
+        jobs: list[AcceptedJob] = []
+        for value in rows:
+            row = object_value(value)
+            identifier = positive_integer(row, Key.JOB_IDENTIFIER)
+            job = AcceptedJob(
+                identifier,
+                text(row, Key.JOB_PATH),
+                text(row, Key.UNIT_NAME),
+                text(row, Key.UNIT_PATH),
+                text(row, Key.JOB_TYPE),
+            )
+            if (
+                job.object_path != JOB_PREFIX.format(identifier=identifier)
+                or identifier > 0xFFFFFFFF
+                or any(prior.identifier == identifier for prior in (*self._accepted, *jobs))
+            ):
+                raise ValueError(ERROR_BINDING)
+            jobs.append(job)
+        anchor = jobs[0]
+        if (
+            anchor.unit_name != name
+            or anchor.identifier != evidence.get(Key.JOB_IDENTIFIER)
+            or anchor.object_path != evidence.get(Key.JOB_PATH)
+            or anchor.job_type != JOB_START
+        ):
+            raise ValueError(ERROR_BINDING)
+        self._accepted.extend(jobs)
+        units = self._job_scope()
         # Native receipt alone is insufficient. Await the original subscription's terminal job signal.
         while True:
             sequence = self.manager.sequence
-            removed = any(
-                event.member == Member.JOB_REMOVED and event.body[:2] == (identifier, job.object_path)
-                for event in self.manager.events
-            )
-            if removed:
+            removed = {
+                (event.body[0], event.body[1]) for event in self.manager.events if event.member == Member.JOB_REMOVED
+            }
+            if all((job.identifier, job.object_path) in removed for job in jobs):
                 return self.manager.reconcile_jobs(units, tuple(self._accepted))
             await self.manager.wait_for_change(sequence, end_ns)
 
@@ -174,7 +206,9 @@ class BindingPhases:
         if mutation.action is Action.CREATE_PARENT:
             if self.parent is not None or self.population is not None:
                 raise ValueError(ERROR_BINDING)
-            initial = await self.manager.read_unit(name, Interface.SLICE, end_ns)
+            initial = await self.manager.read_unit(
+                name, Interface.SLICE, end_ns, original_path=text(mutation.evidence, Key.UNIT_PATH)
+            )
             if initial.unit.get(Property.ACTIVE_STATE) != ACTIVE or initial.specific.get(DELEGATE) is not False:
                 raise ValueError(ERROR_BINDING)
             population = PopulationObserver(text(initial.specific, Property.CONTROL_GROUP))
@@ -191,6 +225,9 @@ class BindingPhases:
             if self.parent is None or self.population is None or self.guest is not None:
                 raise ValueError(ERROR_BINDING)
             self.guest = await self.manager.bind_guest(name, end_ns)
+            if self.guest.object_path != text(mutation.evidence, Key.UNIT_PATH):
+                self.manager.invalidate(Invalidation.INVOCATION_CHANGED)
+                raise ValueError(ERROR_BINDING)
             phase = Phase.GUEST_STARTED
         current_parent = await self.manager.read_unit(
             self.parent.name, Interface.SLICE, end_ns, original_path=self.parent.object_path
@@ -215,6 +252,7 @@ class BindingPhases:
                 self.package,
                 self.configuration,
                 AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns),
+                tuple(self._accepted),
             )
             metadata = await self.manager.read_manager(end_ns)
             self.activation_sources = inspect_activation_sources(
@@ -227,9 +265,7 @@ class BindingPhases:
         sample = self.population.sample(end_ns)
         if self.manager.faults or sample.faults or sample.populated is None:
             raise ValueError(ERROR_BINDING)
-        jobs = self.manager.reconcile_jobs(
-            frozenset({text(record, OwnerKey.PARENT_UNIT), text(record, OwnerKey.GUEST_UNIT)}), tuple(self._accepted)
-        )
+        jobs = self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
         identity: JsonObject = {
             Evidence.BUS_ID: self.manager.identity.bus_id,
             Evidence.MANAGER_OWNER: self.manager.identity.manager_owner,
@@ -240,6 +276,9 @@ class BindingPhases:
                 Key.JOB_IDENTIFIER: job.accepted.identifier,
                 Key.JOB_PATH: job.accepted.object_path,
                 Key.UNIT_NAME: job.accepted.unit_name,
+                Key.UNIT_PATH: job.accepted.unit_path,
+                Key.JOB_TYPE: job.accepted.job_type,
+                Evidence.JOB_RESULT: job.result,
                 Evidence.SEQUENCE: [job.new_sequence, job.removed_sequence],
             }
             for job in jobs.settled

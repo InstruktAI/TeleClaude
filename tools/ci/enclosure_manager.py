@@ -201,6 +201,8 @@ class AcceptedJob:
     identifier: int
     object_path: str
     unit_name: str
+    unit_path: str
+    job_type: str
 
 
 @dataclass(frozen=True)
@@ -441,7 +443,8 @@ class ManagerObserver:
         """Match every scoped native activation to its original call receipt and ordered terminal signal."""
         if self._identity is None or self._faults:
             raise RuntimeError(CONNECTION_ERROR)
-        if not units or not units <= self._expected_units:
+        acknowledged_names = frozenset(job.unit_name for job in accepted)
+        if not units or not units <= self._expected_units | acknowledged_names:
             raise ValueError(BINDING_ERROR)
         expected: dict[int, AcceptedJob] = {}
         for job in accepted:
@@ -450,10 +453,13 @@ class ManagerObserver:
                 or job.identifier <= 0
                 or not job.object_path.startswith(PATH_SEPARATOR)
                 or job.unit_name not in units
+                or not job.unit_path.startswith(PATH_SEPARATOR)
+                or not job.job_type
                 or job.identifier in expected
             ):
                 raise ValueError(BINDING_ERROR)
             expected[job.identifier] = job
+        self._expected_units |= acknowledged_names
         started: dict[int, int] = {}
         settled: dict[int, SettledJob] = {}
         for event in self._events:

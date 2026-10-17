@@ -22,7 +22,8 @@ from tools.ci.enclosure_contract import (
 )
 from tools.ci.enclosure_host import Key as HostKey
 from tools.ci.enclosure_host import Kind, _locked_file
-from tools.ci.enclosure_manager import UNIT_REFERENCE_PROPERTIES, JobRead, ManagerObserver, UnitRead
+from tools.ci.enclosure_manager import UNIT_REFERENCE_PROPERTIES, AcceptedJob, JobRead, ManagerObserver, UnitRead
+from tools.ci.enclosure_population import Invalidation
 
 ROOT: Final = Path("/")
 UNIT_DIRECTORY: Final = Path("usr/lib/systemd/system")
@@ -256,6 +257,7 @@ async def inspect_dependency_graph(
     package: StaticPackage,
     configuration: InstanceConfiguration,
     deadline: AdmittedDeadline,
+    accepted: tuple[AcceptedJob, ...],
 ) -> DependencyGraph:
     """Read each reached object once on the original connection; neither resubscribe nor repeat a manager scan."""
     end_ns = deadline.effective_end()
@@ -266,7 +268,13 @@ async def inspect_dependency_graph(
         configuration.parent.name: configuration.parent,
         configuration.guest.name: configuration.guest,
     }
-    expand: list[str] = sorted(roots)
+    for job in accepted:
+        if job.unit_name not in reads:
+            reads[job.unit_name] = await manager.read_unit(job.unit_name, None, end_ns)
+        if reads[job.unit_name].object_path != job.unit_path:
+            manager.invalidate(Invalidation.UNKNOWN_ACTIVATOR)
+            raise ValueError(ERROR_GRAPH)
+    expand: list[str] = sorted(reads)
     expanded: set[str] = set()
     while expand:
         if time.monotonic_ns() >= end_ns:

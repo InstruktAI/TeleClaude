@@ -45,6 +45,8 @@ MACHINE: Final = "--machine={machine}"
 TIMEOUT: Final = "--timeout={seconds}s"
 JOB_PREFIX: Final = "/org/freedesktop/systemd1/job/"
 JOB_FAIL: Final = "fail"
+JOB_START: Final = "start"
+UNIT_PREFIX: Final = "/org/freedesktop/systemd1/unit/"
 ARRAY_ONE: Final = "1"
 TRUE: Final = "true"
 FALSE: Final = "false"
@@ -70,6 +72,9 @@ class Key(StrEnum):
     UNIT_NAME = "unit_name"
     JOB_IDENTIFIER = "job_identifier"
     JOB_PATH = "job_path"
+    UNIT_PATH = "unit_path"
+    JOB_TYPE = "job_type"
+    ACCEPTED_JOBS = "accepted_jobs"
     RAW_REPLY = "raw_reply"
     RUNTIME_FILES = "runtime_files"
     MASK_CHANGES = "mask_changes"
@@ -81,6 +86,7 @@ class Member(StrEnum):
 
     RELOAD = "Reload"
     START = "StartUnit"
+    ENQUEUE = "EnqueueUnitJob"
     MASK = "MaskUnitFiles"
 
 
@@ -89,6 +95,8 @@ class Signature(StrEnum):
 
     EMPTY = ""
     STRINGS = "ss"
+    THREE_STRINGS = "sss"
+    TRANSACTION = "uososa(uosos)"
     MASK_INPUT = "asbb"
     OBJECT = "o"
     CHANGES = "a(sss)"
@@ -171,6 +179,8 @@ def _call(
 
 
 def _start(context: PrivilegedAction, end_ns: int, unit: str, authority: Authority) -> JsonObject:
+    if authority is Authority.HOST:
+        return _enqueue_host_start(context, end_ns, unit)
     reply = _call(
         context,
         end_ns,
@@ -194,6 +204,67 @@ def _start(context: PrivilegedAction, end_ns: int, unit: str, authority: Authori
         Key.UNIT_NAME: unit,
         Key.JOB_IDENTIFIER: int(suffix),
         Key.JOB_PATH: path,
+        Key.RAW_REPLY: reply,
+    }
+
+
+def _transaction_job(value: list[JsonValue]) -> JsonObject:
+    if len(value) != 5:
+        raise ValueError(ERROR_NATIVE)
+    identifier, path, name, unit_path, job_type = value
+    if (
+        type(identifier) is not int
+        or not 0 < identifier <= 0xFFFFFFFF
+        or path != JOB_PREFIX + str(identifier)
+        or not isinstance(name, str)
+        or not name
+        or Path(name).name != name
+        or not isinstance(unit_path, str)
+        or not unit_path.startswith(UNIT_PREFIX)
+        or unit_path == UNIT_PREFIX
+        or not isinstance(job_type, str)
+        or not job_type
+    ):
+        raise ValueError(ERROR_NATIVE)
+    return {
+        Key.JOB_IDENTIFIER: identifier,
+        Key.JOB_PATH: path,
+        Key.UNIT_NAME: name,
+        Key.UNIT_PATH: unit_path,
+        Key.JOB_TYPE: job_type,
+    }
+
+
+def _enqueue_host_start(context: PrivilegedAction, end_ns: int, unit: str) -> JsonObject:
+    reply = _call(
+        context,
+        end_ns,
+        Member.ENQUEUE,
+        Signature.THREE_STRINGS,
+        (unit, JOB_START, JOB_FAIL),
+        Signature.TRANSACTION,
+    )
+    body = reply.get(Key.DATA)
+    if not isinstance(body, list) or len(body) != 6 or not isinstance(body[5], list):
+        raise ValueError(ERROR_NATIVE)
+    anchor = _transaction_job(body[:5])
+    if anchor[Key.UNIT_NAME] != unit or anchor[Key.JOB_TYPE] != JOB_START:
+        raise ValueError(ERROR_NATIVE)
+    jobs: list[JsonValue] = [anchor]
+    identifiers = {positive_integer(anchor, Key.JOB_IDENTIFIER)}
+    for value in body[5]:
+        if not isinstance(value, list):
+            raise ValueError(ERROR_NATIVE)
+        job = _transaction_job(value)
+        identifier = positive_integer(job, Key.JOB_IDENTIFIER)
+        if identifier in identifiers:
+            raise ValueError(ERROR_NATIVE)
+        identifiers.add(identifier)
+        jobs.append(job)
+    return {
+        **anchor,
+        Key.AUTHORITY: Authority.HOST.value,
+        Key.ACCEPTED_JOBS: jobs,
         Key.RAW_REPLY: reply,
     }
 
