@@ -8,7 +8,8 @@ from enum import StrEnum
 from typing import Final
 
 from tools.ci.enclosure_actions import JOB_START, Authority, Key, NativeMutation
-from tools.ci.enclosure_activation import ActivationSources, inspect_activation_sources
+from tools.ci.enclosure_activation import ActivationSources, inspect_activation_sources, inspect_start_sources
+from tools.ci.enclosure_activation import Key as ActivationKey
 from tools.ci.enclosure_configuration import InstanceConfiguration, inspect_instance_configuration
 from tools.ci.enclosure_contract import (
     Action,
@@ -72,6 +73,7 @@ class Evidence(StrEnum):
     ACTIVATION_SOURCES = "activation_sources"
     JOB_RESULT = "job_result"
     HELPER = "helper"
+    START_SOURCES = "start_sources"
 
 
 def _unit(read: UnitRead) -> JsonObject:
@@ -105,6 +107,7 @@ class BindingPhases:
         self.graph: DependencyGraph | None = None
         self.activation_sources: ActivationSources | None = None
         self._startups: list[HelperStartup] = []
+        self.start_sources: dict[Action, JsonObject] = {}
 
     @property
     def startups(self) -> tuple[HelperStartup, ...]:
@@ -121,13 +124,23 @@ class BindingPhases:
             raise self.uncertain
         if self.helper_failure is not None:
             raise self.helper_failure
+        # Source reads and the original helper share one action cutoff, including native startup.
+        end_ns = deadline.command_end(maximum_seconds)
+        action_deadline = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
+        await self.manager.check_identity(end_ns)
+        metadata = await self.manager.read_manager(end_ns)
+        sources = inspect_start_sources(self.owner, self.package, metadata, action, action_deadline)
+        self.start_sources[action] = sources
+        if sources[ActivationKey.UNCLASSIFIED]:
+            raise ValueError(ERROR_BINDING)
+        await self.manager.check_identity(end_ns)
 
         async def observe(mutation: NativeMutation, end_ns: int, startup: HelperStartup) -> ActionResult:
-            return await self.observe(mutation, end_ns, deadline, startup)
+            return await self.observe(mutation, end_ns, action_deadline, startup)
 
         try:
             return await run_privileged(
-                self.owner, action, deadline, maximum_seconds, qualification_vector, observe, self._startups
+                self.owner, action, action_deadline, maximum_seconds, qualification_vector, observe, self._startups
             )
         except HelperUncertain as error:
             # Preserve the original startup/Process even if an outer caller only renders the raised diagnostic.
@@ -308,6 +321,7 @@ class BindingPhases:
             {
                 Evidence.NATIVE_RECEIPT: dict(mutation.evidence),
                 Evidence.HELPER: startup.record(),
+                Evidence.START_SOURCES: self.start_sources.get(mutation.action),
                 Evidence.PHASE: phase.value,
                 Evidence.IDENTITY: identity,
                 Evidence.PARENT: _unit(current_parent),

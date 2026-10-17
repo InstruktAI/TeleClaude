@@ -1,7 +1,8 @@
-"""One finite census of activation-link and alias sources omitted from native unit properties."""
+"""Finite native source reads before owned starts and admission sealing."""
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 import time
@@ -10,12 +11,16 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
+from tools.ci.enclosure_actions import Template
+from tools.ci.enclosure_configuration import VENDOR_TEMPLATE
 from tools.ci.enclosure_configuration import Key as ConfigurationKey
 from tools.ci.enclosure_contract import (
+    Action,
     AdmittedDeadline,
     Field,
     JsonObject,
     JsonValue,
+    Parameter,
     StaticPackage,
     object_value,
     parse_object,
@@ -25,12 +30,19 @@ from tools.ci.enclosure_graph import DependencyGraph
 from tools.ci.enclosure_host import Key as HostKey
 from tools.ci.enclosure_host import Kind, _locked_file
 from tools.ci.enclosure_manager import ManagerRead
+from tools.ci.enclosure_owner import Key as OwnerKey
+from tools.ci.enclosure_owner import RunOwner
 
 ROOT: Final = Path("/")
 LINK_SUFFIXES: Final = (".wants", ".requires", ".upholds")
 INSTANCE_SEPARATOR: Final = "@"
 DASH: Final = "-"
 DOT: Final = "."
+DROP_IN_SUFFIX: Final = ".d"
+CONFIG_SUFFIX: Final = ".conf"
+SETTINGS_SUFFIX: Final = ".nspawn"
+SETTINGS_DIRECTORIES: Final = (Path("/etc/systemd/nspawn"), Path("/run/systemd/nspawn"))
+PARENT_ANCESTORS: Final = frozenset({"-.slice", "tc.slice", "tc-ra.slice"})
 ERROR_CENSUS: Final = "native activation sources are unreadable, changed, unprotected or outside the original allowance"
 
 
@@ -53,6 +65,11 @@ class Key(StrEnum):
     MANAGER_OBSERVED_NS = "manager_observed_ns"
     UNIT_PATHS = "unit_paths"
     OBSERVED_NS = "observed_ns"
+    ACTION = "action"
+    UNIT_DESTINATIONS = "unit_destinations"
+    SOURCES = "sources"
+    SETTINGS = "settings"
+    BEGIN_SEQUENCE = "begin_sequence"
 
 
 @dataclass(frozen=True)
@@ -240,6 +257,129 @@ def _scope(graph: DependencyGraph, owned_names: frozenset[str]) -> tuple[frozens
     return frozenset(critical_names), frozenset(name + suffix for name in names for suffix in LINK_SUFFIXES)
 
 
+def _known_sources(package: StaticPackage) -> dict[Path, JsonObject]:
+    rows = parse_object(package.lock_bytes)[HostKey.ACTIVATION_SOURCES]
+    if not isinstance(rows, list):
+        raise ValueError(ERROR_CENSUS)
+    return {
+        _address(ROOT / text(row, Field.PATH)): row
+        for value in rows
+        if (row := object_value(value)).get(HostKey.SCOPE) == HostKey.HOST
+    }
+
+
+def inspect_start_sources(
+    owner: RunOwner, package: StaticPackage, manager: ManagerRead, action: Action, deadline: AdmittedDeadline
+) -> JsonObject:
+    """Read the owned start's fragment/drop-in/link/settings inputs before the separate helper creates or starts it."""
+    _time(deadline)
+    if action not in (Action.CREATE_PARENT, Action.START_GUEST):
+        raise ValueError(ERROR_CENSUS)
+    record = parse_object(owner.manifest_bytes)
+    parent = text(record, OwnerKey.PARENT_UNIT)
+    guest = text(record, OwnerKey.GUEST_UNIT)
+    rootfs = Path(text(record, OwnerKey.ROOTFS))
+    critical = frozenset({parent, guest, Path(VENDOR_TEMPLATE).name, *PARENT_ANCESTORS})
+    relevant = {
+        name + suffix
+        for unit in critical
+        for name in _dependency_names(unit)
+        for suffix in (*LINK_SUFFIXES, DROP_IN_SUFFIX)
+    }
+    known = _known_sources(package)
+    parameters: dict[str, str] = {Parameter.RUN_TOKEN: owner.journal.binding.run_token}
+    destinations = object_value(parse_object(package.recipe_bytes)[Key.UNIT_DESTINATIONS])
+    parent_path = Path(text(destinations, Template.PARENT).format_map(parameters))
+    vendor_path = _address(ROOT / VENDOR_TEMPLATE)
+    allowed_fragments = {vendor_path}
+    if action is Action.START_GUEST:
+        data = package.render(
+            run_token=owner.journal.binding.run_token,
+            candidate_sha=owner.journal.binding.candidate_commit,
+            candidate_tree=owner.journal.binding.candidate_tree,
+            selection="",
+        )[Template.PARENT]
+        known[_address(parent_path)] = {
+            Field.PATH: str(parent_path.relative_to(ROOT)),
+            Field.SHA256: hashlib.sha256(data).hexdigest(),
+            Field.BYTES: len(data),
+            HostKey.KIND: Kind.FILE.value,
+        }
+        allowed_fragments.add(_address(parent_path))
+    directories: list[JsonValue] = []
+    sources: list[JsonValue] = []
+    settings: list[JsonValue] = []
+    unknown: set[str] = set()
+    seen_fragments: set[Path] = set()
+    visited: set[Path] = set()
+    for root in manager.unit_paths:
+        path = Path(root)
+        if not path.is_absolute():
+            raise ValueError(ERROR_CENSUS)
+        canonical = path.resolve(strict=False)
+        if canonical in visited:
+            continue
+        visited.add(canonical)
+        directory, entries = _directory(path, deadline)
+        directories.append(directory)
+        for entry in entries:
+            address = canonical / entry.name
+            if entry.name in critical:
+                row = known.get(address)
+                if address not in allowed_fragments or row is None:
+                    unknown.add(str(address))
+                else:
+                    _locked_file(row, deadline)
+                    seen_fragments.add(address)
+                    sources.append(dict(row))
+            elif entry.target is not None and _targets_owned(address, critical, deadline):
+                unknown.add(str(address))
+            if entry.name not in relevant:
+                continue
+            if not stat.S_ISDIR(entry.mode):
+                unknown.add(str(address))
+                continue
+            fact, children = _directory(address, deadline)
+            directories.append(fact)
+            drop_in = entry.name.endswith(DROP_IN_SUFFIX)
+            for child in children:
+                if drop_in and not child.name.endswith(CONFIG_SUFFIX):
+                    continue
+                child_path = address / child.name
+                row = known.get(child_path)
+                sources.append({Field.PATH: str(child_path), HostKey.TARGET: child.target})
+                expected = Kind.FILE if drop_in else Kind.SYMLINK
+                if row is None or row.get(HostKey.KIND) != expected:
+                    unknown.add(str(child_path))
+                else:
+                    _locked_file(row, deadline)
+    unknown.update(str(path) for path in allowed_fragments - seen_fragments)
+    # All three native settings locations must be free for the one new runtime file created by start-guest.
+    settings_name = rootfs.name + SETTINGS_SUFFIX
+    for directory_path in (*SETTINGS_DIRECTORIES, rootfs.parent):
+        directory, entries = _directory(directory_path, deadline)
+        directories.append(directory)
+        for entry in entries:
+            if entry.name == settings_name:
+                address = directory_path / entry.name
+                settings.append({Field.PATH: str(address), HostKey.TARGET: entry.target})
+                unknown.add(str(address))
+    _time(deadline)
+    return {
+        Key.ACTION: action.value,
+        Key.DIRECTORIES: directories,
+        Key.SOURCES: sources,
+        Key.SETTINGS: settings,
+        Key.UNCLASSIFIED: list[JsonValue](sorted(unknown)),
+        Key.MANAGER_VERSION: manager.version,
+        Key.UNIT_PATHS: list[JsonValue](manager.unit_paths),
+        Key.BEGIN_SEQUENCE: manager.begin_sequence,
+        Key.MANAGER_SEQUENCE: manager.sequence,
+        Key.MANAGER_OBSERVED_NS: manager.observed_ns,
+        Key.OBSERVED_NS: time.monotonic_ns(),
+    }
+
+
 def inspect_activation_sources(
     package: StaticPackage,
     graph: DependencyGraph,
@@ -250,14 +390,7 @@ def inspect_activation_sources(
     """Inspect each manager unit-path root once and each relevant native activation directory once."""
     _time(deadline)
     critical_names, relevant = _scope(graph, owned_names)
-    rows = parse_object(package.lock_bytes)[HostKey.ACTIVATION_SOURCES]
-    if not isinstance(rows, list):
-        raise ValueError(ERROR_CENSUS)
-    known: dict[Path, JsonObject] = {}
-    for value in rows:
-        row = object_value(value)
-        if row.get(HostKey.SCOPE) == HostKey.HOST:
-            known[_address(ROOT / text(row, Field.PATH))] = row
+    known = _known_sources(package)
     directories: list[JsonObject] = []
     links: list[JsonObject] = []
     aliases: list[JsonObject] = []
