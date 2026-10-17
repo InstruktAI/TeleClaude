@@ -461,6 +461,20 @@ def _start_work(
     child_attempt, parent_id = flow.require_ledger().begin_child_before_parent(
         flow_module.SFC_CHAIN_B5, "w2-child", "w2-start", start_ledger.RECORD_SESSION, start_ledger.RECORD_OPERATION
     )
+    child_evidence: flow_module.MutableJson = {
+        "attempt_id": child_attempt,
+        "parent_attempt_id": parent_id,
+        "started_ns": time.monotonic_ns(),
+        "observed_ns": None,
+        "parent_actor": None,
+        "parent_native_session_id": None,
+        "base_project": str(flow.project),
+        "worktree": str(worktree),
+        "frame": None,
+        "public_record": None,
+        "launch_record": None,
+    }
+    flow.public_child_evidence.append(child_evidence)
     outcome = flow.observer.run((TELEC, TODO, WORK, flow_module.ITEM))
     receipt = foundation.json_object(outcome.output)
     operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
@@ -475,7 +489,10 @@ def _start_work(
         )
     w2 = flow.plan_actor(PROC_WORK, 1, ROLE_WORK)
     w2_record, w2_launch, w2_role = _startup(flow, w2, ROLE_WORK, PROC_WORK)
+    child_evidence["parent_actor"] = w2
+    child_evidence["parent_native_session_id"] = cast(flow_module.JsonValue, w2_record.get(FIELD_NATIVE))
     child_frame = _frame_success(flow, w2, "child")
+    child_evidence["frame"] = cast(flow_module.JsonValue, dict(child_frame))
     child_run = child_frame.get("run")
     child_stdout = child_run.get("stdout") if isinstance(child_run, Mapping) else None
     match = re.search(r"Started sdlc/procedure/lifecycle/work/build-v2 as session ([A-Za-z0-9_-]+)", child_stdout or "")
@@ -484,6 +501,8 @@ def _start_work(
     builder = match.group(1)
     flow.require_ledger().record_session(child_attempt, builder)
     builder_record, builder_launch, _builder_role = _startup(flow, builder, ROLE_BUILDER, PROC_BUILD)
+    child_evidence["public_record"] = cast(flow_module.JsonValue, dict(builder_record))
+    child_evidence["launch_record"] = cast(flow_module.JsonValue, dict(builder_launch))
     if builder_record.get(FIELD_INITIATOR) != w2:
         _fail(f"builder initiator is {builder_record.get(FIELD_INITIATOR)!r}, not {w2}")
     _require_builder_write_scope(
@@ -494,6 +513,7 @@ def _start_work(
         B5_BUILDER_SUBDIR,
         worktree,
     )
+    child_evidence["observed_ns"] = time.monotonic_ns()
     case = driver.DriverCase(
         host=flow.host,
         observer=flow.observer,

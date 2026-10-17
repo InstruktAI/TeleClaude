@@ -491,6 +491,7 @@ class WorkflowFlow:
     public_refusal_evidence: list[JsonValue] = field(default_factory=list)
     public_reason_evidence: list[JsonValue] = field(default_factory=list)
     public_message_evidence: list[JsonValue] = field(default_factory=list)
+    public_child_evidence: list[JsonValue] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -1449,6 +1450,7 @@ class WorkflowFlow:
             "public_refusal_evidence": self.public_refusal_evidence,
             "public_reason_evidence": self.public_reason_evidence,
             "public_message_evidence": self.public_message_evidence,
+            "public_child_evidence": self.public_child_evidence,
             "integrators": cast(JsonValue, sorted(integrators)),
             "start_ledger": cast(JsonValue, starts),
             "open_attempt_ids": cast(JsonValue, open_ids),

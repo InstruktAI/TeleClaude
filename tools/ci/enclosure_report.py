@@ -38,7 +38,9 @@ from tools.ci.workflow_flow import (
     B7_ACTIONS,
     ITEM,
     MESSAGE_STARTS,
+    PROC_BUILD,
     PROC_WORK,
+    ROLE_BUILDER,
     ROLE_WORK,
     declared_chain,
     message_key,
@@ -663,7 +665,7 @@ def _claimed_holder(held: JsonObject, actor: str, phase: str) -> None:
         raise ValueError(ERROR_REPORT)
 
 
-def _pane_operation(value: JsonValue, argv: list[str]) -> str:
+def _pane_run(value: JsonValue, argv: list[str]) -> JsonObject:
     frame = object_value(value)
     run = object_value(frame["run"])
     if (
@@ -674,6 +676,11 @@ def _pane_operation(value: JsonValue, argv: list[str]) -> str:
         or run.get("diagnostics") not in (None, "")
     ):
         raise ValueError(ERROR_REPORT)
+    return run
+
+
+def _pane_operation(value: JsonValue, argv: list[str]) -> str:
+    run = _pane_run(value, argv)
     receipt = foundation.json_object(text(run, "stdout"))
     operation_id = receipt.get("operation_id") if receipt is not None else None
     if not isinstance(operation_id, str) or not operation_id:
@@ -1114,6 +1121,109 @@ def _reason_inputs(
     return matched
 
 
+def _child_record(
+    packet: JsonObject, attempt: Attempt, parent: JsonObject, created: int, public_finished: int, root: str
+) -> JsonObject:
+    if (
+        set(packet)
+        != {
+            "attempt_id",
+            "parent_attempt_id",
+            "started_ns",
+            "observed_ns",
+            "parent_actor",
+            "parent_native_session_id",
+            "base_project",
+            "worktree",
+            "frame",
+            "public_record",
+            "launch_record",
+        }
+        or not created
+        <= positive_integer(packet, "started_ns")
+        <= positive_integer(packet, "observed_ns")
+        <= public_finished
+    ):
+        raise ValueError(ERROR_REPORT)
+    actor = text(parent, "actor")
+    if (
+        packet["parent_attempt_id"] != attempt.parent
+        or packet["parent_actor"] != actor
+        or packet["parent_native_session_id"] != parent["native_session_id"]
+    ):
+        raise ValueError(ERROR_REPORT)
+    run = _pane_run(packet["frame"], ["telec", "todo", "child", ITEM])
+    match = re.search(rf"Started {re.escape(PROC_BUILD)} as session ([A-Za-z0-9_-]+)", text(run, "stdout"))
+    if match is None or attempt.session_id != match.group(1) or attempt.session_id == actor:
+        raise ValueError(ERROR_REPORT)
+    record = object_value(packet["public_record"])
+    launch = object_value(packet["launch_record"])
+    native = text(record, "native_session_id")
+    project = text(packet, "base_project")
+    worktree = text(packet, "worktree")
+    subdir = f"trees/{ITEM}"
+    if (
+        not project.startswith(root.rstrip("/") + "/")
+        or worktree != f"{project}/{subdir}"
+        or record.get("session_id") != attempt.session_id
+        or record.get("initiator_session_id") != actor
+        or record.get("role") != ROLE_BUILDER
+        or record.get("job") != PROC_BUILD
+        or record.get("active_agent") != "claude"
+        or record.get("lifecycle_status") != "active"
+        or record.get("runtime_start_observed") is not True
+        or record.get("closed_at") is not None
+        or record.get("project_path") != project
+        or record.get("subdir") != subdir
+        or launch.get("native_session_id") != native
+        or native == parent["native_session_id"]
+        or launch.get("cwd") != worktree
+        or launch.get("key_kind") != "procedure"
+        or launch.get("key") != procedure_key(PROC_BUILD)
+        or type(launch.get("index")) is not int
+        or launch["index"] != 1
+    ):
+        raise ValueError(ERROR_REPORT)
+    return {
+        "attempt_id": attempt.identifier,
+        "session_id": attempt.session_id,
+        "parent_attempt_id": attempt.parent,
+        "parent_actor": actor,
+        "native_session_id": native,
+        "state": "public_child_started",
+    }
+
+
+def _child_inputs(
+    finalizer: JsonObject, ledger: StartLedger, claims: list[JsonValue], created: int, public_finished: int, root: str
+) -> list[JsonValue]:
+    values = finalizer["public_child_evidence"]
+    if not isinstance(values, list):
+        raise ValueError(ERROR_REPORT)
+    if "B5" not in ledger.closed_lists:
+        if values:
+            raise ValueError(ERROR_REPORT)
+        return []
+    children = [attempt for attempt in ledger.attempts.values() if attempt.case == "B5" and attempt.label == "w2-child"]
+    if len(children) != 1 or len(values) != 1:
+        raise ValueError(ERROR_REPORT)
+    child = children[0]
+    if (
+        child.kind != RECORD_SESSION
+        or child.state != RECORD_DISCHARGED
+        or child.session_id is None
+        or child.parent is None
+    ):
+        raise ValueError(ERROR_REPORT)
+    packet = object_value(values[0])
+    if packet["attempt_id"] != child.identifier or child.session_id not in _strings(finalizer["owned_session_ids"]):
+        raise ValueError(ERROR_REPORT)
+    parents = [object_value(value) for value in claims if object_value(value)["attempt_id"] == child.parent]
+    if len(parents) != 1 or ledger.attempts[child.parent].label != "w2-start":
+        raise ValueError(ERROR_REPORT)
+    return [_child_record(packet, child, parents[0], created, public_finished, root)]
+
+
 def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
     """Join declared attempts to actual terminal operation data; receipts alone do not establish semantic settlement."""
     provisional = object_value(report["payload_provisional"])
@@ -1169,5 +1279,8 @@ def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
         "accepted_start_claims": claims,
         "refusals": _refusal_inputs(finalizer, after.ledger, operations, created, public_finished),
         "reason_notes": _reason_inputs(finalizer, after.ledger, operations, claims, created, public_finished),
+        "children": _child_inputs(
+            finalizer, after.ledger, claims, created, public_finished, text(observations, "owned_profile_root")
+        ),
         "semantic_settlement": "unproven",
     }
