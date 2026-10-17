@@ -385,6 +385,8 @@ class ActionJournal:
         *,
         maximum_seconds: float,
         vector_end_ns: int | None = None,
+        command_end_ns: int | None = None,
+        admission: Callable[[int], None],
     ) -> ActionResult:
         """Issue an admitted effect once; every second mutation is refused before its callback."""
         with self._exclusive():
@@ -406,6 +408,15 @@ class ActionJournal:
                 maximum_seconds, vector_end_ns=vector_end_ns, preserve_reserve=action not in CLOSURE_ACTIONS
             )
             command_end = min(self.deadline.end_ns, started + int(allowance * NANOSECONDS))
+            if command_end_ns is not None:
+                if type(command_end_ns) is not int or command_end_ns <= 0:
+                    raise ValueError(ERROR_HISTORY)
+                command_end = min(command_end, command_end_ns)
+            if time.monotonic_ns() >= command_end:
+                raise TimeoutError(ERROR_LATE)
+            admission(command_end)
+            if time.monotonic_ns() >= command_end:
+                raise TimeoutError(ERROR_LATE)
             intent: JsonObject = {Key.ACTION: action.value, Key.COMMAND_END_NS: command_end}
             self._append(view.rows, Event.INTENT, intent)
             committed = self.read()
