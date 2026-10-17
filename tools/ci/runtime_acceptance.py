@@ -46,11 +46,17 @@ from tools.ci import workflow_ready as ready
 from tools.ci import workflow_removal as removal
 from tools.ci import workflow_review as review
 from tools.ci import workflow_waiting as waiting
-from tools.ci.enclosure_contract import Action, JsonObject
+from tools.ci.enclosure_contract import Action, JsonObject, parse_object, positive_integer
 from tools.ci.enclosure_exchange import run_helper
 from tools.ci.enclosure_guest import GuestContext, Role, request_guest_poweroff
 from tools.ci.enclosure_guest import Record as GuestShutdownRecord
-from tools.ci.enclosure_inner import PROVISIONAL_REPORT_SCHEMA, PROVISIONAL_STAGE, PayloadProvisional
+from tools.ci.enclosure_inner import (
+    PROVISIONAL_REPORT_SCHEMA,
+    PROVISIONAL_STAGE,
+    InnerCleanupEvidence,
+    PayloadProvisional,
+    PhysicalCleanupPending,
+)
 from tools.ci.enclosure_journal import Outcome as EnclosureOutcome
 from tools.ci.enclosure_setup import run_guest_setup
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
@@ -734,6 +740,7 @@ class ScenarioStatus(StrEnum):
     PASSED = "passed"
     FAILED = "failed"
     NOT_RUN = "not_run"
+    P4_PENDING_OUTER = "P4_PENDING_OUTER"
 
 
 type JSONValue = str | int | float | bool | None | list[JSONValue] | dict[str, JSONValue]
@@ -974,6 +981,14 @@ def execute_profile(
         cleanup_action(cleanup_evidence)
         payload_work.check()
         cleanup = CleanupResult(status=ScenarioStatus.PASSED)
+    except PhysicalCleanupPending as exc:
+        expired = payload_work.expired()
+        pending = payload_provisional is not None and not expired
+        cleanup = CleanupResult(
+            status=ScenarioStatus.P4_PENDING_OUTER if pending else ScenarioStatus.FAILED,
+            detail=_EMPTY if pending else payload_work.EXPIRED if expired else str(exc),
+            commands=_bound_command_evidence(cleanup_evidence),
+        )
     except Exception as exc:
         cleanup = CleanupResult(
             status=ScenarioStatus.FAILED,
@@ -1023,6 +1038,12 @@ class FullRuntimeResources:
     report_path: Path | None = None
     payload_provisional: PayloadProvisional | None = None
     daemon_stop_outcome: str | None = None
+    inner_cleanup: InnerCleanupEvidence | None = None
+    public_cleanup_finished_ns: int | None = None
+    daemon_stop_started_ns: int | None = None
+    daemon_stop_finished_ns: int | None = None
+    daemon_stop_execution: ProcessExecution | None = None
+    daemon_stop_error: str | None = None
     admin_terminal: PersistentTerminal | None = None
     member_terminal: PersistentTerminal | None = None
     install_attempted: bool = False
@@ -2151,38 +2172,14 @@ def _remove_legacy_profile_resources(resources: FullRuntimeResources, failures: 
         failures.append(_FULL_TEMP_CLEANUP_ERROR)
 
 
-def _close_full_profile_resources(
+def _finish_public_cleanup(
     resources: FullRuntimeResources,
     cleanup_evidence: list[CommandEvidence],
+    failures: list[str],
+    *,
+    has_retained_marker: bool,
 ) -> None:
-    """Stop the supported runtime, restore temporary declarations and remove owned resources."""
-    b12_status_before_freeze = resources.retired_act_evidence.status
-    _freeze_retired_act_evidence(resources)
-    if (
-        b12_status_before_freeze == creation.B12_STATUS_COMPLETE
-        and resources.retired_act_evidence.status != creation.B12_STATUS_COMPLETE
-    ):
-        resources.retained.append(creation.B12_DETAIL_POSTFREEZE)
-    _freeze_b13_profile_evidence(resources)
-    failures: list[str] = []
-    stop_outcome = resources.temporary_root / _STOP_OUTCOME_NAME
-    if resources.install_attempted:
-        result = _record_external_command(
-            resources,
-            (*_SERVICE_STOP_COMMAND, f"{_STOP_OUTCOME_VARIABLE}={stop_outcome}"),
-            cwd=resources.source_root,
-            timeout_seconds=_STOP_COMMAND_TIMEOUT_SECONDS,
-            evidence=cleanup_evidence,
-        )
-        if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
-            failures.append(_FULL_SERVICE_STOP_ERROR)
-        recorded = stop_outcome.read_text(encoding=_UTF8).strip() if stop_outcome.is_file() else _EMPTY
-        resources.daemon_stop_outcome = recorded
-        if resources.workflow_flow is not None:
-            resources.workflow_flow.record_profile_stop(recorded)
-        if recorded != _STOPPED_OUTCOME:
-            resources.retained.append(_FULL_STOP_UNPROVEN.format(outcome=recorded or "none"))
-    has_retained_marker = _record_retained_workflow_markers(resources)
+    """Finish all public restoration/logout and original terminal disposal before the supported stop call."""
     try:
         if not has_retained_marker and not resources.retained:
             _restore_full_profile_changes(resources, cleanup_evidence)
@@ -2201,6 +2198,11 @@ def _close_full_profile_resources(
             _require_terminal_success(logout_status, logout_output, cleanup_evidence)
         except Exception:
             failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
+    if isinstance(resources.release_world, ReleaseWorld):
+        try:
+            _close_release_world(resources.release_world, cleanup_evidence)
+        except Exception:
+            failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
     for terminal in (resources.member_terminal, resources.admin_terminal):
         if terminal is None:
             continue
@@ -2208,17 +2210,90 @@ def _close_full_profile_resources(
             terminal.close()
         except Exception:
             failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
-    if isinstance(resources.release_world, ReleaseWorld):
-        try:
-            _close_release_world(resources.release_world, cleanup_evidence)
-        except Exception:
-            failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
+    resources.public_cleanup_finished_ns = time.monotonic_ns()
+
+
+def _stop_profile_runtime(
+    resources: FullRuntimeResources, cleanup_evidence: list[CommandEvidence], failures: list[str]
+) -> None:
+    """Attempt the supported P3 once after public work; later file/marker errors never erase its actual result."""
+    if not resources.install_attempted:
+        return
+    stop_outcome = resources.temporary_root / _STOP_OUTCOME_NAME
+    resources.daemon_stop_started_ns = time.monotonic_ns()
+    try:
+        result = _record_external_command(
+            resources,
+            (*_SERVICE_STOP_COMMAND, f"{_STOP_OUTCOME_VARIABLE}={stop_outcome}"),
+            cwd=resources.source_root,
+            timeout_seconds=_STOP_COMMAND_TIMEOUT_SECONDS,
+            evidence=cleanup_evidence,
+        )
+        resources.daemon_stop_execution = result
+        if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
+            failures.append(_FULL_SERVICE_STOP_ERROR)
+    except Exception as error:
+        resources.daemon_stop_error = resources.sanitize(f"{type(error).__name__}: {error}")
+        failures.append(_FULL_SERVICE_STOP_ERROR)
+    try:
+        recorded = stop_outcome.read_text(encoding=_UTF8).strip() if stop_outcome.is_file() else _EMPTY
+        resources.daemon_stop_outcome = recorded
+        if resources.workflow_flow is not None:
+            resources.workflow_flow.record_profile_stop(recorded)
+        if recorded != _STOPPED_OUTCOME:
+            resources.retained.append(_FULL_STOP_UNPROVEN.format(outcome=recorded or "none"))
+    except Exception as error:
+        detail = resources.sanitize(f"{type(error).__name__}: {error}")
+        resources.daemon_stop_error = _CLEANUP_FAILURE_SEPARATOR.join(
+            item for item in (resources.daemon_stop_error, detail) if item
+        )
+        failures.append(_FULL_SERVICE_STOP_ERROR)
+    finally:
+        resources.daemon_stop_finished_ns = time.monotonic_ns()
+
+
+def _close_full_profile_resources(
+    resources: FullRuntimeResources,
+    cleanup_evidence: list[CommandEvidence],
+) -> None:
+    """Perform public cleanup before P3, preserving new-run resources and every independent failure for outside closure."""
+    b12_status_before_freeze = resources.retired_act_evidence.status
+    _freeze_retired_act_evidence(resources)
+    if (
+        b12_status_before_freeze == creation.B12_STATUS_COMPLETE
+        and resources.retired_act_evidence.status != creation.B12_STATUS_COMPLETE
+    ):
+        resources.retained.append(creation.B12_DETAIL_POSTFREEZE)
+    _freeze_b13_profile_evidence(resources)
+    failures: list[str] = []
+    has_retained_marker = _record_retained_workflow_markers(resources)
+    _finish_public_cleanup(resources, cleanup_evidence, failures, has_retained_marker=has_retained_marker)
+    _stop_profile_runtime(resources, cleanup_evidence, failures)
+    if resources.payload_provisional is not None:
+        work_end = positive_integer(parse_object(resources.payload_provisional.binding_bytes), "payload_end_ns")
+        stop = resources.daemon_stop_execution
+        resources.inner_cleanup = InnerCleanupEvidence(
+            resources.public_cleanup_finished_ns or 0,
+            resources.daemon_stop_started_ns,
+            resources.daemon_stop_finished_ns,
+            resources.daemon_stop_outcome,
+            stop.exit_status if stop is not None else None,
+            stop.diagnostics if stop is not None else _EMPTY,
+            resources.daemon_stop_error,
+            work_end,
+            tuple(failures),
+            tuple(resources.retained),
+        )
     if resources.retained:
         failures.append(_FULL_UNPROVEN_RETAINED.format(reasons=_CLEANUP_FAILURE_SEPARATOR.join(resources.retained)))
     elif resources.payload_provisional is None:
         _remove_legacy_profile_resources(resources, failures)
     if failures:
         raise RuntimeError(_FULL_CLEANUP_FAILURE.format(failures=_CLEANUP_FAILURE_SEPARATOR.join(failures)))
+    if resources.payload_provisional is not None:
+        if resources.inner_cleanup is not None and resources.inner_cleanup.pending_physical:
+            raise PhysicalCleanupPending(ScenarioStatus.P4_PENDING_OUTER.value)
+        raise RuntimeError(_FULL_STOP_UNPROVEN.format(outcome=resources.daemon_stop_outcome or "none"))
 
 
 def _run_readiness_check(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -5444,6 +5519,9 @@ def _run_profile(
                     {
                         "owned_profile_root": str(temporary_root),
                         "daemon_stop_outcome": resources.daemon_stop_outcome,
+                        "inner_cleanup": resources.inner_cleanup.record()
+                        if resources.inner_cleanup is not None
+                        else None,
                         "recorded_retention_reasons": list(resources.retained),
                         "recorded_retention_keys": dict(resources.retained_keys),
                         "flow_finalizer": resources.workflow_flow.finalizer_summary

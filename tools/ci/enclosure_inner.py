@@ -27,6 +27,57 @@ class PendingReason(StrEnum):
     P4_PENDING_OUTER = "P4_PENDING_OUTER"
 
 
+class PhysicalCleanupPending(RuntimeError):
+    """A live new-run cleanup defers physical closure; it never represents a previously failed result."""
+
+
+@dataclass(frozen=True)
+class InnerCleanupEvidence:
+    """Actual public-before-stop ordering and supported stop outcome; P1/P2 and functional coverage stay separate."""
+
+    public_finished_ns: int
+    stop_started_ns: int | None
+    stop_finished_ns: int | None
+    stop_outcome: str | None
+    stop_exit_status: int | None
+    stop_diagnostics: str
+    stop_error: str | None
+    work_end_ns: int | None
+    failures: tuple[str, ...]
+    unclassified_retention: tuple[str, ...]
+
+    @property
+    def pending_physical(self) -> bool:
+        return (
+            self.stop_started_ns is not None
+            and self.stop_finished_ns is not None
+            and self.work_end_ns is not None
+            and 0 < self.public_finished_ns <= self.stop_started_ns <= self.stop_finished_ns <= self.work_end_ns
+            and self.stop_outcome == "stopped"
+            and type(self.stop_exit_status) is int
+            and self.stop_exit_status == 0
+            and not self.stop_diagnostics
+            and self.stop_error is None
+            and not self.failures
+            and not self.unclassified_retention
+        )
+
+    def record(self) -> JsonObject:
+        return {
+            "classification": PendingReason.P4_PENDING_OUTER.value if self.pending_physical else "retained-unproven",
+            "public_cleanup_finished_ns": self.public_finished_ns,
+            "stop_started_ns": self.stop_started_ns,
+            "stop_finished_ns": self.stop_finished_ns,
+            "supported_stop_outcome": self.stop_outcome,
+            "stop_exit_status": self.stop_exit_status,
+            "stop_diagnostics": self.stop_diagnostics,
+            "stop_error": self.stop_error,
+            "work_end_ns": self.work_end_ns,
+            "independent_failures": list[JsonValue](self.failures),
+            "unclassified_retention": list[JsonValue](self.unclassified_retention),
+        }
+
+
 def _encoded(record: JsonObject) -> bytes:
     return json.dumps(record, sort_keys=True, separators=JSON_SEPARATORS, allow_nan=False).encode("utf-8")
 
