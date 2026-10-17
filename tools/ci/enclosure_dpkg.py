@@ -25,7 +25,7 @@ from tools.ci.enclosure_contract import (
     text,
 )
 from tools.ci.enclosure_data import DPKG_DEB, _archive
-from tools.ci.enclosure_host import CONTAINER_PACKAGE
+from tools.ci.enclosure_host import CONTAINER_PACKAGE, HostSubstrateFacts
 from tools.ci.enclosure_native import NativeQuery, query_native, read_native_stdout
 
 CONFIGURATION: Final = Path("/etc/dpkg")
@@ -100,6 +100,23 @@ FLAG_OPTIONS: Final = frozenset(
 FORCE_OPTIONS: Final = ("no-force", "refuse", "force")
 SCALAR_OVERRIDES: Final = frozenset({"root", "instdir", "admindir", "log", "abort-after", "debug"})
 OUTPUT_DESCRIPTOR: Final = re.compile(rb"\+?(?:0*[12]|0[xX]0*[12])")
+PACKAGE_NAME: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9+._-]*")
+ARCHITECTURE_NAME: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
+PACKAGE_STATES: Final = frozenset(
+    {
+        "not-installed",
+        "config-files",
+        "half-installed",
+        "unpacked",
+        "half-configured",
+        "triggers-awaited",
+        "triggers-pending",
+        "installed",
+    }
+)
+ACTIVATION_STATES: Final = frozenset({"triggers-awaited", "triggers-pending", "installed"})
+PACKAGE_WANTS: Final = frozenset({"unknown", "install", "hold", "deinstall", "purge"})
+PACKAGE_ERRORS: Final = frozenset({"ok", "reinstreq"})
 
 
 class DpkgInputError(RuntimeError):
@@ -680,3 +697,139 @@ def interpret_trigger_routes(snapshot: JsonObject, basis: JsonObject, deadline: 
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError({"inputs": snapshot, "basis": basis, "routes": result}) from error
+
+
+def _inventory_instances(host: HostSubstrateFacts, deadline: AdmittedDeadline) -> dict[str, dict[str, JsonObject]]:
+    _before_cutoff(deadline)
+    raw = base64.b64decode(host.inventory_base64, validate=True)
+    if hashlib.sha256(raw).hexdigest() != host.inventory_sha256:
+        raise ValueError(ERROR_INPUT)
+    instances: dict[str, dict[str, JsonObject]] = {}
+    for line in raw.decode("utf-8").splitlines():
+        _before_cutoff(deadline)
+        fields = line.split("\t")
+        if len(fields) != 4:
+            raise ValueError(ERROR_INPUT)
+        name, version, architecture, status = fields
+        state_fields = status.split(" ")
+        if (
+            PACKAGE_NAME.fullmatch(name) is None
+            or (architecture and ARCHITECTURE_NAME.fullmatch(architecture) is None)
+            or len(state_fields) != 3
+            or state_fields[0] not in PACKAGE_WANTS
+            or state_fields[1] not in PACKAGE_ERRORS
+            or state_fields[2] not in PACKAGE_STATES
+        ):
+            raise ValueError(ERROR_INPUT)
+        name = name.lower()
+        group = instances.setdefault(name, {})
+        if architecture in group:
+            raise ValueError(ERROR_INPUT)
+        group[architecture] = {
+            "package_name": name,
+            "version": version,
+            "architecture": architecture,
+            "selection_state": state_fields[0],
+            "error_flag": state_fields[1],
+            "lifecycle": state_fields[2],
+        }
+    return instances
+
+
+def _registered_instance(
+    specification: bytes, instances: dict[str, dict[str, JsonObject]]
+) -> tuple[JsonObject, tuple[str, str] | None]:
+    name, colon, architecture = specification.decode("ascii").partition(":")
+    if PACKAGE_NAME.fullmatch(name) is None or (colon and ARCHITECTURE_NAME.fullmatch(architecture) is None):
+        raise ValueError(ERROR_INPUT)
+    name = name.lower()
+    group = instances.get(name, {})
+    present = {arch: row for arch, row in group.items() if row["lifecycle"] != "not-installed"}
+    if not colon and len(present) > 1:
+        # pkg_spec_parse_pkg with ARCH_SINGLE fails for an ambiguous unqualified name, even on an unrelated path.
+        raise ValueError(ERROR_INPUT)
+    if "" in present:
+        # Do not pretend an unknown native architecture is an absent qualified instance.
+        return {
+            "package_name": name,
+            "architecture": architecture if colon else None,
+            "identity_state": "unproven_architecture",
+            "lifecycle": None,
+            "activation_eligible": None
+            if any(row["lifecycle"] in ACTIVATION_STATES for row in present.values())
+            else False,
+        }, None
+    if colon:
+        row = group.get(architecture)
+        if row is None:
+            return {
+                "package_name": name,
+                "architecture": architecture,
+                "identity_state": "resolved_qualified_not_installed",
+                "lifecycle": "not-installed",
+                "activation_eligible": False,
+            }, (name, architecture)
+    elif present:
+        architecture, row = next(iter(present.items()))
+    else:
+        # The original complete no-pattern query omits not-installed slots. Native available/slot choice is unclaimed.
+        return {
+            "package_name": name,
+            "architecture": None,
+            "identity_state": "unproven_inactive_singleton",
+            "lifecycle": "not-installed",
+            "activation_eligible": False,
+        }, None
+    return {
+        **row,
+        "identity_state": "resolved",
+        "activation_eligible": row["lifecycle"] in ACTIVATION_STATES,
+    }, (name, architecture)
+
+
+def interpret_registered_instances(
+    routes: JsonObject, host: HostSubstrateFacts, deadline: AdmittedDeadline
+) -> JsonObject:
+    """Join original native inventory to registrations; executable-recipient/source/deferred admission remains separate."""
+    registrations: list[JsonValue] = []
+    result: JsonObject = {
+        "registrations": registrations,
+        "inventory_sha256": host.inventory_sha256,
+        "deferred_and_pending_work": "unproven",
+        "recipient_admission": "unproven",
+        "error": None,
+    }
+    try:
+        instances = _inventory_instances(host, deadline)
+        interests = routes["file_interests"]
+        if routes["error"] is not None or not isinstance(interests, list):
+            raise ValueError(ERROR_INPUT)
+        seen: set[tuple[bytes, tuple[str, str]]] = set()
+        for value in interests:
+            _before_cutoff(deadline)
+            interest = object_value(value)
+            native_name = base64.b64decode(text(interest, "native_name_base64"), validate=True)
+            encoded = interest["package_spec_base64"]
+            if not isinstance(encoded, str) or type(interest["matches_new_member"]) is not bool:
+                raise ValueError(ERROR_INPUT)
+            specification = base64.b64decode(encoded, validate=True)
+            instance, identity = _registered_instance(specification, instances)
+            registrations.append(
+                {
+                    **interest,
+                    "instance": instance,
+                    "duplicate_identity": "resolved" if identity is not None else "unproven",
+                }
+            )
+            if identity is not None:
+                key = (native_name, identity)
+                if key in seen:
+                    raise ValueError(ERROR_INPUT)
+                seen.add(key)
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError(
+            {"routes": routes, "inventory_base64": host.inventory_base64, "instances": result}
+        ) from error
