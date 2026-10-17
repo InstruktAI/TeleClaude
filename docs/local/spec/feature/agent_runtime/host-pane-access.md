@@ -38,42 +38,11 @@ The access answer consumes the published facts, not an atomic liveness probe.
 
 #### UC-HPA1: Host release and finality remain distinct
 
-```gherkin
-Given an agent consumes the host-access answer for an open session whose close is in progress
-When runtime-established host release reaches that session's projection before cleanup finishes
-Then the answer denies creation of a fresh host viewer
-And it does not declare final closure
-And the absent host does not authorize headless adoption
-And inspection of an existing surviving viewer remains independent
-```
-
 #### UC-HPA2: A bound startup host is inspectable
-
-```gherkin
-Given an agent consumes the host-access answer for an open initializing session
-And the session has a bound host pane
-When it receives that session's current projection before the agent starts
-Then the answer admits a fresh host viewer
-And the answer does not claim that the agent is ready for input
-```
 
 #### UC-HPA3: A failed close restores current access
 
-```gherkin
-Given an agent has received denied host-viewer admission during a session close
-When the runtime restores the session to an open state with its host bound after close failure
-Then the runtime's current host-access projection admits a fresh viewer again
-```
-
 #### UC-HPA4: A bound closing host remains inspectable
-
-```gherkin
-Given an agent consumes the host-access answer for an open closing session
-And its host remains bound before runtime-established release
-When the agent requests the session's current projection
-Then the answer admits inspection through a fresh host viewer
-And input terminality does not change that inspection answer
-```
 
 ## Known caveats
 
