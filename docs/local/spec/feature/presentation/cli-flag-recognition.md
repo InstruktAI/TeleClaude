@@ -49,10 +49,11 @@ declarations; the shell owns display grouping and alignment
 ```gherkin
 Scenario: Published option forms work as declared
   Given an operator or an agent acting for them wants to run a documented telec command
-  When they invoke it with a declared short or long option, an attached or separate option value, or a dash-leading operand after `--`
+  When they invoke it with a declared short or long option, a long-option value attached with `=`, a separate option value, or a dash-leading operand after `--`
   Then declared options behave according to the published command surface
   And a declared short alias behaves exactly as its long form
   And `--option=value` behaves exactly as `--option value`
+  And a short option takes its value from the next token
   And the separator leaves following tokens as operand text
   And the command performs its normal behavior with that operand
 
