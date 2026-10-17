@@ -75,16 +75,19 @@ def compose_setup_manifest(
     if seal.status is not Outcome.SUCCEEDED or seal.evidence.get("phase") != Phase.ADMISSION_SEALED:
         raise ValueError(ERROR_MANIFEST)
     binding = owner.journal.binding
-    if deadline.outer_end_ns != owner.journal.deadline.end_ns:
+    owned_record = parse_object(owner.manifest_bytes)
+    if deadline.outer_end_ns != owner.journal.deadline.end_ns or owned_record.get(OwnerKey.SELECTED_SCENARIOS) != list(
+        sorted(selected)
+    ):
         raise ValueError(ERROR_MANIFEST)
-    inputs = _read_inputs(owner.journal.directory_fd, parse_object(owner.manifest_bytes), binding)
+    inputs = _read_inputs(owner.journal.directory_fd, owned_record, binding)
     realization = parse_object(inputs[REALIZATION_NAME])
     source_files: JsonObject = {}
     for name, value in object_value(realization[GuestKey.SOURCE_FILES]).items():
         digest = text(object_value(value), Field.SHA256)
         require_hex(digest, 64)
         source_files[name] = digest
-    purpose = Purpose(text(parse_object(owner.manifest_bytes), OwnerKey.PURPOSE))
+    purpose = Purpose(text(owned_record, OwnerKey.PURPOSE))
     if purpose is Purpose.QUALIFICATION and (qualification_vector != "Q2" or deadline.vector_end_ns is None):
         raise ValueError(ERROR_MANIFEST)
     facts = guest.facts

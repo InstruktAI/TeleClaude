@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import stat
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
@@ -24,10 +25,21 @@ from tools.ci.enclosure_contract import (
     positive_integer,
     text,
 )
+from tools.ci.enclosure_data import (
+    materialize_os_data,
+    stage_bootstrap_tools,
+    stage_candidate,
+    stage_guest_archives,
+    stage_guest_declarations,
+)
 from tools.ci.enclosure_guest import close_evidence_descriptors
 from tools.ci.enclosure_guest_evidence import EvidenceLeaf, read_guest_evidence
 from tools.ci.enclosure_guest_manifest import publish_guest_manifest
+from tools.ci.enclosure_host import inspect_host_substrate
+from tools.ci.enclosure_inputs import acquire_fixed_inputs, stage_observer_library
 from tools.ci.enclosure_journal import ActionResult
+from tools.ci.enclosure_native import query_native
+from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, selection_argument
 from tools.ci.enclosure_owner import Key as OwnerKey
 from tools.ci.enclosure_payload_completion import validate_shutdown_journal
 from tools.ci.enclosure_privileged import PrivilegedAction
@@ -67,6 +79,21 @@ ERROR_RUNTIME: Final = "the declared runtime unit/configuration path is occupied
 ERROR_ACTION: Final = "the fixed native producer is not yet implemented: {action}"
 ERROR_PHASE: Final = "native mutation receipt does not establish the requested supervisor phase"
 ORIGINAL_OBSERVATION: Final = "original-supervisor-observation-request"
+ARCHIVE_DIRECTORY: Final = "archives"
+UTF8: Final = "utf-8"
+HOST_NETWORK_ARGUMENTS: Final = (
+    SYSTEMCTL,
+    "--system",
+    "--no-pager",
+    "--no-ask-password",
+    "show",
+    "--property=ActiveState",
+    "--value",
+    "--",
+    "systemd-networkd.service",
+)
+ERROR_HOST_NETWORK: Final = "the reviewed host network manager is not active"
+ERROR_HOST_INSTALL: Final = "the absent-container installation branch is not yet implemented"
 
 
 class Key(StrEnum):
@@ -322,6 +349,68 @@ def _create_parent(context: PrivilegedAction, end_ns: int) -> NativeMutation:
     return NativeMutation(Action.CREATE_PARENT, evidence)
 
 
+def _provision(context: PrivilegedAction, end_ns: int) -> NativeMutation:
+    """Compose fixed offline data staging; native receipts remain separate from the parent's preflight proof."""
+    owner = context.owner
+    package = owner.package
+    binding = owner.journal.binding
+    record = parse_object(owner.manifest_bytes)
+    deadline = _deadline(context, end_ns)
+    cap = positive_integer(
+        object_value(parse_object(package.recipe_bytes)[Field.BUDGET_SECONDS]), Field.NORMAL_COMMAND_MAX
+    )
+    network = query_native(HOST_NETWORK_ARGUMENTS, context.commands.query, deadline, cap).decode(UTF8).strip()
+    if network != "active":
+        raise ValueError(ERROR_HOST_NETWORK)
+    substrate = inspect_host_substrate(
+        package,
+        text(record, OwnerKey.IMAGE_VERSION),
+        context.commands.query,
+        deadline,
+        frozenset({text(record, OwnerKey.PARENT_UNIT), text(record, OwnerKey.GUEST_UNIT)}),
+    )
+    if not substrate.container_installed:
+        # This source prefix must not claim the still-owed host installation or its observed effects.
+        raise NotImplementedError(ERROR_HOST_INSTALL)
+    base = Path(PARENT_DESCRIPTOR.format(pid=binding.controller.pid, descriptor=owner.inherited_directory_fd))
+    inputs = acquire_fixed_inputs(package, base / ARCHIVE_DIRECTORY, context.commands.run, deadline)
+    library = stage_observer_library(owner, inputs, context.commands.run, deadline)
+    rootfs = materialize_os_data(package, binding.run_token, inputs, context.commands.run, deadline)
+    candidate = stage_candidate(
+        rootfs,
+        package,
+        binding.run_token,
+        context.commands.source_root,
+        binding.candidate_commit,
+        binding.candidate_tree,
+        context.commands.run,
+        deadline,
+    )
+    stage_guest_archives(rootfs, package, binding.run_token, inputs, deadline)
+    stage_bootstrap_tools(rootfs, package, binding.run_token, inputs, context.commands.run, deadline)
+    stage_guest_declarations(
+        rootfs,
+        package,
+        binding.run_token,
+        binding.candidate_commit,
+        binding.candidate_tree,
+        selection_argument(record),
+        deadline,
+    )
+    return NativeMutation(
+        Action.PROVISION,
+        {
+            "host_substrate": parse_object(json.dumps(asdict(substrate), allow_nan=False).encode(UTF8)),
+            "host_network_active_state": network,
+            "observer_library_path": str(library),
+            "rootfs": str(rootfs),
+            "candidate": str(candidate),
+            "archive_digests": list[JsonValue](inputs),
+            Key.COMMAND_END_NS: end_ns,
+        },
+    )
+
+
 def _start_guest(context: PrivilegedAction, end_ns: int) -> NativeMutation:
     instance = _runtime_file(context, Template.INSTANCE, end_ns, new_parent=True)
     settings = _runtime_file(context, Template.SETTINGS, end_ns, new_parent=False)
@@ -449,6 +538,7 @@ def _observe_original(context: PrivilegedAction, end_ns: int) -> NativeMutation:
 
 
 NATIVE_PRODUCERS: Final[Mapping[Action, Callable[[PrivilegedAction, int], NativeMutation]]] = {
+    Action.PROVISION: _provision,
     Action.CREATE_PARENT: _create_parent,
     Action.START_GUEST: _start_guest,
     Action.MASK_GUEST: _mask_guest,

@@ -18,11 +18,13 @@ from tools.ci.enclosure_contract import (
     QUALIFICATION_FILE,
     RECIPE_DIGEST,
     RECIPE_FILE,
+    SELECTION_CHARACTERS,
     STATIC_DIGEST,
     STATIC_FILE,
     Deadline,
     Field,
     JsonObject,
+    JsonValue,
     Parameter,
     StaticPackage,
     object_value,
@@ -42,6 +44,8 @@ UTF8: Final = "utf-8"
 JSON_SEPARATORS: Final = (",", ":")
 EXCLUSIVE_BINARY: Final = "wb"
 NONCE_BYTES: Final = 32
+SELECTION_SEPARATOR: Final = ","
+SCENARIO_CHARACTERS: Final = SELECTION_CHARACTERS - {SELECTION_SEPARATOR}
 ROOT_MODE: Final = 0o700
 FILE_MODE: Final = 0o600
 PRIVATE_UMASK: Final = 0o077
@@ -80,6 +84,7 @@ class Key(StrEnum):
     CREATED_NS = "created_ns"
     DIRECTORY_FD = "directory_fd"
     INPUTS = "inputs"
+    SELECTED_SCENARIOS = "selected_scenarios"
 
 
 @dataclass(frozen=True)
@@ -151,6 +156,7 @@ class RunOwner:
         purpose: Purpose,
         *,
         realization_bytes: bytes,
+        selected: frozenset[str],
     ) -> RunOwner:
         """Reserve fresh run ownership and its safe recovery prefix under the original supplied deadline."""
         if os.geteuid() != 0:
@@ -188,7 +194,9 @@ class RunOwner:
             Key.ROOTFS: text(host, Key.ROOTFS).format_map(parameters),
             Key.CREATED_NS: time.monotonic_ns(),
             Key.INPUTS: declarations,
+            Key.SELECTED_SCENARIOS: list[JsonValue](sorted(selected)),
         }
+        selection_argument(record)
         # This synchronous ownership step has no concurrent producer or await across the temporary umask.
         previous_umask = os.umask(PRIVATE_UMASK)
         journal: ActionJournal | None = None
@@ -354,6 +362,20 @@ def _require_addresses(record: JsonObject, package: StaticPackage, token: str) -
     ):
         if text(record, actual) != text(host, declaration).format_map(parameters):
             raise ValueError(ERROR_MANIFEST)
+    selection_argument(record)
+
+
+def selection_argument(record: JsonObject) -> str:
+    """Carry the one protected full/selected choice into the frozen unit's declared substitution."""
+    values = record.get(Key.SELECTED_SCENARIOS)
+    if not isinstance(values, list) or any(
+        not isinstance(value, str) or not value or not set(value) <= SCENARIO_CHARACTERS for value in values
+    ):
+        raise ValueError(ERROR_MANIFEST)
+    names = [value for value in values if isinstance(value, str)]
+    if names != sorted(set(names)):
+        raise ValueError(ERROR_MANIFEST)
+    return SELECTION_SEPARATOR.join(names)
 
 
 def _require_private_directory(descriptor: int) -> None:
