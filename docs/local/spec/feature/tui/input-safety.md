@@ -29,60 +29,39 @@ does not invoke binding actions directly.
 
 ### Use cases
 
-#### UC-TIS1: Bracketed paste is blocked on the bare TUI surface
+#### UC-TIS1: An operator uses the TUI without accidental actions from pasted or burst input
 
-```
-Given no modal, text field, or paste-safe widget is active
-When a bracketed paste event reaches the TUI app
-Then the event is stopped before default handling
-And the paste-ignored notification is shown
-And no pasted content is dispatched to operational bindings
+```gherkin
+Scenario: Pasting on the bare control surface does not trigger an operation
+  Given no modal, text field, or paste-safe widget is active
+  When the operator pastes content into the TUI
+  Then no pasted content triggers an operational binding
+  And the paste-ignored notification is shown
+
+Scenario: A rapid key burst does not trigger operations
+  Given no modal, text field, or paste-safe widget is active
+  When raw key input arrives as a rapid burst
+  Then the burst is rejected as paste-like input
+  And the paste-ignored notification is shown
+  And none of its keys triggers an operational binding
+
+Scenario: Ordinary manual command input remains available
+  Given no modal, text field, or paste-safe widget is active
+  When the operator enters ordinary command keys without a rapid burst
+  Then the TUI processes them through its normal command behavior
+
+Scenario: Text-entry surfaces accept operator input
+  Given a text field, modal, or config inline editor is active
+  When the operator types or pastes content
+  Then that surface receives the input without paste-guard buffering or warning
 ```
 
 #### UC-TIS2: Raw rapid bursts fail closed on the bare TUI surface
 
-```
-Given no modal, text field, or paste-safe widget is active
-When more than two raw key events arrive inside the burst window
-Then the buffered keys are dropped as paste-like input
-And the paste-ignored notification is shown
-And no buffered key is replayed into operational bindings
-```
-
 #### UC-TIS3: Quiet manual command keys keep working
-
-```
-Given no modal, text field, or paste-safe widget is active
-When one or two raw command keys arrive without crossing the burst threshold
-Then the guard releases those keys after the burst window
-And the released keys continue through Textual's normal key dispatch
-And the guard does not manually invoke active bindings
-```
 
 #### UC-TIS4: Text inputs bypass the guard
 
-```
-Given a Textual input field is focused
-When key or paste input reaches the TUI app
-Then the input bypasses paste-guard buffering
-And the TUI app does not stop or warn on the event
-```
-
 #### UC-TIS5: Modal screens bypass the guard
 
-```
-Given a modal screen is open
-When key or paste input reaches the TUI app
-Then the input bypasses paste-guard buffering
-And the TUI app does not stop or warn on the event
-```
-
 #### UC-TIS6: Config inline editing bypasses the guard only while editing
-
-```
-Given the config view owns a paste-safe inline edit buffer
-When the inline edit buffer is active
-Then key and paste input bypass paste-guard buffering
-And when the inline edit buffer is inactive
-Then the config view is treated like the bare control surface
-```
