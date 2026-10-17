@@ -46,13 +46,13 @@ its checkpoint schema; the runtime stores its object without interpreting it.
 
 #### UC-AJR-4: Script results use the shared state contract
 
-#### UC-AJR-5: A script receives its prior checkpoint
+#### UC-AJR-5: A scheduled script continues from saved progress
 
 ```gherkin
-Given an operator has a scheduled script job that resumes from saved progress
-And the job has a checkpoint for its project and declared identity
+Given an operator schedules a script job to continue work across runs
+And an earlier run has saved that job's checkpoint for its project and job identity
 When the next run starts
-Then the script receives that job's checkpoint and no other job's state
+Then the script continues its work from its own saved progress without using another job's checkpoint
 ```
 
 ## Known caveats
