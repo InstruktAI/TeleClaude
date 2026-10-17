@@ -53,6 +53,12 @@ records only after pending procedure work is accounted for by the continuing
 responsibility or an explicit terminal failure. Event data retains its untrusted
 provenance inside the transport (`general/policy/message-identity-headers`).
 
+Closing a session discards its remaining control payloads after procedure-event
+work is accounted for. A control payload already in flight is abandoned and
+logged without blocking closure. A producer may supersede only its own pending
+payload when it declares the same envelope kind and key; the old payload is
+removed without delivery and the replacement keeps its enqueue position.
+
 ## Canonical fields
 
 A control payload record carries:
@@ -70,131 +76,40 @@ or XML framing to this surface.
 
 While the payload is pending it carries no terminal outcome and no outcome
 instant. Reaching a terminal outcome sets both together: the outcome, delivered
-or failed, and the instant it was reached.
+or failed, and the instant it was reached. Each delivery boundary selects the
+entire pending batch in enqueue order and records one terminal outcome for the
+whole batch; partial delivery is not represented.
 
 ### Use cases
 
 #### UC-CDL1: A payload reaches a working agent inside its running turn
 
-```gherkin
-Given a control payload is pending for a session whose agent is mid-turn doing tool-assisted work
-When the agent's work reaches its next natural boundary
-Then the payload is delivered into the running turn at that boundary
-And the turn is not ended or restarted by the delivery
-And nothing is typed into the session's terminal
-```
-
 #### UC-CDL2:
-
-```gherkin
-Given a control payload is pending for a session whose current turn performs no tool-assisted work
-When that turn completes
-Then the pending payload does not block completion of that turn
-And the session is woken to receive the payload at the next turn's entry
-```
 
 #### UC-CDL3: An idle session is woken so a delivery boundary exists
 
-```gherkin
-Given a control payload is handed to this surface for a session with no running turn
-When the payload is recorded pending
-Then the session is woken by a minimal trigger typed through the existing session-input surface
-And that trigger is the only content reaching the terminal, never the control payload
-And the payload is delivered at the boundary that waking produces
-And in-turn delivery is preferred whenever a turn is running
-```
-
 #### UC-CDL4: A payload is consumed on successful handoff, and a failed handoff fails loudly
-
-```gherkin
-Given a pending control payload
-When a delivery boundary hands the payload off successfully
-Then the payload is recorded delivered at that moment without waiting for downstream confirmation
-And no later boundary delivers it again
-But when the handoff itself fails
-Then the payload is recorded failed, which is terminal
-And the failure is raised
-And no later boundary retries it or finds it pending again
-```
 
 #### UC-CDL5: Closing a session discards its undelivered payloads
 
-```gherkin
-Given undelivered control payloads are pending for a session
-When that session closes
-Then every payload owned by that session is removed
-And a payload whose delivery was in flight at that moment is abandoned with a logged warning
-And the close completes without being blocked by the abandoned delivery
-```
-
 #### UC-CDL6: One boundary drains everything pending, in order, as one batch
 
-```gherkin
-Given several control payloads are pending for one session
-When a delivery boundary is reached
-Then every payload pending at that moment is handed off together in one delivery
-And the payloads appear in their enqueue order within it
-And the whole batch is recorded delivered together once that handoff succeeds
-But when the handoff fails
-Then every payload in the batch is recorded failed together
-And no batch ever ends partly delivered or partly pending
-```
-
-#### UC-CDL7: Control traffic is invisible to human surfaces
+#### UC-CDL7: A person can converse without control traffic in their view
 
 ```gherkin
-Given control payloads are enqueued, delivered, or discarded at session close
-When a human reads that session's conversational surfaces
+Given a person is conversing with an agent while platform control payloads are pending
+When they read their conversation surfaces
 Then no control-delivery traffic is rendered there
 And the session transcript remains the inspectable record of what the agent received
 ```
 
 #### UC-CDL8: Hook delivery and idle wake render one model through distinct codecs
 
-```gherkin
-Given a semantic control envelope is pending for a session
-When a running turn reaches a hook delivery boundary
-Then the payload is rendered by the XML codec over the shared envelope registry
-And no bracket framing is embedded inside that XML payload
-But when the session is idle and must be woken
-Then the same registered wake model is rendered by the bracket codec as its auto-closed marker
-And neither codec declares vocabulary or closure independently of the registry
-```
-
 #### UC-CDL9: A turn that ends in a provider failure leaves the session idle for the next control payload
-
-```gherkin
-Given a session whose latest turn was terminated by a runtime or provider failure
-And no input has been accepted for that session since that failure
-When a control payload is handed to this surface for that session
-Then the platform treats the session as having no running turn
-And the session is woken by the minimal trigger so a delivery boundary exists
-And the payload is delivered at the boundary that waking produces
-```
 
 #### UC-CDL10: A producer supersedes its own undelivered payload
 
-```gherkin
-Given a payload is pending for a session and carries a producer's envelope kind and key fields
-When the same producer hands off a newer payload for that session under the same kind and key fields and declares that it supersedes the earlier one
-Then the earlier payload is removed without delivery
-And no later boundary delivers or retries it
-And the newer payload remains pending in its own enqueue position
-And a producer that declares no supersession keeps every payload pending
-```
-
 #### UC-CDL11: A payload that lands while a turn is ending is woken in at the turn's end
-
-```gherkin
-Given a session whose turn has passed its last delivery boundary
-And the platform has not yet recorded that the turn ended
-When a control payload is handed to this surface for that session
-And the platform then records the end of the turn
-Then the session is woken by the minimal trigger as soon as the turn end is recorded
-And the payload is delivered at the boundary that waking produces
-And no input from a human or another session is needed for it to arrive
-And a payload still pending when a turn ends in a provider failure or a native idle is woken in the same way
-```
 
 #### UC-CDL12:
 
