@@ -15,75 +15,13 @@ An agent saves an observation when the human it works for asks it to remember so
 
 ### Use cases
 
-#### Save via CLI
+#### Save an observation for later reference
 
-```
-Given a caller runs `telec memories save "<text>" [--title <t>] [--type <obs_type>] [--project <slug>]`
-When the CLI builds the request body
-Then it includes text; includes title only if --title was given; includes type only if --type was given; includes project only if --project was given
-And asks the memory service to persist the observation
-And on success prints `Saved observation #<id> — <title> (project: <project>)`
-```
-
-#### Save
-
-```
-Given a caller asks the memory service to persist an observation with a text body and optional fields
-When the request is processed
-Then type defaults to `discovery` when omitted
-And project defaults to `teleclaude` when omitted
-And title is derived from the text when omitted
-And the response carries the assigned id, the resolved title, and the resolved project
-```
-
-#### Default project fallback
-
-```
-Given a save request omits project
-When the memory service resolves project scoping
-Then the project is set to the literal string `teleclaude`
-And the observation is persisted under that project
-```
-
-#### Auto-title derivation
-
-```
-Given a save request omits title
-When the memory service derives a title from the text
-Then the first line after trimming surrounding whitespace is used as the source text
-And the service scans for `.` first, then `!`, then `?`, returning the first matching separator whose position is greater than 0 and less than 80 (inclusive of the punctuation)
-And if no scanned separator qualifies, the first 80 characters are taken verbatim
-And the derived string is persisted as title
-```
-
-#### Manual-session-per-project reuse
-
-```
-Given the project has never had an observation saved under it
-When the memory service saves the first observation for that project
-Then a new manual session identifier is allocated for the project
-And the new observation is linked to that manual session
-
-Given the project already has a manual session
-When the memory service saves another observation for that project
-Then the existing manual session identifier is reused on the new observation
-And no new manual session is allocated
-```
-
-#### Identity tagging at save
-
-```
-Given a save request supplies a non-null identity scope
-When the memory service persists the observation
-Then the observation is recorded with that identity scope
-And the observation can later be retrieved by queries that filter on the same scope (see `identity-key-ownership`)
-```
-
-```
-Given a save request omits identity scope
-When the memory service persists the observation
-Then the observation is recorded with no identity scope
-And the observation can later be retrieved by any identity-scoped query plus identity-less queries (see `identity-key-ownership`)
+```gherkin
+Given a person asks their agent to remember a statement
+When the agent saves it as an observation
+Then the observation is stored
+And the result identifies it by id, resolved title, and project
 ```
 
 ### Cross-context references
