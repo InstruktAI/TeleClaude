@@ -497,6 +497,8 @@ class WorkflowFlow:
     public_stamp_evidence: list[JsonValue] = field(default_factory=list)
     public_integrator_evidence: MutableJson | None = None
     public_integration_evidence: MutableJson | None = None
+    public_inventory_baseline: MutableJson | None = None
+    public_inventory_evidence: list[JsonValue] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -528,7 +530,24 @@ class WorkflowFlow:
         events.verify_case(self.event_window, "B4", self.event_previous_seal)
         creation.require_manual_runner(self.observer)
         creation.enter_project(self.observer, self.project)
-        self.baseline = self.observer.sessions()
+        baseline_reads: list[JsonValue] | None = None
+        if self.payload_provisional is not None:
+            baseline_reads = []
+            self.public_inventory_baseline = {
+                "started_ns": time.monotonic_ns(),
+                "finished_ns": None,
+                "commands": baseline_reads,
+                "error": None,
+            }
+        try:
+            self.baseline = self.observer.sessions(evidence=baseline_reads)
+        except BaseException as error:
+            if self.public_inventory_baseline is not None:
+                self.public_inventory_baseline["error"] = f"{type(error).__name__}: {error}"
+            raise
+        finally:
+            if self.public_inventory_baseline is not None:
+                self.public_inventory_baseline["finished_ns"] = time.monotonic_ns()
         self.publication.begin(own_generation=True)
         self.candidate_identity = self.publication.candidate
         self.publication.prepare()
@@ -1397,7 +1416,14 @@ class WorkflowFlow:
         baseline_ids = self.baseline.ids if self.baseline is not None else frozenset()
         sessions = set(self.sessions)
         try:
-            sessions.update(set(self.all_current_project_sessions()) - set(baseline_ids))
+            sessions.update(
+                set(
+                    self.all_current_project_sessions(
+                        evidence=self.public_inventory_evidence if self.payload_provisional is not None else None
+                    )
+                )
+                - set(baseline_ids)
+            )
         except BaseException as error:
             issues.append(f"initial session inventory: {error}")
             classification_complete = False
@@ -1509,6 +1535,14 @@ class WorkflowFlow:
             "P2_start_consumption": "unproven; explicit starts and async launch backlog lack public settlement evidence",
             "P4_fixture_processes_and_panes": "unproven by the approved contract",
         }
+        if self.payload_provisional is not None:
+            self.finalizer_summary.update(
+                {
+                    "project_path": str(self.project),
+                    "baseline_inventory": self.public_inventory_baseline,
+                    "public_inventory_evidence": self.public_inventory_evidence,
+                }
+            )
         try:
             self.write_manifest({"finalizer": self.finalizer_summary})
             self.write_retained_marker({"finalizer": self.finalizer_summary})
@@ -1705,7 +1739,11 @@ class WorkflowFlow:
         for _ in range(3):
             try:
                 open_sessions = []
-                for session_id in set(self.all_current_project_sessions()) - set(baseline_ids):
+                for session_id in set(
+                    self.all_current_project_sessions(
+                        evidence=self.public_inventory_evidence if self.payload_provisional is not None else None
+                    )
+                ) - set(baseline_ids):
                     record = self.session_record(session_id, retain=False)
                     if record.get(FIELD_CLOSED_AT) is None and record.get(FIELD_LIFECYCLE) != "closed":
                         open_sessions.append(session_id)
@@ -1843,7 +1881,7 @@ class WorkflowFlow:
         """An alias named for the B7 roleless-message case; still grounded in the recorded atomic claim."""
         return self.message_actor(first_line, index, role, timeout_seconds)
 
-    def all_current_project_sessions(self) -> tuple[str, ...]:
+    def all_current_project_sessions(self, *, evidence: list[JsonValue] | None = None) -> tuple[str, ...]:
         """Read each retained session record and select sessions belonging to the disposable project."""
         found: list[str] = []
         owned_paths = {
@@ -1851,11 +1889,34 @@ class WorkflowFlow:
             str((self.project / WORKTREE_DIRECTORY / ITEM).resolve()),
             str((self.project / WORKTREE_DIRECTORY / INTEGRATION_DIRECTORY).resolve()),
         }
-        for session_id in self.observer.sessions(retain=False).ids:
-            record = self._session_record(session_id, retain=False)
-            if record is not None and record.get(FIELD_PROJECT_PATH) in owned_paths:
-                found.append(session_id)
-        return tuple(sorted(found))
+        commands: list[JsonValue] | None = [] if evidence is not None else None
+        packet: MutableJson | None = None
+        if evidence is not None:
+            packet = {
+                "project_path": str(self.project),
+                "started_ns": time.monotonic_ns(),
+                "finished_ns": None,
+                "commands": commands,
+                "matched_session_ids": None,
+                "error": None,
+            }
+            evidence.append(packet)
+        try:
+            for session_id in self.observer.sessions(retain=False, evidence=commands).ids:
+                record = self._session_record(session_id, retain=False, evidence=commands)
+                if record is not None and record.get(FIELD_PROJECT_PATH) in owned_paths:
+                    found.append(session_id)
+            result = tuple(sorted(found))
+            if packet is not None:
+                packet["matched_session_ids"] = list[JsonValue](result)
+            return result
+        except BaseException as error:
+            if packet is not None:
+                packet["error"] = f"{type(error).__name__}: {error}"
+            raise
+        finally:
+            if packet is not None:
+                packet["finished_ns"] = time.monotonic_ns()
 
     def end_session(self, session_id: str, attempt_id: str | None = None) -> Json:
         """Use the public end and operation surfaces, then require the retained record to show closure."""
