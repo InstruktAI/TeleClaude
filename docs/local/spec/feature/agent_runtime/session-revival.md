@@ -68,10 +68,10 @@ Scenario: Adopt an unbound native conversation
   And the response returns the new session id after launch is dispatched, without claiming readiness
 ```
 
-#### UC-SR10: A revived agent keeps its status until it acts
+#### UC-SR10: A person can continue a revived conversation without a false failure
 
 ```gherkin
-Given a session was closed with a recorded agent activity state
+Given a person needs to continue a conversation whose session closed with a recorded agent activity state
 When the session is revived
 Then its recorded activity state, reason and entry time are preserved
 And revival itself supplies no input and creates no new startup observation window

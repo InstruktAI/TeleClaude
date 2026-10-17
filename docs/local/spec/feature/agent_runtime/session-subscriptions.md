@@ -85,7 +85,7 @@ Then the subscribing session is not sent a separate turn-end notification for it
 And its subscription survives, so it is notified again once the conversation ends
 ```
 
-#### UC-SS13: A subscribed agent session with no live conversation is told its target finished
+#### UC-SS13: A subscribing agent hears when its target finishes
 
 ```gherkin
 Given a subscribed agent session holds no live conversation with the target it subscribed to
@@ -94,7 +94,7 @@ Then the subscribing session is notified that the turn finished
 And a subscription registered for a single reply is spent by that notification, whether or not it arrived
 ```
 
-#### UC-SS19: A turn that ends with `NOOP` is reported as such, with nothing to inspect
+#### UC-SS19: A caller can tell when its target ended a turn with no content
 
 ```gherkin
 Given a subscribed agent session holds no live conversation with the target it subscribed to
@@ -110,7 +110,7 @@ Then the subscribing session is notified when the turn stops
 And the notification carries the instruction to inspect the target
 ```
 
-#### UC-SS12: Distress reaches the agent sessions persistently watching a target, and only counts one that receives it
+#### UC-SS12: A supervisor receives distress only when its notification is accepted
 
 ```gherkin
 Given an agent session is persistently subscribed to a target session, or dispatched it from another computer
@@ -172,7 +172,7 @@ get-listeners-for-caller(caller) → listener list for one caller
 count-listeners() → total record count across all (target, caller) pairs
 ```
 
-#### UC-SS3: A cross-machine initiator is notified when its dispatched session stops
+#### UC-SS3: A remote initiator learns when its dispatched session stops
 
 ```
 Given an initiator session I running on computer A dispatches session T to computer B
@@ -201,7 +201,7 @@ And a blocked notification raised by delivery carries a capture of the target's 
 And the caller is not left to infer distress from silence or transcript polling
 ```
 
-#### UC-SS20: A caller hears when its session's first startup input may not have arrived
+#### UC-SS20: A caller can learn that its target may not have received startup input
 
 ```gherkin
 Given an agent session watches a target session
@@ -251,7 +251,7 @@ Then the caller still receives the distress notification for that target
 And the suppression of turn-end notifications for the pair is unchanged
 ```
 
-#### UC-SS9: A notification names a computer only when the target is elsewhere
+#### UC-SS9: A caller gets usable commands for a local or remote target
 
 ```gherkin
 Given a listener receives a notification about a target session
@@ -261,7 +261,7 @@ When the target runs on a different computer
 Then the notification names that computer and every suggested command carries the matching computer selector
 ```
 
-#### UC-SS10: Unwatched native distress keeps its human-facing notice
+#### UC-SS10: Distress reaches the human or supervisor on the right surface
 
 ```gherkin
 Given a target session has no live persistent supervising caller
@@ -275,7 +275,7 @@ And the target's human-facing channel receives nothing from that mechanism
 
 #### UC-SS14
 
-#### UC-SS15: Attention carries the evidence needed for autonomous assessment
+#### UC-SS15: A parent can assess a child's attention from the evidence provided
 
 ```gherkin
 Given a parent agent receives an approval-wait or failure observation about its child

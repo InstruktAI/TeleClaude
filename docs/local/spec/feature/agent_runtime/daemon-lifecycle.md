@@ -110,11 +110,12 @@ Scenario: Continue playback while the worker remains available
 
 #### UC-CW8: Idle chiptunes worker stays alive within lease window
 
-#### UC-DL1: Projects listing tolerates a registry entry that is not a project checkout
+#### UC-DL1: An operator can list registered homes without treating them as projects
 
 ```
-Given a project registry entry exists on disk and is not a TeleClaude project checkout, such as a person home
-When the projects-with-todos listing runs
+Given an operator needs the projects-with-todos listing
+And a registered entry is not a TeleClaude project checkout, such as a person home
+When they list the registered entries
 Then the listing succeeds and returns every existing registry entry in registry order, each under its display name
 And the non-checkout entry carries an empty todo list
 And no todo store is resolved, opened, or created for the non-checkout entry
@@ -213,11 +214,11 @@ And a daemon whose admission is closed is reported degraded, never healthy
 
 #### UC-DL16: A prepared daemon completes its own shutdown
 
-#### UC-DL17: A long-lived task that ends is replaced, or the daemon restarts
+#### UC-DL17: An agent can detect and recover an unexpectedly ended daemon task
 
 ```gherkin
-Given the daemon is running with admission open
-And an agent operating the daemon relies on a capability that a long-lived daemon task provides
+Given an agent operating the daemon relies on a capability provided by a long-lived task
+And the daemon is running with admission open
 When that task ends for any reason other than cancellation or the daemon's shutdown
 Then the agent reading the daemon log finds which task ended, how it ended, and for a failure its traceback
 And the task's supervisor starts a replacement after a backoff while the task's bounded restart budget lasts

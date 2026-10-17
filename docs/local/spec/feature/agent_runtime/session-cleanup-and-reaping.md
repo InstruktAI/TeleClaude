@@ -95,7 +95,7 @@ And an ordinary close preserves the temporary workspace for a possible revival
 
 #### UC-SCR-12: An ending is reported once, and a later ending again
 
-#### UC-SCR-3:
+#### UC-SCR-3: A person can find a closed session after cleanup
 
 ```
 Given a human operator has closed a session
@@ -104,7 +104,7 @@ Then its TeleClaude session record and transcript lineage remain addressable
 And historical references continue to resolve
 ```
 
-#### UC-SCR-4:
+#### UC-SCR-4: An operator can remove a session from navigation without erasing its history
 
 ```
 Given a human operator removes a session from ordinary navigation

@@ -132,7 +132,7 @@ And the platform makes no failure diagnosis from the silence or captured text
 
 #### UC-SSO7: A remote supervisor retains control of its subscription
 
-#### UC-SSO8: Version skew preserves the meaning of evidence
+#### UC-SSO8: A supervising agent can assess remote silence without a false failure
 
 ```gherkin
 Scenario Outline: A peer receives only an observation contract it supports
@@ -148,7 +148,7 @@ Scenario Outline: A peer receives only an observation contract it supports
     | does not support neutral observations | records unavailable remote delivery |
 ```
 
-#### UC-SSO9: Retained inferred failures do not invent evidence
+#### UC-SSO9: A person sees honest activity for a retained session
 
 ```gherkin
 Given a human views a retained session whose failure state was inferred only from elapsed silence
