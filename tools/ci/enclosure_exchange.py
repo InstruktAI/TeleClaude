@@ -68,6 +68,8 @@ class Key(StrEnum):
     UID = "uid"
     BOOT_ID = "boot_id"
     EXIT_STATUS = "exit_status"
+    GUEST_ROOT_FD = "guest_root_fd"
+    GUEST_MANIFEST_DIGEST = "guest_manifest_digest"
 
 
 class StartupState(StrEnum):
@@ -172,6 +174,8 @@ def run_helper(manifest: Path, action: Action) -> ActionResult:
         deadline,
         positive_integer(request, Key.MAXIMUM_SECONDS),
         vector,
+        positive_integer(request, Key.GUEST_ROOT_FD) if Key.GUEST_ROOT_FD in request else None,
+        text(request, Key.GUEST_MANIFEST_DIGEST) if Key.GUEST_MANIFEST_DIGEST in request else None,
     )
     try:
 
@@ -282,7 +286,9 @@ class HelperStartup:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=stderr,
                 limit=FRAME_LIMIT,
-                pass_fds=(owner.journal.directory_fd,),
+                pass_fds=(owner.journal.directory_fd, positive_integer(request, Key.GUEST_ROOT_FD))
+                if Key.GUEST_ROOT_FD in request
+                else (owner.journal.directory_fd,),
                 cwd=ACTUAL_SOURCE_ROOT,
                 env={**OUTSIDE_ENVIRONMENT, REQUEST_ENVIRONMENT: _encode(request).decode(UTF8)},
                 umask=0o077,
@@ -303,6 +309,9 @@ async def run_privileged(
     qualification_vector: str | None,
     observe: Callable[[NativeMutation, int, HelperStartup], Awaitable[ActionResult]],
     startups: list[HelperStartup],
+    *,
+    guest_root_fd: int | None = None,
+    guest_manifest_digest: str | None = None,
 ) -> ActionResult:
     """Keep original observations running during one child; read its journal only after positive child exit."""
     owner.journal.binding.controller.require_alive()
@@ -321,6 +330,13 @@ async def run_privileged(
         Cutoff.VECTOR_END_NS: deadline.vector_end_ns,
         Cutoff.COMMAND_END_NS: deadline.command_end_ns,
     }
+    if action is Action.GUEST_SETUP:
+        if guest_root_fd is None or guest_root_fd <= 2 or guest_manifest_digest is None:
+            raise ValueError(ERROR_EXCHANGE)
+        request[Key.GUEST_ROOT_FD] = guest_root_fd
+        request[Key.GUEST_MANIFEST_DIGEST] = guest_manifest_digest
+    elif guest_root_fd is not None or guest_manifest_digest is not None:
+        raise ValueError(ERROR_EXCHANGE)
     startup = HelperStartup(owner, action, request, end_ns)
     startups.append(startup)
     try:

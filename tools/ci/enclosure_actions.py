@@ -25,6 +25,7 @@ from tools.ci.enclosure_contract import (
     text,
 )
 from tools.ci.enclosure_guest import close_evidence_descriptors
+from tools.ci.enclosure_guest_manifest import publish_setup_manifest
 from tools.ci.enclosure_journal import ActionResult
 from tools.ci.enclosure_owner import Key as OwnerKey
 from tools.ci.enclosure_privileged import PrivilegedAction
@@ -392,11 +393,15 @@ def _mask_guest(context: PrivilegedAction, end_ns: int) -> NativeMutation:
 
 
 def _guest_setup(context: PrivilegedAction, end_ns: int) -> NativeMutation:
+    if context.guest_root_fd is None or context.guest_manifest_bytes is None:
+        raise ValueError(ERROR_NATIVE)
     record = parse_object(context.owner.manifest_bytes)
     machine = Path(text(record, OwnerKey.ROOTFS)).name
     recipe = parse_object(context.owner.package.recipe_bytes)
     cap = positive_integer(object_value(recipe[Field.BUDGET_SECONDS]), Field.GUEST_BOOT_OR_CONFIGURATION_MAX)
     end = _deadline(context, end_ns).command_end(cap)
+    # This producer is entered only after the existing source admission and durable action intent.
+    manifest = publish_setup_manifest(context.owner, context.guest_root_fd, context.guest_manifest_bytes, end)
     command = (SYSTEMCTL, *SETUP_WAIT_OPTIONS, MACHINE.format(machine=machine), JOB_START, GUEST_SETUP)
     # Native systemctl subscribes before starting and consumes the job/unit outcome on that same guest connection.
     status = context.commands.run(command, end)
@@ -410,6 +415,7 @@ def _guest_setup(context: PrivilegedAction, end_ns: int) -> NativeMutation:
             Key.COMMAND: list[JsonValue](command),
             Key.EXIT_STATUS: status,
             Key.COMMAND_END_NS: end,
+            "manifest_sha256": hashlib.sha256(manifest).hexdigest(),
         },
     )
 

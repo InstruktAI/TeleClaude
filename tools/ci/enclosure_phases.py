@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import time
+from dataclasses import asdict
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
@@ -34,6 +37,13 @@ from tools.ci.enclosure_contract import (
 from tools.ci.enclosure_exchange import HelperExitFailed, HelperStartup, HelperUncertain, run_privileged
 from tools.ci.enclosure_graph import DependencyGraph, inspect_dependency_graph
 from tools.ci.enclosure_guest_binding import GuestBinding
+from tools.ci.enclosure_guest_evidence import (
+    GuestSetupEvidence,
+    SetupJournalRead,
+    read_setup_journal,
+    validate_setup_journal,
+)
+from tools.ci.enclosure_guest_manifest import compose_setup_manifest, narrow_setup_manifest
 from tools.ci.enclosure_journal import ActionResult, Outcome
 from tools.ci.enclosure_manager import (
     ACTIVE,
@@ -132,6 +142,10 @@ class BindingPhases:
         self.completion_failure: BaseException | None = None
         self.guest_binding: GuestBinding | None = None
         self.guest_admission: JsonObject | None = None
+        self.prepared_guest_manifest: bytes | None = None
+        self.guest_setup_read: SetupJournalRead | None = None
+        self.guest_setup_evidence: GuestSetupEvidence | None = None
+        self.configured: ActionResult | None = None
 
     @property
     def startups(self) -> tuple[HelperStartup, ...]:
@@ -139,10 +153,18 @@ class BindingPhases:
         return tuple(self._startups)
 
     async def perform(
-        self, action: Action, deadline: AdmittedDeadline, maximum_seconds: int, qualification_vector: str | None
+        self,
+        action: Action,
+        deadline: AdmittedDeadline,
+        maximum_seconds: int,
+        qualification_vector: str | None,
+        *,
+        selected: frozenset[str] | None = None,
     ) -> ActionResult:
         """Compose the actual separate helper with this process's original observations, without a new observer."""
-        if action not in (Action.CREATE_PARENT, Action.START_GUEST, Action.MASK_GUEST) or self.seal is not None:
+        if action not in (Action.CREATE_PARENT, Action.START_GUEST, Action.MASK_GUEST, Action.GUEST_SETUP) or (
+            (action is Action.GUEST_SETUP) != (self.seal is not None)
+        ):
             raise ValueError(ERROR_PHASE.format(action=action))
         if self.uncertain is not None:
             raise self.uncertain
@@ -163,15 +185,30 @@ class BindingPhases:
         ).command_end(maximum_seconds)
         action_deadline = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
         await self.manager.check_identity(end_ns)
-        if action is Action.MASK_GUEST:
+        if action in (Action.MASK_GUEST, Action.GUEST_SETUP):
             self._helper_frontier(None)
-            self._require_source_closure(masked=False)
+            self._require_source_closure(masked=action is Action.GUEST_SETUP)
         else:
             metadata = await self.manager.read_manager(end_ns)
             sources = inspect_start_sources(self.owner, self.package, metadata, action, action_deadline)
             self.start_sources[action] = sources
             if sources[ActivationKey.UNCLASSIFIED]:
                 raise ValueError(ERROR_BINDING)
+        guest_root_fd = None
+        manifest_digest = None
+        if action is Action.GUEST_SETUP:
+            if selected is None or self.seal is None:
+                raise ValueError(ERROR_BINDING)
+            try:
+                binding = await self.admit_guest(action_deadline)
+                self.prepared_guest_manifest = compose_setup_manifest(
+                    self.owner, self.package, binding, self.seal, selected, action_deadline, qualification_vector
+                )
+                guest_root_fd = binding.root_fd
+                manifest_digest = hashlib.sha256(self.prepared_guest_manifest).hexdigest()
+            except BaseException as error:
+                self.completion_failure = error
+                raise
         await self.manager.check_identity(end_ns)
 
         async def observe(mutation: NativeMutation, end_ns: int, startup: HelperStartup) -> ActionResult:
@@ -179,7 +216,15 @@ class BindingPhases:
 
         try:
             result = await run_privileged(
-                self.owner, action, action_deadline, maximum_seconds, qualification_vector, observe, self._startups
+                self.owner,
+                action,
+                action_deadline,
+                maximum_seconds,
+                qualification_vector,
+                observe,
+                self._startups,
+                guest_root_fd=guest_root_fd,
+                guest_manifest_digest=manifest_digest,
             )
             self.results[action] = result
             if time.monotonic_ns() >= end_ns:
@@ -195,6 +240,8 @@ class BindingPhases:
                 # Only the actual durable receipt plus positive helper exit exposes this seal to the supervisor.
                 self.seal_boundary = boundary
                 self.seal = result
+            if action is Action.GUEST_SETUP and result.status is Outcome.SUCCEEDED:
+                self._expose_configured(result, action_deadline)
             return result
         except HelperUncertain as error:
             # Preserve the original startup/Process even if an outer caller only renders the raised diagnostic.
@@ -207,6 +254,17 @@ class BindingPhases:
             # Keep a known receipt separate from failed/late supervision; neither permits another normal action.
             self.completion_failure = error
             raise
+
+    def _expose_configured(self, result: ActionResult, deadline: AdmittedDeadline) -> None:
+        """Keep helper completion and the final original-stream frontier separate from the durable phase receipt."""
+        self._helper_frontier(None)
+        if self.guest_binding is None or result.evidence.get(Evidence.PHASE) != Phase.GUEST_CONFIGURED:
+            raise ValueError(ERROR_BINDING)
+        self.guest_binding.require_original(deadline)
+        self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
+        if time.monotonic_ns() >= deadline.effective_end():
+            raise TimeoutError(ERROR_BINDING)
+        self.configured = result
 
     def _population_ready(self) -> None:
         if self.population is not None:
@@ -307,7 +365,9 @@ class BindingPhases:
         loop = asyncio.get_running_loop()
         if self._loop is not loop or self.population is None or self.population.faults or self.manager.faults:
             raise ValueError(ERROR_BINDING)
-        if current is not None and (current not in self._startups or current.action is not Action.MASK_GUEST):
+        if current is not None and (
+            current not in self._startups or current.action not in (Action.MASK_GUEST, Action.GUEST_SETUP)
+        ):
             raise ValueError(ERROR_BINDING)
         facts: list[JsonValue] = []
         for startup in self._startups:
@@ -486,7 +546,7 @@ class BindingPhases:
         self, mutation: NativeMutation, end_ns: int, deadline: AdmittedDeadline, startup: HelperStartup
     ) -> ActionResult:
         """Establish only implemented original-object phases; no path or observer replacement on failure."""
-        if mutation.action not in (Action.CREATE_PARENT, Action.START_GUEST, Action.MASK_GUEST):
+        if mutation.action not in (Action.CREATE_PARENT, Action.START_GUEST, Action.MASK_GUEST, Action.GUEST_SETUP):
             raise ValueError(ERROR_PHASE.format(action=mutation.action))
         if startup not in self._startups or startup.action is not mutation.action or startup.identity is None:
             raise ValueError(ERROR_BINDING)
@@ -495,6 +555,8 @@ class BindingPhases:
         if time.monotonic_ns() >= end_ns or end_ns > self.owner.journal.deadline.end_ns:
             raise TimeoutError(ERROR_BINDING)
         await self.manager.check_identity(end_ns)
+        if mutation.action is Action.GUEST_SETUP:
+            return await self._configured(mutation, end_ns, deadline, startup)
         if mutation.action is Action.MASK_GUEST:
             self._helper_frontier(startup)
             evidence = await self.read_masked_sources(
@@ -511,6 +573,7 @@ class BindingPhases:
             evidence[Evidence.HELPER] = startup.record()
             evidence[Evidence.PHASE] = Phase.ADMISSION_SEALED.value
             return ActionResult(Outcome.SUCCEEDED, evidence)
+
         record = parse_object(self.owner.manifest_bytes)
         name = text(record, OwnerKey.PARENT_UNIT if mutation.action is Action.CREATE_PARENT else OwnerKey.GUEST_UNIT)
         jobs = await self._settle(mutation, name, end_ns)
@@ -622,6 +685,72 @@ class BindingPhases:
                     Evidence.READ_FINISHED_NS: sample.read_finished_ns,
                     Evidence.SEQUENCE: sample.last_notification_sequence,
                 },
+            },
+        )
+
+    async def _configured(
+        self, mutation: NativeMutation, end_ns: int, deadline: AdmittedDeadline, startup: HelperStartup
+    ) -> ActionResult:
+        """Consume actual protected setup data while the original supervisor owns observation and the helper owns its flock."""
+        if self.guest_binding is None or self.prepared_guest_manifest is None or self.population is None:
+            raise ValueError(ERROR_BINDING)
+        self._helper_frontier(startup)
+        self._require_source_closure(masked=True)
+        native = mutation.evidence
+        producer_end = positive_integer(native, Key.COMMAND_END_NS)
+        if (
+            native.get(Key.AUTHORITY) != Authority.GUEST
+            or native.get(Key.UNIT_NAME) != "tc-ra-guest-setup.service"
+            or type(native.get(Key.EXIT_STATUS)) is not int
+            or native[Key.EXIT_STATUS] != 0
+            or producer_end > end_ns
+        ):
+            raise ValueError(ERROR_BINDING)
+        admitted = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, producer_end)
+        manifest = narrow_setup_manifest(self.prepared_guest_manifest, producer_end)
+        self.guest_binding.require_original(admitted)
+        read = read_setup_journal(self.guest_binding.root_fd, self.guest_binding.facts.root_uid, admitted)
+        self.guest_setup_read = read
+        setup = validate_setup_journal(read, manifest, self.package)
+        self.guest_setup_evidence = setup
+        if (
+            native.get("manifest_sha256") != setup.manifest_sha256
+            or setup.facts.system_manager.start_ticks != self.guest_binding.facts.controller.start_ticks
+        ):
+            raise ValueError(ERROR_BINDING)
+        parent, guest = await self.manager.read_active_boundary(producer_end)
+        await self.manager.check_identity(producer_end)
+        self.guest_binding.require_original(admitted)
+        sample = self.population.sample(producer_end)
+        if sample.faults or sample.populated is not True:
+            raise ValueError(ERROR_BINDING)
+        helpers = self._helper_frontier(startup)
+        boundary = self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
+        if time.monotonic_ns() >= producer_end:
+            raise TimeoutError(ERROR_BINDING)
+        return ActionResult(
+            Outcome.SUCCEEDED,
+            {
+                Evidence.PHASE: Phase.GUEST_CONFIGURED.value,
+                Evidence.NATIVE_RECEIPT: dict(native),
+                "setup_manifest_sha256": setup.manifest_sha256,
+                "setup_journal_sha256": read.sha256,
+                "setup_facts": parse_object(json.dumps(asdict(setup.facts), allow_nan=False).encode(UTF8)),
+                "setup_completed_ns": setup.completed_ns,
+                "setup_command_count": setup.command_count,
+                "guest_binding": self.guest_binding.record(),
+                "setup_journal_read": {
+                    Evidence.READ_STARTED_NS: read.started_ns,
+                    Evidence.READ_FINISHED_NS: read.finished_ns,
+                    "end_ns": read.end_ns,
+                    "file_identity": parse_object(json.dumps(asdict(read.before), allow_nan=False).encode(UTF8)),
+                },
+                Evidence.PARENT: _unit(parent),
+                Evidence.GUEST: _unit(guest),
+                Evidence.HELPERS: helpers,
+                Evidence.SEQUENCE: boundary.sequence,
+                Evidence.OBSERVED_NS: boundary.observed_ns,
+                Evidence.POPULATION: {Evidence.RAW: sample.raw.decode(UTF8), Evidence.POPULATED: sample.populated},
             },
         )
 
