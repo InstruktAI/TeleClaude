@@ -23,11 +23,11 @@ session, it owns no deduplication guard for one.
 
 ### Use cases
 
-#### UC-ESD1: Initializing a company starts no agent
+#### UC-ESD1: An operator initializes a company without starting analysis
 
 ```gherkin
-Given a company does not yet have its required configuration structure
-When an agent initializes the company through the configuration CLI
+Given an operator wants to set up a company that lacks its required configuration structure
+When they initialize the company through the configuration CLI
 Then the company structure is established
 And no analysis session is started
 ```
@@ -37,10 +37,10 @@ And no analysis session is started
 #### UC-ESD3: An explicit session runs analysis
 
 ```gherkin
-Given a project or company has material to analyze
-When an authorized caller starts a session with its analysis procedure
-Then one requested session is started through the sessions surface
-And the setup command does not own or duplicate that dispatch
+Given an operator wants a project or company to be analyzed
+When an authorized caller explicitly starts a session with its analysis procedure
+Then the requested session starts through the sessions surface
+And setup does not start or duplicate that analysis
 ```
 
 ## Known caveats
