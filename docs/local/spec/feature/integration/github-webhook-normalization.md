@@ -13,8 +13,8 @@ event type from the `X-GitHub-Event` request header (lowercased; defaults
 to `unknown`), extracts canonical properties from the payload
 (`repository.full_name`, `sender.login`, `action`, `ref`), and produces a
 single hook event with `source="github"` and `type=<event>`. For `ping`
-events specifically, the normalizer also passes through `zen` and
-`hook_id` so downstream handlers can confirm the registration handshake.
+events, the normalizer also passes through `zen` and `hook_id` as registration
+metadata.
 
 The normalizer is the GitHub adapter of the ingress. A project receives
 GitHub deliveries by declaring a GitHub source in its own configuration
@@ -38,66 +38,15 @@ the platform keeps itself current through TeleClaude's own binding of
 
 #### UC-GH1: Push event normalization
 
-```gherkin
-Given a push delivery arrives at the GitHub inbound endpoint with X-GitHub-Event "push"
-And a payload containing repository.full_name="InstruktAI/TeleClaude", sender.login="mfaber", ref="refs/heads/main"
-When the GitHub normalizer runs
-Then it returns a hook event with source="github", type="push", properties={repo: "InstruktAI/TeleClaude", sender: "mfaber", action: None, ref: "refs/heads/main"}, payload=<original payload>
-And the hook event timestamp is the relayed event's timestamp in ISO 8601 UTC
-```
-
 #### UC-GH2: Release event normalization
-
-```gherkin
-Given a release delivery with payload containing action="published" and repository.full_name="InstruktAI/TeleClaude"
-And X-GitHub-Event "release"
-When the normalizer runs
-Then a hook event is returned with source="github", type="release", properties={repo, sender, action: "published", ref: None}, payload=<original>
-```
 
 #### UC-GH3: Ping passthrough adds zen + hook_id but has no built-in consumer
 
-```gherkin
-Given X-GitHub-Event "ping" with payload containing zen="Mind your words..." and hook_id=12345
-When the normalizer runs
-Then properties additionally contain zen and hook_id
-And the hook event type is "ping"
-
-When the hook event reaches the dispatcher
-Then no built-in contract matches a GitHub event
-And the dispatcher returns without delivering the event anywhere
-And the ping is effectively dropped — there is no production handler that confirms registration via the dispatched event
-And operators see the ping only in inbound delivery logs (accepted); there is no dropped-dispatch trace because the dispatcher returns immediately when the contract registry yields no matches
-```
-
 #### UC-GH4: Missing or malformed header → type "unknown"
-
-```gherkin
-Given the delivery arrives without an X-GitHub-Event header
-When the normalizer runs
-Then event_type from the header is the empty string after lowercasing
-And the empty fallback is replaced by "unknown"
-And the hook event type is "unknown"
-```
 
 #### UC-GH5: Header is case-insensitive (X-GitHub-Event vs x-github-event)
 
-```gherkin
-Given the ingress lowercases all header names before translation
-And the normalizer reads the lowercase spelling
-When the header arrives with either capitalization
-Then the event type is extracted correctly
-```
-
 #### UC-GH6: Malformed repository or sender → null properties
-
-```gherkin
-Given the payload has repository as a non-object value (legacy malformed payload)
-When the repo-name extractor runs
-Then it returns nothing
-And properties.repo is null
-Similarly for sender.login when sender is not an object
-```
 
 #### UC-GH7: Only the platform's own pushes and releases keep installations current
 
@@ -109,16 +58,6 @@ And a push to any other project's repository does not perform it
 ```
 
 #### UC-GH8: A verified delivery is relayed as a GitHub platform event about its project
-
-```gherkin
-Given the project "web" declares a GitHub source
-When GitHub delivers a push signed with that project's secret to /hooks/inbound/github/project/web
-Then the cluster receives the platform event "github.push"
-And its origin is the project "web"
-And its subject is the project's GitHub source
-And its data is the JSON document the delivery carries
-And every computer's hook dispatcher receives the normalized push event once
-```
 
 ### Cross-context references
 
@@ -149,6 +88,12 @@ And every computer's hook dispatcher receives the normalized push event once
 - The hook event rebuilt on each computer names the repository, not the
   project that declared the source, so no contract can select GitHub
   events by project.
+- A malformed or absent `repository.full_name` or `sender.login` produces an
+  explicit null property.
 - The zen/hook_id ping passthrough is the only event-type-specific
   property branch in this normalizer; every other GitHub event uses the
   same {repo, sender, action, ref} property shape.
+- No built-in contract currently handles a GitHub ping. Its `zen` and
+  `hook_id` are normalized, but the unmatched event is not delivered to a
+  handler; the inbound delivery is logged as accepted and no dropped-dispatch
+  trace is emitted.
