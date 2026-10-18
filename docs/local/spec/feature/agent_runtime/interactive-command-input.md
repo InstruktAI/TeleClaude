@@ -69,60 +69,37 @@ to claim work and adopt the corresponding role through its own operations.
 #### UC-ICI1: An operator starts a procedure from the TUI with its arguments
 
 ```gherkin
-Scenario Outline: Start a new session from a published procedure
-  Given an operator has selected a project and an available agent in the TUI New Session modal
-  And the operator wants to run a published entry procedure with valid arguments
-  When they submit "<input>"
-  Then the new session carries the procedure, its declared role, and work item
-  And the agent's first instruction directs it to retrieve and follow that procedure
-  And the same procedure and arguments work with every supported agent
-
-  Examples:
-    | input                                                   |
-    | sdlc/procedure/lifecycle/integrate                      |
-    | /sdlc/procedure/lifecycle/integrate                     |
-    | sdlc/procedure/lifecycle/prepare/overview example-item  |
-    | /sdlc/procedure/lifecycle/prepare/overview example-item |
+Given an operator wants to run a published entry procedure with arguments
+When they submit it from the TUI New Session modal
+Then a new session starts for that procedure with the requested arguments
 ```
 
 #### UC-ICI2: An operator invokes a procedure in a Discord conversation
 
 ```gherkin
-Scenario Outline: A human invokes a procedure in the Discord conversation
-  Given an operator wants to run a published entry procedure in a Discord conversation
-  And the conversation is a "<surface>" with a "<binding>"
-  When the operator sends the procedure ID with its arguments, with or without a leading slash
-  Then the session selected by the conversation receives the procedure's loader once
-  And the loader carries the arguments and directs the agent to retrieve and follow the procedure
-  And a session created by the message receives it as initial input
-
-  Examples:
-    | surface       | binding                      |
-    | project thread | session created by this input |
-    | project thread | launcher-created empty session |
-    | project thread | existing conversation session |
-    | team channel  | existing conversation session |
-    | direct message | session created by this input |
-    | direct message | existing personal session    |
+Given an operator wants to run a published entry procedure in a Discord conversation
+When they send its ID with arguments
+Then the session selected by the conversation runs that procedure with those arguments
+And a session created by the message receives it as initial input
 ```
 
 #### UC-ICI3: Non-command text remains conversation
 
 ```gherkin
+Scenario: Ordinary text remains conversation on the shorthand surfaces
 Given a human uses the TUI New Session modal or Discord text input
 When their text does not begin with a published entry procedure invocation
 Then the text follows ordinary conversation delivery without a command loader
 And mentioning a command in prose or quoting a command example does not activate it
-```
 
-#### UC-ICI4: A person can use ordinary text outside the shorthand surfaces
-
-```gherkin
+Scenario: Other input surfaces do not acquire shorthand interpretation
 Given a person sends text to an agent through terminal, CLI/API, or a non-Discord adapter
 When the input reaches the agent session
 Then this shorthand capability does not reinterpret it as a procedure invocation
 And explicit command-dispatch requests retain their existing behavior
 ```
+
+#### UC-ICI4: A person can use ordinary text outside the shorthand surfaces
 
 #### UC-ICI5: Existing authority remains binding
 
