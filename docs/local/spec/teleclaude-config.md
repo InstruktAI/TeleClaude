@@ -602,6 +602,8 @@ locally, so every consumer resolves to one declaring node.
 
 <!-- /planned-change:central-shared-configuration -->
 
+<!-- planned-change:central-shared-configuration -->
+
 The daemon runtime config lives at `~/.teleclaude/config.yml` (under `TELECLAUDE_HOME`).
 Installation produces the runtime file from the configuration schema when the host
 carries none, writing each sensitive field as its derived environment reference. A host
@@ -614,6 +616,18 @@ file. `make install` writes opted-in agents' `enabled`
 state into the runtime file. The runtime file's path is
 `<TELECLAUDE_HOME>/config.yml` with no override: moving the runtime tree moves
 the config with it.
+<!-- change:central-shared-configuration -->
+
+Local runtime declarations live in `<TELECLAUDE_HOME>/config.yml` with no
+independent path override. Installation generates that local file from its
+schema only while absent, using environment references for its local sensitive
+fields, and brings an existing file forward through the configuration migration
+owner (`local/projects/teleclaude/spec/feature/config/document-migration`).
+The TUI, daemon and installer submit local mutations to the file writer and
+shared mutations to the shared-subject owner. Shared agent selection follows
+`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`;
+local binary availability creates no separate enablement declaration.
+<!-- /planned-change:central-shared-configuration -->
 
 The `agents` config key for the Antigravity agent is `gemini`; its binary resolves to
 `agy` via `resolve_agent_binary`. The installer heals any legacy `agy:` key back to

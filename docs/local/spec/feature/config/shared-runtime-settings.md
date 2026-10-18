@@ -158,7 +158,9 @@ identities are never reused, including after restoration from backup.
 Configuration records have no expiry and are protected from cache eviction.
 The configured Redis deployment provides authenticated, encrypted transport,
 synchronous AOF persistence and a protected off-host backup with a verified
-restore path before shared values become authoritative. Successful write
+restore path. Deployment acceptance qualifies the actual event and
+configuration workload under that synchronous-AOF policy before shared values
+become authoritative. Successful write
 acknowledgement is evaluated under that qualified persistence contract;
 uncertain outcomes retain the operation identity. Storage protection follows
 `sdlc/policy/security-awareness`, and persistence failure stays explicit under
@@ -294,7 +296,8 @@ Scenario: Preserve a competing administrator's accepted change
   revision establishes only that consumer's completed application; external
   effects have no exactly-once guarantee from a local progress record.
 - Redis deployment qualification covers the actual endpoint's transport,
-  persistence, eviction and restoration behavior. A container image or a data
+  persistence, event and configuration workload, eviction and restoration
+  behavior. A container image or a data
   mount alone establishes none of those acceptance results.
 
 ## See Also
