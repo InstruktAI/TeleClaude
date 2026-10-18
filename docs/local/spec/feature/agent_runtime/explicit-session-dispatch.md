@@ -25,13 +25,6 @@ session, it owns no deduplication guard for one.
 
 #### UC-ESD1: An operator initializes a company without starting analysis
 
-```gherkin
-Given an operator wants to set up a company that lacks its required configuration structure
-When they initialize the company through the configuration CLI
-Then the company structure is established
-And no analysis session is started
-```
-
 #### UC-ESD2:
 
 #### UC-ESD3: An explicit session runs analysis
