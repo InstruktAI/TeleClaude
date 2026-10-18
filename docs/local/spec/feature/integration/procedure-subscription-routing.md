@@ -123,13 +123,6 @@ activation command and owns delivery under
 This keeps declaration interpretation with its owner
 (`sdlc/policy/domain-ownership`).
 
-Routing carries the delivery declaration resolved by context along with the
-existing subscription facts. Runtime consumes it through its procedure
-activation command and owns delivery under
-`local/projects/teleclaude/spec/feature/agent_runtime/procedure-event-delivery`.
-This keeps declaration interpretation with its owner
-(`sdlc/policy/domain-ownership`).
-
 ### Cross-context references
 
 - **event-catalog** — owns the event envelope this context reads, the one
