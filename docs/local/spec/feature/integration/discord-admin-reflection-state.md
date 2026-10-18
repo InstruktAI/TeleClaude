@@ -79,14 +79,20 @@ DB-backed reflection-state seam. A reconciler first reads any stored provider
 ID, verifies it against Discord, and reuses it when it still represents the
 expected artifact. It creates or adopts an artifact only when the database has no
 usable record or Discord conclusively reports that the recorded artifact no
-longer exists. An inconclusive provider lookup never creates, deletes, or clears
-state.
+longer exists. After confirmed absence, reconciliation uses the artifact's
+stable identity when one exists and applies that artifact's convergence rule
+before recording a survivor or replacement. An inconclusive provider lookup
+never creates, deletes, or clears state.
 
 Session-launcher buttons are part of this reflection state. Their forum
 thread/message IDs live in the database, and the running bot process reattaches
 the persistent button view to the stored message after restart. Reattachment is
 runtime callback wiring only; it does not create a Discord artifact and does not
-change stored state.
+change stored state. A launch from a project forum uses that project's resolved
+root, the selected agent, and the initiating person's Discord identity and
+origin. The resulting session belongs to that same forum thread. If reflection
+state is unavailable, reconciliation fails or degrades before mutating Discord
+artifacts.
 
 ## Canonical fields
 
@@ -138,153 +144,50 @@ are removed by their forum owner; peers do not mutate them.
 
 #### UC-DARS-1: Discord provider IDs are persisted only as database reflection state
 
-```gherkin
-Given the Discord adapter resolves or creates an admin category, shared channel,
-help-desk forum, project forum, team channel, launcher thread, or launcher message
-When the provider returns a Discord ID
-Then the ID is written to the database reflection-state repository
-And no Discord category, channel, forum, thread, or message ID is written to config.yml
-And the runtime config remains limited to desired machine/project/operator inputs
-```
-
-#### UC-DARS-2: Legacy config.yml Discord IDs are migrated into reflection state
+#### UC-DARS-2: An existing Discord setup remains in place after upgrade
 
 ```gherkin
-Given config.yml contains legacy Discord provider IDs such as category IDs,
-shared channel IDs, help-desk forum IDs, all-sessions forum IDs, or
-trusted_dirs[].discord_forum
-When the Discord reflection-state migration runs
-Then each valid legacy ID is copied into the database under a stable logical key
-And subsequent reconciliation reads the database record, not the YAML field
-And subsequent provisioning writes do not restore those provider IDs into config.yml
+Given an operator upgrades a machine with valid Discord artifact IDs in its configuration
+When the machine starts with database-backed reflection state
+Then its existing Discord categories, channels, and forums remain associated with their purposes
+And no duplicate artifacts are created
 ```
 
 #### UC-DARS-3: Startup reuses a verified reflected artifact
 
-```gherkin
-Given the database contains a reflection record for logical key "project_forum:teleclaude"
-And the stored provider_id resolves in Discord
-And the artifact is a forum under the expected "Projects - <computer>" category
-When the Discord reconciler starts
-Then it reuses the stored forum
-And records the verification time
-And does not create another forum
-And project-session routing uses the database-backed project-forum binding
-```
-
 #### UC-DARS-4: Conclusive provider absence clears or replaces stale reflection state
-
-```gherkin
-Given the database contains a reflection record for a Discord artifact
-And Discord conclusively returns not-found for the stored provider_id
-When the reconciler verifies the record
-Then the record is treated as stale reflection state
-And the reconciler searches by the artifact's stable Discord identity when such identity exists
-And exactly one matching artifact is adopted by replacing the stored provider_id
-And no matching artifact causes the reconciler to create a replacement and store its provider_id
-And multiple matching artifacts are handled by the artifact-specific convergence rule before one survivor is stored
-```
 
 #### UC-DARS-5: Inconclusive provider lookup preserves state and prevents duplicates
 
-```gherkin
-Given the database contains a reflection record for a Discord artifact
-And Discord lookup fails due to timeout, missing cache population, rate limit, or another recoverable provider error
-When the reconciler evaluates the artifact
-Then the lookup is inconclusive
-And the database record is retained unchanged
-And no replacement artifact is created
-And no existing artifact is deleted
-And the reconciler logs the inconclusive state for retry on a later pass
-```
-
 #### UC-DARS-6: Missing reflection record creates or adopts exactly one project forum
-
-```gherkin
-Given a registered project has no recorded forum
-When Discord reconciliation examines forums with the project's display name in the machine's project category
-Then if exactly one matching forum is unclaimed by another registry identity, that forum is assigned to the project
-And if no unclaimed matching forum exists, a distinct forum is created for that identity, even when another forum has the same name
-And if more than one unclaimed match remains, no forum is created or assigned
-And a session started from an assigned forum is placed in that project's folder
-And the machine configuration is not updated with a Discord forum field
-```
 
 #### UC-DARS-7: Launcher state is governed by its forum's reflection record
 
-```gherkin
-Given a reflected project forum exists
-And the database has no launcher record for that forum
-When the launcher reconciler evaluates the forum
-Then it discovers existing launcher threads by the durable launch-button marker
-And adopts exactly one launcher when one valid candidate exists
-And creates a launcher thread/message only when no valid candidate exists
-And stores the launcher thread ID and starter message ID in database reflection state
-And does not write launcher IDs to config.yml
-```
-
 #### UC-DARS-8: Restart reattaches button views to stored launcher messages
 
-```gherkin
-Given the database contains a launcher thread ID and starter message ID for a project forum
-And Discord verifies that the starter message exists and still carries launch buttons
-When the daemon restarts
-Then the bot reattaches the persistent launcher view to the stored message ID
-And no launcher thread or message is created
-And button clicks on the existing message route to the current daemon process
-```
-
-#### UC-DARS-9: Launcher click routing resolves project context from reflection state
+#### UC-DARS-9: A person can start a session from a project forum
 
 ```gherkin
-Given a user clicks a launcher button in a reflected project forum
-And the forum's database reflection record maps to a project root
-When the Discord adapter handles the interaction
-Then it creates a session command with explicit project_path, origin=discord,
-  the selected agent, and the user's Discord identity metadata
-And the session is provisioned into the correct Discord forum thread
-And the project context is not read from config.yml discord_forum fields
+Scenario: The selected agent starts in the forum's project
+  Given a person is in a reflected project forum and selects an agent
+  When they launch a session from that forum
+  Then the selected agent's session starts in that project's context
+  And its response belongs to that forum thread
+
+Scenario: A forum without a project launch target starts no session
+  Given a person opens a shared, unknown, or help-desk forum without a project launch target
+  When they use a launcher action there
+  Then they receive user-safe feedback
+  And no session is created
 ```
 
 #### UC-DARS-10: Launchers are not exposed where no launch context exists
 
-```gherkin
-Given a Discord forum is shared, unknown, help-desk, or otherwise not bound to a project root
-And no explicit database reflection record defines a launch target for that forum
-When launcher reconciliation runs
-Then no session-launcher message is created there
-And any existing launcher in that forum is not treated as a valid project launcher
-And a button click without a launch target returns user-safe feedback without creating a session
-```
-
 #### UC-DARS-11: Shared containers are provisioned by the master alone
-
-```gherkin
-Given a Discord category, forum, or channel is a singleton shared container across the fleet
-When the fleet reconciles that container
-Then only the master computer may create or adopt it
-And every non-master may verify and use the existing container without creating a duplicate
-And no computer writes its provider identity to configuration
-```
 
 #### UC-DARS-12: Explicit reset is a database operation
 
-```gherkin
-Given an operator or agent determines that a reflected Discord artifact should be recreated
-When the reflection record for that logical key is removed from the database
-Then the next reconciliation pass treats the artifact as missing reflection state
-And it follows the normal adopt-or-create path
-And no config.yml edit is required to force recreation
-```
-
 #### UC-DARS-13: Reflection-state store failure fails closed before provider mutation
-
-```gherkin
-Given the database reflection-state repository is unavailable
-When Discord admin reconciliation starts
-Then reconciliation does not create, delete, or mutate Discord provider artifacts
-And startup surfaces an operator-visible failure or degraded state
-```
 
 #### UC-DARS-14: A forum keyed by a retired trusted-directory name moves to its entry's identity
 
@@ -328,40 +231,24 @@ And the operator still sees every registry entry's forum and the machine's catch
 
 #### UC-DARS-18: Removal waits until every registry entry holds its forum
 
-```gherkin
-Given a registry entry whose forum could not be assigned in a reconciliation pass
-And the machine's project category holds a forum that no registry entry is assigned
-When that reconciliation pass completes
-Then an operator reading Discord still sees that forum
-```
-
 #### UC-DARS-19: A registry folder whose configuration fails to load keeps its forum
 
-```gherkin
-Given a registry folder is present on the machine but its configuration fails to load
-And that folder's forum is in the machine's project category
-When the Discord reconciler runs
-Then an operator reading Discord still sees that folder's forum
-```
-
-#### UC-DARS-20: A desk's sessions are reflected only in its own category
+#### UC-DARS-20: A person in scope sees customer sessions only in their desk forum
 
 ```gherkin
-Given a customer session at a project's help desk
-When the master reflects sessions into the guild
-Then the session has a thread in that desk's customer-sessions forum
-And it appears in no other forum of the guild, the all-sessions forum and the project's own forum included
+Given a person in a project's help-desk scope wants to review a customer session
+When they view the guild
+Then the session appears in that desk's customer-sessions forum
+And it appears in neither the all-sessions forum nor the project's own forum
 ```
 
-#### UC-DARS-21: Every hosted desk has its own category on the master
+#### UC-DARS-21: An operator can see a separate category for each hosted desk
 
 ```gherkin
 Given the master hosts a company desk and a project desk
-When the master reconciles the guild
-Then each desk has a category named after its entry identifier
-And each category holds a customer-sessions forum, an escalations forum and a team-chat channel
-And the guild holds no shared help-desk category
-And a computer that is not the master creates no desk category
+When an operator views the guild
+Then each desk has its own category with customer-sessions, escalations, and team-chat channels
+And no shared help-desk category combines them
 ```
 
 #### UC-DARS-22: Only the people in a desk's scope see its category
@@ -418,22 +305,7 @@ And the bot neither answers nor routes the message anywhere
 
 #### UC-DARS-26: A post in a desk's customer-sessions thread reaches no customer
 
-```gherkin
-Given a person whom Discord lets post in a desk's customer-sessions thread
-When they post there
-Then the message reaches no session and no customer
-And the customer's conversation continues as before
-```
-
 #### UC-DARS-27: Shared permission repair has one writer
-
-```gherkin
-Given a shared Team channel exists and needs permission reconciliation
-And multiple connected computers resolve that channel
-When reconciliation runs
-Then only the unique master writes the shared permission overwrites
-And peers may read and retain their local mappings without changing the provider object
-```
 
 ### Cross-context references
 
