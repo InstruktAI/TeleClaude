@@ -87,107 +87,43 @@ other permission; granting stays with a person or a managed device profile.
 
 ### Use cases
 
-#### UC-LCI1: An install with no one present signs every launcher without a dialog
+#### UC-LCI1:
 
 ```gherkin
-Given a macOS machine whose signing store holds the signing authority and whose unlock secret is available
-And no terminal, no graphical login and no person at the screen
-When an agent runs the installer
-Then every launcher in the launcher set is signed by the signing authority and installed
-And no macOS dialog is raised and nothing waits for a person
-And the installer states which authority it signed with
+Scenario: An operator installs launchers unattended with the machine's stable identity
+Given a macOS operator needs TeleClaude launchers installed or updated on a machine with Full Disk Access grants
+When the installation runs without a person at the screen
+Then every launcher is installed with the machine's stable signing identity
+And the run completes without prompting for input
+And the installer reports whether it established a new identity
+And if launchers signed by another identity were already installed, it says their Full Disk Access grants must be renewed
+
+Scenario: An unattended update cannot leave a partial launcher set installed
+Given launchers are installed and in use
+When the new launcher set cannot be built, signed, or verified within the run's bound
+Then every installed launcher remains as it was before the run
+And the installer reports the failure and how to resolve it
 ```
 
-#### UC-LCI2: A repeat install keeps the same authority
+#### UC-LCI2:
 
-```gherkin
-Given a machine whose launchers were installed and signed by its signing authority
-And the signing store has locked again since, after logout or reboot
-When an agent runs the installer again
-Then the launchers are signed by the same authority as before
-And no new authority is created
-```
+#### UC-LCI3:
 
-#### UC-LCI3: The first install on a machine without an authority creates it once
+#### UC-LCI4:
 
-```gherkin
-Given a macOS machine whose signing store holds no signing authority
-And launchers signed by a different authority may already be installed
-When an agent runs the installer with no person present
-Then the installer creates one signing authority in the signing store and signs every launcher with it
-And it states that it created the authority
-And where launchers signed by a different authority were installed, it states that their Full Disk Access must be granted again
-```
+#### UC-LCI5:
 
-#### UC-LCI4: A failed signing run leaves the installed launchers untouched
+#### UC-LCI6:
 
-```gherkin
-Given a machine with launchers installed and in use
-When signing or building the launcher set fails or times out
-Then every installed launcher is byte-identical to what it was before the run
-And the installer exits unsuccessfully with a message naming what failed and how to resolve it
-```
+#### UC-LCI7:
 
-#### UC-LCI5: A signing step that cannot finish fails instead of waiting
+#### UC-LCI8:
 
-```gherkin
-Given a signing step that cannot complete, because the signing store cannot be opened or a signature does not finish
-When an agent runs the installer with no person present
-Then the run fails within a bounded time instead of waiting for input
-And the installed launchers are left as they were
-```
+#### UC-LCI9:
 
-#### UC-LCI6: An unusable authority is never replaced by a new one
+#### UC-LCI10:
 
-```gherkin
-Given a machine whose signing store holds the signing authority
-And the store cannot be opened because its unlock secret is unavailable or rejected
-When an agent runs the installer
-Then the run fails and names the unavailable unlock secret as the cause
-And the signing store still holds the same authority and no other
-```
-
-#### UC-LCI7: A launcher set that fails verification is never installed
-
-```gherkin
-Given a rebuilt launcher set in which any launcher lacks a strict signature by the signing authority or carries an identifier other than its own
-When the installer prepares to replace the installed launchers
-Then it installs none of the rebuilt launchers
-And it exits unsuccessfully naming the launcher and the mismatch
-```
-
-#### UC-LCI8: Every route that builds launchers signs through the same path
-
-```gherkin
-Given a machine whose launchers were installed and signed by its signing authority
-When an operator rebuilds the launchers manually, or post-commit maintenance reinstalls them, with no person present
-Then the launchers are signed by the same authority without a dialog
-```
-
-#### UC-LCI9: An install with nothing to rebuild does not sign
-
-```gherkin
-Given a machine whose installed launchers were built from the current launcher inputs and signed by its current signing authority
-When the installer runs again, as an operator install or as post-commit maintenance for an unrelated change
-Then it does not open the signing store and signs nothing
-And every installed launcher is byte-identical to what it was before the run
-```
-
-#### UC-LCI10: A change to what a launcher is built from rebuilds the set
-
-```gherkin
-Given a machine whose installed launchers were built from earlier launcher inputs
-When an agent runs the installer after any launcher input has changed
-Then the launcher set is rebuilt, signed by the machine's signing authority and installed
-```
-
-#### UC-LCI11: An installation updating itself carries changed launchers along
-
-```gherkin
-Given an installation enrolled on a release channel, with no person present
-When it updates itself to a release that changes what its launchers are built from
-Then an operator inspecting the machine afterwards finds its installed launchers rebuilt from that release and signed by the machine's signing authority
-```
+#### UC-LCI11:
 
 ## Known caveats
 
