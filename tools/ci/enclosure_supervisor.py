@@ -40,11 +40,11 @@ from tools.ci.enclosure_exchange import HelperCollection, HelperStartup, collect
 from tools.ci.enclosure_guest import Purpose
 from tools.ci.enclosure_guest_evidence import GuestFileRead
 from tools.ci.enclosure_host import inspect_host_substrate
-from tools.ci.enclosure_inputs import ERROR_INPUT_CLOSE, FIXED_INPUT_DIRECTORY, FixedInputIntake
+from tools.ci.enclosure_inputs import FIXED_INPUT_DIRECTORY, FixedInputIntake
 from tools.ci.enclosure_journal import ActionResult, Outcome
 from tools.ci.enclosure_journal import Key as JournalKey
 from tools.ci.enclosure_native import NativeRead
-from tools.ci.enclosure_owner import MANIFEST_LIMIT, RunOwner, _write_private_file
+from tools.ci.enclosure_owner import MANIFEST_LIMIT, QUALIFICATION_INTAKE_NAME, RunOwner, _write_private_file
 from tools.ci.enclosure_owner import Key as OwnerKey
 from tools.ci.enclosure_privileged import PrivilegedCommands, ReadScope
 
@@ -71,7 +71,6 @@ WITNESS_SUFFIX: Final = ".p4-witness.json"
 RECOVERY_SUFFIX: Final = ".p4-recovery.json"
 JSON_SEPARATORS: Final = (",", ":")
 OWNED_DESCRIPTOR: Final = "/proc/{pid}/fd/{descriptor}"
-QUALIFICATION_Q1_FILE: Final = "qualification-Q1.json"
 QUALIFICATION_Q2_FILE: Final = "qualification-Q2.json"
 ERROR_QUALIFICATION_UNFINISHED: Final = (
     "Q3 through Q8 source composition remains incomplete; later vectors were not run"
@@ -164,6 +163,7 @@ class QualificationField(StrEnum):
     PHASES = "phases"
     GUEST_ADMISSION = "guest_admission"
     CONFIGURED = "configured"
+    MANIFEST_SHA256 = "manifest_sha256"
 
 
 class QualificationState(StrEnum):
@@ -207,6 +207,8 @@ class SupervisorRun:
     exports: JsonObject = field(default_factory=dict)
     purpose: Purpose = Purpose.APPLICATION
     intake: FixedInputIntake | None = None
+    input_directory: Path | None = None
+    initial_deadline: AdmittedDeadline | None = None
     read_commands: PrivilegedCommands | None = None
     qualification_vectors: list[JsonObject] = field(default_factory=list)
     active_vector: JsonObject | None = None
@@ -573,19 +575,23 @@ def _finish_vector(run: SupervisorRun, name: str, deadline: AdmittedDeadline) ->
         raise TimeoutError(ERROR_QUALIFICATION)
     row[QualificationField.FINISHED_NS] = time.monotonic_ns()
     row[QualificationField.STATE] = QualificationState.SUCCEEDED.value
+    row[OwnerKey.BINDING] = run.owner.journal.owner_record
+    row[QualificationField.MANIFEST_SHA256] = hashlib.sha256(run.owner.manifest_bytes).hexdigest()
     _write_private_file(run.owner.journal.directory_fd, name, _encoded(row))
     _require_progress(run)
-    if time.monotonic_ns() >= deadline.effective_end():
+    finished = time.monotonic_ns()
+    if finished >= deadline.effective_end():
         raise TimeoutError(ERROR_QUALIFICATION)
+    row[QualificationField.FINISHED_NS] = finished
     run.active_vector = None
 
 
 async def _qualification(run: SupervisorRun) -> None:
     """Q1 reads precede actual Q2 effects; later unimplemented vectors supply no qualification pass."""
-    if run.intake is None:
+    if run.input_directory is None or run.initial_deadline is None:
         raise ValueError(ERROR_QUALIFICATION)
     _require_progress(run)
-    first = AdmittedDeadline.from_record(run.intake.facts, require_vector=True)
+    first = run.initial_deadline
     active = run.active_vector
     if (
         active is None
@@ -595,6 +601,13 @@ async def _qualification(run: SupervisorRun) -> None:
         or active[QualificationField.END_NS] != first.effective_end()
     ):
         raise ValueError(ERROR_QUALIFICATION)
+
+    def progress() -> None:
+        _require_progress(run)
+
+    facts: JsonObject = {}
+    active[QualificationField.INPUT_FACTS] = facts
+    run.intake = FixedInputIntake.authenticate(run.package, run.input_directory, first, facts, progress)
     commands = PrivilegedCommands(run.owner, ReadScope.QUALIFICATION_ADMISSION, ACTUAL_SOURCE_ROOT, first)
     run.read_commands = commands
 
@@ -603,7 +616,6 @@ async def _qualification(run: SupervisorRun) -> None:
         return commands.query(argv, end_ns)
 
     source = SourceAdmission(run.realization_bytes, ACTUAL_SOURCE_ROOT, run.package, run.owner.journal.binding)
-    active[QualificationField.INPUT_FACTS] = dict(run.intake.facts)
     active[QualificationField.SOURCE_FACTS] = list[JsonValue](source.verify(query, first))
     record = parse_object(run.owner.manifest_bytes)
     substrate = inspect_host_substrate(
@@ -614,7 +626,7 @@ async def _qualification(run: SupervisorRun) -> None:
         frozenset({text(record, OwnerKey.PARENT_UNIT), text(record, OwnerKey.GUEST_UNIT)}),
     )
     active[QualificationField.HOST_FACTS] = parse_object(_encoded(cast(JsonObject, asdict(substrate))))
-    _finish_vector(run, QUALIFICATION_Q1_FILE, first)
+    _finish_vector(run, QUALIFICATION_INTAKE_NAME, first)
     second = _begin_vector(run, 1)
     if run.active_vector is None or run.active_vector[QualificationField.ID] != QUALIFICATION_Q2:
         raise ValueError(ERROR_QUALIFICATION)
@@ -751,30 +763,16 @@ def run_supervisor(
         or (purpose is Purpose.QUALIFICATION and selected)
     ):
         raise ValueError(ERROR_INTAKE)
-    intake = (
-        FixedInputIntake.authenticate(package, manifest.parent / FIXED_INPUT_DIRECTORY, initial)
-        if purpose is Purpose.QUALIFICATION
-        else None
+    owner = RunOwner.create(
+        package,
+        candidate,
+        tree,
+        hashlib.sha256(realization).hexdigest(),
+        deadline,
+        purpose,
+        realization_bytes=realization,
+        selected=selected,
     )
-    try:
-        owner = RunOwner.create(
-            package,
-            candidate,
-            tree,
-            hashlib.sha256(realization).hexdigest(),
-            deadline,
-            purpose,
-            realization_bytes=realization,
-            selected=selected,
-            offline_inputs=intake.facts if intake is not None else None,
-        )
-    except BaseException as error:
-        if intake is not None:
-            try:
-                os.close(intake.directory_fd)
-            except OSError as secondary:
-                error.add_note(ERROR_INPUT_CLOSE.format(error_class=type(secondary).__name__))
-        raise
     run = SupervisorRun(
         owner,
         package,
@@ -782,7 +780,8 @@ def run_supervisor(
         report_path,
         write_export,
         purpose=purpose,
-        intake=intake,
+        input_directory=manifest.parent / FIXED_INPUT_DIRECTORY if rows else None,
+        initial_deadline=initial,
         qualification_vectors=rows,
         active_vector=rows[0] if rows else None,
     )

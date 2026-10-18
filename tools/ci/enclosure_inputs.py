@@ -7,7 +7,7 @@ import os
 import stat
 import time
 import zipfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -28,7 +28,14 @@ from tools.ci.enclosure_contract import (
 )
 from tools.ci.enclosure_data import _archive, _command, _require_time
 from tools.ci.enclosure_native import NativeCommand
-from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, HelperOwner, _require_private_directory
+from tools.ci.enclosure_owner import (
+    FILE_MODE,
+    MANIFEST_LIMIT,
+    PARENT_DESCRIPTOR,
+    QUALIFICATION_INTAKE_NAME,
+    HelperOwner,
+    _require_private_directory,
+)
 from tools.ci.enclosure_owner import Key as OwnerKey
 
 CURL: Final = "/usr/bin/curl"
@@ -61,6 +68,8 @@ ZIP_EXTRACT: Final = ("-I", "-S", "-m", "zipfile", "--extract")
 FIXED_INPUT_DIRECTORY: Final = "fixed-inputs"
 ERROR_INTAKE: Final = "Q1 requires complete actual protected fixed inputs before Q2; no acquisition is attempted"
 ERROR_INPUT_CLOSE: Final = "closing the failed read-only input intake also failed: {error_class}"
+Q1_VECTOR: Final = "Q1"
+SUCCEEDED: Final = "succeeded"
 
 
 class Key(StrEnum):
@@ -85,6 +94,40 @@ class Key(StrEnum):
     DIRECTORY_INODE = "directory_inode"
     STARTED_NS = "started_ns"
     FINISHED_NS = "finished_ns"
+    DIRECTORY_PATH = "directory_path"
+    DIRECTORY_OPEN = "directory_open"
+    EXPECTED_SHA256 = "expected_sha256"
+    EXPECTED_BYTES = "expected_bytes"
+    BEFORE = "before"
+    AFTER = "after"
+    DEVICE = "device"
+    INODE = "inode"
+    MODE = "mode"
+    UID = "uid"
+    GID = "gid"
+    LINKS = "links"
+    MODIFIED_NS = "modified_ns"
+    CHANGED_NS = "changed_ns"
+    ID = "id"
+    STATE = "state"
+    END_NS = "end_ns"
+    INPUT_FACTS = "input_facts"
+    MANIFEST_SHA256 = "manifest_sha256"
+
+
+def _native_identity(value: os.stat_result) -> JsonObject:
+    """Retain the already-read metadata; this performs no additional observation."""
+    return {
+        Key.DEVICE: value.st_dev,
+        Key.INODE: value.st_ino,
+        Key.MODE: value.st_mode,
+        Key.UID: value.st_uid,
+        Key.GID: value.st_gid,
+        Key.LINKS: value.st_nlink,
+        Field.BYTES: value.st_size,
+        Key.MODIFIED_NS: value.st_mtime_ns,
+        Key.CHANGED_NS: value.st_ctime_ns,
+    }
 
 
 @dataclass(frozen=True)
@@ -148,23 +191,60 @@ class FixedInputIntake:
     facts: JsonObject
 
     @classmethod
-    def authenticate(cls, package: StaticPackage, directory: Path, deadline: AdmittedDeadline) -> FixedInputIntake:
-        """Read only supplied digest-named regular files; a failure never fetches or repairs one."""
-        started = time.monotonic_ns()
-        _require_time(deadline)
-        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    def authenticate(
+        cls,
+        package: StaticPackage,
+        directory: Path,
+        deadline: AdmittedDeadline,
+        facts: JsonObject,
+        progress: Callable[[], None],
+    ) -> FixedInputIntake:
+        """Update the owner's evidence prefix before each read; never fetch, repair or retry an input."""
+        files: JsonObject = {}
+        facts.update(
+            {
+                Key.DIRECTORY_PATH: str(directory),
+                Key.DIRECTORY_OPEN: False,
+                Key.STARTED_NS: time.monotonic_ns(),
+                Cutoff.OUTER_END_NS: deadline.outer_end_ns,
+                Cutoff.VECTOR_END_NS: deadline.vector_end_ns,
+                Cutoff.COMMAND_END_NS: deadline.command_end_ns,
+                Key.FILES: files,
+            }
+        )
+        descriptor = -1
         try:
+            progress()
+            _require_time(deadline)
+            descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            facts[Key.DIRECTORY_FD] = descriptor
+            facts[Key.DIRECTORY_OPEN] = True
             native = os.fstat(descriptor)
+            facts[Key.BEFORE] = _native_identity(native)
+            facts[Key.DIRECTORY_DEVICE] = native.st_dev
+            facts[Key.DIRECTORY_INODE] = native.st_ino
             if not stat.S_ISDIR(native.st_mode) or native.st_uid != 0 or native.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
                 raise ValueError(ERROR_INTAKE)
-            files: JsonObject = {}
             for item in fixed_inputs(package):
+                progress()
                 _require_time(deadline)
-                leaf = os.open(
-                    item.sha256, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=descriptor
-                )
+                observed: JsonObject = {
+                    Key.EXPECTED_SHA256: item.sha256,
+                    Key.EXPECTED_BYTES: item.size,
+                    Field.SHA256: None,
+                    Field.BYTES: None,
+                    Key.STARTED_NS: time.monotonic_ns(),
+                }
+                files[item.sha256] = observed
+                leaf = -1
+                failure: BaseException | None = None
                 try:
+                    leaf = os.open(
+                        item.sha256, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=descriptor
+                    )
                     before = os.fstat(leaf)
+                    observed[Key.BEFORE] = _native_identity(before)
+                    observed[Field.BYTES] = before.st_size
                     if (
                         not stat.S_ISREG(before.st_mode)
                         or before.st_uid != 0
@@ -174,66 +254,84 @@ class FixedInputIntake:
                         raise ValueError(ERROR_INTAKE)
                     with os.fdopen(os.dup(leaf), READ_BINARY) as handle:
                         digest = hashlib.file_digest(handle, SHA256).hexdigest()
+                    observed[Field.SHA256] = digest
                     after = os.fstat(leaf)
-                    if digest != item.sha256 or (
-                        before.st_dev,
-                        before.st_ino,
-                        before.st_mode,
-                        before.st_uid,
-                        before.st_gid,
-                        before.st_nlink,
-                        before.st_size,
-                        before.st_mtime_ns,
-                        before.st_ctime_ns,
-                    ) != (
-                        after.st_dev,
-                        after.st_ino,
-                        after.st_mode,
-                        after.st_uid,
-                        after.st_gid,
-                        after.st_nlink,
-                        after.st_size,
-                        after.st_mtime_ns,
-                        after.st_ctime_ns,
-                    ):
+                    observed[Key.AFTER] = _native_identity(after)
+                    if digest != item.sha256 or observed[Key.BEFORE] != observed[Key.AFTER]:
                         raise ValueError(ERROR_INTAKE)
+                    progress()
                     _require_time(deadline)
-                    files[item.sha256] = {Field.SHA256: digest, Field.BYTES: after.st_size}
+                except BaseException as error:
+                    failure = error
+                    raise
                 finally:
-                    os.close(leaf)
-            finished = time.monotonic_ns()
+                    observed[Key.FINISHED_NS] = time.monotonic_ns()
+                    if leaf >= 0:
+                        try:
+                            os.close(leaf)
+                        except OSError as secondary:
+                            if failure is None:
+                                raise
+                            failure.add_note(ERROR_INPUT_CLOSE.format(error_class=type(secondary).__name__))
+            progress()
             _require_time(deadline)
-            return cls(
-                descriptor,
-                {
-                    Key.DIRECTORY_FD: descriptor,
-                    Key.DIRECTORY_DEVICE: native.st_dev,
-                    Key.DIRECTORY_INODE: native.st_ino,
-                    Key.STARTED_NS: started,
-                    Key.FINISHED_NS: finished,
-                    Cutoff.OUTER_END_NS: deadline.outer_end_ns,
-                    Cutoff.VECTOR_END_NS: deadline.vector_end_ns,
-                    Cutoff.COMMAND_END_NS: deadline.command_end_ns,
-                    Key.FILES: files,
-                },
-            )
+            return cls(descriptor, facts)
         except BaseException as error:
-            try:
-                os.close(descriptor)
-            except OSError as secondary:
-                error.add_note(ERROR_INPUT_CLOSE.format(error_class=type(secondary).__name__))
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                    facts[Key.DIRECTORY_OPEN] = False
+                except OSError as secondary:
+                    facts[Key.DIRECTORY_OPEN] = None
+                    error.add_note(ERROR_INPUT_CLOSE.format(error_class=type(secondary).__name__))
             raise
+        finally:
+            facts[Key.FINISHED_NS] = time.monotonic_ns()
 
 
 def qualification_input_paths(owner: HelperOwner, deadline: AdmittedDeadline) -> dict[str, Path]:
     """Consume actual Q1 byte facts through the original controller's retained directory capability."""
     owner.require_original_parent()
-    record = object_value(parse_object(owner.manifest_bytes)[OwnerKey.OFFLINE_INPUTS])
+    name = text(parse_object(owner.manifest_bytes), OwnerKey.OFFLINE_INPUTS)
+    if name != QUALIFICATION_INTAKE_NAME:
+        raise ValueError(ERROR_INTAKE)
+    _require_time(deadline)
+    descriptor = os.open(
+        name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=owner.journal.directory_fd
+    )
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != 0
+            or stat.S_IMODE(before.st_mode) != FILE_MODE
+            or before.st_nlink != 1
+            or not 0 < before.st_size <= MANIFEST_LIMIT
+        ):
+            raise ValueError(ERROR_INTAKE)
+        data = os.pread(descriptor, MANIFEST_LIMIT + 1, 0)
+        after = os.fstat(descriptor)
+        if len(data) != before.st_size or _native_identity(before) != _native_identity(after):
+            raise ValueError(ERROR_INTAKE)
+    finally:
+        os.close(descriptor)
+    proof = parse_object(data)
+    if (
+        proof.get(Key.ID) != Q1_VECTOR
+        or proof.get(Key.STATE) != SUCCEEDED
+        or proof.get(OwnerKey.BINDING) != owner.journal.owner_record
+        or proof.get(Key.MANIFEST_SHA256) != hashlib.sha256(owner.manifest_bytes).hexdigest()
+    ):
+        raise ValueError(ERROR_INTAKE)
+    record = object_value(proof[Key.INPUT_FACTS])
     first = AdmittedDeadline.from_record(record, require_vector=True)
     if (
         first.outer_end_ns != deadline.outer_end_ns
+        or proof.get(Key.END_NS) != first.effective_end()
+        or record.get(Key.DIRECTORY_OPEN) is not True
         or not positive_integer(record, Key.STARTED_NS)
         <= positive_integer(record, Key.FINISHED_NS)
+        <= positive_integer(proof, Key.FINISHED_NS)
         < first.effective_end()
         or positive_integer(record, Key.FINISHED_NS) >= time.monotonic_ns()
     ):
