@@ -70,77 +70,23 @@ the target untouched.
   installation.
 - **Content comparison.** An installing surface compares the rendered content
   with its target. A target already equal to the rendered content is left
-  untouched.
+  untouched, and the surface runs no action reserved for a changed target.
 
 ### Use cases
 
 #### UC-TIN1: A supplied value takes precedence over the environment
 
-```gherkin
-Given a template carries a placeholder the installing surface supplies a value for
-And the environment defines a variable of the same name with a different value
-When an agent runs the installation that installs the template
-Then the installed content carries the supplied value in place of the placeholder
-And a placeholder with no supplied value carries the environment variable's value
-```
-
 #### UC-TIN2: An unresolved placeholder fails the installation
-
-```gherkin
-Given a template carries a placeholder with no supplied value and no environment variable of that name
-When an agent runs the installation that installs the template
-Then the installation fails naming the template and the unresolved placeholder
-And the template's target is neither written nor replaced
-```
 
 #### UC-TIN3: Runtime references are installed verbatim
 
-```gherkin
-Given a template carries a runtime reference such as "${HOME}" beside its placeholders
-When an agent runs the installation that installs the template
-Then the installed content carries the runtime reference exactly as authored
-```
-
 #### UC-TIN4: dot_-marked segments install as dot-prefixed names
-
-```gherkin
-Given a template tree carries a file and a directory whose names begin with "dot_"
-And a file whose name begins with an underscore
-When an agent runs the installation that installs the tree
-Then the marked file and directory are installed with "dot_" replaced by "."
-And the underscore-named file is installed under its authored name
-```
 
 #### UC-TIN5: An unchanged rendered result leaves its target untouched
 
-```gherkin
-Given a template's target already holds exactly the content the template renders to
-When an agent runs the installation that installs the template again
-Then the target is not rewritten
-And no action the installing surface performs only on a changed target occurs
-```
-
 #### UC-TIN6: A create-once template never replaces its target
 
-```gherkin
-Given a template tree carries two files whose names begin with "create_"
-And the first file's target is absent while the second file's target holds different content
-When an agent runs the installation that installs the tree
-Then the first target is written under its name without "create_", with the template's rendered content
-And the second target keeps its content byte for byte
-And no installed name begins with "create_"
-```
-
 #### UC-TIN7: Only tracked template files are installed
-
-```gherkin
-Given a template tree holds files the canonical checkout tracks
-And beside them a file the checkout ignores and a file it does not track
-When an agent runs the installation that installs the tree
-Then every tracked file is installed at its mapped name
-And neither the ignored nor the untracked file reaches any target
-And the installation does not fail on either of them
-```
 
 ## Known caveats
 
