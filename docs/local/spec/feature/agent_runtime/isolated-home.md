@@ -74,13 +74,6 @@ And the live home is unchanged
 
 #### UC-IAH10: Registry reads do not authorize live project writes
 
-```gherkin
-Given an operator wants to inspect or process registered projects from an undelivered worktree
-When worktree code uses the cloned project registry
-Then it cannot change any live repository named by that registry
-And the registry remains available for configuration reads
-```
-
 #### UC-IAH13: Maintenance gives an existing worktree its home
 
 #### UC-IAH14: A renamed todo's worktree keeps its home
