@@ -108,11 +108,13 @@ preparation follows the lifecycle's separate closing contract.
    completions reach you as notifications.
 4. **Converge on the mechanism.** Compare the builder's proposal with your
    independent derivation and the existing delivery path. Judge necessity and
-   proportionality before challenging implementation details: every permanent
-   subsystem, including verification infrastructure, earns its place through a
-   concrete responsibility the delivery needs. Reuse the project's admitted
-   verification surfaces and judge any departure against their owning contracts
-   (`sdlc/policy/substrate-anchoring`, `sdlc/principle/design-fundamentals`).
+   proportionality before challenging implementation details. Ground the
+   product mechanism in its existing owner (`sdlc/policy/substrate-anchoring`).
+   Apply the project's testing ruling to verification: use existing checks and
+   admitted journey coverage. A new verification capability requires explicit
+   scope; a failing check, missing evidence or review finding grants none.
+   Resolve such gaps within the assignment or retain the actual scope question
+   before construction (`sdlc/policy/testing`, `general/policy/human-contract`).
    Direct removal or simplification of unsupported machinery; the builder owns
    the implementation. Preserve required guarantees when simplifying their
    mechanism, and route a necessary contract change through doc-first authoring

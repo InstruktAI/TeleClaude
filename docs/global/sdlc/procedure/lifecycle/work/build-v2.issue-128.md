@@ -58,9 +58,12 @@ claiming group once its current assessment permits the assigned work.
    actors and restart. Report and stop your turn; the delivering session
    challenges the note. Dispose each item in a note: changed, or rejected with
    evidence. The note names the existing path being extended and the
-   smallest complete implementation and verification path. Each durable helper
-   has a concrete product, maintenance or admitted verification responsibility;
-   temporary investigation stays in the session's scratch space. Apply KISS and
+   smallest complete implementation path. Use the project's existing checks
+   and the journey coverage its testing ruling admits for this assignment.
+   Report an evidence gap to the driver; build a new verification capability only
+   when that capability is explicitly in scope (`sdlc/policy/testing`,
+   `general/policy/human-contract`). Temporary investigation stays in the
+   session's scratch space under that ruling. Apply KISS and
    YAGNI to the complete mechanism, using module depth rather than helper counts
    (`sdlc/principle/design-fundamentals`, `sdlc/principle/module-depth`). Coding
    against the reviewed prepared contracts may proceed alongside the challenge.

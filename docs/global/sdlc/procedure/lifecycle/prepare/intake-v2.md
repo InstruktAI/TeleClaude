@@ -45,6 +45,10 @@ content and dispose every challenge with a change or with evidence.
    inferred addition (`sdlc/principle/design-fundamentals`). Name a necessary
    departure from that path and its reason in the inference record. Scope
    remains within the authorized intent (`general/policy/human-contract`).
+   Identify the project's testing ruling and existing verification path. Report
+   an evidence gap for driver disposition; a new verification capability belongs
+   in the design only when it is explicitly within the authorized scope
+   (`sdlc/policy/testing`, `general/policy/human-contract`).
 3. **Write the spec into the body.** Keep the original intent at the top. Then:
    the outcome and prose behavioral contract; user goals admitted under
    `sdlc/procedure/feature-spec-authoring` as Gherkin `Given / When / Then`;

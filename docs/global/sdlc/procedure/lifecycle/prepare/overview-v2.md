@@ -72,7 +72,11 @@ genuinely theirs.
      (`general/policy/documentation-discipline`). Distinguish known integration
      prerequisites from unresolved decisions that determine what must be built;
      the affected scope stays in preparation while those decisions remain open
-     (`sdlc/policy/definition-of-ready`).
+     (`sdlc/policy/definition-of-ready`). Judge verification against the
+     project's testing ruling and the assignment: admitted journey coverage does
+     not authorize inventing verification infrastructure to deliver it. Any new
+     verification capability needs explicit scope before preparation can bind a
+     builder to it (`sdlc/policy/testing`, `general/policy/human-contract`).
 6. **Human-owned forks.** A product outcome the domain cannot settle, a material
    exposure, or an external commitment is stated in one comment as a question,
    and the issue waits. Everything else you decide and record.
