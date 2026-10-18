@@ -115,20 +115,12 @@ And refreshing it preserves its original creation identity
 
 #### UC-CTE-9:
 
-```gherkin
-Given an agent requests mirror generation through its asynchronous capability
-When the request completes
-Then it reports the same projection and persistence outcome as the synchronous capability
-And source processing does not occupy the caller's event loop
-```
-
-#### UC-CTE-10:
+#### UC-CTE-10: An operator can identify the mirror's source
 
 ```gherkin
-Given an agent inspects the provenance of a mirrored conversation
-When a native source identity is established
-Then its value follows the producing runtime's transcript storage convention
-And the appropriate filename, directory component or stored metadata supplies it under that convention
+Given an operator is investigating a mirrored conversation
+When they inspect its provenance
+Then they can identify the source transcript
 ```
 
 ## Known caveats
