@@ -203,101 +203,31 @@ commit pathspec filtered to existing files) and then runs `git commit` without
 `--no-verify`, so it passes the same hook as a raw `git commit`. No framework
 stash occurs; files outside the pathspec are not touched.
 
-#### UC-CGIP-1 — Commitizen format check blocks malformed message
+The commit message follows `general/policy/commits`, and a commit is created
+only when the message and every applicable staged-file gate pass. A refusal
+leaves no commit. If the change contains only deletions, no existing file is
+formatted or checked by the native leg, but documentation and agent-artifact
+validation still assess each affected home as it will stand after deletion.
 
-```
-Given message does not match type(scope): subject or type: subject
-When agent invokes telec code commit --approved "<bad-message>"
-Then SystemExit(1) before format/lint/git-commit invoked
-```
+#### UC-CGIP-1 — Commitizen format check blocks malformed message
 
 #### UC-CGIP-2 — Format runs on quality_paths before the hook lints
 
-```
-Given the acting invocation context's tier carries project subscriptions
-And pathspec contains existing and deleted files
-When agent invokes telec code commit --approved "<msg>"
-Then quality_paths = pathspec filtered to existing files only
-And handle_format(quality_paths) runs before git commit is invoked
-And the pre-commit hook lints the staged file set after formatting
-```
-
 #### UC-CGIP-3 — Deletion-only commit bypasses format/lint
-
-```
-Given pathspec contains only a deleted file
-When agent invokes telec code commit --approved "<msg>"
-Then quality_paths is empty
-And handle_format is not invoked
-And git commit runs the pre-commit hook without the native leg
-And the documentation and agent-artifact validators grade each owning home of the deleted file as committed after the deletion
-And the commit lands only if that home has no findings
-```
 
 #### UC-CGIP-4 — Clean commit passes through the pre-commit hook
 
-```
-Given format passes on quality_paths and lint passes on the staged file set
-When agent invokes telec code commit --approved "<msg>"
-Then repo.git.commit is called without "--no-verify"
-And the pre-commit hook runs and exits 0
-And no framework stash occurs
-```
-
 #### UC-CGIP-5 — Format failure blocks commit
-
-```
-Given format fails on quality_paths
-When agent invokes telec code commit --approved "<msg>"
-Then SystemExit(1) before repo.git.commit invoked
-```
 
 #### UC-CGIP-6 — Lint failure blocks commit
 
-```
-Given lint fails on the staged file set (after format passed)
-When agent invokes telec code commit --approved "<msg>"
-Then the pre-commit hook exits non-zero naming each finding
-And git produces no commit, and telec code commit exits non-zero
-```
-
 #### UC-CGIP-48 — A repository's first commit passes through the same gates
-
-```gherkin
-Given an agent works in a repository that has no commits yet
-And the acting invocation context's tier carries project subscriptions
-And the agent has declared the files for the repository's first commit
-When the agent invokes telec code commit --approved "<msg>"
-Then the gates the tier carries grade the declared files that exist, as for any other commit
-And when every gate passes, the first commit lands carrying exactly the declared files
-And when a gate fails, no commit is created and the repository still has no commits
-```
 
 #### UC-CGIP-7 — Lock releases cleanly on gate failure
 
-```
-Given the pre-commit hook rejects the commit
-When telec code commit --approved "<msg>" is invoked
-Then main_branch_lock __exit__ is called (lock released)
-```
-
 #### UC-CGIP-8 — Bare commit surfaces the gate and exits 0
 
-```
-Given a non-integrator agent invokes telec code commit with no message and no --approved
-When the branch is main (commit-first review-routing gate) or any other branch (short help)
-Then the guidance is printed and no commit occurs
-And SystemExit(0) — serving the gate is the successful outcome of a bare invocation
-```
-
 #### UC-CGIP-9 — Message without --approved is a forgotten gate
-
-```
-Given a non-integrator agent invokes telec code commit "<message>" without --approved
-When the branch is main
-Then SystemExit(1) and no commit occurs
-And on any other branch SystemExit(2)
-```
 
 #### UC-CGIP-45 — The gate card carries the diffstat of the scope it would commit
 
