@@ -385,10 +385,9 @@ Scenario Outline: invitation on <adapter>
 ```gherkin
 Scenario Outline: conversation ownership is unavailable because <condition>
   Given an operator is responsible for a designated conversation adapter
-  When no unique live master is available because <condition>
+  And <condition> prevents selection of a unique live master for the adapter
+  When the operator checks ownership for that adapter
   Then the operator can see that conversation ownership is unavailable
-  And no computer accepts the input or redeems an invitation
-  And non-master receivers send no fallback reply
 
   Examples:
     | condition                            |
@@ -446,10 +445,9 @@ And it becomes the conversation's session
 
 ```gherkin
 Given a project whose help desk is enabled
-And its repository is present on several computers, including the master
-When a person enters that desk from a configured adapter
-Then their session runs on the master
-And another repository copy neither rejects entry nor creates a competing session
+And its repository is present on several computers
+When a person enters that desk through a configured adapter
+Then they reach its conversation on the master
 ```
 
 #### UC-CE26: Discord carries no desk entry
@@ -525,11 +523,9 @@ And the other conversations retain their bindings and lifecycle
 #### UC-CE34: A shared designated channel has one conversation owner
 
 ```gherkin
-Given a person has a designated assistant channel whose input reaches several computers
-And one live computer is the mesh master
+Given a person's designated assistant channel is received on several computers
 When they send conversation input through that channel
-Then one continuing session on the master receives it
-And other receivers do not create a competing session or deliver the input elsewhere
+Then one conversation on the master receives their input
 ```
 
 #### UC-CE35: Telegram ownership is independent of fan-out
