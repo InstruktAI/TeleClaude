@@ -63,6 +63,8 @@ reference. The existing observation-type vocabulary owns accepted types.
 An extraction read returns its bounded conversational material, source coverage,
 resolved scope, and already-recorded progress. Its content excludes tools,
 reasoning, injected platform instructions, and compaction summaries.
+For a desk extraction, the read also returns prospects already recorded from
+that source session, allowing a retry to compare them with current records.
 
 Completion is the worker's declaration that its memory/prospect changes for the
 supplied material are finished, including a successful run with no changes.
