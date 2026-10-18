@@ -43,7 +43,8 @@ producers for every procedure and agent.
   restricts source and forwards only the inbound path prefix to the ingress.
   Any local reverse proxy satisfies the contract. The inbound endpoints
   authenticate each request by its signature alone and inherit no host-loopback
-  trust.
+  trust. A request with an invalid signature receives a rejection response and
+  is not relayed.
 - **Verify, translate, relay.** Every request is verified against the secret of
   the home that declared its source, translated into the platform event shape,
   then relayed to the whole cluster. The endpoints, declarations, protocols and
@@ -81,114 +82,39 @@ producers for every procedure and agent.
 
 ### Use cases
 
-#### UC-SIT-1: External webhook reaches the cluster via the ingress
+#### UC-SIT-1: An operator makes an external webhook available throughout a private cluster
 
 ```gherkin
-Given one computer is designated the ingress and is reachable at the network boundary
-And another computer behind a home router is not publicly reachable
-When an external provider sends a webhook
-Then it arrives only at the ingress
-And the ingress verifies it, translates it into the platform event shape, and relays it to the cluster
-And the non-public computer receives the event through the cluster and reacts
+Given an operator has connected an external provider to a TeleClaude cluster with private computers
+When the provider sends a valid webhook
+Then every running computer can receive the resulting external event through the cluster and react to it
 ```
 
 #### UC-SIT-2: The ingress relays unconditionally
 
-```gherkin
-Given the ingress is a low-power appliance that would not itself act on a given event
-When it receives and verifies that event
-Then it relays the event to the cluster anyway
-And the relay does not depend on the ingress's own role, channel, or whether it would act
-```
-
 #### UC-SIT-3: Unverified payloads are rejected at the boundary
-
-```gherkin
-Given a payload arrives at the ingress without a valid signature
-When the ingress verifies it
-Then verification fails
-And no event is relayed to the cluster
-And the sender receives an appropriate rejection response
-```
 
 #### UC-SIT-4: Non-ingress nodes accept no external webhooks
 
-```gherkin
-Given a computer is not the designated ingress
-When an external webhook is directed at it
-Then it does not serve as a public webhook endpoint
-And the cluster's single public surface remains the ingress alone
-```
-
 #### UC-SIT-5: One ingress serves all providers and all projects
-
-```gherkin
-Given the ingress is configured to receive webhooks
-When events arrive for different external providers or different projects
-Then the same ingress terminates, verifies, translates, and relays each of them
-And adding a new provider does not require a second public endpoint
-```
 
 #### UC-SIT-6: A relayed event reads like a platform event
 
-```gherkin
-Given a company home declares a native source
-And its producer sends a signed request with domain "erp", name "invoice.paid" and a payload
-When an agent consuming platform events on any computer receives the relayed event
-Then the event is named "erp.invoice.paid"
-And its source names the ingress computer and it references no session
-And its subject is that company's native source
-And its origin is that company
-And its data is the one the producer sent
-```
-
 #### UC-SIT-7: A consumer subscribes to an external event by its name
-
-```gherkin
-Given a consumer subscribes to the event name "erp.invoice.paid"
-When the ingress relays a verified request whose domain is "erp" and whose name is "invoice.paid"
-Then the consumer receives it exactly as it receives a platform event of a subscribed name
-And nothing about the inbound request is visible beyond the event itself
-```
 
 #### UC-SIT-8: Identity headers on an inbound request reference no session
 
-```gherkin
-Given a signed inbound request also carries headers that name a caller session
-When the ingress relays it
-Then the relayed event references no session
-```
-
-#### UC-SIT-9: Every computer's platform handlers receive a relayed provider event once
+#### UC-SIT-9: An operator makes verified WhatsApp messages available to every cluster computer
 
 ```gherkin
-Given three computers, one of which is the ingress
-When the ingress relays a verified WhatsApp message
-Then each of the three computers delivers that message to its own WhatsApp conversation handling once
-And the ingress does not deliver it a second time from the request itself
+Given an operator has enabled a WhatsApp source for a cluster with three computers
+When a verified incoming message reaches that source
+Then each computer's WhatsApp conversation handler receives the message once
 ```
 
 #### UC-SIT-10: A native event keeps native treatment whatever its name
 
-```gherkin
-Given a company home declares a native source
-When its producer posts a signed request with domain "github" and name "push"
-Then the relayed event is named "github.push" and its origin is that company
-And its subject is that company's native source
-And each computer delivers it as a native event carrying that company
-And no computer treats it as a GitHub delivery
-```
-
 #### UC-SIT-11: Same name, subject and payload through two protocols stay distinct
-
-```gherkin
-Given the project "web" declares both a native source and a GitHub source
-When GitHub delivers a push to its GitHub endpoint
-And its native producer posts domain "github", name "push" and the same payload to its native endpoint
-Then the cluster receives two events named "github.push" whose origin is the project "web"
-And one's subject is the project's GitHub source and the other's its native source
-And each computer delivers the first as a GitHub delivery and the second as a native event
-```
 
 ### Cross-context references
 
