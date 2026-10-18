@@ -49,7 +49,7 @@
       "budget_seconds": 480,
       "max_attempts": 1,
       "actions": [
-        "Provision only authenticated offline file data, with no outside package control-script execution",
+        "Provision authenticated offline file data; outside package control-script execution is permitted only within the absent exact-locked systemd-container installation transaction admitted by enclosure-recipes.json host.host_changes and static-lock.json host_closure.policy, with all actual host preconditions satisfied and the reviewed source/effect/creator scope and strict final package predicates preserved",
         "Bind active original parent and subscriptions/handles before exactly one guest boot",
         "Verify namespace/maps and mask admission, then configure exact guest archives/accounts/tools inside guest"
       ],
