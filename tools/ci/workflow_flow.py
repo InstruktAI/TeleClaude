@@ -25,7 +25,13 @@ from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_ledger as start_ledger
 from tools.ci import workflow_publication as publication
 from tools.ci.enclosure_contract import parse_object, positive_integer
-from tools.ci.enclosure_inner import LedgerEvidence, PayloadProvisional
+from tools.ci.enclosure_inner import (
+    DeferredRetention,
+    LedgerEvidence,
+    PayloadProvisional,
+    RetentionEmitter,
+    RetentionField,
+)
 from tools.ci.workflow_creation import Observer, SessionView
 from tools.ci.workflow_foundation import FixtureSetup, FoundationHost
 
@@ -466,6 +472,7 @@ class WorkflowFlow:
     event_previous_seal: start_ledger.JsonObject | None = None
     event_case_seal: start_ledger.JsonObject | None = None
     payload_provisional: PayloadProvisional | None = None
+    defer_retention: Callable[[DeferredRetention], None] | None = None
     root: Path = field(init=False)
     observer: Observer = field(init=False)
     controls: controls.Controls = field(init=False)
@@ -506,7 +513,7 @@ class WorkflowFlow:
         self.project = self.project.resolve()
         self.source_root = self.source_root.resolve()
         self.root = self.setup.control.parent / FLOW_NAME
-        self.retain(RETAINED_MARKER.format(path=self.root))
+        self._retain_owned(RetentionEmitter.SHARED_FLOW, self.root, RETAINED_MARKER.format(path=self.root))
         self.root.mkdir(parents=True)
         self.observer = Observer(self.host)
         self.controls = controls.Controls(self.setup, FLOW_NAME)
@@ -519,8 +526,21 @@ class WorkflowFlow:
         )
         self.plan_sets = flow_plan_sets(self.chain)
         if self.event_window is not None:
-            self.retain(f"B10 event evidence retained at {self.event_window.carrier_root}")
+            self._retain_owned(
+                RetentionEmitter.EVENT_EVIDENCE,
+                self.event_window.carrier_root,
+                events.RETAINED_EVIDENCE.format(path=self.event_window.carrier_root),
+            )
         self.write_retained_marker()
+
+    def _retain_owned(self, emitter: RetentionEmitter, owner: Path, legacy_reason: str) -> None:
+        """Only these exact owning emitters use typed new-run holds; actual failures still call retain."""
+        if self.payload_provisional is None:
+            self.retain(legacy_reason)
+        elif self.defer_retention is None:
+            raise creation.binding_failure(DETAIL_MANIFEST)
+        else:
+            self.defer_retention(DeferredRetention(emitter, owner, self.payload_provisional.binding_bytes))
 
     def setup_flow(self) -> None:
         """Prepare candidate publication, one fixed chain pool, registry and ledger before any start."""
@@ -1384,6 +1404,10 @@ class WorkflowFlow:
             )
             if extra is not None:
                 current.update(extra)
+            if self.payload_provisional is not None:
+                current[RetentionField.DEFERRED] = DeferredRetention(
+                    RetentionEmitter.SHARED_FLOW, self.root, self.payload_provisional.binding_bytes
+                ).record()
             self._atomic_json(self.retained_path, current)
         except OSError as error:
             raise creation.binding_failure(DETAIL_RETENTION.format(error=type(error).__name__)) from error

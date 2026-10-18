@@ -1662,13 +1662,17 @@ def run_prepared(
     register_company: Callable[[], None],
     retain: Callable[[str], None],
     accounting: creation.EvidenceObject | None = None,
+    retain_event: Callable[[Path], None] | None = None,
 ) -> None:
     """Journey B4; raises JourneyFailure leading with its class."""
     prepared = _Prepared(
         host, setup, project, source_root, owner_email, owner_slug, report_path, register_company, retain
     )
     events.verify_case(event_binding, events.FIRST_CASE)
-    retain(f"B10 event evidence retained at {event_binding.carrier_root}")
+    if retain_event is None:
+        retain(events.RETAINED_EVIDENCE.format(path=event_binding.carrier_root))
+    else:
+        retain_event(event_binding.carrier_root)
     observer = prepared.observer
     prepared.accounting = accounting
     prepared.publication.retain_inputs(accounting)

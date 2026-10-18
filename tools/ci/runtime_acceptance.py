@@ -55,9 +55,12 @@ from tools.ci.enclosure_guest import Record as GuestShutdownRecord
 from tools.ci.enclosure_inner import (
     PROVISIONAL_REPORT_SCHEMA,
     PROVISIONAL_STAGE,
+    DeferredRetention,
     InnerCleanupEvidence,
     PayloadProvisional,
     PhysicalCleanupPending,
+    RetentionEmitter,
+    RetentionField,
 )
 from tools.ci.enclosure_journal import Outcome as EnclosureOutcome
 from tools.ci.enclosure_report import (
@@ -1225,6 +1228,7 @@ class FullRuntimeResources:
     b13_marker_path: Path | None = None
     b13_carrier_path: Path | None = None
     retained_keys: dict[str, str] = field(default_factory=dict)
+    deferred_retention: list[DeferredRetention] = field(default_factory=list)
     owner_identity_facts: JSONObject = field(default_factory=dict)
 
     def early_accounting(self, case: str) -> creation.EvidenceObject | None:
@@ -1299,6 +1303,21 @@ class FullRuntimeResources:
             return
         self.retained_keys[key] = reason
         self.retained.append(reason)
+
+    def defer_retention(self, hold: DeferredRetention) -> None:
+        """Keep owning-emitter typed holds separate from every unclassified failure string/key."""
+        if self.payload_provisional is None or hold.binding_bytes != self.payload_provisional.binding_bytes:
+            raise ValueError(_FULL_RETENTION_KEY_COLLISION)
+        self.deferred_retention.append(hold)
+
+    def retain_event(self, directory: Path) -> None:
+        """Retain original event evidence for outside readback only on the newly admitted report path."""
+        if self.payload_provisional is None:
+            self.retained.append(events.RETAINED_EVIDENCE.format(path=directory))
+        else:
+            self.defer_retention(
+                DeferredRetention(RetentionEmitter.EVENT_EVIDENCE, directory, self.payload_provisional.binding_bytes)
+            )
 
     def release_key(self, key: str) -> None:
         """Clear only the exact reason owned by this retention key."""
@@ -2306,6 +2325,8 @@ def _record_retained_workflow_markers(resources: FullRuntimeResources) -> bool:
                 continue
             if _is_b13_delivery_marker(resources, marker, record, marker_bytes):
                 continue
+            if _is_deferred_flow_marker(resources, marker, record):
+                continue
             reason = record.get(creation.B12Field.REASON) if isinstance(record, Mapping) else None
             resources.retained.append(
                 f"retained marker {marker}: {reason if isinstance(reason, str) else 'unreadable status'}"
@@ -2315,6 +2336,32 @@ def _record_retained_workflow_markers(resources: FullRuntimeResources) -> bool:
             resources.retained.append(f"retained marker {marker} cannot be read: {type(error).__name__}")
             unresolved_marker = True
     return unresolved_marker
+
+
+def _is_deferred_flow_marker(resources: FullRuntimeResources, marker: Path, record: object) -> bool:
+    """Recognize only this live admitted flow's typed hold; every actual failure remains blocking."""
+    flow = resources.workflow_flow
+    provisional = resources.payload_provisional
+    if (
+        provisional is None
+        or flow is None
+        or flow.payload_provisional != provisional
+        or marker != flow.retained_path
+        or not flow.finalized
+        or flow.finalizer_errors
+        or flow.ledger is None
+        or flow.finalizer_summary.get(RetentionField.FAILURE) is not None
+        or flow.finalizer_summary.get(RetentionField.ISSUES) != []
+        or not isinstance(record, Mapping)
+    ):
+        return False
+    native = cast(Mapping[object, object], record)
+    expected = DeferredRetention(RetentionEmitter.SHARED_FLOW, flow.root, provisional.binding_bytes)
+    return (
+        native.get(RetentionField.DEFERRED) == expected.record()
+        and native.get(full_flow.FLOW_ID_FIELD) == flow.ledger.flow_id
+        and native.get(RetentionField.FINALIZER) == flow.finalizer_summary
+    )
 
 
 def _is_b13_delivery_marker(resources: FullRuntimeResources, marker: Path, record: object, marker_bytes: bytes) -> bool:
@@ -3078,6 +3125,7 @@ def _full_workflow_waiting(resources: FullRuntimeResources, evidence: list[Comma
         resources.b13_evidence,
         resources.sanitize,
         accounting=resources.early_accounting("B3"),
+        retain_event=resources.retain_event,
     )
 
 
@@ -3089,7 +3137,7 @@ def _full_workflow_prepared(resources: FullRuntimeResources, evidence: list[Comm
     if resources.project_slug is None:
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
     event_binding = events.load_binding(setup.control.parent)
-    resources.retained.append(f"B10 event evidence retained at {event_binding.carrier_root}")
+    resources.retain_event(event_binding.carrier_root)
     prepared.run_prepared(
         _FoundationRunner(resources, evidence),
         setup,
@@ -3103,6 +3151,7 @@ def _full_workflow_prepared(resources: FullRuntimeResources, evidence: list[Comm
         lambda: _register_procedure_fixture_company(resources, evidence),
         resources.retained.append,
         accounting=resources.early_accounting("B4"),
+        retain_event=resources.retain_event,
     )
 
 
@@ -3114,7 +3163,7 @@ def _full_workflow_review(resources: FullRuntimeResources, evidence: list[Comman
     event_binding = events.load_binding(setup.control.parent)
     events.verify_case(event_binding, "B4")
     event_previous_seal = events.seal_for(event_binding, "B4")
-    resources.retained.append(f"B10 event evidence retained at {event_binding.carrier_root}")
+    resources.retain_event(event_binding.carrier_root)
     if resources.workflow_flow is None:
         resources.workflow_flow = full_flow.WorkflowFlow(
             host=_FoundationRunner(resources, evidence),
@@ -3130,6 +3179,7 @@ def _full_workflow_review(resources: FullRuntimeResources, evidence: list[Comman
             event_previous_seal=event_previous_seal,
             event_case_seal=event_previous_seal,
             payload_provisional=resources.payload_provisional,
+            defer_retention=resources.defer_retention,
         )
     flow = resources.workflow_flow
     try:
@@ -6821,6 +6871,7 @@ def _run_profile(
                         else None,
                         "recorded_retention_reasons": list(resources.retained),
                         "recorded_retention_keys": dict(resources.retained_keys),
+                        RetentionField.DEFERRED: [hold.record() for hold in resources.deferred_retention],
                         "flow_finalizer": resources.workflow_flow.finalizer_summary
                         if resources.workflow_flow is not None
                         else None,

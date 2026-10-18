@@ -37,7 +37,15 @@ from tools.ci.enclosure_contract import (
 )
 from tools.ci.enclosure_guest import SOURCE_ROOT, Purpose
 from tools.ci.enclosure_guest import Key as GuestKey
-from tools.ci.enclosure_inner import PROVISIONAL_REPORT_SCHEMA, PROVISIONAL_STAGE, LedgerEvidence, PendingReason
+from tools.ci.enclosure_inner import (
+    PROVISIONAL_REPORT_SCHEMA,
+    PROVISIONAL_STAGE,
+    LedgerEvidence,
+    PendingReason,
+    RetentionCondition,
+    RetentionEmitter,
+    RetentionField,
+)
 from tools.ci.workflow_creation import collect_slugs
 from tools.ci.workflow_driver import DRIVER_ID as PROC_PREPARE
 from tools.ci.workflow_driver import ROLE as ROLE_PREPARE
@@ -53,6 +61,7 @@ from tools.ci.workflow_flow import (
     B6_ACTIONS,
     B6_COMMIT,
     B7_ACTIONS,
+    FLOW_NAME,
     ITEM,
     MESSAGE_STARTS,
     PROC_BUILD,
@@ -121,6 +130,7 @@ from tools.ci.workflow_waiting import CONTROL_NAME as WAITING_CONTROLS
 
 ERROR_REPORT: Final = "the new provisional report binding or original ledger evidence is inconsistent"
 LEDGER_ADDRESS: Final = Path("starts.jsonl")
+DEFERRED_EVENT_SCENARIO: Final = "UC-WF-B3"
 BINDING_FIELDS: Final = (
     GuestKey.RUN_TOKEN,
     GuestKey.SOURCE_COMMIT,
@@ -144,6 +154,7 @@ OBSERVATION_FIELDS: Final = frozenset(
         "inner_cleanup",
         "recorded_retention_reasons",
         "recorded_retention_keys",
+        RetentionField.DEFERRED,
         "flow_finalizer",
         "flow_finalizer_errors",
         "early_workflow",
@@ -2887,7 +2898,7 @@ def validate_event_inputs(
     ):
         raise ValueError(ERROR_REPORT)
     observations = object_value(object_value(report["payload_provisional"])["observations"])
-    root = Path(text(observations, "owned_profile_root"))
+    root = Path(text(observations, RetentionField.OWNED_PROFILE_ROOT))
     binding = _event_binding(case_report, window, root, sha)
     if evidence["case_report_path"] != str(binding.report_path):
         raise ValueError(ERROR_REPORT)
@@ -2975,6 +2986,41 @@ def _ledger_pair(observations: JsonObject, selection: frozenset[str]) -> JsonObj
     }
 
 
+def _deferred_retention(binding: JsonObject, observations: JsonObject) -> list[JsonValue]:
+    """Match each actual owning-emitter hold; this neither resolves it nor classifies a failure string."""
+    root = Path(text(observations, "owned_profile_root"))
+    selected = frozenset(_strings(binding[GuestKey.SELECTED_SCENARIOS]))
+    expected: dict[RetentionEmitter, tuple[Path, RetentionCondition]] = {}
+    if not selected or DEFERRED_EVENT_SCENARIO in selected:
+        expected[RetentionEmitter.EVENT_EVIDENCE] = (root / events.WINDOW_DIRECTORY, RetentionCondition.EVIDENCE)
+    if declared_chain(selected):
+        expected[RetentionEmitter.SHARED_FLOW] = (root / FLOW_NAME, RetentionCondition.PHYSICAL)
+    rows = observations[RetentionField.DEFERRED]
+    if not isinstance(rows, list):
+        raise ValueError(ERROR_REPORT)
+    seen: set[RetentionEmitter] = set()
+    for value in rows:
+        row = object_value(value)
+        if set(row) != {RetentionField.EMITTER, RetentionField.OWNER, RetentionField.BINDING, RetentionField.CONDITION}:
+            raise ValueError(ERROR_REPORT)
+        emitter = RetentionEmitter(text(row, RetentionField.EMITTER))
+        if emitter not in expected:
+            raise ValueError(ERROR_REPORT)
+        path, condition = expected[emitter]
+        if (
+            row[RetentionField.BINDING] != binding
+            or row[RetentionField.OWNER] != str(path)
+            or row[RetentionField.CONDITION] != condition.value
+        ):
+            raise ValueError(ERROR_REPORT)
+        seen.add(emitter)
+    if seen != set(expected):
+        raise ValueError(ERROR_REPORT)
+    # Preserve duplicate original emissions and their order; set membership
+    # above checks required ownership kinds, never a process or event count.
+    return list(rows)
+
+
 def validate_provisional_bindings(report: JsonObject, manifest: bytes, package: StaticPackage) -> JsonObject:
     """Match actual protected input and reparse captured bytes; pending/settled labels grant no P2 or application pass."""
     admission = parse_object(manifest)
@@ -3046,6 +3092,7 @@ def validate_provisional_bindings(report: JsonObject, manifest: bytes, package: 
         "guest_manifest_sha256": hashlib.sha256(manifest).hexdigest(),
         "purpose": binding[GuestKey.PURPOSE],
         "ledger_bytes": _ledger_pair(observations, frozenset(selected)),
+        RetentionField.DEFERRED: _deferred_retention(binding, observations),
     }
 
 

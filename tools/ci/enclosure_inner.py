@@ -27,6 +27,34 @@ class PendingReason(StrEnum):
     P4_PENDING_OUTER = "P4_PENDING_OUTER"
 
 
+class RetentionEmitter(StrEnum):
+    """The two actual source owners of deferred physical and evidence-delivery holds."""
+
+    SHARED_FLOW = "shared-workflow-flow"
+    EVENT_EVIDENCE = "workflow-event-evidence"
+
+
+class RetentionField(StrEnum):
+    """Typed holds never classify a free-text failure or an existing failed marker."""
+
+    DEFERRED = "deferred_retention"
+    EMITTER = "emitter"
+    OWNER = "owner"
+    BINDING = "binding"
+    CONDITION = "condition"
+    FAILURE = "failure"
+    ISSUES = "issues"
+    FINALIZER = "finalizer"
+    OWNED_PROFILE_ROOT = "owned_profile_root"
+
+
+class RetentionCondition(StrEnum):
+    """Evidence delivery and physical closure keep their independent obligations."""
+
+    PHYSICAL = "original-physical-closure-pending"
+    EVIDENCE = "original-evidence-readback-pending"
+
+
 class PhysicalCleanupPending(RuntimeError):
     """A live new-run cleanup defers physical closure; it never represents a previously failed result."""
 
@@ -135,6 +163,27 @@ class PayloadProvisional:
             "pending_reasons": [PendingReason.P4_PENDING_OUTER.value],
             "binding": parse_object(self.binding_bytes),
             "observations": parse_object(self.observations_bytes),
+        }
+
+
+@dataclass(frozen=True)
+class DeferredRetention:
+    """A newly admitted owning emitter's hold; this supplies no discharge or acceptance."""
+
+    emitter: RetentionEmitter
+    owner: Path
+    binding_bytes: bytes
+
+    def record(self) -> JsonObject:
+        return {
+            RetentionField.EMITTER: self.emitter.value,
+            RetentionField.OWNER: str(self.owner),
+            RetentionField.BINDING: parse_object(self.binding_bytes),
+            RetentionField.CONDITION: (
+                RetentionCondition.PHYSICAL.value
+                if self.emitter is RetentionEmitter.SHARED_FLOW
+                else RetentionCondition.EVIDENCE.value
+            ),
         }
 
 

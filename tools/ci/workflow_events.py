@@ -18,6 +18,7 @@ from tools.ci import workflow_ledger as ledger
 ITEM: Final = "b3-item"
 TELEC: Final = "telec"
 WINDOW_DIRECTORY: Final = "workflow-b3-b6-event-window"
+RETAINED_EVIDENCE: Final = "B10 event evidence retained at {path}"
 WINDOW_FILE: Final = "window.json"
 WITNESSES_FILE: Final = "witnesses.jsonl"
 CASE_REPORT_FILE: Final = "workflow-b3-b6-case-report.json"
