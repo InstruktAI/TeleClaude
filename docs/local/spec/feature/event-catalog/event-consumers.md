@@ -115,13 +115,6 @@ relationship is defined by
 
 #### UC-EC12: Each computer correlates its own failures
 
-```gherkin
-Given failure events of one type about one thing are emitted on a computer within the correlation window
-When their number crosses the degradation threshold
-Then that computer emits one degradation event for that thing
-And no other computer emits a degradation event for those failures
-```
-
 ### Cross-context references
 
 - **event-catalog** — owns the envelope attributes consumers select on and the
