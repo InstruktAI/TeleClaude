@@ -18,6 +18,11 @@ gemini, and codex. TeleClaude owns what it does with that runtime: launching a
 session, evaluating stop checkpoints, discovering and identifying transcripts,
 indexing them for history, and distributing agent artifacts to it.
 
+The checkpoint evaluation reads the DeepSeek turn transcript and attributes
+its tool activity and resulting file changes to the session's workspace. When
+an action is due, the Stop response supplies a blocking reason so the runtime
+continues the turn with that reason.
+
 The runtime's own surface — profiles, plugin management, launcher flags, the
 headless one-shot contract, and the hook executor's compatibility limits — is
 the vendor's, and is documented against the installed binary in
@@ -58,19 +63,6 @@ pass through the launcher unchanged. Bundle construction and signing are owned
 by `sdlc/procedure/macos-stable-code-signing`.
 
 #### UC-DSH-CHECKPOINT-1: stop checkpoints evaluate the DSH transcript
-
-```
-Given a deepseek session whose turn executed file-touching tools
-And a checkpoint is due for the session
-When the receiver evaluates the Stop hook
-Then the DSH session artifact (zstd JSONL) is decompressed and parsed
-And the turn's tool calls are extracted (pre_tool_use/tool_result from
-  assistant/message and tool/call, tool/result events)
-And turn-local file changes are attributed to the session's workspace
-And a checkpoint reason is emitted as {"decision": "block", "reason": ...}
-  on the Stop hook's stdout
-And the dsh-hooks plugin keeps the turn going with the reason injected
-```
 
 #### UC-DSH-CHECKPOINT-2: unmapped DSH stops mint a headless mapping instead of dropping
 
