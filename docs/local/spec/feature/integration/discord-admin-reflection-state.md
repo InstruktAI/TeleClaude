@@ -92,7 +92,10 @@ change stored state. A launch from a project forum uses that project's resolved
 root, the selected agent, and the initiating person's Discord identity and
 origin. The resulting session belongs to that same forum thread. If reflection
 state is unavailable, reconciliation fails or degrades before mutating Discord
-artifacts.
+artifacts. Only a project forum with a resolved project root carries a launcher;
+the reconciler removes launchers from forums without that target. An old launcher
+there is invalid, and clicking it returns user-safe feedback without creating a
+session.
 
 ## Canonical fields
 
