@@ -31,22 +31,20 @@ catalog (`local/projects/teleclaude/spec/domain/event-catalog`).
 
 #### UC-ED1
 
-#### UC-ED2: An event type's schema shows what its events carry
+#### UC-ED2: A developer can understand an event type before consuming it
 
 ```gherkin
-Given an agent wants to know what a listed event type carries
-When it views that event type's schema
-Then it sees the type's name, version and description, what its events are about and the kind of their subject, the kinds their origin can take or that their acts happen in no registered project, person or company, every data field with its value kind and nullability, and the kinds of thing their related references name
-And for a platform type that reports a state, it sees the type's family and whether the state is failing or ok
-And it sees no notification rule, action, audience or routing scope
+Given a developer needs to understand a listed event type before consuming it
+When they inspect that event type's schema
+Then they can understand what the event type declares
 ```
 
-#### UC-ED3: The event list narrows to one owner
+#### UC-ED3: A developer can find the event types published by one owner
 
 ```gherkin
-Given an agent wants the event types one owner emits, such as the platform itself or a published domain
-When it lists the event catalog narrowed to that owner
-Then it sees exactly the declared types whose name begins with that owner's segment
+Given a developer needs to discover which event types a selected owner publishes
+When they inspect the event catalog for that owner
+Then they can find that owner's declared event types
 ```
 
 <!-- planned:issue-128 -->
