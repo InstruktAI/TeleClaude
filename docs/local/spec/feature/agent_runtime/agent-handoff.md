@@ -40,7 +40,7 @@ Then the same TeleClaude session continues with that agent
 
 #### UC-AH7: Concurrent runtime mutations do not overlap
 
-#### UC-AH8: Completion and failure report actual progress
+#### UC-AH8: A person can confirm the result of a session handoff
 
 ```gherkin
 Scenario: The accepted request names its successor and operation
