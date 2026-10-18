@@ -59,10 +59,8 @@ The normalized envelope keeps lineage and execution identity separate:
 At a normalized `user_prompt_submit` boundary carrying prompt text, the receiver
 uses the existing runtime-text normalization and shared entry classification to
 identify ordinary human spans. A prompt containing such a span receives one
-short, transient context cue recalling stewardship, attunement, leadership, and
-the human contract: develop intent rather than promote wording to requirements,
-advance confirmed work, and return new outcome interpretations for confirmation.
-Literal execution requires the human's explicit designation.
+short, transient context cue recalling stewardship, attunement, and leadership.
+It reinforces human input as steering (`general/policy/human-contract`).
 
 Peer-only entries, platform controls, reminders, command loaders, runtime
 artifacts, and empty prompts receive no human cue. Mixed entries retain their
