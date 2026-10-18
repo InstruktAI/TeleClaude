@@ -39,32 +39,20 @@ separate from the agent's compacted working context.
 
 ### Use cases
 
-#### UC-CTE-1: An operator reviews conversation without tool or reasoning content
+#### UC-CTE-1: An operator reviews a session's conversation
 
 ```gherkin
 Given an operator wants to review a session's conversation
 When they read its mirror
-Then it contains the human and assistant conversation
-And excludes tool activity and reasoning
+Then each conversational message is available in source order with its speaker and recorded timestamp
+And human and assistant text remains without tool calls, results, reasoning or injected platform instructions
+And empty messages are omitted
+And assistant response quotes remain while surrounding whitespace is removed
 ```
 
 #### UC-CTE-2: An operator sees human conversation without injected instructions
 
-```gherkin
-Given an operator reviews a conversation that contains platform instructions
-When they read its mirror
-Then the human conversation remains without those instructions
-And empty entries do not appear as messages
-```
-
 #### UC-CTE-3: An operator can read an assistant reply with its quoted content
-
-```gherkin
-Given an operator reviews a conversation containing an assistant reply with quoted material
-When they read the reply in its mirror
-Then the response text is preserved with surrounding whitespace removed
-And the quoted material remains part of the response
-```
 
 #### UC-CTE-4:
 
@@ -85,14 +73,6 @@ And a later refresh that supplies no title does not erase the recorded title
 ```
 
 #### UC-CTE-6: An operator can follow who said what and when
-
-```gherkin
-Given an operator reviews a non-empty mirrored conversation
-When they read its messages
-Then each identifies its human or assistant speaker
-And each retains its recorded timestamp representation
-And the messages remain in their recorded order
-```
 
 #### UC-CTE-7:
 
