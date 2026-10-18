@@ -1,5 +1,5 @@
 ---
-description: The machine configuration owns WhatsApp's explicit enablement and typed provider values, including any environment references.
+description: WhatsApp consumes explicit typed enablement and provider values from the configuration owner.
 ---
 
 # WhatsApp Configuration — Spec
@@ -13,9 +13,19 @@ The explicit `enabled` value is authoritative: supplying credentials does not
 enable the adapter. Consumers read the typed configuration and own the checks
 their operations require.
 
+<!-- planned-change:central-shared-configuration -->
+
 Values enter typed configuration through machine YAML, as literals or as YAML
 environment references. A `WHATSAPP_*` variable does not override or populate
 a typed field merely by being present; the field must reference it in YAML.
+<!-- change:central-shared-configuration -->
+
+The provider values and explicit enablement are shared declarations under
+`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
+The machine aggregate projects those declarations; local environment values
+neither enable the adapter nor override a shared field. API version and QoS
+retain their existing code ownership.
+<!-- /planned-change:central-shared-configuration -->
 
 ## Canonical fields
 

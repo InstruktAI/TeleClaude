@@ -48,13 +48,6 @@ its checkpoint schema; the runtime stores its object without interpreting it.
 
 #### UC-AJR-5: A scheduled script continues from saved progress
 
-```gherkin
-Given an operator schedules a script job to continue work across runs
-And an earlier run has saved that job's checkpoint for its project and job identity
-When the next run starts
-Then the script continues its work from its own saved progress without using another job's checkpoint
-```
-
 ## Known caveats
 
 - Checkpoint contents are opaque to the runtime. Each procedure or script defines

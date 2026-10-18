@@ -11,7 +11,7 @@ visibility: 'public'
 
 ## What it is
 
-The agent_runtime bounded context is hosted by a single long-running service process per computer. This spec covers the deterministic startup and shutdown ordering of that process, and the recovery loop that re-launches the embedded request surface if it exits unexpectedly. Everything that binds per-session machinery (output polling, host-pane orchestration, listeners, conversation links, hook ingest, mirrors) into one runtime hangs off of this lifecycle: it warms the in-memory caches that other surfaces read from, reconciles deliveries that might have been in flight when the previous process died, and starts the background workers that maintain liveness afterwards.
+The agent_runtime bounded context is hosted by a single long-running service process per computer. This spec covers the deterministic startup and shutdown ordering of that process, and the recovery loop that re-launches the embedded request surface if it exits unexpectedly. The webhook ingress listener belongs to the same recovery boundary as the API task. Everything that binds per-session machinery (output polling, host-pane orchestration, listeners, conversation links, hook ingest, mirrors) into one runtime hangs off of this lifecycle: it warms the in-memory caches that other surfaces read from, reconciles deliveries that might have been in flight when the previous process died, and starts the background workers that maintain liveness afterwards.
 
 ## Canonical fields
 
@@ -37,11 +37,18 @@ Storage migration and initialization precede operations startup and local source
 materialization. Adapters receive the local session state their startup
 requires. Domain-event publication is ready before producers can emit, and
 each required consumer's progress is established before the source activity it
-must observe. Registering or scheduling a reader alone does not establish that
-handover.
+must observe. Work contributed to a stage completes within that stage and does
+not add or reorder the boot prefix. Registering or scheduling a reader alone
+does not establish that handover.
 The producer and reader positions for both event source streams are prepared
 independently of adapter startup. Handler execution remains gated on its own
 dependencies, including request-surface binding where required.
+
+Before adapters, pollers or conversation delivery emit new output, startup
+reconciles durable input, transcript-binding, generation, peer-cursor and
+send-intent state. Each existing session has a pre-cutover generation boundary;
+restart rebuilds scheduling from durable rows, while agent panes and native
+transcripts remain authoritative for work that continued during the outage.
 
 The request surface is constructed before its event callbacks are wired, and
 its listener is bound before consumers that call it execute. Source seeding and
@@ -52,66 +59,15 @@ state through the cache owner under
 previously captured startup rows after newer live materialization.
 
 Post-adapter reconciliation, request-surface recovery and project warmup retain
-their owner contracts. Startup remains idempotent and reports completion and
-slow stages through the lifecycle's configured observations. These readiness
-boundaries follow `sdlc/principle/architectural-defaults` and
-`sdlc/policy/domain-ownership`.
+their owner contracts. The post-adapter completion stage finishes before the
+request surface starts; recovery of each included task remains with its owner.
+Startup remains idempotent and reports completion and slow stages through the
+lifecycle's configured observations. These readiness boundaries follow
+`sdlc/principle/architectural-defaults` and `sdlc/policy/domain-ownership`.
 
 #### UC-DL6: Post-adapter completion tasks
 
-```
-Given adapters have started and the event platform is up
-When the post-adapter completion stage runs
-Then the service's in-memory cache is wired into the transport adapter when present
-And the voice handler is initialized
-And voice-transcription recovery resumes any transcription left in flight by a prior process: rows persisted in pending|in_progress|interrupted (see `database#voice-transcription-durability-and-recovery`) are resubmitted idempotently within a bounded retry cap when their audio still exists — editing the original placeholder when a notice identifier was persisted — or transitioned to a terminal failed state with an audio-lost notice when it does not (orphaned temp-audio sweeping is NOT done here — it is owned by the periodic cleanup loop, consistent with this spec's rule that lifecycle startup performs no orphan sweeps)
-And operations normalized to their stale outcome by the operations stage have their outcomes delivered here (see `durable-operation-outcomes#uc-do3-staleness-is-an-outcome-and-reaches-the-caller` for the delivery contract)
-And session startups a prior process left unfinished are taken up as UC-DL9 states
-And the inbound queue manager is brought up
-And conversation-delivery reconciliation re-sends bounded peer bundles for any conversation link with an orphaned pending-through cursor
-And outstanding final-output reconciliation is NOT done here — it is scheduled as a background pass after the request surface starts
-And the request surface starts AFTER these tasks have completed
-```
-
 #### UC-DL2 — Turn delivery state is reconciled before adapters can emit output
-
-```
-Given the daemon starts with accepted inputs, transcript bindings, output generations, peer cursors, or Discord send intents left by an earlier process
-When staged startup reaches runtime reconciliation
-Then it completes schema migration and durable turn-state reconciliation before adapters, per-session pollers, and conversation delivery may emit new output
-And every existing session receives an explicit pre-cutover generation before new-code delivery can write to that session
-And restart reconstructs any in-memory scheduling only from durable rows
-And the independently-running agent panes and native transcripts remain the authority for work that continued while the daemon was absent
-```
-
-#### Orphan sweeps run from the cleanup task, not from startup
-
-```
-Given the periodic-cleanup task started after lifecycle startup completed
-When the first iteration executes (no initial sleep)
-Then it sweeps:
-  - Orphan host-pane sessions — terminates host panes absent from durable storage
-  - Orphan workspace directories — removes workspace dirs whose session is not active in storage
-  - Orphan per-session tmpdirs — removes per-session tmpdirs not referenced by live sessions
-  - In-process hook-receiver caller→session entries
-  - Orphan inbound rows, session listeners
-  - Voice-transcription rows in terminal states past the runtime retention window
-  - Orphan voice temp audio — removes old voice files with no recoverable durable row
-  - Retention sweeps for inbound, terminal operations, webhook outbox, hook outbox (7-day cutoff)
-And subsequent iterations sleep an hour between sweeps
-And the lifecycle's own startup does NOT perform any orphan sweep — this is intentional, the sweep is amortized into the steady-state loop
-```
-
-#### Startup retry policy
-
-```
-Given the service start raises an exception
-When the error is classified as retryable (network errors, connect errors, timeouts, OS errors, or messages mentioning "name resolution" / "connection refused" / "timed out" / "temporary failure")
-Then the service retries up to a bounded attempt count with exponential backoff
-And non-retryable errors (configuration, authentication, lock errors) exit immediately
-And exhausting retries exits abnormally
-And every startup attempt acquires the single-instance lock idempotently; failure during start releases the lock before re-raise
-```
 
 #### An operator can stop the daemon without losing accepted work
 
@@ -128,31 +84,6 @@ And independently running agent turns continue without being terminated
 Given the service has no active playback generation to cancel
 When a human operator stops the service
 Then shutdown completes without reporting a playback-cancellation validation failure
-```
-
-#### Request-surface exit detection
-
-```
-Given the embedded request-surface task, or the webhook ingress listener it starts, exits while the service is NOT shutting down
-When the wired exit-handler callback fires with the relevant flags
-Then if the shutdown event is set, it returns immediately
-And if the should-exit flag is true, it logs "request surface exited cleanly; skipping restart" and returns
-And otherwise it logs a warning identifying which surface exited and whether the exit was a crash or a clean task completion, and schedules a restart
-And external watchdogs may also request a restart via the schedule-restart hook
-```
-
-#### Request-surface restart loop
-
-```
-Given a restart is scheduled while the loop is alive
-When the restart task acquires the restart lock
-Then it tracks a sliding restart window: if the time since window-start exceeds the configured window, the counter resets and the window restarts
-And it increments the attempt counter
-And if attempts exceed the configured maximum, it logs that the restart limit is exhausted and requests the service's ordinary shutdown, which the service manager follows with a relaunch
-And otherwise it sleeps the backoff and asks the request-surface to restart
-And on success returns success
-And on failure logs the exception and schedules another restart, counted in the same window
-And the service never stays up with its request surface left down
 ```
 
 #### UC-CW1: Chiptunes registry paths are durable home-root control files
@@ -179,11 +110,12 @@ Scenario: Continue playback while the worker remains available
 
 #### UC-CW8: Idle chiptunes worker stays alive within lease window
 
-#### UC-DL1: Projects listing tolerates a registry entry that is not a project checkout
+#### UC-DL1: An operator can list registered homes without treating them as projects
 
 ```
-Given a project registry entry exists on disk and is not a TeleClaude project checkout, such as a person home
-When the projects-with-todos listing runs
+Given an operator needs the projects-with-todos listing
+And a registered entry is not a TeleClaude project checkout, such as a person home
+When they list the registered entries
 Then the listing succeeds and returns every existing registry entry in registry order, each under its display name
 And the non-checkout entry carries an empty todo list
 And no todo store is resolved, opened, or created for the non-checkout entry
@@ -211,23 +143,7 @@ But when adoption fails the response carries the reason and a folder the request
 
 #### UC-DL3: Startup work added to a stage neither extends nor reorders the boot prefix
 
-```
-Given a startup stage carries work contributed by another bounded context
-When startup runs
-Then the documented stage order is unchanged
-And the contributed work completes inside its own stage rather than deferring a later one
-```
-
 #### UC-DL5: Operations abandoned by a previous run do not abort the boot
-
-```
-Given durable operations were left queued or running when a previous daemon run stopped
-When startup runs
-Then the operations stage normalizes them to their stale outcome
-And the post-adapter completion stage delivers each of those outcomes to its recorded caller
-And startup proceeds to its running state
-And no stage is skipped, reordered, or added
-```
 
 #### UC-DL9: Session startups left unfinished by a previous run neither abort nor hold the boot
 
@@ -269,17 +185,10 @@ When that window expires
 Then the request reports that preparation did not complete
 And the running daemon retains its draining state and the unfinished work's required resources
 And the host service is neither forcibly terminated nor replaced by that request
-And once that work settles the prepared daemon completes its own shutdown as UC-DL16 states
+And once that work settles the prepared daemon completes its own shutdown
 ```
 
 #### UC-DL13: Preparation belongs to the observed process
-
-```gherkin
-Given an agent operating the host has observed the running daemon's preparation capability and process instance
-When it requests preparation and waits for completion
-Then completion is accepted only from that same process instance
-And an unsupported capability or replacement process produces a visible refusal before a preparation signal or service-manager replacement
-```
 
 #### UC-DL14: A command refused by a restarting daemon tells its caller to run it again
 
@@ -305,20 +214,11 @@ And a daemon whose admission is closed is reported degraded, never healthy
 
 #### UC-DL16: A prepared daemon completes its own shutdown
 
-```gherkin
-Given the running daemon has reached the drained phase
-When no termination from its lifecycle caller arrives within the bounded termination grace
-Then the daemon completes its ordinary shutdown and exits on its own
-And the service manager relaunches the service on its installed code
-And admission never reopens in the prepared process before it exits
-And a caller that terminates the daemon within the grace sees the ordinary stop or restart
-```
-
-#### UC-DL17: A long-lived task that ends is replaced, or the daemon restarts
+#### UC-DL17: An agent can detect and recover an unexpectedly ended daemon task
 
 ```gherkin
-Given the daemon is running with admission open
-And an agent operating the daemon relies on a capability that a long-lived daemon task provides
+Given an agent operating the daemon relies on a capability provided by a long-lived task
+And the daemon is running with admission open
 When that task ends for any reason other than cancellation or the daemon's shutdown
 Then the agent reading the daemon log finds which task ended, how it ended, and for a failure its traceback
 And the task's supervisor starts a replacement after a backoff while the task's bounded restart budget lasts

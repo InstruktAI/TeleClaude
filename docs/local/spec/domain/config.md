@@ -1,31 +1,67 @@
 ---
 visibility: internal
-description: Frozen v1 ownership anchor for file-backed configuration loading, validation, and operator editing.
+description: V1 configuration ownership for declaration loading, validation, normalization and operator editing.
 ---
 
 # Config Domain Spec — Spec
 
 ## What it is
 
+<!-- planned-change:central-shared-configuration -->
+
 The v1 config area owns loading, validation, normalization, and operator editing
 for the appliance's file-backed configuration. These files remain authoritative
 for v1 runtime behavior while all new configuration architecture lives in
 TeleClaudeNext.
+<!-- change:central-shared-configuration -->
+
+The v1 config area owns loading, validation, normalization and operator editing
+of the appliance's configuration. Local documents own local and subject
+declarations; shared runtime values have one configuration-owned authority under
+`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
+The separately governed replacement retains its own architecture.
+<!-- /planned-change:central-shared-configuration -->
 
 ## Canonical fields
 
 - **Schema authority:** `teleclaude/config/` and the published configuration
   schema.
 - **Operator surfaces:** `telec config` commands and the TUI configuration view.
+
+<!-- planned-change:central-shared-configuration -->
+
 - **Runtime authority:** configuration is loaded through
   `teleclaude/runtime/config.py`; externally supplied configuration values enter
   through YAML placeholder expansion at the load boundary, and consumers read
   the resolved values only from the typed configuration aggregate. Consumers
   neither consult the process environment nor invent fallback values.
+
+<!-- change:central-shared-configuration -->
+
+- **Runtime authority:** the configuration owner composes local declarations
+  and the shared runtime snapshot into typed consumer inputs. Local environment
+  expansion remains confined to local declarations; shared values follow
+  `local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
+  Consumers read the resolved aggregate under
+  `sdlc/policy/code-quality-practices`.
+
+<!-- /planned-change:central-shared-configuration -->
+
 - **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. File-backed configuration is not
   extended for vNext needs.
 
 ### Ownership boundary
+
+<!-- planned:central-shared-configuration -->
+
+- **Also owns:** shared subject definitions, validated snapshot reads and
+  mutations, revision and operation identity, sensitive-value resolution,
+  durable change creation and recoverable publication. The runtime projection
+  composes this authority with local bootstrap and resource declarations.
+  Application and per-consumer progress retain their integration owner under
+  `local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`.
+
+<!-- /planned:central-shared-configuration -->
 
 - **Owns:** configuration schema, loading, validation, normalization, and
   operator mutation of declared settings.

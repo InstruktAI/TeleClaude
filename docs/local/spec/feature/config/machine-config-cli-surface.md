@@ -47,13 +47,13 @@ Then they see the effective value and the source that supplies it
 
 #### UC-CFG-CLI-2: `get` names the source and revision it resolved
 
-#### UC-CFG-CLI-3: A schema-invalid patch is refused before replacement
+#### UC-CFG-CLI-3: An operator gets a safe refusal for an invalid settings change
 
 ```gherkin
-Given the committed machine configuration is valid
-And an agent submits a patch that violates its typed schema
-When the config owner evaluates the candidate
-Then the candidate is rejected with a handled schema-error description naming the source file and failing field or key path
+Given an operator needs to change a machine setting
+And the proposed value violates the machine configuration schema
+When they submit it through the computer configuration command
+Then the change is rejected with a handled schema-error description naming the source file and failing field or key path
 And the description exposes no submitted values or exception traceback
 And the command exits non-zero
 And the committed machine configuration is unchanged

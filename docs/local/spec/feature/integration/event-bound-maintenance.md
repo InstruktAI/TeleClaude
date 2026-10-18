@@ -48,10 +48,25 @@ project that did not declare it.
   registry, base or overlay. A judgment action from the checkpoint registry has
   no agent to surface to, and a binding naming one is rejected when the
   project's configuration is validated.
+
+<!-- planned-change:central-shared-configuration -->
+
 - **Selection.** An event selects the bindings of the project that is its home,
   and only of that project. An event whose home is another home, or that has no
   home, selects no project's event binding. Routing reads only the event's type
   and home; the event's data is never consulted to select a binding.
+
+<!-- change:central-shared-configuration -->
+
+- **Ordinary event selection.** An event selects ordinary event bindings only
+  in the project that is its origin. Another origin, or no project origin,
+  selects no ordinary event binding. This selection reads event type and
+  origin. Configuration bindings use the separate declaration below after the
+  configuration-change event reaches the integration consumer; generic event
+  interest retains
+  `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`.
+
+<!-- /planned-change:central-shared-configuration -->
 
 - **Where it runs.** Every computer holding the project's registered canonical
   checkout performs the selected actions there, whichever computer the event
@@ -80,6 +95,91 @@ project that did not declare it.
 - **Commit activations are unchanged.** A binding with a path scope keeps its
   meaning; an event binding is never selected by a commit, a merge, or an
   on-demand run.
+
+<!-- planned:central-shared-configuration -->
+
+### Configuration bindings and reconciliation
+
+A project declares a configuration trigger separately from paths, ordinary
+events and canonical-main activation triggers. It names cluster scope or that
+project's own shared scope, exact logical key paths and action identities from
+the existing maintenance registry. Configuration validation checks the paths
+against the repository-owned shared schema and the actions against that
+registry. Selection supplies no value predicate or expression language
+(`sdlc/principle/design-fundamentals`).
+
+Temporary shared-source unavailability leaves a running consumer on its last
+successfully applied state and records reconciliation as unavailable. It
+creates no successful application mark. Fresh runtime startup follows
+`local/projects/teleclaude/spec/feature/config/machine-config-load`.
+
+A cluster configuration change can select a declaring project's configuration
+binding on each eligible computer, even though that event has no project
+origin. A project-scoped change selects only that project's declarations.
+Integration receives the unchanged source event, then decides from its subject
+and changed logical paths which declared actions are relevant. It creates no
+synthetic project event and enumerates no consumers in the configuration
+writer. Execution location follows this contract's existing eligible-checkout
+selection, including installed-source selection; declaring a configuration
+binding grants no second execution in a development checkout.
+
+Reconciliation uses the current authoritative snapshot, never event-carried
+values. Each action receives its subject, schema and snapshot revision through
+an input file and resolves values through the configuration owner. Ordinary
+operator reads remain masked; built-in runtime application uses internal typed
+configuration inputs. Configuration metadata or values never become command
+arguments. Event creation and snapshot consistency belong to
+`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
+
+The existing executor owns durable obligations, serialization, failure and
+replay. Its maintenance persistence also retains successful applied progress
+per computer, declaring project, stable consumer/action identity and shared
+subject. Progress records the applied revision and schema, desired revision
+and any failed attempt without configuration values or secret digests. A
+consumer depending on several subjects retains a revision for each; one
+subject's success cannot hide another's lag. Stream progress, a recorded
+activation and a successful event handler do not establish applied progress
+(`sdlc/policy/code-quality-practices`).
+
+At startup, after reconnect, and after a stream-coverage gap, integration
+establishes notification coverage before reading current subjects and
+reconciling every declared configuration interest. It also recovers unfinished
+configuration obligations from the existing maintenance records. A new
+consumer and a newly available eligible checkout receive the same initial
+reconciliation. This handover retains
+`local/projects/teleclaude/design/architecture/event-delivery`.
+
+Work is serialized per consumer and subject set. An old queued notification
+reconciles the current head; it cannot reinstall its old snapshot. A completed
+revision needs no repeated effect. Intermediate changes may coalesce; every
+reconciliation compares the consumer's relevant current inputs with its last
+successful inputs rather than trusting the arriving event's changed-path list.
+When a completed input set is unchanged, confirming the current compatible
+snapshot can advance progress without repeating the action. Interrupted work
+retries idempotently; external effects retain their owner's guarantees under
+`sdlc/policy/domain-ownership`.
+
+The platform declares its built-in consumers for the migrated adapter/agent
+settings and cloud speech/summary settings. Constructor-cached adapters and
+agent settings use the existing stopped-daemon maintenance window and service
+targets. Their progress advances only after startup constructs the consumers
+from the actual shared snapshot and the window confirms the new runtime's
+readiness. Live speech/summary application completes its owned refresh first;
+the transcription provider's cached client is invalidated and live TTS mute is
+preserved. A generic config-singleton reload is not application confirmation
+(`local/projects/teleclaude/spec/feature/config/machine-config-load`).
+
+Restart work is recorded before shutdown and runs outside the ordered event
+handler. The handler returns after durable obligation registration and drain
+launch; it never waits for a restart that depends on that handler settling.
+Startup reports the snapshot actually applied, including when it is newer than
+the initiating notification. A failed startup or apply retains the prior
+successful revision and a replayable failed obligation. Status distinguishes a
+stopped consumer from a currently running consumer and reports the latter's
+runtime instance with its applied revision. It never presents a historical
+success mark as evidence that a stopped service is running
+(`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).
+<!-- /planned:central-shared-configuration -->
 
 ### Use cases
 
@@ -172,6 +272,28 @@ When a commit on canonical main changes paths the path binding matches
 Then only the path binding's actions are owed
 And the event binding's actions are not performed
 ```
+
+<!-- planned:central-shared-configuration -->
+
+#### UC-EBM11: An operator sees shared settings converge on a returning computer
+
+```gherkin
+Scenario: Apply the latest settings when a computer returns
+  Given an operator has changed shared settings while a consuming computer was unavailable
+  And that computer has a declared reaction to those settings
+  When the computer returns to service
+  Then its reaction applies the current accepted settings
+  And the operator can distinguish its completed application from an outstanding or failed application
+  And late information about an earlier change cannot restore an earlier setting
+
+Scenario: Retain a failed application's evidence
+  Given a declared reaction cannot apply the current shared settings
+  When its application attempt fails
+  Then the operator can identify its last successful application and the current failure
+  And the operator can retry the unfinished application
+```
+
+<!-- /planned:central-shared-configuration -->
 
 <!-- planned:release-development-checkouts -->
 

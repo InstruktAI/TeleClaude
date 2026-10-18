@@ -77,6 +77,28 @@ persisted surface the wizard writes is documented in
 
 ## Canonical fields
 
+<!-- planned:central-shared-configuration -->
+
+### Shared settings in setup
+
+The wizard completes computer identity and Redis bootstrap locally. It then
+reads and edits shared fields through the shared-subject editor under
+`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`.
+Shared declarations are displayed independently of whether this computer
+executes the configured service; local applicability is shown separately.
+An unavailable shared source is a named configuration prerequisite and never
+causes a local copy to be created. Shared initialization remains the explicit
+installation/migration operation, separate from opening or paging through the
+wizard (`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`).
+
+For migrated fields, the persistence inventory delegates to that shared
+configuration transaction, and completeness checks use the configuration
+owner's masked set/unset answer rather than local environment presence. Local
+fields retain the existing file/environment writers and host preflight checks.
+No provider reachability or native login decision moves into the wizard
+(`sdlc/policy/domain-ownership`).
+<!-- /planned:central-shared-configuration -->
+
 ### Use cases
 
 #### UC-WIZ-1: Fresh-machine single-pass setup
@@ -274,9 +296,20 @@ Then the daemon reports itself ready without requiring a restart
 
 ### Persistence surfaces and writers
 
+<!-- planned-change:central-shared-configuration -->
+
 The wizard writes through six distinct persistence surfaces. The
 wizard does not introduce a parallel store; every persisted value
 lands in one of the six surfaces below.
+<!-- change:central-shared-configuration -->
+
+The inventory below names file writers for local and subject declarations.
+Migrated shared fields use the shared-subject transaction described above;
+their adapter credentials and selection values have no local environment or
+machine-file writer. Local launch overrides and bootstrap secrets retain the
+file writers named here
+(`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`).
+<!-- /planned-change:central-shared-configuration -->
 
 | Wizard scope                                          | Persistence file                             | Typed surface                                      | Writer                                                                |
 | ----------------------------------------------------- | -------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- |
@@ -437,10 +470,22 @@ rendering concern, not a state concern.
 
 ### Cross-context references
 
+<!-- planned-change:central-shared-configuration -->
+
 - The People view and every config section render from the canonical schemas
   and save to each field's owning file, per-person overlay fields and personal
   MCP secrets included
   (`local/projects/teleclaude/spec/feature/config/schema-driven-config-tui`).
+
+<!-- change:central-shared-configuration -->
+
+- The People view and configuration sections render from canonical schema
+  metadata and submit edits to the field's owning subject through
+  `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`.
+  Personal overlays and MCP secrets retain their existing persistence owners.
+
+<!-- /planned-change:central-shared-configuration -->
+
 - `local/projects/teleclaude/spec/teleclaude-config` is the authoritative surface for the
   config files and env vars the wizard persists. Every new persisted
   field added by a wizard step is documented there.

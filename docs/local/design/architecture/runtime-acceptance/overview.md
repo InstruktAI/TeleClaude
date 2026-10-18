@@ -198,6 +198,14 @@ owned filesystem queue; it supplies no claim that a cgroup was moved. Source
 review covers every specified invalidation handler independently of which
 physical events the finite declaration exercises.
 
+Q1 performs read-only admission and authenticates the actual required fixed-input
+bytes before Q2. Q2 consumes those authenticated offline inputs; fixed addresses
+and expected digests alone supply no actual-byte authentication. Its outside
+package control-script execution is confined to the conditional host transaction
+declared by `enclosure-recipes.json` `host.host_changes` and `static-lock.json`
+`host_closure.policy`, with the reviewed source/effect/creator scope and strict
+final package predicates preserved (`general/principle/verification-independence`).
+
 The qualification deadline and closure/export reserve are explicit declarations,
 not measured fit. Every action consumes the least remaining vector, command or
 outer allowance. Expired allowance prevents another action. No host repair,

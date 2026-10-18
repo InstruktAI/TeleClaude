@@ -21,16 +21,21 @@ This is the _on-demand_ live read. It is NOT the background polling-and-delivery
 
 ### Use cases
 
-#### UC-STR3: A caller can read one continuous conversation transcript
+#### UC-STR3: A caller can read a session's conversation
 
-```
-Scenario: Read the session's saved conversation
+```gherkin
+Scenario: Read an existing session transcript
   Given a person asks an agent authorized to inspect a session within their reach
   When the agent reads that session's transcript
   Then it receives one continuous conversation across the session's transcript chain
-  And the response includes the session id, active agent, last activity, last input, last agent stop, and computed agent status
 
-Scenario: A missing session is refused before reading transcript files
+Scenario: Read available output when native transcript messages are absent
+  Given a person asks an agent to read a live session whose transcript files are missing or contain no readable messages
+  When the agent retrieves that conversation
+  Then it returns any available live session output or an empty result
+  And current session metadata remains available
+
+Scenario: A missing session is distinct from an out-of-reach refusal
   Given no session carries the id the person named
   When the agent requests that transcript
   Then the person receives a not-found result distinct from an out-of-reach refusal
@@ -39,38 +44,27 @@ Scenario: A missing session is refused before reading transcript files
 
 #### UC-STR4: A caller can focus a transcript on relevant messages
 
-```
+```gherkin
 Given a person needs only recent or selected types of messages from a session
 When their agent requests transcript filters
-Then the returned transcript reflects those choices and retains source positions
-And excluding tool content omits tool-use and tool-result blocks
-And excluding thinking content omits reasoning blocks
-And the `since` cutoff omits earlier entries
-And the fallback text bound applies only when structured transcript content is unavailable
+Then the returned transcript reflects the requested time and content selection
+And its messages retain their source positions
+And a fallback text bound applies only when structured transcript content is unavailable
 ```
 
 #### UC-STR5: A caller can read available session conversation without transcript files
 
-```
-Given a person asks an agent to read a session whose transcript files are missing or contain no readable messages
-When the agent retrieves that conversation
-Then it returns any available live session output or an empty result
-And current session metadata remains available
-```
-
 The fallback is the "pane tail" path — for sessions whose transcript has not yet appeared (agent just started, native file not flushed) or has been removed (e.g., the agent CLI rotated logs), the service scrapes a bounded live host-pane window through the get-session-data command and returns the raw assistant-side text as one block.
+
+The response carries the session id, active agent, last activity, last input,
+last agent stop, and computed agent status. Transcript filters select the time
+cutoff and whether tool-use/results or reasoning messages are included; returned
+messages retain their source positions. The fallback text bound applies only
+when structured transcript content is unavailable.
 
 #### UC-STR1: Terminal session agent status
 
 #### Role inference
-
-```
-Given a transcript entry carries no explicit role on its envelope
-When the conversation projector decides the role for the projected block
-Then the per-agent parser resolved from the session's active agent supplies the default
-  (Claude transcripts: explicit role on each entry; Codex / Gemini: parser-supplied defaults)
-And the resulting message entry's role reflects the projected block's role verbatim
-```
 
 A slash-command-prefix heuristic exists adjacent to this flow for run-session dispatch — it is NOT used to label transcript reads. Transcript role inference lives inside the conversation projector and the per-agent parsers.
 

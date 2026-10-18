@@ -1,5 +1,5 @@
 ---
-description: 'The machine config `agents` section must declare a default agent that is known and enabled; agent keys must be in the known set; at least one agent must be enabled; runtime-only fields are rejected.'
+description: Agent inventory validates a known enabled default, a nonempty enabled set and declared launch overrides while rejecting runtime-policy fields.
 visibility: 'public'
 ---
 
@@ -10,6 +10,8 @@ visibility: 'public'
 - @docs/local/spec/domain/config.md
 
 ## What it is
+
+<!-- planned-change:central-shared-configuration -->
 
 `config.yml` MUST declare an `agents` section describing which AI agents the
 machine knows how to launch. v1 enforces a tight contract: the section is
@@ -23,6 +25,23 @@ models rather than by a bespoke disallow list. The resulting agent registry
 holds a typed entry for each known agent key, populated from the protocol
 definitions and then overlaid with the operator's YAML for exactly those
 settings the `AgentConfig` field tiers declare as an operator surface.
+<!-- change:central-shared-configuration -->
+
+The resolved agent inventory requires a known default, an enabled default and
+at least one enabled known agent. Shared `agents.default` and per-agent
+`enabled` declarations supply selection policy under
+`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
+Local `agents` entries supply only their exposed launch overrides and may be
+absent. The configuration owner validates the complete shared selection
+candidate with the existing inventory validator; binary presence and native
+login remain local launch prerequisites. Runtime catalog values, binary paths
+and `tmux_binary` retain runtime policy ownership under
+`sdlc/policy/domain-ownership`.
+The resulting registry retains a typed entry for every known agent, composed
+from protocol definitions and its shared selection and local launch overrides.
+<!-- /planned-change:central-shared-configuration -->
+
+<!-- planned-change:central-shared-configuration -->
 
 Those tier markers are the single authority for that surface: a leaf marked
 `public` or `tui` is operator-editable, every other leaf is runtime policy, and
@@ -30,6 +49,14 @@ exposing a new setting is a change to its marker rather than to the loader. A
 setting the tiers do not expose is **rejected by name** at load, never accepted
 and discarded — silent acceptance would let a config assert a launch contract
 the runtime does not honor.
+<!-- change:central-shared-configuration -->
+
+Field tiers declare editability and authority scope selects the configuration
+resource that owns an editable value. Shared selection is changed through its
+shared subject; local profiles and model chains remain local. Runtime-policy
+leaves remain outside both input vocabularies and are refused by the closed
+schema under `local/projects/teleclaude/policy/config-public-surface`.
+<!-- /planned-change:central-shared-configuration -->
 
 ## Canonical fields
 
@@ -79,17 +106,41 @@ the runtime does not honor.
   Case-insensitive; normalized by trimming and lowercasing.
 - `agents.<name>` where `<name>` ∈ {`claude`, `gemini`, `codex`, `deepseek`}; any
   other key is rejected.
+
+<!-- planned-change:central-shared-configuration -->
+
 - `agents.<name>.enabled`: `true` or `false`. Defaults to `true` when the
   key is omitted from the user file for a known agent.
+
+<!-- change:central-shared-configuration -->
+
+- Shared `agents.<name>.enabled` is a required boolean for each known agent.
+  Initialization materializes the existing declared/default selection; reads
+  introduce no computer-local enablement fallback
+  (`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`).
+
+<!-- /planned-change:central-shared-configuration -->
+
 - `computer.tmux_binary`: undeclared and rejected by the closed `computer`
   input shape. Resolution is platform-derived.
 
 ## Known caveats
 
+<!-- planned-change:central-shared-configuration -->
+
 - **Unlisted agents default to enabled.** The agent registry iterates every
   known agent key. A user who only declares `claude` still gets `gemini` and
   `codex` with `enabled=True`, because the default for an unlisted agent's `enabled` field is `True`.
   To disable a known agent the user must declare it explicitly and set `enabled: false`.
+
+<!-- change:central-shared-configuration -->
+
+- Omitting a local agent entry keeps the shared selection unchanged. Shared
+  enablement is declared independently of local installation availability
+  (`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`).
+
+<!-- /planned-change:central-shared-configuration -->
+
 - **`default` is popped from the agents mapping before key validation.**
   Agent-key validation sees the agents mapping with `default` already removed,
   so it does not need to special-case the literal string `"default"` in the
@@ -102,10 +153,21 @@ the runtime does not honor.
 - **Runtime-policy fields are outside the accepted input shape.** Historical
   runtime fields such as `computer.tmux_binary` and per-agent `binary`
   overrides are rejected as undeclared keys rather than accepted and dropped.
+
+<!-- planned-change:central-shared-configuration -->
+
 - **No length/min validation on the agents map.** A user could declare zero
   user-listed agents and still pass the agents-section check (it only
   checks the section exists and is a mapping). The "at least one enabled"
   check is the practical floor — it fires later in config construction.
+
+<!-- change:central-shared-configuration -->
+
+- A computer may have no local launch overrides. Its resolved inventory still
+  satisfies the shared selection invariants above.
+
+<!-- /planned-change:central-shared-configuration -->
+
 - **Case folding affects `default` but not the other keys.** The default is
   normalised by trimming and lowercasing; per-agent keys are matched
   case-sensitively against the known agent keys, so `Agents.CLAUDE: {…}`
