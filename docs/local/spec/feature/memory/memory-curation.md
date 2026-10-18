@@ -93,49 +93,41 @@ contract (`sdlc/policy/backward-compatibility-hygiene`).
 
 #### UC-MC1:
 
-```gherkin
-Given a memory worker assigned to a person and memory scope
-When it lists the current memories for that identity and scope
-Then it receives that person's current memories in that scope
-And it receives no retired memory, business prospect, or memory from another identity or scope
-```
-
 #### UC-MC2:
 
 ```gherkin
-Given a memory worker processing an assigned conversation extract
-When it adds, updates or retires a memory
-Then the change is attributed to the assignment's person and memory scope
-And a mismatching requested scope is refused without mutation
+Scenario: A person's memories follow their conversation evidence
+Given a person has a ready conversation extract
+When memory curation completes that extract
+Then their current memories reflect what the conversation establishes in that person's selected scope
+And no other identity or scope is changed
+
+Scenario: Separate conversations contribute to one personal memory
+Given a person has several separate assistant conversations
+When memory curation completes extracts from those conversations
+Then each conversation can contribute evidence to the same personal memories
+And completing one does not skip content from another
 ```
 
 #### UC-MC3:
 
 ```gherkin
-Given a memory worker retired a memory
-When an assistant receives memory context or searches current memories
-Then the retired memory is absent from that result
-And the historical observation remains recorded
+Given a person has retired an outdated memory
+When an assistant provides current memory context or search results
+Then the retired memory is absent from those results
+And its historical observation remains recorded
 ```
 
 #### UC-MC4:
 
 ```gherkin
-Given a desk memory worker found a business item in a visitor conversation
-When it records that item as a prospect
-Then the prospect belongs to the desk's owning home
-And it does not appear as a person memory in assistant context or memory search
+Given a help desk owner wants a visitor's business opportunity captured
+When the desk records that opportunity as a prospect
+Then it belongs to the desk owner's prospect records
+And it does not appear as a memory about the visitor
 ```
 
 #### UC-MC5:
-
-```gherkin
-Given a memory worker finished handling a bounded conversation extract
-When it declares the extraction complete
-Then progress covers exactly the supplied stretch, whether or not any memory changed
-And later extraction starts after that stretch
-And progress never moves backwards
-```
 
 #### UC-MC6:
 
@@ -147,48 +139,27 @@ Then the operation is refused without changing memory or extraction progress
 
 #### UC-MC7:
 
-```gherkin
-Given a desk memory worker recorded a prospect before an extraction was interrupted
-When the same extract is handled again
-Then the worker can see the prospect already recorded from that source
-And handling the extract does not add that prospect again
-```
-
 #### UC-MC8:
-
-```gherkin
-Given a person has several separate personal-assistant conversations
-When a memory worker completes extraction from one conversation
-Then the other conversations retain their own extraction progress
-And each can contribute observations to the same person's personal memories
-```
 
 #### UC-MC9:
 
 ```gherkin
-Given an agent can retrieve a person's memories from an earlier conversation
-When that source conversation is closed, soft-deleted, or continued with another native transcript
-Then the memories remain attributed to the same identity and scope
-And their recorded source remains traceable
+Given a person relies on memories from a conversation
+When that source conversation is closed, removed, or continued with a different native transcript
+Then the current memories remain tied to the same identity and scope
+And their source remains traceable
 ```
 
 #### UC-MC10:
 
 ```gherkin
-Given a visitor has memories at a help desk under a provider identity
-When identity verifies that provider account's binding to a registered person
-Then an assistant serving that person at the same desk can retrieve those memories through the canonical person identity
-And the binding does not expose memories from other desks or an unrelated provider identity
+Given a registered person has a verified binding from a provider identity
+When they use the help desk where those visitor memories were created
+Then the prior memories are available through the canonical person identity at that desk
+And memories from other desks or providers remain unavailable
 ```
 
 #### UC-MC11:
-
-```gherkin
-Given a worker completed extraction from a conversation revision
-When a repeated notification or metadata-only mirror update reaches the worker
-Then already processed conversational content is not mined again
-And new conversational content remains eligible
-```
 
 ### Cross-context references
 
