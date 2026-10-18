@@ -105,12 +105,6 @@ But the same command naming a directory in a project the person's company owns i
 
 #### UC-CCS4: A session acting for the platform is not bounded by any person
 
-```
-Given a session whose lineage roots at the platform's principal, with an agent role the command admits
-When it runs that command in a project owned by any company, or by none
-Then the command is admitted
-```
-
 #### UC-CCS5: A command naming a session is judged at that session's project
 
 ```
@@ -132,15 +126,6 @@ And the machine configuration and the person registry are unchanged and unread
 #### UC-CCS7: A command naming another computer that acts on nothing held there is refused locally
 
 #### UC-CCS8: A trusted-directory name reaches its selected project
-
-```
-Given a person holding no platform role and the admin role in one company
-And a trusted-directory name for a project that company owns differs from the project's registered slug
-When the person invokes a `telec bugs` project action with `--project` naming that directory
-Then the command resolves the name to its directory through the typed machine configuration
-And the person's effective role for that directory admits the action before the command's project operation runs
-And the action uses the same resolved directory
-```
 
 #### UC-CCS9: A named project outside the person's scope is refused
 
@@ -285,33 +270,9 @@ Each command's declaration names the command capability that admits agent caller
 
 #### UC-CCB1: A full-reach role starts a session
 
-```
-Given an agent session whose role is `task-runner`, a full-reach role
-And the gated operation is `telec sessions start`
-When the clearance gate runs
-Then the gate evaluates the system band and accepts the caller
-And the CallerIdentity is returned unchanged
-```
-
 #### UC-CCB2: A full-reach role revives a session
 
-```
-Given an agent session whose role is `task-runner`, a full-reach role
-And the gated operation is `telec sessions revive`
-When the clearance gate runs
-Then the gate evaluates the system band and accepts the caller
-And the revive is performed
-```
-
 #### UC-CCB3: A full-reach role ends a session
-
-```
-Given an agent session whose role is `task-runner`, a full-reach role
-And the gated operation is `telec sessions end`
-When the clearance gate runs
-Then the gate evaluates the system band and accepts the caller
-And the CallerIdentity is returned unchanged
-```
 
 #### UC-CCB4: A worker-class role is refused the state-machine-driving verbs
 
@@ -324,13 +285,6 @@ And a full-reach role running the same verb is admitted by the gate, and whether
 ```
 
 #### UC-CCR1: A command that does not depend on its caller runs without an identity
-
-```
-Given a process whose session identity document names no open session record
-When it runs `telec version`
-Then the version is printed
-And the command is not refused for lacking an identity
-```
 
 #### UC-CCR2: A worker reads nothing across the fleet
 
