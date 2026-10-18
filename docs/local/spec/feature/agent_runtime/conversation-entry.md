@@ -443,13 +443,6 @@ And it becomes the conversation's session
 
 #### UC-CE25: A person can enter a desk even when its repository is on several computers
 
-```gherkin
-Given a project whose help desk is enabled
-And its repository is present on several computers
-When a person enters that desk through a configured adapter
-Then they reach its conversation on the master
-```
-
 #### UC-CE26: Discord carries no desk entry
 
 ```gherkin
@@ -521,12 +514,6 @@ And the other conversations retain their bindings and lifecycle
 #### UC-CE33: Unresolved channel associations remain unclaimed
 
 #### UC-CE34: A shared designated channel has one conversation owner
-
-```gherkin
-Given a person's designated assistant channel is received on several computers
-When they send conversation input through that channel
-Then one conversation on the master receives their input
-```
 
 #### UC-CE35: Telegram ownership is independent of fan-out
 
