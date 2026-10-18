@@ -63,7 +63,10 @@ on the machine's project registry — projects and person or company homes alike
 with its identity, display name, and registry order, and configured people
 (`local/projects/teleclaude/spec/feature/config/project-registry`). A project forum is keyed by its
 entry's identity, and the forums in a machine's project category follow registry
-order. A machine's project category holds exactly its registry entries' forums
+order. When more than one unclaimed same-name forum matches an entry,
+reconciliation leaves it unassigned and creates no replacement until that
+ambiguity is resolved. A machine's project category holds exactly its registry
+entries' forums
 and its catch-all forum for sessions outside every entry; any other forum there,
 and every project-forum reflection record no registry entry backs, is removed.
 Removal runs only in a pass where every present registry folder's configuration
