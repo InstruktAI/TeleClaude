@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import os
@@ -11,15 +12,17 @@ import stat
 import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from tools.ci.enclosure_actions import Key as MutationKey
 from tools.ci.enclosure_actions import NativeMutation
 from tools.ci.enclosure_admission import ACTUAL_SOURCE_ROOT, SourceAdmission, _verify_file
 from tools.ci.enclosure_contract import (
     NANOSECONDS,
+    STATIC_DIGEST,
     Action,
     AdmittedDeadline,
     Deadline,
@@ -34,6 +37,7 @@ from tools.ci.enclosure_contract import (
 )
 from tools.ci.enclosure_exchange import HelperCollection, HelperStartup, collect_helper_startup, run_privileged
 from tools.ci.enclosure_guest import Purpose
+from tools.ci.enclosure_guest_evidence import GuestFileRead
 from tools.ci.enclosure_journal import ActionResult, Outcome
 from tools.ci.enclosure_owner import MANIFEST_LIMIT, RunOwner, _write_private_file
 from tools.ci.enclosure_owner import Key as OwnerKey
@@ -49,9 +53,77 @@ UTF8: Final = "utf-8"
 ERROR_INTAKE: Final = "the explicit supervisor requires the selected protected realization and exact candidate source"
 ERROR_PROVISION: Final = "the original provisioning exchange did not establish its declared preflight boundary"
 ERROR_UNFINISHED: Final = (
-    "complete independent eligibility, conditional release and workflow export are not yet composed; "
+    "complete independent eligibility, conditional release and workflow upload are not yet composed; "
     "available physical facts cannot supply final acceptance"
 )
+ERROR_EXPORT: Final = "the declared named enclosure export did not complete within its original allowance"
+RUNNER_TEMP: Final = "RUNNER_TEMP"
+WORKFLOW_LINT: Final = "/.github/workflows/lint-test.yaml"
+WORKFLOW_RELEASE: Final = "/.github/workflows/release.yaml"
+WORKFLOW_SEPARATOR: Final = "@"
+WITNESS_SUFFIX: Final = ".p4-witness.json"
+RECOVERY_SUFFIX: Final = ".p4-recovery.json"
+JSON_SEPARATORS: Final = (",", ":")
+OWNED_DESCRIPTOR: Final = "/proc/{pid}/fd/{descriptor}"
+
+type ExportWriter = Callable[[Path, bytes], None]
+
+
+class ExportField(StrEnum):
+    """The declared outside report map and local, separately observed write receipts."""
+
+    REPORTS = "reports"
+    EXPORTS = "exports"
+    LINT_TEST = "lint_test"
+    RELEASE_CANDIDATE = "release_candidate"
+    PRIMARY = "primary"
+    WITNESS = "witness"
+    RECOVERY = "recovery"
+    STATUS = "status"
+    PATH = "path"
+    BYTES = "bytes"
+    SHA256 = "sha256"
+    END_NS = "end_ns"
+    FINISHED_NS = "finished_ns"
+    STAGE = "stage"
+    SCHEMA_VERSION = "schema_version"
+    SOURCE_COMMIT = "source_commit"
+    SOURCE_TREE = "source_tree"
+    RUN_IDENTITY = "run_identity"
+    STATIC_LOCK_SHA256 = "static_lock_sha256"
+    REALIZATION_SHA256 = "realization_sha256"
+    INNER_REPORT_SHA256 = "inner_report_sha256"
+    WITNESS_SHA256 = "witness_sha256"
+    FUNCTIONAL_OUTCOME = "functional_outcome"
+    CLEANUP_OUTCOME = "cleanup_outcome"
+    RESOURCE_RELEASE_OUTCOME = "resource_release_outcome"
+    LOCAL_EXPORT_READBACK = "local_export_readback"
+    ROLLING_INPUT_OBSERVATION_REFS = "rolling_input_observation_refs"
+    ORIGINAL_REPORT_BASE64 = "original_report_bytes_base64"
+    ORIGINAL_REPORT_READ = "original_report_read"
+    READ_ERROR = "read_error"
+    READ_STARTED_NS = "read_started_ns"
+    READ_FINISHED_NS = "read_finished_ns"
+    READ_LIMIT = "read_limit"
+    BEFORE = "before"
+    AFTER = "after"
+    NAMED_LEAF = "named_leaf"
+    ERROR = "error"
+    RECOVERY_RECORD = "recovery_record"
+    INPUT_VALIDATION = "input_validation"
+
+
+class ExportState(StrEnum):
+    """Local export state never supplies application acceptance or a later upload result."""
+
+    FINAL = "final"
+    UNPROVEN = "retained-unproven"
+    NOT_ATTEMPTED = "not-attempted"
+    UNAVAILABLE = "unavailable"
+    READ_BACK = "read-back"
+    PRIMARY_PENDING = "primary-readback-pending"
+    FAILED = "failed"
+    LATE = "late-readback"
 
 
 def _error(error: BaseException | None) -> JsonObject | None:
@@ -71,6 +143,8 @@ class SupervisorRun:
     owner: RunOwner
     package: StaticPackage
     realization_bytes: bytes
+    report_path: Path
+    write_export: ExportWriter
     startups: list[HelperStartup] = field(default_factory=list)
     collections: list[HelperCollection] = field(default_factory=list)
     manager: ManagerObserver | None = None
@@ -81,6 +155,17 @@ class SupervisorRun:
     finalization_errors: list[BaseException] = field(default_factory=list)
     payload_inputs: JsonObject | None = None
     termination: JsonObject | None = None
+    exports: JsonObject = field(default_factory=dict)
+
+    def original_report(self) -> GuestFileRead | None:
+        """Keep the original captured bytes even when ensuing extraction/validation fails."""
+        if self.phases is not None:
+            if self.phases.extracted_report is not None:
+                return self.phases.extracted_report
+            for completion in reversed(self.phases.payload_completions):
+                if completion.report is not None:
+                    return completion.report
+        return None
 
     def record(self) -> JsonObject:
         phases = self.phases
@@ -106,7 +191,7 @@ class SupervisorRun:
             "finalization_errors": [_error(error) for error in self.finalization_errors],
             "retained_run": str(self.owner.directory),
             "resource_release_outcome": "not-attempted",
-            "local_export_readback": "not-attempted",
+            "local_export_readback": dict(self.exports),
             "unfinished_source": ERROR_UNFINISHED,
         }
 
@@ -114,6 +199,124 @@ class SupervisorRun:
 # A bounded report is not permission to cancel an unresolved original native startup.
 # Keep its owning loop/objects until interpreter exit rather than Runner's blanket task cancellation.
 _RETAINED: list[tuple[asyncio.AbstractEventLoop, SupervisorRun]] = []
+
+
+def _encoded(record: JsonObject) -> bytes:
+    return json.dumps(record, sort_keys=True, separators=JSON_SEPARATORS, allow_nan=False).encode(UTF8)
+
+
+def _export_destination(run: SupervisorRun) -> Path:
+    """Match the existing report argument to this workflow's exact static primary map."""
+    workflow = run.owner.workflow.workflow_ref.partition(WORKFLOW_SEPARATOR)[0]
+    if workflow.endswith(WORKFLOW_LINT):
+        key = ExportField.LINT_TEST
+    elif workflow.endswith(WORKFLOW_RELEASE):
+        key = ExportField.RELEASE_CANDIDATE
+    else:
+        raise ValueError(ERROR_EXPORT)
+    root = Path(os.environ[RUNNER_TEMP]).resolve(strict=True)
+    exports = object_value(
+        object_value(parse_object(run.package.recipe_bytes)[ExportField.REPORTS])[ExportField.EXPORTS]
+    )
+    expected = root / text(object_value(exports[key]), ExportField.PRIMARY)
+    # The output is the declared workflow address, never an inner report path.
+    # Do not follow a symlinked subdirectory outside that workflow's export tree.
+    if run.report_path.absolute() != expected or expected.parent.resolve() != expected.parent:
+        raise ValueError(ERROR_EXPORT)
+    return expected
+
+
+def _write_export(run: SupervisorRun, key: ExportField, path: Path, data: bytes, end_ns: int) -> None:
+    """One existing writer invocation, with its actual return and original cutoff retained."""
+    if time.monotonic_ns() >= end_ns:
+        raise TimeoutError(ERROR_EXPORT)
+    try:
+        run.write_export(path, data)
+    except Exception as error:
+        run.exports[key] = {
+            ExportField.STATUS: ExportState.FAILED.value,
+            ExportField.PATH: str(path),
+            ExportField.ERROR: _error(error),
+        }
+        run.finalization_errors.append(error)
+        return
+    finished = time.monotonic_ns()
+    run.exports[key] = {
+        ExportField.STATUS: ExportState.READ_BACK.value if finished < end_ns else ExportState.LATE.value,
+        ExportField.PATH: str(path),
+        ExportField.BYTES: len(data),
+        ExportField.SHA256: hashlib.sha256(data).hexdigest(),
+        ExportField.END_NS: end_ns,
+        ExportField.FINISHED_NS: finished,
+    }
+    if finished >= end_ns:
+        raise TimeoutError(ERROR_EXPORT)
+
+
+def _export(run: SupervisorRun) -> None:
+    """Export the available immutable prefix, without release or final eligibility credit."""
+    budget = object_value(parse_object(run.package.recipe_bytes)[Field.BUDGET_SECONDS])
+    original = AdmittedDeadline(run.owner.journal.deadline.end_ns, None, None)
+    end_ns = original.command_end(positive_integer(budget, Field.EXPORT_MAX))
+    path = _export_destination(run)
+    phases = run.phases
+    witness = phases.p4_witness_bytes if phases is not None else None
+    if witness is not None:
+        _write_export(run, ExportField.WITNESS, path.with_name(path.name + WITNESS_SUFFIX), witness, end_ns)
+    else:
+        run.exports[ExportField.WITNESS] = {ExportField.STATUS: ExportState.UNAVAILABLE.value}
+    read = run.original_report()
+    recovery: JsonObject = {
+        ExportField.RECOVERY_RECORD: run.record(),
+        ExportField.ORIGINAL_REPORT_BASE64: base64.b64encode(read.data).decode(UTF8) if read is not None else None,
+        ExportField.ORIGINAL_REPORT_READ: {
+            ExportField.SHA256: read.sha256,
+            ExportField.BYTES: len(read.data),
+            ExportField.READ_ERROR: _error(read.read_error),
+            ExportField.READ_STARTED_NS: read.started_ns,
+            ExportField.READ_FINISHED_NS: read.finished_ns,
+            ExportField.END_NS: read.end_ns,
+            ExportField.READ_LIMIT: read.read_limit,
+            ExportField.BEFORE: cast(JsonObject, asdict(read.before)),
+            ExportField.AFTER: cast(JsonObject, asdict(read.after)) if read.after is not None else None,
+            ExportField.NAMED_LEAF: cast(JsonObject, asdict(read.named_leaf)) if read.named_leaf is not None else None,
+        }
+        if read is not None
+        else None,
+    }
+    _write_export(run, ExportField.RECOVERY, path.with_name(path.name + RECOVERY_SUFFIX), _encoded(recovery), end_ns)
+    binding = run.owner.journal.binding
+    aggregate: JsonObject = {
+        ExportField.SCHEMA_VERSION: 1,
+        ExportField.STAGE: ExportState.FINAL.value,
+        ExportField.STATUS: ExportState.UNPROVEN.value,
+        ExportField.SOURCE_COMMIT: binding.candidate_commit,
+        ExportField.SOURCE_TREE: binding.candidate_tree,
+        ExportField.RUN_IDENTITY: run.owner.journal.owner_record,
+        ExportField.STATIC_LOCK_SHA256: STATIC_DIGEST,
+        ExportField.REALIZATION_SHA256: binding.realization_digest,
+        ExportField.INNER_REPORT_SHA256: read.sha256 if read is not None else None,
+        ExportField.WITNESS_SHA256: hashlib.sha256(witness).hexdigest() if witness is not None else None,
+        ExportField.FUNCTIONAL_OUTCOME: ExportState.UNPROVEN.value,
+        ExportField.CLEANUP_OUTCOME: ExportState.UNPROVEN.value,
+        ExportField.RESOURCE_RELEASE_OUTCOME: ExportState.NOT_ATTEMPTED.value,
+        ExportField.LOCAL_EXPORT_READBACK: {**run.exports, ExportField.PRIMARY: ExportState.PRIMARY_PENDING.value},
+        ExportField.ROLLING_INPUT_OBSERVATION_REFS: None,
+        ExportField.INPUT_VALIDATION: run.payload_inputs,
+        ExportField.RECOVERY_RECORD: run.record(),
+    }
+    # The primary cannot attest to its own later readback. The returned outer
+    # receipt records that actual result; no file here claims remote upload.
+    _write_export(run, ExportField.PRIMARY, path, _encoded(aggregate), end_ns)
+    # Update this controller's already-owned recovery prefix with actual local
+    # outcomes. This is another evidence revision, never a second native action
+    # or another attempt to write a failed workflow artifact.
+    if time.monotonic_ns() >= end_ns:
+        raise TimeoutError(ERROR_EXPORT)
+    directory = Path(OWNED_DESCRIPTOR.format(pid=os.getpid(), descriptor=run.owner.journal.directory_fd))
+    run.write_export(directory / RECOVERY_FILE, _encoded(run.record()))
+    if time.monotonic_ns() >= end_ns:
+        raise TimeoutError(ERROR_EXPORT)
 
 
 def _realization(path: Path, deadline: AdmittedDeadline) -> bytes:
@@ -267,6 +470,10 @@ async def _finish(run: SupervisorRun) -> JsonObject:
             raise TimeoutError("recovery write finished after the original outer allowance")
     except BaseException as error:
         run.finalization_errors.append(error)
+    try:
+        _export(run)
+    except BaseException as error:
+        run.finalization_errors.append(error)
     return run.record()
 
 
@@ -289,6 +496,8 @@ def run_supervisor(
     source_tree: str,
     selected: frozenset[str],
     validate_payload: Callable[[bytes, bytes, StaticPackage], JsonObject],
+    report_path: Path,
+    write_export: ExportWriter,
 ) -> JsonObject:
     """Explicit application source entry only; ordinary roleless CI never reaches this path."""
     started_ns = time.monotonic_ns()
@@ -315,7 +524,7 @@ def run_supervisor(
         realization_bytes=realization,
         selected=selected,
     )
-    run = SupervisorRun(owner, package, realization)
+    run = SupervisorRun(owner, package, realization, report_path, write_export)
     loop = asyncio.new_event_loop()
     task = loop.create_task(_drive(run, selected, validate_payload))
     previous = signal.getsignal(signal.SIGTERM)

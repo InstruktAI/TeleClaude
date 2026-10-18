@@ -6858,8 +6858,16 @@ def _retire_delivered_b12_carrier(path: Path) -> None:
 def _write_report_payload(report_path: Path, temporary_path: Path, payload: Mapping[str, object]) -> None:
     """Replace the report only after a complete serialized payload is available."""
     try:
-        report_path.parent.mkdir(parents=True, exist_ok=True)
         data = (json.dumps(payload, indent=2, allow_nan=False) + _LINE_BREAK).encode(_UTF8)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(_REPORT_WRITE_ERROR.format(error=exc)) from exc
+    _write_report_bytes(report_path, temporary_path, data)
+
+
+def _write_report_bytes(report_path: Path, temporary_path: Path, data: bytes) -> None:
+    """Use the same durable write/readback for original immutable enclosure evidence."""
+    try:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
         with temporary_path.open("wb") as handle:
             if handle.write(data) != len(data):
                 raise OSError(_REPORT_WRITE_INCOMPLETE)
@@ -6875,6 +6883,11 @@ def _write_report_payload(report_path: Path, temporary_path: Path, payload: Mapp
             raise OSError(_REPORT_READBACK_MISMATCH)
     except (OSError, TypeError, ValueError) as exc:
         raise RuntimeError(_REPORT_WRITE_ERROR.format(error=exc)) from exc
+
+
+def _write_enclosure_export(report_path: Path, data: bytes) -> None:
+    """Delegate named outside evidence to the existing atomic report writer."""
+    _write_report_bytes(report_path, report_path.with_suffix(f"{report_path.suffix}{_REPORT_TEMP_SUFFIX}"), data)
 
 
 def _append_b13_failure(existing: str, addition: str) -> str:
@@ -7720,6 +7733,8 @@ def main(arguments: list[str] | None = None) -> int:
                 parsed.source_tree,
                 selection,
                 validate_provisional_payload_inputs,
+                parsed.report,
+                _write_enclosure_export,
             )
         except (OSError, ValueError, RuntimeError, KeyError) as error:
             print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
