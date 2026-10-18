@@ -14,85 +14,42 @@ visibility: 'public'
 
 The startup-time check that prevents an anonymous operator from launching the trusted TUI on a host configured for multiple people. When `telec` is invoked with no arguments — the canonical "open the TUI" entry point — the launcher inspects the configured `people` list. If the list contains more than one person, the launcher refuses to start the TUI until the operator has run `telec auth login <email>` on the current TTY. Single-user configurations (zero or one person) skip the gate entirely, preserving the convenience of solo-operator setups. When the gate passes, the launcher spawns a fresh `tc_tui` tmux session marked with the TUI runtime marker; that marker is what later authorizes the identity context to trust an in-tmux terminal-email signal for the duration of the TUI's lifetime.
 
+An invocation already inside the marked TUI session dispatches in-process without re-evaluating the gate or creating a nested TUI session.
+
 ## Canonical fields
 
 ### Use cases
 
-```
-Given the global config's `people` list contains two or more entries
-And no `telec auth login` has been run on the current TTY (no live per-TTY identity document)
-When the operator runs `telec` (no arguments)
-Then the launcher's multi-user gate predicate returns True
-And the launcher prints
-   "Error: telec auth login is required before starting the TUI in multi-user mode."
-   "Run: telec auth login <email>"
-And the process exits with a failure status
-And no tmux session is created
-```
+#### UC-TUIG1: An operator opens the TUI under the identity of their terminal
 
-#### UC-TUIG1: A gated launch carries the resolved identity into the TUI session
+```gherkin
+Scenario: A multi-user terminal opens the TUI as its selected person
+  Given more than one person is registered
+  And the operator has signed in on the current terminal
+  When they open the TUI
+  Then protected TUI actions use the selected person's identity
 
-```
-Given the same multi-user configuration
-And `telec auth login alice@example.com` has been completed on the current TTY
-When the operator runs `telec`
-Then the session-auth reader returns the bound email
-And the launcher kills any existing tc_tui tmux session
-And spawns a fresh tmux session named "tc_tui" with the TUI runtime marker
-And only the platform-owned TUI environment allowlist is forwarded into the tmux session; the TUI runtime marker and the identity resolved in the outer terminal are set explicitly by the launcher
-And `telec` is exec'd inside that tmux session
+Scenario: A multi-user terminal without a login is told how to sign in
+  Given more than one person is registered
+  And the current terminal has no saved login
+  When the operator opens the TUI
+  Then the TUI does not start
+  And the operator is told to run `telec auth login <email>`
+  And the command exits with failure
+  And no TUI session is created
+
+Scenario: A solo terminal opens without another login step
+  Given zero or one person is registered
+  And the current terminal has no saved login
+  When the operator opens the TUI
+  Then the TUI starts without requiring a login
 ```
 
 #### UC-TUIG2: The TUI presents the identity it was launched with, not its own pane's
 
-```
-Given a TUI running inside the tc_tui tmux session that the launcher started for alice@example.com
-And the TUI's own pane carries no login document of its own
-When the TUI builds outbound identity signals for a protected call
-Then it presents alice@example.com as the terminal-email signal
-And it does so for as long as that TUI runs, without re-resolving identity from its pane
-```
-
 #### UC-TUIG3: The carried identity is honoured only where the TUI runtime marker is present
 
-```
-Given a context that carries no TUI runtime marker
-And its environment carries an identity value of the launcher's shape
-When a telec invocation inside it builds outbound identity signals
-Then the carried value is not honoured
-And identity resolves from that terminal's own login document, or from the global record under the rule that governs a terminal with no document of its own
-```
-
 #### UC-TUIG4: The marker reaches the TUI session and no other
-
-```
-Given the launcher creates the tc_tui tmux session with the TUI runtime marker
-When any agent session is created
-Then that session's environment carries no TUI runtime marker
-And no identity value of the launcher's shape is honoured inside it
-```
-
-```
-Given a global config with zero or one person registered
-When the operator runs `telec` with no prior login
-Then the multi-user gate predicate returns False
-And the launcher proceeds without requiring login
-And the TUI starts in the same tc_tui tmux session
-```
-
-```
-Given any failure to load the global config (missing file, parse error)
-When the multi-user gate predicate catches the load error
-Then it returns False (fail-open for the gate, single-user assumption)
-And the TUI launch proceeds
-```
-
-```
-Given the launcher is already running inside a tmux pane that carries the TUI runtime marker
-When the in-tmux TUI dispatch is reached
-Then the multi-user check is NOT re-evaluated
-And the in-process TUI loop runs directly (no nested tmux session is spawned)
-```
 
 ### Cross-context references
 
