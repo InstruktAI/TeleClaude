@@ -17,11 +17,11 @@ third-party fallback.
 
 ### Use cases
 
-#### UC-RHP1: A person can recognize their message in the Discord admin lane
+#### UC-RHP1: A person can recognize their reflected message
 
 ```gherkin
 Scenario Outline: Reflect a person's message with the available presentation
-  Given a person's input is being reflected
+  Given a person wants their input reflected into the Discord admin lane
   And the source presentation is <source presentation>
   And the person's resolved identity has <stored avatar>
   When the input appears in the Discord admin lane
