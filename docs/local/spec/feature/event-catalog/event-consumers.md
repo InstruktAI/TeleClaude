@@ -115,6 +115,23 @@ relationship is defined by
 
 #### UC-EC12: Each computer correlates its own failures
 
+<!-- planned:fix-ordered-session-materializer-recovery-cr -->
+
+#### UC-EC13:
+
+```gherkin
+Scenario: Resume event-driven work after earlier delivery content is unavailable
+  Given an operator resumes event-driven work after an interruption
+  And an earlier pending delivery no longer has retained content
+  When the consumer resumes delivery
+  Then the operator can inspect the failed delivery through its retained stream reference
+  And the failure states that the original content is unavailable
+  And the consumer continues with later retained events in order
+  And the unavailable occurrence is not represented as successfully handled
+```
+
+<!-- /planned:fix-ordered-session-materializer-recovery-cr -->
+
 ### Cross-context references
 
 - **event-catalog** — owns the envelope attributes consumers select on and the
