@@ -14,6 +14,20 @@ implementation remain the current appliance contract.
 
 ## Canonical fields
 
+<!-- planned:issue-129 -->
+
+- **Also owns:** finite native GitHub transport, canonical comment-envelope
+  rendering and durable provider-object/session association under
+  `local/projects/teleclaude/spec/feature/integration/github-posting`, plus
+  platform-authenticated branch publication and creating-builder PR authorship
+  verification under
+  `local/projects/teleclaude/spec/feature/integration/github-publication`.
+  Identity supplies authenticated account/session facts; workflow and adapter
+  owners retain lifecycle eligibility, source identities, retry keys and
+  integration delivery decisions (`sdlc/policy/domain-ownership`).
+
+<!-- /planned:issue-129 -->
+
 - **Current behavior:** `docs/local/spec/feature/integration/`.
 
 - **Implementation roots:** `teleclaude/adapters/`,

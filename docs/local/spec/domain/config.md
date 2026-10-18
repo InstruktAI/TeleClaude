@@ -24,6 +24,16 @@ The separately governed replacement retains its own architecture.
 
 ## Canonical fields
 
+<!-- planned:issue-129 -->
+
+- **Also owns:** the optional person-overlay GitHub account declaration and its
+  schema/editor/resource-write participation under
+  `local/projects/teleclaude/spec/feature/config/person-identity-schema`.
+  Account validation and platform actor meaning remain identity-owned
+  (`sdlc/policy/domain-ownership`).
+
+<!-- /planned:issue-129 -->
+
 - **Schema authority:** `teleclaude/config/` and the published configuration
   schema.
 - **Operator surfaces:** `telec config` commands and the TUI configuration view.
