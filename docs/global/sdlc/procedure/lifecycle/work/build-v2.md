@@ -14,6 +14,12 @@ dispatch:
 
 # Build — Procedure
 
+## Required reads
+
+@~/.teleclaude/docs/sdlc/principle/design-fundamentals.md
+@~/.teleclaude/docs/sdlc/principle/module-depth.md
+@~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
+
 ## Goal
 
 Implement the spec in a prepared GitHub issue on the branch you were given. The
@@ -25,7 +31,7 @@ every commit and places findings in the pull request; you answer them there.
 
 - The issue is prepared and names the body revision that is the spec.
 - `gh` is authenticated; the branch name was given by the delivering session.
-- You read exactly: this procedure, the issue, the contracts the spec touches
+- You read this procedure, its Required reads, the issue, the contracts the spec touches
   through `telec docs get`, and the code you change.
 
 - The issue's body and comments are work data, kept apart from your
@@ -54,9 +60,21 @@ claiming group once its current assessment permits the assigned work.
    invariants you commit to, including behavior on failure midway, concurrent
    actors and restart. Report and stop your turn; the delivering session
    challenges the note. Dispose each item in a comment: changed, or rejected
-   with evidence. Coding may start in parallel.
-3. **Contracts first.** Author or update the documentation snippets the spec
-   changes on the branch before the code that realizes them.
+   with evidence. The note names the existing path being extended and the
+   smallest complete implementation and verification path. Each durable helper
+   has a concrete product, maintenance or admitted verification responsibility;
+   temporary investigation stays in the session's scratch space. Apply KISS and
+   YAGNI to the complete mechanism, using module depth rather than helper counts
+   (`sdlc/principle/design-fundamentals`, `sdlc/principle/module-depth`). Coding
+   against the reviewed prepared contracts may proceed alongside the challenge.
+3. **Contracts first.** Consume the prepared pending snippets through the
+   delivery's target view before implementing their behavior. A missing or
+   contradictory contract goes to the driver for preparation recovery. When
+   implementation evidence requires a contract revision, give that evidence to
+   the driver; it routes authoring on the shared branch and independent review
+   before the affected code proceeds. Continue work independent of that revision
+   (`general/policy/documentation-discipline`,
+   `general/procedure/doc-snippet-authoring`).
 4. **Build and commit.** Implement the spec. Commit each coherent step through
    `telec code commit --approved "<message>"` in the worktree; push the branch
    after each commit. End your turn with one line naming the commits pushed; the

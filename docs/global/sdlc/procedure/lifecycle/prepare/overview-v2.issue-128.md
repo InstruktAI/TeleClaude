@@ -28,6 +28,10 @@ workflow:
 
 ## Required reads
 
+@~/.teleclaude/docs/sdlc/principle/design-fundamentals.md
+@~/.teleclaude/docs/sdlc/principle/module-depth.md
+@~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
+
 @~/.teleclaude/docs/general/procedure/event-handling/overview.md
 @~/.teleclaude/docs/general/procedure/event-handling/interruptible.md
 
@@ -44,7 +48,7 @@ time and is waited on only when a fork is genuinely theirs.
   store may be local or hosted; this procedure names each act by what it does,
   and the instruction the entry verb returns names the command that does it
   here.
-- You read exactly: this procedure, the item and its log, and the contracts the
+- You read this procedure, its Required reads, the item and its log, and the contracts the
   input touches through `telec docs get`. The spec in the item's body is the
   authority for the work.
 
@@ -57,18 +61,23 @@ time and is waited on only when a fork is genuinely theirs.
    for you; every later call returns the instruction for the phase: the claim
    you hold, the child to dispatch with its launch defaults, and the acts that
    end the phase with the phase each leads to. Follow it.
-2. **Derive before reading anyone's draft.** Record a note stating: the outcome
-   this work is authorized to change; what a thing of this kind must include to
-   be the thing it claims to be; which higher-order demands apply, security,
-   performance, applicable law, the audience; and the failure, ordering and
-   concurrency behavior the outcome implies.
+2. **Derive before reading anyone's draft.** Record the smallest complete
+   authorized outcome, its actual operating scale and trust boundary, and the
+   requirements and failure behavior that follow from them. Independently
+   identify the existing path for comparable outcomes
+   (`sdlc/policy/substrate-anchoring`). Use the design fundamentals to judge
+   necessity and proportionality as well as completeness
+   (`sdlc/principle/design-fundamentals`).
 3. **Dispatch the author.** Start the child the instruction names. Its turn
    completions reach you as notifications; it is your only child.
-4. **Challenge.** When the author reports a pass, read the body and note only
-   counterexamples: a part the kind demands and the spec lacks; scope the
-   domain does not justify; a higher-order demand not reflected; a claim no
-   observer can check; a `Then` another context owns. Each names the clause or
-   evidence it rests on. You propose no solutions.
+4. **Challenge.** Judge the whole proposed delivery before its details: does
+   each mechanism serve the authorized outcome, and can an existing or simpler
+   path meet the same contract? Challenge unnecessary complexity as well as
+   missing behavior, unsupported provider guarantees, uncheckable claims and
+   another context's decisions. Each challenge names its evidence and governing
+   contract. Direct simplification where that evidence warrants it; the author
+   owns the revision (`sdlc/principle/design-fundamentals`,
+   `sdlc/policy/substrate-anchoring`).
 5. **Decide readiness.** The author disposes each item and reports.
    Re-challenge what changed. Readiness is your judgment against the contract,
    the evidence and the material consequence of what remains, never a count of
@@ -88,6 +97,16 @@ time and is waited on only when a fork is genuinely theirs.
      shared branch every scenario the spec's use cases will bind, as rule 8 of
      that policy requires, through the existing reservation check. A project
      whose ruling does not opt in has no such step.
+   - **A usable handoff.** Verify the complete outcome has a feasible delivery
+     path and its durable contract changes are in reviewed, retrievable pending
+     snippets, or carry an explicit `doc_impact_none` reason. Review the author's
+     snippet commits through `sdlc/procedure/lifecycle/work/review-commits`;
+     the pair's driver supplies that independent review. Record their IDs
+     and approved commits with the body revision you judged
+     (`general/policy/documentation-discipline`). Distinguish known integration
+     prerequisites from unresolved decisions that determine what must be built;
+     the affected scope stays in preparation while those decisions remain open
+     (`sdlc/policy/definition-of-ready`).
 6. **Human-owned forks.** A product outcome the domain cannot settle, a
    material exposure, or an external commitment belongs to the person who owns
    it. Perform the waiting act naming that person and stating the question in
@@ -104,6 +123,7 @@ time and is waited on only when a fork is genuinely theirs.
 - The item's body as the spec: the prose behavioral contract, any admitted
   Gherkin use cases and falsifiable invariants
   (`sdlc/procedure/feature-spec-authoring`).
+- The reviewed pending contract references, or the explicit no-impact reason.
 - The log: derivation, challenges, dispositions, the readiness verdict.
 
 ## Recovery
