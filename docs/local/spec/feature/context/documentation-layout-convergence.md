@@ -16,8 +16,9 @@ visibility: internal
 An earlier-layout checkout whose upstream already has the converged layout is
 left unchanged and reported as needing a pull. Dirty touched paths, a missing
 declared slug, or both layout roots present leave only the affected root
-unchanged and blocked; a slug comes from the registry declaration, never from
-the directory name. Other roots in the same run may still converge.
+unchanged and blocked; the report names each blocking path. A slug comes from
+the registry declaration, never from the directory name. Other roots in the
+same run may still converge.
 
 If a move, write, stage, or sealed commit fails, rollback restores only bytes,
 moves, and index entries that still match convergence's own changes. It leaves
