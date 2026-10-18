@@ -58,14 +58,12 @@ idle-close eligibility; the declaration supplies no new provider capability.
 
 ### Use cases
 
-#### UC-AV-1: An operator can start and identify a session with the chosen agent
+#### UC-AV-1: An operator starts a session with a chosen agent
 
 ```gherkin
-Given an operator chooses an enabled supported agent for a session
-When the session starts and is shown on platform surfaces
-Then the session uses and displays that agent's canonical identity
-And it launches with that agent's own execution behavior
-And no surface silently substitutes another known agent
+Given an operator chooses an enabled supported agent
+When they start a session
+Then it runs with that agent and platform surfaces identify it by its canonical identity
 ```
 
 #### UC-AV-3: Setup recognizes every supported runtime
