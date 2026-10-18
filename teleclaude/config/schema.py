@@ -20,6 +20,7 @@ from teleclaude.config.field_constraints import (
     refuse_unmet_requirements,
     refuse_violations,
 )
+from teleclaude.config.github_schema import PersonGitHubConfig
 from teleclaude.config.identity_schema import CompanyMember, PersonEntry
 from teleclaude.config.project_models import CapabilityConfig, TodoStoreConfig
 from teleclaude.config.tiers import Tier
@@ -885,6 +886,7 @@ class PersonConfig(TierDocument):
     name: str | None = None
     description: str | None = None
     creds: CredsConfig = CredsConfig()
+    github: PersonGitHubConfig = Field(default_factory=PersonGitHubConfig)
     subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     mail_accounts: list[MailAccount] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     interests: list[str] = []
