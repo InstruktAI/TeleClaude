@@ -85,43 +85,13 @@ And a person holding the member role in that company is refused the same revive
 
 #### UC-CCS2: The same person is an outsider in another company's project
 
-```
-Given a person holding no platform role and the admin role in one company
-And a terminal whose working directory is a checkout of a project owned by another company
-When the person runs `telec todo list`
-Then the command is refused with the not-permitted failure naming `customer` and `telec todo list`
-And no todo is listed
-```
-
 #### UC-CCS3: A person's agent reaches no further than that person
-
-```
-Given an orchestrator session acting for a person who holds no platform role and the admin role in one company
-When it runs `telec sessions start` naming a directory in a project owned by another company
-Then the command is refused with the not-permitted failure naming `customer` and `telec sessions start`
-And no session is created
-But the same command naming a directory in a project the person's company owns is admitted
-```
 
 #### UC-CCS4: A session acting for the platform is not bounded by any person
 
 #### UC-CCS5: A command naming a session is judged at that session's project
 
-```
-Given a person holding no platform role and the admin role in one company
-When the person runs `telec sessions tail` naming a session that runs in a project owned by another company
-Then the command is refused with the not-permitted failure naming `customer` and `telec sessions tail`
-And no transcript content is returned
-```
-
 #### UC-CCS6: Platform-scope commands need a platform role
-
-```
-Given a person holding no platform role and the admin role in one company
-When the person runs `telec config computer patch` or lists every registered person
-Then the command is refused with the not-permitted failure naming `customer` and the command
-And the machine configuration and the person registry are unchanged and unread
-```
 
 #### UC-CCS7: A command naming another computer that acts on nothing held there is refused locally
 
@@ -129,22 +99,7 @@ And the machine configuration and the person registry are unchanged and unread
 
 #### UC-CCS9: A named project outside the person's scope is refused
 
-```
-Given a person holding no platform role and the admin role in one company
-And a trusted-directory name resolves to a project another company owns
-When the person invokes a `telec bugs` project action with `--project` naming that directory
-Then the command is refused with the not-permitted failure naming `customer`
-And no project operation runs and no daemon request is sent
-```
-
 #### UC-CCS10: An unknown trusted-directory name reveals no project list to an outsider
-
-```
-Given a person holding no platform role and the admin role in one company
-When the person invokes a `telec bugs` project action with `--project` naming no trusted directory
-Then the command is refused at platform scope before listing available directory names
-And a platform administrator receives the existing unknown-name listing
-```
 
 #### UC-CCS11: Enabling a help desk is judged at the home it opens
 
