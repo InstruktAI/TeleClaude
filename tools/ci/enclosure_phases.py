@@ -80,6 +80,7 @@ ERROR_BINDING: Final = "the original supervisor's parent, invocation, job or pop
 DELEGATE: Final = "Delegate"
 SLICE_SUFFIX: Final = ".slice"
 P4_WITNESS: Final = "p4-witness.json"
+PROVISIONAL_REPORT: Final = "payload-provisional.json"
 JSON_SEPARATORS: Final = (",", ":")
 
 
@@ -198,15 +199,65 @@ class BindingPhases:
         self.closure_sources: JsonObject | None = None
         self.p4_receipt: ActionResult | None = None
         self.p4_witness_bytes: bytes | None = None
+        self.extracted_report: GuestFileRead | None = None
+        self.extraction: ActionResult | None = None
 
     @property
     def startups(self) -> tuple[HelperStartup, ...]:
         """Expose the original startup collection for same-loop bounded closure/final reporting, without adopting a new task."""
         return tuple(self._startups)
 
+    def retain_provision(self, result: ActionResult, startups: tuple[HelperStartup, ...]) -> None:
+        """Carry the original pre-observer provisioning child into this same supervisor's frontier."""
+        if (
+            self.results
+            or self._startups
+            or len(startups) != 1
+            or startups[0].action is not Action.PROVISION
+            or startups[0].process is None
+            or startups[0].process.returncode != 0
+            or result.status is not Outcome.SUCCEEDED
+            or result.evidence.get(Evidence.PHASE) != Phase.PREFLIGHT
+            or self.owner.journal.receipt(Action.PROVISION) != result
+        ):
+            raise ValueError(ERROR_BINDING)
+        self._startups.extend(startups)
+        self.results[Action.PROVISION] = result
+
     async def run_payload(self, original: AdmittedDeadline) -> PayloadDrive:
         """Drive the configured guest on this original loop; functional acceptance and release remain separate."""
         return await drive_payload(self, original)
+
+    def _require_phase(self, action: Action) -> None:
+        """Require the existing phase handles before admitting an original helper exchange."""
+        if action not in (
+            Action.CREATE_PARENT,
+            Action.START_GUEST,
+            Action.MASK_GUEST,
+            Action.GUEST_SETUP,
+            Action.START_PAYLOAD,
+            Action.POWEROFF,
+            Action.OBSERVE,
+            Action.EXTRACT,
+        ) or (
+            (action in (Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF, Action.OBSERVE, Action.EXTRACT))
+            != (self.seal is not None)
+        ):
+            raise ValueError(ERROR_PHASE.format(action=action))
+        if action is Action.POWEROFF and (self.payload_started is None or self.automatic_cleanup_read is None):
+            raise ValueError(ERROR_BINDING)
+        if action is Action.OBSERVE and self.closure_sources is None:
+            raise ValueError(ERROR_BINDING)
+        if action is Action.EXTRACT and (self.p4_receipt is None or self.p4_witness_bytes is None):
+            raise ValueError(ERROR_BINDING)
+        if self.uncertain is not None:
+            raise self.uncertain
+        if self.helper_failure is not None:
+            raise self.helper_failure
+        if self.completion_failure is not None:
+            raise self.completion_failure
+        if any(result.status is not Outcome.SUCCEEDED for result in self.results.values()):
+            raise ValueError(ERROR_BINDING)
 
     async def perform(
         self,
@@ -218,31 +269,7 @@ class BindingPhases:
         selected: frozenset[str] | None = None,
     ) -> ActionResult:
         """Compose the actual separate helper with this process's original observations, without a new observer."""
-        if action not in (
-            Action.CREATE_PARENT,
-            Action.START_GUEST,
-            Action.MASK_GUEST,
-            Action.GUEST_SETUP,
-            Action.START_PAYLOAD,
-            Action.POWEROFF,
-            Action.OBSERVE,
-        ) or (
-            (action in (Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF, Action.OBSERVE))
-            != (self.seal is not None)
-        ):
-            raise ValueError(ERROR_PHASE.format(action=action))
-        if action is Action.POWEROFF and (self.payload_started is None or self.automatic_cleanup_read is None):
-            raise ValueError(ERROR_BINDING)
-        if action is Action.OBSERVE and self.closure_sources is None:
-            raise ValueError(ERROR_BINDING)
-        if self.uncertain is not None:
-            raise self.uncertain
-        if self.helper_failure is not None:
-            raise self.helper_failure
-        if self.completion_failure is not None:
-            raise self.completion_failure
-        if any(result.status is not Outcome.SUCCEEDED for result in self.results.values()):
-            raise ValueError(ERROR_BINDING)
+        self._require_phase(action)
         # Preserve outer closure time before any read; do not subtract it from the original vector/command ends.
         end_ns = AdmittedDeadline(
             deadline.outer_end_ns,
@@ -254,11 +281,18 @@ class BindingPhases:
             ),
         ).command_end(maximum_seconds)
         action_deadline = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
-        await self.manager.check_identity(end_ns)
-        if action in (Action.MASK_GUEST, Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF, Action.OBSERVE):
+        if action is not Action.EXTRACT:
+            await self.manager.check_identity(end_ns)
+        if action in (
+            Action.MASK_GUEST,
+            Action.GUEST_SETUP,
+            Action.START_PAYLOAD,
+            Action.POWEROFF,
+            Action.OBSERVE,
+        ):
             self._helper_frontier(None)
             self._require_source_closure(masked=action is not Action.MASK_GUEST)
-        else:
+        elif action is not Action.EXTRACT:
             metadata = await self.manager.read_manager(end_ns)
             sources = inspect_start_sources(self.owner, self.package, metadata, action, action_deadline)
             self.start_sources[action] = sources
@@ -267,7 +301,8 @@ class BindingPhases:
         guest_root_fd, manifest_digest, previous_digest = await self._prepare_guest_input(
             action, action_deadline, deadline, qualification_vector, selected
         )
-        await self.manager.check_identity(end_ns)
+        if action is not Action.EXTRACT:
+            await self.manager.check_identity(end_ns)
 
         async def observe(mutation: NativeMutation, end_ns: int, startup: HelperStartup) -> ActionResult:
             return await self.observe(mutation, end_ns, action_deadline, startup)
@@ -298,6 +333,14 @@ class BindingPhases:
                 await self._expose_shutdown(result, action_deadline)
             if action is Action.OBSERVE and result.status is Outcome.SUCCEEDED:
                 await self._seal_physical_witness(result, action_deadline)
+            if action is Action.EXTRACT and result.status is Outcome.SUCCEEDED:
+                if (
+                    result.evidence.get(Evidence.PHASE) != Phase.EVIDENCE_READBACK
+                    or self.extracted_report is None
+                    or result.evidence.get("inner_report_sha256") != self.extracted_report.sha256
+                ):
+                    raise ValueError(ERROR_BINDING)
+                self.extraction = result
             return result
         except HelperUncertain as error:
             # Preserve the original startup/Process even if an outer caller only renders the raised diagnostic.
@@ -520,7 +563,13 @@ class BindingPhases:
         if current is not None and (
             current not in self._startups
             or current.action
-            not in (Action.MASK_GUEST, Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF, Action.OBSERVE)
+            not in (
+                Action.MASK_GUEST,
+                Action.GUEST_SETUP,
+                Action.START_PAYLOAD,
+                Action.POWEROFF,
+                Action.OBSERVE,
+            )
         ):
             raise ValueError(ERROR_BINDING)
         facts: list[JsonValue] = []
@@ -883,6 +932,37 @@ class BindingPhases:
         self.p4_witness_bytes = data
         self.p4_receipt = result
 
+    def _extract_evidence(self, mutation: NativeMutation, end_ns: int) -> ActionResult:
+        if (
+            dict(mutation.evidence) != {"request_mode": "original-captured-report", Key.COMMAND_END_NS: end_ns}
+            or self.p4_receipt is None
+            or self.p4_witness_bytes is None
+        ):
+            raise ValueError(ERROR_BINDING)
+        # Preserve the bytes read through the original admitted mount view. A
+        # second same-name open supplies neither better provenance nor continuity.
+        for completion in reversed(self.payload_completions):
+            if completion.report is not None:
+                read = completion.report
+                break
+        else:
+            raise ValueError(ERROR_BINDING)
+        read.require_complete()
+        self.extracted_report = read
+        _write_private_file(self.owner.journal.directory_fd, PROVISIONAL_REPORT, read.data)
+        if time.monotonic_ns() >= end_ns:
+            raise TimeoutError(ERROR_BINDING)
+        return ActionResult(
+            Outcome.SUCCEEDED,
+            {
+                Evidence.PHASE: Phase.EVIDENCE_READBACK.value,
+                "inner_report_sha256": read.sha256,
+                "inner_report_bytes": len(read.data),
+                "physical_witness_sha256": hashlib.sha256(self.p4_witness_bytes).hexdigest(),
+                "destination": PROVISIONAL_REPORT,
+            },
+        )
+
     async def _settle(self, mutation: NativeMutation, name: str, end_ns: int) -> JobBoundary:
         evidence = mutation.evidence
         rows = evidence.get(Key.ACCEPTED_JOBS)
@@ -943,6 +1023,7 @@ class BindingPhases:
             Action.START_PAYLOAD,
             Action.POWEROFF,
             Action.OBSERVE,
+            Action.EXTRACT,
         ):
             raise ValueError(ERROR_PHASE.format(action=mutation.action))
         if startup not in self._startups or startup.action is not mutation.action or startup.identity is None:
@@ -951,6 +1032,8 @@ class BindingPhases:
         self.owner.journal.binding.controller.require_alive()
         if time.monotonic_ns() >= end_ns or end_ns > self.owner.journal.deadline.end_ns:
             raise TimeoutError(ERROR_BINDING)
+        if mutation.action is Action.EXTRACT:
+            return self._extract_evidence(mutation, end_ns)
         await self.manager.check_identity(end_ns)
         if mutation.action is Action.GUEST_SETUP:
             return await self._configured(mutation, end_ns, deadline, startup)
@@ -961,21 +1044,7 @@ class BindingPhases:
         if mutation.action is Action.OBSERVE:
             return await self._observe_physical(mutation, end_ns, deadline, startup)
         if mutation.action is Action.MASK_GUEST:
-            self._helper_frontier(startup)
-            evidence = await self.read_masked_sources(
-                mutation, AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
-            )
-            self._require_source_closure(masked=True)
-            if self.masked_configuration is None:
-                raise ValueError(ERROR_BINDING)
-            evidence[Evidence.MASK_TOMBSTONE] = read_runtime_mask(
-                Path(text(self.masked_configuration.mask, Field.PATH)),
-                AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns),
-            )
-            evidence[Evidence.HELPERS] = self._helper_frontier(startup)
-            evidence[Evidence.HELPER] = startup.record()
-            evidence[Evidence.PHASE] = Phase.ADMISSION_SEALED.value
-            return ActionResult(Outcome.SUCCEEDED, evidence)
+            return await self._observe_masked(mutation, end_ns, deadline, startup)
 
         record = parse_object(self.owner.manifest_bytes)
         name = text(record, OwnerKey.PARENT_UNIT if mutation.action is Action.CREATE_PARENT else OwnerKey.GUEST_UNIT)
@@ -1090,6 +1159,26 @@ class BindingPhases:
                 },
             },
         )
+
+    async def _observe_masked(
+        self, mutation: NativeMutation, end_ns: int, deadline: AdmittedDeadline, startup: HelperStartup
+    ) -> ActionResult:
+        """Compose the existing same-invocation post-mask packet before issuing its seal receipt."""
+        self._helper_frontier(startup)
+        evidence = await self.read_masked_sources(
+            mutation, AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
+        )
+        self._require_source_closure(masked=True)
+        if self.masked_configuration is None:
+            raise ValueError(ERROR_BINDING)
+        evidence[Evidence.MASK_TOMBSTONE] = read_runtime_mask(
+            Path(text(self.masked_configuration.mask, Field.PATH)),
+            AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns),
+        )
+        evidence[Evidence.HELPERS] = self._helper_frontier(startup)
+        evidence[Evidence.HELPER] = startup.record()
+        evidence[Evidence.PHASE] = Phase.ADMISSION_SEALED.value
+        return ActionResult(Outcome.SUCCEEDED, evidence)
 
     async def _configured(
         self, mutation: NativeMutation, end_ns: int, deadline: AdmittedDeadline, startup: HelperStartup

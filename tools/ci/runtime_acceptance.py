@@ -7706,6 +7706,28 @@ def main(arguments: list[str] | None = None) -> int:
             return _PROCESS_FAILURE
         print(json.dumps(asdict(facts), sort_keys=True))
         return _PROCESS_SUCCESS
+    if role is Role.SUPERVISOR:
+        # The explicit role is separate from ordinary unadmitted CI. Observer
+        # imports occur only after its original protected library admission.
+        from tools.ci.enclosure_supervisor import run_supervisor  # noqa: PLC0415
+
+        try:
+            selection = _selection_with_prerequisites(parsed.select, Profile.FULL)
+            supervisor_result = run_supervisor(
+                parsed.enclosure_manifest,
+                parsed.root,
+                parsed.source_revision,
+                parsed.source_tree,
+                selection,
+                validate_provisional_payload_inputs,
+            )
+        except (OSError, ValueError, RuntimeError, KeyError) as error:
+            print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
+            return _PROCESS_FAILURE
+        print(json.dumps(supervisor_result, sort_keys=True))
+        # This source prefix preserves available real evidence but does not yet
+        # implement complete eligibility/release/export acceptance.
+        return _PROCESS_FAILURE
     if role is not None and role is not Role.PAYLOAD:
         print(_ENCLOSURE_UNAVAILABLE.format(role=role), file=sys.stderr)
         return _PROCESS_FAILURE

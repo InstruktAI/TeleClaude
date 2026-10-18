@@ -33,7 +33,7 @@ from tools.ci.enclosure_data import (
     stage_guest_declarations,
 )
 from tools.ci.enclosure_dpkg import DpkgInputError, collect_container_routes, collect_install_inputs
-from tools.ci.enclosure_guest import close_evidence_descriptors
+from tools.ci.enclosure_guest import Purpose, close_evidence_descriptors
 from tools.ci.enclosure_guest_evidence import EvidenceLeaf, read_guest_evidence
 from tools.ci.enclosure_guest_manifest import publish_guest_manifest
 from tools.ci.enclosure_host import HostSubstrateFacts, inspect_host_substrate
@@ -431,6 +431,9 @@ def _provision(context: PrivilegedAction, end_ns: int) -> NativeMutation:
         frozenset({text(record, OwnerKey.PARENT_UNIT), text(record, OwnerKey.GUEST_UNIT)}),
     )
     if not substrate.container_installed:
+        if Purpose(text(record, OwnerKey.PURPOSE)) is Purpose.QUALIFICATION:
+            # Frozen Q2 permits offline data, never an outside maintainer-script transaction.
+            raise ValueError("qualification Q2 requires the actual admitted already-installed container route")
         _absent_container_inputs(context, substrate, deadline, cap)
     base = Path(PARENT_DESCRIPTOR.format(pid=binding.controller.pid, descriptor=owner.inherited_directory_fd))
     inputs = acquire_fixed_inputs(package, base / ARCHIVE_DIRECTORY, context.commands.run, deadline)
@@ -597,6 +600,13 @@ def _observe_original(context: PrivilegedAction, end_ns: int) -> NativeMutation:
     return NativeMutation(Action.OBSERVE, {"request_mode": ORIGINAL_OBSERVATION, Key.COMMAND_END_NS: end_ns})
 
 
+def _extract_original(context: PrivilegedAction, end_ns: int) -> NativeMutation:
+    # The original supervisor retains the admitted mount view and captured
+    # immutable bytes; this helper neither reopens the guest by name nor grades them.
+    context.owner.require_original_parent()
+    return NativeMutation(Action.EXTRACT, {"request_mode": "original-captured-report", Key.COMMAND_END_NS: end_ns})
+
+
 NATIVE_PRODUCERS: Final[Mapping[Action, Callable[[PrivilegedAction, int], NativeMutation]]] = {
     Action.PROVISION: _provision,
     Action.CREATE_PARENT: _create_parent,
@@ -606,6 +616,7 @@ NATIVE_PRODUCERS: Final[Mapping[Action, Callable[[PrivilegedAction, int], Native
     Action.START_PAYLOAD: _start_payload,
     Action.POWEROFF: _poweroff,
     Action.OBSERVE: _observe_original,
+    Action.EXTRACT: _extract_original,
 }
 
 
