@@ -80,37 +80,9 @@ assignment. Absence resolves to nothing, never to a default company.
 
 #### UC-ORGID-1: An agent resolves both facts without asking a human
 
-```gherkin
-Given a person who belongs to at least one company and is assigned to at least one project
-When an agent session asks the platform for that person's organizational membership
-Then it receives the companies that person belongs to and the role held in each
-And it receives the projects that person is assigned to
-And it obtains both without consulting a human and without reading any business system
-```
-
 #### UC-ORGID-2: Company membership alone yields no project
 
-```gherkin
-Given a person who belongs to a company that owns at least one project
-And the person holds a company role that is not the administrative one
-And the person carries no project assignment
-When an agent resolves that person's organizational membership
-Then the company appears among their memberships
-And their project assignments are empty
-And the projects that company owns are not among them
-```
-
 #### UC-ORGID-3: A company's administrative role covers that company's projects without per-project entries
-
-```gherkin
-Given a person who belongs to a company holding that company's administrative role
-And the person carries no project assignment naming any of that company's projects
-When an agent resolves that person's organizational membership
-Then every project declaring that company as its owner is reported as covered by that membership
-And a project declaring a different owner is not reported as covered
-And a project declaring no owner is not reported as covered
-And their explicit project assignments remain empty
-```
 
 Coverage and explicit assignment are separately reported facts. Resolution never
 folds a role-derived coverage answer into the assignments a person was
@@ -119,82 +91,19 @@ nothing derived from any company role.
 
 #### UC-ORGID-4: An undeclared person holds no company relationship
 
-```gherkin
-Given a person registered on the platform who carries no membership and no assignment declaration
-When an agent resolves that person's organizational membership
-Then their company memberships are empty
-And their project assignments are empty
-And no company is supplied as a default
-```
-
 #### UC-ORGID-5: The platform role is unchanged by organizational membership
-
-```gherkin
-Given a person carrying a platform role
-When an administrator declares, changes, or withdraws that person's company membership or project assignment
-Then the person's platform role is unchanged
-And holding any platform role confers no company membership and no project assignment
-```
 
 #### UC-ORGID-6: A person assigned to a company's project belongs to that company
 
-```gherkin
-Given a person carrying an assignment to a project owned by a company
-When an agent resolves that person's organizational membership
-Then that company appears among the person's memberships
-And no resolved assignment names a project owned by a company the person does not belong to
-```
-
 #### UC-ORGID-7: Resolution on a platform carrying no companies reports nothing organizational
-
-```gherkin
-Given a platform on which no company is registered
-And a person registered on that platform carrying a platform role
-When an agent resolves that person's organizational membership
-Then their company memberships are empty
-And their project assignments are empty
-And no company is supplied as a default
-And the person's platform role is reported unchanged by this resolution
-```
 
 #### UC-ORGID-8: An assignment to a project the company no longer owns is not reported
 
-```gherkin
-Given a person assigned, in a company's roster, to a project that company owned when the assignment was recorded
-And that project's own declaration now names a different owner, or none
-When an agent resolves that person's organizational membership
-Then that assignment is not among the person's reported assignments
-And the person's membership in that company is reported unchanged
-And the stale assignment is surfaced as stale rather than silently dropped, so an administrator can remove it
-```
-
 #### UC-ORGID-9: A company administrator's effective role inside the company's lineage is admin
-
-```gherkin
-Given a person holding no platform role who holds the administrative role in one company
-When an agent resolves that person's effective role for that company, for a project that company owns, or for the platform's shared documentation
-Then the effective role is admin
-And the person's effective role for a project owned by a different company is customer
-```
 
 #### UC-ORGID-10: A role below admin reaches only assigned projects
 
-```gherkin
-Given a person holding no platform role who holds the member role in one company and is assigned to one of its projects
-When an agent resolves that person's effective role for that project and for another project the company owns
-Then the effective role for the assigned project is member
-And the effective role for the unassigned project is customer
-And the effective role for the company itself is member
-```
-
 #### UC-ORGID-11: The highest role across containing scopes applies
-
-```gherkin
-Given a person holding the member platform role and the administrative role in one company
-When an agent resolves that person's effective role for a project that company owns
-Then the effective role is admin
-And the person's effective role for a project owned by no company is member
-```
 
 ## Known caveats
 
