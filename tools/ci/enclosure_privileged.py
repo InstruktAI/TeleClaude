@@ -19,7 +19,7 @@ from tools.ci.enclosure_guest import Record, Role, _append, _output, close_evide
 from tools.ci.enclosure_guest_manifest import read_guest_input
 from tools.ci.enclosure_journal import ActionResult
 from tools.ci.enclosure_native import NativeRead, execute_native, read_native_stdout
-from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, HelperOwner
+from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, HelperOwner, RunOwner
 
 COMMAND_JOURNAL: Final = "commands-{action}.jsonl"
 COMMAND_STDOUT: Final = "commands-{action}-{sequence}.stdout"
@@ -58,10 +58,20 @@ class Key(StrEnum):
     ENVIRONMENT = "environment"
 
 
+class ReadScope(StrEnum):
+    """A native read journal scope, never a mutating enclosure action or phase edge."""
+
+    QUALIFICATION_ADMISSION = "Q1"
+
+
 class PrivilegedCommands:
     """One helper action's real provision/query executables, with no externally supplied shell text."""
 
-    def __init__(self, owner: HelperOwner, action: Action, source_root: Path, deadline: AdmittedDeadline) -> None:
+    def __init__(
+        self, owner: HelperOwner | RunOwner, action: Action | ReadScope, source_root: Path, deadline: AdmittedDeadline
+    ) -> None:
+        if isinstance(owner, RunOwner) != isinstance(action, ReadScope):
+            raise ValueError(ERROR_CONTEXT)
         self.owner = owner
         self.action = action
         self.source_root = source_root
@@ -70,11 +80,21 @@ class PrivilegedCommands:
         self.sequence = 0
         self._processes: list[subprocess.Popen[bytes]] = []
         self._environment = dict(OUTSIDE_ENVIRONMENT)
-        if action is Action.PROVISION:
+        if action is Action.PROVISION and isinstance(owner, HelperOwner):
             # TMPDIR-aware host tools, including dpkg-deb's control reader, use the original run directory.
             self._environment["TMPDIR"] = PARENT_DESCRIPTOR.format(
                 pid=owner.journal.binding.controller.pid, descriptor=owner.inherited_directory_fd
             )
+
+    def _require_owner(self) -> None:
+        """Keep direct helper ownership and original supervisor-owned reads as distinct native contexts."""
+        if isinstance(self.owner, HelperOwner):
+            self.owner.require_original_parent()
+        else:
+            controller = self.owner.journal.binding.controller
+            controller.require_alive()
+            if controller.pid != os.getpid() or os.geteuid() != 0:
+                raise ValueError(ERROR_CONTEXT)
 
     @property
     def processes(self) -> tuple[subprocess.Popen[bytes], ...]:
@@ -84,7 +104,7 @@ class PrivilegedCommands:
     def _open(self) -> None:
         if self.journal_fd >= 0:
             return
-        self.owner.require_original_parent()
+        self._require_owner()
         try:
             self.journal_fd = os.open(
                 COMMAND_JOURNAL.format(action=self.action),
@@ -97,7 +117,7 @@ class PrivilegedCommands:
         _append(
             self.journal_fd,
             {
-                Key.ROLE: Role.PRIVILEGED.value,
+                Key.ROLE: Role.QUALIFICATION.value if isinstance(self.action, ReadScope) else Role.PRIVILEGED.value,
                 Key.ACTION: self.action.value,
                 Key.RECORD: Record.INTENT.value,
                 Key.BINDING: self.owner.journal.owner_record,
@@ -166,7 +186,7 @@ class PrivilegedCommands:
             )
             os.fsync(self.owner.journal.directory_fd)
             try:
-                self.owner.require_original_parent()
+                self._require_owner()
                 status = execute_native(
                     argv,
                     cwd=self.source_root,

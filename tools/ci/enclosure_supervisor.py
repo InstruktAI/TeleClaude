@@ -28,6 +28,7 @@ from tools.ci.enclosure_contract import (
     Deadline,
     Field,
     JsonObject,
+    JsonValue,
     Phase,
     StaticPackage,
     object_value,
@@ -38,9 +39,14 @@ from tools.ci.enclosure_contract import (
 from tools.ci.enclosure_exchange import HelperCollection, HelperStartup, collect_helper_startup, run_privileged
 from tools.ci.enclosure_guest import Purpose
 from tools.ci.enclosure_guest_evidence import GuestFileRead
+from tools.ci.enclosure_host import inspect_host_substrate
+from tools.ci.enclosure_inputs import ERROR_INPUT_CLOSE, FIXED_INPUT_DIRECTORY, FixedInputIntake
 from tools.ci.enclosure_journal import ActionResult, Outcome
+from tools.ci.enclosure_journal import Key as JournalKey
+from tools.ci.enclosure_native import NativeRead
 from tools.ci.enclosure_owner import MANIFEST_LIMIT, RunOwner, _write_private_file
 from tools.ci.enclosure_owner import Key as OwnerKey
+from tools.ci.enclosure_privileged import PrivilegedCommands, ReadScope
 
 if TYPE_CHECKING:
     from tools.ci.enclosure_manager import ManagerObserver
@@ -65,6 +71,14 @@ WITNESS_SUFFIX: Final = ".p4-witness.json"
 RECOVERY_SUFFIX: Final = ".p4-recovery.json"
 JSON_SEPARATORS: Final = (",", ":")
 OWNED_DESCRIPTOR: Final = "/proc/{pid}/fd/{descriptor}"
+QUALIFICATION_Q1_FILE: Final = "qualification-Q1.json"
+QUALIFICATION_Q2_FILE: Final = "qualification-Q2.json"
+ERROR_QUALIFICATION_UNFINISHED: Final = (
+    "Q3 through Q8 source composition remains incomplete; later vectors were not run"
+)
+ERROR_QUALIFICATION: Final = "qualification source or its original finite vector allowance is inconsistent"
+ERROR_INTERRUPTED: Final = "the original supervisor observed termination; no later vector is admitted"
+QUALIFICATION_Q2: Final = "Q2"
 
 type ExportWriter = Callable[[Path, bytes], None]
 
@@ -126,6 +140,41 @@ class ExportState(StrEnum):
     LATE = "late-readback"
 
 
+class QualificationField(StrEnum):
+    """Declared finite-vector records remain separate from a complete qualification verdict."""
+
+    OUTER_BUDGET = "outer_budget_seconds"
+    RESERVE = "closure_export_reserve_seconds"
+    VECTORS = "vectors"
+    VECTOR_ORDER = "vector_order"
+    ID = "id"
+    BUDGET = "budget_seconds"
+    STATE = "state"
+    STARTED_NS = "started_ns"
+    FINISHED_NS = "finished_ns"
+    END_NS = "end_ns"
+    ERROR = "error"
+    SOURCE_FACTS = "source_facts"
+    HOST_FACTS = "host_facts"
+    INPUT_FACTS = "input_facts"
+    RECORDS = "qualification_vectors"
+    READ_PROCESSES = "read_only_processes"
+    PID = "pid"
+    EXIT_STATUS = "exit_status"
+    PHASES = "phases"
+    GUEST_ADMISSION = "guest_admission"
+    CONFIGURED = "configured"
+
+
+class QualificationState(StrEnum):
+    """An unexecuted vector never inherits success from an earlier vector or imported contract."""
+
+    NOT_RUN = "not_run"
+    STARTED = "started"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 def _error(error: BaseException | None) -> JsonObject | None:
     if error is None:
         return None
@@ -156,6 +205,11 @@ class SupervisorRun:
     payload_inputs: JsonObject | None = None
     termination: JsonObject | None = None
     exports: JsonObject = field(default_factory=dict)
+    purpose: Purpose = Purpose.APPLICATION
+    intake: FixedInputIntake | None = None
+    read_commands: PrivilegedCommands | None = None
+    qualification_vectors: list[JsonObject] = field(default_factory=list)
+    active_vector: JsonObject | None = None
 
     def original_report(self) -> GuestFileRead | None:
         """Keep the original captured bytes even when ensuing extraction/validation fails."""
@@ -173,6 +227,7 @@ class SupervisorRun:
             "schema_version": 1,
             "stage": "retained-source-prefix",
             "status": "retained-unproven",
+            OwnerKey.PURPOSE: self.purpose.value,
             "binding": self.owner.journal.owner_record,
             "workflow": self.owner.workflow.record(),
             "manifest_sha256": hashlib.sha256(self.owner.manifest_bytes).hexdigest(),
@@ -192,7 +247,17 @@ class SupervisorRun:
             "retained_run": str(self.owner.directory),
             "resource_release_outcome": "not-attempted",
             "local_export_readback": dict(self.exports),
-            "unfinished_source": ERROR_UNFINISHED,
+            "unfinished_source": ERROR_QUALIFICATION_UNFINISHED
+            if self.purpose is Purpose.QUALIFICATION
+            else ERROR_UNFINISHED,
+            QualificationField.RECORDS: list[JsonValue](self.qualification_vectors),
+            QualificationField.READ_PROCESSES: [
+                {QualificationField.PID: process.pid, QualificationField.EXIT_STATUS: process.returncode}
+                for process in self.read_commands.processes
+            ]
+            if self.read_commands is not None
+            else [],
+            OwnerKey.OFFLINE_INPUTS: dict(self.intake.facts) if self.intake is not None else None,
         }
 
 
@@ -347,7 +412,7 @@ def _realization(path: Path, deadline: AdmittedDeadline) -> bytes:
     return data
 
 
-async def _provision(run: SupervisorRun, deadline: AdmittedDeadline, cap: int) -> None:
+async def _provision(run: SupervisorRun, deadline: AdmittedDeadline, cap: int, vector: str | None) -> None:
     async def observed(native: NativeMutation, end: int, startup: HelperStartup) -> ActionResult:
         if (
             native.action is not Action.PROVISION
@@ -376,21 +441,22 @@ async def _provision(run: SupervisorRun, deadline: AdmittedDeadline, cap: int) -
             {"phase": Phase.PREFLIGHT.value, "native_receipt": dict(native.evidence), "helper": startup.record()},
         )
 
-    run.provision = await run_privileged(run.owner, Action.PROVISION, deadline, cap, None, observed, run.startups)
+    run.provision = await run_privileged(run.owner, Action.PROVISION, deadline, cap, vector, observed, run.startups)
     if run.provision.status is not Outcome.SUCCEEDED:
         raise ValueError(ERROR_PROVISION)
 
 
-async def _application(
+async def _configured_guest(
     run: SupervisorRun,
+    original: AdmittedDeadline,
     selected: frozenset[str],
-    validate_payload: Callable[[bytes, bytes, StaticPackage], JsonObject],
-) -> None:
-    original = AdmittedDeadline(run.owner.journal.deadline.end_ns, None, None)
+    vector: str | None,
+) -> BindingPhases:
+    """One real provision/parent/guest/setup composition serves the two declared purposes."""
     budget = object_value(parse_object(run.package.recipe_bytes)[Field.BUDGET_SECONDS])
     cap = positive_integer(budget, Field.NORMAL_COMMAND_MAX)
     boot_cap = positive_integer(budget, Field.GUEST_BOOT_OR_CONFIGURATION_MAX)
-    await _provision(run, original, cap)
+    await _provision(run, original, cap, vector)
     source = SourceAdmission(
         run.realization_bytes,
         ACTUAL_SOURCE_ROOT,
@@ -420,9 +486,20 @@ async def _application(
         (Action.MASK_GUEST, cap),
         (Action.GUEST_SETUP, boot_cap),
     ):
-        result = await phases.perform(action, original, limit, None, selected=selected)
+        result = await phases.perform(action, original, limit, vector, selected=selected)
         if result.status is not Outcome.SUCCEEDED:
             raise RuntimeError(f"original enclosure action did not succeed: {action}")
+    return phases
+
+
+async def _application(
+    run: SupervisorRun,
+    selected: frozenset[str],
+    validate_payload: Callable[[bytes, bytes, StaticPackage], JsonObject],
+) -> None:
+    original = AdmittedDeadline(run.owner.journal.deadline.end_ns, None, None)
+    budget = object_value(parse_object(run.package.recipe_bytes)[Field.BUDGET_SECONDS])
+    phases = await _configured_guest(run, original, selected, None)
     run.payload = await phases.run_payload(original)
     run.collections.extend(run.payload.helpers)
     if run.payload.primary_error is not None:
@@ -442,11 +519,137 @@ async def _application(
     raise NotImplementedError(ERROR_UNFINISHED)
 
 
+def _qualification_rows(package: StaticPackage) -> list[JsonObject]:
+    declared = parse_object(package.qualification_bytes)
+    values = declared[QualificationField.VECTORS]
+    if not isinstance(values, list):
+        raise ValueError(ERROR_QUALIFICATION)
+    rows: list[JsonObject] = []
+    for value in values:
+        row = object_value(value)
+        rows.append(
+            {
+                QualificationField.ID: text(row, QualificationField.ID),
+                QualificationField.BUDGET: positive_integer(row, QualificationField.BUDGET),
+                QualificationField.STATE: QualificationState.NOT_RUN.value,
+            }
+        )
+    if [row[QualificationField.ID] for row in rows] != declared[QualificationField.VECTOR_ORDER]:
+        raise ValueError(ERROR_QUALIFICATION)
+    return rows
+
+
+def _require_progress(run: SupervisorRun) -> None:
+    if run.termination is not None:
+        raise KeyboardInterrupt(ERROR_INTERRUPTED)
+
+
+def _begin_vector(run: SupervisorRun, index: int) -> AdmittedDeadline:
+    """Admit one declared vector against outer reserve; do not subtract reserve from its own cap."""
+    _require_progress(run)
+    row = run.qualification_vectors[index]
+    budget = positive_integer(row, QualificationField.BUDGET)
+    run.owner.journal.deadline.admit(budget)
+    started = time.monotonic_ns()
+    end = min(
+        started + budget * NANOSECONDS,
+        run.owner.journal.deadline.end_ns - run.owner.journal.deadline.reserve_ns,
+    )
+    row[QualificationField.STARTED_NS] = started
+    row[QualificationField.END_NS] = end
+    row[QualificationField.STATE] = QualificationState.STARTED.value
+    run.active_vector = row
+    if time.monotonic_ns() >= end:
+        raise TimeoutError(ERROR_QUALIFICATION)
+    return AdmittedDeadline(run.owner.journal.deadline.end_ns, end, None)
+
+
+def _finish_vector(run: SupervisorRun, name: str, deadline: AdmittedDeadline) -> None:
+    _require_progress(run)
+    row = run.active_vector
+    if row is None or deadline.effective_end() != row[QualificationField.END_NS]:
+        raise ValueError(ERROR_QUALIFICATION)
+    if time.monotonic_ns() >= deadline.effective_end():
+        raise TimeoutError(ERROR_QUALIFICATION)
+    row[QualificationField.FINISHED_NS] = time.monotonic_ns()
+    row[QualificationField.STATE] = QualificationState.SUCCEEDED.value
+    _write_private_file(run.owner.journal.directory_fd, name, _encoded(row))
+    _require_progress(run)
+    if time.monotonic_ns() >= deadline.effective_end():
+        raise TimeoutError(ERROR_QUALIFICATION)
+    run.active_vector = None
+
+
+async def _qualification(run: SupervisorRun) -> None:
+    """Q1 reads precede actual Q2 effects; later unimplemented vectors supply no qualification pass."""
+    if run.intake is None:
+        raise ValueError(ERROR_QUALIFICATION)
+    _require_progress(run)
+    first = AdmittedDeadline.from_record(run.intake.facts, require_vector=True)
+    active = run.active_vector
+    if (
+        active is None
+        or active is not run.qualification_vectors[0]
+        or active[QualificationField.ID] != ReadScope.QUALIFICATION_ADMISSION.value
+        or first.outer_end_ns != run.owner.journal.deadline.end_ns
+        or active[QualificationField.END_NS] != first.effective_end()
+    ):
+        raise ValueError(ERROR_QUALIFICATION)
+    commands = PrivilegedCommands(run.owner, ReadScope.QUALIFICATION_ADMISSION, ACTUAL_SOURCE_ROOT, first)
+    run.read_commands = commands
+
+    def query(argv: tuple[str, ...], end_ns: int) -> NativeRead:
+        _require_progress(run)
+        return commands.query(argv, end_ns)
+
+    source = SourceAdmission(run.realization_bytes, ACTUAL_SOURCE_ROOT, run.package, run.owner.journal.binding)
+    active[QualificationField.INPUT_FACTS] = dict(run.intake.facts)
+    active[QualificationField.SOURCE_FACTS] = list[JsonValue](source.verify(query, first))
+    record = parse_object(run.owner.manifest_bytes)
+    substrate = inspect_host_substrate(
+        run.package,
+        text(record, OwnerKey.IMAGE_VERSION),
+        query,
+        first,
+        frozenset({text(record, OwnerKey.PARENT_UNIT), text(record, OwnerKey.GUEST_UNIT)}),
+    )
+    active[QualificationField.HOST_FACTS] = parse_object(_encoded(cast(JsonObject, asdict(substrate))))
+    _finish_vector(run, QUALIFICATION_Q1_FILE, first)
+    second = _begin_vector(run, 1)
+    if run.active_vector is None or run.active_vector[QualificationField.ID] != QUALIFICATION_Q2:
+        raise ValueError(ERROR_QUALIFICATION)
+    phases = await _configured_guest(run, second, frozenset(), QUALIFICATION_Q2)
+    run.active_vector[QualificationField.PHASES] = parse_object(_encoded(run.record()))[QualificationField.PHASES]
+    run.active_vector[QualificationField.GUEST_ADMISSION] = phases.guest_admission
+    run.active_vector[QualificationField.CONFIGURED] = (
+        phases.configured.record(Action.GUEST_SETUP) if phases.configured is not None else None
+    )
+    _finish_vector(run, QUALIFICATION_Q2_FILE, second)
+    raise NotImplementedError(ERROR_QUALIFICATION_UNFINISHED)
+
+
 async def _finish(run: SupervisorRun) -> JsonObject:
     budget = object_value(parse_object(run.package.recipe_bytes)[Field.BUDGET_SECONDS])
     export_ns = positive_integer(budget, Field.EXPORT_MAX) * NANOSECONDS
     original = AdmittedDeadline(run.owner.journal.deadline.end_ns, None, None)
-    closure = AdmittedDeadline(original.outer_end_ns, None, original.outer_end_ns - export_ns)
+    closure_end = min(
+        original.outer_end_ns - export_ns,
+        time.monotonic_ns() + positive_integer(budget, Field.SHUTDOWN_MAX) * NANOSECONDS,
+    )
+    if run.payload is not None:
+        closure_end = min(closure_end, run.payload.closure_end_ns)
+    closure = AdmittedDeadline(original.outer_end_ns, None, closure_end)
+    if run.read_commands is not None:
+        for process in run.read_commands.processes:
+            if process.returncode is not None:
+                continue
+            try:
+                remaining = (closure.effective_end() - time.monotonic_ns()) / NANOSECONDS
+                if remaining <= 0:
+                    raise TimeoutError(ERROR_QUALIFICATION)
+                process.wait(timeout=remaining)
+            except BaseException as error:
+                run.finalization_errors.append(error)
     collected = {id(item.startup) for item in run.collections}
     startups = run.phases.startups if run.phases is not None else tuple(run.startups)
     for startup in startups:
@@ -483,48 +686,106 @@ async def _drive(
     validate_payload: Callable[[bytes, bytes, StaticPackage], JsonObject],
 ) -> JsonObject:
     try:
-        await _application(run, selected, validate_payload)
+        if run.purpose is Purpose.QUALIFICATION:
+            await _qualification(run)
+        else:
+            await _application(run, selected, validate_payload)
     except BaseException as error:
         run.primary_error = error
+        if run.active_vector is not None:
+            run.active_vector[QualificationField.STATE] = QualificationState.FAILED.value
+            run.active_vector[QualificationField.ERROR] = _error(error)
+            run.active_vector[QualificationField.FINISHED_NS] = time.monotonic_ns()
     return await _finish(run)
 
 
 def run_supervisor(
     manifest: Path,
     source_root: Path,
-    source_commit: str,
-    source_tree: str,
+    source_commit: str | None,
+    source_tree: str | None,
     selected: frozenset[str],
     validate_payload: Callable[[bytes, bytes, StaticPackage], JsonObject],
     report_path: Path,
     write_export: ExportWriter,
+    *,
+    purpose: Purpose = Purpose.APPLICATION,
 ) -> JsonObject:
-    """Explicit application source entry only; ordinary roleless CI never reaches this path."""
+    """Explicit declared outside role only; ordinary roleless CI never reaches this path."""
     started_ns = time.monotonic_ns()
     if source_root.resolve(strict=True) != ACTUAL_SOURCE_ROOT or os.geteuid() != 0:
         raise ValueError(ERROR_INTAKE)
     package = StaticPackage.load(ACTUAL_SOURCE_ROOT / STATIC_DIRECTORY, ACTUAL_SOURCE_ROOT)
     budget = object_value(parse_object(package.recipe_bytes)[Field.BUDGET_SECONDS])
-    deadline = Deadline(
-        started_ns,
-        started_ns + positive_integer(budget, Field.RUNTIME_OUTER_MAX) * NANOSECONDS,
-        positive_integer(budget, Field.CLOSURE_EXPORT_RESERVE) * NANOSECONDS,
-    )
-    realization = _realization(manifest, AdmittedDeadline(deadline.end_ns, None, None))
+    rows = _qualification_rows(package) if purpose is Purpose.QUALIFICATION else []
+    if purpose is Purpose.QUALIFICATION:
+        declaration = parse_object(package.qualification_bytes)
+        outer_seconds = positive_integer(declaration, QualificationField.OUTER_BUDGET)
+        reserve_seconds = positive_integer(declaration, QualificationField.RESERVE)
+    else:
+        outer_seconds = positive_integer(budget, Field.RUNTIME_OUTER_MAX)
+        reserve_seconds = positive_integer(budget, Field.CLOSURE_EXPORT_RESERVE)
+    deadline = Deadline(started_ns, started_ns + outer_seconds * NANOSECONDS, reserve_seconds * NANOSECONDS)
+    initial = AdmittedDeadline(deadline.end_ns, None, None)
+    if rows:
+        deadline.admit(positive_integer(rows[0], QualificationField.BUDGET))
+        initial = AdmittedDeadline(
+            deadline.end_ns,
+            min(
+                deadline.end_ns - deadline.reserve_ns,
+                started_ns + positive_integer(rows[0], QualificationField.BUDGET) * NANOSECONDS,
+            ),
+            None,
+        )
+        rows[0][QualificationField.STARTED_NS] = started_ns
+        rows[0][QualificationField.END_NS] = initial.effective_end()
+        rows[0][QualificationField.STATE] = QualificationState.STARTED.value
+    realization = _realization(manifest, initial)
     record = parse_object(realization)
-    if record.get("candidate_commit") != source_commit or record.get("candidate_tree") != source_tree:
+    candidate = text(record, JournalKey.CANDIDATE_COMMIT)
+    tree = text(record, JournalKey.CANDIDATE_TREE)
+    if (
+        (source_commit is not None and source_commit != candidate)
+        or (source_tree is not None and source_tree != tree)
+        or (purpose is Purpose.APPLICATION and (source_commit is None or source_tree is None))
+        or (purpose is Purpose.QUALIFICATION and selected)
+    ):
         raise ValueError(ERROR_INTAKE)
-    owner = RunOwner.create(
-        package,
-        source_commit,
-        source_tree,
-        hashlib.sha256(realization).hexdigest(),
-        deadline,
-        Purpose.APPLICATION,
-        realization_bytes=realization,
-        selected=selected,
+    intake = (
+        FixedInputIntake.authenticate(package, manifest.parent / FIXED_INPUT_DIRECTORY, initial)
+        if purpose is Purpose.QUALIFICATION
+        else None
     )
-    run = SupervisorRun(owner, package, realization, report_path, write_export)
+    try:
+        owner = RunOwner.create(
+            package,
+            candidate,
+            tree,
+            hashlib.sha256(realization).hexdigest(),
+            deadline,
+            purpose,
+            realization_bytes=realization,
+            selected=selected,
+            offline_inputs=intake.facts if intake is not None else None,
+        )
+    except BaseException as error:
+        if intake is not None:
+            try:
+                os.close(intake.directory_fd)
+            except OSError as secondary:
+                error.add_note(ERROR_INPUT_CLOSE.format(error_class=type(secondary).__name__))
+        raise
+    run = SupervisorRun(
+        owner,
+        package,
+        realization,
+        report_path,
+        write_export,
+        purpose=purpose,
+        intake=intake,
+        qualification_vectors=rows,
+        active_vector=rows[0] if rows else None,
+    )
     loop = asyncio.new_event_loop()
     task = loop.create_task(_drive(run, selected, validate_payload))
     previous = signal.getsignal(signal.SIGTERM)

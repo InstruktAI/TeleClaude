@@ -33,11 +33,11 @@ from tools.ci.enclosure_data import (
     stage_guest_declarations,
 )
 from tools.ci.enclosure_dpkg import DpkgInputError, collect_container_routes, collect_install_inputs
-from tools.ci.enclosure_guest import close_evidence_descriptors
+from tools.ci.enclosure_guest import Purpose, close_evidence_descriptors
 from tools.ci.enclosure_guest_evidence import EvidenceLeaf, read_guest_evidence
 from tools.ci.enclosure_guest_manifest import publish_guest_manifest
 from tools.ci.enclosure_host import HostSubstrateFacts, inspect_host_substrate
-from tools.ci.enclosure_inputs import acquire_fixed_inputs, stage_observer_library
+from tools.ci.enclosure_inputs import acquire_fixed_inputs, qualification_input_paths, stage_observer_library
 from tools.ci.enclosure_journal import ActionResult
 from tools.ci.enclosure_native import query_native
 from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, _write_private_file, selection_argument
@@ -367,6 +367,17 @@ def _record_install_inputs(
         raise TimeoutError(ERROR_NATIVE)
 
 
+def _input_archives(context: PrivilegedAction, deadline: AdmittedDeadline) -> dict[str, Path]:
+    """Qualification consumes actual Q1 input bytes; application keeps its existing one-shot acquisition."""
+    owner = context.owner
+    if Purpose(text(parse_object(owner.manifest_bytes), OwnerKey.PURPOSE)) is Purpose.QUALIFICATION:
+        return qualification_input_paths(owner, deadline)
+    base = Path(
+        PARENT_DESCRIPTOR.format(pid=owner.journal.binding.controller.pid, descriptor=owner.inherited_directory_fd)
+    )
+    return acquire_fixed_inputs(owner.package, base / ARCHIVE_DIRECTORY, context.commands.run, deadline)
+
+
 def _absent_container_inputs(
     context: PrivilegedAction, substrate: HostSubstrateFacts, deadline: AdmittedDeadline, cap: int
 ) -> Never:
@@ -390,11 +401,7 @@ def _absent_container_inputs(
     if inputs["state"] == "blocked":
         raise DpkgInputError(inputs)
     owner = context.owner
-    # The proc address names the parent's inherited descriptor, not this child's duplicated journal fd.
-    base = Path(
-        PARENT_DESCRIPTOR.format(pid=owner.journal.binding.controller.pid, descriptor=owner.inherited_directory_fd)
-    )
-    archives = acquire_fixed_inputs(owner.package, base / ARCHIVE_DIRECTORY, context.commands.run, deadline)
+    archives = _input_archives(context, deadline)
     try:
         routes = collect_container_routes(owner.package, substrate, inputs, archives, context.commands.query, deadline)
     except DpkgInputError as error:
@@ -432,8 +439,7 @@ def _provision(context: PrivilegedAction, end_ns: int) -> NativeMutation:
     )
     if not substrate.container_installed:
         _absent_container_inputs(context, substrate, deadline, cap)
-    base = Path(PARENT_DESCRIPTOR.format(pid=binding.controller.pid, descriptor=owner.inherited_directory_fd))
-    inputs = acquire_fixed_inputs(package, base / ARCHIVE_DIRECTORY, context.commands.run, deadline)
+    inputs = _input_archives(context, deadline)
     library = stage_observer_library(owner, inputs, context.commands.run, deadline)
     rootfs = materialize_os_data(package, binding.run_token, inputs, context.commands.run, deadline)
     candidate = stage_candidate(

@@ -85,6 +85,7 @@ class Key(StrEnum):
     DIRECTORY_FD = "directory_fd"
     INPUTS = "inputs"
     SELECTED_SCENARIOS = "selected_scenarios"
+    OFFLINE_INPUTS = "offline_inputs"
 
 
 @dataclass(frozen=True)
@@ -157,6 +158,7 @@ class RunOwner:
         *,
         realization_bytes: bytes,
         selected: frozenset[str],
+        offline_inputs: JsonObject | None = None,
     ) -> RunOwner:
         """Reserve fresh run ownership and its safe recovery prefix under the original supplied deadline."""
         if os.geteuid() != 0:
@@ -196,6 +198,10 @@ class RunOwner:
             Key.INPUTS: declarations,
             Key.SELECTED_SCENARIOS: list[JsonValue](sorted(selected)),
         }
+        if (purpose is Purpose.QUALIFICATION) != (offline_inputs is not None):
+            raise ValueError(ERROR_INPUT.format(name=Key.OFFLINE_INPUTS))
+        if offline_inputs is not None:
+            record[Key.OFFLINE_INPUTS] = dict(offline_inputs)
         selection_argument(record)
         # This synchronous ownership step has no concurrent producer or await across the temporary umask.
         previous_umask = os.umask(PRIVATE_UMASK)

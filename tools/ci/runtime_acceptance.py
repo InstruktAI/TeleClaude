@@ -86,6 +86,9 @@ _ENCLOSURE_ACTION_REQUIRED = "The privileged role requires its closed enclosure 
 _PROFILE_ARGUMENTS_REQUIRED = "Profile execution requires profile, source-revision and source-tree."
 _ENCLOSED_FULL_REQUIRED = "Supervisor and payload roles require the full profile."
 _ENCLOSURE_UNAVAILABLE = "The selected enclosure role is not yet implemented: {role}"
+_QUALIFICATION_PROFILE_REFUSED = (
+    "Qualification accepts only its declared OS vectors, without a product profile/selection."
+)
 _ENCLOSURE_ENTRY_FAILED = "Enclosure entry failed: {error_class}: {detail}"
 _ENCLOSURE_REQUIRED = "Full-profile product work requires the admitted guest payload binding."
 _REPORT_SCHEMA_VERSION = 3
@@ -7770,13 +7773,17 @@ def main(arguments: list[str] | None = None) -> int:
             return _PROCESS_FAILURE
         print(json.dumps(asdict(facts), sort_keys=True))
         return _PROCESS_SUCCESS
-    if role is Role.SUPERVISOR:
+    if role in (Role.SUPERVISOR, Role.QUALIFICATION):
         # The explicit role is separate from ordinary unadmitted CI. Observer
         # imports occur only after its original protected library admission.
         from tools.ci.enclosure_supervisor import run_supervisor  # noqa: PLC0415
 
         try:
-            selection = _selection_with_prerequisites(parsed.select, Profile.FULL)
+            if role is Role.QUALIFICATION and (parsed.profile is not None or parsed.select):
+                raise ValueError(_QUALIFICATION_PROFILE_REFUSED)
+            selection = (
+                _selection_with_prerequisites(parsed.select, Profile.FULL) if role is Role.SUPERVISOR else frozenset()
+            )
             supervisor_result = run_supervisor(
                 parsed.enclosure_manifest,
                 parsed.root,
@@ -7786,6 +7793,7 @@ def main(arguments: list[str] | None = None) -> int:
                 validate_provisional_payload_inputs,
                 parsed.report,
                 _write_enclosure_export,
+                purpose=Purpose.APPLICATION if role is Role.SUPERVISOR else Purpose.QUALIFICATION,
             )
         except (OSError, ValueError, RuntimeError, KeyError) as error:
             print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)

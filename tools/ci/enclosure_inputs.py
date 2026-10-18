@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 from tools.ci.enclosure_contract import (
     AdmittedDeadline,
+    Cutoff,
     Field,
     JsonObject,
     StaticPackage,
@@ -28,6 +29,7 @@ from tools.ci.enclosure_contract import (
 from tools.ci.enclosure_data import _archive, _command, _require_time
 from tools.ci.enclosure_native import NativeCommand
 from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, HelperOwner, _require_private_directory
+from tools.ci.enclosure_owner import Key as OwnerKey
 
 CURL: Final = "/usr/bin/curl"
 CURL_ARGUMENTS: Final = (
@@ -56,6 +58,9 @@ ERROR_DEADLINE: Final = "fixed acquisition exhausted its original admitted allow
 ERROR_ACQUISITION: Final = "fixed input acquisition failed or returned different bytes: {digest}, exit {status}"
 OBSERVER_DIRECTORY: Final = "observer-library"
 ZIP_EXTRACT: Final = ("-I", "-S", "-m", "zipfile", "--extract")
+FIXED_INPUT_DIRECTORY: Final = "fixed-inputs"
+ERROR_INTAKE: Final = "Q1 requires complete actual protected fixed inputs before Q2; no acquisition is attempted"
+ERROR_INPUT_CLOSE: Final = "closing the failed read-only input intake also failed: {error_class}"
 
 
 class Key(StrEnum):
@@ -75,6 +80,11 @@ class Key(StrEnum):
     HOST = "host"
     PYTHON_INTERPRETER = "python_interpreter"
     FILES = "files"
+    DIRECTORY_FD = "directory_fd"
+    DIRECTORY_DEVICE = "directory_device"
+    DIRECTORY_INODE = "directory_inode"
+    STARTED_NS = "started_ns"
+    FINISHED_NS = "finished_ns"
 
 
 @dataclass(frozen=True)
@@ -128,6 +138,134 @@ def fixed_inputs(package: StaticPackage) -> tuple[FixedInput, ...]:
             add(row, Key.TARBALL if Key.TARBALL in row else Key.URL)
     add(object_value(lock[Key.OBSERVER_LIBRARY]), Key.URL)
     return tuple(result.values())
+
+
+@dataclass(frozen=True)
+class FixedInputIntake:
+    """Actual Q1 archive reads and the retained original directory, without acquisition authority."""
+
+    directory_fd: int
+    facts: JsonObject
+
+    @classmethod
+    def authenticate(cls, package: StaticPackage, directory: Path, deadline: AdmittedDeadline) -> FixedInputIntake:
+        """Read only supplied digest-named regular files; a failure never fetches or repairs one."""
+        started = time.monotonic_ns()
+        _require_time(deadline)
+        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            native = os.fstat(descriptor)
+            if not stat.S_ISDIR(native.st_mode) or native.st_uid != 0 or native.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                raise ValueError(ERROR_INTAKE)
+            files: JsonObject = {}
+            for item in fixed_inputs(package):
+                _require_time(deadline)
+                leaf = os.open(
+                    item.sha256, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=descriptor
+                )
+                try:
+                    before = os.fstat(leaf)
+                    if (
+                        not stat.S_ISREG(before.st_mode)
+                        or before.st_uid != 0
+                        or before.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+                        or before.st_size != item.size
+                    ):
+                        raise ValueError(ERROR_INTAKE)
+                    with os.fdopen(os.dup(leaf), READ_BINARY) as handle:
+                        digest = hashlib.file_digest(handle, SHA256).hexdigest()
+                    after = os.fstat(leaf)
+                    if digest != item.sha256 or (
+                        before.st_dev,
+                        before.st_ino,
+                        before.st_mode,
+                        before.st_uid,
+                        before.st_gid,
+                        before.st_nlink,
+                        before.st_size,
+                        before.st_mtime_ns,
+                        before.st_ctime_ns,
+                    ) != (
+                        after.st_dev,
+                        after.st_ino,
+                        after.st_mode,
+                        after.st_uid,
+                        after.st_gid,
+                        after.st_nlink,
+                        after.st_size,
+                        after.st_mtime_ns,
+                        after.st_ctime_ns,
+                    ):
+                        raise ValueError(ERROR_INTAKE)
+                    _require_time(deadline)
+                    files[item.sha256] = {Field.SHA256: digest, Field.BYTES: after.st_size}
+                finally:
+                    os.close(leaf)
+            finished = time.monotonic_ns()
+            _require_time(deadline)
+            return cls(
+                descriptor,
+                {
+                    Key.DIRECTORY_FD: descriptor,
+                    Key.DIRECTORY_DEVICE: native.st_dev,
+                    Key.DIRECTORY_INODE: native.st_ino,
+                    Key.STARTED_NS: started,
+                    Key.FINISHED_NS: finished,
+                    Cutoff.OUTER_END_NS: deadline.outer_end_ns,
+                    Cutoff.VECTOR_END_NS: deadline.vector_end_ns,
+                    Cutoff.COMMAND_END_NS: deadline.command_end_ns,
+                    Key.FILES: files,
+                },
+            )
+        except BaseException as error:
+            try:
+                os.close(descriptor)
+            except OSError as secondary:
+                error.add_note(ERROR_INPUT_CLOSE.format(error_class=type(secondary).__name__))
+            raise
+
+
+def qualification_input_paths(owner: HelperOwner, deadline: AdmittedDeadline) -> dict[str, Path]:
+    """Consume actual Q1 byte facts through the original controller's retained directory capability."""
+    owner.require_original_parent()
+    record = object_value(parse_object(owner.manifest_bytes)[OwnerKey.OFFLINE_INPUTS])
+    first = AdmittedDeadline.from_record(record, require_vector=True)
+    if (
+        first.outer_end_ns != deadline.outer_end_ns
+        or not positive_integer(record, Key.STARTED_NS)
+        <= positive_integer(record, Key.FINISHED_NS)
+        < first.effective_end()
+        or positive_integer(record, Key.FINISHED_NS) >= time.monotonic_ns()
+    ):
+        raise ValueError(ERROR_INTAKE)
+    root = Path(
+        PARENT_DESCRIPTOR.format(
+            pid=owner.journal.binding.controller.pid, descriptor=positive_integer(record, Key.DIRECTORY_FD)
+        )
+    )
+    native = root.stat()
+    if (
+        not stat.S_ISDIR(native.st_mode)
+        or native.st_uid != 0
+        or native.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+        or type(record.get(Key.DIRECTORY_DEVICE)) is not int
+        or type(record.get(Key.DIRECTORY_INODE)) is not int
+        or native.st_dev != record[Key.DIRECTORY_DEVICE]
+        or native.st_ino != record[Key.DIRECTORY_INODE]
+    ):
+        raise ValueError(ERROR_INTAKE)
+    files = object_value(record[Key.FILES])
+    items = fixed_inputs(owner.package)
+    if set(files) != {item.sha256 for item in items}:
+        raise ValueError(ERROR_INTAKE)
+    result: dict[str, Path] = {}
+    for item in items:
+        row = object_value(files[item.sha256])
+        if text(row, Field.SHA256) != item.sha256 or positive_integer(row, Field.BYTES) != item.size:
+            raise ValueError(ERROR_INTAKE)
+        result[item.sha256] = root / item.sha256
+    _require_time(deadline)
+    return result
 
 
 def acquire_fixed_inputs(
