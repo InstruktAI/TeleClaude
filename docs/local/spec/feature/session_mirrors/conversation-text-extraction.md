@@ -106,13 +106,6 @@ And the refresh does not claim that missing source content was erased from the c
 
 #### UC-CTE-8:
 
-```gherkin
-Given an agent requests a mirror refresh with readable conversational content
-When that refresh succeeds
-Then the stored mirror contains the resulting conversation and its source coverage
-And refreshing it preserves its original creation identity
-```
-
 #### UC-CTE-9:
 
 #### UC-CTE-10: An operator can identify the mirror's source
