@@ -39,32 +39,31 @@ separate from the agent's compacted working context.
 
 ### Use cases
 
-#### UC-CTE-1:
+#### UC-CTE-1: An operator reviews conversation without tool or reasoning content
 
 ```gherkin
-Given an agent retrieves a mirrored conversation whose source includes tools and reasoning
-When the conversation is projected
-Then human and assistant conversational messages are retained
-And tool invocations, tool results and reasoning are absent
+Given an operator wants to review a session's conversation
+When they read its mirror
+Then it contains the human and assistant conversation
+And excludes tool activity and reasoning
 ```
 
-#### UC-CTE-2:
+#### UC-CTE-2: An operator sees human conversation without injected instructions
 
 ```gherkin
-Given an agent retrieves a conversation containing runtime-injected instructions alongside human input
-When the source is projected through its structural provenance
-Then the human's conversation remains
-And injected platform instructions are omitted
-And an entry with no remaining conversational text contributes no message
+Given an operator reviews a conversation that contains platform instructions
+When they read its mirror
+Then the human conversation remains without those instructions
+And empty entries do not appear as messages
 ```
 
-#### UC-CTE-3:
+#### UC-CTE-3: An operator can read an assistant reply with its quoted content
 
 ```gherkin
-Given an agent retrieves an assistant's conversational response
-When the mirror renders that response
-Then its text is preserved with surrounding whitespace removed
-And quoted material inside that response remains part of the response
+Given an operator reviews a conversation containing an assistant reply with quoted material
+When they read the reply in its mirror
+Then the response text is preserved with surrounding whitespace removed
+And the quoted material remains part of the response
 ```
 
 #### UC-CTE-4:
@@ -85,14 +84,14 @@ Then the mirror presents the title established by the owning session
 And a later refresh that supplies no title does not erase the recorded title
 ```
 
-#### UC-CTE-6:
+#### UC-CTE-6: An operator can follow who said what and when
 
 ```gherkin
-Given an agent reads a non-empty mirrored conversation
-When the conversation is rendered
-Then each message identifies its human or assistant speaker
-And recorded message timestamps accompany their messages without time-zone rewriting
-And messages remain separated in their recorded order
+Given an operator reviews a non-empty mirrored conversation
+When they read its messages
+Then each identifies its human or assistant speaker
+And each retains its recorded timestamp representation
+And the messages remain in their recorded order
 ```
 
 #### UC-CTE-7:
