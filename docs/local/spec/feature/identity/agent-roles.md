@@ -188,12 +188,6 @@ And its explicit set lists neither
 
 #### UC-AR3: A worker reaches nothing across the fleet
 
-```gherkin
-Given an agent session whose role is `builder`
-When it runs `telec sessions list`, `telec history search` or starts another session
-Then each command is refused with the not-permitted failure naming `builder` and the verb
-```
-
 #### UC-AR4: Only a dispatch grant or full reach starts a worker
 
 ```gherkin
@@ -214,31 +208,9 @@ And a session carrying the `customer` band reaches only the desk commands
 
 #### UC-AR6: A recorded role outside the catalog grants nothing and is reported
 
-```gherkin
-Given a session whose record carries a role the catalog does not name
-When an agent inside it runs `telec docs get` for a snippet
-Then the command is refused with the not-permitted failure naming that role and the verb
-And an error naming the session and the role is logged
-And the session is not admitted as a human session
-```
-
 #### UC-AR7: Role focus follows the assignment rather than its class
 
-```gherkin
-Given two agent roles of the same class with different procedure duties
-When their focused command sets are resolved
-Then each contains the commands its own assignments need
-And a command outside the worker baseline needed only by the other assignment is absent
-```
-
 #### UC-AR8: Full reach preserves a separate focused set
-
-```gherkin
-Given an internal agent role explicitly opted into full reach
-When its focused set and permitted reach are resolved
-Then its focused set remains tailored to its assignment
-And its permitted reach includes capabilities outside that set
-```
 
 #### UC-AR9: Every worker composes the worker baseline
 
