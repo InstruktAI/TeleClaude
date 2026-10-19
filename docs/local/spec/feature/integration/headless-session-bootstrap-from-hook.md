@@ -27,47 +27,24 @@ invocations from a terminal) observable as TeleClaude sessions.
 
 ### Use cases
 
-#### UC-HB1: Manual agent invocation registers a headless session
+#### UC-HB1: A person brings a manually started agent into TeleClaude
 
 ```gherkin
-Given a user runs `claude` manually in /Users/me/work/myproject
-And the user is authenticated via the platform's session auth in this TTY
-And Claude invokes the receiver with a SessionStart event from /Users/me/work/myproject
-And the integration service has no session record for this native session
-When the dispatcher claims the agent-session-start outbox entry
-Then the dispatcher detects the session is unknown
-And the event type is agent-session-start
-And the receiver-owned headless-bootstrap authorization is present
-And the headless-bootstrap path runs
-And it reads the native log file, native session id, agent name, and cwd from the hook payload
-And the headless project-context resolver maps cwd to (project_path, subdir) using the project registry's entries
-And the current caller's email is resolved from the per-TTY auth state if any
-And a create-session command is built with headless=true, the native binding fields, project context, terminal origin, and caller-email metadata
-And the command service creates the record
-And a session-started event is published with cluster visibility
-And the dispatcher continues normal dispatch for the now-existing session
+Given a person manually starts a supported agent from an authenticated terminal in an adopted project
+When TeleClaude recognizes the running agent
+Then a session for that project appears in TeleClaude
+And the running agent continues its work outside TeleClaude's launch flow
 ```
 
 #### UC-HB2: Non-session-start event for unknown session is dropped
 
-```gherkin
-Given a tool-use outbox entry arrives for a session id the sessions store does not contain
-And the event type is NOT agent-session-start
-When the dispatcher evaluates the event
-Then a debug log records "ignoring hook event for unknown session (not session_start)"
-And the dispatch returns early without bootstrap
-And the outbox entry is removed as processed (no retry)
-```
-
-#### UC-HB3: A cwd outside every registry entry produces null project context
+#### UC-HB3: A person uses a manually started agent outside registered projects
 
 ```gherkin
-Given the hook cwd is a directory not under any project registry entry
-When the headless project-context resolver runs
-Then it returns (none, none)
-And the create-session command is built with an empty project path
-And the session is created without a project association
-And subsequent hooks still update the record but no project-scoped behaviors (memory, person header) fire
+Given a person manually starts a supported agent from a directory outside every registered project or home
+When TeleClaude recognizes the running agent
+Then the session appears without a project association
+And project-scoped behavior does not apply to it
 ```
 
 #### UC-HB4: Caller email role assignment
@@ -103,25 +80,7 @@ And UI watchers, live agent-runtime state, and notification subscribers all obse
 
 #### UC-HB7: Creation failure raises and triggers retry
 
-```gherkin
-Given the create-session command service fails to produce a session id
-When the bootstrap attempts to load the session record by the returned id
-And the sessions store yields nothing
-Then a value error "headless session creation returned missing session: ..." is raised
-And the dispatcher's retryable-error classifier returns true (the message does NOT contain "not found")
-And the entry is rescheduled with exponential backoff
-```
-
 #### UC-HB8: Unknown managed-descendant start cannot bootstrap
-
-```gherkin
-Given an agent-session-start entry addresses a session id absent from the sessions store
-And the entry does not carry receiver-owned headless-bootstrap authorization
-When the dispatcher evaluates the unknown session
-Then it records that bootstrap authority is absent
-And returns without creating a session row
-And provider-supplied data cannot opt into headless bootstrap
-```
 
 ### Cross-context references
 
