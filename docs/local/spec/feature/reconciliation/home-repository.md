@@ -57,9 +57,11 @@ left it, and enters history only through its author's own commit. The record is 
 person's, and passes the same commit gate as every other commit. An activation
 that writes nothing records nothing.
 
-If the commit gate refuses an activation record, activation records nothing,
-restores each file it wrote to its previous content or absence, and reports the
-gate's findings.
+If the commit gate refuses an activation record, nothing is recorded.
+Activation restores each file it wrote to its previous content or absence only
+while that file still holds exactly what activation wrote. A file changed in the
+meantime is left untouched and reported as unrestored, alongside the gate's
+findings.
 
 ## Canonical fields
 
