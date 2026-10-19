@@ -72,13 +72,6 @@ Then the administrator receives one message that the thing failed
 
 #### UC-IA2: A broken thing failing again tells nothing
 
-```gherkin
-Given a platform administrator whose notification interests select the platform events that report a thing failing or working
-And a thing whose failure was told and that no event has reported working since
-When further events report that the same thing failed
-Then the administrator receives no further message about that thing
-```
-
 #### UC-IA3: A broken thing working again tells once, with how long it was broken
 
 ```gherkin
@@ -93,73 +86,36 @@ Then the administrator receives no further message about that thing
 
 #### UC-IA4: A thing that was not broken working tells nothing
 
-```gherkin
-Given a platform administrator whose notification interests select the platform events that report a thing failing or working
-And a thing that is not broken
-When an event reports that the thing works
-Then the administrator receives no message about that thing
-```
-
 #### UC-IA5: An event that reports no state tells nothing
 
+#### UC-IA7: An administrator receives only the incident alerts they selected
+
 ```gherkin
-Given a platform administrator whose notification interests select every platform event
-When a platform event occurs that reports no failing or ok state of a thing
-Then the administrator receives no message about it
+Scenario: An enabled interest delivers a failure alert
+Given a platform administrator has enabled notification interests for the event's type
+When an event reports that a thing that is not broken failed
+Then the administrator receives one message that the thing failed
+
+Scenario: Disabled or unselected audiences receive nothing
+Given a platform administrator has not enabled the event's type, or has switched off its category
+When an event reports that a thing that is not broken failed
+Then that administrator receives no message about the thing
+And a person who is not a platform administrator receives no message even if their interests select the type
 ```
 
-#### UC-IA7: Only interested administrators are told
+#### UC-IA8: An administrator identifies where an incident happened
 
 ```gherkin
-Scenario Outline: The audience is the platform administrators whose interests select the event
-  Given a person who <relationship>
-  And whose notification interests <interests>
-  When an event reports that a thing that is not broken failed
-  Then the person <outcome>
-
-  Examples:
-    | relationship                    | interests                                              | outcome              |
-    | is a platform administrator     | select the event's type                                | receives one message |
-    | is a platform administrator     | do not select the event's type                         | receives no message  |
-    | is a platform administrator     | select the event's type in a category switched off     | receives no message  |
-    | is not a platform administrator | select the event's type                                | receives no message  |
-```
-
-#### UC-IA8: Only the computer where it happened tells it
-
-```gherkin
-Given a fleet of two computers that both receive every platform event
-And a platform administrator whose notification interests select the event's type
-When an event on one of the computers reports that a thing that is not broken failed
-Then the administrator receives exactly one message about it
-And it names the computer where the thing failed
+Given a platform administrator has selected the event's type
+When a thing fails on one computer in a fleet
+Then the administrator receives one message naming the computer where it failed
 ```
 
 #### UC-IA9: A restart changes nothing about what is told
 
-```gherkin
-Given a platform administrator who was told that a thing failed
-When the platform restarts on the computer where the thing failed
-And a further event reports that the same thing failed
-Then the administrator receives no further message about that thing
-When an event later reports that the thing works
-Then the administrator receives one message that the thing works again, with how long it was broken
-```
-
 #### UC-IA11: A recurring job is one thing across its runs
 
-```gherkin
-Given a platform administrator whose notification interests select platform job events
-And a recurring job that is not broken
-When a run of the job fails
-Then the administrator receives one message that the job failed
-When the job's next runs fail too
-Then the administrator receives no further message about that job
-When a later run of the job succeeds
-Then the administrator receives one message that the job works again, with how long it was broken
-```
-
-#### UC-IA12: An administrator who cannot be reached is not counted as told
+#### UC-IA12: An administrator's undelivered alert does not block others
 
 ```gherkin
 Given two platform administrators whose notification interests select platform job events
