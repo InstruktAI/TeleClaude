@@ -26,11 +26,14 @@ error cleared) instead of inserting. Claimed entries are never replaced.
 
 An accepted event is committed before its receiver subprocess exits. When a
 matching entry is already claimed, the new emit creates a separate entry so the
-in-flight event and the newer event are both delivered. The current coalesce
+in-flight event and the newer event remain separately represented; both entries
+follow the dispatcher's retry/drop contract. The current coalesce
 windows are one second for `agent-stop` and `native-metadata-update`, widened to
 ten seconds for Codex `agent-stop`. Tool-call start and end events remain
-separate and reach the integration service in recorded order. Other event types
-have no coalesce window in v1 and retain one entry per emit.
+separate entries and are not coalesced. The dispatcher applies its retry/drop
+policy, so a failed entry may be deferred or dropped while later entries
+proceed. Other event types have no coalesce window in v1 and retain one entry
+per emit.
 
 For a receiver contract violation, an `error` event is stored when its
 TeleClaude session resolves; its payload carries the message,
