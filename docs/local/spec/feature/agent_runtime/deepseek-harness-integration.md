@@ -68,11 +68,11 @@ by `sdlc/procedure/macos-stable-code-signing`.
 
 #### UC-DSH-CHECKPOINT-2: unmapped DSH stops mint a headless mapping instead of dropping
 
-#### UC-DSH-DISTRIBUTE-1: artifact expansion renders and deploys the DSH master
+#### UC-DSH-DISTRIBUTE-1: An administrator can prepare DeepSeek sessions to use platform guidance
 
 ```gherkin
 Given an administrator wants DeepSeek sessions to use the platform's agent guidance
-When agent artifacts are distributed to an installed DeepSeek runtime
+When they make that guidance and its applicable artifacts available to an installed DeepSeek runtime
 Then the guidance and applicable artifacts are available when a DeepSeek session starts
 ```
 
