@@ -8,9 +8,17 @@ from typing import Final
 
 from teleclaude.caller_identity import CliCaller
 from teleclaude.core.db import SessionRecordFound, SessionRecordRead, db
+from teleclaude.core.github_identity import read_origin_github_posting_binding
 from teleclaude.core.models import JsonDict, JsonValue
-from teleclaude.core.models._types import to_json_value
+from teleclaude.core.models._types import to_json_dict, to_json_value
 from teleclaude.core.session_listing import build_session_listing_selection
+from teleclaude.types.github_binding import (
+    GITHUB_POSTING_RELATED_FIELD,
+    GitHubOriginBindingRead,
+    GitHubOriginBindingRefusal,
+)
+
+_JSON_SERIALIZATION_MODE = "json"
 
 OUTSIDE_REACH_DETAIL_TEMPLATE: Final[str] = (
     "session {session_id} exists on {computer} but is outside your reach; "
@@ -173,6 +181,25 @@ async def inspect_local(caller: CliCaller, session_id: str) -> SessionRecordRead
     if isinstance(read, SessionRecordFound):
         return SessionRecordFound(complete_record(read.values))
     return read
+
+
+async def inspect_relayed(caller: CliCaller, session_id: str, principal: str) -> SessionRecordRead:
+    """Extend only the existing reached internal read, leaving diagnostic records and refusals intact."""
+    before = await inspect_local(caller, session_id)
+    if not isinstance(before, SessionRecordFound):
+        return before
+    related = await read_origin_github_posting_binding(session_id, principal)
+    after = await inspect_local(caller, session_id)
+    if not isinstance(after, SessionRecordFound):
+        return after
+    if before.values != after.values:
+        related = GitHubOriginBindingRead(refusal=GitHubOriginBindingRefusal.RECORD_CHANGED)
+    return SessionRecordFound(
+        {
+            **after.values,
+            GITHUB_POSTING_RELATED_FIELD: to_json_dict(related.model_dump(mode=_JSON_SERIALIZATION_MODE)),
+        }
+    )
 
 
 def _decoded(value: JsonValue) -> JsonValue:

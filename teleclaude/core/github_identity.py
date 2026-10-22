@@ -10,6 +10,7 @@ import psutil
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import SQLAlchemyError
 
+from teleclaude.caller_identity import identity_for_session
 from teleclaude.config.machine import config
 from teleclaude.config.project_models import TodoStoreBackend
 from teleclaude.constants import MarkerState
@@ -23,7 +24,13 @@ from teleclaude.core.workflow_store.selection import selected_workflow_store_bac
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.runtime.tmux_socket import own_tmux_socket_path
 from teleclaude.session_identity import inspect_session_identity_marker
-from teleclaude.types.github_binding import GitHubSessionBinding, GitHubWorkTarget
+from teleclaude.types.github_binding import (
+    GitHubOriginBindingFacts,
+    GitHubOriginBindingRead,
+    GitHubOriginBindingRefusal,
+    GitHubSessionBinding,
+    GitHubWorkTarget,
+)
 
 logger = get_logger(__name__)
 _REFUSAL_LOG = "github_invocation_refused reason=%s session_id=%s"
@@ -232,6 +239,41 @@ async def resolve_admitted_github_posting_context() -> GitHubPostingContext | Re
     if get_caller_session_id() != session_id or get_relayed_caller() is not None:
         return _refuse(GitHubInvocationRefusal.SESSION_CHANGED, session_id)
     return context
+
+
+async def read_origin_github_posting_binding(session_id: str, admitted_principal: str) -> GitHubOriginBindingRead:
+    """Join public persisted facts only at the reached session owner; issue no credentials or remote context."""
+    try:
+        resolved = _local_session(session_id)
+        if isinstance(resolved, RefusedGitHubInvocation):
+            return GitHubOriginBindingRead(refusal=GitHubOriginBindingRefusal.SESSION_UNAVAILABLE)
+        session, role = resolved
+        principal = identity_for_session(session).principal
+        if not principal or not admitted_principal:
+            return GitHubOriginBindingRead(refusal=GitHubOriginBindingRefusal.PRINCIPAL_UNRESOLVED)
+        if principal != admitted_principal:
+            return GitHubOriginBindingRead(refusal=GitHubOriginBindingRefusal.PRINCIPAL_MISMATCH)
+        if role is None:
+            return GitHubOriginBindingRead(refusal=GitHubOriginBindingRefusal.BINDING_MISMATCH)
+        context = await _bound_context(AdmittedGitHubInvocation(session, role))
+        if isinstance(context, RefusedGitHubInvocation):
+            return GitHubOriginBindingRead(refusal=GitHubOriginBindingRefusal.BINDING_UNAVAILABLE)
+        project = resolve_owning_checkout(context.target.project_path)
+        if project is None or selected_workflow_store_backend(project) is not TodoStoreBackend.GITHUB:
+            return GitHubOriginBindingRead(refusal=GitHubOriginBindingRefusal.BINDING_MISMATCH)
+        current = await _bound_context(AdmittedGitHubInvocation(session, role))
+        if current != context:
+            return GitHubOriginBindingRead(refusal=GitHubOriginBindingRefusal.RECORD_CHANGED)
+        return GitHubOriginBindingRead(
+            value=GitHubOriginBindingFacts(
+                computer=config.computer.name,
+                principal=principal,
+                binding=context.binding,
+                target=context.target,
+            )
+        )
+    except (SQLAlchemyError, ValueError, OSError):
+        return GitHubOriginBindingRead(refusal=GitHubOriginBindingRefusal.BINDING_UNAVAILABLE)
 
 
 async def _bound_context(

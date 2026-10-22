@@ -48,7 +48,7 @@ from teleclaude.api.auth import (
     CallerIdentity,
     caller_for_role_resolution,
     carried_caller,
-    carried_caller_session_id,
+    carried_caller_of,
     principal_for_carried_caller,
 )
 from teleclaude.api.bugs_routes import router as bugs_router
@@ -99,7 +99,12 @@ from teleclaude.core.events import (
     ProjectRefreshTrigger,
 )
 from teleclaude.core.models import JsonDict, MessageMetadata
-from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
+from teleclaude.core.operation_caller_identity import (
+    reset_caller_principal,
+    reset_caller_session_id,
+    set_caller_principal,
+    set_caller_session_id,
+)
 from teleclaude.core.operations._kinds import outcome_events_for
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.relay_carrier import configure as configure_relay_carrier
@@ -510,12 +515,15 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 )
             # Inbound external requests authenticate by signature alone and carry no caller identity.
             carries_caller = not request.url.path.startswith(INBOUND_PATH_PREFIX)
-            caller_token = set_caller_session_id(carried_caller_session_id(request) if carries_caller else None)
+            identity = carried_caller_of(request) if carries_caller else None
+            caller_token = set_caller_session_id(identity.session_id or None if identity is not None else None)
+            principal_token = set_caller_principal(identity.principal if identity is not None else None)
             try:
                 with continuation.bound() if continuation is not None else nullcontext():
                     return await call_next(request)
             finally:
                 self._inflight_requests.pop(req_id, None)
+                reset_caller_principal(principal_token)
                 reset_caller_session_id(caller_token)
 
         @self.app.get("/health", response_model_exclude_none=True)

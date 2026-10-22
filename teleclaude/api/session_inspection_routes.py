@@ -23,6 +23,7 @@ from teleclaude.core.db import SessionRecordAbsent, SessionRecordFound, SessionR
 from teleclaude.core.models import JsonDict, JsonValue
 from teleclaude.core.relayed_intake import RelayRead
 from teleclaude.core.session_inspection import OUTSIDE_REACH_DETAIL_TEMPLATE, curated_view, inspect_local
+from teleclaude.types.github_binding import GITHUB_POSTING_RELATED_FIELD
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -120,4 +121,4 @@ async def _relay_record(session_id: str, target_computer: str, identity: CallerI
         raise http_exception_for_relay_failure(exc) from exc
     if not isinstance(data, dict):
         raise HTTPException(status_code=502, detail=_REMOTE_INVALID_DETAIL)
-    return data
+    return {key: value for key, value in data.items() if key != GITHUB_POSTING_RELATED_FIELD}

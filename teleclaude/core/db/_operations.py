@@ -75,6 +75,7 @@ class DbOperationsMixin:
         payload_json: str,
         state: str,
         caller_computer: str | None = None,
+        caller_principal: str | None = None,
         caller_provenance_json: str | None = None,
     ) -> db_models.Operation:
         """Insert a durable operation row.
@@ -90,6 +91,7 @@ class DbOperationsMixin:
             kind=kind,
             caller_session_id=caller_session_id,
             caller_computer=caller_computer,
+            caller_principal=caller_principal,
             caller_provenance_json=caller_provenance_json,
             client_request_id=client_request_id,
             cwd=cwd,

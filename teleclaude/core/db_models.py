@@ -740,6 +740,7 @@ class Operation(SQLModel, table=True):
     kind: str
     caller_session_id: str | None = None
     caller_computer: str | None = None
+    caller_principal: str | None = None
     caller_provenance_json: str | None = None
     client_request_id: str | None = None
     cwd: str | None = None

@@ -312,6 +312,7 @@ CREATE TABLE IF NOT EXISTS operations (
     kind TEXT NOT NULL,
     caller_session_id TEXT,
     caller_computer TEXT,
+    caller_principal TEXT,
     caller_provenance_json TEXT,
     client_request_id TEXT,
     cwd TEXT,

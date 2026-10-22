@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from typing import cast
 
+from fastapi import HTTPException
+
+from teleclaude.config.machine import config
 from teleclaude.core.db_models import Operation
 from teleclaude.core.models._types import JsonDict
 from teleclaude.core.operations._kinds import (
@@ -33,3 +36,20 @@ def was_started_by_principal(operation: Operation, principal: str) -> bool:
         _COMMAND_TYPE_TO_OPERATION_KIND.get(command.command_type) == operation.kind
         and command.relayed_principal == principal
     )
+
+
+CALLER_CONTINUITY_REFUSED = "Operation caller continuity is unavailable or disagrees with the recorded caller"
+
+
+def require_caller_continuity(
+    operation: Operation, principal: str | None, computer: str | None, session_id: str | None
+) -> None:
+    """Check every existing-row return without rewriting its immutable submission identity."""
+    remote = any(value is not None and value != config.computer.name for value in (computer, operation.caller_computer))
+    if (
+        operation.caller_principal != principal
+        or operation.caller_computer != computer
+        or operation.caller_session_id != session_id
+        or (remote and (not principal or not operation.caller_principal))
+    ):
+        raise HTTPException(status_code=409, detail=CALLER_CONTINUITY_REFUSED)

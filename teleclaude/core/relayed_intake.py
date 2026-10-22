@@ -34,7 +34,7 @@ from teleclaude.core.db import SessionRecordAbsent, SessionRecordFound, SessionR
 from teleclaude.core.models import JsonDict, JsonValue, RedisInboundMessage, SessionEntryPoint
 from teleclaude.core.models._types import json_int
 from teleclaude.core.operations.service import get_operations_service
-from teleclaude.core.session_inspection import OUTSIDE_REACH_DETAIL_TEMPLATE, inspect_local
+from teleclaude.core.session_inspection import OUTSIDE_REACH_DETAIL_TEMPLATE, inspect_relayed
 from teleclaude.core.session_listing import (
     SESSION_IDS_FIELD,
     SessionListingSelection,
@@ -298,7 +298,7 @@ async def execute_relayed_read(
         )
 
     if command == RelayRead.SESSION_RECORD.value:
-        record_read = await inspect_local(caller, session_id)
+        record_read = await inspect_relayed(caller, session_id, principal)
         match record_read:
             case SessionRecordFound(values=values):
                 return values

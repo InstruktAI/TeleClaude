@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Callable
 from contextvars import Token
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import cast
 
 from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
@@ -48,7 +48,8 @@ from teleclaude.core.next_machine.slug_resolution import resolve_holder_children
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_caller_identity import (
     OperationCallerTokens,
-    relayed_caller_computer,
+    get_caller_principal,
+    get_relayed_caller,
     reset_operation_caller,
     set_operation_caller,
 )
@@ -68,8 +69,12 @@ from teleclaude.core.operations._kinds import (
     outcome_events_for,
 )
 from teleclaude.core.operations._outcome import OperationCompletion
-from teleclaude.core.operations._receipt import recovery_command
-from teleclaude.core.operations._relayed_ownership import was_started_by_principal
+from teleclaude.core.operations._receipt import SerializedOperation, recovery_command
+from teleclaude.core.operations._relayed_ownership import (
+    CALLER_CONTINUITY_REFUSED,
+    require_caller_continuity,
+    was_started_by_principal,
+)
 from teleclaude.core.operations._rename_payload import ensure_rename_target_matches, rename_payload
 from teleclaude.core.operations.job_run import JobRunRequest, job_project_path, job_run_payload, run_job_run_operation
 from teleclaude.core.operations.todo_identity import (
@@ -88,29 +93,6 @@ from teleclaude.types.command_wire import command_from_dict
 from teleclaude.types.commands import CallerProvenance, InternalCommand
 
 logger = get_logger(__name__)
-
-
-class SerializedOperation(TypedDict, total=False):
-    operation_id: str
-    kind: str
-    state: str
-    poll_after_ms: int
-    status_path: str
-    recovery_command: str
-    slug: str
-    success_event: str
-    failure_event: str
-    computer: str
-    progress_phase: str
-    progress_decision: str
-    progress_reason: str
-    result: str
-    error: str
-    work_feedback: str
-    error_payload: OperationErrorPayload
-    client_request_id: str
-
-
 TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
 NONTERMINAL_OPERATION_STATES = {"queued", "running"}
 _HOLDER_AWARE_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
@@ -503,7 +485,12 @@ class OperationsService:
         from another's.
         """
         # A caller session on the computer whose request was carried here has its outcome delivered there.
-        caller_computer = caller_computer or relayed_caller_computer(caller_session_id)
+        relayed = get_relayed_caller()
+        if relayed is not None:
+            if relayed.session_id != caller_session_id or caller_computer not in (None, relayed.computer):
+                raise HTTPException(status_code=409, detail=CALLER_CONTINUITY_REFUSED)
+            caller_computer = relayed.computer
+        caller_principal = get_caller_principal()
         lock = await self._get_submit_lock(
             kind=kind,
             caller_session_id=caller_session_id,
@@ -519,6 +506,7 @@ class OperationsService:
                     client_request_id=client_request_id,
                 )
                 if existing is not None:
+                    require_caller_continuity(existing, caller_principal, caller_computer, caller_session_id)
                     if on_existing is not None:
                         on_existing(existing)
                     return self._serialize_operation(existing)
@@ -535,6 +523,7 @@ class OperationsService:
                 else None
             )
             if existing is not None:
+                require_caller_continuity(existing, caller_principal, caller_computer, caller_session_id)
                 if on_existing is not None:
                     on_existing(existing)
                 if existing.state == "queued":
@@ -554,6 +543,7 @@ class OperationsService:
                     payload_json=payload_json,
                     state="queued",
                     caller_computer=caller_computer,
+                    caller_principal=caller_principal,
                     caller_provenance_json=caller_provenance_json,
                     session_project_path=session_project_path,
                 )
@@ -568,6 +558,7 @@ class OperationsService:
                 )
                 if existing is None:
                     raise
+                require_caller_continuity(existing, caller_principal, caller_computer, caller_session_id)
                 if on_existing is not None:
                     on_existing(existing)
                 return self._serialize_operation(existing)

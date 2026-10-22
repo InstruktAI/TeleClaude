@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 from typing import Self
 
@@ -14,6 +15,8 @@ from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
 _BOT_REQUIRED = "A platform GitHub assignment requires a Bot account"
 _REPOSITORY_PATTERN = r"^[^/\s]+/[^/\s]+$"
 _ABSOLUTE_PROJECT_REQUIRED = "A GitHub work target requires an absolute project path"
+GITHUB_POSTING_RELATED_FIELD = "github_posting"
+_ORIGIN_READ_INVALID = "An origin binding read contains facts or a refusal, never both"
 
 
 class GitHubWorkTarget(BaseModel):
@@ -62,3 +65,39 @@ class GitHubSessionBinding(BaseModel):
     session_id: str = Field(min_length=1)
     role: RoleName
     assignment: GitHubActorAssignment
+
+
+class GitHubOriginBindingRefusal(StrEnum):
+    """Safe owner-read failures; none grants a fallback actor or posting authority."""
+
+    SESSION_UNAVAILABLE = "session_unavailable"
+    PRINCIPAL_UNRESOLVED = "principal_unresolved"
+    PRINCIPAL_MISMATCH = "principal_mismatch"
+    BINDING_UNAVAILABLE = "binding_unavailable"
+    BINDING_MISMATCH = "binding_mismatch"
+    RECORD_CHANGED = "record_changed"
+
+
+class GitHubOriginBindingFacts(BaseModel):
+    """Public facts freshly joined by the session's own computer, with origin-local paths."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    computer: str = Field(min_length=1)
+    principal: str = Field(min_length=1)
+    binding: GitHubSessionBinding
+    target: GitHubWorkTarget
+
+
+class GitHubOriginBindingRead(BaseModel):
+    """Related reached-read result, separate from a diagnostic session record."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    value: GitHubOriginBindingFacts | None = None
+    refusal: GitHubOriginBindingRefusal | None = None
+
+    @model_validator(mode="after")
+    def require_result(self) -> Self:
+        """A refusal never retains usable posting facts."""
+        if (self.value is None) == (self.refusal is None):
+            raise ValueError(_ORIGIN_READ_INVALID)
+        return self

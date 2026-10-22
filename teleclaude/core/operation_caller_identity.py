@@ -27,6 +27,24 @@ def get_caller_session_id() -> str | None:
     return _caller_session_id.get()
 
 
+_caller_principal: ContextVar[str | None] = ContextVar("operations_caller_principal", default=None)
+
+
+def set_caller_principal(value: str | None) -> Token[str | None]:
+    """Carry only the principal already admitted by the serving request owner."""
+    return _caller_principal.set(value)
+
+
+def reset_caller_principal(token: Token[str | None]) -> None:
+    """Restore the previous admitted principal on every scope exit."""
+    _caller_principal.reset(token)
+
+
+def get_caller_principal() -> str | None:
+    """Return existing admitted identity, without resolving another principal."""
+    return _caller_principal.get()
+
+
 @dataclass(frozen=True)
 class RelayedCaller:
     """The address of a caller session whose request another computer carried here."""
@@ -62,6 +80,7 @@ class OperationCallerTokens:
 
     session: Token[str | None]
     relayed: Token[RelayedCaller | None]
+    principal: Token[str | None]
 
 
 class _StoredOperationCaller(Protocol):
@@ -73,6 +92,9 @@ class _StoredOperationCaller(Protocol):
     @property
     def caller_computer(self) -> str | None: ...
 
+    @property
+    def caller_principal(self) -> str | None: ...
+
 
 def set_operation_caller(operation: _StoredOperationCaller, local_computer: str) -> OperationCallerTokens:
     """Restore persisted caller locality, clearing inherited relay origin for local operations."""
@@ -81,11 +103,13 @@ def set_operation_caller(operation: _StoredOperationCaller, local_computer: str)
     session = set_caller_session_id(session_id)
     remote = RelayedCaller(computer, session_id) if computer and computer != local_computer else None
     relayed = set_relayed_caller(remote)
-    return OperationCallerTokens(session, relayed)
+    principal = set_caller_principal(operation.caller_principal)
+    return OperationCallerTokens(session, relayed, principal)
 
 
 def reset_operation_caller(tokens: OperationCallerTokens) -> None:
     """Restore both contexts on every operation exit."""
+    reset_caller_principal(tokens.principal)
     reset_relayed_caller(tokens.relayed)
     reset_caller_session_id(tokens.session)
 
