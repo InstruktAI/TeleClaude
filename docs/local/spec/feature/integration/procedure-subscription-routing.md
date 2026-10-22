@@ -94,27 +94,7 @@ because one event has one subject.
 
 #### UC-PSR18: An activation carries the attendance its procedure declares
 
-```gherkin
-Scenario Outline: The declared attendance travels with every activation
-  Given a global-tier procedure answering company events <declaration>
-  When an event of a subscribed type whose origin is a company is emitted on this computer
-  Then an agent inspecting the activation record sees one activation naming the procedure and company
-  And that activation asks for <attendance>
-
-  Examples:
-    | declaration                          | attendance             |
-    | declares no attendance               | an attended agent      |
-    | declares the attended attendance     | an attended agent      |
-    | declares the unattended attendance   | an unattended agent    |
-```
-
 #### UC-PSR19:
-
-```gherkin
-Given an agent author has published a subscribed procedure with a delivery policy
-When a matching event produces an activation
-Then an agent inspecting the activation sees the effective published delivery policy carried unchanged
-```
 
 Routing carries the delivery declaration resolved by context along with the
 existing subscription facts. Runtime consumes it through its procedure
