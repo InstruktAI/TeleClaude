@@ -14,12 +14,13 @@ is longer than the receiving chat platform's single-message limit.
 
 ### Use cases
 
-#### UC-OMO1: A person can receive a long message without stalling the daemon
+#### UC-OMO1: A person receives a long response while the daemon remains responsive
 
 ```gherkin
-Scenario: Deliver a response longer than Discord's single-message limit
-  Given an assistant has a response longer than Discord can display in one message
-  When the assistant delivers it while the daemon handles another request
-  Then the person receives consecutive messages that fit within Discord's message limit
+Scenario: Deliver a response longer than the receiving platform's message limit
+  Given an assistant response exceeds the receiving chat platform's single-message limit
+  And the daemon receives another request during delivery
+  When the response is delivered
+  Then the person receives it in consecutive messages that fit within the platform's limit
   And the daemon answers the other request within its ordinary response time
 ```
