@@ -1080,7 +1080,7 @@ def _b11_unclean_probe(flow: flow_module.WorkflowFlow, w2: str, builder: str, co
     effect = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, B11_SENTINEL_LABEL, start_ledger.RECORD_EFFECT)
     evidence["attempt_id"] = effect
     flow.gate(builder, "go_dirtywrite")
-    frame = _frame_success(flow, builder, "dirtywrite", writes=True)
+    frame = _frame_success(flow, builder, "writedirty", writes=True)
     evidence["write_frame"] = cast(flow_module.JsonValue, dict(frame))
     writes = frame.get(B11_FRAME_WRITES)
     row = writes[0] if isinstance(writes, list) and len(writes) == 1 else None
@@ -1092,7 +1092,7 @@ def _b11_unclean_probe(flow: flow_module.WorkflowFlow, w2: str, builder: str, co
         or row.get(B11_PAYLOAD_BYTES) != B11_EXPECTED_APPEND_COUNT
         or row.get(B11_PAYLOAD_SHA) != flow_module.B11_SENTINEL_SHA256
     ):
-        raise creation.binding_failure(DETAIL_FRAME.format(name="dirtywrite", frame=frame))
+        raise creation.binding_failure(DETAIL_FRAME.format(name="writedirty", frame=frame))
     _b11_assert_owned_append(flow, worktree, changed)
     if _b11_ref_state(flow, worktree, changed) != refs:
         raise creation.binding_failure(DETAIL_BINDING.format(detail="B11 dirty write changed an item ref"))

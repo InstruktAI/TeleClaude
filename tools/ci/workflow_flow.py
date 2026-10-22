@@ -373,7 +373,7 @@ def flow_plan_sets(chain: Sequence[str]) -> PlanSets:
                     "go_c2",
                 ),
                 controls.Command(
-                    name="dirtywrite",
+                    name="writedirty",
                     writes=[{"path": "feature.txt", "mode": "append", "text": B11_SENTINEL_TEXT}],
                     wait_for="go_dirtywrite",
                 ),
