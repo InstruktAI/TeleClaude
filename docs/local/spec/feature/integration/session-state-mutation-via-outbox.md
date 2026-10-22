@@ -32,6 +32,10 @@ present, with explicit null clearing the binding; an absent key leaves it
 unchanged. An unchanged metadata update or an update for a missing session is a
 successful no-op.
 
+Native metadata updates already accepted into the outbox may be applied after
+session close, preserving the binding needed for revival; other hook events for
+closed sessions remain ignored.
+
 ## Canonical fields
 
 ### Use cases
@@ -51,15 +55,6 @@ successful no-op.
 #### UC-SSM7: metadata update preserves committed runtime ownership
 
 #### UC-SSM8: Closed-session-guard bypass
-
-```gherkin
-Given the session's lifecycle status is "closed"
-And a native-metadata-update entry arrives
-When the dispatcher runs
-Then the session-state-mutation fork runs FIRST (before the closed-session guard)
-And the entry is processed even though the session is closed
-And the "ignoring hook event for closed session" guard only fires for non-mutation entries
-```
 
 ### Cross-context references
 
