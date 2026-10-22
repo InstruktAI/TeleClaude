@@ -339,14 +339,13 @@ Then the additional context is appended to BOTH the echoed full-command and the 
 And every enabled runtime receives the identical extended message
 ```
 
-#### UC-CLR10: Additional context is carried once, outside the provided inputs
+#### UC-CLR10: A person starts a procedure with additional context
 
 ```
-Given a run-session request supplies additional context
-When the loader startup message is composed
-Then the composed message carries the additional context exactly once
-And the context appears after the loader, never inside the marker line and never inside the provided-inputs section
-And this holds whether the request supplies command arguments or none
+Given a person wants to start a published procedure with additional context
+When they start it with that context
+Then the new agent receives the context exactly once as additional context
+And it remains separate from the procedure's declared inputs
 ```
 
 #### UC-CLR12: An agent dispatches an entry procedure by its snippet ID and nothing shorter
