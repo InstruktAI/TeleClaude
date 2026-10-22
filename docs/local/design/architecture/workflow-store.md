@@ -48,10 +48,11 @@ workflow state and preserve their current ownership and interpretation.
 
 The canonical item identity is `WorkItemId`, the identity the selected adapter
 assigns (#124 INV-D1). Consumers treat it as opaque: they never construct it
-from a requested slug and never parse it. A separate opaque `StoreAddress`
-serves local row addressing; neither substitutes for the other. Existing
-protocol methods retain slug and row-id string parameters where current
-consumers use them, and the adapter resolves the local address. The operation
+from a requested slug and never parse it. A separate opaque `StoreAddress` is
+the selected adapter's address for the item, distinct from `WorkItemId`;
+neither substitutes for the other. Existing protocol methods retain slug and
+row-id string parameters where current consumers use them, and the adapter
+resolves the address. The operation
 records currently used by `WorkflowStore` are `WorkItem`,
 `TodoDiagnosticRecord`, `WorkItemStateRead`, `IdentityResolution`,
 `RemovalRequest`, `ExpiredRemovedItem`, `PurgedItem`, `ArtifactMetadata`,
