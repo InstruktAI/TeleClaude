@@ -35,7 +35,7 @@ from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import RESERVED_HOME_IDENTITY_PREFIXES
 
-CURRENT_SCHEMA_VERSION = 23
+CURRENT_SCHEMA_VERSION = 24
 _PROBE_REQUIRES_DEFER_ERROR = "owed_probe belongs only to an action whose on_demand is defer"
 _EVENT_BINDING_SCOPE_ERROR = "a binding names one trigger kind: events or scope, never both"
 _EVENT_BINDING_EMPTY_ERROR = "a binding that names events must name at least one event type pattern"
