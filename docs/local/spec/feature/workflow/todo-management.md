@@ -236,13 +236,13 @@ And the entry keeps its current status with no delivered_at and no delivered_com
 And the pending documentation material reconciled for the attempted delivery is left as it was
 ```
 
-```
-Given an active todo "feature-y" that is no longer wanted
+#### UC-WM43: Remove a todo that is no longer wanted
+
+```gherkin
+Given an active todo "feature-y" is no longer wanted
 When the operator runs "telec todo remove feature-y"
-Then the entry is marked status="removed" with removed_at set
-And its outgoing dependencies are snapshotted before live dependency edges are scrubbed
-And its state, artifacts, and artifact versions remain available to the identity-addressed recovery primitive during the retention window
-And the todo disappears from every default read path
+Then the todo no longer appears in default reads during the recovery window
+And it remains recoverable by its durable identity until that window ends
 ```
 
 #### UC-WM5: Unified todo update facade

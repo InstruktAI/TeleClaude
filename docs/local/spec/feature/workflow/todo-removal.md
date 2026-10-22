@@ -13,220 +13,62 @@ visibility: 'public'
 
 ## What it is
 
-`telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/dependency reads hide it immediately while its retained artifacts stay readable until purge, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive plans abandonment of every pending documentation carrier, captures the exact reversible material with the retained Todo, and refuses the transition if any affected source cannot be resolved, written, or committed safely. A successful removal therefore makes the tombstone and its abandoned documentation state durable together; failure names the slug, source path, line, and reason without reporting removal success.
+`telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/dependency reads hide it immediately while its retained artifacts stay readable until purge, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive plans abandonment of every pending documentation carrier, captures the exact reversible material with the retained Todo, and refuses the transition if any affected source cannot be resolved, written, or committed safely. Abandonment touches only the removed slug's pending additions, changes, companions, and `delivered_by` memberships; unrelated content and other slugs' pending material remain untouched, and automation-only cleanup creates no snippet-review obligation. A successful removal therefore makes the tombstone and its abandoned documentation state durable together; failure names the slug, source path, line, and reason without reporting removal success.
 
-The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The worktree is detached from its active location into a uniquely named entry in the project's worktree trash area on the same filesystem; removal completion does not wait for that entry's recursive deletion. The daemon's existing maintenance pass reclaims detached entries at startup and periodically, off the event loop. The removal is dispatched as a receipt-backed durable operation: the CLI prints the receipt and exits without waiting. Structured removal refusals are persisted on the failed operation, so the outcome carries the affected snippet paths and holding sessions without recomputing state.
+The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). Missing working resources and branch-cleanup failures do not prevent removal from completing. The worktree is detached from its active location into a uniquely named entry in the project's worktree trash area on the same filesystem; removal completion does not wait for that entry's recursive deletion. The daemon's existing maintenance pass reclaims detached entries at startup and periodically, off the event loop. The removal is dispatched as a receipt-backed durable operation: the CLI prints the receipt and exits without waiting. Structured removal refusals are persisted on the failed operation, so the outcome carries the affected snippet paths and holding sessions without recomputing state.
 
 Before the mutation the removal also guards live work. A removal is refused — before any todo-list, state, dependency, or filesystem mutation — while the slug's claim names a live session other than the caller, an open session other than the caller is bound to the slug, or a non-terminal operation is bound to it. The structured refusal names each holding session and operation so the operator is routed to the holders instead of a wall. A deliberate override flag removes anyway; the override is recorded as such on the durable removed entry. On every removal the claim value present at removal is recorded on the removed entry rather than silently discarded. A caller whose session is bound to the removed slug is released from that binding by the removal, so it can go on to drive another Todo. While the removed entry is retained, artifact writes addressed to the slug are refused with an error that names the removed state, the retention window, and the sanctioned recovery route — distinguishable from a slug that never existed.
 
-A retained removed entry can be reactivated by durable identity before purge, unless an active or icebox entry already owns the same slug. Reactivation restores the exact captured documentation material as pending before the Todo returns to its pre-removal status; an unsafe restoration faults without reporting success. After the retention window elapses, routine maintenance verifies that abandonment is complete, clears the retained restoration material, and hard-purges the removed entry by durable identity. Retained state and artifact history cascade to deletion only after that sequence succeeds.
+A retained removed entry can be reactivated by durable identity before purge, unless an active or icebox entry already owns the same slug. Reactivation restores the exact captured documentation material as pending before the Todo returns to its pre-removal status, or to icebox when its prior status is unavailable; an unsafe restoration faults and leaves the Todo removed. A same-slug collision refuses without mutating either entry. The Todo retention window is independent of closed-session retention. After the retention window elapses, routine maintenance verifies that abandonment is complete, clears the retained restoration material, and hard-purges the removed entry by durable identity. Purge-time documentation reconciliation touches only that Todo's pending material, leaves other slugs' markers unchanged, and does not repeat worktree, branch, workspace, or dependency cleanup. The retention sweep opens todo stores only for valid project checkouts. Retained state and artifact history cascade to deletion only after that sequence succeeds. The purge sequence keeps the removed entry and its retained material until documentation abandonment is complete; an interrupted purge can resume without treating unrelated changes as its own.
 
 ## Canonical fields
 
 ### Use cases
 
-```
-Given a Todo "feature-x" exists with state, multiple artifact versions, an entry, and another Todo "feature-y" that depends on it
+#### UC-TR-REMOVE-UNWANTED: Remove a Todo that is no longer wanted
+
+```gherkin
+Given an active Todo "feature-x" is no longer wanted
 When the operator runs "telec todo remove feature-x"
-Then the workflow service submits a receipt-backed operation and returns immediately
-And the CLI prints the receipt and exits without waiting for the operation
-And inside the operation handler, the shared soft-remove primitive marks the live entry status=removed
-And the entry records removed_at, prev_status, and the outgoing dependency snapshot
-And every artifact plus its full version history remains retained by the Todo's durable identity
-And "feature-y"'s after-list no longer references "feature-x"
-And default reads no longer return "feature-x" by slug
+Then it no longer appears in default reads during the recovery window
+And it remains recoverable by its durable identity until that window ends
 ```
 
-```
-Given a Todo "feature-x" is the only live deliverer listed in a snippet's delivered_by frontmatter
-When the operator runs "telec todo remove feature-x"
-Then the shared soft-remove primitive refuses removal before any workflow state mutation
-And the receipt-backed operation fails with a structured "remove_refused_orphan" payload
-And the failed operation's record names the affected snippet path, slug role, and live-deliverer count
-```
-
-```
-Given a Todo that has not yet received a worktree or feature branch
-When the removal operation runs
-Then the entry is soft-removed exactly as for any other Todo
-And the delivered-slug cleanup cascade is **skipped** (no worktree, no branch, no workspace teardown)
-Because there are no slug-keyed working resources to tear down
+```gherkin
+Given an active Todo "feature-x" is held by a live session
+When the operator removes it with the explicit override
+Then it is removed despite the hold
+And the removed entry records the override and displaced claim
 ```
 
-```
-Given a non-draft Todo whose worktree at "trees/<slug>/" was already removed manually
-When the delivered-slug cleanup cascade runs as part of removal
-Then the worktree-remove step finds the path absent and is a no-op
-And the local branch delete runs; failure is logged as a warning, not raised
-And the remote branch delete runs with a short timeout; failure is non-fatal
-And the workspace directory cleanup tolerates a missing path
-And the operation reports completed
-```
-
-```
-Given a row "parent" has status holder, with children referencing it by group id
-When the operator runs "telec todo remove parent"
-Then the removal is refused, naming the row as a holder outside the todo lifecycle
-And "parent" and every child are left unchanged
-And each child is removed by its own "telec todo remove" call; retiring the last child leaves the holder as context that no longer renders anywhere
-```
-
-#### UC-TR-REACTIVATES-PENDING: Reactivation restores exact pending documentation material
+#### UC-TR-REACTIVATES-PENDING: Reactivate removed work during its recovery window
 
 ```gherkin
 Given a removed Todo "feature-x" is still inside the retention window
 And no active or icebox Todo currently owns slug "feature-x"
-And its exact pre-removal documentation material is retained with its durable identity
 When an operator reactivates the removed entry by its durable identity
-Then the exact documentation material is restored as pending under slug "feature-x"
-And the entry status returns to the pre-removal status when known, or icebox otherwise
-And retained outgoing dependency edges are replayed
-And state, current artifacts, and artifact version history are visible again through default resolvers
-But if the documentation material cannot be restored safely, reactivation faults with the slug, source path, line, and reason
-And the Todo remains removed
-```
-
-```
-Given a removed Todo "feature-x" is still inside the retention window
-And a newly created active Todo also owns slug "feature-x"
-When an operator tries to reactivate the removed entry by its durable identity
-Then reactivation fails without mutating either entry
-Because same-slug resurrection would collide with the live Todo
-```
-
-```
-Given a removed Todo's removed_at timestamp is older than the retention window
-When routine maintenance runs
-Then any snippet delivered_by entries for that slug are planned through the shared reconcile engine
-And the sweep persists pending_purge_paths before writing snippet files
-And the commit stage is restricted to those exact snippet pathspecs
-And staged-set verification runs before commit
-And post-commit verification runs before the entry is removed
-And pending_purge_paths is cleared before the removed entry is hard-deleted by durable identity
-And retained state, current artifacts, and artifact version history cascade to deletion
-And no slug-keyed worktree, branch, workspace, or dependency cleanup runs during purge
-```
-
-```
-Given a previous maintenance pass wrote purge-time snippet changes but failed before finalising the removed entry
-When routine maintenance sees pending_purge_paths on the retained removed entry
-Then the sweep treats those paths as sweep-owned residue
-And if the files already match HEAD, it skips the commit stage and re-runs post-commit verification
-And if the files diverge from HEAD, it re-applies the planned snippet mutation and retries the exact-pathspec commit sequence
+Then the Todo is restored for work with its retained content and pending documentation available again
 ```
 
 #### UC-TR-PURGE-STRIPS-INBODY-MARKERS: Purge folds the slug's in-body markers with abandon semantics
 
-```
-Given a snippet body carries the purged slug in a planned ADD block and in a planned-change block
-And another slug's in-body marker is present in the same snippet
-When routine maintenance reconciles snippets for the hard-purged slug
-Then the purged slug's planned ADD block is removed together with its wrapped content
-And the purged slug's planned-change block reverts to its original side, discarding the replacement
-And the other slug's in-body marker is left unchanged
-And a subsequent liveness scan over the result reports no finding for the purged slug
-```
-
-```
-Given "telec todo remove" is invoked without a slug
-When the CLI parses args
-Then it prints the usage banner and exits with status 1
-And no removal request is made
-```
-
 #### UC-TR-RETENTION-INDEPENDENT: Removed-todo purge window is independent of closed-session retention
-
-```
-Given a removed Todo whose removed_at timestamp is 8 days old
-And a closed session row whose closed-at marker is 8 days old
-When routine maintenance runs
-Then the removed Todo entry is hard-purged (its 7-day window has elapsed)
-And the closed session row remains retained (its 90-day window has not elapsed)
-```
 
 #### UC-TR-SWEEP-SKIPS-NON-CHECKOUT: Retention sweep tolerates a non-checkout registry entry carrying a legacy todo store
 
-```
-Given a project registry entry exists on disk carrying .teleclaude/todos.db
-And the directory is not a TeleClaude project checkout
-When the removed-todo retention sweep runs
-Then the sweep skips the directory without resolving, opening, or creating a todo store for it
-And the sweep raises no error for the directory
-And project entries that are project checkouts are still swept
-```
-
 #### UC-TR-REFUSES-LIVE-WORK: Removal refuses while live work holds the slug
-
-```
-Given a Todo whose claim names a live session other than the caller, or with an open bound session other than the caller, or with a non-terminal operation bound to it
-When the operator runs "telec todo remove <slug>" without the override flag
-Then the removal is refused before any todo-list, state, dependency, or filesystem mutation
-And the receipt-backed operation fails with a structured refusal payload naming each holding session and operation
-```
 
 #### UC-TR-OVERRIDE-RECORDED: A deliberate override removes anyway and is recorded
 
-```
-Given a Todo whose claim names a live session other than the caller
-When the operator runs the removal with the explicit override flag
-Then the entry is soft-removed exactly as an unheld Todo is
-And the durable removed entry records that the removal was overridden
-And the durable removed entry records the claim value the removal displaced
-```
-
 #### UC-TR-CLAIM-SURVIVES-ON-TOMBSTONE: The released claim is recorded, never silently discarded
-
-```
-Given a Todo whose claim names a session that is no longer live
-When the operator runs "telec todo remove <slug>"
-Then the removal proceeds without requiring the override flag
-And the durable removed entry records the claim value that was released
-```
 
 #### UC-TR-RELEASES-REMOVER-BINDING: Removing its own Todo frees the claimant to drive another
 
-```gherkin
-Given an agent session bound to the Todo "feature-x" as its driver
-When that session runs "telec todo remove feature-x" and the removal succeeds
-Then the session is no longer bound to "feature-x"
-And a later "telec todo prepare" for another Todo from that session is not refused for a conflicting binding
-But a removal that is refused leaves the session's binding unchanged
-```
-
 #### UC-TR-REMOVED-SLUG-WRITE-REFUSED: An artifact write to a removed slug names the recoverable state
-
-```
-Given a removed Todo inside the retention window and no live Todo owning the same slug
-When an agent writes an artifact for that slug
-Then the write is refused with an error naming the removed state, the retention window, and the sanctioned recovery route
-And the error is distinguishable from the error for a slug that never existed
-And "telec todo artifacts write" exits non-zero on the refused write
-```
 
 #### UC-TR-REMOVE-CLEANS-PENDING-MARKERS: Removal retires its pending documentation markers
 
-```gherkin
-Given an operator has a Todo whose slug owns planned documentation material across one or more tracked snippet files
-And an affected snippet file may already carry unrelated working-tree changes or another slug's pending material
-When the operator runs "telec todo remove <slug>"
-Then the caller captures the exact owned material before any source or Todo state changes
-And only the removed slug's planned additions, planned changes, companions, and delivered_by memberships are abandoned
-And unrelated content and every other slug's pending material remain unchanged
-And the cleanup is committed automatically before removal reports success
-But if an affected path cannot be changed and committed safely, removal faults with the slug, source path, line, and reason
-And the Todo remains live with its pending material unchanged
-And automation-only marker cleanup creates no snippet-review obligation
-```
-
 #### UC-TR-DEFERRED-WORKTREE-RECLAIM: Removal releases the working location before bulk reclamation
-
-```gherkin
-Given a human operator removes a non-draft Todo with an active worktree
-When removal completes
-Then the worktree's active location is released for reuse
-And recursive deletion of the detached worktree is deferred to background maintenance
-And removal completion does not wait for that recursive deletion
-```
 
 ### Cross-context references
 
