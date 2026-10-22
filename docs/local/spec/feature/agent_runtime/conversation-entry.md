@@ -419,14 +419,7 @@ Then no session is created
 And the person receives the neutral reply
 ```
 
-#### UC-CE22: A registered member at a desk is confined like a customer
-
-```gherkin
-Given a registered member who entered a project desk with its identifier
-When the desk session's agent runs
-Then the session is confined to its desk exactly as a desk session below member is
-And the member's own role widens none of that confinement while the session stays at the desk
-```
+#### UC-CE22
 
 #### UC-CE23: Master routing begins at the cutover and never runs beside per-computer handling
 
@@ -469,7 +462,7 @@ Then that input continues the entry point's original conversation
 And the separate conversation remains independently selectable
 ```
 
-#### UC-CE28:
+#### UC-CE28: A person resumes their most recent eligible conversation at an endpoint
 
 ```gherkin
 Given a person has more than one retained conversation matching their identity and endpoint
