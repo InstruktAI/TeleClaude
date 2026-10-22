@@ -336,6 +336,7 @@ _COMMAND_EVIDENCE_EXIT_STATUS_FIELD = "exit_status"
 _COMMAND_EVIDENCE_STDOUT_FIELD = "stdout"
 _COMMAND_EVIDENCE_DIAGNOSTICS_FIELD = "diagnostics"
 _EVIDENCE_SEPARATOR = "\n"
+_B14_BASELINE_DEFERRED = "B14 baseline judgment deferred; captured outputs remain unverified"
 _EVIDENCE_STDOUT_TRUNCATION = "stdout truncated at diagnostic limit"
 _EVIDENCE_STDERR_TRUNCATION = "stderr truncated at diagnostic limit"
 _EVIDENCE_DIAGNOSTICS_TRUNCATION = "diagnostics truncated at diagnostic limit"
@@ -1066,7 +1067,7 @@ def execute_profile(
                     diagnostics=f"{type(exc).__name__}: {exc}"[:_DIAGNOSTIC_LIMIT],
                 )
             )
-        if outcomes[-1].status is not ScenarioStatus.PASSED:
+        if outcomes[-1].status is not ScenarioStatus.PASSED and outcomes[-1].diagnostics != _B14_BASELINE_DEFERRED:
             for not_run_id in scenario_inventory[len(outcomes) :]:
                 outcomes.append(
                     ScenarioResult(
@@ -1834,6 +1835,21 @@ def _capture_scenario(
         action(evidence)
         status = ScenarioStatus.PASSED
         diagnostics = _EMPTY
+        b14_snapshot_ids = {creation.B14_SNAPSHOT_PREFIX + case.value for case in creation.B14Case}
+        b14_annotations = [
+            command for command in evidence if len(command.argv) == 1 and command.argv[0] in b14_snapshot_ids
+        ]
+        if b14_annotations:
+            status = ScenarioStatus.FAILED
+            differing = next(
+                (
+                    command
+                    for command in b14_annotations
+                    if command.diagnostics != creation.DETAIL_SNAPSHOT_MISSING.format(case=command.argv[0])
+                ),
+                None,
+            )
+            diagnostics = differing.diagnostics if differing is not None else _B14_BASELINE_DEFERRED
     except Exception as exc:
         status = ScenarioStatus.FAILED
         diagnostics = resources.sanitize(f"{type(exc).__name__}: {exc}")[:_DIAGNOSTIC_LIMIT]

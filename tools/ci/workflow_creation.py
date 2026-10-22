@@ -1231,7 +1231,8 @@ def require_b14_kickback(
     snapshot_id = B14_SNAPSHOT_PREFIX + case.value
     snapshot_state = retired_snapshot_state(snapshot_id, outcome.output, substitutions or None)
     if snapshot_state is RetiredSnapshotState.MISSING:
-        raise trace_failure(DETAIL_SNAPSHOT_MISSING.format(case=snapshot_id))
+        observer.host.note((snapshot_id,), outcome, DETAIL_SNAPSHOT_MISSING.format(case=snapshot_id))
+        return
     if snapshot_state is not RetiredSnapshotState.MATCH:
         raise trace_failure(DETAIL_SNAPSHOT_MISMATCH.format(case=snapshot_id))
 
