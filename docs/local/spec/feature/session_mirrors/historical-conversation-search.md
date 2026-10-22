@@ -31,6 +31,9 @@ carries is of the worker class in the agent role catalog
 orchestrators, task-lane sessions and the integrator stay searchable — they
 drive the work and carry the reasoning a later search is looking for.
 Subagent transcripts are never mirrored, so they cannot appear.
+The default worker exclusion is the same on the terminal and service search
+paths. The local CLI opt-in removes only that exclusion; the other search
+filters and role-scoped access remain in effect.
 
 Role-scoped access (see
 `role-scoped-history-access`) further constrains visibility before the
@@ -91,21 +94,21 @@ Given a caller the capability cannot identify
 Then the capability refuses the request before any mirror is read
 ```
 
-#### UC-HCS-4: Dispatched-worker sessions are excluded, driving sessions are not
+#### UC-HCS-4: An operator can choose whether history search includes worker sessions
 
-```
-Given the mirror store holds human sessions, dispatched-worker mirrors (is_worker = 1), and orchestrator, task-lane and integrator mirrors
-When a search executes without the worker opt-in
-Then only mirrors with is_worker = 0 are eligible for results
-And a session whose record carries a worker-class role never appears
-And orchestrator, task-lane and integrator sessions are eligible like any human session
-And a session with no record, or a record carrying a role of another class, is eligible rather than excluded
-And the exclusion applies identically to the CLI path and the service search wire path
+```gherkin
+Scenario: Include worker conversations in a history search
+  Given an operator searches history for a term present in a worker conversation
+  When the operator opts to include worker conversations on the local CLI
+  Then matching worker conversations appear alongside other matching conversations
+  And the other search filters continue to apply
 
-Given the caller opts in to worker sessions on the local path
-When a search executes
-Then the is_worker predicate is not applied and worker mirrors are eligible alongside every other mirror
-And every other filter — agent, role band, limit — applies unchanged
+Scenario: Understand worker conversations excluded from results
+  Given an operator searches without worker inclusion
+  And matching conversations include worker and non-worker conversations
+  When the search results are shown
+  Then the operator sees how many worker matches were excluded
+  And no excluded-worker count is shown when no worker matched
 ```
 
 #### Recency ordering and missing-store tolerance
@@ -155,13 +158,6 @@ Scenario Outline: Find conversations within an identity or project
 ```
 
 #### UC-HCS-9: Excluded worker matches are reported, not silently dropped
-
-```
-Given a search without the worker opt-in matches both eligible and dispatched-worker mirrors
-When results are rendered
-Then the excluded worker matches are reported as a count alongside the results
-And the count is omitted when no worker mirror matched
-```
 
 #### UC-HCS-10: Machine output carries both ids explicitly
 
