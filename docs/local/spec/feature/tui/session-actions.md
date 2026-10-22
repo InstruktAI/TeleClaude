@@ -79,7 +79,7 @@ And the view requests no preview for that session
 And the view requests no close for that session
 ```
 
-#### UC-SACT-4: An operator hands an open session to an automatic successor
+#### UC-SACT-4: An operator can request an automatic handoff for an open session
 
 ```gherkin
 Given a human operator selects an open session row in the TUI Sessions view
@@ -90,7 +90,7 @@ And the operator is told which successor was selected and that handoff started
 And a closed session row receives no handoff request
 ```
 
-#### UC-SACT-5: An operator hands off a project's live sessions from a chosen agent
+#### UC-SACT-5: An operator can request handoff for a project's live sessions from a chosen agent
 
 ```gherkin
 Given a human operator selects a project header in the TUI Sessions view

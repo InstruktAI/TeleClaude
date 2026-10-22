@@ -57,9 +57,9 @@ And it states when it happened
 
 ```gherkin
 Scenario: Read a message for a newly introduced event type
-  Given the platform has introduced an event type since message composition was built
-  When a person reads a message about an event of that type
-  Then the message states in plain words what happened, to what, where and when
+  Given a person receives a message about a newly introduced event type
+  When they read the message
+  Then they can understand what happened
 ```
 
 #### UC-NM4: A message reaches the person on their own channel
@@ -75,8 +75,7 @@ And it reaches no one else
 
 ```gherkin
 Scenario: Read a message for an undeclared relayed event
-  Given an external system has relayed an event whose type has no event-catalog declaration
-  When a person reads the event message
-  Then it states in plain words what happened, read from the event's type name
-  And it names the inbound source, the computer where it happened and when it happened
+  Given a person receives a message about an externally relayed event with no catalog declaration
+  When they read the message
+  Then they can understand what happened
 ```

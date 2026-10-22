@@ -25,7 +25,7 @@ The behavioral contract that keeps a permanently multi-version fleet working tog
 - **Removing or breaking a shared shape waits for the slowest node.** A field or behavior the whole fleet relies on may be removed only after every live node — including the slowest channel — no longer needs it.
 - **Capabilities that require agreement refuse rather than guess.** A change that two nodes must agree on to stay safe (a coordination protocol) is not silently bypassed by an unaware node; it holds until both sides support it.
 
-- **Safe removal is decided from the live capability set, not version labels alone.** A shared capability stays until every live node advertises that it no longer needs it.
+- **Safe removal is decided from the live capability set, not version labels alone.** A compatibility behavior stays until every live node positively advertises the feature ID whose support permits its removal. A missing map, empty live set, or any node without that ID leaves removal unsafe.
 
 - **Peer command errors are diagnosed by capability.** If discovery shows the peer lacks a capability carried by the forwarding node, its command error is reported as a possible outdated-build mismatch with a remedy and the original error preserved. If the peer advertises all capabilities carried by the forwarding node, its error is returned unchanged. A version string supplies context; it does not decide the mismatch.
 

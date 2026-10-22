@@ -94,17 +94,6 @@ Scenario: Per-target skill emission is limited to tier-local packages
 
 #### UC-PAT5: Generated artifacts require no external Markdown formatter
 
-Authored-source formatting is owned by `sdlc/policy/linting-requirements`.
-
-```gherkin
-Given committed artifact sources whose required reads can be resolved
-And no external Markdown formatter is available
-When the transpiler renders those sources for publication
-Then the generated artifacts are emitted directly by their target transforms
-And no formatter process or formatter download is started
-And frontmatter serialization, parameter preambles and self-contained entrypoint checks remain effective
-```
-
 ### Cross-context references
 
 - **agent_runtime** — Each downstream agent CLI consumes two TeleClaude
