@@ -145,6 +145,10 @@ activation evidence (`general/policy/human-contract`).
 - The session owner stores bindings; posting consumes their authenticated facts
   and owns provider-object associations under
   `local/projects/teleclaude/spec/feature/integration/github-posting`.
+- Echo classification uses this owner's exact configured App identity together
+  with the verified event action and the canonical sealed/reflected envelope
+  conditions in #124 UC-19. It does not replace the posting owner's recorded
+  association for positive session or state attribution.
 - Workflow owns canonical performer, holder, phase, revision and head decisions
   under `local/projects/teleclaude/spec/feature/workflow/item-lifecycle` and
   `local/projects/teleclaude/spec/feature/workflow/item-acts`.

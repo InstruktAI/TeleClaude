@@ -200,11 +200,24 @@ input; resolving it to a registered person consumes
 Headers, actor names and absent Delivery do not replace these checks
 (`sdlc/policy/ai-agent-security`).
 
-Associations expose source delivery IDs to adapter/mirror consumers for their
-own echo suppression. The mirror owner retains selection, filtering, ordering
-and resume, and the adapter retains webhook event/wake decisions. Posting
-creates neither an internal event nor a session wake from envelope prose
-(`sdlc/policy/domain-ownership`).
+Outbound source Delivery IDs retain their idempotency role and remain distinct
+from GitHub's inbound webhook delivery IDs. Echo qualification follows UC-19:
+verified ingress and current-state reconciliation continue, while only an event
+whose verified actor and action match the exact configured TeleClaude App and
+whose canonical envelope is structurally valid for a sealed/reflected post with
+its mandatory source Delivery suppresses echo-generated conversation, session
+wake and outward mirror/reflection. A native conversational note with
+`Delivery: -` remains eligible under the existing ingress and attribution
+rules. External bot input and human edits or deletions of App-authored objects
+are not discarded because of the object's original author. App identity,
+envelope text or delivery-key text alone does not establish an echo.
+
+The adapter and mirror owners retain their event and effect decisions. Echo
+classification supplies no positive session or workflow-state attribution;
+the recorded provider-object association remains required for those facts. The
+association may still be read for attribution, but echo suppression alone does
+not require a cross-computer association lookup or create an internal event or
+session wake from envelope prose (`sdlc/policy/domain-ownership`, #124 UC-19).
 
 ### Separate sealed transport
 
