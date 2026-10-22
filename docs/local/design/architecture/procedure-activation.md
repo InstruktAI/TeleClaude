@@ -291,6 +291,12 @@ The inbox terminal result `not delivered` is returned by a completed activation 
 
 <!-- /planned:issue-128 -->
 
+<!-- planned:issue-129 -->
+
+**A started driver carries its item's store identity.** Only once the judgment above stands, and only on the path that creates a session for the request, activation reads the item's (`WorkItemId`, `StoreAddress`) pair through the store port (`local/projects/teleclaude/design/architecture/workflow-store`): the identity the request names, and its address from the port's existing address resolution. The read neither adds an input to that judgment nor moves it. An address that resolves to nothing or cannot be read means the request does not stand: it starts nothing, and its activation reaches `not delivered` with the reason `stale request`. Activation passes the pair to session creation in one typed value that only in-daemon producers set; no API, command-line or relayed request supplies it, and it is never derived from origin metadata or the subject token. Activation treats the pair as opaque and infers nothing about the backend; which bindings the creating write requires is the session owner's (`local/projects/teleclaude/spec/feature/identity/platform-github-identity`). A wake creates no session and carries nothing.
+
+<!-- /planned:issue-129 -->
+
 ### Company on a human-directed session
 
 A session created with `--company` operates for that company once

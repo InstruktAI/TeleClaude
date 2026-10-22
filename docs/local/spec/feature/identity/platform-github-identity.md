@@ -45,6 +45,20 @@ evidence, never a remembered authentication verdict. The session owner persists
 the binding through its existing durable records; there is no second session
 registry or role/phase authority (`sdlc/policy/domain-ownership`).
 
+A session created with an item's store identity
+(`local/projects/teleclaude/design/architecture/procedure-activation`) in a
+project whose selected workflow backend is GitHub (#124 INV-B1) requires both
+its actor assignment and its native target. Both commit with the session row
+and its startup handover in the one session-creation write, or nothing commits
+and creation is refused, so restart never finds an unbound startup handover to
+resume. The native target is the GitHub adapter's projection of the project's
+repository identity and the carried (`WorkItemId`, `StoreAddress`) pair
+(`local/projects/teleclaude/design/architecture/workflow-store`, #124 INV-D1);
+it is never formed from a slug or from origin metadata. With a local backend the
+creating write records neither binding. A session's scope is bound once and is
+never rebound. The bound target names no branch or base: an operation that
+needs them receives them in its request, from authoritative workflow state.
+
 ### Credential component
 
 The credential component authenticates the assigned App, resolves its target
