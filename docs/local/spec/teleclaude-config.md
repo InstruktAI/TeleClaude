@@ -9,19 +9,9 @@ visibility: 'public'
 
 The Teleclaude Config surface defines how TeleClaude configuration is initialized and validated across two distinct surfaces:
 
-<!-- planned-change:master-scoped-configuration -->
-
 1. User-facing `teleclaude.yml` files (`GlobalConfig`, `ProjectConfig`, `PersonConfig`)
 2. Daemon runtime `config.yml` loaded by `teleclaude.config`
    These surfaces are related but not interchangeable. Every environment variable backing a machine-config field derives from that field's path, so the config TUI's environment list for those fields follows the schema rather than a separately maintained registry. Variables outside the machine-config schema — the deployment-time home location, and requirements declared by MCP servers or by operator-authored `ungoverned_body` entries — keep their own sources and are still recorded here.
-
-<!-- change:master-scoped-configuration -->
-
-1. User-facing `teleclaude.yml` files (`GlobalConfig`, `ProjectConfig`, `PersonConfig`)
-2. Daemon runtime `config.yml` loaded by `teleclaude.config`
-   These surfaces are related but not interchangeable. Every environment variable backing a machine-config field derives from that field's path, so the config TUI's environment list for those fields follows the schema rather than a separately maintained registry. Each row of that list carries the configuration owner's applicability answer for its field (`local/projects/teleclaude/spec/feature/config/runtime-applicability`), which a client renders rather than derives. Variables outside the machine-config schema — the deployment-time home location, and requirements declared by MCP servers or by operator-authored `ungoverned_body` entries — keep their own sources and are still recorded here.
-
-<!-- /planned-change:master-scoped-configuration -->
 
 ### One filename, four tiers
 
