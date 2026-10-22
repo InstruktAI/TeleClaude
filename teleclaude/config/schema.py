@@ -20,7 +20,7 @@ from teleclaude.config.field_constraints import (
     refuse_unmet_requirements,
     refuse_violations,
 )
-from teleclaude.config.github_schema import PersonGitHubConfig
+from teleclaude.config.github_schema import GlobalGitHubConfig, PersonGitHubConfig
 from teleclaude.config.identity_schema import CompanyMember, PersonEntry
 from teleclaude.config.project_models import CapabilityConfig, TodoStoreConfig
 from teleclaude.config.tiers import Tier
@@ -832,6 +832,7 @@ class GlobalConfig(TierDocument):
     interests: list[str] = []
     checkout_root: str | None = Field(default=None, json_schema_extra={"tier": Tier.INTERNAL})
     hooks: GlobalHooksConfig = GlobalHooksConfig()
+    github: GlobalGitHubConfig = Field(default_factory=GlobalGitHubConfig)
 
     @field_validator("jobs")
     @classmethod

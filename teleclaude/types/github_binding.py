@@ -7,6 +7,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from teleclaude.closed_model import ClosedModel
 from teleclaude.core.roles import RoleName
 from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
 
@@ -37,7 +38,7 @@ class GitHubWorkTarget(BaseModel):
         return value
 
 
-class GitHubActorAssignment(BaseModel):
+class GitHubActorAssignment(ClosedModel):
     """Public App/account facts fixed for one bound session."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")

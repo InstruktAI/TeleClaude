@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from teleclaude.closed_model import ClosedModel
 
 
 class GitHubAccountKind(StrEnum):
@@ -15,10 +17,10 @@ class GitHubAccountKind(StrEnum):
     ORGANIZATION = "Organization"
 
 
-class GitHubAccount(BaseModel):
+class GitHubAccount(ClosedModel):
     """Stable provider identity; login is presentation and lookup input."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     id: int = Field(gt=0, strict=True)
     node_id: str = Field(min_length=1)

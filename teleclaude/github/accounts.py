@@ -11,7 +11,7 @@ from githubkit.auth.token import TokenAuthStrategy
 from githubkit.exception import GitHubException, RateLimitExceeded
 from githubkit.github import GitHub
 
-from teleclaude.types.github_account import GitHubAccount
+from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
 
 _LOOKUP_REFUSED = "Authenticated GitHub account lookup could not be verified"
 _EMPTY = ""
@@ -57,7 +57,13 @@ class GitHubAccountDirectory:
             response = await self._client.rest.users.async_get_by_username(quote(handle, safe=_EMPTY))
             if response.status_code != 200:
                 raise GitHubAccountLookupRefused(_LOOKUP_REFUSED)
-            account = GitHubAccount.model_validate(response.json())
+            provider = response.parsed_data
+            account = GitHubAccount(
+                id=provider.id,
+                node_id=provider.node_id,
+                login=provider.login,
+                type=GitHubAccountKind(provider.type),
+            )
         except RateLimitExceeded as error:
             raise GitHubAccountLookupRefused(_LOOKUP_REFUSED, rate_limit=GitHubRateLimitFacts.from_sdk(error)) from None
         except (GitHubException, ValueError):

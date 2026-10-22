@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from asyncio import timeout
+from asyncio import timeout, to_thread
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -19,6 +19,7 @@ from instrukt_ai_logging import get_logger
 from jwt.exceptions import PyJWTError
 from pydantic import SecretStr
 
+from teleclaude.config.loader import GitHubAppKeyFailure, GitHubAppKeyRefused, resolve_github_app_private_key
 from teleclaude.github.accounts import GitHubAccountDirectory, GitHubAccountLookupRefused, GitHubRateLimitFacts
 from teleclaude.types.github_binding import GitHubActorAssignment, GitHubWorkTarget
 
@@ -52,10 +53,17 @@ class GitHubCredentialFailure(StrEnum):
 class GitHubCredentialRefused(RuntimeError):
     """No credential may be forwarded to a provider child."""
 
-    def __init__(self, reason: GitHubCredentialFailure, *, rate_limit: GitHubRateLimitFacts | None = None) -> None:
+    def __init__(
+        self,
+        reason: GitHubCredentialFailure,
+        *,
+        rate_limit: GitHubRateLimitFacts | None = None,
+        key_failure: GitHubAppKeyFailure | None = None,
+    ) -> None:
         super().__init__(reason)
         self.reason = reason
         self.rate_limit = rate_limit
+        self.key_failure = key_failure
 
 
 @dataclass(frozen=True)
@@ -116,23 +124,20 @@ async def issue_github_installation_credential(
     assignment: GitHubActorAssignment,
     target: GitHubWorkTarget,
     permissions: AppPermissionsType,
-    *,
-    private_key: SecretStr,
 ) -> GitHubInstallationCredential:
-    """Consume owner-selected facts/key and verify SDK issuance before child token export.
+    """Consume owner-selected facts and the config-owned key before verified token export.
 
     The trusted composition calls this only after invocation/operation admission.
     No argument is an actor selector at a native command boundary. This component
-    does not resolve protected key references or replace their configuration owner.
+    asks only config for the recorded App's SecretStr, never a caller-selected reference.
     """
     cache = MemCacheStrategy()
     try:
-        if not private_key.get_secret_value():
-            raise GitHubCredentialRefused(GitHubCredentialFailure.KEY_UNAVAILABLE)
         requested = deepcopy(permissions)
         requested_permissions = _permission_values(AppPermissions.model_validate(requested))
         if not requested_permissions:
             raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
+        private_key = await to_thread(resolve_github_app_private_key, assignment)
         async with (
             timeout(_OPERATION_TIMEOUT_SECONDS),
             GitHub(
@@ -197,6 +202,9 @@ async def issue_github_installation_credential(
                 assignment=assignment,
                 target=target,
             )
+    except GitHubAppKeyRefused as error:
+        logger.warning(_REFUSAL_LOG, GitHubCredentialFailure.KEY_UNAVAILABLE, assignment.app_id, target.repository_id)
+        raise GitHubCredentialRefused(GitHubCredentialFailure.KEY_UNAVAILABLE, key_failure=error.reason) from None
     except GitHubCredentialRefused as error:
         logger.warning(_REFUSAL_LOG, error.reason, assignment.app_id, target.repository_id)
         raise

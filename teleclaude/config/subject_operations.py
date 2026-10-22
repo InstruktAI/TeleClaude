@@ -41,7 +41,7 @@ from teleclaude.config.effective_view import (
 )
 from teleclaude.config.field_edit import apply_reference_edit, compile_field_edit
 from teleclaude.config.jobs import plan_job_subscription
-from teleclaude.config.loader import load_global_config
+from teleclaude.config.loader import load_global_config, update_global_environment
 from teleclaude.config.machine import config
 from teleclaude.config.operation_answers import (
     EditorFieldAnswer,
@@ -114,7 +114,7 @@ from teleclaude.invite import (
     invite_person,
     render_help_desk_links,
 )
-from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, ConfigFileName
+from teleclaude.paths import PROJECT_ENV_PATH
 from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.project_setup.init_flow import (
     CompanyHomeDestination,
@@ -700,7 +700,7 @@ def _set_environment_value(request: ConfigRequest, environment: ConfigEnvironmen
             write_environment_value(PROJECT_ENV_PATH, key, value)
             os.environ[key] = value  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
         case ConfigEnvironment.GLOBAL:
-            write_environment_value(GLOBAL_CONFIG_PATH.with_name(ConfigFileName.ENV), key, value)
+            update_global_environment(key, value)
         case ConfigEnvironment.PERSON:
             assert request.instance is not None
             replace_person_mcp_secret(request.instance, key, value)
@@ -712,7 +712,7 @@ def _clear_environment_value(request: ConfigRequest, environment: ConfigEnvironm
             mutate_environment_value(PROJECT_ENV_PATH, key, None)
             os.environ.pop(key, None)  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
         case ConfigEnvironment.GLOBAL:
-            mutate_environment_value(GLOBAL_CONFIG_PATH.with_name(ConfigFileName.ENV), key, None)
+            update_global_environment(key, None)
         case ConfigEnvironment.PERSON:
             assert request.instance is not None
             clear_person_mcp_secret(request.instance, key)

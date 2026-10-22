@@ -15,7 +15,8 @@ LOCK_SUFFIX: Final = ".lock"
 _TEMPORARY_PREFIX: Final = "."
 _TEMPORARY_SUFFIX: Final = ".tmp"
 _TEMPORARY_SEPARATOR: Final = "."
-_READ_WRITE_MODE: Final = "r+"
+_WRITE_MODE: Final = "w"
+_OWNER_ONLY_MODE: Final = 0o600
 _LOCK_MODE: Final = "a+"
 _UTF8: Final = "utf-8"
 
@@ -41,11 +42,13 @@ class FileTransaction:
             f"{_TEMPORARY_PREFIX}{self.path.name}{_TEMPORARY_SEPARATOR}{uuid4().hex}{_TEMPORARY_SUFFIX}"
         )
         try:
-            temporary.write_text(content, encoding=encoding)
             target_mode = stat.S_IMODE(self.path.stat().st_mode) if self.path.exists() else creation_mode
-            if target_mode is not None:
-                temporary.chmod(target_mode)
-            with temporary.open(_READ_WRITE_MODE, encoding=encoding) as handle:
+            if target_mode is not None and not target_mode & (stat.S_IRWXG | stat.S_IRWXO):
+                temporary.touch(mode=_OWNER_ONLY_MODE, exist_ok=False)
+            with temporary.open(_WRITE_MODE, encoding=encoding) as handle:
+                handle.write(content)
+                if target_mode is not None:
+                    temporary.chmod(target_mode)
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary, self.path)
