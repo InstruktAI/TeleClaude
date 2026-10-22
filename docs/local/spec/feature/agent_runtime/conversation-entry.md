@@ -419,7 +419,7 @@ Then no session is created
 And the person receives the neutral reply
 ```
 
-#### UC-CE22
+#### UC-CE22: A registered member at a desk is confined like a customer
 
 #### UC-CE23: Master routing begins at the cutover and never runs beside per-computer handling
 

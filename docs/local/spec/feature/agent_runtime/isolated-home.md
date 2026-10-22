@@ -56,7 +56,7 @@ Then it operates on the live home as it does outside the worktree
 And the worktree home does not replace the live platform environment
 ```
 
-#### UC-IAH6:
+#### UC-IAH6: Checkout grading uses the worktree's home
 
 #### UC-IAH7: A missing worktree home is refused
 
