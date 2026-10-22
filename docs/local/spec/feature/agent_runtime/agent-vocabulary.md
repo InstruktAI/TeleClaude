@@ -69,8 +69,14 @@ Then it runs with that agent and platform surfaces identify it by its canonical 
 #### UC-AV-3: Setup recognizes every supported runtime
 
 ```gherkin
-Given the canonical supported-agent vocabulary contains an enabled runtime
-When an agent or operator runs installation or runner setup
-Then the runtime is included in the applicable installation and prerequisite checks
-And an unusable runtime is surfaced before managed work is dispatched to it
+Scenario Outline: Check readiness before managed work
+  Given an operator has enabled a supported agent runtime
+  When the operator runs <setup>
+  Then the operator learns whether the runtime is ready for managed work
+  And an unusable runtime is reported before work is dispatched to it
+
+Examples:
+  | setup |
+  | installation |
+  | runner setup |
 ```
