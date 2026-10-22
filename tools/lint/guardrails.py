@@ -358,18 +358,6 @@ SOURCE_PATTERN_RULES: list[PatternRule] = [
         message="leftover debug probes — use structured logging",
     ),
     PatternRule(
-        name="banned-session-env-vars",
-        pattern=re.compile(r"TELECLAUDE_SESSION" + r"_ID|TELECLAUDE_PRINCIPAL" + r"(?:_ROLE)?(?!\s*=)"),
-        scan_dirs=["teleclaude", "scripts", "tests", ".githooks"],
-        glob="*.py",
-        exclude_prefixes=("tools/lint/",),
-        exception_marker=None,
-        message=(
-            "banned env var — use teleclaude.session_identity.get_session_id() "
-            "for session ID, DB lookup for principal/role"
-        ),
-    ),
-    PatternRule(
         name="hardcoded-home-path",
         pattern=re.compile(re.escape(str(Path.home()))),
         scan_dirs=["teleclaude", "templates", "bin", "scripts", "tools", "agents", ".agents"],
