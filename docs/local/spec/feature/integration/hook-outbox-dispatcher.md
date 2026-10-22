@@ -41,6 +41,12 @@ events bypass capacity throttling and reserve queue slots), and
 exceeds the high watermark; resumes only after drainage past the low
 watermark).
 
+Settlement distinguishes retryable failures, which are deferred for another
+attempt, from non-retryable failures, which are logged and dropped. An
+unknown-session event other than an authorized agent-session-start is ignored
+and settled successfully; a shutdown refusal leaves the entry pending for
+retry.
+
 ## Canonical fields
 
 ### Use cases
