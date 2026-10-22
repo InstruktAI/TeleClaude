@@ -46,8 +46,9 @@ def require_caller_continuity(
 ) -> None:
     """Check every existing-row return without rewriting its immutable submission identity."""
     remote = any(value is not None and value != config.computer.name for value in (computer, operation.caller_computer))
+    # Legacy local receipts retain their old address-based dedupe; absence never becomes a stored principal.
     if (
-        operation.caller_principal != principal
+        ((remote or operation.caller_principal is not None) and operation.caller_principal != principal)
         or operation.caller_computer != computer
         or operation.caller_session_id != session_id
         or (remote and (not principal or not operation.caller_principal))
