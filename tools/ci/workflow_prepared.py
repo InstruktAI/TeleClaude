@@ -1691,6 +1691,7 @@ def run_prepared(
         creation.enter_project(observer, project)
         prepared.start_b9_outsiders()
         author_case, author, child = prepared.step1_driver()
+        creation.require_b14_kickback(observer, TELEC, ITEM, creation.B14Case.HELD_PREPARATION, holder=author)
         prepared.b9_positive_input(child)
         r0, r1 = prepared.step2_move(author, child)
         prepared.b9_wrong_performers(author, child, r1)
@@ -1698,9 +1699,18 @@ def run_prepared(
         prepared.close_b9_outsiders()
         prepared.step4_prepared(author, child, r1)
         prepared.step5_end_author(author_case, author)
+        creation.require_b14_kickback(
+            observer,
+            TELEC,
+            ITEM,
+            creation.B14Case.PREPARED_UNCLAIMED,
+            starts=prepared.starts,
+            open_start_value=publication.START_OPEN,
+        )
         r2 = prepared.step6_moved_refuses_work(r0, r1)
         prepared.step7_restore(r1)
         worker_case, worker = prepared.step8_work(author, child)
+        creation.require_b14_kickback(observer, TELEC, ITEM, creation.B14Case.HELD_WORK, holder=worker)
         prepared.step9_close(worker_case, worker)
         event_seal = events.append_case(
             event_binding,

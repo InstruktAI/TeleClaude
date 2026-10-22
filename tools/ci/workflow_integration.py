@@ -430,6 +430,14 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
         _verify_staged(flow, integration, base, cast(list[flow_module.JsonValue], evidence["staged_git"]))
         sessions = flow.observer.sessions().ids
         _refused_work(flow, admitted, sessions)
+        creation.require_b14_kickback(
+            flow.observer,
+            TELEC,
+            flow_module.ITEM,
+            creation.B14Case.ADMITTED,
+            commit=candidate,
+            expected_item=admitted,
+        )
         flow.gate(actor, "go_commit")
         commit_frame = _frame_success(flow, actor, "commit_int", evidence=evidence)
         del commit_frame
@@ -492,6 +500,13 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
         workflow_events.set_case_status(flow.event_window, "B6", "complete")
         _verify_retired_v1_and_cleanup(
             flow, delivered, main_head, cast(flow_module.MutableJson, evidence["retired_cleanup"])
+        )
+        creation.require_b14_kickback(
+            flow.observer,
+            TELEC,
+            flow_module.ITEM,
+            creation.B14Case.DELIVERED,
+            commit=main_head,
         )
         _end(flow, actor)
         flow.sessions[actor] = ROLE_INTEGRATOR

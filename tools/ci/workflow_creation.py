@@ -349,6 +349,44 @@ class B12Field(StrEnum):
     PRECALL_DIFFERENCES = "precall_differences"
 
 
+class B14Case(StrEnum):
+    """Approved later-parent door checkpoints; the held startup and stale-work bindings are excluded."""
+
+    HELD_PREPARATION = "held-preparation"
+    HELD_WORK = "held-work"
+    PREPARED_UNCLAIMED = "prepared-unclaimed"
+    READY_UNCLAIMED = "ready-unclaimed"
+    ADMITTED = "admitted"
+    DELIVERED = "delivered"
+
+
+class B14Token(StrEnum):
+    """Exact snapshot substitutions supplied by the parent's independent earlier evidence."""
+
+    HOLDER = "{{b14:holder}}"
+    ADMITTED8 = "{{b14:admitted8}}"
+    DELIVERED12 = "{{b14:delivered12}}"
+
+
+B14_REASON: Final = "b14 door"
+B14_CALL_TAIL: Final = (KICKBACK_FLAG, REASON_OPTION, B14_REASON)
+B14_COMMAND_LENGTH: Final = 7
+B14_SNAPSHOT_PREFIX: Final = "b14-"
+B14_TOKEN_PREFIX: Final = "{{b14:"
+B14_FIELD_HELD: Final = "held_by"
+B14_FIELD_ADMITTED: Final = "admitted"
+B14_FIELD_COMMIT: Final = "commit"
+B14_FIELD_READY_COMMIT: Final = "ready_at_commit"
+B14_FIELD_DELIVERED_COMMIT: Final = "delivered_commit"
+B14_FIELD_STAGE: Final = "stage"
+B14_PHASE_WORK: Final = "work"
+B14_PHASE_READY: Final = "ready"
+B14_PHASE_PREPARED: Final = "prepared"
+B14_PHASE_DELIVERED: Final = "delivered"
+B14_DETAIL_BINDING: Final = "{case}: approved before facts do not hold: {item!r}"
+B14_DETAIL_CHANGED: Final = "{case}: retired kickback changed the public item at {paths}"
+
+
 RETIRED_SNAPSHOT_DIRECTORY: Final = "snapshots"
 RETIRED_SNAPSHOT_PREFIX: Final = "retired-output-"
 RETIRED_SNAPSHOT_SUFFIX: Final = ".txt"
@@ -515,7 +553,9 @@ def normalized(output: str) -> str:
     return SPACE.join(output.split())
 
 
-def retired_snapshot_state(snapshot_id: str, output: str) -> RetiredSnapshotState:
+def retired_snapshot_state(
+    snapshot_id: str, output: str, substitutions: Mapping[str, str] | None = None
+) -> RetiredSnapshotState:
     """Compare one complete emitted string after only PTY line-ending and controller-separator normalization."""
     snapshot_path = (
         Path(__file__).parent
@@ -526,6 +566,13 @@ def retired_snapshot_state(snapshot_id: str, output: str) -> RetiredSnapshotStat
         expected = snapshot_path.read_text(encoding=B12_UTF8)
     except FileNotFoundError:
         return RetiredSnapshotState.MISSING
+    if substitutions is not None:
+        for token, value in substitutions.items():
+            if token not in B14Token or not value or expected.count(token) != 1:
+                return RetiredSnapshotState.MISMATCH
+            expected = expected.replace(token, value)
+    if B14_TOKEN_PREFIX in expected:
+        return RetiredSnapshotState.MISMATCH
     observed = output.replace(B12_CARRIAGE_RETURN_LINE_ENDING, B12_LINE_ENDING)
     if observed.endswith(B12_LINE_ENDING):
         observed = observed[:-1]
@@ -1012,6 +1059,103 @@ def _control_clearance(observer: Observer) -> None:
     outcome = _stamp(observer, SLUG_FEATURE, BUILD_STARTED_FLAG)
     _require_completed_refusal(outcome, RETIRED_SNAPSHOT_R4_CLEARANCE)
     _require_retired_snapshot(RETIRED_SNAPSHOT_R4_CLEARANCE, RETIRED_SNAPSHOT_R4_CLEARANCE, outcome.output)
+
+
+def require_b14_kickback(
+    observer: Observer,
+    executable: str,
+    slug: str,
+    case: B14Case,
+    *,
+    holder: str = EMPTY,
+    commit: str = EMPTY,
+    expected_item: Mapping[str, object] | None = None,
+    starts: Mapping[str, str] | None = None,
+    open_start_value: str = EMPTY,
+) -> None:
+    """Check one approved parent checkpoint, one public refusal, and immediate item/session equality."""
+    before = observer.show(slug)
+    sessions = observer.sessions()
+    state = before.get(FIELD_STATE) if before is not None else None
+    standing = before.get(FIELD_STANDING) if before is not None else None
+    if before is None or not isinstance(state, Mapping) or not isinstance(standing, Mapping):
+        raise binding_failure(B14_DETAIL_BINDING.format(case=case.value, item=before))
+    substitutions: dict[str, str] = {}
+    valid = FIELD_RUNNER in state
+    if case in (B14Case.HELD_PREPARATION, B14Case.HELD_WORK):
+        phase = PHASE_PREPARATION if case is B14Case.HELD_PREPARATION else B14_PHASE_WORK
+        valid = (
+            valid
+            and state.get(FIELD_PHASE) == phase
+            and standing.get(FIELD_STANDING_PHASE) == phase
+            and bool(holder)
+            and state.get(FIELD_RUNNER) == standing.get(B14_FIELD_HELD) == holder
+            and holder in sessions.ids
+            and holder not in sessions.closed
+        )
+        substitutions[B14Token.HOLDER] = holder
+    elif case is B14Case.PREPARED_UNCLAIMED:
+        valid = (
+            valid
+            and state.get(FIELD_PHASE) == standing.get(FIELD_STANDING_PHASE) == B14_PHASE_PREPARED
+            and state.get(FIELD_RUNNER) in (None, EMPTY)
+            and not standing.get(B14_FIELD_HELD)
+            and not standing.get(B14_FIELD_ADMITTED)
+            and starts is not None
+            and bool(open_start_value)
+            and open_start_value not in starts.values()
+        )
+    elif case is B14Case.READY_UNCLAIMED:
+        valid = (
+            valid
+            and standing.get(FIELD_STANDING_PHASE) == B14_PHASE_READY
+            and state.get(FIELD_RUNNER) in (None, EMPTY)
+            and not standing.get(B14_FIELD_HELD)
+            and not standing.get(B14_FIELD_ADMITTED)
+            and bool(commit)
+            and standing.get(B14_FIELD_READY_COMMIT) == commit
+            and expected_item is not None
+            and before == expected_item
+        )
+    elif case is B14Case.ADMITTED:
+        admitted = standing.get(B14_FIELD_ADMITTED)
+        valid = (
+            valid
+            and state.get(FIELD_PHASE) == B14_PHASE_READY
+            and state.get(FIELD_RUNNER) in (None, EMPTY)
+            and isinstance(admitted, Mapping)
+            and bool(commit)
+            and admitted.get(B14_FIELD_COMMIT) == commit
+            and expected_item is not None
+            and before == expected_item
+        )
+        substitutions[B14Token.ADMITTED8] = commit[:8]
+    elif case is B14Case.DELIVERED:
+        roadmap = before.get(FIELD_ROADMAP)
+        valid = (
+            before.get(B14_FIELD_STAGE) == B14_PHASE_DELIVERED
+            and isinstance(roadmap, Mapping)
+            and roadmap.get(FIELD_STATUS) == B14_PHASE_DELIVERED
+            and bool(commit)
+            and roadmap.get(B14_FIELD_DELIVERED_COMMIT) == commit
+        )
+        substitutions[B14Token.DELIVERED12] = commit[:12]
+    if not valid:
+        raise binding_failure(B14_DETAIL_BINDING.format(case=case.value, item=before))
+    outcome = observer.run((executable, TODO, STAMP, slug, *B14_CALL_TAIL))
+    _require_completed_refusal(outcome, case.value)
+    after = observer.show(slug)
+    now = observer.sessions()
+    changed = differences(before, after)
+    if changed:
+        raise platform_failure(B14_DETAIL_CHANGED.format(case=case.value, paths=changed))
+    require_sessions_equal(sessions, now, case.value)
+    snapshot_id = B14_SNAPSHOT_PREFIX + case.value
+    snapshot_state = retired_snapshot_state(snapshot_id, outcome.output, substitutions or None)
+    if snapshot_state is RetiredSnapshotState.MISSING:
+        raise trace_failure(DETAIL_SNAPSHOT_MISSING.format(case=snapshot_id))
+    if snapshot_state is not RetiredSnapshotState.MATCH:
+        raise trace_failure(DETAIL_SNAPSHOT_MISMATCH.format(case=snapshot_id))
 
 
 def _require_completed_refusal(outcome: Outcome, case: str) -> None:

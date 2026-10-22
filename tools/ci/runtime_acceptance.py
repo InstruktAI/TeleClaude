@@ -1837,6 +1837,13 @@ def _capture_scenario(
     except Exception as exc:
         status = ScenarioStatus.FAILED
         diagnostics = resources.sanitize(f"{type(exc).__name__}: {exc}")[:_DIAGNOSTIC_LIMIT]
+    b14_calls = tuple(
+        index
+        for index, command in enumerate(evidence)
+        if len(command.argv) == creation.B14_COMMAND_LENGTH
+        and tuple(command.argv[1:3]) == (creation.TODO, creation.STAMP)
+        and tuple(command.argv[-3:]) == creation.B14_CALL_TAIL
+    )
     return ScenarioResult(
         scenario_id=scenario_id,
         status=status,
@@ -1853,6 +1860,7 @@ def _capture_scenario(
                 )
             )
             or scenario_id == _SCENARIO_WORKFLOW_RETIRED_ACTS
+            or any(abs(index - call_index) <= 2 for call_index in b14_calls)
             else replace(command, stdout=_EMPTY)
             for index, command in enumerate(evidence)
         ),

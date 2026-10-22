@@ -66,6 +66,7 @@ FINDING_DOOR: Final = "is ready, which"
 FINDING_WORK: Final = "is ready: it is worked on only with a stated reason, from a session"
 FINDING_RELEASE: Final = "a held ready item is released with the key of the instruction you received"
 FINDING_STALE: Final = "a reason was noted after the instruction you hold"
+B14_CANDIDATE_FIELD: Final = "C3"
 DETAIL_MANIFEST: Final = "B7 did not receive the approved B5 handover"
 DETAIL_ROLELESS: Final = "roleless session {session} did not match its exact message-key launch: {record!r}"
 DETAIL_REASON: Final = "reason operation {operation} ended {state!r}: {error!r}"
@@ -313,7 +314,7 @@ def _allow_integrator_delta(
 
 def _owner_preflight(
     flow: flow_module.WorkflowFlow,
-) -> tuple[creation.SessionView, Mapping[str, object], int, list[tuple[str, str]]]:
+) -> tuple[creation.SessionView, Mapping[str, object], int, list[tuple[str, str]], str]:
     manifest = flow.verify_manifest()
     if manifest.get("last_completed_case") != flow_module.SFC_CHAIN_B5:
         raise creation.binding_failure(DETAIL_MANIFEST)
@@ -345,7 +346,10 @@ def _owner_preflight(
     )
     if flow.item() != item:
         _fail("B7 owner-terminal refusals changed the preflight show snapshot")
-    return baseline, item, prior_claims, _public_log(item)
+    candidate = manifest.get(B14_CANDIDATE_FIELD)
+    if not isinstance(candidate, str) or not candidate:
+        raise creation.binding_failure(DETAIL_MANIFEST)
+    return baseline, item, prior_claims, _public_log(item), candidate
 
 
 def _actor_delta(
@@ -574,7 +578,15 @@ def run_b7(flow: flow_module.WorkflowFlow) -> None:
         if flow.event_window is None or flow.event_case_seal is None:
             raise creation.binding_failure(DETAIL_MANIFEST)
         workflow_events.verify_case(flow.event_window, "B5", flow.event_case_seal)
-        baseline, s_pre, k_pre, pre_log = _owner_preflight(flow)
+        baseline, s_pre, k_pre, pre_log, b14_candidate = _owner_preflight(flow)
+        creation.require_b14_kickback(
+            flow.observer,
+            TELEC,
+            flow_module.ITEM,
+            creation.B14Case.READY_UNCLAIMED,
+            commit=b14_candidate,
+            expected_item=s_pre,
+        )
         first, second, _w4_baseline = _roleless_pair(flow, baseline)
         w4, first_note, first_key, result, reasonone_credit, initial = _claim_held_ready(
             flow, first, second, baseline, k_pre, pre_log, before_item=s_pre
