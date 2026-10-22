@@ -111,6 +111,16 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Retain existing native daemon logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: runtime-daemon-logs-${{ github.sha }}
+          path: ~/.local/state/instrukt-ai/teleclaude/teleclaude.log*
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30
+
   dependabot-auto-merge:
     name: Dependabot auto-merge
     needs: [lint-test, runtime-acceptance]
