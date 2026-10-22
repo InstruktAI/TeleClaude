@@ -87,6 +87,9 @@ the session visible and eligible for a later lookup.
 2. Bind declared parameters once under
    `general/spec/snippet-authoring-schema`, preserving raw arguments. Missing
    required arguments and surplus tokens refuse before session creation.
+   Each refusal identifies its cause: an unresolved procedure names the
+   procedure and gap, a missing required parameter is named, surplus arguments
+   are identified, and a retired command name is refused as unknown.
 3. Resolve the declared role and the caller's dispatch privilege through the
    catalog. Reading a dependency never adopts its declared role.
 4. Resolve agent preference and thinking mode through the shared dispatch
