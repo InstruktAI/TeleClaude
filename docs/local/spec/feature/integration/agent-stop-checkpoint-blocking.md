@@ -33,9 +33,11 @@ session identifier, selected transcript path, and `address_source` (`hook` or
 `session_row`).
 
 The engine is gated by flag markers, session-scoped unless stated otherwise:
-a turn-scoped **clear flag** skips checkpoints for the current turn and is
-hard-cleared at the next user-prompt-submit; turn scoping prevents ordinary
-file-change checkpoints from re-firing after a checkpoint has been delivered;
+a turn-scoped **clear flag** skips checkpoints for the current turn and clears
+the per-turn recheck latch so later re-enablement can work. The clear flag and
+recheck latch are consumed at the next non-system user-prompt-submit; turn
+scoping prevents ordinary file-change checkpoints from re-firing after a
+checkpoint has been delivered;
 a fixed-name **authored main commit
 marker** is recorded when this session commits **code** on `main` through
 the sealed `telec code commit` path and triggers only the post-commit
@@ -105,6 +107,12 @@ data, such as message text or the content of a file written elsewhere, is not
 written by it and raises no question. Paths the session wrote through its edit
 tools need no question; they are declared when the call succeeds.
 
+Without a turn-start anchor, the stop is not blocked. If evaluation fails before
+establishing a complete action set, it produces no block and does not mark the
+cycle checked. A worktree session resolves path and branch scope against the
+checkout named by its recorded worktree subdirectory. A sealed commit after the
+last relevant edit satisfies the commit obligation for those changes.
+
 ## Canonical fields
 
 ### Use cases
@@ -129,25 +137,7 @@ And the receiver emits the block decision and exits cleanly BEFORE enqueueing th
 
 #### UC-CP2: Turn-scoped clear flag skips checkpoint for the current turn
 
-```gherkin
-Given the session-scoped checkpoint clear flag is set
-When the checkpoint pre-emit step runs
-Then the per-turn recheck flag is cleared so a future re-enable can re-arm checkpoints cleanly
-And a "checkpoint skipped (clear flag)" info log emits
-And the checkpoint pre-emit returns no decision
-And the receiver enqueues the agent-stop event normally without emitting a block response
-(The clear flag is itself hard-cleared at the next user-prompt-submit, so the skip lasts one turn only.)
-```
-
 #### UC-CP3: No turn start → no checkpoint
-
-```gherkin
-Given the session row has neither a last user message timestamp nor a last checkpoint timestamp
-When the turn-start resolver returns nothing
-Then the checkpoint pre-emit step logs "checkpoint skipped (no turn start)" at debug
-And returns no decision
-And the receiver proceeds to enqueue the agent-stop event
-```
 
 #### UC-CP4: No turn-local changes → no checkpoint
 
@@ -162,15 +152,6 @@ And the agent-stop event enqueues normally
 ```
 
 #### UC-CP5: Turn-scoped markers cleared on new user prompt
-
-```gherkin
-Given a checkpoint fired earlier in this turn and set the per-turn recheck flag
-And the turn may carry a set clear flag
-When a new user-prompt-submit hook arrives that is NOT system-injected
-Then the per-turn recheck flag is consumed
-And the turn-scoped clear flag is consumed
-And the next agent-stop in the new turn may fire a fresh checkpoint
-```
 
 #### UC-CP5A: Main-branch post-commit review action follows code authorship
 
@@ -252,35 +233,9 @@ Then it short-circuits before the heuristic engine runs and the agent-stop event
 
 #### UC-CP7: Evaluation failure does not synthesize a checkpoint
 
-```gherkin
-Given checkpoint evaluation fails before it establishes a complete set of required maintenance actions
-When the engine's outer guard catches the failure
-Then the failure is recorded through the structured logging boundary
-And the engine returns no checkpoint reason
-And no checkpoint-seen entry is recorded for that failed evaluation
-And no generic or exception-derived instruction is displayed
-And the receiver proceeds to enqueue the agent-stop event normally
-```
-
 #### UC-CP8: Worktree subdir resolution for branch detection
 
-```gherkin
-Given the session's subdirectory marks it as a worktree session
-When the checkpoint project-path resolver runs
-Then it composes the project path with the worktree subdirectory into a single working path
-And the heuristic engine runs branch detection against the worktree, not the repo root
-```
-
 #### UC-CP9: Recorded edits with pending commit evidence require the commit step
-
-```gherkin
-Given an agent session has turn-local file changes that owe no maintenance actions
-And the runtime records edits to those files in the current checkpoint cycle
-And the working tree carries uncommitted changes
-And the cycle contains no commit evidence after the last recorded edit
-When the checkpoint evaluates the agent-stop boundary
-Then the agent receives a checkpoint requiring the commit step
-```
 
 #### UC-CP10: Code categories with no per-category action
 
