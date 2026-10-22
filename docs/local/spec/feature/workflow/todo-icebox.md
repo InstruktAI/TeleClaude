@@ -27,18 +27,18 @@ The icebox is distinct from soft removal. Freeze preserves the live entry in a r
 
 #### UC-ICE-FRZ: Park active work for later
 
-```
-Given an active todo "deferred-feature" has state, artifacts, and dependency edges
-When the operator runs "telec todo freeze deferred-feature"
-Then the todo is parked in the icebox and no longer appears in the default list or active dispatch
-And its state, artifacts, and dependency edges remain intact for later resumption
-```
-
 ```gherkin
-Given no todo in the project has slug "missing-slug"
-When the operator runs "telec todo freeze missing-slug"
-Then no todo is changed
-And the command reports "Slug not found in todo list: missing-slug" and exits non-zero
+Scenario: Park active work for later
+  Given an active todo "deferred-feature" has state, artifacts, and dependency edges
+  When the operator runs "telec todo freeze deferred-feature"
+  Then the todo is parked in the icebox and no longer appears in the default list or active dispatch
+  And its state, artifacts, and dependency edges remain intact for later resumption
+
+Scenario: Refuse a missing slug
+  Given no todo in the project has slug "missing-slug"
+  When the operator runs "telec todo freeze missing-slug"
+  Then no todo is changed
+  And the command reports "Slug not found in todo list: missing-slug" and exits non-zero
 ```
 
 #### UC-ICE-LIST: Find parked work in the todo list
