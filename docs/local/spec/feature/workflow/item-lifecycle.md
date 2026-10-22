@@ -92,6 +92,8 @@ The machine is called through the verbs that prepare and work an item. Called by
 
 An entry verb of this lifecycle machine applied to a todo of kind task refuses naming the task lane and writes nothing, and so does a phase-changing or holder-dependent act, including release by a holder; the note act and the create verb are not refused.
 
+A work start from `prepared` is admitted only while the intent body is at the revision the prepared act named (#124 INV-S3). The check runs in the write that reserves the start, again immediately before the effect that creates or wakes the work driver, and again in the driver's claim. A mismatch, or a body that cannot be read, prevents the start: no work driver is created or woken, the start's reservation is cleared, and the item stays `prepared` for preparation to recover. The refusal is recorded, naming both revisions or the unreadable cause.
+
 The driver a verb starts claims by presenting the reservation it was started for; a claim without it, or with another, is refused. Called by the holding driver, a verb returns the instruction for the phase: the phase and claim, the child procedure to dispatch with its arguments and launch defaults when no live child exists, the acts that end the phase with the phase each leads to, and the reminders and formatting the lifecycle already carries. The commands that perform the acts, start the child and return these results are `local/projects/teleclaude/spec/feature/workflow/item-acts`.
 
 ### Returning a ready item to preparation
@@ -241,6 +243,7 @@ When a surface starts work
 Then the claim moves to one work driver session and the item is in work
 And a claim note names the session and the branch, whose names derive from the item identity
 But if the intent body is no longer at R work is refused naming both revisions and the item is unchanged
+And if the intent body leaves R, or cannot be read, after the start is reserved and before the work driver is created or woken, no work driver is created or woken, the start's reservation is cleared and the item stays prepared
 ```
 
 #### UC-IL8: Kickback
