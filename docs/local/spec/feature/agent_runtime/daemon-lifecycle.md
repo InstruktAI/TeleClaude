@@ -29,6 +29,9 @@ exit immediately. An unexpected request-surface exit is retried only outside
 shutdown; exhausted recovery requests ordinary service shutdown so the service
 manager can relaunch it.
 
+A failure resuming a prior session startup is recorded for that session and
+does not block recovery of other sessions or daemon startup completion.
+
 ### Use cases
 
 #### Staged startup ordering
@@ -151,7 +154,7 @@ But when adoption fails the response carries the reason and a folder the request
 Given a previous daemon run left one or more session startups unfinished
 When an operator restarts the daemon
 Then startup completes without waiting for resumed session agents
-And a failure recovering one session is recorded for that session and does not block other startup work or daemon startup completion
+And a failure recovering one session does not block other startup work or daemon startup completion
 ```
 
 #### UC-DL10: Draining refuses new work before acceptance
