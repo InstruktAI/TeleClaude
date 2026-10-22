@@ -145,15 +145,13 @@ But when adoption fails the response carries the reason and a folder the request
 
 #### UC-DL5: Operations abandoned by a previous run do not abort the boot
 
-#### UC-DL9: Session startups left unfinished by a previous run neither abort nor hold the boot
+#### UC-DL9: An operator can restart the daemon when session recovery fails
 
 ```gherkin
-Given session startups were left unfinished when a previous daemon run stopped
-When the post-adapter completion stage runs
-Then each of those startups is resumed or reported as `local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle` defines
-And a resumed startup waits for its agent in the background, so the stage completes without waiting for any agent
-And a fault while taking up one startup is recorded for that session and leaves the others and the boot unaffected
-And no stage is skipped, reordered, or added
+Given a previous daemon run left one or more session startups unfinished
+When an operator restarts the daemon
+Then startup completes without waiting for resumed session agents
+And a failure recovering one session is recorded for that session and does not block other startup work or daemon startup completion
 ```
 
 #### UC-DL10: Draining refuses new work before acceptance
