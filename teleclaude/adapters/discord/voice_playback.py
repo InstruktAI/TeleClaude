@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from collections.abc import Callable
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -36,6 +37,7 @@ class VoicePlayback:
         self._tts = TTSManager()
         self._observation_task: asyncio.Task[None] | None = None
         self._observed_session: str | None = None
+        self._focus_version: tuple[str | None, datetime] | None = None
 
     async def close(self) -> None:
         if self._observation_task is not None:
@@ -97,11 +99,22 @@ class VoicePlayback:
         if cache is None or not self._active():
             return
         focus = await voice_focus.resolve(person_slug, cache.get_sessions())
+        self._focus_version = (focus.focused_session_id, focus.set_at)
         session_id = focus.focused_session_id
         if session_id is None:
             await self._stop_observation()
             return
         await self.observe_session(session_id)
+
+    async def reconcile_focus(self, person_slug: str) -> None:
+        """Recover current focus and cancel speech belonging to superseded accepted input."""
+        cache = self._client.cache
+        if cache is None or not self._active():
+            return
+        focus = await voice_focus.resolve(person_slug, cache.get_sessions())
+        if self._focus_version != (focus.focused_session_id, focus.set_at):
+            await self.cancel_for_focus_change()
+        await self.observe_focus(person_slug)
 
     async def observe_session(self, session_id: str) -> None:
         """Observe one authoritative focused session without re-deriving stale cache state."""

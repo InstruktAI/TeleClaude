@@ -228,6 +228,11 @@ class VoiceRoom:
         await self._playback.cancel_for_focus_change()
         await self._playback.observe_session(session_id)
 
+    async def recover_focus(self) -> None:
+        """Recover accepted-input focus from the current cluster view and persisted override."""
+        if self._room is not None:
+            await self._playback.reconcile_focus(self._room.person_slug)
+
     async def handle_observed_stop(self, session_id: str) -> None:
         """Refresh the remote owner before speaking its observed final output."""
         room = self._room

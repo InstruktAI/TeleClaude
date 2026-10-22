@@ -36,6 +36,20 @@ An end request for an absent session has no cleanup side effects. A retry for an
 already-closed session may reap leftover resources without changing its closure
 state or emitting another ending event.
 
+### Terminal source reconciliation
+
+Post-close worker and polling cleanup consumes current terminal source state.
+On live-reader handover the runtime rechecks resident worker identities and
+workflow driver references, including references to closed or soft-deleted
+sessions. Workflow reconciliation clears only references still naming the
+terminal session and starts no new workflow work. The existing minute-driven
+workflow reconciliation supplies subsequent repair independently of historical
+close notifications, under `sdlc/policy/domain-ownership`.
+
+The runtime owner is acquired outside the closing command's source-change
+callback. This ownership separation follows
+`local/projects/teleclaude/design/architecture/event-delivery`.
+
 ### Host binding release
 
 Termination retains the host binding while its host remains available. Once the

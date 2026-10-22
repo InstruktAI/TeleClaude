@@ -47,6 +47,13 @@ presented once when more than one delivery path observes it.
 Other adapters' presentation, notification subscriptions, recovery behavior
 and the responsibilities of agents and the log bug hunter remain unchanged.
 
+Live runtime feedback is presented to current viewers without replaying obsolete
+activity, lifecycle toasts or operation nudges after a delivery interruption.
+Current state and recorded operation outcomes remain available through their
+owning queries; diagnostic evidence retains its observability contract. This
+presentation lifetime follows `general/policy/leadership` and
+`local/projects/teleclaude/design/architecture/event-delivery`.
+
 ### Use cases
 
 #### UC-WF1: An expected work refusal reaches the operator

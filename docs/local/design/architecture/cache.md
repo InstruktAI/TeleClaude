@@ -66,9 +66,11 @@ barrier. This separation follows `sdlc/principle/architectural-defaults` and
 `sdlc/policy/domain-ownership`.
 
 An unchanged materialized row emits no cache notification or peer publication.
-Durable consumption retains recovery for failed local reconciliation and
-changes published by other processes; local invalidation does not advance a
-consumer's delivery position. These repeated requests share the source owner's
+Failed local reconciliation remains dirty for owner-local retry. A live source
+reader reconciles open source identities and previously cached local identities
+before accepting new invalidations, including after a connection failure.
+Changes published by other processes reach that same materializer without
+historical replay. These repeated requests share the source owner's
 idempotent projection under `sdlc/policy/code-quality-practices`.
 
 A missing local source record permits removal of a locally owned cached row;
@@ -113,8 +115,8 @@ The API server reads this consolidated view and projects eligible state under
 - A failed local reconciliation preserves the available cache and is logged;
   event publication is still attempted. A publication failure remains visible
   after local reconciliation and does not roll back the source or projection.
-  Source changes from other processes still depend on durable delivery or
-  startup reconciliation.
+  Source changes from other processes converge through live invalidation and
+  source recovery; obsolete notifications are not a lifecycle ledger.
 
 ## See Also
 

@@ -64,11 +64,8 @@ def _build_agent_dto(
     )
 
 
-@router.get("/agents/availability")
-async def get_agent_availability(
-    _identity: CallerIdentity = Depends(carried_caller),
-) -> dict[str, AgentAvailabilityDTO]:
-    """Get agent availability."""
+async def read_agent_availability() -> dict[str, AgentAvailabilityDTO]:
+    """Read the complete authoritative agent and model availability projection."""
     result: dict[str, AgentAvailabilityDTO] = {}
     known_agents = get_known_agents()
     logger.info(
@@ -105,6 +102,14 @@ async def get_agent_availability(
         result[agent] = _build_agent_dto(agent, info, models)
 
     return result
+
+
+@router.get("/agents/availability")
+async def get_agent_availability(
+    _identity: CallerIdentity = Depends(carried_caller),
+) -> dict[str, AgentAvailabilityDTO]:
+    """Get agent availability."""
+    return await read_agent_availability()
 
 
 @router.post("/agents/{agent}/status")

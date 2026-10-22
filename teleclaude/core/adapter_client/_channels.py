@@ -43,7 +43,9 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
 
         async def dispatch_session_status(self, session_id: str, status: str) -> None: ...
 
-        async def dispatch_session_update(self, session_id: str, updated_fields: Mapping[str, object]) -> None: ...
+        async def dispatch_session_update(
+            self, session_id: str, updated_fields: Mapping[str, object], *, ensure_channels: bool = True
+        ) -> None: ...
 
     @staticmethod
     def _is_terminal(session: "Session") -> bool:

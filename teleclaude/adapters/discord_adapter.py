@@ -71,6 +71,7 @@ DISCORD_TYPING_INTERVAL_S = 5.0
 _DESK_RECONCILE_TASK_NAME = "discord-desk-reconcile"
 _GATEWAY_TASK_NAME = "discord-gateway"
 _GATEWAY_LIVENESS_TASK_NAME = "discord-gateway-liveness"
+_VOICE_FOCUS_RECONCILE_TASK_NAME = "discord-voice-focus-reconcile"
 _DESK_PASS_FAILED_EVENT = "discord.help_desk_pass.failed"
 
 
@@ -169,6 +170,8 @@ class DiscordAdapter(
         self._client: DiscordClientLike | None = None
         self._voice_room: VoiceRoom | None = None
         self._projects_changed_handler: Callable[[str, object], None] | None = None
+        self._voice_focus_reconcile_pending = False
+        self._voice_focus_reconcile_task: asyncio.Task[object] | None = None
         self._project_reconcile_lock = asyncio.Lock()
         self._project_reconcile_pending = False
         self._project_reconcile_task: asyncio.Task[object] | None = None
@@ -219,7 +222,7 @@ class DiscordAdapter(
         self._voice_room = VoiceRoom(self.client, self._client)
         get_command_service().set_voice_focus_handler(self._handle_voice_focus_changed)
         if self.client.cache is not None:
-            self._projects_changed_handler = self._on_projects_snapshot
+            self._projects_changed_handler = self._on_cache_changed
             self.client.cache.subscribe(self._projects_changed_handler)
             self._request_project_reconcile()
         subscribe_declaration_changes(self._request_desk_reconcile)
@@ -261,6 +264,11 @@ class DiscordAdapter(
             with contextlib.suppress(asyncio.CancelledError):
                 await self._project_reconcile_task
         self._project_reconcile_task = None
+        if self._voice_focus_reconcile_task is not None and not self._voice_focus_reconcile_task.done():
+            self._voice_focus_reconcile_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._voice_focus_reconcile_task
+        self._voice_focus_reconcile_task = None
         if self._voice_room is not None:
             await self._voice_room.close()
             self._voice_room = None
@@ -294,6 +302,27 @@ class DiscordAdapter(
     async def handle_runtime_session_status(self, context: RuntimeSessionStatusData) -> None:
         if self._voice_room is not None and context.status == "accepted" and context.reason == "user_prompt_accepted":
             await self._voice_room.input_accepted(context.session_id, context.timestamp)
+
+    async def recover_runtime_voice_focus(self) -> None:
+        """Reconcile room focus after live runtime notifications were interrupted."""
+        if self._voice_room is not None:
+            await self._voice_room.recover_focus()
+
+    def _on_cache_changed(self, event: str, data: object) -> None:
+        """Reconcile projects and voice focus through their separate owning capabilities."""
+        self._on_projects_snapshot(event, data)
+        if event not in (CacheEvent.SESSION_STARTED.value, CacheEvent.SESSION_UPDATED.value):
+            return
+        self._voice_focus_reconcile_pending = True
+        if self._voice_focus_reconcile_task is None or self._voice_focus_reconcile_task.done():
+            self._voice_focus_reconcile_task = self.task_registry.spawn(
+                self._drain_voice_focus_reconcile(), name=_VOICE_FOCUS_RECONCILE_TASK_NAME
+            )
+
+    async def _drain_voice_focus_reconcile(self) -> None:
+        while self._voice_focus_reconcile_pending:
+            self._voice_focus_reconcile_pending = False
+            await self.recover_runtime_voice_focus()
 
     def _on_projects_snapshot(self, event: str, data: object) -> None:
         """Route local project-cache changes to Discord's adapter-owned reconciler."""

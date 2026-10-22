@@ -105,7 +105,7 @@ under `sdlc/policy/domain-ownership`.
 
 Public platform facts retain the platform stream and its existing consumers.
 Internal runtime notifications retain the stream owned by
-`INTERNAL_EVENT_STREAM`, with typed decoding and independent ordered consumers
+`INTERNAL_EVENT_STREAM`, with typed decoding and consumer-owned live or retained delivery
 on the same delivery runtime. This stream boundary preserves the existing
 notification, procedure-activation, maintenance and correlation inputs under
 `local/projects/teleclaude/spec/feature/event-catalog/event-envelope`.
@@ -115,6 +115,15 @@ do not enter public automation through translation. Native facts retain their
 truthful source, subject and origin; earlier records retain the limits of the
 facts they carried. Source-stream trimming and the existing dead-letter contract
 remain authoritative; the transport creates no additional payload archive.
+
+Runtime typing, activity, lifecycle feedback, error feedback and operation
+toasts are live presentation. Session cache, adapter metadata, availability,
+voice focus and terminal housekeeping recover from their owning current state
+before replacing historical delivery. Legacy command carriers retain ordered
+delivery until handed to their command owner; public occurrence consumers are
+unchanged. The delivery distinction belongs to each reaction under
+`local/projects/teleclaude/spec/feature/event-catalog/event-consumers`, not to a
+producer's assessment of an event's importance.
 
 Readiness and no-composer evidence remain runtime-owned operations. Explicit
 voice focus completes through its command-owned voice continuation. Local
