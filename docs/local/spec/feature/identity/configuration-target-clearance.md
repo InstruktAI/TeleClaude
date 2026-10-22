@@ -78,20 +78,6 @@ a refused read returns no configuration.
 | company              | help-desk links                                               | `admin` effective role for that company             |
 | project              | help-desk links                                               | `admin` effective role for that project             |
 
-<!-- planned:central-shared-configuration -->
-
-### Shared subject standing
-
-Shared cluster mutation requires platform-administrator standing. A shared
-project mutation requires the same effective project standing as a project
-declaration mutation. Reads retain the corresponding cluster or project read
-band. The shared subject's scope and stable instance reach clearance unchanged;
-its Redis storage and the computer executing the request add no authority
-(`general/policy/human-contract`). Internal runtime resolution remains a
-configuration-owned component capability, separate from operator resource
-reads; the operator surface returns masked sensitive values.
-<!-- /planned:central-shared-configuration -->
-
 ### Use cases
 
 #### UC-CTC1: A person's agent edits all of that person's configuration
