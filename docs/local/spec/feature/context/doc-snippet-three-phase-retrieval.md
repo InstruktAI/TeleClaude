@@ -252,10 +252,8 @@ And the refusal is the same whether or not that person is declared
   confined to identities the caller names; the tier selectors disclose nothing,
   and the refusal for another person's local half, which is the same whether or
   not that person is declared, discloses nothing either.
-- Phase 1 third-party output ignores `--baseline-only` and `--target` (third-party
-  renders on a separate track), but `--scope` and `--project` do apply to it:
-  `--scope` keeps only third-party entries of that scope, and `--project <slug>`
-  drops third-party entirely, since third-party indexes are loaded for the current
-  project and global only and are never cross-project-loaded.
+- Phase 1 third-party entries are loaded separately from taxonomy entries, so
+  `--baseline-only` does not filter them. `--scope` filters them by their scope;
+  named-home selectors and `--target` omit third-party entries entirely.
 - The v1 CLI namespace is `telec docs *`. The v2 target is `telec context
 docs *`. The verb rename is a known migration cleanup.
