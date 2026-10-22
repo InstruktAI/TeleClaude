@@ -26,7 +26,7 @@ storage paths.
 
 ## Inputs/Outputs
 
-<!-- planned-change:issue-130 -->
+<!-- planned-change:issue-130-creation-identity -->
 
 The canonical item identity is its slug. The typed projection uses
 `WorkItemId` for that identity and a separate opaque `StoreAddress` for local
@@ -44,7 +44,7 @@ use `StorePresence`, `StoreIntegrityStatus`, and the opaque `TransferSource` /
 `TransferResult` pair. Existing task, schedule and creative state remain within
 workflow state and preserve their current ownership and interpretation.
 
-<!-- change:issue-130 -->
+<!-- change:issue-130-creation-identity -->
 
 The canonical item identity is `WorkItemId`, the identity the selected adapter
 assigns (#124 INV-D1). Consumers treat it as opaque: they never construct it
@@ -65,9 +65,9 @@ selected-store helpers additionally use `StorePresence`,
 pair. Existing task, schedule and creative state remain within workflow state
 and preserve their current ownership and interpretation.
 
-<!-- /planned-change:issue-130 -->
+<!-- /planned-change:issue-130-creation-identity -->
 
-<!-- planned:issue-130 -->
+<!-- planned:issue-130-creation-identity -->
 
 - **Creation result.** The slug a caller passes to `add_to_todo` or
   `create_item_with_initial_artifact` is the creation key. Each operation
@@ -88,7 +88,7 @@ and preserve their current ownership and interpretation.
   port operation: the seven-part port gains no operation and carries no GitHub
   type.
 
-<!-- /planned:issue-130 -->
+<!-- /planned:issue-130-creation-identity -->
 
 The seven operation parts are realized by the current state and artifact
 operations:
