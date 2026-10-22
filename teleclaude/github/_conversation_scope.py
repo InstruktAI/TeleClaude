@@ -53,7 +53,8 @@ async def requested_pr_scope(
 def _native_creator_matches(context: GitHubPostingContext, creation: GitHubObjectAssociation) -> bool:
     """Same App or prose is insufficient: maintenance belongs to the exact recorded native writer."""
     return (
-        creation.object.kind in (GitHubObjectKind.ISSUE_COMMENT, GitHubObjectKind.REVIEW)
+        creation.object.kind
+        in (GitHubObjectKind.ISSUE_COMMENT, GitHubObjectKind.REVIEW, GitHubObjectKind.REVIEW_COMMENT)
         and creation.object.repository_id == context.target.repository_id
         and creation.work_issue_number == context.target.issue_number
         and isinstance(creation.source, NativeGitHubPostSource)
@@ -77,6 +78,16 @@ async def resolve_native_review(
     """A review always belongs to an existing PR relationship and this exact native writer."""
     resolved = await _resolve_native_object(context, provider_id, GitHubObjectKind.REVIEW)
     if resolved is None or resolved[1] is None:
+        return None
+    return resolved[0], resolved[1]
+
+
+async def resolve_native_reply(
+    context: GitHubPostingContext, provider_id: int
+) -> tuple[GitHubObjectAssociation, GitHubObjectAssociation] | None:
+    """Own-reply maintenance requires its exact native creator and existing PR relationship."""
+    resolved = await _resolve_native_object(context, provider_id, GitHubObjectKind.REVIEW_COMMENT)
+    if resolved is None or resolved[1] is None or resolved[0].review_comment is None:
         return None
     return resolved[0], resolved[1]
 

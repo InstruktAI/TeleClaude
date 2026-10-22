@@ -143,6 +143,23 @@ class GitHubPullRequestCreation(BaseModel):
     title_digest: str = Field(pattern=_DIGEST_PATTERN)
 
 
+class GitHubReviewCommentPlacement(BaseModel):
+    """Actual reply placement observations, never a COMMENT review's reviewed-SHA authority."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    in_reply_to_id: int = Field(gt=0, strict=True)
+    commit_id: str = Field(min_length=1)
+    original_commit_id: str = Field(min_length=1)
+    review_id: int | None = Field(default=None, gt=0, strict=True)
+    path: str
+    line: int | None = None
+    original_line: int | None = None
+    start_line: int | None = None
+    original_start_line: int | None = None
+    side: Literal["LEFT", "RIGHT"] | None = None
+    start_side: Literal["LEFT", "RIGHT"] | None = None
+
+
 class GitHubObjectAssociation(BaseModel):
     """Immutable creation attribution recorded after verified provider acceptance."""
 
@@ -157,6 +174,7 @@ class GitHubObjectAssociation(BaseModel):
     reviewed_sha: str | None = Field(default=None, min_length=1)
     edit_evidence: GitHubEditEvidence | None = None
     pull_request: GitHubPullRequestCreation | None = None
+    review_comment: GitHubReviewCommentPlacement | None = None
 
     @model_validator(mode="after")
     def require_review_head(self) -> Self:
@@ -167,6 +185,16 @@ class GitHubObjectAssociation(BaseModel):
             raise ValueError(_PR_CREATION_INVALID)
         if self.pull_request is not None and (self.reviewed_sha is not None or self.body_digest is None):
             raise ValueError(_PR_CREATION_INVALID)
+        if self.review_comment is not None and (
+            self.object.kind is not GitHubObjectKind.REVIEW_COMMENT or self.reviewed_sha is not None
+        ):
+            raise ValueError(_MAINTENANCE_TARGET_INVALID)
+        if (
+            self.object.kind is GitHubObjectKind.REVIEW_COMMENT
+            and isinstance(self.source, NativeGitHubPostSource)
+            and (self.review_comment is None or self.reviewed_sha is not None)
+        ):
+            raise ValueError(_MAINTENANCE_TARGET_INVALID)
         return self
 
     def same_creation(self, other: GitHubObjectAssociation) -> bool:
@@ -181,6 +209,7 @@ class GitHubObjectAssociation(BaseModel):
             and self.body_digest == other.body_digest
             and self.reviewed_sha == other.reviewed_sha
             and self.pull_request == other.pull_request
+            and self.review_comment == other.review_comment
         )
 
 
@@ -218,6 +247,7 @@ class GitHubPostResult(BaseModel):
     body_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     edit_evidence: GitHubEditEvidence | None = None
     reviewed_sha: str | None = Field(default=None, min_length=1)
+    review_comment: GitHubReviewCommentPlacement | None = None
     provider_status: int | None = Field(default=None, ge=100, le=599)
     retry_after: timedelta | None = None
     credential_refusal: str | None = None
@@ -240,7 +270,8 @@ def _maintenance_target(target: GitHubWorkTarget, ref: GitHubObjectRef, pr_scope
             raise ValueError(_MAINTENANCE_TARGET_INVALID)
         container = pr_scope.container_number
     if (
-        ref.kind is not GitHubObjectKind.ISSUE_COMMENT
+        ref.kind not in (GitHubObjectKind.ISSUE_COMMENT, GitHubObjectKind.REVIEW_COMMENT)
+        or (ref.kind is GitHubObjectKind.REVIEW_COMMENT and pr_scope is None)
         or ref.repository_id != target.repository_id
         or ref.container_number != container
     ):
@@ -278,6 +309,11 @@ class GitHubIssueCommentDeleteRequest(BaseModel):
         return self
 
 
+def _require_pr_scope(target: GitHubWorkTarget, scope: GitHubObjectRef) -> None:
+    if scope.kind is not GitHubObjectKind.PULL_REQUEST or scope.repository_id != target.repository_id:
+        raise ValueError(_MAINTENANCE_TARGET_INVALID)
+
+
 class GitHubReviewRequest(BaseModel):
     """One native COMMENT review of an explicitly associated PR; no event or SHA selector."""
 
@@ -289,11 +325,23 @@ class GitHubReviewRequest(BaseModel):
     @model_validator(mode="after")
     def validate_scope(self) -> Self:
         """The provider read supplies the reviewed SHA after structural admission."""
-        if (
-            self.pr_scope.kind is not GitHubObjectKind.PULL_REQUEST
-            or self.pr_scope.repository_id != self.target.repository_id
-        ):
-            raise ValueError(_MAINTENANCE_TARGET_INVALID)
+        _require_pr_scope(self.target, self.pr_scope)
+        return self
+
+
+class GitHubReviewReplyRequest(BaseModel):
+    """One body-only native reply to an explicit provider top-level review comment."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    target: GitHubWorkTarget
+    pr_scope: GitHubObjectRef
+    root_id: int = Field(gt=0, strict=True)
+    body: str
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> Self:
+        """A reply target is a PR relationship candidate, not independently supplied authority."""
+        _require_pr_scope(self.target, self.pr_scope)
         return self
 
 
@@ -346,17 +394,20 @@ class GitHubObjectMutation(BaseModel):
     body_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     edit_evidence: GitHubEditEvidence | None = None
     reviewed_sha: str | None = Field(default=None, pattern=_COMMIT_PATTERN)
+    review_comment: GitHubReviewCommentPlacement | None = None
 
     @model_validator(mode="after")
     def validate_effect(self) -> Self:
         """Keep edit and deletion evidence distinct."""
         if (
-            self.object.kind not in (GitHubObjectKind.ISSUE_COMMENT, GitHubObjectKind.REVIEW)
+            self.object.kind
+            not in (GitHubObjectKind.ISSUE_COMMENT, GitHubObjectKind.REVIEW, GitHubObjectKind.REVIEW_COMMENT)
             or (
                 self.object.kind is GitHubObjectKind.REVIEW
                 and (self.operation is not GitHubCommentMaintenanceOperation.EDIT or self.reviewed_sha is None)
             )
-            or (self.object.kind is GitHubObjectKind.ISSUE_COMMENT and self.reviewed_sha is not None)
+            or (self.object.kind is not GitHubObjectKind.REVIEW and self.reviewed_sha is not None)
+            or ((self.object.kind is GitHubObjectKind.REVIEW_COMMENT) != (self.review_comment is not None))
         ) or (
             (
                 self.operation is GitHubCommentMaintenanceOperation.EDIT
@@ -385,6 +436,7 @@ class GitHubCommentMaintenanceResult(BaseModel):
     body_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     edit_evidence: GitHubEditEvidence | None = None
     reviewed_sha: str | None = None
+    review_comment: GitHubReviewCommentPlacement | None = None
     provider_status: int | None = Field(default=None, ge=100, le=599)
     retry_after: timedelta | None = None
     credential_refusal: str | None = None

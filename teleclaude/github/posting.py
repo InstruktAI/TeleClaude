@@ -49,7 +49,12 @@ from teleclaude.github._comment_results import (
 from teleclaude.github._comment_results import (
     provider_result as _provider_result,
 )
-from teleclaude.github._conversation_scope import preflight_pr_scope, requested_pr_scope, resolve_native_comment
+from teleclaude.github._conversation_scope import (
+    preflight_pr_scope,
+    requested_pr_scope,
+    resolve_native_comment,
+    resolve_native_reply,
+)
 from teleclaude.github._native_pr import prepare_native_pull_request
 from teleclaude.github.credentials import (
     GitHubCredentialRefused,
@@ -66,6 +71,7 @@ from teleclaude.github.native import (
     prepare_native_review,
 )
 from teleclaude.github.pull_requests import GitHubPullRequestCancelled, edit_native_pull_request
+from teleclaude.github.replies import observe_native_reply, post_native_review_reply
 from teleclaude.github.reviews import GitHubReviewCancelled, execute_native_review
 from teleclaude.types.github_account import GitHubAccount
 from teleclaude.types.github_binding import GitHubWorkTarget
@@ -79,11 +85,14 @@ from teleclaude.types.github_posting import (
     GitHubIssueCommentEditRequest,
     GitHubIssueCommentRequest,
     GitHubObjectAssociation,
+    GitHubObjectKind,
     GitHubObjectMutation,
     GitHubObjectRef,
     GitHubPostFailure,
     GitHubPostResult,
+    GitHubReviewCommentPlacement,
     GitHubReviewEditRequest,
+    GitHubReviewReplyRequest,
     GitHubReviewRequest,
     NativeGitHubPostSource,
 )
@@ -105,9 +114,11 @@ _FIXED_ENVIRONMENT = {
 }
 _CONFIG_PREFIX = "teleclaude-gh-"
 _BODY = "body"
+_REVIEW_COMMENT = "review_comment"
 _REPOSITORY_SEPARATOR = "/"
 _COMMENT_ENDPOINT = "repos/{owner}/{repo}/issues/{number}/comments"
 _COMMENT_OBJECT_ENDPOINT = "repos/{owner}/{repo}/issues/comments/{identifier}"
+_REPLY_OBJECT_ENDPOINT = "repos/{owner}/{repo}/pulls/comments/{identifier}"
 _DEFINITIVE_REJECTIONS = frozenset({400, 401, 403, 404, 405, 406, 410, 413, 414, 415, 422, 429})
 _UNVERIFIED_OBJECT = "GitHub comment result could not be verified"
 _ISSUE_COMMENT_PERMISSIONS: AppPermissionsType = {"issues": "write"}
@@ -339,7 +350,11 @@ async def _native_creator(
     ref: GitHubObjectRef,
     pr_scope: GitHubObjectRef | None = None,
 ) -> GitHubObjectAssociation | None:
-    resolved = await resolve_native_comment(context, ref.provider_id)
+    resolved = (
+        await resolve_native_reply(context, ref.provider_id)
+        if ref.kind is GitHubObjectKind.REVIEW_COMMENT
+        else await resolve_native_comment(context, ref.provider_id)
+    )
     if resolved is None:
         return None
     creation, scope = resolved
@@ -353,9 +368,13 @@ def _maintenance_observation(
     response: _native_gh.Response,
     request: GitHubIssueCommentEditRequest | GitHubIssueCommentDeleteRequest,
     creation: GitHubObjectAssociation,
+    context: GitHubPostingContext,
     *,
     body: str | None = None,
-) -> tuple[str, GitHubEditEvidence, GitHubAccount]:
+) -> tuple[str, GitHubEditEvidence, GitHubAccount, GitHubReviewCommentPlacement | None]:
+    if request.object.kind is GitHubObjectKind.REVIEW_COMMENT:
+        observed = observe_native_reply(response, context, creation, body=body)
+        return observed.digest, observed.evidence, observed.actor, observed.placement
     comment = IssueComment.model_validate_json(response.body)
     ref = _comment_reference(comment, request.target, container_number=request.object.container_number)
     actor = _comment_actor(comment)
@@ -370,6 +389,7 @@ def _maintenance_observation(
         sha256(comment.body.encode(_UTF8)).hexdigest(),
         GitHubEditEvidence(updated_at=comment.updated_at.isoformat()),
         actor,
+        None,
     )
 
 
@@ -397,12 +417,15 @@ def _maintenance_response(
     digest = None
     evidence = None
     actor = context.binding.assignment.actor
+    placement = result.review_comment
     if result.operation is GitHubCommentMaintenanceOperation.EDIT:
         try:
-            digest, evidence, actor = _maintenance_observation(response, request, creation, body=body)
+            digest, evidence, actor, placement = _maintenance_observation(
+                response, request, creation, context, body=body
+            )
         except ValueError:
             return result.model_copy(update={_FAILURE: GitHubPostFailure.RESULT_UNVERIFIED}), None
-    result = result.model_copy(update={_BODY_DIGEST: digest, _EDIT_EVIDENCE: evidence})
+    result = result.model_copy(update={_BODY_DIGEST: digest, _EDIT_EVIDENCE: evidence, _REVIEW_COMMENT: placement})
     if result.preflight_digest is None:
         return result.model_copy(update={_FAILURE: GitHubPostFailure.RESULT_UNVERIFIED}), None
     try:
@@ -417,6 +440,7 @@ def _maintenance_response(
             preflight_digest=result.preflight_digest,
             body_digest=digest,
             edit_evidence=evidence,
+            review_comment=placement,
         )
     except ValueError:
         return result.model_copy(update={_FAILURE: GitHubPostFailure.RESULT_UNVERIFIED}), None
@@ -458,8 +482,10 @@ async def _maintenance_exchange(
         result = result.model_copy(update={_PROVIDER_STATUS: response.status, _RETRY_DELAY: response.retry_after})
         if response.status != 200:
             return result, None, cancelled
-        digest, evidence, _actor = _maintenance_observation(response, request, creation)
-        result = result.model_copy(update={_PREFLIGHT_DIGEST: digest, _EDIT_EVIDENCE: evidence})
+        digest, evidence, _actor, placement = _maintenance_observation(response, request, creation, context)
+        result = result.model_copy(
+            update={_PREFLIGHT_DIGEST: digest, _EDIT_EVIDENCE: evidence, _REVIEW_COMMENT: placement}
+        )
         if cancelled:
             return result.model_copy(update={_FAILURE: GitHubPostFailure.CANCELLED}), None, True
         if (
@@ -570,7 +596,12 @@ async def _maintain_native_comment(
         if binary is None:
             return result.model_copy(update={_FAILURE: GitHubPostFailure.BINARY_UNAVAILABLE})
         owner, repo = request.target.repository.split(_REPOSITORY_SEPARATOR)
-        endpoint = _COMMENT_OBJECT_ENDPOINT.format(
+        endpoint_template = (
+            _REPLY_OBJECT_ENDPOINT
+            if request.object.kind is GitHubObjectKind.REVIEW_COMMENT
+            else _COMMENT_OBJECT_ENDPOINT
+        )
+        endpoint = endpoint_template.format(
             owner=quote(owner, safe=_EMPTY), repo=quote(repo, safe=_EMPTY), identifier=request.object.provider_id
         )
         with TemporaryDirectory(prefix=_CONFIG_PREFIX) as directory:
@@ -784,6 +815,14 @@ async def execute_native_github(
             return _native_pr_result(pr_result, stdout, stderr)
         if arguments[:1] == (_API_COMMAND,):
             request = await prepare_native_comment_maintenance(arguments, context, directory=directory, stdin=stdin)
+            if isinstance(request, GitHubReviewReplyRequest):
+                try:
+                    replied = await post_native_review_reply(context, request)
+                except GitHubPostingCancelled as error:
+                    print(error.result.model_dump_json(), file=stderr)
+                    raise
+                print(replied.model_dump_json(), file=stdout if replied.attributed else stderr)
+                return 0 if replied.attributed else 1
             if isinstance(request, GitHubReviewEditRequest):
                 return await _native_review(context, request, stdout, stderr)
             try:

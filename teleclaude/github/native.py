@@ -12,12 +12,18 @@ from typing import BinaryIO, Never
 from urllib.parse import unquote, urlsplit
 
 from teleclaude.core.github_identity import GitHubPostingContext
-from teleclaude.github._conversation_scope import resolve_native_comment, resolve_native_review, resolve_pr_scope
+from teleclaude.github._conversation_scope import (
+    resolve_native_comment,
+    resolve_native_reply,
+    resolve_native_review,
+    resolve_pr_scope,
+)
 from teleclaude.types.github_posting import (
     GitHubIssueCommentDeleteRequest,
     GitHubIssueCommentEditRequest,
     GitHubObjectRef,
     GitHubReviewEditRequest,
+    GitHubReviewReplyRequest,
     GitHubReviewRequest,
     NativeGitHubPostSource,
 )
@@ -55,6 +61,8 @@ _ENDPOINT_ARGUMENT = "endpoint"
 _PATCH_METHOD = "PATCH"
 _DELETE_METHOD = "DELETE"
 _PUT_METHOD = "PUT"
+_POST_METHOD = "POST"
+_REPLIES_SEGMENT = "replies"
 _REVIEW_COMMAND = "review"
 _REVIEW_FLAG = "--comment"
 _REVIEW_SHORT_FLAG = "-c"
@@ -163,8 +171,10 @@ def _json_body_pairs(pairs: list[tuple[str, object]]) -> dict[str, str]:
 
 async def prepare_native_comment_maintenance(
     arguments: Sequence[str], context: GitHubPostingContext, *, directory: Path, stdin: BinaryIO
-) -> GitHubIssueCommentEditRequest | GitHubIssueCommentDeleteRequest | GitHubReviewEditRequest:
-    """Admit exact comment PATCH/DELETE or submitted-review body PUT, rejecting duplicate JSON keys."""
+) -> (
+    GitHubIssueCommentEditRequest | GitHubIssueCommentDeleteRequest | GitHubReviewEditRequest | GitHubReviewReplyRequest
+):
+    """Admit only fixed comment maintenance, submitted-review body PUT or explicit root reply POST."""
     if not arguments or arguments[0] != _API_COMMAND:
         raise NativeCommentRefused(NativeCommentRefusal.UNSUPPORTED_OPERATION)
     parser = _Parser(prog=_API_PROGRAM, add_help=False, allow_abbrev=False, exit_on_error=False)
@@ -185,10 +195,12 @@ async def prepare_native_comment_maintenance(
     ):
         raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
     method = values.methods[0]
-    if method not in (_PATCH_METHOD, _DELETE_METHOD, _PUT_METHOD):
+    if method not in (_PATCH_METHOD, _DELETE_METHOD, _PUT_METHOD, _POST_METHOD):
         raise NativeCommentRefused(NativeCommentRefusal.UNSUPPORTED_OPERATION)
     parts = values.endpoint.split(_PATH_SEPARATOR)
     target = context.target
+    if method == _POST_METHOD:
+        return await _prepare_reply_api(values, parts, context, directory, stdin)
     if len(parts) == 7 and parts[3] == _PULLS_SEGMENT and parts[5] == _REVIEWS_SEGMENT:
         if (
             method != _PUT_METHOD
@@ -208,14 +220,19 @@ async def prepare_native_comment_maintenance(
         method == _PUT_METHOD
         or len(parts) != 6
         or parts[0] != _REPOS_SEGMENT
-        or parts[3:5] != [_ISSUES_SEGMENT, _COMMENTS_SEGMENT]
+        or parts[3] not in (_ISSUES_SEGMENT, _PULLS_SEGMENT)
+        or parts[4] != _COMMENTS_SEGMENT
         or _PATH_SEPARATOR.join(parts[1:3]).casefold() != target.repository.casefold()
         or not parts[5].isascii()
         or not parts[5].isdecimal()
         or int(parts[5]) <= 0
     ):
         raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
-    resolved = await resolve_native_comment(context, int(parts[5]))
+    resolved = (
+        await resolve_native_reply(context, int(parts[5]))
+        if parts[3] == _PULLS_SEGMENT
+        else await resolve_native_comment(context, int(parts[5]))
+    )
     if resolved is None:
         raise NativeCommentRefused(NativeCommentRefusal.CREATOR_UNAVAILABLE)
     creation, scope = resolved
@@ -227,6 +244,32 @@ async def prepare_native_comment_maintenance(
         return GitHubIssueCommentDeleteRequest(target=target, object=ref, pr_scope=pr_scope)
     return GitHubIssueCommentEditRequest(
         target=target, object=ref, body=_api_body(values, directory, stdin), pr_scope=pr_scope
+    )
+
+
+async def _prepare_reply_api(
+    values: _MaintenanceArguments,
+    parts: list[str],
+    context: GitHubPostingContext,
+    directory: Path,
+    stdin: BinaryIO,
+) -> GitHubReviewReplyRequest:
+    """Only an explicit PR/top-level candidate and body may enter the fixed reply handler."""
+    if (
+        len(parts) != 8
+        or parts[0] != _REPOS_SEGMENT
+        or _PATH_SEPARATOR.join(parts[1:3]).casefold() != context.target.repository.casefold()
+        or parts[3] != _PULLS_SEGMENT
+        or parts[5] != _COMMENTS_SEGMENT
+        or parts[7] != _REPLIES_SEGMENT
+        or any(not value.isascii() or not value.isdecimal() or int(value) <= 0 for value in (parts[4], parts[6]))
+    ):
+        raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
+    scope = await resolve_pr_scope(context, int(parts[4]))
+    if scope is None:
+        raise NativeCommentRefused(NativeCommentRefusal.PR_SCOPE_UNAVAILABLE)
+    return GitHubReviewReplyRequest(
+        target=context.target, pr_scope=scope.object, root_id=int(parts[6]), body=_api_body(values, directory, stdin)
     )
 
 

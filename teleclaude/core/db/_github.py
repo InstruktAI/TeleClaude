@@ -378,8 +378,9 @@ class DbGitHubMixin:
             if isinstance(association.source, NativeGitHubPostSource) and ref.kind in (
                 GitHubObjectKind.ISSUE_COMMENT,
                 GitHubObjectKind.REVIEW,
+                GitHubObjectKind.REVIEW_COMMENT,
             ):
-                if ref.kind is GitHubObjectKind.REVIEW and pr_scope is None:
+                if ref.kind in (GitHubObjectKind.REVIEW, GitHubObjectKind.REVIEW_COMMENT) and pr_scope is None:
                     raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
                 await self._check_native_conversation_writer(db_session, association, pr_scope)
             elif pr_scope is not None:
@@ -617,6 +618,15 @@ class DbGitHubMixin:
             or (
                 ref.kind is GitHubObjectKind.REVIEW
                 and (pr_scope is None or mutation.reviewed_sha != creation.reviewed_sha)
+            )
+            or (
+                ref.kind is GitHubObjectKind.REVIEW_COMMENT
+                and (
+                    pr_scope is None
+                    or creation.review_comment is None
+                    or mutation.review_comment is None
+                    or mutation.review_comment.in_reply_to_id != creation.review_comment.in_reply_to_id
+                )
             )
         ):
             raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
