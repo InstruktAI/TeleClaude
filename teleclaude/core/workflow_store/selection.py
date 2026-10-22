@@ -24,11 +24,15 @@ class StoreUnavailable(RuntimeError):
     """The project selected a workflow-store adapter that is not installed."""
 
 
+def selected_workflow_store_backend(project_root: Path) -> TodoStoreBackend:
+    """Read the declared backend for a project root without opening its store."""
+    project = load_declared_project_config(project_root)
+    return project.todos.store if project is not None else TodoStoreBackend.LOCAL
+
+
 def _require_local_adapter(project_root: Path) -> None:
     """Select the project adapter before touching local storage."""
-    project = load_declared_project_config(project_root)
-    selected = project.todos.store if project is not None else TodoStoreBackend.LOCAL
-    if selected is TodoStoreBackend.GITHUB:
+    if selected_workflow_store_backend(project_root) is TodoStoreBackend.GITHUB:
         raise StoreUnavailable(_UNAVAILABLE_GITHUB_STORE)
 
 
