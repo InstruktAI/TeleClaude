@@ -18,6 +18,40 @@ trusted owners. Native prose remains opaque and supplies no lifecycle authority
 
 ## Canonical fields
 
+### Native invocation scope
+
+The native entry consumes the identity owner's positively corroborated session
+observation. Its recorded project/context is the only scope input; invocation
+cwd, `gh` arguments, host overrides and repository flags do not select the
+project or backend. Config resolves that project's declared scope, and posting
+consumes the selected-backend answer from
+`local/projects/teleclaude/design/architecture/workflow-store`; valid-default
+and configuration-error behavior remain with those owners. A missing,
+ambiguous, unreadable or invalid scope answer refuses rather than becoming a
+local selection.
+
+Before allowing native pass-through or credential-bearing execution, the entry
+rereads the observed session,
+project context, selected backend and GitHub actor/target bindings. Any existing
+GitHub binding, including a partial or invalid actor or target record, anchors
+the session to GitHub. A changed backend, missing target, unreadable binding or
+project/config disagreement refuses without human credentials or local
+fallback.
+A local backend with any actor or target binding also refuses; a removed or
+changed backend declaration never clears or rebinds existing session scope.
+
+A positively corroborated managed session whose owner-resolved backend is local
+and whose session has no GitHub actor or target binding runs the real `gh` with
+its original arguments, environment, I/O and invocation directory. It receives
+no App credential, envelope or GitHub object association. This includes a
+genuinely absent session role; the identity owner distinguishes that fact from
+an unknown role. A GitHub-selected session requires its canonical role and
+both bindings; a missing or unreadable producer result refuses. Positively
+identified human execution outside managed panes keeps native `gh` behavior.
+The real binary lookup excludes this installed entry to prevent recursion
+(`local/projects/teleclaude/spec/feature/identity/platform-github-identity`,
+`local/projects/teleclaude/spec/domain/config`).
+
 ### Complete supported native mutation set
 
 Each admitted native mutation fits exactly one row below. Target, every field
@@ -69,16 +103,21 @@ reviews refuse before provider effect. Admission is finite structural handling,
 not a generic interception framework or semantic command/prose parser
 (`sdlc/policy/no-semantic-validators`, `sdlc/policy/security-awareness`).
 
-Argument, body-file, stdin and editor prose collection occurs before credential
-injection. An editor receives a sanitized environment and finishes before the
-credential-bearing provider process starts. The concrete provider handler
-receives the collected prose without reopening interactive editor/default
-selection. Read-only native operations and help remain available under
-the credential-disclosure boundary; credential-bearing execution uses controlled
-native configuration and no uncontrolled editor, pager or extension subprocess.
-Token-printing auth commands, token-disclosing status modes, shared auth
-switching and credential/header diagnostics receive no platform token
+Structural target and operation admission completes before prose collection.
+Argument, body-file, stdin and editor prose collection then finishes before
+credential injection. An editor receives a sanitized environment; the fixed
+collected prose reaches the provider process, which cannot reopen an editor,
+pager or default-selection prompt after credentials arrive. Credential-bearing
+execution uses controlled native configuration and no uncontrolled extension
+subprocess. Token-printing auth commands, token-disclosing status modes, shared
+auth switching and credential/header diagnostics receive no platform token
 (`sdlc/policy/ai-agent-security`).
+
+Only structurally exact help/version spellings run as reconstructed bounded
+native commands with sanitized empty native configuration and no App token.
+Other read-only commands must match the supported read shape and use controlled
+configuration. Aliases, extensions, opaque controls and flag-looking text in
+body/file/stdin/editor prose do not select a help or version path.
 
 ### Canonical envelope mapping
 

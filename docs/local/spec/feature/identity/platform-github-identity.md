@@ -29,15 +29,25 @@ phase have different App bot accounts. Sessions may share an App without
 sharing producing-session provenance. Refresh and restart preserve the assigned
 actor (`sdlc/policy/ai-agent-security`).
 
-The managed native boundary identifies its execution from observed process
-ancestry and the session owner's live pane on the platform's configured tmux
-server before credential access. A session marker identifies a candidate only;
-its session, work binding and live pane ancestry must agree. Missing, closed,
-remote, detached, ambiguous or disagreeing evidence refuses the bound operation.
-A missing marker cannot turn a known managed invocation into native human
-pass-through. Uncertain classification refuses; positively identified native
-human execution outside managed agent sessions retains its native behavior
-(`sdlc/policy/ai-agent-security`).
+The managed native boundary identifies an invocation only from freshly
+corroborated facts for the actual open local session: a valid session marker,
+its recorded project context and role state, the live pane on the platform's
+configured tmux server, and PID/create-time ancestry connecting this process to
+that pane. Current session, recorded role, work-binding and pane facts are reread at the
+decision boundary. Missing, closed, remote, detached, inaccessible, ambiguous
+or disagreeing evidence refuses the bound operation. A missing marker cannot
+turn a known managed invocation into native human pass-through; uncertain
+execution remains a refusal (`sdlc/policy/ai-agent-security`).
+
+The observation distinguishes a genuinely absent stored role from a present
+role that is unknown to the canonical catalog. The latter refuses and is never
+normalized to absence. A genuinely absent role is carried only as native scope
+evidence; it authenticates no caller and supplies no GitHub authority. The
+GitHub-bound context factory still requires a canonical role before actor,
+target or credential admission. Admitted daemon context also requires its
+canonical role and uses the admitted caller, never native pane evidence.
+Positively corroborated human execution outside managed panes retains native
+behavior (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
 
 Actor assignment is durable session state; authentication of an invocation is
 re-observed at execution. Restart reads current session facts and live process
