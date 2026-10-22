@@ -17,12 +17,11 @@ from teleclaude.core.identity import (
     RefusedPersonContextBinding,
 )
 from teleclaude.github.accounts import (
-    GitHubAccount,
     GitHubAccountDirectory,
-    GitHubAccountKind,
     GitHubAccountLookupRefused,
 )
 from teleclaude.paths import ConfigFileName
+from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
 
 
 class GitHubPersonRefusal(StrEnum):

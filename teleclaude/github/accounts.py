@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
 from urllib.parse import quote
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+
+from teleclaude.types.github_account import GitHubAccount
 
 _ACCOUNT_URL = "https://api.github.com/users/{handle}"
 _EMPTY = ""
@@ -16,29 +16,6 @@ _ACCEPT_JSON = "application/vnd.github+json"
 _VERSION_HEADER = "X-GitHub-Api-Version"
 _API_VERSION = "2026-03-10"
 _LOOKUP_REFUSED = "Authenticated GitHub account lookup could not be verified"
-
-
-class GitHubAccountKind(StrEnum):
-    """Provider account types carried by REST author/account facts."""
-
-    USER = "User"
-    BOT = "Bot"
-    ORGANIZATION = "Organization"
-
-
-class GitHubAccount(BaseModel):
-    """Stable provider identity; login is presentation and lookup input."""
-
-    model_config = ConfigDict(frozen=True)
-
-    id: int = Field(gt=0, strict=True)
-    node_id: str = Field(min_length=1)
-    login: str = Field(min_length=1)
-    type: GitHubAccountKind
-
-    def same_account(self, other: GitHubAccount) -> bool:
-        """Compare stable provider facts independently of login spelling."""
-        return self.id == other.id and self.node_id == other.node_id and self.type is other.type
 
 
 class GitHubAccountLookupRefused(RuntimeError):

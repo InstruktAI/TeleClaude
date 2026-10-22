@@ -83,6 +83,17 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     visibility: str | None = "private"
 
 
+class GitHubSessionBindingRow(SQLModel, table=True):
+    """Immutable infrastructure assignment retained with session state."""
+
+    __tablename__ = "github_session_bindings"
+    __table_args__ = {"extend_existing": True}
+
+    session_id: str = Field(primary_key=True)
+    binding_json: str
+    native_target_json: str | None = None
+
+
 class VoiceAssignment(SQLModel, table=True):
     """voice_assignments table."""
 

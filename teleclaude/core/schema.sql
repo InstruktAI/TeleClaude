@@ -808,3 +808,10 @@ CREATE TABLE IF NOT EXISTS conversation_bindings (
     entered_at TEXT NOT NULL,
     PRIMARY KEY (origin, key_field, conversation_key)
 );
+
+-- Infrastructure assignments are immutable session state, separate from inbound metadata.
+CREATE TABLE IF NOT EXISTS github_session_bindings (
+    session_id TEXT PRIMARY KEY,
+    binding_json TEXT NOT NULL,
+    native_target_json TEXT
+);
