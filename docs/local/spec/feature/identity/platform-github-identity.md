@@ -45,10 +45,20 @@ evidence, never a remembered authentication verdict. The session owner persists
 the binding through its existing durable records; there is no second session
 registry or role/phase authority (`sdlc/policy/domain-ownership`).
 
-A session created with an item's store identity
-(`local/projects/teleclaude/design/architecture/procedure-activation`) in a
-project whose selected workflow backend is GitHub (#124 INV-B1) requires both
-its actor assignment and its native target. Both commit with the session row
+Every session the workflow starts for an item carries that item's
+(`WorkItemId`, `StoreAddress`) pair in one typed session-creation value that
+only in-daemon producers set; no API, command-line or relayed request supplies
+it. A phase driver receives the pair from its activation
+(`local/projects/teleclaude/design/architecture/procedure-activation`). A phase
+child receives it from the child launch, which reads the pair of the item its
+holding driver claims through the store port before the child's session is
+created; an address that resolves to nothing or cannot be read refuses the
+launch (`local/projects/teleclaude/spec/feature/workflow/item-acts`, The child
+command).
+
+In a project whose selected workflow backend is GitHub (#124 INV-B1), every
+session the workflow starts for an item requires both its actor assignment and
+its native target. Both commit with the session row
 and its startup handover in the one session-creation write, or nothing commits
 and creation is refused, so restart never finds an unbound startup handover to
 resume. The native target is the GitHub adapter's projection of the project's
