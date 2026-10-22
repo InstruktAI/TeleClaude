@@ -1,7 +1,6 @@
 ---
-description: Display lifetime of human conversation text and completed speech transcripts on Discord, distinct from transient recording, feedback and control cleanup.
-delivered_by:
-  - discord-user-messages-disappear-on-reply
+description: Display lifetime of human conversation text and completed speech transcripts
+  on Discord, distinct from transient recording, feedback and control cleanup.
 ---
 
 # Conversation Message Retention — Spec
