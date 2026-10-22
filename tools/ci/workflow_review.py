@@ -1400,6 +1400,11 @@ def run_b5(flow: flow_module.WorkflowFlow) -> None:
         w2_case.require_title_stable(w2)
         _end(flow, w2)
         commit_three = _move_head(flow, worktree)
+        # _start_work already checked the original completed start and observed W2's claim; _end checked closure.
+        # No later start has been issued. The original ledger records stay open until their existing discharge below.
+        creation.require_b14_kickback(
+            flow.observer, TELEC, flow_module.ITEM, creation.B14Case.STALE_WORK_UNCLAIMED, closed_driver=w2
+        )
         w3, ready_since_c3 = _restamp(flow, commit_three, known_claims)
         _end(flow, builder)
         flow.require_ledger().discharge(parent_id, "public start completed and claim session observed")

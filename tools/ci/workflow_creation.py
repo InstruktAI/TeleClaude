@@ -350,14 +350,16 @@ class B12Field(StrEnum):
 
 
 class B14Case(StrEnum):
-    """Approved later-parent door checkpoints; the held startup and stale-work bindings are excluded."""
+    """Approved door checkpoints; the startup reservation-witness binding remains held."""
 
     HELD_PREPARATION = "held-preparation"
     HELD_WORK = "held-work"
     PREPARED_UNCLAIMED = "prepared-unclaimed"
+    STALE_WORK_UNCLAIMED = "stale-work-unclaimed"
     READY_UNCLAIMED = "ready-unclaimed"
     ADMITTED = "admitted"
     DELIVERED = "delivered"
+    DESIGN = "design"
 
 
 class B14Token(StrEnum):
@@ -379,6 +381,13 @@ B14_FIELD_COMMIT: Final = "commit"
 B14_FIELD_READY_COMMIT: Final = "ready_at_commit"
 B14_FIELD_DELIVERED_COMMIT: Final = "delivered_commit"
 B14_FIELD_STAGE: Final = "stage"
+B14_FIELD_CREATIVE_EPISODE: Final = "creative_episode"
+B14_ARTIFACTS: Final = "artifacts"
+B14_WRITE: Final = "write"
+B14_DESIGN_SPEC: Final = "design-spec"
+B14_DESIGN_TEXT: Final = "b14 design door"
+B14_PHASE_DESIGN: Final = "design"
+B14_DESIGN_WRITE_LABEL: Final = "todo artifacts write ra-noack design-spec"
 B14_PHASE_WORK: Final = "work"
 B14_PHASE_READY: Final = "ready"
 B14_PHASE_PREPARED: Final = "prepared"
@@ -976,8 +985,32 @@ def run_creation(host: FoundationHost, project: Path, source_root: Path) -> None
             )
         require_value(SLUG_GATE, gated, f"{FIELD_STATE}{DOT}{FIELD_PHASE}", PHASE_PREPARATION)
         absence_window(observer, baseline, journey_slugs)
+        _b14_design_control(observer)
     finally:
         leave_project(observer, source_root)
+
+
+def _b14_design_control(observer: Observer) -> None:
+    """Open the approved ra-noack creative episode through its public artifact write, then check the design door."""
+    before = observer.show(SLUG_GATE)
+    sessions = observer.sessions()
+    state = before.get(FIELD_STATE) if before is not None else None
+    standing = before.get(FIELD_STANDING) if before is not None else None
+    if (
+        not isinstance(state, Mapping)
+        or not isinstance(standing, Mapping)
+        or state.get(FIELD_PHASE) != PHASE_PREPARATION
+        or FIELD_RUNNER not in state
+        or state.get(FIELD_RUNNER) not in (None, EMPTY)
+        or standing.get(B14_FIELD_CREATIVE_EPISODE)
+    ):
+        raise binding_failure(B14_DETAIL_BINDING.format(case=B14Case.DESIGN.value, item=before))
+    outcome = observer.run((TELEC, TODO, B14_ARTIFACTS, B14_WRITE, SLUG_GATE, B14_DESIGN_SPEC, B14_DESIGN_TEXT))
+    if outcome.exit_status != 0 or outcome.diagnostics:
+        raise binding_failure(
+            DETAIL_COMMAND.format(command=B14_DESIGN_WRITE_LABEL, status=outcome.exit_status, output=outcome.output)
+        )
+    require_b14_kickback(observer, TELEC, SLUG_GATE, B14Case.DESIGN, expected_sessions=sessions)
 
 
 def _gate_control(observer: Observer, baseline: SessionView) -> None:
@@ -1072,6 +1105,8 @@ def require_b14_kickback(
     expected_item: Mapping[str, object] | None = None,
     starts: Mapping[str, str] | None = None,
     open_start_value: str = EMPTY,
+    closed_driver: str = EMPTY,
+    expected_sessions: SessionView | None = None,
 ) -> None:
     """Check one approved parent checkpoint, one public refusal, and immediate item/session equality."""
     before = observer.show(slug)
@@ -1118,6 +1153,17 @@ def require_b14_kickback(
                 and bool(open_start_value)
                 and open_start_value not in starts.values()
             )
+        elif case is B14Case.STALE_WORK_UNCLAIMED:
+            valid = (
+                valid
+                and state.get(FIELD_PHASE) == standing.get(FIELD_STANDING_PHASE) == B14_PHASE_WORK
+                and state.get(FIELD_RUNNER) in (None, EMPTY)
+                and not standing.get(B14_FIELD_HELD)
+                and not standing.get(B14_FIELD_ADMITTED)
+                and B14_FIELD_READY_COMMIT not in standing
+                and bool(closed_driver)
+                and closed_driver in sessions.closed
+            )
         elif case is B14Case.READY_UNCLAIMED:
             valid = (
                 valid
@@ -1143,6 +1189,17 @@ def require_b14_kickback(
                 and before == expected_item
             )
             substitutions[B14Token.ADMITTED8] = commit[:8]
+        elif case is B14Case.DESIGN:
+            valid = (
+                valid
+                and state.get(FIELD_PHASE) == PHASE_PREPARATION
+                and standing.get(FIELD_STANDING_PHASE) == B14_PHASE_DESIGN
+                and state.get(FIELD_RUNNER) in (None, EMPTY)
+                and bool(standing.get(B14_FIELD_CREATIVE_EPISODE))
+                and expected_sessions is not None
+            )
+            if expected_sessions is not None:
+                require_sessions_equal(expected_sessions, sessions, case.value)
     if not valid:
         raise binding_failure(B14_DETAIL_BINDING.format(case=case.value, item=before))
     outcome = observer.run((executable, TODO, STAMP, slug, *B14_CALL_TAIL))
