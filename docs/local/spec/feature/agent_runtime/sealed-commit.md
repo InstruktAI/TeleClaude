@@ -18,6 +18,10 @@ Ordinary raw `git add` and `git commit` invocations in a sealed repository are r
 
 Within a slug worktree, an ordinary agent may not use a local `main` reference for any Git command, including read-only inspection; the wrapper refuses with a nonzero result before invoking Git and identifies `origin/main` as the baseline. The restriction applies to ref arguments before `--`, so a pathspec named `main` after `--` is unaffected. This agent rule remains distinct from the trusted external-tool path above, which bypasses the wrapper.
 
+On the repo-root `main` branch, only a caller whose session record resolves to the integrator role may push to `origin/main` or run a merge, rebase, or cherry-pick that creates a commit on `main`; other roles are refused.
+
+An ordinary slug-worktree commit that includes `docs/**` or `agents/**` is refused and names each offending path and its source class, without formatting, linting, or creating a commit. The doc refusal directs the worker to the `telec todo stamp <slug> --kickback --reason <why>` route; the artifact refusal directs authorship to the main session where intent was decided. Pre-merge worktree sync likewise refuses `agents/**` before staging and creates no sync commit. Repo-root `main` and the integration worktree may carry owner-authored docs and artifacts subject to the other commit gates.
+
 The seal is scoped to invocation context roots, and which of them it covers is read from the project-subscription axis of `local/projects/teleclaude/spec/feature/config/tier-permissions`. A project root is sealed when it subscribes `code` or `docs` (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and a project subscribing neither keeps ordinary git. An invocation context root whose tier carries no project subscriptions at all is sealed: it has no subscription to decide with, and the sanctioned path is its commit channel. Passthrough is decided by the repository, not by the location inside it. Where the repository's own root carries no declaration at all, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. Where the repository's root is itself a declared non-project invocation context, the seal covers the whole repository: an invocation beneath it that resolves to no context root is refused rather than passed through. A project repository is unchanged: its seal follows its subscriptions exactly as above, and every location beneath it resolves to the project's own context root.
 
 The contract resolves four classes of file state at commit time:
@@ -73,13 +77,6 @@ And the command's exit status and output are git's own
 ```
 
 #### UC-GWR-1 — The integrator rows follow the role the caller's session record resolves to
-
-```
-Given an agent session in its host pane on `main` of a sealed repository
-When it pushes to `origin main`, or runs a merge, rebase or cherry-pick that produces a commit on main
-Then the wrapper admits it only when the session's record resolves to the integrator system role
-And any other role is refused with the integrator-only message
-```
 
 #### UC-LMR-1 — A slug worktree cannot reference local main
 
@@ -237,58 +234,13 @@ And neither handle_format nor handle_lint is invoked
 
 #### UC-CGIP-12 — Slug worktree refuses doc-layer paths
 
-```
-Given a slug worktree at trees/<slug> (a worktree that is not trees/_integration)
-And the resolved commit pathspec contains one or more paths under docs/**
-When agent invokes telec code commit --approved "<msg>"
-Then SystemExit(1) naming each offending docs/** path
-And no commit occurs
-And neither handle_format nor handle_lint is invoked
-And the refusal directs the agent at the kickback route telec todo stamp <slug> --kickback --reason "<why>"
-```
-
 #### UC-CGIP-13 — Main branch and integration worktree are unaffected by the doc refusal
-
-```
-Given the commit pathspec contains a path under docs/**
-When the invocation is on the repo-root main branch, or in the integration worktree at trees/_integration
-Then the doc refusal does not fire
-And the commit proceeds subject to the other commit-time invariants
-```
 
 #### UC-CGIP-12a — Slug worktree refuses agent-artifact source paths
 
-```
-Given a slug worktree at trees/<slug> (a worktree that is not trees/_integration)
-And the resolved commit pathspec contains one or more paths under agents/**
-When agent invokes telec code commit --approved "<msg>"
-Then SystemExit(1) names each offending agents/** path
-And no commit occurs
-And neither handle_format nor handle_lint is invoked
-And the refusal reports the paths as agent-artifact sources rather than as doc-layer paths
-And the refusal directs the agent to author the artifacts on main in the session where their intent was decided
-```
-
 #### UC-CGIP-13a — Main branch and integration worktree are unaffected by the agent-artifact refusal
 
-```
-Given the commit pathspec contains a path under agents/**
-When the invocation is on the repo-root main branch, or in the integration worktree at trees/_integration
-Then the agent-artifact refusal does not fire
-And the commit proceeds subject to the other commit-time invariants
-```
-
 #### UC-CGIP-29 — The pre-merge worktree sync refuses agent-artifact source paths
-
-```
-Given a slug worktree at trees/<slug> whose working tree carries uncommitted changes
-And one or more of those dirty paths is under agents/**
-When the work state machine syncs that worktree against origin/main before merging
-Then no path is staged and no pre-merge sync commit is created
-And the sync returns an error naming each offending agents/** path
-And the error reports the paths as agent-artifact sources rather than as doc-layer paths
-And the error directs the agent to author the artifacts on main in the session where their intent was decided
-```
 
 #### UC-CGIP-14 — An unresolvable transcript neither errors nor withdraws the session's declarations
 
