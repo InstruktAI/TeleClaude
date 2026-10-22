@@ -1,7 +1,6 @@
 ---
-description: Schema-owned machine applicability and one availability decision shared by configuration surfaces and feature entry boundaries.
-delivered_by:
-  - master-scoped-configuration
+description: Schema-owned machine applicability and one availability decision shared
+  by configuration surfaces and feature entry boundaries.
 ---
 
 # Runtime Applicability — Spec

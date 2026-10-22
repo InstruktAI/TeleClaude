@@ -9,19 +9,9 @@ visibility: 'public'
 
 The Teleclaude Config surface defines how TeleClaude configuration is initialized and validated across two distinct surfaces:
 
-<!-- planned-change:master-scoped-configuration -->
-
-1. User-facing `teleclaude.yml` files (`GlobalConfig`, `ProjectConfig`, `PersonConfig`)
-2. Daemon runtime `config.yml` loaded by `teleclaude.config`
-   These surfaces are related but not interchangeable. Every environment variable backing a machine-config field derives from that field's path, so the config TUI's environment list for those fields follows the schema rather than a separately maintained registry. Variables outside the machine-config schema — the deployment-time home location, and requirements declared by MCP servers or by operator-authored `ungoverned_body` entries — keep their own sources and are still recorded here.
-
-<!-- change:master-scoped-configuration -->
-
 1. User-facing `teleclaude.yml` files (`GlobalConfig`, `ProjectConfig`, `PersonConfig`)
 2. Daemon runtime `config.yml` loaded by `teleclaude.config`
    These surfaces are related but not interchangeable. Every environment variable backing a machine-config field derives from that field's path, so the config TUI's environment list for those fields follows the schema rather than a separately maintained registry. Each row of that list carries the configuration owner's applicability answer for its field (`local/projects/teleclaude/spec/feature/config/runtime-applicability`), which a client renders rather than derives. Variables outside the machine-config schema — the deployment-time home location, and requirements declared by MCP servers or by operator-authored `ungoverned_body` entries — keep their own sources and are still recorded here.
-
-<!-- /planned-change:master-scoped-configuration -->
 
 ### One filename, four tiers
 
@@ -95,26 +85,9 @@ where `computer.is_ingress_node` is set. A person's voice-bot token is needed
 nowhere: without it, that person has no voice room. The per-file published schema cannot express a
 condition on the machine configuration, so it does not carry these needs.
 
-<!-- planned-change:master-scoped-configuration -->
-
-A machine-config section declares its **scope**: `local`, the default, or
-`master`. A master-scoped section is meaningful only on the computer where
-`computer.is_master` holds. On every other computer the configuration reader
-yields it with `enabled` false, and every surface reads that one declaration:
-`telec config wizard` does not offer the section on a non-master, its required
-fields are not judged there, `telec config
-computer get` and the readiness report name it as master-scoped and not
-applicable, and the fleet's view of which adapters a computer runs derives from
-the same effective flag. Scope changes what a non-master consumes, never what
-its file says: the document keeps what the operator wrote.
-
-<!-- change:master-scoped-configuration -->
-
 Machine-schema applicability and configuration availability are resolved once
 for fields, sections and their consuming feature boundaries under
 `local/projects/teleclaude/spec/feature/config/runtime-applicability`.
-
-<!-- /planned-change:master-scoped-configuration -->
 
 A section's `enabled` flag governs the whole section. When its effective value
 is false, the section's fields are not consumed and every `enabled` nested

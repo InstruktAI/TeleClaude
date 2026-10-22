@@ -47,13 +47,9 @@ still absent.
 
 ## Canonical fields
 
-<!-- planned:master-scoped-configuration -->
-
 The typed aggregate exposes configuration-owned applicability and availability
 for its consumers under
 `local/projects/teleclaude/spec/feature/config/runtime-applicability`.
-
-<!-- /planned:master-scoped-configuration -->
 
 ### Use cases
 
