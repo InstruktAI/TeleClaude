@@ -47,14 +47,6 @@ still absent.
 
 ## Canonical fields
 
-<!-- planned:master-scoped-configuration -->
-
-The typed aggregate exposes configuration-owned applicability and availability
-for its consumers under
-`local/projects/teleclaude/spec/feature/config/runtime-applicability`.
-
-<!-- /planned:master-scoped-configuration -->
-
 ### Use cases
 
 #### UC-CFG-LOAD-16: A declared computer kind is an address, not a setting

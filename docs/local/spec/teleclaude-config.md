@@ -85,8 +85,6 @@ where `computer.is_ingress_node` is set. A person's voice-bot token is needed
 nowhere: without it, that person has no voice room. The per-file published schema cannot express a
 condition on the machine configuration, so it does not carry these needs.
 
-<!-- planned-change:master-scoped-configuration -->
-
 A machine-config section declares its **scope**: `local`, the default, or
 `master`. A master-scoped section is meaningful only on the computer where
 `computer.is_master` holds. On every other computer the configuration reader
@@ -97,14 +95,6 @@ computer get` and the readiness report name it as master-scoped and not
 applicable, and the fleet's view of which adapters a computer runs derives from
 the same effective flag. Scope changes what a non-master consumes, never what
 its file says: the document keeps what the operator wrote.
-
-<!-- change:master-scoped-configuration -->
-
-Machine-schema applicability and configuration availability are resolved once
-for fields, sections and their consuming feature boundaries under
-`local/projects/teleclaude/spec/feature/config/runtime-applicability`.
-
-<!-- /planned-change:master-scoped-configuration -->
 
 A section's `enabled` flag governs the whole section. When its effective value
 is false, the section's fields are not consumed and every `enabled` nested
