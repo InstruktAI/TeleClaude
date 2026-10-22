@@ -55,6 +55,8 @@ _COMMIT_REF_TEMPLATE = "{sha}^{{commit}}"
 _GIT_REV_PARSE_VERIFY = ["rev-parse", "--verify", "--quiet"]
 _GIT_IS_ANCESTOR = ["merge-base", "--is-ancestor"]
 _GIT_LOG = "log"
+_GIT_VERIFY_MAIN_REF = ["show-ref", "--verify", "--quiet", f"refs/heads/{_MAIN_REF}"]
+_GIT_REF_MISSING_STATUS = 1
 _GIT_FIXED_STRINGS = "--fixed-strings"
 _RANGE_TEMPLATE = "{base}..{tip}"
 _GIT_LOG_NO_WALK = ["log", "--no-walk"]
@@ -138,6 +140,9 @@ def associated_commit_shas(project_root: str, slug: str) -> tuple[str, ...]:
         project_root,
     )
     if returncode != 0:
+        ref_status, _, ref_stderr = run_git_command(_GIT_VERIFY_MAIN_REF, project_root)
+        if ref_status == _GIT_REF_MISSING_STATUS and not ref_stderr.strip():
+            return ()
         raise RuntimeError(_ERR_GIT_LOG.format(detail=stderr.strip() or "unknown"))
     shas: list[str] = []
     for record in stdout.split(_RECORD_SEP):
