@@ -37,7 +37,7 @@ jobs:
 
       - name: Run lint
         run: telec code lint --all
-        timeout-minutes: 5
+        timeout-minutes: 10
 
   runtime-acceptance:
     # Source/journey review precedes the first separately authorized hosted run.
