@@ -327,8 +327,9 @@ And a stamp by a session whose chain holds no lifecycle claim records nothing on
 
 - `--task-outcome <success|error>` is the **durable firing-outcome** stamp for a
   `kind="task"` Todo, reconciled by the lifecycle runner into a terminal state. A
-  one-shot `success` delivers the Todo; a recurring `success` clears a task-error hold
-  and leaves the Todo live; `error` holds the Todo with the task-error hold source and
+  one-shot `success` delivers the Todo; a recurring `success` clears only a task-error
+  hold and leaves any other hold, including a human-pause hold, intact while keeping
+  the Todo live; `error` holds the Todo with the task-error hold source and
   the reason. The stamp transitions terminal state synchronously and adds no new state
   field. `error` **requires a non-empty reason**, and a task-outcome stamp on a non-task
   Todo is refused before any write. A task-error hold has **no bare-unhold recovery**:
