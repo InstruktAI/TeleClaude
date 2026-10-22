@@ -17,7 +17,7 @@ from teleclaude.core.next_machine.documentation_evidence import (
 )
 from teleclaude.core.next_machine.marker_reconciliation import MarkerReceipt, restore_lifecycle_markers
 from teleclaude.core.todos_db._models import Todo
-from teleclaude.core.workflow_store.types import DocumentationAdmission, TodoDiagnosticRecord
+from teleclaude.core.workflow_store.types import DocumentationAdmission, TodoDiagnosticRecord, WorkItemId
 from teleclaude.git_lock import main_branch_lock_async
 
 _TODO_UPDATED_EVENT = "todo_updated"
@@ -50,7 +50,7 @@ class _CreateItemHost(Protocol):
         session: SqlAsyncSession,
         documentation_admission: DocumentationAdmission | None = None,
         reconciliation_receipts: list[MarkerReceipt] | None = None,
-    ) -> bool: ...
+    ) -> WorkItemId: ...
 
     async def write_state(self, slug: str, state: dict[str, StateValue], *, session: SqlAsyncSession) -> None: ...
 
@@ -147,7 +147,7 @@ class TodosDbWorkflowOperationsMixin:
         artifact_body: str,
         updated_by: str | None,
         documentation_admission: DocumentationAdmission | None = None,
-    ) -> bool:
+    ) -> WorkItemId:
         """Atomically create the item, initial state and first artifact version."""
         reconciliation_receipts: list[MarkerReceipt] = []
         committed = False

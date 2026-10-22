@@ -49,7 +49,7 @@ from teleclaude.core.todos_db._todo_documentation_transfer import (
 from teleclaude.core.todos_db._todo_membership import TodosDbTodoMembershipMixin
 from teleclaude.core.todos_db._todo_state_helpers import collect_entry_updates, readiness_state_fields
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage, upcycle_state_dict
-from teleclaude.core.workflow_store.types import DocumentationAdmission
+from teleclaude.core.workflow_store.types import DocumentationAdmission, WorkItemId
 from teleclaude.docs_reconcile import pending_document_carriers
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, LifecyclePhase
 from teleclaude.types.todo_kind import TodoKind
@@ -331,8 +331,8 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
         session: SqlAsyncSession | None = None,
         documentation_admission: DocumentationAdmission | None = None,
         reconciliation_receipts: list[MarkerReceipt] | None = None,
-    ) -> bool:
-        """Add or update a slug in the todo. Idempotent — returns True on success.
+    ) -> WorkItemId:
+        """Add or update a slug in the todo and return its canonical identity.
 
         ``status`` sets the new entry's todo status (``TodoStatus.ICEBOX``
         parks it at creation); re-adding an existing slug never re-parks it.
@@ -391,7 +391,7 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
                 if owns_session:
                     await db_session.commit()
                     self._on_mutation("todo_updated", None)
-                return True
+                return WorkItemId(slug)
 
             now = datetime.now(UTC).isoformat()
             new_id = _generate_id()
@@ -418,7 +418,7 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
             if owns_session:
                 await db_session.commit()
                 self._on_mutation("todo_updated", None)
-            return True
+            return WorkItemId(slug)
         except Exception:
             if split_receipt is not None and split_receipt.plan is not None:
                 restore_lifecycle_markers(Path(cwd), group_slug or slug, split_receipt.plan)
