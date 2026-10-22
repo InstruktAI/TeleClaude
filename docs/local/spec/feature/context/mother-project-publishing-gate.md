@@ -55,15 +55,12 @@ Scenario: The mother publishes its declared domains' commands and the global ski
   Then every one of those sources is validated and published to its global consumer
 ```
 
-#### UC-MPG2: The mother with empty global directories publishes nothing and fails nothing
+#### UC-MPG2: The Mother synchronizes successfully with no global artifacts
 
 ```gherkin
-Scenario: Mother project with empty global artifact directories
-  Given the project root equals the canonical TeleClaude repository root
-  And the global commands and skills source directories are missing or empty
-  When the distribution pipeline collects global sources
-  Then no global artifact items are discovered from those directories
-  And the pipeline proceeds without error
+Given the Mother repository has no global artifact content to publish
+When a maintainer synchronizes it in deploy mode
+Then synchronization succeeds without publishing global artifacts
 ```
 
 #### UC-MPG3: General commands follow the general declaration
