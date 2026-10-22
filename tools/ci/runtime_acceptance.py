@@ -1860,6 +1860,13 @@ def _capture_scenario(
         and tuple(command.argv[1:3]) == (creation.TODO, creation.STAMP)
         and tuple(command.argv[-3:]) == creation.B14_CALL_TAIL
     )
+    b5_start_operation: str | None = None
+    flow = resources.workflow_flow
+    if scenario_id == _SCENARIO_WORKFLOW_REVIEW and flow is not None and flow.public_operation_evidence:
+        first_operation = flow.public_operation_evidence[0]
+        operation_id = first_operation.get(review.FIELD_OPERATION) if isinstance(first_operation, Mapping) else None
+        if isinstance(operation_id, str) and operation_id:
+            b5_start_operation = operation_id
     return ScenarioResult(
         scenario_id=scenario_id,
         status=status,
@@ -1877,6 +1884,11 @@ def _capture_scenario(
             )
             or scenario_id == _SCENARIO_WORKFLOW_RETIRED_ACTS
             or any(abs(index - call_index) <= 2 for call_index in b14_calls)
+            or (
+                b5_start_operation is not None
+                and len(command.argv) == 4
+                and command.argv[1:] == (review.OPERATIONS, review.GET, b5_start_operation)
+            )
             else replace(command, stdout=_EMPTY)
             for index, command in enumerate(evidence)
         ),
