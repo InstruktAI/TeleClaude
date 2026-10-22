@@ -82,26 +82,25 @@ And the command reports "Slug not found in todo list: missing-slug" and exits no
 
 #### UC-ICE-FRZ-WARN: An operator can see which open work a freeze will block
 
-Freezing never cascades and is never refused for graph reasons — freezing a subtree is an explicit per-todo act. The freeze surface warns, naming each open (active) dependent that points at the newly frozen todo, so the operator knows which open work is now blocked behind the freezer.
+Freezing never cascades and is never refused for graph reasons — freezing a subtree is an explicit per-todo act. The freeze surface warns, naming each open (active) dependent that points at the newly frozen todo, so the operator knows which open work is now blocked behind the freezer. It gives no warning when there are no open dependents.
 
 ```gherkin
 Scenario: See work that a freeze will strand
   Given open todos depend on a todo the operator intends to freeze
   When the operator freezes that todo
-  Then the operator is warned about each open dependent that will be blocked from dispatch
+  Then the operator can see each open active dependent that freezing will block from dispatch
   And no warning appears when there are no open dependents
 ```
 
 #### UC-ICE-THAW-WARN: An operator can see why resumed work remains blocked
 
-Thaw order is the operator's to sequence; the tool does not refuse an out-of-order thaw. The unfreeze surface warns, naming each dependency still in the icebox, so root-first thawing is visible rather than enforced.
+Thaw order is the operator's to sequence; unfreezing succeeds regardless of thaw order, and the tool does not refuse an out-of-order thaw. The unfreeze surface warns, naming each dependency still in the icebox, so root-first thawing is visible rather than enforced. It gives no warning when every prerequisite is active or delivered.
 
 ```gherkin
 Scenario: Resume work with a frozen prerequisite
   Given a todo has one or more prerequisites that are still frozen
-  When the operator resumes it
-  Then it becomes active and the operator is warned about each frozen prerequisite that blocks dispatch
-  And resuming succeeds regardless of thaw order
+  When the operator unfreezes it
+  Then the operator can see each prerequisite that is still iceboxed and blocks dispatch
   And no warning appears when every prerequisite is active or delivered
 ```
 
