@@ -495,15 +495,6 @@ And the checkout-scoped integrator marker retains that judgment for the standing
 
 #### UC-CP24: Actionless checkpoint evaluation is silent
 
-```gherkin
-Given an agent session reaches an agent-stop checkpoint boundary
-And every obligation in the current checkpoint cycle is either satisfied or ineligible at this working location
-And no commit action, review action, required observation, or other required action remains
-When checkpoint evaluation completes
-Then no checkpoint decision is produced
-And the agent stop is not blocked by an all-clear message
-```
-
 #### UC-CP25: Checkpoint reasons use the hook-boundary control envelope
 
 ```gherkin
@@ -560,15 +551,6 @@ Then the agent receives no companion-drift action for that parent
 ```
 
 #### UC-CP39: A commit-review stamp discharges the post-commit review gate
-
-```gherkin
-Given the current branch is main
-And this session's authored-main-commit marker is present
-And a `telec code stamp` covering this session's commits is recorded, by a reviewer this session started or by this session itself
-When the heuristic engine evaluates the turn window
-Then the post-commit review-gate surfacing action is not emitted
-And the authored-main-commit marker is consumed
-```
 
 <!-- planned:installation-activation-inspection -->
 
