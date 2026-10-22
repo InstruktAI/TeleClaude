@@ -658,7 +658,7 @@ class LedgerEvidence:
         )
 
     def record(self) -> JsonObject:
-        """Pending triggers keep their open semantic state; no absence/count supplies consumption or P4."""
+        """Pending triggers keep their open semantic state; no absence/count supplies start consumption."""
         return {
             "raw_encoding": "base64",
             "raw_data": base64.b64encode(self.data).decode("ascii"),

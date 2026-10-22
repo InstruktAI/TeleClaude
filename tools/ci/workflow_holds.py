@@ -15,11 +15,11 @@ imports no application module and creates no record, identity or authentication 
 
 from __future__ import annotations
 
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
-from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_items as items
@@ -172,7 +172,7 @@ def _hold_and_release(observer: Observer, baseline: SessionView, quiet: Mapping[
         raise creation.platform_failure(
             DETAIL_SLUGS.format(before=sorted(slugs), after=sorted(observer.slugs(retain=False)))
         )
-    payload_work.sleep(items.SETTLE_SECONDS)
+    time.sleep(items.SETTLE_SECONDS)
     later = observer.show(SLUG_HOLD, retain=False)
     paths = creation.differences(first, later) if later is not None else ["absent"]
     if paths:

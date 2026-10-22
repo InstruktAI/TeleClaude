@@ -17,7 +17,6 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final, NotRequired, TypedDict, cast
 
-from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_events as events
@@ -103,11 +102,8 @@ RETAINED_NAME: Final = "RETAINED.json"
 MANIFEST_NAME: Final = "manifest.json"
 LEDGER_NAME: Final = "starts.jsonl"
 RETAINED_STATE: Final = "RETAINED-UNPROVEN"
-RETAINED_REASON: Final = "SFC P4 has no reviewed proof for every owned pane and accepted launch"
+RETAINED_REASON: Final = "Shared-flow cleanup and accepted-start settlement remain unproven"
 RETAINED_MARKER: Final = "SFC resources retained at {path}; CLEANUP PASS remains unavailable"
-SFC_UNPROVEN: Final = (
-    "P4 is unproven: a trigger or accepted launch may still create a session, and fixture panes may still execute"
-)
 SFC_CHAIN_B5: Final = "B5"
 SFC_CHAIN_B7: Final = "B7"
 SFC_CHAIN_B6: Final = "B6"
@@ -997,7 +993,7 @@ class WorkflowFlow:
                     return setup, record, launch
             remaining = deadline - time.monotonic()
             if remaining > 0:
-                payload_work.sleep(min(RECORD_POLL_SECONDS, remaining))
+                time.sleep(min(RECORD_POLL_SECONDS, remaining))
         raise self._binding_failure_with_witness(
             "startup-native-public-join",
             "exactly one public/native launch join was not observed before the startup deadline",
@@ -1105,7 +1101,7 @@ class WorkflowFlow:
                 return unique[0]
             if len(unique) > 1:
                 raise creation.binding_failure(DETAIL_PLAN_ACTOR.format(procedure=procedure, index=index, role=role))
-            payload_work.sleep(OPERATION_POLL_SECONDS)
+            time.sleep(OPERATION_POLL_SECONDS)
         raise creation.binding_failure(DETAIL_PLAN_ACTOR.format(procedure=procedure, index=index, role=role))
 
     def message_actor(self, first_line: str, index: int, role: str | None = None, timeout_seconds: float = 0.0) -> str:
@@ -1135,7 +1131,7 @@ class WorkflowFlow:
                 return unique[0]
             if time.monotonic() >= deadline:
                 raise creation.binding_failure(DETAIL_PLAN_ACTOR.format(procedure=first_line, index=index, role=role))
-            payload_work.sleep(OPERATION_POLL_SECONDS)
+            time.sleep(OPERATION_POLL_SECONDS)
 
     def session_for_native(self, native: str, role: str | None = None) -> str | None:
         for session_id in self.observer.sessions(retain=False).ids:
@@ -1372,7 +1368,6 @@ class WorkflowFlow:
                         "P1_session_lifecycle": "unproven until finalizer observations",
                         "P2_start_consumption": "unresolved ledger entries remain open",
                         "P3_daemon_stopped": "pending profile boundary make stop outcome",
-                        "P4_fixture_processes_and_panes": "unproven by the approved contract",
                     },
                 }
             )
@@ -1383,7 +1378,7 @@ class WorkflowFlow:
             raise creation.binding_failure(DETAIL_RETENTION.format(error=type(error).__name__)) from error
 
     def record_profile_stop(self, outcome: str) -> None:
-        """Record the independent graceful-stop result; it cannot establish the unresolved process proof P4."""
+        """Record supported shutdown independently from unresolved public start/claim settlement."""
         stop_proven = outcome == "stopped"
         finalizer = self.finalizer_summary
         p1 = finalizer.get("P1_session_lifecycle") if finalizer else "unproven"
@@ -1395,7 +1390,6 @@ class WorkflowFlow:
                     "P1_session_lifecycle": "proven" if p1 == "proven" else "unproven",
                     "P2_start_consumption": "unproven" if p2 != "classified" else "classified",
                     "P3_daemon_stopped": "proven" if stop_proven else "unproven",
-                    "P4_fixture_processes_and_panes": "unproven by the approved contract",
                 },
             }
         )
@@ -1523,7 +1517,6 @@ class WorkflowFlow:
             and all(isinstance(row, Mapping) and row.get("closed") is True for row in session_rows.values())
             else "unproven",
             "P2_start_consumption": "unproven; explicit starts and async launch backlog lack public settlement evidence",
-            "P4_fixture_processes_and_panes": "unproven by the approved contract",
         }
         self.finalizer_summary.update(
             {
@@ -1970,7 +1963,7 @@ class WorkflowFlow:
                 if attempt_id is not None:
                     self.require_ledger().discharge(attempt_id, "public end completed and retained record closed")
                 return record
-            payload_work.sleep(RECORD_POLL_SECONDS)
+            time.sleep(RECORD_POLL_SECONDS)
             record = self.session_record(session_id, retain=False, evidence=reads)
         raise creation.platform_failure(DETAIL_CLOSED.format(session=session_id, record=record))
 

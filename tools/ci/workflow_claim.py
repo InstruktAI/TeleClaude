@@ -31,7 +31,6 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Final
 
-from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
@@ -232,7 +231,7 @@ class _Steps:
                 self.claim_seen = time.monotonic()
                 self.journey.session_id = holder
                 return
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         starter = publication.operation_state(self.observer, self.starter, retain=True)
         logs = publication.log_evidence(self.host, LOG_TERMS)
         raise creation.platform_failure(
@@ -249,7 +248,7 @@ class _Steps:
         deadline = time.monotonic() + STARTER_SETTLE_SECONDS
         state = publication.operation_state(self.observer, self.starter, retain=True)
         while state.get(FIELD_STATE) not in TERMINAL_STATES and time.monotonic() < deadline:
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
             state = publication.operation_state(self.observer, self.starter)
         if state.get(FIELD_STATE) in TERMINAL_STATES - {STATE_COMPLETED}:
             raise creation.platform_failure(
@@ -293,7 +292,7 @@ class _Steps:
         self.claim.starts[operation] = publication.START_REFUSED
         for when, pause in (("immediately", 0.0), ("five seconds later", SETTLE_SECONDS)):
             if pause:
-                payload_work.sleep(pause)
+                time.sleep(pause)
             changed = creation.differences(snapshot, driver.shown_with_content(observer, ITEM))
             if changed:
                 raise creation.platform_failure(DETAIL_WRITE.format(when=when, paths=changed))

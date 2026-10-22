@@ -41,7 +41,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Final, cast
 
-from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
@@ -429,7 +428,7 @@ class _Prepared:
             try:
                 launch_value = json.loads(launch_path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
-                payload_work.sleep(POLL_SECONDS)
+                time.sleep(POLL_SECONDS)
                 continue
             launch = launch_value if isinstance(launch_value, Mapping) else {}
             native = launch.get(foundation.FIELD_NATIVE)
@@ -438,7 +437,7 @@ class _Prepared:
                     record = self._record(session)
                     if record.get(foundation.FIELD_NATIVE) == native:
                         return session
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         raise creation.binding_failure(DETAIL_B9_SESSION.format(label=f"d{index}", record="no native launch mapping"))
 
     def _roleless_startup(
@@ -572,7 +571,7 @@ class _Prepared:
                 raise creation.platform_failure(
                     waiting.DETAIL_SESSIONS.format(when="discovery", found=found, expected="one")
                 )
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         raise creation.platform_failure(waiting.DETAIL_SESSIONS.format(when="discovery", found=found, expected="one"))
 
     def _require_pool(self, claimed: int) -> None:
@@ -1184,7 +1183,6 @@ class _Prepared:
                 "P1_session_lifecycle": "from public completed ends and closed retained records only",
                 "P2_launch_consumption": "unknown B9 starts or effects remain open",
                 "P3_daemon_stopped": "pending profile boundary make stop outcome",
-                "P4_fixture_processes_and_panes": "unproven by the approved contract",
             },
         }
         marker_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1229,7 +1227,7 @@ class _Prepared:
     def snapshot(self, effect: creation.EvidenceObject | None = None) -> Json:
         """Two equal reads at least two seconds apart: nothing else is writing the item."""
         first = self._shown(effect)
-        payload_work.sleep(creation.QUIESCENCE_GAP_SECONDS)
+        time.sleep(creation.QUIESCENCE_GAP_SECONDS)
         second = self._shown(effect)
         changed = creation.differences(first, second)
         if changed:
@@ -1239,7 +1237,7 @@ class _Prepared:
     def require_snapshot(self, expected: Json, when: str, effect: creation.EvidenceObject | None = None) -> None:
         for label, pause in (("immediately", 0.0), ("five seconds later", items.SETTLE_SECONDS)):
             if pause:
-                payload_work.sleep(pause)
+                time.sleep(pause)
             changed = creation.differences(expected, self._shown(effect))
             if changed:
                 raise creation.platform_failure(DETAIL_CHANGED.format(when=f"{when} {label}", paths=changed))
@@ -1342,7 +1340,7 @@ class _Prepared:
                 raise creation.binding_failure(
                     waiting.DETAIL_MAPPING.format(actor="child", session=session, recorded=recorded, launched=native)
                 )
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         raise creation.platform_failure(
             waiting.DETAIL_NOT_STARTED.format(
                 actor="child", session=session, seconds=int(waiting.START_CAP_SECONDS), record=record
@@ -1502,7 +1500,7 @@ class _Prepared:
             effect["observation_end"] = deadline
         while time.monotonic() < deadline:
             creation.require_sessions_equal(sessions, self._sessions(effect, retain=False), "after the refused work")
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         creation.require_value(ITEM, self._shown(effect), "state.lifecycle_phase", PREPARED_PHASE)
         if effect is not None:
             effect["finished_ns"] = time.monotonic_ns()
@@ -1594,7 +1592,7 @@ class _Prepared:
             block = next((lines for lines in blocks if lines and lines[0] == f"worktree {expected}"), [])
             if block:
                 break
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         else:
             raise creation.platform_failure(
                 DETAIL_WORKTREE.format(what="worktree list", found=listing[-300:], expected=expected)

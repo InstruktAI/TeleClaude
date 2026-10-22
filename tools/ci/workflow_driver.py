@@ -17,7 +17,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final, cast
 
-from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_ledger as ledger
@@ -192,7 +191,7 @@ def shown_with_content(observer: creation.Observer, item: str) -> Json:
 def fresh_snapshot(observer: creation.Observer, item: str) -> Json:
     """Two reads of the item at least two seconds apart, deeply equal: nothing else is writing it."""
     first = shown_with_content(observer, item)
-    payload_work.sleep(QUIESCENCE_GAP_SECONDS)
+    time.sleep(QUIESCENCE_GAP_SECONDS)
     second = shown_with_content(observer, item)
     changed = creation.differences(first, second)
     if changed:
@@ -571,7 +570,7 @@ class DriverCase:
             holder = creation.dig(released, "state.active_runner")[1] if released is not None else holder
             if holder in (None, ""):
                 break
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         else:
             raise creation.platform_failure(DETAIL_RELEASE.format(seconds=int(RELEASE_SECONDS), holder=holder))
         creation.require_value(

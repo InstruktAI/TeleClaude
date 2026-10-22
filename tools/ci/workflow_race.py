@@ -33,7 +33,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, TypedDict
 
-from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
@@ -142,7 +141,7 @@ class Window:
         room = self.guard() - MIN_GUARD_SECONDS
         if room <= 0:
             raise WindowExceeded(f"{self.guard():.1f} seconds left, below the {MIN_GUARD_SECONDS:.0f} needed")
-        payload_work.sleep(min(seconds, room))
+        time.sleep(min(seconds, room))
 
 
 class _GuardedHost:
@@ -304,7 +303,7 @@ class _Race:
                 return found[0]
             if len(found) > 1:
                 raise creation.platform_failure(DETAIL_EXTRA.format(known=sorted(known), found=found))
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         raise creation.platform_failure(
             DETAIL_DISCOVER.format(known=sorted(known), seconds=int(DISCOVER_SECONDS), found=found)
         )
@@ -316,7 +315,7 @@ class _Race:
             try:
                 return float(path.read_text(encoding="utf-8").strip())
             except (OSError, ValueError):
-                payload_work.sleep(foundation.POLL_SECONDS)
+                time.sleep(foundation.POLL_SECONDS)
         self._require_pool(claimed)
         raise creation.binding_failure(DETAIL_NO_COMPOSER.format(control=control.name, seconds=int(COMPOSER_SECONDS)))
 
@@ -446,7 +445,7 @@ class _Race:
             holder = creation.dig(shown, "state.active_runner")[1] if shown is not None else None
             if holder == session:
                 return time.monotonic()
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         raise creation.platform_failure(f"{session} did not claim {item} within {int(CLAIM_CAP_SECONDS)} seconds")
 
     def driver_evidence(
@@ -468,7 +467,7 @@ class _Race:
         deadline = time.monotonic() + STARTER_SETTLE_SECONDS
         state = publication.operation_state(self.observer, operation, retain=True)
         while state.get(FIELD_STATE) not in TERMINAL_STATES and time.monotonic() < deadline:
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
             state = publication.operation_state(self.observer, operation)
         if state.get(FIELD_STATE) in TERMINAL_STATES - {STATE_COMPLETED}:
             raise creation.platform_failure(

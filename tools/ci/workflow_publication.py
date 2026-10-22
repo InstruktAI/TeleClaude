@@ -25,7 +25,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
 
-from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
 from tools.ci.workflow_foundation import FoundationHost, Outcome
@@ -180,7 +179,7 @@ def await_terminal(
         last = operation_state(observer, operation, evidence=evidence)
         if last.get(FIELD_STATE) in TERMINAL_STATES:
             return operation_state(observer, operation, retain=True, evidence=evidence)
-        payload_work.sleep(POLL_SECONDS)
+        time.sleep(POLL_SECONDS)
     raise creation.platform_failure(
         DETAIL_OPERATION_TIMEOUT.format(operation=operation, seconds=int(seconds), last=last)
     )
@@ -311,7 +310,7 @@ def _fixture_processes_gone(
         for pid in _launch_pids(control, problems, evidence):
             deadline = time.monotonic() + PROCESS_EXIT_SECONDS
             while _process_alive(pid) and time.monotonic() < deadline:
-                payload_work.sleep(POLL_SECONDS)
+                time.sleep(POLL_SECONDS)
             if _process_alive(pid):
                 problems.append(DETAIL_PROCESS_ALIVE.format(pid=pid, control=control))
 
@@ -902,7 +901,7 @@ def negative_control(
             )
         if time.monotonic() >= deadline:
             raise creation.binding_failure(DETAIL_ACTIVATION.format(seconds=int(ACTIVATION_WAIT_SECONDS), last=last))
-        payload_work.sleep(ACTIVATION_POLL_SECONDS)
+        time.sleep(ACTIVATION_POLL_SECONDS)
     after = observer.show(item)
     changed = creation.differences(before, after if after is not None else {})
     sessions = observer.sessions()

@@ -8,7 +8,6 @@ import time
 from collections.abc import Mapping
 from typing import Final, cast
 
-from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
 from tools.ci import workflow_events
@@ -188,7 +187,7 @@ def _owner_refusal(
     session_observations: list[flow_module.JsonValue] = []
     evidence["session_observations"] = session_observations
     _allow_integrator_delta(flow, baseline, label, evidence=session_observations)
-    payload_work.sleep(5.0)
+    time.sleep(5.0)
     after = flow.item()
     observations.append({"observed_ns": time.monotonic_ns(), "item": cast(flow_module.JsonValue, dict(after))})
     if after != before:
@@ -266,7 +265,7 @@ def _assert_no_write(
     sessions = flow.observer.sessions()
     for label, pause in (("immediately", 0.0), ("five seconds later", 5.0)):
         if pause:
-            payload_work.sleep(pause)
+            time.sleep(pause)
         current = flow.item()
         if current != snapshot or _public_log(current) != log_entries:
             _fail(f"B7 {where} wrote to the item {label}")
@@ -302,7 +301,7 @@ def _allow_integrator_delta(
                 break
             if role not in (None, ""):
                 _fail(DETAIL_SNAPSHOT.format(where=f"{where}: unexpected new session {session}"))
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         if record.get(FIELD_ROLE) != ROLE_INTEGRATOR or record.get(FIELD_INITIATOR) not in (None, ""):
             _fail(DETAIL_SNAPSHOT.format(where=f"{where}: new session {session} did not classify as an integrator"))
         if evidence is not None:
@@ -649,7 +648,7 @@ def run_b7(flow: flow_module.WorkflowFlow) -> None:
                 if door_found and door not in (None, ""):
                     _fail(f"B7 earlier-session door remains after all sessions ended: {final_item!r}")
                 break
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         else:
             _fail(f"B7 session ends did not clear earlier sessions or the door: {final_item!r}")
         final_item = flow.item()

@@ -18,8 +18,6 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Self
 
-from tools.ci import acceptance_work as work
-
 _UTF8 = "utf-8"
 _ERROR_REPLACE_MODE = "replace"
 _PTY_SIZE_FORMAT = "HHHH"
@@ -107,7 +105,6 @@ class PersistentTerminal:
         self._buffer = bytearray()
 
     def __enter__(self) -> Self:
-        work.check()
         master_fd, slave_fd = pty.openpty()
         fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack(_PTY_SIZE_FORMAT, _PTY_ROWS, _PTY_COLUMNS, 0, 0))
         if self._disable_echo:
@@ -139,24 +136,23 @@ class PersistentTerminal:
         """Run one fresh command; ``timeout_seconds`` bounds this command alone, else the terminal's own bound."""
         if self._process is None or self._master_fd is None:
             raise TerminalFailure(_TERMINAL_NOT_STARTED, cause=TerminalFailureCause.NOT_STARTED)
-        deadline = work.command_end(self._timeout_seconds if timeout_seconds is None else timeout_seconds)
+        deadline = time.monotonic() + (self._timeout_seconds if timeout_seconds is None else timeout_seconds)
         marker = f"{_EXIT_MARKER_PREFIX}{uuid.uuid4().hex}"
         shell_command = _SHELL_COMMAND_FORMAT.format(command=shlex.join(list(command)), marker=marker)
-        work.check()
-        if work.remaining(deadline) <= 0:
+        if max(0.0, deadline - time.monotonic()) <= 0:
             raise TerminalFailure(_TERMINAL_TIMED_OUT, cause=TerminalFailureCause.TIMEOUT)
         os.write(self._master_fd, (shell_command + _NEWLINE).encode(_UTF8))
         output, status = self._read_to_marker(marker, deadline)
-        if work.expired():
+        if time.monotonic() >= deadline:
             raise TerminalFailure(_TERMINAL_TIMED_OUT, output=output, cause=TerminalFailureCause.TIMEOUT)
         return CommandResult(returncode=status, output=output)
 
-    def _read_to_marker(self, marker: str, deadline: int) -> tuple[str, int]:
+    def _read_to_marker(self, marker: str, deadline: float) -> tuple[str, int]:
         assert self._master_fd is not None
         assert self._process is not None
         encoded_marker = marker.encode(_UTF8)
         start = 0
-        while work.remaining(deadline) > 0:
+        while max(0.0, deadline - time.monotonic()) > 0:
             marker_index = self._buffer.rfind(encoded_marker, start)
             if marker_index >= 0:
                 if marker_index - start > self._output_limit_bytes:
@@ -179,7 +175,7 @@ class PersistentTerminal:
                     cause=TerminalFailureCause.EXITED,
                 )
             ready, _, _ = select.select(
-                [self._master_fd], [], [], min(_PTY_WAIT_POLL_SECONDS, work.remaining(deadline))
+                [self._master_fd], [], [], min(_PTY_WAIT_POLL_SECONDS, max(0.0, deadline - time.monotonic()))
             )
             if not ready:
                 continue

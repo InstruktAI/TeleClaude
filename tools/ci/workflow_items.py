@@ -10,10 +10,10 @@ the controller imports no application module and creates no record, identity or 
 
 from __future__ import annotations
 
+import time
 from collections.abc import Mapping, Sequence
 from typing import Final
 
-from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_publication as publication
@@ -147,7 +147,7 @@ def quiescent(observer: Observer, slug: str, what: str) -> Json:
     first = observer.show(slug)
     if first is None:
         raise creation.binding_failure(DETAIL_ABSENT.format(case=what, when="before the control"))
-    payload_work.sleep(creation.QUIESCENCE_GAP_SECONDS)
+    time.sleep(creation.QUIESCENCE_GAP_SECONDS)
     second = observer.show(slug)
     if second is None or creation.differences(first, second):
         paths = creation.differences(first, second) if second is not None else ["absent"]
@@ -161,7 +161,7 @@ def require_nothing_written(
     """After a refusal: the item and the sessions are as before, now and five seconds later."""
     for when, pause in (("immediately", 0.0), ("five seconds later", SETTLE_SECONDS)):
         if pause:
-            payload_work.sleep(pause)
+            time.sleep(pause)
         after = observer.show(slug, retain=False)
         if after is None:
             raise creation.platform_failure(DETAIL_ABSENT.format(case=case, when=when))

@@ -10,7 +10,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final, NoReturn, cast
 
-from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
 from tools.ci import workflow_events
@@ -216,7 +215,7 @@ def _startup(
                 last = confirmed if confirmed is not None else last
         remaining = deadline - time.monotonic()
         if remaining > 0:
-            payload_work.sleep(min(POLL_SECONDS, remaining))
+            time.sleep(min(POLL_SECONDS, remaining))
     if record is None:
         journey.record(min(FRAME_SECONDS, max(0.1, deadline - time.monotonic())), retain=True)
         _fail(DETAIL_STARTUP_TIMEOUT.format(session=session, record=last))
@@ -759,7 +758,7 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, comm
         _fail(f"non-head stamp did not refuse both refs: {rejected!r}")
     if flow.item(evidence=after_items) != snapshot or _public_log(flow.item(evidence=after_items)) != snapshot_log:
         _fail("a refused non-head stamp changed the item snapshot")
-    payload_work.sleep(5.0)
+    time.sleep(5.0)
     if flow.item(evidence=after_items) != snapshot or _public_log(flow.item(evidence=after_items)) != snapshot_log:
         _fail("a refused non-head stamp changed the item during the stability window")
     current_refs = (
@@ -1239,10 +1238,10 @@ def _observe_integrators(
             flow.record_session(session, ROLE_INTEGRATOR)
         if observed:
             break
-        payload_work.sleep(POLL_SECONDS)
+        time.sleep(POLL_SECONDS)
     if not observed:
         raise creation.binding_failure(DETAIL_INTEGRATOR)
-    payload_work.sleep(30.0)
+    time.sleep(30.0)
     current = flow.item()
     evidence["inert_item"] = cast(flow_module.JsonValue, dict(current))
     standing = current.get("standing")
@@ -1289,7 +1288,7 @@ def _move_head(flow: flow_module.WorkflowFlow, worktree: Path) -> str:
             and FIELD_READY_COMMIT not in standing
         ):
             return head
-        payload_work.sleep(POLL_SECONDS)
+        time.sleep(POLL_SECONDS)
     _fail("the stale ready item did not read as work after the branch head moved")
 
 

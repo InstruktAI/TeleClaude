@@ -38,7 +38,6 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final, cast
 
-from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
@@ -900,7 +899,7 @@ class _Waiting:
                 return found[0]
             if len(found) > 1:
                 raise creation.platform_failure(DETAIL_SESSIONS.format(when="discovery", found=found, expected="one"))
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         raise creation.platform_failure(DETAIL_SESSIONS.format(when="discovery", found=found, expected="one"))
 
     def _startup(
@@ -930,7 +929,7 @@ class _Waiting:
                 raise creation.binding_failure(
                     DETAIL_MAPPING.format(actor=actor, session=session, recorded=recorded, launched=native)
                 )
-            payload_work.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS)
         raise creation.platform_failure(
             DETAIL_NOT_STARTED.format(actor=actor, session=session, seconds=int(START_CAP_SECONDS), record=record)
         )
