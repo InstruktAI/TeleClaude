@@ -221,3 +221,41 @@ And the refusal is the same whether or not that person is declared
 #### UC-3PR18:
 
 #### UC-3PR19:
+
+### Cross-context references
+
+- **identity** — the resolved caller: a person with their platform role and the
+  company relationships and project reach resolution reports, a system
+  principal, or no identity. Both verbs obtain it once through identity's caller
+  query at the command edge and resolve nothing further; the Selection policy
+  derives read depth from it.
+- **selection** — both verbs delegate filter composition (areas, domains,
+  baseline, scope, project, target) to the Selection policy.
+
+## Known caveats
+
+- Required reads are never auto-loaded by default. The caller re-runs
+  `telec docs get` with the listed dependency IDs. The default is deliberate:
+  ordinary retrieval preserves the caller's context budget, while a generated
+  Activatable Procedures catalog supplies the one-pass instruction only at the
+  procedure-activation boundary where complete context is required.
+- The one-pass activation form accepts exactly one delivered taxonomy
+  procedure and does not compose with scope, project, or target filters. An
+  activation trigger is not required: triggers mark procedures an agent may
+  invoke on its own judgment, while a job procedure is executed by the runner. Third-party IDs stay outside Required-reads resolution; a dependency
+  whose visibility excludes the caller's role or whose pending state excludes it
+  from the current contract is absent from the included closure.
+- Withheld IDs are surfaced rather than hidden. A caller whose depth on a tier
+  does not admit an `internal` snippet can still confirm that the identity
+  exists. This is a deliberate disclosure surface for direct identities — the
+  caller learns that a relationship to that tier would open it — and is
+  confined to identities the caller names; the tier selectors disclose nothing,
+  and the refusal for another person's local half, which is the same whether or
+  not that person is declared, discloses nothing either.
+- Phase 1 third-party output ignores `--baseline-only` and `--target` (third-party
+  renders on a separate track), but `--scope` and `--project` do apply to it:
+  `--scope` keeps only third-party entries of that scope, and `--project <slug>`
+  drops third-party entirely, since third-party indexes are loaded for the current
+  project and global only and are never cross-project-loaded.
+- The v1 CLI namespace is `telec docs *`. The v2 target is `telec context
+docs *`. The verb rename is a known migration cleanup.
