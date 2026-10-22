@@ -350,7 +350,7 @@ class B12Field(StrEnum):
 
 
 class B14Case(StrEnum):
-    """Approved door checkpoints; the startup reservation-witness binding remains held."""
+    """Approved door checkpoints in the existing parent journeys."""
 
     HELD_PREPARATION = "held-preparation"
     HELD_WORK = "held-work"
@@ -359,6 +359,7 @@ class B14Case(StrEnum):
     READY_UNCLAIMED = "ready-unclaimed"
     ADMITTED = "admitted"
     DELIVERED = "delivered"
+    START_IN_PROGRESS = "start-in-progress"
     DESIGN = "design"
 
 
@@ -366,6 +367,8 @@ class B14Token(StrEnum):
     """Exact snapshot substitutions supplied by the parent's independent earlier evidence."""
 
     HOLDER = "{{b14:holder}}"
+    STARTING_SESSION = "{{b14:starting-session}}"
+    RESERVATION8 = "{{b14:reservation8}}"
     ADMITTED8 = "{{b14:admitted8}}"
     DELIVERED12 = "{{b14:delivered12}}"
 
@@ -1106,6 +1109,8 @@ def require_b14_kickback(
     starts: Mapping[str, str] | None = None,
     open_start_value: str = EMPTY,
     closed_driver: str = EMPTY,
+    starting_session: str = EMPTY,
+    reservation: str = EMPTY,
     expected_sessions: SessionView | None = None,
 ) -> None:
     """Check one approved parent checkpoint, one public refusal, and immediate item/session equality."""
@@ -1189,6 +1194,19 @@ def require_b14_kickback(
                 and before == expected_item
             )
             substitutions[B14Token.ADMITTED8] = commit[:8]
+        elif case is B14Case.START_IN_PROGRESS:
+            valid = (
+                valid
+                and state.get(FIELD_PHASE) == standing.get(FIELD_STANDING_PHASE) == B14_PHASE_WORK
+                and state.get(FIELD_RUNNER) in (None, EMPTY)
+                and not standing.get(B14_FIELD_HELD)
+                and bool(starting_session)
+                and starting_session in sessions.ids
+                and starting_session not in sessions.closed
+                and bool(reservation)
+            )
+            substitutions[B14Token.STARTING_SESSION] = starting_session
+            substitutions[B14Token.RESERVATION8] = reservation[:8]
         elif case is B14Case.DESIGN:
             valid = (
                 valid

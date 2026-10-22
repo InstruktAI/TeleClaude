@@ -73,6 +73,8 @@ DETAIL_PLATFORM: Final = "B5 platform assertion failed: {detail}"
 DETAIL_FRAME: Final = "fixture command {name} did not succeed: {frame!r}"
 DETAIL_STATE: Final = "operation {operation} ended in {state!r}: {detail!r}"
 DETAIL_KEY: Final = "finding returned no key: {result!r}"
+B14_RESERVATION_KEY: Final = re.compile(r"\(reservation (?P<key>[^\s)]+)\)")
+B14_RESERVATION_MISSING: Final = "B14 startup requires one unique nonempty native reservation key"
 DETAIL_LEDGER: Final = "B5 ledger declaration failed: {detail}"
 DETAIL_PRECONDITION: Final = "B5 began outside the approved unclaimed work state: {item!r}"
 DETAIL_WRITE_SCOPE: Final = (
@@ -542,6 +544,19 @@ def _start_work(
         )
     w2 = flow.plan_actor(PROC_WORK, 1, ROLE_WORK)
     w2_record, w2_launch, w2_role = _startup(flow, w2, ROLE_WORK, PROC_WORK)
+    result = terminal.get(FIELD_RESULT)
+    reservation_keys = list(B14_RESERVATION_KEY.finditer(result)) if isinstance(result, str) else []
+    if len(reservation_keys) != 1:
+        raise creation.binding_failure(B14_RESERVATION_MISSING)
+    creation.require_b14_kickback(
+        flow.observer,
+        TELEC,
+        flow_module.ITEM,
+        creation.B14Case.START_IN_PROGRESS,
+        starting_session=w2,
+        reservation=reservation_keys[0].group("key"),
+    )
+    flow.gate(w2, flow_module.B14_CLAIM_GATE)
     child_evidence["parent_actor"] = w2
     child_evidence["parent_native_session_id"] = cast(flow_module.JsonValue, w2_record.get(FIELD_NATIVE))
     child_frame = _frame_success(flow, w2, "child")

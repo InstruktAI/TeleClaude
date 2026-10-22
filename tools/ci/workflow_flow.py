@@ -312,12 +312,15 @@ def _late_plan(name: str, argument_file: str, gate: str) -> controls.Command:
     return controls.late(name, argument_file, gate)
 
 
+B14_CLAIM_GATE: Final = "go_b14_claim"
+
+
 def flow_plan_sets(chain: Sequence[str]) -> PlanSets:
     """All plans for the selected chain, fixed before the first fixture launch."""
     work: list[controls.Plan] = [
         controls.PlanFile(
             commands=[
-                controls.command("claim", [TELEC, "todo", "work", ITEM]),
+                controls.command("claim", [TELEC, "todo", "work", ITEM], B14_CLAIM_GATE),
                 controls.command("child", [TELEC, "todo", "child", ITEM]),
                 _late_plan("reviewed", "reviewed.argv", "go_rev"),
                 _late_plan("finding", "finding.argv", "go_find"),
