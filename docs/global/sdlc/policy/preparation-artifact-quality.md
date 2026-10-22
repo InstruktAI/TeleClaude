@@ -75,19 +75,27 @@ constraining it. The horizon is inferred from the source intent and the
 situation, then stated in the artifact the human or reviewer will consume; it
 is not selected from a hard kind lookup.
 
-Intent shaping asks four open questions:
+Preparation uses six design focuses before selecting a mechanism:
 
-1. What outcome is this work authorized to change?
-2. Given that horizon, what would improve the target beyond the input alone,
-   and why in this situation?
-3. Against the current system and credible intended state, what must change for
-   the better target to survive?
-4. How is the world observably different when the outcome is achieved?
+1. **Outcome:** What is authorized to improve, for whom, and what observable
+   result makes the work useful? Which proposed improvements actually serve it?
+2. **Context:** What do the actual scale, trust boundary, current behavior and
+   operating and maintenance costs require, rather than a hypothetical system?
+3. **Existing solutions:** How is this class of outcome already achieved here
+   and in established practice? What can be reused, and what concrete gap earns
+   construction or a departure from it?
+4. **Ownership and composition:** Who owns each decision, state and effect,
+   and how do the boundaries compose into the complete outcome?
+5. **Consequences:** Which failure, recovery, security and performance concerns
+   arise in this use case, and which guarantees can their actual owners support?
+6. **Delivery:** What is the smallest complete change, how will the existing
+   verification path assess it, and what remains outside that evidence?
 
-The questions invite domain intelligence; they do not prescribe answer
-categories. Route attention through whichever perspectives the situation
-earns, without a standing panel, framework sequence, coverage matrix, or
-not-applicable catalogue.
+These focuses direct attention, not artifact structure. Record the conclusions
+that change the design in the existing artifact's natural sections, at the level
+that artifact owns. Scale the depth to the work; a focus earns no extra feature,
+research project, report, or not-applicable catalogue. Author and challenger
+derive their own reading before reconciling it (`general/policy/leadership`).
 
 Every consequential inclusion and exclusion explains why it belongs here. Its
 reason rests on an inspectable premise or names the assumption that remains.
@@ -129,7 +137,16 @@ current implementation is not correctness by itself, and novelty is not value
 by itself.
 
 Verify state claims against code and loaded domain specs. Verify solution
-claims against authoritative external evidence when they matter. A grounded
+claims against authoritative external evidence when they matter. Before choosing
+new construction, assess established implementations and compositions for the
+same outcome as well as the comparable in-system path. Name what is reused and
+the concrete gap that remains; interface familiarity or a list of references is
+not an assessment of existing solutions (`general/principle/grounding`). This
+applies to designs carried by specs and mechanism notes as well as architecture
+artifacts. For unfamiliar infrastructure or a security boundary, the artifact
+names the reference implementations, current vendor documentation and a
+comparable production architecture behind its adopt-or-build judgment.
+A grounded
 artifact neither invents a mechanism from memory nor lets the present codebase
 veto a better, approved target without examination.
 
@@ -415,12 +432,6 @@ Quality rules:
 - Keeps state evidence, solution evidence, inference, and assumptions
   distinguishable.
 
-- For unfamiliar infrastructure or a security boundary, includes a
-  Prior-art & adopt-vs-build section: the reference implementations, current
-  vendor documentation, and at least one comparable production architecture
-  surveyed, plus the adopt-vs-build decision with its reason. Bespoke
-  infrastructure or a custom security mechanism with no prior-art evidence is
-  defective (`general/principle/grounding`).
 - Records open architectural questions explicitly instead of hiding them in
   implementation-plan tasks.
 

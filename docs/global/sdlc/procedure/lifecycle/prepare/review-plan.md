@@ -85,6 +85,12 @@ First read the sdlc principles as listed in the sdlc baseline that apply to this
 
 ### 2. Substantive delivery analysis
 
+First derive the approach from the authorized intent through the design focuses
+in `sdlc/policy/preparation-artifact-quality`, then compare it with the proposed
+plan. Carry material differences into the existing delivery analysis and findings
+before assessing task coverage; internal consistency alone does not establish
+that the chosen approach is necessary or suitable.
+
 Structural coverage ("a task exists for this requirement") is not sufficient.
 Produce a `Delivery analysis` section in `plan-review-findings.md` with one
 entry per requirement success criterion.

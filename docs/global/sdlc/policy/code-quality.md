@@ -8,6 +8,8 @@ visibility: 'public'
 ## Rules
 
 - Honor repository configuration and established conventions.
+- Shape delivery approaches through the preparation design focuses in
+  `sdlc/policy/preparation-artifact-quality` before selecting their mechanisms.
 - Encode invariants explicitly and validate at boundaries.
 - Preserve contract fidelity across all call chains.
 - Keep responsibilities narrow and interfaces explicit.

@@ -9,11 +9,11 @@ description: Before new construction, identify the existing module whose contrac
 - **Anchor the outcome before choosing parts.** Before choosing a mechanism,
   name how this system already achieves the same kind of outcome for a
   comparable case: the path a sibling capability, tool, or flow already takes.
-  That path is the default. Departing from it is a declared divergence like any
-  other, justified by a different owner, invariant, or reason to change. A
-  vendor's or framework's generic guidance describes the general case; the
-  system's established path for its sibling cases decides how the work is done
-  here.
+  That path is the starting candidate. Assess it alongside established solutions
+  under `general/principle/grounding`, against the actual outcome, ownership,
+  constraints and operating cost. Local precedent and external popularity decide
+  nothing by themselves. Reuse the fitting capability; a departure names the
+  concrete mismatch and why adapting, adopting or replacing resolves it.
 - **Before new construction, identify the existing module whose actual contract
   covers the work, or record that grounded discovery found none.** Extend an
   existing module when owner, invariant, and reason to change align; otherwise
