@@ -121,8 +121,7 @@ startup context.
 ```gherkin
 Given an operator starts fresh work through a procedure with an ordered agent preference
 When TeleClaude selects the session agent
-Then it uses the procedure's declared order among eligible agents
-And configuration iteration order does not change the selection
+Then it selects the first eligible agent in the procedure's declared order
 ```
 
 #### UC-RAAD-3: Automatic eligibility is strict
@@ -241,11 +240,17 @@ Then the request is rejected before session creation as a publication defect nam
 #### UC-RAAD-19: A job owner can select ordered agent preferences
 
 ```gherkin
-Given an operator configures ordered agent preferences for a scheduled job
-When the job is dispatched
-Then TeleClaude selects from only those candidates in their declared order
-And automatic eligibility rules apply and the result identifies declaration-sourced selection
-And no eligible candidate results in an explicit refusal before session creation
+Scenario: Start a job using its ordered preferences
+  Given an operator has set ordered agent preferences for a scheduled job
+  When the job starts with more than one eligible candidate
+  Then the first eligible candidate in the declared order is selected
+
+Scenario: Refuse when none of the job's candidates are eligible
+  Given an operator has set ordered agent preferences for a scheduled job
+  And none of its candidates is eligible
+  When the job starts
+  Then no session is created
+  And the operator receives an explicit failure
 ```
 
 #### UC-RAAD-20: A reviewer request excludes agents that already reviewed its target
