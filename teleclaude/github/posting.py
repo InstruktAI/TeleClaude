@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shlex
+import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -13,7 +15,7 @@ from http.client import HTTPException, parse_headers
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import BinaryIO
+from typing import BinaryIO, TextIO
 from urllib.parse import quote
 
 from githubkit_schemas.v2026_03_10.models import IssueComment
@@ -25,16 +27,23 @@ from teleclaude.core.db import get_db
 from teleclaude.core.github_identity import (
     AdmittedGitHubInvocation,
     GitHubPostingContext,
-    ManagedGitHubInvocation,
+    LocalNativeGitHubInvocation,
+    NativeHumanGitHubInvocation,
+    RefusedGitHubInvocation,
     resolve_admitted_github_posting_context,
-    resolve_managed_github_invocation,
     resolve_native_github_posting_context,
 )
 from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
 from teleclaude.github.envelope import render_github_envelope
-from teleclaude.github.native import NativeCommentRefused, prepare_native_issue_comment
+from teleclaude.github.native import (
+    NativeCommentRefusal,
+    NativeCommentRefused,
+    prepare_native_issue_comment,
+    prepare_native_issue_view,
+)
 from teleclaude.paths import BIN_DIR
 from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
+from teleclaude.types.github_binding import GitHubWorkTarget
 from teleclaude.types.github_posting import (
     GitHubAcceptance,
     GitHubEditEvidence,
@@ -102,6 +111,48 @@ _UNVERIFIED_OBJECT = "GitHub comment result could not be verified"
 _ISSUE_COMMENT_PERMISSIONS: AppPermissionsType = {"issues": "write"}
 _ASSOCIATION = "association"
 _FAILURE = "failure"
+_HELP_FLAGS = frozenset({"--help", "-h"})
+_HELP_ARGUMENT = "--help"
+_HELP_COMMAND = "help"
+_VERSION_ARGUMENTS = frozenset({("--version",), ("version",)})
+_HELP_PATHS = frozenset(
+    {
+        (),
+        ("issue",),
+        ("issue", "view"),
+        ("issue", "comment"),
+        ("issue", "edit"),
+        ("issue", "create"),
+        ("issue", "close"),
+        ("issue", "reopen"),
+        ("issue", "delete"),
+        ("pr",),
+        ("pr", "view"),
+        ("pr", "comment"),
+        ("pr", "review"),
+        ("pr", "create"),
+        ("pr", "edit"),
+        ("pr", "merge"),
+        ("pr", "ready"),
+        ("pr", "close"),
+        ("api",),
+        ("auth",),
+        ("auth", "token"),
+        ("auth", "status"),
+        ("auth", "switch"),
+    }
+)
+_ISSUE_VIEW = ("issue", "view")
+_ISSUE_COMMENT = ("issue", "comment")
+_ISSUE_READ_PERMISSIONS: AppPermissionsType = {"issues": "read"}
+_EDITOR_ENVIRONMENT = ("GH_EDITOR", "VISUAL", "EDITOR")
+_EDITOR_FILE = "comment.md"
+_NATIVE_REFUSAL = "gh: platform invocation refused: "
+_NATIVE_INCOMPLETE = "gh: platform operation incomplete: "
+_NATIVE_UNAVAILABLE = "native execution unavailable"
+_NATIVE_CONTEXT_CHANGED = "session scope changed"
+_COMMENT_WEB_URL = "https://github.com/{repository}/issues/{number}#issuecomment-{identifier}"
+_EXIT_REFUSED = 2
 
 
 @dataclass(frozen=True)
@@ -218,38 +269,15 @@ async def _reap(process: asyncio.subprocess.Process) -> bytes:
         return _EMPTY_BYTES
 
 
-async def _current_context(context: GitHubPostingContext, request: GitHubIssueCommentRequest) -> bool:
+async def _current_context(context: GitHubPostingContext, target: GitHubWorkTarget, *, native: bool) -> bool:
+    current: GitHubPostingContext | RefusedGitHubInvocation | LocalNativeGitHubInvocation | NativeHumanGitHubInvocation
     if isinstance(context.invocation, AdmittedGitHubInvocation):
-        if isinstance(request.source, NativeGitHubPostSource):
+        if native:
             return False
         current = await resolve_admitted_github_posting_context()
-        return isinstance(current, GitHubPostingContext) and current == context and request.target == current.target
-    invocation = await resolve_managed_github_invocation()
-    if not isinstance(invocation, ManagedGitHubInvocation) or invocation != context.invocation:
-        return False
-    store = await get_db()
-    binding = await store.get_github_session_binding(invocation.session.session_id)
-    if (
-        binding is None
-        or binding != context.binding
-        or binding.session_id != invocation.session.session_id
-        or binding.role is not invocation.role.name
-    ):
-        return False
-    project = invocation.session.project_path
-    if (
-        not project
-        or request.target.project_path.resolve() != Path(project).resolve()
-        or request.target.project_path.resolve() != context.target.project_path.resolve()
-    ):
-        return False
-    if isinstance(request.source, NativeGitHubPostSource):
-        target = await store.get_github_native_target(binding.session_id)
-        return (
-            request.target == context.target == target and request.target.work_item == invocation.session.working_slug
-        )
-    # Sealed/reflected target, act, phase and identity are admitted by their owner, never native CLI arguments.
-    return True
+    else:
+        current = await resolve_native_github_posting_context()
+    return isinstance(current, GitHubPostingContext) and current == context and target == current.target
 
 
 def _accepted(
@@ -360,12 +388,24 @@ def _cancelled(result: GitHubPostResult, session_id: str) -> GitHubPostingCancel
     return GitHubPostingCancelled(result)
 
 
+def _credential_result(error: GitHubCredentialRefused) -> GitHubPostResult:
+    return GitHubPostResult(
+        acceptance=GitHubAcceptance.NO_EFFECT,
+        failure=GitHubPostFailure.CREDENTIAL_REFUSED,
+        provider_status=error.rate_limit.status_code if error.rate_limit is not None else None,
+        retry_after=error.rate_limit.retry_after if error.rate_limit is not None else None,
+        credential_refusal=error.key_failure.value if error.key_failure is not None else error.reason.value,
+    )
+
+
 async def post_github_issue_comment(
     context: GitHubPostingContext, request: GitHubIssueCommentRequest
 ) -> GitHubPostResult:
     """Carry one finite owner-admitted append to verified durable attribution; never replay an uncertain send."""
     try:
-        if not await _current_context(context, request):
+        if not await _current_context(
+            context, request.target, native=isinstance(request.source, NativeGitHubPostSource)
+        ):
             return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED)
         body = render_github_envelope(
             context.binding.role, context.binding.session_id, request.act, request.phase, request.source, request.body
@@ -388,7 +428,9 @@ async def post_github_issue_comment(
             credential = await issue_github_installation_credential(
                 context.binding.assignment, request.target, _ISSUE_COMMENT_PERMISSIONS
             )
-            if not await _current_context(context, request):
+            if not await _current_context(
+                context, request.target, native=isinstance(request.source, NativeGitHubPostSource)
+            ):
                 return GitHubPostResult(
                     acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED
                 )
@@ -407,13 +449,7 @@ async def post_github_issue_comment(
                 # Failure while settling an already-started child leaves acceptance unknown.
                 response = _Response(None)
     except GitHubCredentialRefused as error:
-        return GitHubPostResult(
-            acceptance=GitHubAcceptance.NO_EFFECT,
-            failure=GitHubPostFailure.CREDENTIAL_REFUSED,
-            provider_status=error.rate_limit.status_code if error.rate_limit is not None else None,
-            retry_after=error.rate_limit.retry_after if error.rate_limit is not None else None,
-            credential_refusal=error.key_failure.value if error.key_failure is not None else error.reason.value,
-        )
+        return _credential_result(error)
     except (OSError, ValueError, SQLAlchemyError):
         if response is None:
             return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED)
@@ -460,8 +496,186 @@ async def post_native_issue_comment(
     if not isinstance(context, GitHubPostingContext):
         return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED)
     try:
-        native = prepare_native_issue_comment(arguments, context, directory=directory, stdin=stdin, editor=editor)
-        request = GitHubIssueCommentRequest(target=context.target, body=native.body, act=Act.NOTE, source=native.source)
+        return await _post_native_comment(context, arguments, directory=directory, stdin=stdin, editor=editor)
     except (NativeCommentRefused, ValueError):
         return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED)
+
+
+async def _post_native_comment(
+    context: GitHubPostingContext,
+    arguments: Sequence[str],
+    *,
+    directory: Path,
+    stdin: BinaryIO,
+    editor: Callable[[], str] | None,
+) -> GitHubPostResult:
+    native = prepare_native_issue_comment(arguments, context, directory=directory, stdin=stdin, editor=editor)
+    request = GitHubIssueCommentRequest(target=context.target, body=native.body, act=Act.NOTE, source=native.source)
     return await post_github_issue_comment(context, request)
+
+
+def _help_arguments(arguments: tuple[str, ...]) -> tuple[str, ...] | None:
+    if not arguments or arguments == (_HELP_COMMAND,):
+        return (_HELP_ARGUMENT,)
+    if arguments in _VERSION_ARGUMENTS:
+        return arguments
+    if arguments[-1] in _HELP_FLAGS and arguments[:-1] in _HELP_PATHS:
+        return (*arguments[:-1], _HELP_ARGUMENT)
+    return None
+
+
+def _editor_body(directory: Path) -> str:
+    """Collect opaque prose before issuance; editor selection never reaches a credential-bearing child."""
+    selected = next(
+        (
+            value
+            for name in _EDITOR_ENVIRONMENT
+            if (value := os.environ.get(name))  # guard: direct-env-read - pre-credential editor selection
+        ),
+        None,
+    )
+    if selected is None:
+        raise NativeCommentRefused(NativeCommentRefusal.EDITOR_UNAVAILABLE)
+    try:
+        command = shlex.split(selected)
+        if not command:
+            raise NativeCommentRefused(NativeCommentRefusal.EDITOR_UNAVAILABLE)
+        with TemporaryDirectory(prefix=_CONFIG_PREFIX) as temporary:
+            body_path = Path(temporary) / _EDITOR_FILE
+            body_path.touch(mode=0o600, exist_ok=False)
+            completed = subprocess.run(
+                (*command, str(body_path)), cwd=directory, env=_launch_environment(), check=False
+            )
+            if completed.returncode != 0:
+                raise NativeCommentRefused(NativeCommentRefusal.BODY_UNAVAILABLE)
+            return body_path.read_bytes().decode(_UTF8)
+    except NativeCommentRefused:
+        raise
+    except (OSError, ValueError):
+        raise NativeCommentRefused(NativeCommentRefusal.BODY_UNAVAILABLE) from None
+
+
+async def _native_read_process(
+    binary: Path,
+    arguments: tuple[str, ...],
+    directory: str,
+    environment: Mapping[str, str],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    """Run only reconstructed read/help arguments; real gh owns provider reads and formatting."""
+    process = await asyncio.create_subprocess_exec(
+        str(binary),
+        *arguments,
+        cwd=directory,
+        env=environment,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    try:
+        return await asyncio.wait_for(process.wait(), timeout=_SEND_TIMEOUT_SECONDS)
+    except (TimeoutError, asyncio.CancelledError):
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        await process.wait()
+        raise
+
+
+def _native_failure(reason: str, stderr: TextIO) -> int:
+    print(_NATIVE_REFUSAL + reason, file=stderr)
+    return _EXIT_REFUSED
+
+
+def _native_result(result: GitHubPostResult, context: GitHubPostingContext, stdout: TextIO, stderr: TextIO) -> int:
+    if result.attributed and result.object is not None:
+        print(
+            _COMMENT_WEB_URL.format(
+                repository=context.target.repository,
+                number=result.object.container_number,
+                identifier=result.object.provider_id,
+            ),
+            file=stdout,
+        )
+        return 0
+    print(_NATIVE_INCOMPLETE + result.model_dump_json(), file=stderr)
+    return _EXIT_REFUSED
+
+
+async def _native_view(
+    context: GitHubPostingContext,
+    binary: Path,
+    arguments: tuple[str, ...],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    admitted = prepare_native_issue_view(arguments, context)
+    if not await _current_context(context, context.target, native=True):
+        return _native_failure(_NATIVE_CONTEXT_CHANGED, stderr)
+    try:
+        with TemporaryDirectory(prefix=_CONFIG_PREFIX) as directory:
+            credential = await issue_github_installation_credential(
+                context.binding.assignment, context.target, _ISSUE_READ_PERMISSIONS
+            )
+            if not await _current_context(context, context.target, native=True):
+                return _native_failure(_NATIVE_CONTEXT_CHANGED, stderr)
+            environment = {
+                **_launch_environment(),
+                **_FIXED_ENVIRONMENT,
+                _GH_CONFIG_DIR: directory,
+                _GH_TOKEN: credential.token.get_secret_value(),
+            }
+            return await _native_read_process(binary, admitted, directory, environment, stdout, stderr)
+    except GitHubCredentialRefused as error:
+        return _native_result(_credential_result(error), context, stdout, stderr)
+
+
+async def execute_native_github(
+    arguments: Sequence[str], *, directory: Path, stdin: BinaryIO, stdout: TextIO, stderr: TextIO
+) -> int:
+    """Serve the native entry with exact disclosure-free help, observed scope and finite bound handlers."""
+    arguments = tuple(arguments)
+    try:
+        environment = _launch_environment()
+        binary = _gh_binary(environment)
+        if binary is None:
+            return _native_failure(_NATIVE_UNAVAILABLE, stderr)
+        help_arguments = _help_arguments(arguments)
+        if help_arguments is not None:
+            with TemporaryDirectory(prefix=_CONFIG_PREFIX) as temporary:
+                return await _native_read_process(
+                    binary,
+                    help_arguments,
+                    temporary,
+                    {**environment, **_FIXED_ENVIRONMENT, _GH_CONFIG_DIR: temporary},
+                    stdout,
+                    stderr,
+                )
+        context = await resolve_native_github_posting_context()
+        if isinstance(context, RefusedGitHubInvocation):
+            return _native_failure(context.reason.value, stderr)
+        if isinstance(context, (NativeHumanGitHubInvocation, LocalNativeGitHubInvocation)):
+            current = await resolve_native_github_posting_context()
+            if current != context:
+                return _native_failure(_NATIVE_CONTEXT_CHANGED, stderr)
+            original = dict(os.environ)  # guard: direct-env-read - preserve native pass-through startup environment
+            os.chdir(directory)
+            os.execve(str(binary), (str(binary), *arguments), original)
+        if arguments[:2] == _ISSUE_VIEW:
+            return await _native_view(context, binary, arguments, stdout, stderr)
+        if arguments[:2] != _ISSUE_COMMENT:
+            return _native_failure(NativeCommentRefusal.UNSUPPORTED_OPERATION.value, stderr)
+        try:
+            result = await _post_native_comment(
+                context, arguments, directory=directory, stdin=stdin, editor=lambda: _editor_body(directory)
+            )
+        except GitHubPostingCancelled as error:
+            _native_result(error.result, context, stdout, stderr)
+            raise
+        return _native_result(result, context, stdout, stderr)
+    except NativeCommentRefused as error:
+        return _native_failure(error.reason.value, stderr)
+    except (OSError, ValueError, SQLAlchemyError, TimeoutError):
+        return _native_failure(_NATIVE_UNAVAILABLE, stderr)

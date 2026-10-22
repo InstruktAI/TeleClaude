@@ -21,6 +21,16 @@ _HTTPS = "https"
 _GITHUB_HOST = "github.com"
 _HOST_PREFIX = _GITHUB_HOST + _PATH_SEPARATOR
 _ISSUES_SEGMENT = "issues"
+_VIEW_PROGRAM = "gh issue view"
+_VIEW_COMMAND = "view"
+_COMMENTS_FLAG = "--comments"
+_COMMENTS_SHORT_FLAG = "-c"
+_JSON_FLAG = "--json"
+_JSON_FIELDS = "fields"
+_COMMA = ","
+_VIEW_FIELDS = frozenset(
+    {"id", "number", "url", "title", "body", "state", "comments", "author", "createdAt", "updatedAt"}
+)
 
 
 class _Command(StrEnum):
@@ -87,6 +97,13 @@ class _Arguments(argparse.Namespace):
     editor: int = 0
 
 
+class _ViewArguments(argparse.Namespace):
+    target: str
+    repository: list[str] | None = None
+    comments: int = 0
+    fields: list[str] | None = None
+
+
 @dataclass(frozen=True)
 class NativeIssueCommentRequest:
     """One admitted body-only append; source identity is structurally absent."""
@@ -94,6 +111,51 @@ class NativeIssueCommentRequest:
     context: GitHubPostingContext
     body: str
     source: NativeGitHubPostSource = field(default_factory=NativeGitHubPostSource, init=False)
+
+
+def prepare_native_issue_view(arguments: Sequence[str], context: GitHubPostingContext) -> tuple[str, ...]:
+    """Admit one bound read and reconstruct native arguments without executable formatting or diagnostics."""
+    if tuple(arguments[:2]) != (_Command.ISSUE, _VIEW_COMMAND):
+        raise NativeCommentRefused(NativeCommentRefusal.UNSUPPORTED_OPERATION)
+    parser = _Parser(prog=_VIEW_PROGRAM, add_help=False, allow_abbrev=False, exit_on_error=False)
+    parser.add_argument(_Argument.TARGET)
+    parser.add_argument(_Flag.REPOSITORY, _Flag.REPOSITORY_SHORT, dest=_Argument.REPOSITORY, action=_Action.APPEND)
+    parser.add_argument(_COMMENTS_FLAG, _COMMENTS_SHORT_FLAG, action=_Action.COUNT, default=0)
+    parser.add_argument(_JSON_FLAG, dest=_JSON_FIELDS, action=_Action.APPEND)
+    values = _ViewArguments()
+    try:
+        parser.parse_args(arguments[2:], namespace=values)
+    except argparse.ArgumentError:
+        raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS) from None
+    fields = values.fields
+    if (
+        values.comments > 1
+        or (values.repository is not None and len(values.repository) > 1)
+        or (fields is not None and len(fields) > 1)
+    ):
+        raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+    target = context.target
+    repository = values.repository[0] if values.repository else target.repository
+    if (
+        repository.casefold().removeprefix(_HOST_PREFIX) != target.repository.casefold()
+        or _issue_number(values.target, target.repository) != target.issue_number
+    ):
+        raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
+    result: tuple[str, ...] = (
+        _Command.ISSUE,
+        _VIEW_COMMAND,
+        str(target.issue_number),
+        _Flag.REPOSITORY,
+        target.repository,
+    )
+    if values.comments:
+        result += (_COMMENTS_FLAG,)
+    if fields is not None:
+        selected = fields[0].split(_COMMA)
+        if not selected or any(name not in _VIEW_FIELDS for name in selected):
+            raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+        result += (_JSON_FLAG, fields[0])
+    return result
 
 
 def prepare_native_issue_comment(

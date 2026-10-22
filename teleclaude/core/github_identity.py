@@ -11,12 +11,15 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.config.machine import config
+from teleclaude.config.project_models import TodoStoreBackend
 from teleclaude.constants import MarkerState
 from teleclaude.core.db import get_db
 from teleclaude.core.operation_caller_identity import get_caller_session_id, get_relayed_caller
+from teleclaude.core.project_state import resolve_owning_checkout
 from teleclaude.core.roles import Role, resolve_session_role
 from teleclaude.core.session_identity_facts import SessionIdentityFacts, read_session_identity_facts
 from teleclaude.core.tmux_bridge._pane import get_pane_pid, get_server_pane_processes
+from teleclaude.core.workflow_store.selection import selected_workflow_store_backend
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.runtime.tmux_socket import own_tmux_socket_path
 from teleclaude.session_identity import inspect_session_identity_marker
@@ -56,7 +59,7 @@ class ManagedGitHubInvocation:
     """Current session facts corroborated by this process's live pane ancestry."""
 
     session: SessionIdentityFacts
-    role: Role
+    role: Role | None
     pane_pid: int
     pane_started_at: float
 
@@ -72,6 +75,14 @@ class AdmittedGitHubInvocation:
 @dataclass(frozen=True)
 class NativeHumanGitHubInvocation:
     """Terminal execution positively observed outside every platform pane."""
+
+
+@dataclass(frozen=True)
+class LocalNativeGitHubInvocation:
+    """Corroborated local-backend execution with no GitHub actor or target binding."""
+
+    invocation: ManagedGitHubInvocation
+    project_root: Path
 
 
 @dataclass(frozen=True)
@@ -94,16 +105,24 @@ def _process_ancestry() -> dict[int, float]:
     return {process.pid: process.create_time() for process in (current, *current.parents())}
 
 
-def _local_session(session_id: str) -> tuple[SessionIdentityFacts, Role] | RefusedGitHubInvocation:
+def _local_session(
+    session_id: str, *, allow_absent_role: bool = False
+) -> tuple[SessionIdentityFacts, Role | None] | RefusedGitHubInvocation:
     """Resolve only the owning computer's open session and catalog role."""
     facts = read_session_identity_facts(str(MAIN_DB_PATH), session_id)
     if facts is None or facts.closed_at is not None or facts.deleted_at is not None:
         return _refuse(GitHubInvocationRefusal.SESSION_UNAVAILABLE, session_id)
     if facts.computer_name != config.computer.name:
         return _refuse(GitHubInvocationRefusal.REMOTE_SESSION, session_id)
-    role = resolve_session_role(facts.role, session_id)
-    if not isinstance(role, Role):
-        return _refuse(GitHubInvocationRefusal.ROLE_UNRESOLVED, session_id)
+    role = None
+    if facts.role is None:
+        if not allow_absent_role:
+            return _refuse(GitHubInvocationRefusal.ROLE_UNRESOLVED, session_id)
+    else:
+        recorded_role = resolve_session_role(facts.role, session_id)
+        if not isinstance(recorded_role, Role):
+            return _refuse(GitHubInvocationRefusal.ROLE_UNRESOLVED, session_id)
+        role = recorded_role
     if not facts.project_path:
         return _refuse(GitHubInvocationRefusal.WORK_CONTEXT_UNRESOLVED, session_id)
     return facts, role
@@ -114,7 +133,7 @@ async def resolve_managed_github_invocation() -> ManagedGitHubInvocation | Refus
     marker, session_id = inspect_session_identity_marker()
     if marker is not MarkerState.VALID or session_id is None:
         return _refuse(GitHubInvocationRefusal.MARKER_UNRESOLVED, session_id)
-    resolved = _local_session(session_id)
+    resolved = _local_session(session_id, allow_absent_role=True)
     if isinstance(resolved, RefusedGitHubInvocation):
         return resolved
     facts, role = resolved
@@ -163,13 +182,35 @@ async def classify_native_github_invocation() -> (
 
 
 async def resolve_native_github_posting_context() -> (
-    GitHubPostingContext | NativeHumanGitHubInvocation | RefusedGitHubInvocation
+    GitHubPostingContext | LocalNativeGitHubInvocation | NativeHumanGitHubInvocation | RefusedGitHubInvocation
 ):
     """Resolve native execution and target/actor before the caller loads any credential."""
     invocation = await classify_native_github_invocation()
     if not isinstance(invocation, ManagedGitHubInvocation):
         return invocation
-    return await _bound_context(invocation)
+    session = invocation.session
+    try:
+        project_root = resolve_owning_checkout(Path(session.project_path)) if session.project_path else None
+        if project_root is None:
+            return _refuse(GitHubInvocationRefusal.WORK_CONTEXT_UNRESOLVED, session.session_id)
+        selected = selected_workflow_store_backend(project_root)
+        store = await get_db()
+        binding = await store.get_github_session_binding(session.session_id)
+        target = await store.get_github_native_target(session.session_id)
+        if read_session_identity_facts(str(MAIN_DB_PATH), session.session_id) != session:
+            return _refuse(GitHubInvocationRefusal.SESSION_CHANGED, session.session_id)
+        if selected_workflow_store_backend(project_root) is not selected:
+            return _refuse(GitHubInvocationRefusal.WORK_CONTEXT_UNRESOLVED, session.session_id)
+        if selected is TodoStoreBackend.LOCAL:
+            if binding is not None or target is not None:
+                return _refuse(GitHubInvocationRefusal.ACTOR_BINDING_MISMATCH, session.session_id)
+            return LocalNativeGitHubInvocation(invocation, project_root)
+        context = await _bound_context(invocation)
+        if selected_workflow_store_backend(project_root) is not selected:
+            return _refuse(GitHubInvocationRefusal.WORK_CONTEXT_UNRESOLVED, session.session_id)
+        return context
+    except (SQLAlchemyError, ValueError, OSError):
+        return _refuse(GitHubInvocationRefusal.WORK_CONTEXT_UNRESOLVED, session.session_id)
 
 
 async def resolve_admitted_github_posting_context() -> GitHubPostingContext | RefusedGitHubInvocation:
@@ -184,6 +225,8 @@ async def resolve_admitted_github_posting_context() -> GitHubPostingContext | Re
     if isinstance(resolved, RefusedGitHubInvocation):
         return resolved
     session, role = resolved
+    if role is None:
+        return _refuse(GitHubInvocationRefusal.ROLE_UNRESOLVED, session_id)
     context = await _bound_context(AdmittedGitHubInvocation(session, role))
     if get_caller_session_id() != session_id or get_relayed_caller() is not None:
         return _refuse(GitHubInvocationRefusal.SESSION_CHANGED, session_id)
@@ -195,18 +238,21 @@ async def _bound_context(
 ) -> GitHubPostingContext | RefusedGitHubInvocation:
     """Read fixed actor and work scope once from their existing session owner, then recheck the source row."""
     session = invocation.session
+    if invocation.role is None:
+        return _refuse(GitHubInvocationRefusal.ROLE_UNRESOLVED, session.session_id)
     try:
         store = await get_db()
         binding = await store.get_github_session_binding(session.session_id)
         target = await store.get_github_native_target(session.session_id)
         if binding is None or target is None:
             return _refuse(GitHubInvocationRefusal.ACTOR_BINDING_UNAVAILABLE, session.session_id)
+        project_root = resolve_owning_checkout(Path(session.project_path)) if session.project_path else None
         if (
             binding.session_id != session.session_id
             or binding.role is not invocation.role.name
             or session.working_slug != target.work_item
-            or not session.project_path
-            or target.project_path.resolve() != Path(session.project_path).resolve()
+            or project_root is None
+            or resolve_owning_checkout(target.project_path) != project_root
         ):
             return _refuse(GitHubInvocationRefusal.ACTOR_BINDING_MISMATCH, session.session_id)
     except (SQLAlchemyError, ValueError, OSError):
