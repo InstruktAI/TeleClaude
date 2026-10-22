@@ -44,6 +44,7 @@ class EnvVarStatus:
 
     info: EnvVarInfo
     is_set: bool
+    applicable: bool
 
 
 @dataclass(frozen=True)
@@ -159,6 +160,7 @@ class ConfigOperations:
             EnvVarStatus(
                 info=EnvVarInfo(name=row.name, adapter=row.service, description=row.description),
                 is_set=row.is_set,
+                applicable=row.applicable,
             )
             for row in answer.variables
         ]

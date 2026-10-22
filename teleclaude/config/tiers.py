@@ -12,12 +12,13 @@ own tier when declared, else the nearest ancestor container's tier, else the
 ``internal`` default — so a container marked ``tui`` lifts its unmarked leaves into
 view without a marker on every one.
 
-Two more section-level declarations live beside the tier. A section's **scope**
-(``local``, the default, or ``master``) says whether the section is meaningful on
-every computer or only on the master; and an ``enabled`` flag may declare that it
-does not govern its section (``governs_section`` false), for a flag whose meaning
-is not the section's switch. The configuration reader derives each section's
-effective ``enabled`` from these declarations alone.
+Two more declarations live beside the tier. A field's **scope** (``local``, the
+default, or ``master``) says where that path applies, and descendants inherit it.
+An ancestor marked ``master`` remains inapplicable on non-master computers even
+if a descendant declares ``local``. An ``enabled`` flag may declare that it does
+not govern its section (``governs_section`` false), for a flag whose meaning is
+not the section's switch. The configuration reader derives effective ``enabled``
+values from these declarations alone.
 """
 
 from __future__ import annotations

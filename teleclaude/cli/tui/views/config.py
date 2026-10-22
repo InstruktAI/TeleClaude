@@ -375,7 +375,6 @@ class ConfigContent(
         self._people_data: list[PersonRow] = []
         self._validation_results: list[ValidationResult] = []
         self._adapter_sections: list[AdapterSectionProjection] = []
-        self._outside_scope: tuple[str, ...] = ()
         self._cursor_by_context: dict[str, int] = {}
         self._editing_var_name: str | None = None
         self._edit_buffer = ""
@@ -478,16 +477,14 @@ class ConfigContent(
             machine = await operations.editor(ConfigSubjectKind.COMPUTER)
             self._machine_editor = machine
             self._machine_revision = machine.revision
-            self._outside_scope = tuple(machine.outside_scope)
         except Exception as exc:
             self._machine_editor = None
             self._machine_revision = None
-            self._outside_scope = ()
             self._report_failure(_LOAD_MACHINE_FAILED, exc)
 
         try:
             statuses = await operations.environment_variables()
-            self._env_data = [status for status in statuses if status.info.adapter not in self._outside_scope]
+            self._env_data = [status for status in statuses if status.applicable]
         except Exception as exc:
             self._env_data = []
             self._report_failure(_LOAD_ENV_FAILED, exc)

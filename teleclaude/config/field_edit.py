@@ -71,7 +71,6 @@ _COMPUTER_SECTION_KEY = "computer"
 _MAPPING_TYPE = dict
 _LIST_TYPE = list
 _LIST_SEPARATOR = ","
-_MASTER_SCOPED_KEY = "master_scoped_not_applicable"
 _JSON_MODE = "json"
 _EMPTY_TEXT = ""
 
@@ -162,13 +161,10 @@ def apply_reference_edit(
             if _MACHINE_ENVIRONMENT in environment_values
             else None
         )
-        outside = view.read_only.get(_MASTER_SCOPED_KEY, [])
-        outside_scope = tuple(str(item) for item in outside) if isinstance(outside, list) else ()
         references = environment_references(view, machine_environment=machine_environment)
         fields = editor_fields(
             ref.kind,
             effective_sections(view, machine_environment=machine_environment),
-            outside_scope,
             source_sections=view.sections,
             references=references,
         )

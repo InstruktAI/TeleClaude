@@ -14,7 +14,7 @@ from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.adapters.whatsapp_adapter import WhatsAppAdapter
 from teleclaude.config.machine import config
-from teleclaude.config.validation import missing_required_fields
+from teleclaude.config.validation import AvailabilityState
 from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.events import SystemCommand, SystemCommandContext
 from teleclaude.core.models import MessageMetadata
@@ -171,24 +171,23 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         transport is required infrastructure (not a UI adapter) and is started
         separately; its failure remains fatal.
         """
-        adapter_specs: list[tuple[str, object, Callable[[], BaseAdapter]]] = [
+        adapter_specs: list[tuple[str, Callable[[], BaseAdapter]]] = [
             (
                 "discord",
-                getattr(config, "discord", None),
                 lambda: DiscordAdapter(self, task_registry=self.task_registry),
             ),
             (
                 "telegram",
-                getattr(config, "telegram", None),
                 lambda: TelegramAdapter(self, task_registry=self.task_registry),
             ),
-            ("whatsapp", getattr(config, "whatsapp", None), lambda: WhatsAppAdapter(self)),
+            ("whatsapp", lambda: WhatsAppAdapter(self)),
         ]
-        for name, cfg, factory in adapter_specs:
-            if cfg is None or not bool(getattr(cfg, "enabled", False)):
+        for name, factory in adapter_specs:
+            availability = config.availability(name)
+            if availability.state in (AvailabilityState.NOT_APPLICABLE, AvailabilityState.DISABLED):
                 self.adapter_status[name] = AdapterStatusReport(AdapterStatus.DISABLED)
                 continue
-            missing = missing_required_fields(name, cfg)
+            missing = list(availability.missing_fields)
             if missing:
                 logger.warning("Adapter %s is enabled but not configured: missing %s", name, ", ".join(missing))
                 self.adapter_status[name] = AdapterStatusReport(AdapterStatus.MISCONFIGURED, missing=tuple(missing))

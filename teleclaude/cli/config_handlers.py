@@ -43,8 +43,8 @@ from teleclaude.config.person_secrets import (
 )
 from teleclaude.config.registered_homes import live_tier_declarations
 from teleclaude.config.schema import GlobalConfig, PersonConfig
-from teleclaude.config.surface import machine_config_surface, master_scoped_sections
-from teleclaude.config.validation import missing_enabled_service_fields, missing_required_fields
+from teleclaude.config.surface import machine_config_surface
+from teleclaude.config.validation import AvailabilityState
 from teleclaude.domains import valid_domains
 from teleclaude.mcp.registry import load_effective_registry
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, REPO_ROOT, TELECLAUDE_HOME, ConfigFileName
@@ -59,6 +59,7 @@ _ADOPT_UNDECLARED_PROJECT = "Run from {path}: telec config project adopt"
 _READINESS_AREA = "computer readiness"
 _MASTER_SCOPE_AREA = "master-scoped sections"
 _MASTER_SCOPE_NOTE = "{section}: master-scoped, not applicable on this computer"
+_REQUIREMENT_PATHS = ("telegram", "discord", "whatsapp", "email", "summarizer.local", "tts", "stt")
 _READINESS_SUGGESTION = "Set each named value in the environment file beside its declaration on this computer."
 
 
@@ -76,6 +77,7 @@ class EnvVarInfo:
     name: str
     adapter: str
     description: str
+    path: str
     example: str = ""
 
 
@@ -266,13 +268,10 @@ def validate_all() -> list[ValidationResult]:
 
     missing_sections: dict[str, list[str]] = {}
     if app_config is not None:
-        for section_name in ("telegram", "discord", "whatsapp", "email"):
-            section = getattr(app_config, section_name)
-            if section.enabled:
-                missing = missing_required_fields(section_name, section)
-                if missing:
-                    missing_sections[section_name] = missing
-        missing_sections.update(missing_enabled_service_fields(app_config))
+        for path in _REQUIREMENT_PATHS:
+            answer = app_config.availability(path)
+            if answer.state is AvailabilityState.INCOMPLETE:
+                missing_sections[path] = list(answer.missing_fields)
     if missing_sections:
         results.append(
             ValidationResult(
@@ -290,7 +289,9 @@ def validate_all() -> list[ValidationResult]:
             ValidationResult(
                 area=_MASTER_SCOPE_AREA,
                 passed=True,
-                notes=[_MASTER_SCOPE_NOTE.format(section=section) for section in master_scoped_sections()],
+                notes=[
+                    _MASTER_SCOPE_NOTE.format(section=section) for section in app_config.master_scoped_not_applicable()
+                ],
             )
         )
 
@@ -333,6 +334,7 @@ def _schema_environment_vars() -> list[EnvVarInfo]:
             name=descriptor.environment_name or "",
             adapter=descriptor.path[0],
             description=descriptor.dotted_path.replace(".", " "),
+            path=descriptor.dotted_path,
         )
         for descriptor in machine_config_surface()
         if descriptor.sensitive and descriptor.environment_name is not None

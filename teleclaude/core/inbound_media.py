@@ -70,7 +70,7 @@ def _media_extension(mime_type: str | None) -> str:
 
 def available_whatsapp_access_token() -> str | None:
     """The WhatsApp access token when WhatsApp is available on this computer, else None."""
-    return config.whatsapp.access_token if is_section_available(_WHATSAPP_SECTION, config.whatsapp) else None
+    return config.whatsapp.access_token if is_section_available(_WHATSAPP_SECTION, config) else None
 
 
 async def download_whatsapp_media(

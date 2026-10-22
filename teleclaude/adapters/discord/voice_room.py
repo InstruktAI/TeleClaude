@@ -123,7 +123,7 @@ class VoiceRoom:
 
     async def open_if_configured_person_present(self) -> None:
         """Handle the ready-time case where presence predates event registration."""
-        if not config.computer.is_master:
+        if not config.master_scope_applies():
             return
         guild = self._guild()
         if guild is None:
@@ -296,7 +296,7 @@ class VoiceRoom:
     def _owns(self, room: _ConfiguredRoom) -> tuple[bool, str]:
         if room.person_slug not in self._identity_verified_people:
             return False, "bot_identity_unverified"
-        if not config.computer.is_master:
+        if not config.master_scope_applies():
             return False, "not_master"
         return True, "master"
 

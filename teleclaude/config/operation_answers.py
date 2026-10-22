@@ -110,6 +110,7 @@ class EnvironmentVariableRow(OperationAnswer):
     service: str
     is_set: bool
     description: str
+    applicable: bool = True
 
 
 class EnvironmentVariablesAnswer(OperationAnswer):

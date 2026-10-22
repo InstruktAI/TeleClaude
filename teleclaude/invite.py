@@ -102,17 +102,17 @@ async def resolve_discord_bot_user_id(bot_token: str) -> str:
 
 def _available_telegram_token() -> str | None:
     """The Telegram bot token when Telegram is available on this computer, else None."""
-    return config.telegram.bot_token if is_section_available(_TELEGRAM_ADAPTER, config.telegram) else None
+    return config.telegram.bot_token if is_section_available(_TELEGRAM_ADAPTER, config) else None
 
 
 def _available_discord_token() -> str | None:
     """The Discord bot token when Discord is available on this computer, else None."""
-    return config.discord.token if is_section_available(_DISCORD_ADAPTER, config.discord) else None
+    return config.discord.token if is_section_available(_DISCORD_ADAPTER, config) else None
 
 
 def _available_whatsapp_number() -> str | None:
     """The WhatsApp business number when WhatsApp is available on this computer, else None."""
-    return config.whatsapp.business_number if is_section_available(_WHATSAPP_ADAPTER, config.whatsapp) else None
+    return config.whatsapp.business_number if is_section_available(_WHATSAPP_ADAPTER, config) else None
 
 
 # --- Deep Link Generation ---
@@ -394,7 +394,7 @@ def invite_person(slug: str) -> InviteOutcome:
 
         links = generate_invite_links(token, telegram_username, discord_bot_id, _available_whatsapp_number())
 
-        email_enabled = is_section_available(_EMAIL_ADAPTER, config.email)
+        email_enabled = is_section_available(_EMAIL_ADAPTER, config)
         email_sent = False
         if email_enabled:
             try:

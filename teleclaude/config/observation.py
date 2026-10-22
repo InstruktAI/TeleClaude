@@ -9,8 +9,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config._environment import whole_reference_name
 from teleclaude.config._models import TeleclaudeConfig
-from teleclaude.config.surface import master_scoped_sections
-from teleclaude.config.validation import is_section_available, missing_required_fields
+from teleclaude.config.validation import AvailabilityState
 
 logger = get_logger(__name__)
 
@@ -131,22 +130,21 @@ def credential_field_sources(raw: object) -> dict[str, str]:
 def credential_section_availability(resolved: TeleclaudeConfig) -> dict[str, SectionAvailability]:
     """Project enabled and required-field availability from the typed aggregate."""
     projection: dict[str, SectionAvailability] = {}
-    master_scoped = () if resolved.computer.is_master else master_scoped_sections()
     for section_name in ("telegram", "discord", "whatsapp", "email"):
         section = getattr(resolved, section_name)
         enabled = section.enabled
-        missing = missing_required_fields(section_name, section)
-        if section_name in master_scoped:
+        availability_answer = resolved.availability(section_name)
+        if availability_answer.state is AvailabilityState.NOT_APPLICABLE:
             availability = AVAILABILITY_MASTER_SCOPED
         elif not enabled:
             availability = AVAILABILITY_DISABLED
-        elif is_section_available(section_name, section):
+        elif availability_answer.state is AvailabilityState.AVAILABLE:
             availability = AVAILABILITY_AVAILABLE
         else:
             availability = AVAILABILITY_UNAVAILABLE
         projection[section_name] = {
             "enabled": enabled,
             "availability": availability,
-            "reason": MISSING_REQUIRED_FIELD if missing else None,
+            "reason": MISSING_REQUIRED_FIELD if availability_answer.state is AvailabilityState.INCOMPLETE else None,
         }
     return projection
