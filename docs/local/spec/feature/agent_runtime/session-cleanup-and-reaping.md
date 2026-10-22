@@ -41,10 +41,12 @@ state or emitting another ending event.
 Post-close worker and polling cleanup consumes current terminal source state.
 On live-reader handover the runtime rechecks resident worker identities and
 workflow driver references, including references to closed or soft-deleted
-sessions. Workflow reconciliation clears only references still naming the
-terminal session and starts no new workflow work. The existing minute-driven
-workflow reconciliation supplies subsequent repair independently of historical
-close notifications, under `sdlc/policy/domain-ownership`.
+sessions. Workflow reconciliation atomically clears only the runner reference
+and manual-start flag while the stored reference still names the terminal
+session, preserving concurrent workflow changes under
+`general/principle/trust-and-guardrails`. It starts no new workflow work. The
+existing minute-driven workflow reconciliation supplies subsequent repair
+independently of historical close notifications, under `sdlc/policy/domain-ownership`.
 
 The runtime owner is acquired outside the closing command's source-change
 callback. This ownership separation follows

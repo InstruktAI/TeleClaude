@@ -196,14 +196,8 @@ async def reconcile_driver_ownership_for_session(
     """Clear every active driver link for a terminal session."""
     cleared_slugs: list[str] = []
     for row in await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True):
-        state = await todos_db.read_state_by_id(row["id"])
-        if state is None or state.get("active_runner") != session_id:
-            continue
-        writer = StateWriter(state)
-        writer.state.active_runner = None
-        writer.state.manually_started = False
-        await writer.commit_by_id(todos_db, row["id"])
-        cleared_slugs.append(row["slug"])
+        if await StateWriter.clear_active_runner_if_matches(todos_db, row["id"], session_id):
+            cleared_slugs.append(row["slug"])
     return DriverOwnershipReconciliation(cleared_slugs=tuple(cleared_slugs))
 
 
