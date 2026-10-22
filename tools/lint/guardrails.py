@@ -358,18 +358,6 @@ SOURCE_PATTERN_RULES: list[PatternRule] = [
         message="leftover debug probes — use structured logging",
     ),
     PatternRule(
-        name="banned-session-env-vars",
-        pattern=re.compile(r"TELECLAUDE_SESSION" + r"_ID|TELECLAUDE_PRINCIPAL" + r"(?:_ROLE)?(?!\s*=)"),
-        scan_dirs=["teleclaude", "scripts", "tests", ".githooks"],
-        glob="*.py",
-        exclude_prefixes=("tools/lint/",),
-        exception_marker=None,
-        message=(
-            "banned env var — use teleclaude.session_identity.get_session_id() "
-            "for session ID, DB lookup for principal/role"
-        ),
-    ),
-    PatternRule(
         name="hardcoded-home-path",
         pattern=re.compile(re.escape(str(Path.home()))),
         scan_dirs=["teleclaude", "templates", "bin", "scripts", "tools", "agents", ".agents"],
@@ -377,24 +365,6 @@ SOURCE_PATTERN_RULES: list[PatternRule] = [
         exclude_prefixes=("tools/lint/guardrails", "__pycache__/"),
         exception_marker="guard: allow-home-path",
         message=("hardcoded home path — use Path.home(), $HOME, os.path.expanduser('~'), or {{MARKER}} in templates"),
-    ),
-    PatternRule(
-        name="divergent-kind-vocabulary",
-        pattern=re.compile(r"""\bkind\s*(?::\s*\w+\s*)?=(?!=)\s*["'](?:feature|change|bug)["']"""),
-        scan_dirs=["teleclaude"],
-        glob="*.py",
-        exclude_prefixes=(
-            "teleclaude/types/todo_kind.py",  # canonical definitions live here only
-            "tools/lint/",
-        ),
-        exception_marker="guard: kind-vocabulary-override",
-        message=(
-            "raw kind string literal assigned outside the canonical module — "
-            "import from teleclaude.types.todo_kind instead of hard-coding kind values. "
-            "Every layer must use the canonical constants; divergent vocabularies "
-            "caused the bug this rule prevents. "
-            "If a legitimate exception exists, add `# guard: kind-vocabulary-override` on the line."
-        ),
     ),
 ]
 

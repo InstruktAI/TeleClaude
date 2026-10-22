@@ -49,7 +49,7 @@ description: Decide whether a todo should exist, audit that decision at preparat
 - **Documentation evidence precedes lifecycle entry.** Pending contracts are
   authored, committed under their intended todo slug, and independently reviewed
   with all required changes resolved before that todo enters its lifecycle.
-  Both `Planned-Todo` and `Todo` commit footers identify the association under
+  Associate each commit with `telec code commit --todo <slug>` under
   `general/policy/commits`. The creation boundary checks the associated pending
   documentation against committed, independently approved revisions; an author's
   `--approved` declaration supplies no review evidence. A missing approval,

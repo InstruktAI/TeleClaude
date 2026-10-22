@@ -30,33 +30,28 @@ by the caller's own tooling.
 
 ### Use cases
 
-#### CLI --raw with mirror present
+#### UC-RTP1: An operator reads an agent's original transcript
 
-```
-Given a mirror within the caller's history scope exists for session_id S with metadata.transcript_path = P
-When an operator runs `telec history show S --raw`
-Then the history detail capability returns P read as UTF-8
-And the CLI prints the file content whole, without the mirror header
-```
+```gherkin
+Scenario: Read a mirrored transcript verbatim
+  Given a session in the caller's history scope has its original transcript available
+  When an operator runs `telec history show S --raw`
+  Then the operator receives the original transcript content in full
+  And the result does not include the normalized mirror header
 
-#### CLI --raw with no mirror
+Scenario: Read a matching transcript when no mirror exists
+  Given no mirror exists for session_id S
+  And the caller is authorized to search the complete history
+  And a transcript is available for session_id S
+  When an operator requests `telec history show S --raw`
+  Then the result includes the transcript content matching S
+  And thinking output follows the requested `--thinking` option
+  And tool blocks are not shown
 
-```
-Given no mirror exists for session_id S
-And the caller's history scope admits every mirror
-And a transcript file whose extracted session id equals S exists in one of the per-agent session roots
-When an operator runs `telec history show S --raw`
-Then the history detail capability invokes the structured parser on the transcript file
-And returns the parsed text honoring --thinking, with tool blocks excluded
-And the CLI prints that text
-```
-
-#### CLI --raw with no mirror and no transcript
-
-```
-Given no mirror exists and no transcript's extracted session id equals S
-When an operator runs `telec history show S --raw`
-Then the CLI prints "No transcript found for session '<S>'" and exits non-zero
+Scenario: Report when no transcript matches
+  Given no mirror exists and no transcript's extracted session id equals S
+  When an operator runs `telec history show S --raw`
+  Then the CLI prints "No transcript found for session '<S>'" and exits non-zero
 ```
 
 ## Known caveats

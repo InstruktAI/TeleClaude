@@ -18,6 +18,8 @@ dispatch:
 @~/.teleclaude/docs/sdlc/principle/design-fundamentals.md
 @~/.teleclaude/docs/sdlc/principle/module-depth.md
 @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
+@~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
+@~/.teleclaude/docs/sdlc/policy/definition-of-ready.md
 
 ## Goal
 
@@ -41,7 +43,8 @@ genuinely theirs.
 
 1. **Claim.** Comment on the issue that this session is preparing it, naming your
    session id.
-2. **Derive before reading anyone's draft.** Record the smallest complete
+2. **Derive before reading anyone's draft.** Independently apply the design
+   focuses in `sdlc/policy/preparation-artifact-quality`. Record the smallest complete
    authorized outcome, its actual operating scale and trust boundary, and the
    requirements and failure behavior that follow from them. Independently
    identify the existing path for comparable outcomes
@@ -51,7 +54,11 @@ genuinely theirs.
 3. **Dispatch the author.** Start one child:
    `telec sessions run --command sdlc/procedure/lifecycle/prepare/intake-v2 --args <issue>`.
    Its turn completions reach you as notifications; it is your only child.
-4. **Challenge.** Judge the whole proposed delivery before its details: does
+   The brief carries the intent, constraints, evidence and source pointers under
+   `general/policy/leadership`; the author's first contribution is its own grounded
+   approach, not agreement with the driver's preferred solution.
+4. **Challenge.** Compare the author's approach with your independent derivation.
+   Judge the whole proposed delivery before its details: does
    each mechanism serve the authorized outcome, and can an existing or simpler
    path meet the same contract? Challenge unnecessary complexity as well as
    missing behavior, unsupported provider guarantees, uncheckable claims and

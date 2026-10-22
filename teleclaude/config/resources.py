@@ -191,7 +191,7 @@ def _computer_source() -> Path:
 
 
 def _computer_read_only(raw: Mapping[object, object]) -> dict[str, object]:  # guard: loose-dict - projected sections
-    """Name the master-scoped sections that do not apply here, beside the document and never in it."""
+    """Name the minimal master-scoped paths that do not apply, beside the document."""
     outside = sections_outside_scope(raw)
     return {_MASTER_SCOPED_NOT_APPLICABLE: list(outside)} if outside else {}
 

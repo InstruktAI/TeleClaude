@@ -29,49 +29,44 @@ before rendering. For show, exactly one computer is allowed.
 
 ### Use cases
 
-#### Search fan-out across multiple computers
+#### UC-CCHF-8: An operator searches history across selected computers
 
 ```
-Given an operator runs `telec history search <terms> --computer A --computer B`
-When the search is dispatched
-Then the search is sent to A and to B in parallel
-And local mirrors are included in the merged result only when the dispatching computer's own name is among the named computers
-And the merged rows are sorted by sort_timestamp DESC and rendered with a "computer" column
-```
+Scenario: Search conversations across the selected computers
+  Given an operator requests history from computers A and B
+  When they run `telec history search <terms> --computer A --computer B`
+  Then matching conversations from the selected computers appear in one result list
+  And each result identifies its computer
+  And local results appear only when the local computer is selected
+  And the results appear newest first
 
-#### Per-host error reporting
-
-```
-Given one remote search fails (relay timeout, unreachable peer, remote error, or a peer that does not carry the search command)
-When the gathered results are processed
-Then a line "[<computer>] Remote search failed: <reason>" is printed
-And successful remote results are still rendered
-And the empty-result message lists all requested computers if nothing succeeded
-```
-
-#### Show enforces single computer
-
-```
-Given an operator runs `telec history show S --computer A --computer B`
-When the CLI begins remote dispatch
-Then it prints "history show accepts exactly one --computer value"
-And exits with status code 1 without issuing any remote call
+Scenario: Partial remote failures remain visible with successful results
+  Given an operator searches computers A and B and one remote search fails
+  When the search results are returned
+  Then the failed computer and reason are reported
+  And successful remote results are still rendered
+  And if no computer succeeds, the empty-result message names all requested computers
 ```
 
 #### UC-CCHF-5: Cross-computer search travels the daemon relay
 
-#### UC-CCHF-7: Remote show renders the peer's answer and names its failures
+#### UC-CCHF-7: A caller retrieves a conversation from a selected computer
 
 ```
-Given a caller runs `telec history show <session-id> --computer <peer>`, with or without `--raw`
-When the show is dispatched
-Then the CLI renders the peer's answer as it renders a local one
+Scenario: Read a conversation from a peer
+  Given a caller can access a session on computer "peer"
+  When an operator runs `telec history show <session-id> --computer <peer>`, with or without `--raw`
+  Then the CLI renders the peer's answer as it renders a local one
 
-Given the peer holds no conversation for that identifier within the caller's scope
-Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
+Scenario: The peer has no conversation within the caller's scope
+  Given the peer holds no conversation for that identifier within the caller's scope
+  When the operator requests that session's history from the peer
+  Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
 
-Given the relay cannot complete the request (timeout, unreachable peer, peer error, or a peer that does not carry the detail command)
-Then the CLI reports "Failed to fetch session '<session-id>' from <peer>: <reason>" and exits non-zero
+Scenario: The peer cannot answer the request
+  Given the relay cannot complete the request (timeout, unreachable peer, peer error, or a peer that does not carry the detail command)
+  When the operator requests that session's history from the peer
+  Then the CLI reports "Failed to fetch session '<session-id>' from <peer>: <reason>" and exits non-zero
 ```
 
 ## Known caveats

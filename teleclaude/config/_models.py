@@ -85,9 +85,11 @@ from teleclaude.config._runtime_models import (
 from teleclaude.config._runtime_models import (
     WorkflowRunnerMode as WorkflowRunnerMode,
 )
+from teleclaude.config._schema_paths import PATH_SEPARATOR, master_scoped_paths, resolve_schema_scope
 from teleclaude.config._summarizer import SummarizerConfig
 from teleclaude.config.effective_enabled import settle_effective_enabled
 from teleclaude.config.tiers import GOVERNS_SECTION_METADATA_KEY, SCOPE_METADATA_KEY, Scope, Tier
+from teleclaude.config.validation import AvailabilityAnswer, configuration_availability
 
 
 class ConfigValidationIssue(NamedTuple):
@@ -834,6 +836,25 @@ class TeleclaudeConfig(ClosedModel):
                 continue
             return True
         return False
+
+    def scope_applies(self, path: str) -> bool:
+        """Return whether a machine-schema path's declared scope applies here."""
+        scope = resolve_schema_scope(type(self), path)
+        return scope is not Scope.MASTER or self.computer.is_master
+
+    def master_scope_applies(self) -> bool:
+        """Return whether this computer is declared to apply master-scoped behavior."""
+        return self.computer.is_master
+
+    def availability(self, path: str) -> AvailabilityAnswer:
+        """Return the configuration owner's readiness answer for one schema path."""
+        return configuration_availability(self, path)
+
+    def master_scoped_not_applicable(self) -> tuple[str, ...]:
+        """Return minimal dotted master-scoped paths that do not apply on this computer."""
+        if self.computer.is_master:
+            return ()
+        return tuple(PATH_SEPARATOR.join(path) for path in master_scoped_paths(type(self)))
 
     @model_validator(mode="after")
     def _settle_effective_enabled(self) -> Self:

@@ -376,7 +376,7 @@ class DiscordAdapter(
         pass. Before infrastructure is provisioned the request waits for startup.
         """
         self._desk_reconcile_pending = True
-        if not self._infrastructure_provisioned or not config.computer.is_master:
+        if not self._infrastructure_provisioned or not config.master_scope_applies():
             return
         if self._desk_reconcile_task is not None and not self._desk_reconcile_task.done():
             return

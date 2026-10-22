@@ -17,6 +17,7 @@ dispatch:
 @~/.teleclaude/docs/sdlc/principle/design-fundamentals.md
 @~/.teleclaude/docs/sdlc/principle/module-depth.md
 @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
+@~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
 
 ## Goal
 
@@ -38,7 +39,9 @@ content and dispose every challenge with a change or with evidence.
 
 1. **Read the intent as it arrived.** A line, a brain dump or a worked proposal
    all count; the body is the input until you replace it.
-2. **Bound the design.** State the smallest complete outcome at the project's
+2. **Bound the design.** Apply the design focuses in
+   `sdlc/policy/preparation-artifact-quality` from the intent and sources before
+   choosing the approach. State the smallest complete outcome at the project's
    actual operating scale and trust boundary. Ground its delivery in the
    existing path for comparable outcomes (`sdlc/policy/substrate-anchoring`).
    Include the requirements this outcome needs; apply KISS and YAGNI to each

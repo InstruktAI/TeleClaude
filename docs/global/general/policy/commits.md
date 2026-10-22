@@ -10,37 +10,17 @@ visibility: public
 
 This is the canonical source of commit behavior. Other docs may reference it, but must not redefine commit policy.
 
-Use commitizen format:
+Write a Commitizen subject and, when useful, an explanation of the change:
 
 ```
 type(scope): subject
-
-🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)
-
-Session: <teleclaude session id>
-Human-Involved: <true|false>
 ```
 
-- The agent that produced the change is its author, stamped mechanically in the
-  git author field by the sealed commit surface — no message trailer carries it.
-- The human is never an author. Their name and email never appear in the message
-  body. The human's git identity remains on the commit only as the committer —
-  the account the work runs under, lineage, never authorship.
-- The sealed commit surface appends the branding line, `Session:`, and
-  `Human-Involved:` to whatever message it receives — it never reads, parses,
-  or edits that message to enforce this or anything else. `Session:` is
-  present whenever an agent session resolves — the revival handle
-  (`telec sessions revive <id>`) for that exact commit.
-- `Human-Involved:` is a bare `true`/`false` with no identity attached and is
-  always present. It records only whether a human shaped this commit; omission
-  records `false`. The declaration is made through the sealed commit surface,
-  whose point-of-use contract owns its admissibility. It is never derived from
-  a todo, session launch, lineage, preceding act, or message text, and it
-  supplies no declaration for any later commit.
-- `Co-Authored-By`, `Agent:`, and `Signed-off-by` trailers are prohibited —
-  the git author field is what carries attribution. The sealed surface does
-  not enforce this by inspecting messages: a message that contains one
-  survives untouched, appended to rather than corrected.
+- Author only the subject and explanatory body. The sealed commit interface
+  owns attribution and provenance. The message describes the work, not who
+  performed or authorized it (`general/concept/lineage-vs-authorship`).
+- Declare human involvement through the command's action-scoped option under
+  `general/policy/human-involvement-recording`.
 
 **Todo association:**
 
@@ -48,13 +28,6 @@ For documentation prepared for a future todo, choose the fitting slug before
 committing and supply it through `telec code commit --todo <slug>`. Choosing the
 slug creates and reserves no todo. Work associated with an existing todo uses
 the same flag. Work outside a todo keeps its ordinary commit path.
-
-The sealed commit surface appends the association itself. It infers the footer
-from the owning project's recorded state at commit creation:
-`Planned-Todo: <slug>` when the todo does not yet exist, or `Todo: <slug>` when it does. Both
-names carry the same commit-to-todo association. `Planned-Todo` records absence
-at commit time, not current lifecycle state, and remains unchanged after the todo
-is created (`general/principle/grounding`).
 
 **Valid types:**
 
@@ -133,7 +106,7 @@ All Committizen types are allowed.
   (`general/principle/grounding`).
 - An approval is independent only when its authenticated stamping session is
   distinct from every producing session recorded by the reviewed commit's
-  sealed `Session:` provenance. An approval from a producing session, or one
+  platform-recorded provenance. An approval from a producing session, or one
   whose reviewer or producing-session provenance cannot be established, supplies
   no independent approval evidence. The creation boundary consumes that
   established provenance with the SHA-bound verdict; it never accepts a caller's
@@ -195,16 +168,10 @@ All Committizen types are allowed.
 
 ## Rationale
 
-Attribution names the party that did the work. The human's git identity is on
-every commit because it is the account the work runs under — lineage, not
-authorship — and their credential already occupies the committer field, so
-repeating their name in the body asserts the same thing twice and reads as
-authorship. Standing trailers assert involvement that did not happen.
-
-The surface's own footer and its unset author field are properties of the tool,
-not choices a committing agent makes: an agent has no channel to suppress the one
-or set the other. Attributing either to the commit's author would file a tool
-limitation as that author's mistake — the inversion this policy exists to prevent.
+The committing agent owns the explanation of the change; the platform owns its
+verified attribution and provenance. Operating guidance supplies the command
+arguments that carry the author's intent, rather than metadata representations
+that invite the author to imitate platform output (`general/principle/priming`).
 
 - Consistent commits enable reliable rollbacks and audits.
 - Commit messages drive automated release notes and changelogs.
@@ -225,9 +192,10 @@ runtime's file-edit records cover edits made through native tools.
 
 `telec code commit` is the canonical commit interface. The wrapper handles workspace scoping, staging, and pre-commit hooks automatically; direct git operations are blocked and self-document at the error path.
 
-The tool-appended `Co-Authored-By` line and the ambient git author on a commit are
-never findings against that commit or the agent that made it. Every commit made
-through the surface carries both.
+The sealed interface refuses caller-supplied platform metadata before committing.
+Its refusal directs the caller to submit a subject and explanation through the
+supported command arguments. Reviewers judge authored content and command use;
+generated provenance defects belong to the platform implementation.
 
 Commit guidance, CLI help, agent addenda, and project-specific designs must not
 describe `--approved` as human approval or require a pre-commit human decision

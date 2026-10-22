@@ -76,6 +76,7 @@ from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror
 from teleclaude.project_root import is_project_checkout
 from teleclaude.services.project_catalog.service import get_project_catalog_service
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
+from teleclaude.utils.transcript.source_views import clear_transcript_source
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -200,6 +201,8 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     except asyncio.CancelledError:
                         pass
             polling_coordinator._cleanup_codex_input_state(session_id)
+            if current is not None and current.native_log_file:
+                clear_transcript_source(current.native_log_file)
             try:
                 await clear_active_runner_for_session_end(db, session_id)
             except Exception as exc:

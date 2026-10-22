@@ -99,6 +99,21 @@ operations:
   behavior, duplicate-integration guards and final-root confirmation. Delivery
   is recorded once at the confirmed final root SHA.
 
+<!-- planned:issue-128 -->
+
+- The port supplies each act as one coherent logical act together with the
+  artifact revisions it was decided on (#124 INV-S3).
+  - **Local adapter.** It commits the act in one atomic SQL transaction and
+    rolls the whole act back on failure.
+  - **GitHub adapter.** It supplies observed-revision validation: the act records
+    the revisions it observed and checked, and an observed mismatch refuses the
+    act. This is not a cross-object commit-instant fence. Publishing the act
+    neither locks nor overwrites a concurrent body edit.
+  - **Unconfirmed provider acceptance.** It is a separate recovery outcome and
+    supplies no committed-act evidence.
+
+<!-- /planned:issue-128 -->
+
 ## Primary flows
 
 1. Resolve project context to the canonical state root, read its project config,

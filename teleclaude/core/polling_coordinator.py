@@ -53,6 +53,7 @@ from teleclaude.utils.transcript import (
     render_agent_output,
     render_clean_agent_output,
 )
+from teleclaude.utils.transcript.source_views import transcript_read_scope
 from teleclaude.utils.transcript_discovery import TranscriptCandidate, discover_transcripts, extract_session_id
 
 if TYPE_CHECKING:
@@ -711,13 +712,14 @@ async def project_session_from_transcript(
             return session
         if active_compaction_attempt(refreshed) is not None:
             return refreshed
-        return await _project_session_from_transcript_locked(
-            refreshed,
-            adapter_client,
-            final_version=final_version,
-            started_at=started_at,
-            last_changed_at=last_changed_at,
-        )
+        with transcript_read_scope():
+            return await _project_session_from_transcript_locked(
+                refreshed,
+                adapter_client,
+                final_version=final_version,
+                started_at=started_at,
+                last_changed_at=last_changed_at,
+            )
 
 
 async def schedule_session_projection(

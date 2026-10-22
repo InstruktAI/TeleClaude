@@ -40,7 +40,8 @@ from teleclaude.config.person_secrets import PersonMcpSecretStatus, person_secre
 from teleclaude.config.resource_contract import SubjectView
 from teleclaude.config.revision import view_revision
 from teleclaude.config.schema import PersonConfig
-from teleclaude.config.tiers import Tier, effective_tier, pydantic_field_tier, renders_in_tui
+from teleclaude.config.surface import resolve_schema_scope
+from teleclaude.config.tiers import Scope, Tier, effective_tier, pydantic_field_tier, renders_in_tui
 from teleclaude.config.validation import required_field_names
 from teleclaude.config_subjects import ConfigEnvironment, ConfigSubjectKind
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
@@ -90,6 +91,8 @@ _SECRET_FIELD_PREFIX = "secrets."
 _SECRET_SECTION = "Secrets"
 _SECRET_STORE_UNAVAILABLE = "unavailable"
 _MACHINE_ROOT = "computer"
+_MACHINE_ROOT_PREFIX = "computer."
+_MASTER_FLAG = "is_master"
 _FIELD_PATH_SEPARATOR = "."
 _SETTINGS_SECTION_NAME = "settings"
 _IDENTITY_SECTION_NAME = "identity"
@@ -210,14 +213,13 @@ def person_secret_editor_fields(statuses: list[PersonMcpSecretStatus]) -> list[E
 def editor_fields(
     kind: ConfigSubjectKind,
     sections: Mapping[str, object],
-    outside_scope: tuple[str, ...] = (),
     *,
     source_sections: Mapping[str, object] | None = None,
     references: list[EnvironmentReferenceRow] | None = None,
 ) -> list[EditorFieldAnswer]:
     """Project schema-declared editable leaves and supplied effective values for a subject."""
     if kind is ConfigSubjectKind.COMPUTER:
-        return _machine_fields(sections, outside_scope, source_sections or {}, references or [])
+        return _machine_fields(sections, source_sections or {}, references or [])
     if kind is ConfigSubjectKind.PERSON:
         return _person_fields(sections, source_sections or {}, references or [])
     return []
@@ -225,16 +227,15 @@ def editor_fields(
 
 def _machine_fields(
     sections: Mapping[str, object],
-    outside_scope: tuple[str, ...],
     source_sections: Mapping[str, object],
     references: list[EnvironmentReferenceRow],
 ) -> list[EditorFieldAnswer]:
     fields: list[EditorFieldAnswer] = []
     defaults = DEFAULT_CONFIG
     effective_document = sections.get(_MACHINE_ROOT)
+    computer = effective_document.get(_MACHINE_ROOT) if isinstance(effective_document, Mapping) else None
+    is_master = isinstance(computer, Mapping) and bool(computer.get(_MASTER_FLAG, False))
     for root, model in _MACHINE_MODELS.items():
-        if root in outside_scope:
-            continue
         default = defaults.get(root, {})
         stored = effective_document.get(root, {}) if isinstance(effective_document, Mapping) else {}
         merged = _merge(default, stored)
@@ -253,7 +254,8 @@ def _machine_fields(
             root_prefix=root,
             reference_prefix=_MACHINE_ROOT,
         )
-        fields.extend(_tts_applicability(merged, projected) if root == _TTS_ROOT else projected)
+        projected = _tts_applicability(merged, projected) if root == _TTS_ROOT else projected
+        fields.extend(field for field in projected if is_master or resolve_schema_scope(field.identity) is Scope.LOCAL)
     return fields
 
 

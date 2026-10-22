@@ -49,7 +49,7 @@ def _resolve_jump_url_guild_segment(guild_id: int | None, *, is_thread: bool) ->
         return str(guild_id)
     if not is_thread:
         return DISCORD_DIRECT_MESSAGE_GUILD_SEGMENT
-    if not is_section_available(DISCORD_SECTION, config.discord):
+    if not is_section_available(DISCORD_SECTION, config):
         return None
     configured_guild_id = config.discord.guild_id
     return str(configured_guild_id) if configured_guild_id is not None else None

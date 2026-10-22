@@ -63,18 +63,32 @@ allowing the commit.
 
 ## Canonical fields
 
+### Authored message boundary
+
+The caller supplies a subject and explanatory body under
+`general/policy/commits`. The commit-identity owner defines and generates platform
+metadata. Caller text containing one of that owner's reserved metadata lines is
+refused before commit locking, formatting, staging or Git mutation. The refusal
+identifies the supported command arguments without echoing the supplied body.
+
+Recognition covers a generated attribution line or a line beginning with a
+reserved metadata key and its separator, allowing surrounding key whitespace
+and case differences. It applies throughout the supplied message, rather than
+only where Git would recognize a final metadata block. Ordinary prose mentioning
+a key is not metadata. The shared composer enforces the same boundary for
+internally generated commit messages before it adds its own metadata.
+
 ### Todo association
 
 The optional `--todo <slug>` commit argument supplies the association described
-by `general/policy/commits`. The sealed surface resolves existence from the
-owning project's authoritative todo state and appends the inferred footer. A
+by `general/policy/commits`. The sealed surface records the association using the
+owning project's authoritative todo state. A
 slug that has not been created is valid association input and creates no todo,
 reservation, claim, or dispatch. Lookup failure is reported as failure to resolve
 the association, rather than interpreted as proof that the todo is absent
 (`sdlc/principle/design-fundamentals`).
 
-The two inferred footer names are normalized to one association when commit
-provenance is read. The footer records commit-time evidence; it does not track
+The association records commit-time evidence; it does not track
 the todo's later lifecycle or authorize work. Existing identity, human
 involvement, declared-file scoping and commit-review behavior keep their own
 contracts.
