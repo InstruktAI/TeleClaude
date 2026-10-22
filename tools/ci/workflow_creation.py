@@ -1076,61 +1076,10 @@ def require_b14_kickback(
     """Check one approved parent checkpoint, one public refusal, and immediate item/session equality."""
     before = observer.show(slug)
     sessions = observer.sessions()
-    state = before.get(FIELD_STATE) if before is not None else None
-    standing = before.get(FIELD_STANDING) if before is not None else None
-    if before is None or not isinstance(state, Mapping) or not isinstance(standing, Mapping):
+    if before is None:
         raise binding_failure(B14_DETAIL_BINDING.format(case=case.value, item=before))
     substitutions: dict[str, str] = {}
-    valid = FIELD_RUNNER in state
-    if case in (B14Case.HELD_PREPARATION, B14Case.HELD_WORK):
-        phase = PHASE_PREPARATION if case is B14Case.HELD_PREPARATION else B14_PHASE_WORK
-        valid = (
-            valid
-            and state.get(FIELD_PHASE) == phase
-            and standing.get(FIELD_STANDING_PHASE) == phase
-            and bool(holder)
-            and state.get(FIELD_RUNNER) == standing.get(B14_FIELD_HELD) == holder
-            and holder in sessions.ids
-            and holder not in sessions.closed
-        )
-        substitutions[B14Token.HOLDER] = holder
-    elif case is B14Case.PREPARED_UNCLAIMED:
-        valid = (
-            valid
-            and state.get(FIELD_PHASE) == standing.get(FIELD_STANDING_PHASE) == B14_PHASE_PREPARED
-            and state.get(FIELD_RUNNER) in (None, EMPTY)
-            and not standing.get(B14_FIELD_HELD)
-            and not standing.get(B14_FIELD_ADMITTED)
-            and starts is not None
-            and bool(open_start_value)
-            and open_start_value not in starts.values()
-        )
-    elif case is B14Case.READY_UNCLAIMED:
-        valid = (
-            valid
-            and standing.get(FIELD_STANDING_PHASE) == B14_PHASE_READY
-            and state.get(FIELD_RUNNER) in (None, EMPTY)
-            and not standing.get(B14_FIELD_HELD)
-            and not standing.get(B14_FIELD_ADMITTED)
-            and bool(commit)
-            and standing.get(B14_FIELD_READY_COMMIT) == commit
-            and expected_item is not None
-            and before == expected_item
-        )
-    elif case is B14Case.ADMITTED:
-        admitted = standing.get(B14_FIELD_ADMITTED)
-        valid = (
-            valid
-            and state.get(FIELD_PHASE) == B14_PHASE_READY
-            and state.get(FIELD_RUNNER) in (None, EMPTY)
-            and isinstance(admitted, Mapping)
-            and bool(commit)
-            and admitted.get(B14_FIELD_COMMIT) == commit
-            and expected_item is not None
-            and before == expected_item
-        )
-        substitutions[B14Token.ADMITTED8] = commit[:8]
-    elif case is B14Case.DELIVERED:
+    if case is B14Case.DELIVERED:
         roadmap = before.get(FIELD_ROADMAP)
         valid = (
             before.get(B14_FIELD_STAGE) == B14_PHASE_DELIVERED
@@ -1140,6 +1089,60 @@ def require_b14_kickback(
             and roadmap.get(B14_FIELD_DELIVERED_COMMIT) == commit
         )
         substitutions[B14Token.DELIVERED12] = commit[:12]
+    else:
+        state = before.get(FIELD_STATE)
+        standing = before.get(FIELD_STANDING)
+        if not isinstance(state, Mapping) or not isinstance(standing, Mapping):
+            raise binding_failure(B14_DETAIL_BINDING.format(case=case.value, item=before))
+        valid = FIELD_RUNNER in state
+        if case in (B14Case.HELD_PREPARATION, B14Case.HELD_WORK):
+            phase = PHASE_PREPARATION if case is B14Case.HELD_PREPARATION else B14_PHASE_WORK
+            valid = (
+                valid
+                and state.get(FIELD_PHASE) == phase
+                and standing.get(FIELD_STANDING_PHASE) == phase
+                and bool(holder)
+                and state.get(FIELD_RUNNER) == standing.get(B14_FIELD_HELD) == holder
+                and holder in sessions.ids
+                and holder not in sessions.closed
+            )
+            substitutions[B14Token.HOLDER] = holder
+        elif case is B14Case.PREPARED_UNCLAIMED:
+            valid = (
+                valid
+                and state.get(FIELD_PHASE) == standing.get(FIELD_STANDING_PHASE) == B14_PHASE_PREPARED
+                and state.get(FIELD_RUNNER) in (None, EMPTY)
+                and not standing.get(B14_FIELD_HELD)
+                and not standing.get(B14_FIELD_ADMITTED)
+                and starts is not None
+                and bool(open_start_value)
+                and open_start_value not in starts.values()
+            )
+        elif case is B14Case.READY_UNCLAIMED:
+            valid = (
+                valid
+                and standing.get(FIELD_STANDING_PHASE) == B14_PHASE_READY
+                and state.get(FIELD_RUNNER) in (None, EMPTY)
+                and not standing.get(B14_FIELD_HELD)
+                and not standing.get(B14_FIELD_ADMITTED)
+                and bool(commit)
+                and standing.get(B14_FIELD_READY_COMMIT) == commit
+                and expected_item is not None
+                and before == expected_item
+            )
+        elif case is B14Case.ADMITTED:
+            admitted = standing.get(B14_FIELD_ADMITTED)
+            valid = (
+                valid
+                and state.get(FIELD_PHASE) == B14_PHASE_READY
+                and state.get(FIELD_RUNNER) in (None, EMPTY)
+                and isinstance(admitted, Mapping)
+                and bool(commit)
+                and admitted.get(B14_FIELD_COMMIT) == commit
+                and expected_item is not None
+                and before == expected_item
+            )
+            substitutions[B14Token.ADMITTED8] = commit[:8]
     if not valid:
         raise binding_failure(B14_DETAIL_BINDING.format(case=case.value, item=before))
     outcome = observer.run((executable, TODO, STAMP, slug, *B14_CALL_TAIL))
