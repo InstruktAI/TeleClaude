@@ -32,6 +32,8 @@ Provisioning steps belong to `local/projects/teleclaude/procedure/onboard-agent-
 Installing and moving the runtime, its TUI and every profile plugin is
 installation convergence, owned by reconciliation
 (`local/projects/teleclaude/spec/feature/reconciliation/deepseek-stack-convergence`).
+Artifact distribution leaves machines without an installed DeepSeek runtime
+untouched.
 
 ## Canonical fields
 
@@ -40,9 +42,9 @@ installation convergence, owned by reconciliation
 #### UC-DSH-AGENT-1: An operator can start a session with DeepSeek
 
 ```gherkin
-Given an operator chooses the enabled DeepSeek runtime for a session
-When the session is ready
-Then that same session runs DeepSeek and accepts the operator's prompt
+Given an operator has enabled DeepSeek and wants to use it for a session
+When they start a session with their prompt
+Then that session accepts the prompt through DeepSeek
 ```
 
 #### UC-DSH-AUTH-1: runner setup checks DeepSeek authentication
@@ -72,23 +74,22 @@ by `sdlc/procedure/macos-stable-code-signing`.
 Given an administrator wants DeepSeek sessions to use the platform's agent guidance
 When agent artifacts are distributed to an installed DeepSeek runtime
 Then the guidance and applicable artifacts are available when a DeepSeek session starts
-And an absent DeepSeek installation receives no deployment
 ```
 
-#### UC-DSH-SEARCH-1: history search indexes DSH sessions
+#### UC-DSH-SEARCH-1: An operator can find a past DeepSeek conversation
 
 ```gherkin
 Given an operator wants to find a past DeepSeek conversation
-When they search history for terms
-Then matching DeepSeek conversations are available through the DeepSeek filter
-And an all-agent search includes them
+When they search history for terms with the DeepSeek filter
+Then matching DeepSeek conversations are shown
+And an all-agent search includes those conversations
 ```
 
-#### UC-DSH-SCOPE-1: DSH transcripts feed scoping and transcript views
+#### UC-DSH-SCOPE-1: An operator can review a DeepSeek session and its changed paths
 
 ```gherkin
-Given an operator reviews work performed in a DeepSeek session
-When they inspect its conversation and changed-path scope
+Given an operator needs to review work performed in a DeepSeek session
+When they inspect the session's conversation and changed paths
 Then they can read the DeepSeek conversation and see the paths it changed
 ```
 
