@@ -8,7 +8,7 @@ from pathlib import Path
 
 _IDENTITY_QUERY = """SELECT session_id, computer_name, principal, human_email, human_role,
 role, working_slug, job, initiator_session_id, company, closed_at, project_path,
-json_extract(origin_metadata, '$.confinement.profile')
+json_extract(origin_metadata, '$.confinement.profile'), tmux_session_name, deleted_at
 FROM sessions WHERE session_id = ?"""  # guard: raw-sql
 _LEGACY_IDENTITY_QUERY = """SELECT session_id, computer_name, principal, human_email, human_role,
 role, working_slug, job, initiator_session_id, closed_at, project_path
@@ -34,6 +34,8 @@ class SessionIdentityFacts:
     closed_at: str | None
     project_path: str | None
     confinement_profile: str | None = None
+    tmux_session_name: str | None = None
+    deleted_at: str | None = None
 
 
 def read_session_identity_facts(db_path: str, session_id: str) -> SessionIdentityFacts | None:
@@ -71,6 +73,8 @@ def read_session_identity_facts(db_path: str, session_id: str) -> SessionIdentit
         closed_at=str(closed_at) if closed_at is not None else None,
         project_path=str(project_path) if project_path is not None else None,
         confinement_profile=str(row[12]) if has_company and row[12] is not None else None,
+        tmux_session_name=str(row[13]) if has_company and row[13] is not None else None,
+        deleted_at=str(row[14]) if has_company and row[14] is not None else None,
     )
 
 
