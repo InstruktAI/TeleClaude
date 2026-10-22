@@ -18,8 +18,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict
 
+from teleclaude.constants import ARTIFACT_INPUT
 from teleclaude.core.db import db
 from teleclaude.core.db_models import ProcedureEventDeliveryOutcome
 from teleclaude.core.models import Session
@@ -30,10 +32,15 @@ from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.events.references import TodoRef
 from teleclaude.types.claim_change import workflow_record_of
 from teleclaude.types.procedure_delivery import BINDING_SECTION, BindingField, NotDeliveredReason
+from teleclaude.types.workflow_record import Phase
 
 RESERVATION_KEY_FIELD = "reservation_key"
 SLUG_FIELD = "slug"
 PROJECT_FIELD = "project_path"
+ACTIVE_RUNNER_FIELD = "active_runner"
+_EMPTY = ""
+_INPUT_REVISION_UNREADABLE = "prepared_request_input_revision_unreadable"
+logger = get_logger(__name__)
 
 
 def declares_single_claim(declarations: EntryDeclarations | None) -> bool:
@@ -72,10 +79,13 @@ def session_is_single_claim(session: Session) -> bool:
 
 @dataclass(frozen=True)
 class ItemFacts:
-    """What the activation needs to know of the item: who holds it and which launch reservation stands."""
+    """The holder/reservation and, for a prepared start, the recorded and currently observed input revisions."""
 
     holder: str
     launch_key: str
+    launch_phase: Phase | None = None
+    prepared_revision: str = _EMPTY
+    current_input_revision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -107,15 +117,30 @@ def event_facts(event_json: str) -> EventFacts:
 
 
 async def read_item_facts(folder: Path, slug: str) -> ItemFacts | None:
-    """The item\'s holder and standing reservation, read through the store of the project the home names."""
+    """Read the existing holder/reservation and prepared-body evidence through the project store."""
     if not slug:
         return None
     store = await get_workflow_store(str(folder))
     raw = await store.read_state(slug)
     if raw is None:
         return None
-    launch = workflow_record_of(raw).launch
-    return ItemFacts(holder=str(raw.get("active_runner") or ""), launch_key=launch.key if launch is not None else "")
+    record = workflow_record_of(raw)
+    launch = record.launch
+    prepared_revision = record.prepared.revision if record.prepared is not None else _EMPTY
+    current_input_revision: str | None = None
+    if launch is not None and launch.phase is Phase.PREPARED:
+        try:
+            current_input_revision = await store.artifact_digest(slug, ARTIFACT_INPUT)
+        except Exception:
+            # An unreadable body cannot qualify a prepared start; preserve the failure in the native log.
+            logger.warning(_INPUT_REVISION_UNREADABLE, slug=slug, project_path=str(folder), exc_info=True)
+    return ItemFacts(
+        holder=str(raw.get(ACTIVE_RUNNER_FIELD) or _EMPTY),
+        launch_key=launch.key if launch is not None else _EMPTY,
+        launch_phase=launch.phase if launch is not None else None,
+        prepared_revision=prepared_revision,
+        current_input_revision=current_input_revision,
+    )
 
 
 def judge(facts: EventFacts, item: ItemFacts | None, bound_session_id: str) -> NotDeliveredReason | None:
@@ -125,6 +150,8 @@ def judge(facts: EventFacts, item: ItemFacts | None, bound_session_id: str) -> N
     """
     if facts.is_request:
         stands = item is not None and not item.holder and item.launch_key == facts.request_key
+        if stands and item is not None and item.launch_phase is Phase.PREPARED:
+            stands = bool(item.prepared_revision) and item.current_input_revision == item.prepared_revision
         return None if stands else NotDeliveredReason.STALE_REQUEST
     holds = item is not None and bool(item.holder) and item.holder == bound_session_id
     return None if holds else NotDeliveredReason.NO_HOLDER

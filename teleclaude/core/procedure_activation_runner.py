@@ -83,6 +83,9 @@ from teleclaude.types.procedure_delivery import (
     ProcedureActivationResult,
     ProcedureSessionDeliveryInitialization,
 )
+from teleclaude.types.workflow_record import Phase
+
+NO_BOUND_SESSION = ""
 
 logger = get_logger(__name__)
 
@@ -407,7 +410,17 @@ async def _resolve_single_claim(
         if open_session is None:
             return _NotDelivered(NotDeliveredReason.NO_HOLDER)
         return _Resolution(open_session, ActivationOutcome.WOKEN, 1)
-    if open_session is not None and await entitled_to_request(open_session.session_id, facts.slug, facts.request_key):
+    entitled = open_session is not None and await entitled_to_request(
+        open_session.session_id, facts.slug, facts.request_key
+    )
+    if item is not None and item.launch_phase is Phase.PREPARED:
+        # The entitlement lookup awaits. Reuse the existing judgment at the effect boundary for prepared starts.
+        item = await _item_for_home(folder, facts)
+        bound_session_id = open_session.session_id if open_session is not None else NO_BOUND_SESSION
+        reason = judge(facts, item, bound_session_id)
+        if reason is not None:
+            return _NotDelivered(reason)
+    if open_session is not None and entitled:
         return _Resolution(open_session, ActivationOutcome.WOKEN, 1)
     created = await _create_agent(
         cmd,
