@@ -23,8 +23,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.core.db import get_db
 from teleclaude.core.github_identity import (
+    AdmittedGitHubInvocation,
     GitHubPostingContext,
     ManagedGitHubInvocation,
+    resolve_admitted_github_posting_context,
     resolve_managed_github_invocation,
     resolve_native_github_posting_context,
 )
@@ -217,6 +219,11 @@ async def _reap(process: asyncio.subprocess.Process) -> bytes:
 
 
 async def _current_context(context: GitHubPostingContext, request: GitHubIssueCommentRequest) -> bool:
+    if isinstance(context.invocation, AdmittedGitHubInvocation):
+        if isinstance(request.source, NativeGitHubPostSource):
+            return False
+        current = await resolve_admitted_github_posting_context()
+        return isinstance(current, GitHubPostingContext) and current == context and request.target == current.target
     invocation = await resolve_managed_github_invocation()
     if not isinstance(invocation, ManagedGitHubInvocation) or invocation != context.invocation:
         return False
@@ -433,6 +440,16 @@ async def post_github_issue_comment(
         result.object.provider_id if result.object is not None else None,
     )
     return result
+
+
+async def post_admitted_github_issue_comment(request: GitHubIssueCommentRequest) -> GitHubPostResult:
+    """Post an owner-admitted sealed/reflected append as the current local command's durably assigned actor."""
+    if isinstance(request.source, NativeGitHubPostSource):
+        return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED)
+    context = await resolve_admitted_github_posting_context()
+    if not isinstance(context, GitHubPostingContext):
+        return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED)
+    return await post_github_issue_comment(context, request)
 
 
 async def post_native_issue_comment(

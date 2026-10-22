@@ -55,6 +55,27 @@ def get_relayed_caller() -> RelayedCaller | None:
     return _relayed_caller.get()
 
 
+@dataclass(frozen=True)
+class OperationCallerTokens:
+    """Paired restoration tokens for the existing session and relay-origin contexts."""
+
+    session: Token[str | None]
+    relayed: Token[RelayedCaller | None]
+
+
+def set_operation_caller(session_id: str | None, computer: str | None) -> OperationCallerTokens:
+    """Restore an admitted operation's persisted caller address, clearing any inherited relay origin."""
+    session = set_caller_session_id(session_id)
+    relayed = set_relayed_caller(RelayedCaller(computer, session_id) if computer else None)
+    return OperationCallerTokens(session, relayed)
+
+
+def reset_operation_caller(tokens: OperationCallerTokens) -> None:
+    """Restore both contexts on every operation exit."""
+    reset_relayed_caller(tokens.relayed)
+    reset_caller_session_id(tokens.session)
+
+
 def relayed_caller_computer(caller_session_id: str | None) -> str | None:
     """The computer holding ``caller_session_id`` when the request being run was carried here from it.
 

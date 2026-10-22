@@ -47,9 +47,10 @@ from teleclaude.core.next_machine.prepare import next_prepare
 from teleclaude.core.next_machine.slug_resolution import resolve_holder_children_db
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_caller_identity import (
+    OperationCallerTokens,
     relayed_caller_computer,
-    reset_caller_session_id,
-    set_caller_session_id,
+    reset_operation_caller,
+    set_operation_caller,
 )
 from teleclaude.core.operation_follow_through import follow_through_scope
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
@@ -671,7 +672,7 @@ class OperationsService:
         heartbeat_task: asyncio.Task[None] | None = None
         stop_heartbeat = asyncio.Event()
         token: Token[Callable[[str, str, str], None] | None] | None = None
-        caller_token: Token[str | None] | None = None
+        caller_token: OperationCallerTokens | None = None
         latest_progress: tuple[str, str, str] | None = None
         progress_tasks: set[asyncio.Task[None]] = set()
         operation: Operation | None = None
@@ -701,7 +702,7 @@ class OperationsService:
                 task.add_done_callback(progress_tasks.discard)
 
             token = set_progress_callback(_capture_progress)
-            caller_token = set_caller_session_id(operation.caller_session_id)
+            caller_token = set_operation_caller(operation.caller_session_id, operation.caller_computer)
             async with pin_operation_todo_identity(operation), follow_through_scope() as follow_throughs:
                 outcome = await coro_factory(operation)
             completion = outcome if isinstance(outcome, OperationCompletion) else OperationCompletion(outcome)
@@ -777,7 +778,7 @@ class OperationsService:
             if token is not None:
                 reset_progress_callback(token)
             if caller_token is not None:
-                reset_caller_session_id(caller_token)
+                reset_operation_caller(caller_token)
             if progress_tasks:
                 await asyncio.gather(*progress_tasks, return_exceptions=True)
             if heartbeat_task is not None:
