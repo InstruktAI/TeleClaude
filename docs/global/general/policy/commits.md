@@ -91,9 +91,12 @@ All Committizen types are allowed.
   by its author with `telec code stamp` and a one-line reason, without asking
   anyone: a removal, a merge of work already reviewed where it was written, a
   validation or mechanical repair, a rename or move, formatting, and wording or
-  prompt prose whose effect is presentation. Content its owner judged while it
-  was being written — wording a human shaped with the authoring session — is
-  already reviewed where it was written. Which paths the diff touches names the
+  prompt prose whose effect is presentation. Presentation wording its owner
+  judged while it was being written — wording a human shaped with the authoring
+  session — is already reviewed where it was written. A change carrying one of
+  the consequences above goes to review whoever shaped it, because shaping its
+  intent does not establish its effect on the rest of the system. Which paths
+  the diff touches names the
   candidate; it never decides that review is owed. Stamping is not reviewing;
   it records that no review is owed, never that the change is correct. Review
   is technical stewardship, never a human ratification step.
