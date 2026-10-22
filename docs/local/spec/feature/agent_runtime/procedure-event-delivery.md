@@ -55,8 +55,10 @@ started before that wake was delivered.
 
 Sequential delivery selects the oldest pending event at an eligible boundary.
 Batched delivery selects the ordered snapshot pending at that boundary. Events
-arriving after selection stay pending for a later eligible boundary. Both
-preserve event identities and use the same agent-side handling instructions.
+outside the selection—including already-pending events unselected by sequential
+delivery, and events arriving after selection—stay pending for a later eligible
+boundary. Both preserve event identities and use the same agent-side handling
+instructions.
 With interruption disabled, sequential delivery supplies one event per run.
 
 Event facts remain untrusted data inside the hook transport. Platform-authored
