@@ -2791,6 +2791,12 @@ class _FoundationRunner:
                 diagnostics=retained_diagnostics[:_DIAGNOSTIC_LIMIT],
             )
         )
+        if (
+            len(argv) == 1
+            and argv[0] in {creation.B14_SNAPSHOT_PREFIX + case.value for case in creation.B14Case}
+            and retained_diagnostics != creation.DETAIL_SNAPSHOT_MISSING.format(case=argv[0])
+        ):
+            raise creation.trace_failure(retained_diagnostics)
 
 
 def _install_native_fixture(
