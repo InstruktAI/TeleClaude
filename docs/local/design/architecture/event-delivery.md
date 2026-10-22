@@ -31,6 +31,9 @@ coordination capability under
 - **One reaction path:** domain-event publication appends to its source stream
   and reaction execution follows
   `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`.
+  Source-owned local cache reconciliation is a separate owner capability under
+  `local/projects/teleclaude/design/architecture/cache`; publication does not
+  invoke a general in-process subscriber path.
 - **One owner per effect:** command execution, runtime coordination and event
   reactions retain their distinct completion boundaries. An awaited owner
   operation completes at that operation's boundary rather than at publication
@@ -62,13 +65,22 @@ The source owner commits its change and publishes the declared fact through
 its emission contract. Each interested reaction consumes through the existing
 independent-consumer runtime. Its source selection, retry and duplicate handling
 follow the event-consumer contract; its effects follow the consuming owner.
-Session state, adapter reactions, operation outcomes, activity, voice state,
+Adapter reactions, operation outcomes, activity, voice state,
 project changes and error reporting use this same relationship when they are
 domain notifications.
 
 Existing declarations represent the same fact wherever it is produced;
 compatibility carriers do not create a second lifecycle occurrence. Current
 consumers execute through their bound consumer path throughout wire coexistence.
+
+### Local session projection
+
+The daemon's session-source change boundary attempts current-source cache
+reconciliation before publishing its domain notification, under
+`local/projects/teleclaude/design/architecture/cache`. The existing durable
+materializer consumer retains recovery; its delivery position and owed
+notifications are unchanged. Source projection and notification consumption
+remain separate completion boundaries under `sdlc/policy/domain-ownership`.
 
 <!-- planned:central-shared-configuration -->
 

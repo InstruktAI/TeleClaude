@@ -99,7 +99,7 @@ class SessionMaterializer:
                 computer=self._computer,
                 issue_metadata=metadata,
             )
-            self._cache.update_session(snapshot)
+            self._publish_snapshot(snapshot)
         if assignment is not None and assignment not in self._resolved_metadata:
             await self._queue_enrichment(assignment)
         return snapshot
@@ -142,7 +142,7 @@ class SessionMaterializer:
                                     computer=self._computer,
                                     issue_metadata=metadata,
                                 )
-                                self._cache.update_session(snapshot)
+                                self._publish_snapshot(snapshot)
                             elif current_assignment is not None:
                                 next_assignment = current_assignment
                     if next_assignment is not None:
@@ -159,6 +159,10 @@ class SessionMaterializer:
             finally:
                 self._enrichment_queued.discard(assignment)
                 self._enrichment_queue.task_done()
+
+    def _publish_snapshot(self, snapshot: SessionSnapshot) -> None:
+        if self._cache.get_session(snapshot.session_id) != snapshot:
+            self._cache.update_session(snapshot)
 
     def _remove_local_row(self, session_id: str) -> None:
         cached = self._cache.get_session(session_id)

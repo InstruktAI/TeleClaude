@@ -25,6 +25,7 @@ from teleclaude.core.events import ProjectRefreshTrigger
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
 from teleclaude.core.operations.service import OperationsService, get_operations_service, set_operations_service
 from teleclaude.core.restart_budget import RestartBudget
+from teleclaude.core.runtime_events import configure_session_source_reconciler
 from teleclaude.core.session_cleanup import end_legacy_restricted_sessions
 from teleclaude.core.session_config_subject import (
     backfill_session_config_subjects,
@@ -135,6 +136,7 @@ class DaemonLifecycle:
         migrate_outbox_on_startup(str(MAIN_DB_PATH), str(get_outbox_db_path(TELECLAUDE_HOME)))
         logger.info("[STARTUP] Initializing database (usually <1s)")
         await db.initialize()
+        configure_session_source_reconciler(self.session_materializer.reconcile)
         logger.info("Database initialized in %.3fs", time.perf_counter() - startup_started_at)
 
         # Build the current request surface before event consumers are composed.
@@ -396,6 +398,7 @@ class DaemonLifecycle:
             with cleanup_step(adapter_name):
                 await adapter.stop()
 
+        configure_session_source_reconciler(None)
         await self.session_materializer.stop()
 
         with cleanup_step(_STORAGE_SHUTDOWN_COMPONENT):
