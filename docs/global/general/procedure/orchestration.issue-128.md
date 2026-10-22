@@ -40,8 +40,11 @@ lifecycle mutation outside the supported surface.
 
 ### Terminal Child Cleanup
 
-An item driver's act that releases its claim ends every live session it started
-before the claim is released; the driver does not end them itself. For a machine
+An item driver's act that releases its claim ends every live session the driver
+started that is still live, before the claim is released; which sessions the
+driver ends itself is stated by its own procedure
+(`sdlc/procedure/lifecycle/prepare/overview-v2`,
+`sdlc/procedure/lifecycle/work/overview-v2`). For a machine
 that emits a terminal cleanup script, at a true terminal state the script invokes bare `telec sessions
 end` as terminal worker cleanup. That operation owns caller-scoped enumeration and
 closes every live direct child across computers; the orchestrator never expands
