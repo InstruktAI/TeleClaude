@@ -19,6 +19,8 @@ A one-shot task-outcome success reconciles lifecycle markers only in the task's 
 
 For an item the lifecycle machine drives, every stamp type that only the previous machine knew is refused at this surface, naming the item's phase and the door for its state, and nothing is written (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`, Acts only the previous machine knew). Such an item's acts are performed through `local/projects/teleclaude/spec/feature/workflow/item-acts`.
 
+A one-shot task-outcome success reconciles lifecycle markers only in the task's own project; it does not read or change another project's documentation. A code-review record retains the reviewed commit, verdict, reviewer identity, and supplied reason. It is also recorded on the Todo claimed by the stamping session, or by its initiating session when the reviewer has no claim; if neither has a claim, no Todo review state is written.
+
 <!-- /planned-change:issue-128 -->
 
 <!-- planned-change:issue-128 -->
