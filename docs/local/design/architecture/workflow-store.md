@@ -92,6 +92,13 @@ and preserve their current ownership and interpretation.
   store. The projected target names no branch or base. The projection is not a
   port operation: the seven-part port gains no operation and carries no GitHub
   type.
+  The target's repository and project are the repository identity's. Its work
+  item is the `WorkItemId` itself, and its issue number is the one that key
+  encodes; a key that is not a canonical positive decimal issue number is
+  refused, never read leniently. The target has no address field: the
+  projection carries no `StoreAddress` into it and neither decodes nor checks
+  it, so the projection establishes repository, issue and work-item identity,
+  not address correspondence.
 
 <!-- /planned:issue-130-native-target-projection -->
 

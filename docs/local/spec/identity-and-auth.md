@@ -80,6 +80,19 @@ clearance to it; a request that carries none reaches the daemon as a caller with
 no identity. Work the daemon runs for a caller after accepting its
 request carries that caller's identity on the requests the work makes.
 
+<!-- planned:issue-129 -->
+
+For daemon GitHub posting, the existing API composition retains the already
+admitted principal beside the caller session in request-scoped context. The API
+edge sets it only from its resolved `CarriedIdentity`; relayed re-entry retains
+the owner-admitted principal and the separate `RelayedCaller` origin computer
+and session. Context is restored/reset with the existing request scope. Posting
+consumes these typed owner facts; it does not derive them from arbitrary
+headers, payload fields, `updated_by`, lineage, or the executor's daemon or
+terminal identity. This carries existing admission evidence and creates no
+authentication or identity-issuer capability.
+<!-- /planned:issue-129 -->
+
 Identity is established once, at the boundary a human crosses to reach the platform,
 and carried by everything inside it. A person running a `telec` command from a shell,
 or launching the TUI, has no session to identify them, so their terminal login

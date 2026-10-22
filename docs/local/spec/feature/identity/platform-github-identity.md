@@ -155,6 +155,20 @@ activation evidence (`general/policy/human-contract`).
 - Push and PR-authorship verification is
   `local/projects/teleclaude/spec/feature/integration/github-publication`.
 
+<!-- planned:issue-129 -->
+
+Daemon/relayed posting preserves the admitted principal separately from origin
+computer/session through
+`local/projects/teleclaude/spec/identity-and-auth` and
+`local/projects/teleclaude/design/architecture/operation-receipts`, then reads
+the origin's public binding through
+`local/projects/teleclaude/spec/feature/agent_runtime/session-inspection`.
+Remote posting remains unavailable until the WorkflowStore owner publishes a
+consistent executor-project projection from its opaque
+(`WorkItemId`, `StoreAddress`) pair; this identity binding adds no address field.
+Credential selection and secret custody remain with their existing owners.
+<!-- /planned:issue-129 -->
+
 ## Known caveats
 
 The managed-wrapper checks are guardrails on a host whose agents share an
