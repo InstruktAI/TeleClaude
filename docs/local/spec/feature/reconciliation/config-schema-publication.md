@@ -50,56 +50,15 @@ reference each file carries is fixed by its tier
 
 #### UC-CSP1: Machine installation publishes every configuration schema into the home
 
-```gherkin
-Given a machine whose TeleClaude home holds no configuration schemas
-When an agent runs machine installation from the canonical TeleClaude checkout
-Then the home's schema directory is a real directory holding every configuration schema, including the MCP registry's
-And no schema file is written into the TeleClaude checkout or into any project
-```
-
 #### UC-CSP2: Publication leaves current schemas untouched
-
-```gherkin
-Given the home's schema directory already holds schemas matching the current source
-When publication runs again
-Then no schema file is rewritten
-And publication completes successfully
-```
 
 #### UC-CSP3: A configuration model change on main refreshes the published schemas
 
-```gherkin
-Given a commit that changes a configuration model advances the canonical checkout's main branch
-When the commit-boundary maintenance for that commit runs
-Then the home's published schema for that tier describes the changed model
-And every schema whose content did not change is left untouched
-```
-
 #### UC-CSP4: An interim schema link is replaced by a real directory
-
-```gherkin
-Given the home's schema path is a symbolic link
-When publication runs
-Then the link is replaced by a real directory holding every configuration schema
-And the directory the link pointed at is left unchanged
-```
 
 #### UC-CSP5: A conflicting schema path fails publication untouched
 
-```gherkin
-Given the home's schema path is a regular file
-When an agent runs machine installation
-Then publication fails naming the conflicting path
-And the file at that path is left unchanged
-```
-
 #### UC-CSP6: Work under construction never reaches the published schemas
-
-```gherkin
-Given a worktree whose configuration models differ from the canonical main branch
-When an agent installs dependencies in that worktree or commits there
-Then the home's published schemas are unchanged
-```
 
 ## Known caveats
 

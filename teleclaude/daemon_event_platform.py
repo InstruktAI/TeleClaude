@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
@@ -28,7 +28,7 @@ from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.procedure_routing import build_procedure_activation_consumer
 from teleclaude.core.reconciliation import FleetCapabilityMap, contraction_answer_from_live_map
-from teleclaude.core.runtime_event_consumers import build_runtime_event_consumers
+from teleclaude.core.runtime_event_consumers import RuntimeVoiceSurface, build_runtime_event_consumers
 from teleclaude.core.runtime_events import INTERNAL_RUNTIME_EVENT_STREAM
 from teleclaude.core.session_cleanup import terminate_session
 from teleclaude.core.workflow_machine.reconciler_consumer import (
@@ -50,6 +50,7 @@ from teleclaude.events import (
     get_event_db,
 )
 from teleclaude.events.consumer_handover import prepare_internal_event_handover
+from teleclaude.events.consumers import ConsumerDelivery
 from teleclaude.events.correlation import CorrelationConfig, build_correlation_consumer
 from teleclaude.events.envelope import EventHomeMarker, ReceivedEvent, occurrence_id
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
@@ -109,6 +110,7 @@ _INBOUND_ROUTES_INSTALLED_EVENT = "Inbound endpoints installed on the ingress co
 _INBOUND_ROUTES_UNAVAILABLE_EVENT = "API app or event producer unavailable; inbound endpoints are not installed"
 _DUPLICATE_RUNTIME_CONSUMER_NAMES_ERROR = "runtime and platform event consumers must have unique names"
 _DISCORD_VOICE_ADAPTER_REQUIRED = "Discord runtime voice consumer has no active adapter capability"
+_DISCORD_ADAPTER_KEY = "discord"
 _RUNTIME_EVENT_PRODUCER_CONFIGURED_EVENT = "Internal runtime EventProducer configured"
 
 
@@ -145,6 +147,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]: ...
 
         async def _handle_session_closed(self, session_id: str) -> None: ...
+
+        async def _recover_session_housekeeping(self) -> None: ...
 
         async def _handle_error(self, context: ErrorEventContext) -> None: ...
 
@@ -258,8 +262,10 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             lifecycle=self.lifecycle,
             client=self.client,
             close_housekeeping=self._handle_session_closed,
+            recover_housekeeping=self._recover_session_housekeeping,
             report_error=self._handle_error,
             discord_voice_status=self._handle_discord_runtime_status,
+            recover_discord_voice=self._recover_discord_runtime_status,
             compatibility_ingress=self._handle_internal_compat_ingress,
         )
         names = [consumer.name for consumer in (*platform_consumers, *runtime_consumers)]
@@ -269,7 +275,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             redis_client,
             stream=INTERNAL_RUNTIME_EVENT_STREAM,
             computer=config.computer.name,
-            consumers=runtime_consumers,
+            consumers=[consumer for consumer in runtime_consumers if consumer.delivery is ConsumerDelivery.RETAINED],
             event_db=self._event_db,
         )
         platform_runtime = ConsumerRuntime(
@@ -308,15 +314,20 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self.task_registry.spawn(observe_and_reconcile(), name=_STARTUP_OBSERVATION_TASK)
         logger.info(_EVENT_CONSUMERS_STARTED_EVENT)
 
-    async def _handle_discord_runtime_status(self, data: RuntimeSessionStatusData) -> None:
-        """Deliver status facts to the active Discord voice capability."""
-        adapter = self.client.adapters.get("discord")
-        handler = getattr(adapter, "handle_runtime_session_status", None) if adapter is not None else None
-        if not callable(handler):
+    async def _recover_discord_runtime_status(self) -> None:
+        """Recover voice focus through Discord's owner-local source query."""
+        adapter = self.client.adapters.get(_DISCORD_ADAPTER_KEY)
+        if adapter is None:
             if config.discord.token:
                 raise RuntimeError(_DISCORD_VOICE_ADAPTER_REQUIRED)
             return
-        await cast(Callable[[RuntimeSessionStatusData], Awaitable[None]], handler)(data)
+        await cast(RuntimeVoiceSurface, adapter).recover_runtime_voice_focus()
+
+    async def _handle_discord_runtime_status(self, data: RuntimeSessionStatusData) -> None:
+        """Deliver a live accepted-input identity without waiting for peer cache replication."""
+        adapter = self.client.adapters.get(_DISCORD_ADAPTER_KEY)
+        if adapter is not None:
+            await cast(RuntimeVoiceSurface, adapter).handle_runtime_session_status(data)
 
     async def _handle_internal_compat_ingress(
         self,

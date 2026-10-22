@@ -207,13 +207,6 @@ Scenario: Override a machine service for one project
 
 #### UC-LMCP-17: Leases from different projects never collide
 
-```
-Given two TeleClaude projects declare differing definitions for the same server slug
-When agents in each project call tools on that slug
-Then each caller reaches a server started from its own project-effective definition
-And a lease started for one project's definition is never reused for the other
-```
-
 #### UC-LMCP-18: A project agent uses the same service from any project location
 
 ```gherkin

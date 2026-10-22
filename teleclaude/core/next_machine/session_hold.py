@@ -14,6 +14,8 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine.start_reservation import give_back
 from teleclaude.core.next_machine.state_mutation import StateWriter, commit_on_current, commit_on_current_by_id
 from teleclaude.core.session_listeners import notify_gate_approved
+from teleclaude.core.session_runtime_gate import session_runtime_owner
+from teleclaude.core.session_status import is_session_final
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.envelope_facts import home_for_project_path
@@ -32,6 +34,7 @@ _GATE_APPROVAL_EVENT_SOURCE = "workflow.gate_approval"
 _MANUAL_SESSION_CLOSE_DRIVER_CLASSIFIED_EVENT = "manual_session_close_driver_classified"
 _SESSION_CLOSE_EVENT_SOURCE = "workflow.session_close"
 _WORKFLOW_PROJECT_PATH_RESOLVED_REASON = "ok"
+_ACTIVE_RUNNER_STATE_KEY = "active_runner"
 
 
 class ManualCloseDriverReason(StrEnum):
@@ -236,6 +239,33 @@ async def _release_if_still_held(todos_db: WorkflowStore, slug: str, session_id:
         give_back(writer, session_id, accepted=True)
 
     await commit_on_current(todos_db, slug, change)
+
+
+async def reconcile_terminal_driver_ownership(runtime_db: Db, project_path: str) -> None:
+    """Recover terminal driver links from workflow references without dispatching work."""
+    todos_db = await get_workflow_store(project_path)
+    rows = await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True)
+    states = await todos_db.read_status_and_states_by_id([row["id"] for row in rows])
+    identities: set[str] = set()
+    for state in states.values():
+        runner = state.state.get(_ACTIVE_RUNNER_STATE_KEY) if state.state is not None else None
+        if isinstance(runner, str) and runner:
+            identities.add(runner)
+    for session_id in sorted(identities):
+        current = await runtime_db.get_session(session_id)
+        if current is not None and not (
+            current.deleted_at
+            or is_session_final(lifecycle_status=current.lifecycle_status, closed_at=current.closed_at)
+        ):
+            continue
+        async with session_runtime_owner(session_id, wait=True):
+            current = await runtime_db.get_session(session_id)
+            if current is not None and not (
+                current.deleted_at
+                or is_session_final(lifecycle_status=current.lifecycle_status, closed_at=current.closed_at)
+            ):
+                continue
+            await reconcile_driver_ownership_for_session(todos_db, session_id)
 
 
 def hold_todo_for_diagnosis_unresolved(writer: StateWriter, *, reason: str, caller_session_id: str) -> None:

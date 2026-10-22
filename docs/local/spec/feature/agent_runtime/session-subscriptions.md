@@ -29,31 +29,6 @@ This is distinct from — and intentionally separated from — the bidirectional
 
 ### Use cases
 
-#### Listener registration is per-caller deduped
-
-```
-Given an orchestrator session C dispatches a worker session T
-When register-listener(target=T, caller=C, caller_host_pane=<C's host pane>, one_shot=False) is called
-Then a listener record (target=T, caller=C, caller_host_pane=..., registered_at=<now>, one_shot=False) is inserted in the agent_runtime listener store
-And if a record already exists for the (T, C) pair, the call is a no-op and reports "not new"
-And on new registration, the call reports "new"
-And the registry now reflects "C will be notified when T's turn ends"
-```
-
-#### Auto-registration on AI-to-AI start and AI-to-AI message
-
-```
-Given an AI-to-AI session start (initiator I dispatches child T)
-When session-lifecycle creation runs and the listener-skip flag is false
-Then register-listener(target=T, caller=I, caller_host_pane=I's host pane, one_shot=False) is invoked
-And the listener persists across the lifetime of T
-
-Given an AI sends a message to another session (caller C → target T) via the session-message entry
-When the request is non-direct AND the caller's identity has a session id AND it differs from T AND the caller has a host pane
-Then register-listener(target=T, caller=C, caller_host_pane=C's host pane, one_shot=True) is invoked
-And C receives a single response notification on T's next stop, then the listener self-removes
-```
-
 #### UC-SS18: Notification observation and outcome semantics
 
 ```
@@ -118,39 +93,6 @@ When the target session enters a distress state
 Then that session is a member of the distress audience for the event
 And an agent session subscribed only for a single reply is not a member, and its subscription is left unspent
 And a member counts as having been reached only when the distress notification is accepted by it
-```
-
-#### Per-pair serialization
-
-```
-Given concurrent operations against the same canonical pair (session_a, session_b)
-When code paths require ordered access to the pair's link/listener state
-Then a shared per-pair lock keyed by sorted (session_a, session_b) serializes them
-And the lock is process-local
-And the lock is used by direct-link creation/reuse to prevent duplicate-link races
-And listener registration itself does NOT take this lock — uniqueness is enforced by the (target, caller) uniqueness constraint in the listener store
-```
-
-#### Pop-on-target-stop and caller cleanup
-
-```
-Given target session T has terminated
-When session cleanup runs for T
-Then pop-listeners(T) removes and returns every listener targeting T
-And every popped listener record is gone (no further notification for T can occur — T is terminating)
-And cleanup-caller-listeners(T) additionally removes every listener T itself had registered as a CALLER against other targets
-And the link-cleanup step severs every conversation link involving T (direct-link mechanism, out of scope here)
-```
-
-#### Stale-listener health-check sweep
-
-```
-Given some listeners have been waiting longer than max_age_minutes (default 10)
-When the stale-targets sweep is invoked periodically
-Then it returns the unique target session ids with at least one listener registered before now - max_age_minutes
-And for each returned target, the listener timestamps for that target are advanced to now
-And the reset prevents the same target from appearing in the next sweep within max_age_minutes
-And callers use the returned list to drive health checks on apparently-stuck targets (e.g., is the target session still alive?)
 ```
 
 #### UC-SS21: A person can stop their agent's connection to a target
@@ -316,7 +258,7 @@ And the consumer adds no separate acknowledgement, retry, or duplicate-detection
   the fan-out does not collapse separate observations by kind, turn, or an
   inferred unresolved condition. Consumers rely on control delivery rather
   than adding their own acknowledgement, retry, or duplicate-detection layer.
-- **One-shot listeners self-remove after delivery, persistent listeners do not.** AI-to-AI message sends register one-shot (single response expected). AI-to-AI session starts register persistent (orchestrator keeps hearing every stop until the worker terminates or the orchestrator unsubscribes/ends).
+- **Only non-direct AI-to-AI message sends register one-shot listeners.** Direct sends use the separate link path and create no one-shot listener. AI-to-AI session starts register persistent listeners (the orchestrator keeps hearing every stop until the worker terminates or the orchestrator unsubscribes/ends). A one-shot listener is spent by the target's next stop notification whether or not delivery succeeds; persistent listeners remain.
 - **Direct-link suppression is delivery-time only, applies to turn-end only, and the listener record is preserved.** During an active direct link, turn-end notifications for the pair are silently skipped; distress notifications are delivered regardless, because the live channel carries no output for a stuck or dead target. The record stays so that turn-end notification resumes the next time the fan-out runs after the link has been severed. This intentionally keeps the two planes independent.
 - **Delivery has no retry.** A failed listener delivery (the caller's host pane is gone, key injection errors out) is logged as a warning and dropped. The one-shot record is still removed on failure. The persistent record remains and will be retried only on the NEXT notification event.
 - **Stale-target sweep is informational, not corrective.** It surfaces targets whose listeners have been waiting too long and resets timestamps to prevent re-surfacing. The sweep itself does not unregister listeners or terminate stuck targets — callers decide what to do with the list.

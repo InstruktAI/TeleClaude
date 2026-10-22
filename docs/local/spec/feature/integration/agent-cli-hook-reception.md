@@ -54,6 +54,21 @@ The normalized envelope keeps lineage and execution identity separate:
 - `headless_bootstrap` is receiver-owned authorization for creating an unknown
   headless row. Raw provider input cannot set this field.
 
+### Human steering context
+
+At a normalized `user_prompt_submit` boundary carrying prompt text, the receiver
+uses the existing runtime-text normalization and shared entry classification to
+identify ordinary human spans. A prompt containing such a span receives one
+short, transient context cue recalling stewardship, attunement, and leadership.
+It reinforces human input as steering (`general/policy/human-contract`).
+
+Peer-only entries, platform controls, reminders, command loaders, runtime
+artifacts, and empty prompts receive no human cue. Mixed entries retain their
+ordinary human spans for this decision. The cue is composed with any pending
+control context into the existing single provider response. It neither edits
+the submitted prompt nor prevents its ordinary outbox processing. It creates
+no stored control payload, extra model turn, approval gate, or transcript read.
+
 ### Use cases
 
 #### UC-R1: Claude session_start with additional context injection
@@ -246,6 +261,10 @@ And explicitly dispatched TeleClaude worker sessions remain available
 
 ## Known caveats
 
+- The cue requires prompt text at the native hook boundary. Claude, Codex, and
+  DeepSeek supply it; Antigravity's current hook does not. Antigravity therefore
+  relies on the baseline alone rather than guessing human attribution from a
+  user-role event or scanning its transcript for this cue.
 - The receiver only emits events that belong to the receiver-handled
   canonical set; intermediate hook traffic outside that set is
   intentionally dropped at the process boundary to prevent noisy events

@@ -60,76 +60,33 @@ source ownership is checked before `/cancel` answers that no active session exis
 
 ### Use cases
 
-#### UC-DIO1: A project launcher executes on its owning computer
+#### UC-DIO1: A person starts a session from a project forum
 
 ```gherkin
-Given a human sees a session launcher in a project forum beneath one computer's project category
-When the human selects an agent
-Then the computer matching the forum's parent category acknowledges the interaction
-And resolves the project from its local forum map
-And creates the session locally for that project
-And no other computer participates in executing the launch
+Given a person opens a session launcher in a project's forum
+When they select an agent
+Then a new session starts for that project
 ```
 
 #### UC-DIO2: A foreign computer cannot consume the interaction
 
-```gherkin
-Given multiple computers are connected to Discord through the same application
-And a human activates a component belonging to another computer
-When a foreign computer receives the provider event
-Then it does not acknowledge the interaction
-And it creates no command or state change
-And it sends no response to the human
-```
-
 #### UC-DIO3: Version skew cannot transfer component ownership
-
-```gherkin
-Given one computer exposes an owner-addressed component generation
-And another live computer runs a version that predates that generation
-When a human activates the component
-Then the older computer does not recognize or claim it
-And the owning computer remains able to acknowledge and execute it
-```
 
 #### UC-DIO4: Restart restores only locally scoped component handling
 
-```gherkin
-Given an owning computer restarts while its Discord launcher message still exists
-When its Discord adapter restores persistent interaction handling
-Then it attaches handling to that exact launcher message
-And it does not install a process-wide handler for matching components elsewhere
-```
-
 #### UC-DIO5: One computer publishes the shared command tree
 
-```gherkin
-Given multiple computers connect as one Discord application in a guild
-And the fleet establishes one master
-When their adapters start or reconnect
-Then only the master publishes the application's guild command tree
-And each computer can register the handlers for its own resources
-```
-
-#### UC-DIO6: A foreign cancel receiver stays silent
+#### UC-DIO6: A person cancels a session without a false no-session response
 
 ```gherkin
-Given a human invokes a supported cancel command in one computer's project forum
-And another connected computer has no matching local session
-When both receive the interaction
-Then only the forum owner acknowledges and handles the command
-And the foreign receiver sends no no-session response
+Given a person uses a supported cancel command in a project forum
+And the session is active on a different computer from a connected peer
+When the command is processed
+Then the session's owner handles the cancellation and returns its result
+And the person receives no false no-session response from the other computer
 ```
 
 #### UC-DIO7: Shared-surface command feedback has one owner
-
-```gherkin
-Given a slash-command interaction occurs on a shared conversational surface
-And the fleet establishes one master
-When multiple computers receive that interaction
-Then the master alone applies the command's supported behavior and emits its response
-And every non-master remains silent even when its local lookup has no session
-```
 
 ## Known caveats
 

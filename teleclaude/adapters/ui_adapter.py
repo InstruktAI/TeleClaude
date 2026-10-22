@@ -28,8 +28,10 @@ from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.inbound_errors import SessionMessageRejectedError, SessionMessageRejectionReason
+from teleclaude.core.message_lifetime import retains_human_conversation_input
 from teleclaude.core.models import ContentFormat, MessageMetadata
 from teleclaude.core.models._types import JsonValue
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils.transcript._utils import _parse_timestamp
@@ -289,8 +291,9 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             await db.remove_pending_deletion(session.session_id, self.ADAPTER_KEY, message_id)
 
     async def _post_handle_user_input(self, session: Session, message_id: str) -> None:
-        """Track one accepted platform input for deletion on the next input."""
-        if self.supports_message_deletion:
+        """Track accepted input for deletion unless it remains conversation history."""
+        origin = InputOrigin(self.ADAPTER_KEY)
+        if self.supports_message_deletion and not retains_human_conversation_input(origin):
             await db.add_pending_deletion(session.session_id, self.ADAPTER_KEY, message_id)
 
     async def send_typing_indicator(self, session: Session) -> None:

@@ -34,7 +34,15 @@ What the steward _notices_. Action follows from accurate recognition.
 9. **Frustration is diagnostic and directional.** At being asked → over-surfacing. At action taken → under-surfacing. Re-take the wheel or pause and learn — never both, and never apologize-and-re-ask.
 10. **When heuristics pull against each other**, stake outranks certainty, breath-phase outranks readiness, safety-irreversibility outranks efficiency. The bias is toward not cutting the human out of their own work.
 11. **Policy-resolved questions are not human decisions.** If a governing contract already determines the answer, execute it; the human's competence or stake does not reopen it. Escalate only when changing that contract is itself the proposal, under its authority rules.
-12. **The steward owns the outcome, and durable authority lives in the artifact.** What the human says becomes the artifact the session authors, so a later gate reads a defensible artifact rather than reconstructing intent from conversation. Relayed direction is carried faithfully (`general/policy/human-contract`). When an artifact and a principle conflict, reconcile within the agent's lane or summon the human for a closed-list decision — never comply silently, never override silently.
+12. **The steward owns the outcome, and durable authority lives in the artifact.** The artifact expresses confirmed intent and the agent's defensible design, not a literal transcription of human suggestions. A later gate reads that artifact rather than reconstructing intent from conversation. Relayed direction is carried faithfully (`general/policy/human-contract`). When an artifact and a principle conflict, reconcile within the agent's lane or summon the human for a closed-list decision — never comply silently, never override silently.
+
+### Develop the intent before committing the outcome
+
+Treat human input as steering (`general/policy/human-contract`). First determine
+what the input changes about the problem and what remains exploratory. Ground
+what matters, consider what the human may not see, and bring back a coherent
+recommendation with its consequences at their level. Do not make the human
+supply a specification or choose among technical mechanisms the agent can judge.
 
 ### Reading expertise
 

@@ -6,10 +6,10 @@ import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import Update, update
+from sqlalchemy import Update, func, update
 from sqlmodel import Session as SqlSession
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
@@ -27,8 +27,14 @@ from ._migration_logs import record_v2_to_v3_migration
 from ._models import TODO_DEPS_TABLE, TODO_STATE_TABLE, TODO_TABLE, Todo, TodoDep, TodoStateModel
 from ._upcycle import _detect_schema_version, canonicalize_state_for_storage, upcycle_state_dict
 
+if TYPE_CHECKING:
+    from ._base import TodosDbBase
+
 logger = get_logger(__name__)
 _BEGIN_IMMEDIATE_SQL = "BEGIN IMMEDIATE"
+_ACTIVE_RUNNER_JSON_PATH = "$.active_runner"
+_RUNNER_RELEASE_PATCH = json.dumps({"active_runner": None, "manually_started": False})
+_TODO_UPDATED_MUTATION = "todo_updated"
 
 _V2_PREPARE_PHASES = {
     "draft",
@@ -406,6 +412,28 @@ class TodosDbStateMixin:
     async def get_state(self, slug: str) -> dict[str, StateValue] | None:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""
         return await self.read_state(slug)
+
+    async def clear_active_runner_if_matches(self, todo_id: str, session_id: str) -> bool:
+        """Patch the current stored driver fields only while ownership still matches."""
+        statement = (
+            update(TODO_STATE_TABLE)
+            .where(
+                TODO_STATE_TABLE.c.id == todo_id,
+                func.json_extract(TODO_STATE_TABLE.c.state, _ACTIVE_RUNNER_JSON_PATH) == session_id,
+            )
+            .values(
+                state=func.json_patch(TODO_STATE_TABLE.c.state, _RUNNER_RELEASE_PATCH),
+                updated_at=datetime.now(UTC).isoformat(),
+            )
+            .returning(TODO_STATE_TABLE.c.id)
+        )
+        async with cast("TodosDbBase", self)._session() as session:
+            result = await session.exec(statement)
+            changed = result.first() is not None
+            await session.commit()
+        if changed:
+            self._on_mutation(_TODO_UPDATED_MUTATION, None)
+        return changed
 
     async def write_state_by_id(
         self,

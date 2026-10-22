@@ -51,88 +51,52 @@ malformed; no role or other fact it carries is read.
 
 ### Use cases
 
-#### UC-XCA1: The computer holding a session decides a person's command on it
+#### UC-XCA1: A person reads a session transcript on another computer
 
 ```
-Given a person holding no platform role and the admin role in one company
-And a session running on another computer, in a project that company owns there
-When the person runs `telec sessions tail` naming that session and that computer
-Then that computer admits the command, and the session's transcript is returned
-But the same command naming a session there that runs in a project owned by another company is refused by that computer, naming `customer`
-And a person that computer's registry does not hold is refused there, naming `customer`
-And no role the person holds on their own computer is consulted by the other computer
+Given a person is authorized to read a session on another computer
+When they request its transcript
+Then that computer returns the session's conversation
 ```
 
-#### UC-XCA2: The owning computer authorizes a person's agent
+#### UC-XCA2: An agent starts a session for a person on another computer
 
 ```
-Given an orchestrator session acting for a person who holds no platform role and the admin role in one company
-When it starts a session on another computer, in a project that company owns there
-Then the session is started there
-And the same start in a project owned by another company is refused by that computer, naming `customer`
-And a worker session acting for the same person relays the same request
-And the owning computer decides that request from the person's principal by the same rules
+Given an agent acting for a person is authorized to start work in a project on another computer
+When it starts a session for that work
+Then the owning computer creates the session for the person
 ```
 
 #### UC-XCA3: A session started on another computer holds the role that computer resolves
 
-```
-Given a person holding no platform role, the admin role in one company, and a lower role supplied with a start request by their own computer
-When a session is started for that person on another computer, in a project that company owns there
-Then the new session's person role is the one that computer resolves for that person and that project
-And no role carried with the request raises or lowers it
-```
-
 #### UC-XCA4: Every relayed message carries its principal
-
-```
-Given a caller's command or read relayed to another computer
-Then it carries the caller's principal
-And a command the sending daemon forwards on its own account carries that daemon's system principal
-And a relayed message carrying no principal is rejected at that computer's transport boundary as malformed, reading no role it carries
-```
 
 #### UC-XCA5: An unreachable computer fails the command for that computer
 
 #### UC-XCA6: A platform administrator's reach on other computers is unchanged
 
-```
-Given a person holding the platform admin role on every computer
-When the person runs any command naming another computer
-Then the command is admitted and that computer serves it
-```
-
-#### UC-XCA7: Another computer answers a listing or history read of its own objects
+#### UC-XCA7: A person browses sessions and history on another computer
 
 ```gherkin
-Given a person holding no platform role and the admin role in one company
-When the person lists sessions naming another computer
-Then that computer returns its sessions whose recorded subject the person's reach admits there — a project that company owns there, that company's home, or the person's own home — and the sessions recorded under the person's principal
-And no other session there is returned
-And a history search or a history show naming that computer is answered by that computer, within the person's reach there
-And a person holding no role on that computer is refused the listing and the history reads there
+Given a person is authorized to read sessions and history on another computer
+When they browse those records there
+Then the owning computer returns only records within that person's reach
 ```
 
-#### UC-XCA8: An operation is read on the computer that owns it
+#### UC-XCA8: A person inspects an operation owned by another computer
 
 ```
-Given a person holding no platform role and the admin role in one company
-And an operation owned by another computer, for a session in a project that company owns there
-When the person reads that operation naming that computer
-Then that computer returns it
-And an operation there for a session in a project owned by another company is answered as not found
-And an operation the person's command started there is returned to them, recognised by the principal that command carried
+Given a person wants the result of an operation owned by another computer
+When they request that operation's status
+Then the owning computer returns it when their reach admits it
 ```
 
-#### UC-XCA9: Another computer answers an inspection of its own session
+#### UC-XCA9: A person inspects a session record on another computer
 
 ```gherkin
-Given a person holding no platform role and the admin role in one company
-When the person inspects a session naming the computer that holds it
-Then that computer admits the inspection by the same person band and reach as a listing there
-And it returns the session's record when the person's reach there admits the session
-And it refuses a session there outside the person's reach as outside that reach
-And it answers an id that matches no session there as not found
+Given a person wants to inspect a session held by another computer
+When they request that session's record
+Then the owning computer returns it when their reach admits it
 ```
 
 ## Known caveats

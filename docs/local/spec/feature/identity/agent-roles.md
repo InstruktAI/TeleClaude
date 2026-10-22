@@ -111,12 +111,13 @@ The label is the role's name in a caller-origin identity header, drawn from
 Each role's explicit set represents the commands needed by the procedures that
 declare that role, including their required reads and supported entry duties.
 Every role of class `worker` composes the worker baseline the catalog declares
-and adds to it what its own assignment needs. The baseline holds no capability
-that observes the fleet or starts, revives, restarts or ends another session,
-directly or by running a job; peer talk with the sessions a worker serves stays
-in it. No worker lists
+and adds to it what its own assignment needs. The baseline gives each worker
+the reach to record its task's outcome, return its result, and commit assigned
+work. It holds no capability that observes the fleet or starts, revives,
+restarts or ends another session, directly or by running a job; peer talk with
+the sessions a worker serves stays in it. No worker lists
 sessions, searches history, reads the fleet's computers, projects or agents, or
-starts another session (UC-AR3). A worker's reach is focus, not integrity
+starts another session. A worker's reach is focus, not integrity
 (`general/principle/trust-and-guardrails`): the todo's claim and the object
 owners still decide what it may change.
 
@@ -170,84 +171,21 @@ none is a human launch.
 
 #### UC-AR1: A role reaches what its explicit set composes
 
-```gherkin
-Given an agent session whose role is `desk-memory-curator`
-When it runs a `telec memories` curation command for an extraction prepared for it
-Then the command is admitted
-But `telec sessions list` is refused with the not-permitted failure naming `desk-memory-curator` and the verb
-```
-
 #### UC-AR2: A full-reach role reaches every capability
-
-```gherkin
-Given an agent session whose role is `bug-hunter`
-When it runs `telec sessions list` or `telec config computer get`
-Then each command is admitted
-And its explicit set lists neither
-```
 
 #### UC-AR3: A worker reaches nothing across the fleet
 
-```gherkin
-Given an agent session whose role is `builder`
-When it runs `telec sessions list`, `telec history search` or starts another session
-Then each command is refused with the not-permitted failure naming `builder` and the verb
-```
-
 #### UC-AR4: Only a dispatch grant or full reach starts a worker
-
-```gherkin
-Given an agent session whose role is `desk-memory-curator`
-When it starts a session whose procedure declares a worker-class role
-Then it is refused for lacking the dispatch privilege for that role
-And a session whose role is `work-orchestrator` starting the same session is admitted
-```
 
 #### UC-AR5: A human session reaches everything within its person band
 
-```gherkin
-Given a session a person started that carries no agent role
-When the person's effective role admits the command
-Then the command is admitted whatever capability it needs
-And a session carrying the `customer` band reaches only the desk commands
-```
-
 #### UC-AR6: A recorded role outside the catalog grants nothing and is reported
-
-```gherkin
-Given a session whose record carries a role the catalog does not name
-When an agent inside it runs `telec docs get` for a snippet
-Then the command is refused with the not-permitted failure naming that role and the verb
-And an error naming the session and the role is logged
-And the session is not admitted as a human session
-```
 
 #### UC-AR7: Role focus follows the assignment rather than its class
 
-```gherkin
-Given two agent roles of the same class with different procedure duties
-When their focused command sets are resolved
-Then each contains the commands its own assignments need
-And a command outside the worker baseline needed only by the other assignment is absent
-```
-
 #### UC-AR8: Full reach preserves a separate focused set
 
-```gherkin
-Given an internal agent role explicitly opted into full reach
-When its focused set and permitted reach are resolved
-Then its focused set remains tailored to its assignment
-And its permitted reach includes capabilities outside that set
-```
-
 #### UC-AR9: Every worker composes the worker baseline
-
-```gherkin
-Given an agent session whose role is `artist`
-When it runs `telec todo stamp`, `telec sessions result` or `telec code commit`
-Then each command is admitted
-But `telec computers list`, `telec sessions start` and `telec message` are refused with the not-permitted failure naming `artist` and the verb
-```
 
 ## Known caveats
 

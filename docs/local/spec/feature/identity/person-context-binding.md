@@ -43,6 +43,35 @@ into an assertion of somebody's identity.
 
 ## Canonical fields
 
+<!-- planned:issue-129 -->
+
+### GitHub account association
+
+The person's declared GitHub handle comes from that person's own overlay under
+`local/projects/teleclaude/spec/feature/config/person-identity-schema`.
+Identity first validates the context against exactly one registered person,
+then compares the declared account's authenticated provider account facts with
+the authenticated input account by stable provider account identifiers and
+account type. Missing declarations, unresolved accounts, ambiguous person/home
+claims, mismatches and bot-account claims establish no person binding
+(`sdlc/policy/ai-agent-security`).
+
+The handle is a human-facing declaration, not authentication evidence. Neither
+an envelope nor its text, account lineage, a company/member credential profile
+or a native login creates the association by inheritance. Binding validation
+requires no person-home GitHub token and never selects a platform actor
+(`sdlc/policy/ai-agent-security`).
+
+A validated association is an identity fact, with no project authority or
+decision authority attached. A human-account comment remains attributable to
+its provider account; an unbound collaborator remains a collaborator. The
+owning workflow resolves project authority and its outstanding named-person
+question under
+`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`, without
+treating a declaration or matching account alone as that person's decision
+(`general/policy/human-contract`).
+<!-- /planned:issue-129 -->
+
 ### Use cases
 
 #### UC-PCB-1: A validated binding is accepted

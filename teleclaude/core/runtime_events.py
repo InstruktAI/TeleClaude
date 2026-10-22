@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from typing import cast
 from uuid import uuid4
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.config.machine import config
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
@@ -38,6 +41,22 @@ INTERNAL_RUNTIME_EVENT_STREAM = _INTERNAL_STREAM
 _INTERNAL_STREAM_REQUIRED = "Runtime event publication requires the internal stream producer"
 _RUNTIME_PRODUCER = "agent-runtime"
 _DEFAULT_HOME = EventHomeMarker.UNKNOWN
+_SESSION_SOURCE_RECONCILIATION_FAILED = "session_source_reconciliation_failed"
+
+logger = get_logger(__name__)
+
+
+@dataclass
+class _SessionSourceProjection:
+    reconcile: Callable[[str], Awaitable[object]] | None = None
+
+
+_SESSION_SOURCE_PROJECTION = _SessionSourceProjection()
+
+
+def configure_session_source_reconciler(reconcile: Callable[[str], Awaitable[object]] | None) -> None:
+    """Bind the daemon's current-source projection to committed local session changes."""
+    _SESSION_SOURCE_PROJECTION.reconcile = reconcile
 
 
 def _legacy_facts(event_id: str) -> LegacyFacts:
@@ -67,7 +86,14 @@ async def publish_session_source_change(
     home: EventHome = _DEFAULT_HOME,
     producer: EventProducer | None = None,
 ) -> str:
-    """Publish a session source invalidation with one occurrence identity."""
+    """Reconcile committed local source state, then publish its durable invalidation."""
+    reconcile = _SESSION_SOURCE_PROJECTION.reconcile
+    if reconcile is not None:
+        try:
+            await reconcile(session_id)
+        except Exception:
+            # A failed projection must leave its durable recovery notification publishable.
+            logger.exception(_SESSION_SOURCE_RECONCILIATION_FAILED, session_id=session_id)
     target = _runtime_producer(producer)
     event_id = str(uuid4())
     event = RuntimeSessionSourceChanged(

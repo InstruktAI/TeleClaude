@@ -85,81 +85,21 @@ And a person holding the member role in that company is refused the same revive
 
 #### UC-CCS2: The same person is an outsider in another company's project
 
-```
-Given a person holding no platform role and the admin role in one company
-And a terminal whose working directory is a checkout of a project owned by another company
-When the person runs `telec todo list`
-Then the command is refused with the not-permitted failure naming `customer` and `telec todo list`
-And no todo is listed
-```
-
 #### UC-CCS3: A person's agent reaches no further than that person
-
-```
-Given an orchestrator session acting for a person who holds no platform role and the admin role in one company
-When it runs `telec sessions start` naming a directory in a project owned by another company
-Then the command is refused with the not-permitted failure naming `customer` and `telec sessions start`
-And no session is created
-But the same command naming a directory in a project the person's company owns is admitted
-```
 
 #### UC-CCS4: A session acting for the platform is not bounded by any person
 
-```
-Given a session whose lineage roots at the platform's principal, with an agent role the command admits
-When it runs that command in a project owned by any company, or by none
-Then the command is admitted
-```
-
 #### UC-CCS5: A command naming a session is judged at that session's project
 
-```
-Given a person holding no platform role and the admin role in one company
-When the person runs `telec sessions tail` naming a session that runs in a project owned by another company
-Then the command is refused with the not-permitted failure naming `customer` and `telec sessions tail`
-And no transcript content is returned
-```
-
 #### UC-CCS6: Platform-scope commands need a platform role
-
-```
-Given a person holding no platform role and the admin role in one company
-When the person runs `telec config computer patch` or lists every registered person
-Then the command is refused with the not-permitted failure naming `customer` and the command
-And the machine configuration and the person registry are unchanged and unread
-```
 
 #### UC-CCS7: A command naming another computer that acts on nothing held there is refused locally
 
 #### UC-CCS8: A trusted-directory name reaches its selected project
 
-```
-Given a person holding no platform role and the admin role in one company
-And a trusted-directory name for a project that company owns differs from the project's registered slug
-When the person invokes a `telec bugs` project action with `--project` naming that directory
-Then the command resolves the name to its directory through the typed machine configuration
-And the person's effective role for that directory admits the action before the command's project operation runs
-And the action uses the same resolved directory
-```
-
 #### UC-CCS9: A named project outside the person's scope is refused
 
-```
-Given a person holding no platform role and the admin role in one company
-And a trusted-directory name resolves to a project another company owns
-When the person invokes a `telec bugs` project action with `--project` naming that directory
-Then the command is refused with the not-permitted failure naming `customer`
-And no project operation runs and no daemon request is sent
-```
-
 #### UC-CCS10: An unknown trusted-directory name reveals no project list to an outsider
-
-```
-Given a person holding no platform role and the admin role in one company
-When the person invokes a `telec bugs` project action with `--project` naming no trusted directory
-Then the command is refused at platform scope before listing available directory names
-And a platform administrator receives the existing unknown-name listing
-```
 
 #### UC-CCS11: Enabling a help desk is judged at the home it opens
 
@@ -285,87 +225,21 @@ Each command's declaration names the command capability that admits agent caller
 
 #### UC-CCB1: A full-reach role starts a session
 
-```
-Given an agent session whose role is `task-runner`, a full-reach role
-And the gated operation is `telec sessions start`
-When the clearance gate runs
-Then the gate evaluates the system band and accepts the caller
-And the CallerIdentity is returned unchanged
-```
-
 #### UC-CCB2: A full-reach role revives a session
-
-```
-Given an agent session whose role is `task-runner`, a full-reach role
-And the gated operation is `telec sessions revive`
-When the clearance gate runs
-Then the gate evaluates the system band and accepts the caller
-And the revive is performed
-```
 
 #### UC-CCB3: A full-reach role ends a session
 
-```
-Given an agent session whose role is `task-runner`, a full-reach role
-And the gated operation is `telec sessions end`
-When the clearance gate runs
-Then the gate evaluates the system band and accepts the caller
-And the CallerIdentity is returned unchanged
-```
-
 #### UC-CCB4: A worker-class role is refused the state-machine-driving verbs
-
-```
-Given an agent session whose role is `builder`
-And the gated operation is `telec todo prepare`
-When the clearance gate runs
-Then the gate rejects the caller with a not-permitted authorization failure naming the role and verb
-And a full-reach role running the same verb is admitted by the gate, and whether a second driver may bind the todo is the driver-start dedup's decision
-```
 
 #### UC-CCR1: A command that does not depend on its caller runs without an identity
 
-```
-Given a process whose session identity document names no open session record
-When it runs `telec version`
-Then the version is printed
-And the command is not refused for lacking an identity
-```
-
 #### UC-CCR2: A worker reads nothing across the fleet
-
-```
-Given an agent inside a session whose resolved system role is `worker`
-When it runs `telec sessions list` or `telec history search`
-Then the command is refused with the not-permitted failure naming `worker` and the verb
-And nothing is listed
-```
 
 #### UC-CCR3: A job's session reaches an ordinary agent command
 
-```
-Given an agent inside a scheduled job's session whose resolved system role is `bug-hunter`
-When it runs `telec docs get` for a snippet
-Then the snippet is printed
-```
-
 #### UC-CCR4: Clearance admits a full-reach role to every agent command
 
-```
-Given an agent inside a session whose role is `integrator`
-When it runs `telec todo prepare` for a todo
-Then the clearance gate admits the caller
-And whether a driver may bind that todo is decided by the driver-start dedup and the todo's claim, never by the gate
-```
-
 #### UC-CCR5: A coordinator is admitted everywhere and drives no work by its procedure's discipline
-
-```
-Given the agent session that holds the coordinator role
-When it runs `telec sessions list`, `telec sessions send`, `telec sessions start` or `telec todo work`
-Then each command is admitted by the clearance gate
-And that it drives no todo state machine is its procedure's discipline and the object guardrails' decision, not the gate's
-```
 
 ### Local read clearance
 
@@ -383,31 +257,9 @@ And no request is sent to the daemon's local service
 
 #### UC-CCL2: A caller with no usable identity reads nothing
 
-```
-Given a process whose session identity document names a session with no open record on this computer
-When it runs `telec todo show`, `telec todo artifacts read`, `telec bugs list`, `telec bugs suppressions`, or `telec history show`
-Then the command is refused before any content is read
-And the refusal states that the session carries no usable identity
-And no todo, artifact, bug, suppression, or conversation content is printed
-```
-
 #### UC-CCL3: A session is cleared by the role derived from its record
 
-```
-Given a session record that carries a working slug and no explicit system role
-When a process inside that session runs a read command whose system band admits the derived role
-Then the read is answered
-And the caller is evaluated against the verb's system band, never its human band
-```
-
 #### UC-CCL4: A role outside the verb's band is refused locally
-
-```
-Given a caller whose resolved role is outside the band of the read command it runs
-When it runs that command
-Then the command is refused with the not-permitted failure naming the role and the verb
-And no content is printed
-```
 
 ### Clearance of commands that ask the daemon to act
 
@@ -424,23 +276,7 @@ invariant 5).
 
 #### UC-CCA1: An out-of-band agent is refused before the daemon is asked
 
-```
-Given an agent inside a session whose resolved system role is `worker`
-When it runs `telec sessions start`
-Then the command is refused with the not-permitted failure naming `worker` and `telec sessions start`
-And no request reaches the daemon
-And no session is created
-```
-
 #### UC-CCA2: A caller with no usable identity asks the daemon nothing
-
-```
-Given a process whose session identity document names a session with no open record on this computer
-When it runs a command that asks the daemon to act, such as `telec sessions send`, `telec todo create`, or `telec bugs report`
-Then the command is refused before any request is sent
-And the refusal states that the session carries no usable identity
-And nothing is created, sent, or changed
-```
 
 #### UC-CCA3: A cleared command's request carries the caller the client resolved
 
@@ -453,22 +289,7 @@ And the new session carries the principal the agent's session resolves to
 
 #### UC-CCA4: A command naming another computer is authorized there
 
-```
-Given an identified agent session, with or without a system role
-When it lists the sessions of another computer
-Then its request is relayed without a sender-side role decision
-And the owning computer authorizes the request from the relayed principal
-```
-
 #### UC-CCA5: The TUI refuses an out-of-band action without asking the daemon
-
-```
-Given an operator whose launched TUI identity holds a person role outside the band of `telec sessions revive`
-When they revive a session from the TUI
-Then the TUI reports that the role is not permitted to revive a session
-And no request reaches the daemon
-And the session is not revived
-```
 
 ### Person role at the command's scope
 

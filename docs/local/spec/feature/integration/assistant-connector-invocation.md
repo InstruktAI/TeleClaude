@@ -43,6 +43,20 @@ property of that connector rather than an unexamined one.
 
 ## Canonical fields
 
+Before a connector runs, the invocation must resolve an acting person and name
+one of that person's declared mail accounts. A missing person or account is
+refused without choosing an account or creating or changing credential or
+connection state; an identity address is not a mailbox unless declared as one,
+and refusing its use does not make the person unresolvable. Once selected,
+credential and connection state is directed to that person's own location,
+never a default, and an invocation cannot act for an undeclared account.
+
+Account-settings changes are refused before the connector runs, whether the
+request uses a connector's settings operation or a generic pass-through that
+reaches a settings endpoint; the settings remain unchanged. Only operations
+permitted for that run execute; an operation outside the set, including one
+never seen before, is refused.
+
 ### Use cases
 
 #### UC-ACI-1: An unresolved person refuses the invocation

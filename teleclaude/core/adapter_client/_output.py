@@ -24,6 +24,7 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.runtime_events import publish_session_status
+from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.status_contract import serialize_status_event
 
 from ._reflection_observability import (
@@ -839,6 +840,10 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             if session is None:
                 return
             ensure_channels = False
+        if session.deleted_at or is_session_terminal(
+            lifecycle_status=session.lifecycle_status, closed_at=session.closed_at
+        ):
+            return
         router = self._router()
         origin_adapter = router.resolve_origin_ui_adapter(session)
         admin_target = router.resolve_admin_output_target(session, origin_adapter)
@@ -859,7 +864,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 ensure_channels=ensure_channels,
             )
 
-    async def dispatch_session_update(self, session_id: str, updated_fields: Mapping[str, object]) -> None:
+    async def dispatch_session_update(
+        self, session_id: str, updated_fields: Mapping[str, object], *, ensure_channels: bool = True
+    ) -> None:
         """Route a session field-update to the session's origin + admin-reflection UI adapters.
 
         Routing layer responsibility: resolve origin and admin-reflection
@@ -868,6 +875,10 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         """
         session = await db.get_session(session_id)
         if session is None:
+            return
+        if session.deleted_at or is_session_terminal(
+            lifecycle_status=session.lifecycle_status, closed_at=session.closed_at
+        ):
             return
         router = self._router()
         origin_adapter = router.resolve_origin_ui_adapter(session)
@@ -878,6 +889,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 "on_session_updated",
                 updated_fields,
                 include_adapters={origin_adapter},
+                ensure_channels=ensure_channels,
             )
         if admin_target is not None:
             await self._route_to_ui(
@@ -885,6 +897,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 "on_session_updated",
                 updated_fields,
                 include_adapters={admin_target},
+                ensure_channels=ensure_channels,
             )
 
     async def delete_channel(self, session: "Session") -> bool:

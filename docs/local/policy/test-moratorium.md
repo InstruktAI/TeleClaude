@@ -7,6 +7,7 @@ description: Python verification permits one bounded black-box CLI acceptance ha
 ## Rules
 
 - **Python test authorship is limited to the CLI acceptance harness.** Exceptions defines its allowed scope. Outside that allowance, adding a test file, a test dependency, or a test runner is a violation regardless of quality, size, or justification, and that includes markup-serialization snapshots (`toMatchSnapshot` over component trees) — a serialized render is the code restating itself.
+- **The harness exception is bounded by the assignment.** A product delivery uses the existing checks and may bind its authorized public journeys in the existing harness under the allowance below. It does not authorize a new verification capability or a replacement verification architecture. An evidence gap is reported to the driver for disposition within the existing scope, not converted into permission to build infrastructure. New verification infrastructure requires its own explicitly authorized scope and any change to this policy that scope needs (`general/policy/human-contract`). Calling a subsystem a harness helper, dependency, probe or acceptance requirement does not supply that authority.
 - **The live daemon supplies operational signals.** What the main-only restart action reports, and where post-restart health is judged, is owned by `local/projects/teleclaude/policy/daemon-availability`. After activation, the standing integrator reads the delivery's log window under `sdlc/procedure/lifecycle/integrate` and uses its judgment to investigate anomalies and fix forward. The log bug hunter provides a later anomaly backstop. A regular committer's validation and independent commit-review obligations remain governed by `general/policy/commits`.
 - **The CLI help smoke runs in the worktree.** A CLI-touching builder exercises each affected help path once through its worktree's own `bin/telec`, and the independent reviewer repeats that targeted smoke the same way. The wrapper runs the worktree's code against the home repository clone the platform provisions with the worktree, and the global `telec` runs installed code against the live platform (`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`); neither agent assembles home files or sets the variable. A shared command-surface change may traverse its affected help paths in one batch of those wrapper calls; routine lint never performs or substitutes for this check. Throwaway in-session probes are permitted — driven the same way and deleted before commit. An agent never sets, exports, or removes `TELECLAUDE_HOME` or `HOME`, and never removes a directory named by a variable: a shell variable does not survive from one tool call to the next, so a home set in one call and removed in another resolves to the live home. This smoke covers behavior inside the CLI process; commands that write project state or act through the daemon are outside its scope.
 - **This repository does not bind the generic `test` action.** The platform base registry defines the action without a binding. Each repository owns its bindings through its own `teleclaude.yml`; satellite projects follow their own testing contracts.
@@ -32,6 +33,12 @@ named public journeys, while full installation proof covers the supported
 installation path. These boundaries keep the verification claim proportional to
 what actually executes.
 
+A delivery's evidence needs can otherwise expand into a second software project:
+each new proof demand generates another helper and its own proof demands. Scope
+is established before that construction. Review checks both authorization and
+necessity; conformance to an agent-authored verification contract cannot create
+authorization for the contract's expansion.
+
 ## Scope
 
 This repository only. Satellite projects keep their own testing contract, declared in their own configuration. Extending the moratorium beyond this repository is a separate decision on its own evidence, never a consequence of this policy.
@@ -42,6 +49,7 @@ This repository only. Satellite projects keep their own testing contract, declar
 - **The quality-configuration assessment does not author a `code` block for this repository.** The checkpoint overlay is authored at assess-time — `sdlc/procedure/code-config-assessment` writes it and feeds `agent_stop` with `test` + `log-check` — and every session started with `/projects-assess-config` reaches that path. A re-authored `code` block silently re-binds `test` and voids this policy. Until a guardrails check enforces this, the absence of that block is a contract, not an oversight — an agent that finds it missing leaves it missing. The project-analysis procedure (`/projects-analyze`) never touches the overlay and is not a door to this failure.
 - **Log judgment is the integrator's.** The `log-check` action records that the integrator read the activated delivery's log window. Its assessment and recovery remain intelligence work per `general/principle/intelligence-boundaries`.
 - Reviewers treat test files, runners, and dependencies outside the bounded CLI acceptance allowance as blocking findings. The harness consumes independently reviewed scenarios from before implementation; its author does not bless a captured failure as the expected result.
+- Reviewers assess the complete verification mechanism against the assignment and the existing harness, not its filename or claimed membership in the harness. An unauthorized infrastructure expansion is a scope finding even when each of its components has been reviewed individually.
 
 ## Exceptions
 
@@ -65,6 +73,10 @@ This repository only. Satellite projects keep their own testing contract, declar
   test corpora, the generic `test` binding, unit tests, per-module checks and markup
   snapshots are outside that allowance. Full installation proof is required by
   the release contract.
+- Maintenance of that harness covers the admitted journeys and the execution path
+  that already serves them. The terms essential dependency and CI wiring do not
+  admit a newly constructed provisioning, observation or proof system as incidental
+  delivery work. Such a capability follows the explicit scope boundary above.
 - Scenario assertions derive from the public contracts and are independently
   reviewed before implementation. Any unexpected error or wrong observable
   result fails its journey, regardless of error class. Coverage claims name the

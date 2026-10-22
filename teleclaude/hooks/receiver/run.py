@@ -44,7 +44,12 @@ from teleclaude.core.hook_delivery import (
     resolve_initial_procedure_entry_id,
 )
 from teleclaude.core.identity import NoIdentityCliCaller, derive_identity_key, memory_person_reach
-from teleclaude.core.injected_text import recognize_delivered_text, wake_occurrence_key
+from teleclaude.core.injected_text import (
+    TranscriptEntryKind,
+    recognize_delivered_text,
+    visible_user_segments,
+    wake_occurrence_key,
+)
 from teleclaude.core.models import JsonDict, Session
 from teleclaude.core.organization import CompanyMembership, resolve_organization
 from teleclaude.core.session_ended import is_conversation_session
@@ -107,6 +112,7 @@ from teleclaude.session_scoping._extractors._common import CERTAIN_EDIT_TOOLS, _
 from teleclaude.utils.transcript import (
     extract_workdir_from_transcript,
     is_runtime_artifact_text,
+    normalize_runtime_user_text,
     unwrap_pasted_content,
 )
 
@@ -182,6 +188,12 @@ _IDENTITY_PERSON_RESOLUTION_FAILED = "identity_person_resolution_failed"
 _COMPANY_RESOLUTION_FAILED = "company_resolution_failed"
 _HOOK_NORMALIZATION_FAILED = "Hook event normalization failed"
 _PROMPT_FIELD = "prompt"
+_HUMAN_STEERING_CONTEXT = (
+    "Human steering. Apply stewardship, attunement, leadership, and the human contract. "
+    "Develop the intent; do not promote this wording into requirements. Advance confirmed work. "
+    "Bring new outcome interpretations back for confirmation. "
+    "Literal execution requires the human's explicit designation."
+)
 _SOURCE_KIND_FIELD = "source_kind"
 _EXECUTION_KIND_FIELD = "execution_kind"
 _INVOCATION_NUM_FIELD = "invocationNum"
@@ -1417,11 +1429,21 @@ def _maybe_emit_additional_context(
     session_id: str,
     provider: str,
     receiver_ingress_id: str,
+    hook_data: JsonDict,
 ) -> str | None:
-    """Emit stdout additional context for context-injection hook events.
+    """Compose additional context for the boundary's single provider response.
 
     This lane is distinct from checkpoint blocking on Stop.
     """
+    if event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
+        prompt = hook_data.get(_PROMPT_FIELD)
+        if not isinstance(prompt, str) or is_runtime_artifact_text(provider, prompt):
+            return None
+        prompt = recognize_delivered_text(prompt, AgentName.from_str(provider))
+        prompt = normalize_runtime_user_text(provider, prompt)
+        if any(kind is TranscriptEntryKind.ORDINARY for kind, _ in visible_user_segments(prompt)):
+            return _HUMAN_STEERING_CONTEXT
+        return None
     if event_type != AgentHookEvents.AGENT_SESSION_START:
         return None
     if cwd:
@@ -1489,7 +1511,7 @@ def _maybe_emit_boundary_response(
     context: _ReceiverOutboxContext,
     raw_event_type: str,
     receiver_ingress_id: str,
-    startup_context: str | None,
+    additional_context: str | None,
     initial_procedure_entry_id: str | None,
     procedure_wake_occurrence_id: str | None,
 ) -> bool:
@@ -1535,7 +1557,7 @@ def _maybe_emit_boundary_response(
         write_emission=write_emission,
         initial_procedure_entry_id=initial_procedure_entry_id,
         procedure_wake_occurrence_id=procedure_wake_occurrence_id,
-        startup_context=startup_context,
+        additional_context=additional_context,
     )
 
 
@@ -1552,10 +1574,10 @@ def _run_ordinary_hook_effects(
     cwd: str | None,
     outbox_context: _ReceiverOutboxContext,
     raw_event_type: str,
-) -> tuple[bool, str | None]:
-    """Run prompt, edit and control effects only for ordinary launches."""
+) -> tuple[bool, bool]:
+    """Return whether processing stops and whether a provider response was emitted."""
     if launch_context is not None:
-        return False, None
+        return False, False
     initial_procedure_entry_id: str | None = None
     procedure_wake_occurrence_id: str | None = None
     if event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
@@ -1577,7 +1599,7 @@ def _run_ordinary_hook_effects(
         receiver_ingress_id,
         initial_procedure_entry_id,
     ):
-        return True, None
+        return True, False
     _maybe_declare_certain_edit(
         session_id=session_id,
         agent=AgentName.from_str(agent),
@@ -1585,16 +1607,20 @@ def _run_ordinary_hook_effects(
         raw_event_type=raw_event_type,
         data=data,
     )
-    startup_context = _maybe_emit_additional_context(
+    additional_context = _maybe_emit_additional_context(
         event_type=event_type,
         cwd=cwd,
         session_id=session_id,
         provider=agent,
         receiver_ingress_id=receiver_ingress_id,
+        hook_data=data,
     )
-    if startup_context is None and event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
+    if event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
         turn_supply = findings_for_boundary(session_id, SupplyBoundary.TURN_START)
-        startup_context = turn_supply.text if turn_supply is not None else None
+        if turn_supply is not None:
+            additional_context = (
+                additional_context + "\n\n" + turn_supply.text if additional_context is not None else turn_supply.text
+            )
     response_emitted = _maybe_emit_boundary_response(
         event_type=event_type,
         adapter=adapter,
@@ -1603,11 +1629,16 @@ def _run_ordinary_hook_effects(
         context=outbox_context,
         raw_event_type=raw_event_type,
         receiver_ingress_id=receiver_ingress_id,
-        startup_context=startup_context,
+        additional_context=additional_context,
         initial_procedure_entry_id=initial_procedure_entry_id,
         procedure_wake_occurrence_id=procedure_wake_occurrence_id,
     )
-    return response_emitted and event_type != AgentHookEvents.AGENT_SESSION_START, startup_context
+    # Context augments the original event; it does not consume the human prompt.
+    # Checkpoint/control-only responses retain their existing terminal behavior.
+    stop_processing = (
+        response_emitted and event_type != AgentHookEvents.AGENT_SESSION_START and additional_context is None
+    )
+    return stop_processing, response_emitted
 
 
 # guard: loose-dict-func - Main path processes raw hook payload boundaries.
@@ -1878,7 +1909,7 @@ def main() -> None:
             native_session_id=raw_native_session_id,
         )
 
-    response_emitted, startup_context = _run_ordinary_hook_effects(
+    stop_processing, response_emitted = _run_ordinary_hook_effects(
         launch_context=launch_context,
         adapter=adapter,
         event_type=event_type,
@@ -1891,7 +1922,7 @@ def main() -> None:
         outbox_context=outbox_context,
         raw_event_type=raw_event_type,
     )
-    if response_emitted and event_type != AgentHookEvents.AGENT_SESSION_START:
+    if stop_processing:
         return
 
     data[_AGENT_NAME_FIELD] = args.agent
@@ -1918,7 +1949,7 @@ def main() -> None:
         native_session_id=(raw_native_session_id or _EMPTY_LOG_VALUE),
         event_type=event_type,
     )
-    if not response_emitted and startup_context is None:
+    if not response_emitted:
         _emit_success_response_if_supported(
             adapter=adapter,
             raw_event_type=raw_event_type,

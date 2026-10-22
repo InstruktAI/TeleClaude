@@ -30,20 +30,6 @@ Once a TeleClaude session id is resolved, revival delegates to the same restart-
 
 #### UC-SR5: A caller can diagnose why a conversation cannot be revived
 
-```
-Scenario: A TeleClaude session cannot be resumed
-  Given a caller names a TeleClaude session that is missing, has no active agent, or has no native transcript binding
-  When they request revival
-  Then the request is refused with the unavailable condition identified
-  And no agent process is started
-
-Scenario: A native conversation cannot be adopted
-  Given a caller names an unknown agent, an invalid native transcript, a transcript bound to another agent, or a project that cannot be recovered
-  When they request revival
-  Then the request is refused with the condition and any required next step identified
-  And no session is created in the caller's current directory as a substitute
-```
-
 #### UC-SR6: Fresh adoption recovers the session title from the originating prior row
 
 #### UC-SR9: A caller can resume a conversation by its session or native identity
@@ -66,6 +52,18 @@ Scenario: Adopt an unbound native conversation
   Then a TeleClaude session continues from that transcript in its originating project
   And any title retained for the conversation remains recognizable
   And the response returns the new session id after launch is dispatched, without claiming readiness
+
+Scenario: A TeleClaude session cannot be resumed
+  Given a caller names a TeleClaude session that is missing, has no active agent, or has no native transcript binding
+  When they request revival
+  Then the request is refused with the unavailable condition identified
+  And no agent process is started
+
+Scenario: A native conversation cannot be adopted
+  Given a caller names an unknown agent, an invalid native transcript, a transcript bound to another agent, or a project that cannot be recovered
+  When they request revival
+  Then the request is refused with the condition and any required next step identified
+  And no session is created in the caller's current directory as a substitute
 ```
 
 #### UC-SR10: A person can continue a revived conversation without a false failure

@@ -77,6 +77,7 @@ from teleclaude.api.ws_options import (
     parse_ws_projection_options,
 )
 from teleclaude.api_models import (
+    AgentAvailabilityEventDTO,
     AgentStopActivityEventDTO,
     SessionLifecycleStatusEventDTO,
     ToolUseActivityEventDTO,
@@ -369,6 +370,12 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         """Broadcast live agent availability changes to WS clients."""
         dto = agent_availability_event_dto(context)
         self._broadcast_payload("agent_availability", dto.model_dump(exclude_none=True))
+
+    async def recover_runtime_availability(self) -> None:
+        """Rebuild complete agent/model state after live notification interruption."""
+        for availability in (await agents_routes.read_agent_availability(require_complete=True)).values():
+            dto = AgentAvailabilityEventDTO(data=availability)
+            self._broadcast_payload(dto.event, dto.model_dump(exclude_none=True))
 
     async def handle_runtime_error(self, data: RuntimeErrorData) -> None:
         """Broadcast error events to WS clients."""

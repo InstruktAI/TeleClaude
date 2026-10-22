@@ -10,7 +10,9 @@ visibility: internal
 
 ## What it is
 
-A consumer is one reaction to events on one computer. Public platform reactions
+A consumer is one reaction to events on one computer. Its owner declares whether
+that reaction retains individual occurrences or consumes live notifications.
+Public platform reactions
 and internal runtime reactions use the same independent-consumer delivery
 mechanics, with source streams kept separate under
 `local/projects/teleclaude/design/architecture/event-delivery`.
@@ -41,7 +43,11 @@ names the invalid pattern so its author can correct the declaration
 events by type pattern matches with this one matcher, so a pattern means the
 same wherever it is written.
 
-The platform hands a consumer each event it is interested in once. A stream
+### Retained occurrences
+
+Retained consumers use independent ordered progress and the existing stream
+retention window. The platform hands such a consumer each event it is interested
+in once. A stream
 entry delivered again, or an occurrence re-emitted with the same id, is not
 handed a second time while the platform retains the consumer's record of the
 event. A consumer never deduplicates events itself. An event whose handling was
@@ -72,12 +78,37 @@ the project's canonical checkout performs the bound actions on its own checkout
 
 ## Canonical fields
 
+### Live notifications and source recovery
+
+Live consumers start from a captured current stream position. They retain no
+consumer-group pending entries or handled-event records and do not replay
+historical presentation after restart. Their in-memory read window is bounded;
+obsolete frames may be omitted. A failed live reaction is logged and does not
+retry obsolete presentation or end the daemon. Delivery lifetime follows the
+consumer's actual effect under `sdlc/policy/domain-ownership`.
+
+A live consumer representing current state declares its authoritative recovery
+operation. It captures its stream position before recovering source state and
+processes subsequent notifications only after recovery succeeds. Connection
+failure repeats that handover. Such a consumer may coalesce a batch by event
+type, source and subject when its handler reconciles the full current state.
+Transient feedback declares no recovery operation and intentionally omits missed
+presentation. These distinctions follow `sdlc/principle/design-fundamentals`.
+
+An existing retained position is retired only by the same computer's owning
+consumer after its replacement recovery succeeds, or after the owner declares
+the effect to be transient feedback. Retirement does not mark historical events
+handled or alter another consumer's ledger. Accepted commands, operation/control
+delivery and public occurrence consumers retain their owning durable contracts.
+
 ### Domain notification delivery
 
 Domain notifications between the runtime, integration and adapters use declared
 events and independent consumers. Each consumer is bound to a source stream and
 its codec under `local/projects/teleclaude/design/architecture/event-delivery`.
-Progress, ordering, retries and duplicate handling apply to that bound source.
+Each reaction applies its declared lifetime to that bound source. Retained
+delivery owns ordered progress, retries and duplicate records; live delivery
+owns its current boundary and source recovery.
 Consumer identities are unique across the computer's shared handled-event store.
 The consumer runtime is
 the sole executor of their reactions; producers hold no immediate
@@ -115,13 +146,6 @@ relationship is defined by
 
 #### UC-EC12: Each computer correlates its own failures
 
-```gherkin
-Given failure events of one type about one thing are emitted on a computer within the correlation window
-When their number crosses the degradation threshold
-Then that computer emits one degradation event for that thing
-And no other computer emits a degradation event for those failures
-```
-
 ### Cross-context references
 
 - **event-catalog** — owns the envelope attributes consumers select on and the
@@ -139,6 +163,14 @@ And no other computer emits a degradation event for those failures
   type pattern owns that declaration and matches it with this matcher.
 
 ## Known caveats
+
+- Retained occurrences are recoverable only within their source stream's
+  retention window. Missing payloads cannot establish that an effect completed;
+  their failure remains visible through the existing recovery and dead-letter
+  contracts.
+- A live read window bounds frame count rather than elapsed latency. A slow
+  reaction can delay its own reader; it does not create a retained replay
+  obligation for obsolete presentation.
 
 - Duplicate protection lasts while the platform retains a consumer's record of
   handled events; a repeat arriving after that is handed again.

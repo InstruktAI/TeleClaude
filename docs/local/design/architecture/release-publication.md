@@ -122,6 +122,19 @@ proof-success requirement then withholds publication. The harness drives
 installation and service lifecycle through the sanctioned make surface
 (`local/projects/teleclaude/policy/agent-service-control`).
 
+<!-- planned:issue-128 -->
+
+Runtime acceptance uses its own fresh hosted Ubuntu job, separate from candidate
+preparation and credential-bearing finalization. The existing immutable artifact
+handoff carries candidate identity into that job and its report into finalization;
+finalization checks the job outcome and report against the same candidate before
+the existing installer proof and publication gates. The acceptance job executes
+no earlier or later token-bearing release command. This composition is owned by
+`local/projects/teleclaude/spec/feature/release/publication`; its runtime side is
+`local/projects/teleclaude/design/architecture/runtime-acceptance/overview`.
+
+<!-- /planned:issue-128 -->
+
 ### Credentials and inspection
 
 Capture freezes one source/baseline attempt and bounded evidence artifact before

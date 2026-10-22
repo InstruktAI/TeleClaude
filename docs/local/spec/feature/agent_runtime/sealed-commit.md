@@ -203,101 +203,31 @@ commit pathspec filtered to existing files) and then runs `git commit` without
 `--no-verify`, so it passes the same hook as a raw `git commit`. No framework
 stash occurs; files outside the pathspec are not touched.
 
-#### UC-CGIP-1 — Commitizen format check blocks malformed message
+The commit message follows `general/policy/commits`, and a commit is created
+only when the message and every applicable staged-file gate pass. A refusal
+leaves no commit. If the change contains only deletions, no existing file is
+formatted or checked by the native leg, but documentation and agent-artifact
+validation still assess each affected home as it will stand after deletion.
 
-```
-Given message does not match type(scope): subject or type: subject
-When agent invokes telec code commit --approved "<bad-message>"
-Then SystemExit(1) before format/lint/git-commit invoked
-```
+#### UC-CGIP-1 — Commitizen format check blocks malformed message
 
 #### UC-CGIP-2 — Format runs on quality_paths before the hook lints
 
-```
-Given the acting invocation context's tier carries project subscriptions
-And pathspec contains existing and deleted files
-When agent invokes telec code commit --approved "<msg>"
-Then quality_paths = pathspec filtered to existing files only
-And handle_format(quality_paths) runs before git commit is invoked
-And the pre-commit hook lints the staged file set after formatting
-```
-
 #### UC-CGIP-3 — Deletion-only commit bypasses format/lint
-
-```
-Given pathspec contains only a deleted file
-When agent invokes telec code commit --approved "<msg>"
-Then quality_paths is empty
-And handle_format is not invoked
-And git commit runs the pre-commit hook without the native leg
-And the documentation and agent-artifact validators grade each owning home of the deleted file as committed after the deletion
-And the commit lands only if that home has no findings
-```
 
 #### UC-CGIP-4 — Clean commit passes through the pre-commit hook
 
-```
-Given format passes on quality_paths and lint passes on the staged file set
-When agent invokes telec code commit --approved "<msg>"
-Then repo.git.commit is called without "--no-verify"
-And the pre-commit hook runs and exits 0
-And no framework stash occurs
-```
-
 #### UC-CGIP-5 — Format failure blocks commit
-
-```
-Given format fails on quality_paths
-When agent invokes telec code commit --approved "<msg>"
-Then SystemExit(1) before repo.git.commit invoked
-```
 
 #### UC-CGIP-6 — Lint failure blocks commit
 
-```
-Given lint fails on the staged file set (after format passed)
-When agent invokes telec code commit --approved "<msg>"
-Then the pre-commit hook exits non-zero naming each finding
-And git produces no commit, and telec code commit exits non-zero
-```
-
 #### UC-CGIP-48 — A repository's first commit passes through the same gates
-
-```gherkin
-Given an agent works in a repository that has no commits yet
-And the acting invocation context's tier carries project subscriptions
-And the agent has declared the files for the repository's first commit
-When the agent invokes telec code commit --approved "<msg>"
-Then the gates the tier carries grade the declared files that exist, as for any other commit
-And when every gate passes, the first commit lands carrying exactly the declared files
-And when a gate fails, no commit is created and the repository still has no commits
-```
 
 #### UC-CGIP-7 — Lock releases cleanly on gate failure
 
-```
-Given the pre-commit hook rejects the commit
-When telec code commit --approved "<msg>" is invoked
-Then main_branch_lock __exit__ is called (lock released)
-```
-
 #### UC-CGIP-8 — Bare commit surfaces the gate and exits 0
 
-```
-Given a non-integrator agent invokes telec code commit with no message and no --approved
-When the branch is main (commit-first review-routing gate) or any other branch (short help)
-Then the guidance is printed and no commit occurs
-And SystemExit(0) — serving the gate is the successful outcome of a bare invocation
-```
-
 #### UC-CGIP-9 — Message without --approved is a forgotten gate
-
-```
-Given a non-integrator agent invokes telec code commit "<message>" without --approved
-When the branch is main
-Then SystemExit(1) and no commit occurs
-And on any other branch SystemExit(2)
-```
 
 #### UC-CGIP-45 — The gate card carries the diffstat of the scope it would commit
 
@@ -799,69 +729,34 @@ But a file the session changed only through a shell command is not committed unt
 
 A successful sealed commit in a todo worktree whose checked-out branch is that todo's branch publishes it to the project's `origin` remote, so every task commit exists off the computer that made it. Publication follows the commit and never decides it: the commit is recorded before any push is attempted, and no publication outcome changes the commit or the command's success.
 
+If publication fails, the local commit remains and the command still reports
+success while telling the agent publication failed with its cause; the next
+commit retries publication. A rewritten branch replaces the remote branch only
+when the remote has no unseen work; otherwise publication is refused and that
+remote work remains intact. A commit on main or in the integration worktree
+does not publish. Without an origin remote, nothing is pushed and no publication
+message is added. From a worktree on another branch, nothing is pushed and the
+agent is told why.
+
 #### UC-CGIP-50 — A commit in a todo worktree publishes the todo's branch
 
 ```
-Given an agent session working in a todo worktree of a project with an origin remote
-When the session's sealed commit succeeds
-Then the todo's branch on origin points at the commit just made
+Given a developer wants a task commit available from the project's remote
+When their agent commits the task change in that todo's worktree
+Then the todo's branch is published to the project's origin
 ```
 
 #### UC-CGIP-51 — A failed publication leaves the commit in place
 
-```
-Given an agent session working in a todo worktree of a project with an origin remote
-And origin cannot be reached or does not accept the branch
-When the session's sealed commit succeeds
-Then the commit remains on the todo's local branch
-And the command reports success
-And the agent is told that publishing the branch failed, with git's reason
-And the agent is told that its next commit publishes the branch again
-```
-
 #### UC-CGIP-52 — Rewritten branch history replaces the published branch
-
-```
-Given a todo's branch was published and its history was then rewritten in the worktree
-And origin holds nothing on that branch the worktree has not seen
-When the session's sealed commit succeeds
-Then the todo's branch on origin is replaced by the worktree's branch
-```
 
 #### UC-CGIP-53 — Remote work the worktree has never seen is not overwritten
 
-```
-Given the todo's branch on origin holds commits the worktree has never integrated
-When the session's sealed commit succeeds
-Then the branch on origin keeps those commits
-And the agent is told that publication was refused, with git's reason
-```
-
 #### UC-CGIP-54 — Main and the integration worktree publish nothing
-
-```
-Given a sealed commit on the repository root's main branch, or in the integration worktree
-When the commit succeeds
-Then the commit pushes nothing to origin
-```
 
 #### UC-CGIP-55 — A project without an origin remote commits as before
 
-```
-Given an agent session working in a todo worktree of a project with no origin remote
-When the session's sealed commit succeeds
-Then nothing is pushed
-And the command reports nothing about publication
-```
-
 #### UC-CGIP-56 — A worktree checked out on another branch publishes nothing
-
-```
-Given an agent session working in a todo worktree whose checked-out branch is not the todo's branch
-When the session's sealed commit succeeds
-Then nothing is pushed to origin
-And the agent is told the branch was not published because it is not the todo's branch
-```
 
 ## See also
 

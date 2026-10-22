@@ -135,6 +135,11 @@ def is_session_terminal(*, lifecycle_status: str | None, closed_at: datetime | N
     return not is_session_open(closed_at=closed_at) or lifecycle_status in TERMINAL_LIFECYCLE_STATUSES
 
 
+def is_session_final(*, lifecycle_status: str | None, closed_at: datetime | None) -> bool:
+    """Return whether closure finished, preserving an in-flight close's recoverable state."""
+    return closed_at is not None or lifecycle_status == SessionLifecycleStatus.CLOSED
+
+
 def is_close_started(*, lifecycle_status: str | None) -> bool:
     """Return whether a session's close has already been declared started.
 

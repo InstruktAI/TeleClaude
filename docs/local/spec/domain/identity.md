@@ -14,6 +14,19 @@ TeleClaudeNext.
 
 ## Canonical fields
 
+<!-- planned:issue-129 -->
+
+- **Also owns:** the infrastructure-bound GitHub platform actor and invocation
+  authentication facts, consumed by provider posting and push transport through
+  `local/projects/teleclaude/spec/feature/identity/platform-github-identity`;
+  and the human GitHub account/person association through
+  `local/projects/teleclaude/spec/feature/identity/person-context-binding`.
+  Declaration persistence remains config-owned, and provider writes, envelopes
+  and publication proof remain integration-owned
+  (`sdlc/policy/domain-ownership`).
+
+<!-- /planned:issue-129 -->
+
 - **Current behavior:** `docs/local/spec/feature/identity/` and the auth
   feature specs that require this anchor.
 - **Implementation roots:** `teleclaude/core/identity.py`,

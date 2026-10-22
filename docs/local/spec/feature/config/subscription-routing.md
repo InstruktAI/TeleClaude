@@ -30,24 +30,12 @@ content-level validation runs.
 
 ### Use cases
 
-#### UC-CFG-SUB-1: An owner subscribes to job notifications
+#### UC-CFG-SUB-1: An operator subscribes to job notifications
 
 ```gherkin
-Scenario: The owner subscribes a job at a chosen notification destination
-  Given a global or person configuration owner wants notifications for a configured job
-  When the owner adds an enabled job subscription with a preferred channel
-  Then configuration records the job name and chosen notification preference
-
-Scenario: The default destination applies when no preference is supplied
-  Given a global or person configuration owner adds a job subscription without a notification preference
-  When the configuration loads
-  Then the subscription records the default Telegram preference
-
-Scenario: An invalid subscription definition is refused
-  Given an owner submits a subscription with a missing or unsupported type, or an unsupported notification channel
-  When configuration validates the subscription
-  Then the invalid definition is refused with a validation error
-  And the subscription is not accepted
+Given an operator wants notifications for a configured job
+When they add an enabled job subscription with a preferred channel
+Then configuration records the job name and selected notification preference
 ```
 
 #### UC-CFG-SUB-2: A person subscribes to a YouTube channel
@@ -106,6 +94,10 @@ And retains the source and notification preference
 - `notification.preferred_channel` — `"telegram" | "discord" | "whatsapp" | "email"`. Default: `"telegram"`.
 - `enabled` — `bool`. Default: `true`.
 - `tags` (YouTube only) — list of strings. Default: `[]`.
+
+A missing or unsupported `type` and an unsupported `notification.preferred_channel`
+are refused by schema validation before the subscription is accepted. An omitted
+notification preference resolves to the documented Telegram default.
 
 ## Known caveats
 
