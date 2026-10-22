@@ -239,13 +239,13 @@ CREATE TABLE IF NOT EXISTS procedure_event_inbox (
     event_delivery TEXT NOT NULL CHECK(event_delivery IN ('sequential', 'batched')),
     interruptible INTEGER NOT NULL CHECK(interruptible IN (0, 1)),
     assigned_session_id TEXT,
-    outcome TEXT NOT NULL DEFAULT 'pending' CHECK(outcome IN ('pending', 'delivered', 'failed', 'suspended')),
+    outcome TEXT NOT NULL DEFAULT 'pending' CHECK(outcome IN ('pending', 'delivered', 'failed', 'suspended', 'not_delivered')),
     outcome_reason TEXT,
     accepted_at TEXT NOT NULL,
     terminal_at TEXT,
     CHECK(
         (outcome IN ('pending', 'suspended') AND terminal_at IS NULL)
-        OR (outcome IN ('delivered', 'failed') AND terminal_at IS NOT NULL)
+        OR (outcome IN ('delivered', 'failed', 'not_delivered') AND terminal_at IS NOT NULL)
     )
 );
 
