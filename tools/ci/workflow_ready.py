@@ -401,7 +401,7 @@ def _claim_held_ready(
         )
     w4 = flow.plan_actor(flow_module.PROC_WORK, 3, ROLE_WORK)
     note = _note(flow, first, REASON_ONE)
-    named_note = re.search(r"recorded as note\s+(\S+)", result)
+    named_note = re.search(r"recorded as note\s+(\S+)\.$", result)
     if "has not claimed yet" in result:
         reasonone_credit = "pending result; session and note clauses not evaluated"
     elif f"session {w4} holds the claim" in result and named_note is not None and named_note.group(1) == note:
