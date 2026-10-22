@@ -203,13 +203,13 @@ Headers, actor names and absent Delivery do not replace these checks
 Outbound source Delivery IDs retain their idempotency role and remain distinct
 from GitHub's inbound webhook delivery IDs. Echo qualification follows UC-19:
 verified ingress and current-state reconciliation continue, while only an event
-whose verified actor and action match the exact configured TeleClaude App and
-whose canonical envelope is structurally valid for a sealed/reflected post with
-its mandatory source Delivery suppresses echo-generated conversation, session
-wake and outward mirror/reflection. A native conversational note with
-`Delivery: -` remains eligible under the existing ingress and attribution
-rules. External bot input and human edits or deletions of App-authored objects
-are not discarded because of the object's original author. App identity,
+whose verified actor and action jointly identify a qualifying post by the exact
+configured TeleClaude App, and whose canonical envelope is structurally valid
+for a sealed/reflected post with its mandatory source Delivery, suppresses
+echo-generated conversation, session wake and outward mirror/reflection. A
+native conversational note with `Delivery: -` remains eligible under the
+existing ingress and attribution rules. External bot input and human edits or
+deletions are not discarded because the object was App-authored. App identity,
 envelope text or delivery-key text alone does not establish an echo.
 
 The adapter and mirror owners retain their event and effect decisions. Echo
