@@ -20,6 +20,7 @@ from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPat
 from teleclaude.types.todos import CommitReviewVerdict
 
 _MAIN_REF = "main"
+_NO_DOCUMENTATION_REVISION = ""
 _FIELD_SEPARATOR = "\x1f"
 _LINE_SEPARATOR = "\n"
 _TRAILER_LOG_FORMAT = (
@@ -94,6 +95,8 @@ def source_commit_refs(project_root: Path, slug: str) -> tuple[tuple[str, str | 
     """Preserve the latest known source association without claiming review approval."""
     repo = Repo(str(project_root))
     paths = tuple(path.relative_to(project_root).as_posix() for path in pending_document_carriers(project_root, slug))
+    if not paths:
+        return ()
     commits = _associated_commits(repo, slug)
     changed = {sha: _changed_paths(repo, sha) for sha in commits}
     return tuple((path, next((sha for sha in commits if path in changed[sha]), None)) for path in paths)
@@ -144,23 +147,21 @@ async def require_reviewed_pending_documentation(
     """Require independently approved associated revisions for every declared carrier."""
     try:
         repo = Repo(str(project_root))
-        main_revision = repo.git.rev_parse(_MAIN_REF).strip()
         carriers = tuple(
             (path.relative_to(project_root).as_posix(), owner)
             for owner in slugs
             for path in pending_document_carriers(project_root, owner)
         )
         if not carriers:
-            if repo.git.rev_parse(_MAIN_REF).strip() != main_revision:
-                raise DocumentationEvidenceRefused(_MAIN_REVISION_CHANGED)
             return DocumentationEvidenceSnapshot(
-                main_revision=main_revision,
+                main_revision=_NO_DOCUMENTATION_REVISION,
                 checked_slugs=slugs,
                 carrier_blobs=(),
                 sources=(),
                 review_records=(),
                 transfer_records=(),
             )
+        main_revision = repo.git.rev_parse(_MAIN_REF).strip()
         associated_by_slug = {slug: _associated_commits(repo, slug) for slug in slugs}
         associated = tuple(dict.fromkeys(sha for shas in associated_by_slug.values() for sha in shas))
         paths_by_sha = {sha: _changed_paths(repo, sha) for sha in associated}
