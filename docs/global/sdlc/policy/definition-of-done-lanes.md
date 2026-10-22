@@ -54,6 +54,8 @@ later log judgment is not a per-criterion proof source. Demanding or rewarding
 forbidden test authorship violates the project ruling. All other lanes apply
 unchanged; in every project without such a ruling this catalog applies in full.
 
+<!-- planned-change:issue-128 -->
+
 | Lane                    | Reference                                                                              | Task                                                                                                                                                                             |
 | ----------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | scope                   | § Scope verification                                                                   | Verify delivery matches PRD intent — no gold-plating, no gaps                                                                                                                    |
@@ -72,6 +74,28 @@ unchanged; in every project without such a ruling this catalog applies in full.
 | doc-hygiene             | § Doc-snippet hygiene (when a `docs/**` snippet or any directive-text surface changed) | Verify changed snippet bodies state present-tense contract — no narration; verify changed directive text was the author's to write and states the reality wanted from its reader |
 | simplify                | § Simplification review (after other lanes pass)                                       | Simplify without behavior changes                                                                                                                                                |
 
+<!-- change:issue-128 -->
+
+| Lane                    | Reference                                                                              | Task                                                                                                                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| scope                   | § Scope verification                                                                   | Verify delivery matches the prepared spec — no gold-plating, no gaps                                                                                                             |
+| code                    | § Code quality review; `code-quality-practices`, `design-fundamentals`                 | Find bugs and pattern violations                                                                                                                                                 |
+| ownership               | § Domain ownership review; `domain-ownership`                                          | Verify every domain rule is implemented by its single owning context and crossed only through a published contract                                                               |
+| paradigm                | § Paradigm-fit assessment                                                              | Check data flow, component reuse, pattern consistency, forward-migration of owned data                                                                                           |
+| principles              | § Principle violation hunt; `principle-violation-hunt`                                 | Structural violation hunt against design principles                                                                                                                              |
+| intelligence-boundaries | `principle/intelligence-boundaries`                                                    | Find code that classifies, scores, judges, or auto-edits free-text content semantics                                                                                             |
+| security                | § Security review                                                                      | Check for secrets, injection, auth gaps, and repository-privacy leakage                                                                                                          |
+| tests                   | § Test coverage check; `quality-predicate-registry`                                    | Evaluate behavioral value, weak-test anti-patterns, and coverage                                                                                                                 |
+| errors                  | § Error handling review; `silent-failure-audit`                                        | Find silent failures and inadequate error handling                                                                                                                               |
+| types                   | § Type design review (when types added/modified)                                       | Validate type invariants, encapsulation, and enforcement                                                                                                                         |
+| comments                | § Comment accuracy review                                                              | Verify comments are accurate, non-stale, and earn their place                                                                                                                    |
+| logging                 | § Logging review                                                                       | Enforce logging policy; reject ad-hoc debug probes                                                                                                                               |
+| docs                    | § Documentation and config surface check (when CLI, config, or API changed)            | Verify help text, config surface, README, and affected doc snippets reflect changes                                                                                              |
+| doc-hygiene             | § Doc-snippet hygiene (when a `docs/**` snippet or any directive-text surface changed) | Verify changed snippet bodies state present-tense contract — no narration; verify changed directive text was the author's to write and states the reality wanted from its reader |
+| simplify                | § Simplification review (after other lanes pass)                                       | Simplify without behavior changes                                                                                                                                                |
+
+<!-- /planned-change:issue-128 -->
+
 ### A verdict and its lane scores are written together
 
 Lane scores describe the state the verdict is issued against, so a verdict that
@@ -87,6 +111,8 @@ approval into the review artifact after applying fixes — however faithfully it
 applied them — destroys the one property the artifact exists to carry, which is
 that someone other than the author looked.
 
+<!-- planned-change:issue-128 -->
+
 ### Every review pass leaves current, bound evidence
 
 Every preparation and build review writes its complete phase-specific report
@@ -100,6 +126,10 @@ This binding proves that a versioned report existed for the reviewed target; it
 does not prove the report's analysis was intellectually sound. Reviewer
 separation, lane completeness, citations, and verdict arithmetic remain
 judgment gates.
+
+<!-- change:issue-128 -->
+
+<!-- /planned-change:issue-128 -->
 
 ### Lane coverage is reported in full — no silent skips
 
@@ -155,6 +185,8 @@ no separate report line.
 
 #### Scope verification
 
+<!-- planned-change:issue-128 -->
+
 **Authority:** the intent basis the invoking procedure resolves. For a lifecycle
 review it is the requirement contract — `prd` (feature) or `input` (change/bug),
 or the `implementation-plan`'s _Intent & scope_ for a `--plan` `change` with no `input`.
@@ -166,6 +198,20 @@ named review target — nothing more, nothing less (for lifecycle work, see
 For each criterion in that intent basis, produce a `Scope verification` entry in
 the report surface named by the invoking procedure (`review-findings.md` for a
 lifecycle review):
+
+<!-- change:issue-128 -->
+
+**Authority:** the intent basis the invoking procedure resolves. For the work
+driver's review before it stamps, it is the item's prepared spec at the body
+revision the prepared act named.
+
+The reviewed changes must satisfy the resolved authorized intent within the
+named review target — nothing more, nothing less.
+
+For each criterion in that intent basis, produce a `Scope verification` entry in
+the report surface named by the invoking procedure:
+
+<!-- /planned-change:issue-128 -->
 
 1. Identify the authoritative source and quote the criterion.
 2. Identify the specific reviewed change that delivers it (file, function, line range).
@@ -350,7 +396,15 @@ Before crediting any test as meaningful coverage, name the concrete production-c
      A test paying per-cycle cost for a static property — or a `tools/lint` guard duplicating what a type would enforce — is the anti-pattern, not the fix.
 - Reject **placeholder or xfail "spec" tests** that document intended-but-not-yet-implemented behavior. The spec-anchored model has no waiting-to-flip tests: an unbound scenario is tracked as coverage backlog by the coverage tool, not as a test sitting in `tests/`. A test exists only to bind a scenario it currently satisfies. Also verify each binding is honest — it drives the real system for its scenario without mocking the thing under test — and that no in-scope spec has orphan or duplicate bindings (`tools/lint/spec_coverage.py` can be run on demand to surface these).
 
+<!-- planned-change:issue-128 -->
+
 - Reject **an unreserved scenario binding** at plan-review anticipation. Every scenario a plan declares it will bind is reserved on `main` at prepare — enclosed by this todo's pending `planned` or `planned-change` marker. A plan that declares a binding for a scenario enclosed by a different in-flight todo's pending marker is a **Requirement-Violation**: the scenario is already reserved, and a second binding is the cross-worktree duplicate the integration content gate would otherwise catch. The check is structural — scenario id to owning slug — and `tools/lint/binding_reservation.py` surfaces the collisions on demand.
+
+<!-- change:issue-128 -->
+
+- Reject **an unreserved scenario binding**. Every scenario the prepared spec's use cases will bind is reserved on `main` before the item is prepared — enclosed by this todo's pending `planned` or `planned-change` marker (`sdlc/policy/testing` rule 8). A binding to a scenario enclosed by a different in-flight todo's pending marker is a **Requirement-Violation**: the scenario is already reserved, and a second binding is the cross-worktree duplicate the integration content gate would otherwise catch. The check is structural — scenario id to owning slug — and `tools/lint/binding_reservation.py` surfaces the collisions on demand.
+
+<!-- /planned-change:issue-128 -->
 
 - Reject **refactor-leftover existence checks** that assert a removed source path remains absent. Git history records what was removed; the test adds nothing.
 - Reject **filesystem-inventory snapshots** whose captured value is a collection of paths produced by walking a directory tree. The snapshot pins the implementation's output layout, not behavior. If the behavior is "no files written to this root," assert that condition directly without snapshotting an inventory.
@@ -493,6 +547,8 @@ When the delivery changes CLI subcommands, config keys, API endpoints, or user-f
 4. README or relevant docs reflect current behavior.
 5. Breaking changes documented.
 
+<!-- planned-change:issue-128 -->
+
 **Doc-snippet reflection (always, not only interface changes):** when the delivery
 changes or adds a documented behavioral contract, the corresponding doc snippet
 (spec / principle / policy / concept / ADR) must be updated to match — through a pending carrier
@@ -510,6 +566,29 @@ correct route for a doc need discovered mid-build is the kickback path back to
 prepare, never an in-worktree doc edit. This rule does not apply to commit
 reviews of `main`-branch doc commits, which are prepare-side or in-context doc
 work by design.
+
+<!-- change:issue-128 -->
+
+**Doc-snippet reflection (always, not only interface changes):** when the delivery
+changes or adds a documented behavioral contract, the corresponding doc snippet
+(spec / principle / policy / concept / ADR) must be updated to match — through a pending carrier
+(`general/procedure/doc-snippet-authoring`) for lifecycle work, or directly for
+an in-place correction. A behavioral delta whose contract snippet was not updated, with no
+recorded `doc_impact_none: <reason>`, is a finding. This is the review backstop
+to the preparation driver's handoff check, so a forgotten snippet update cannot
+reach delivery.
+
+**Work-phase doc freeze (the work driver's review only):** the doc layer is
+authored on `main` and folded at integration; the work phase executes a frozen
+contract. A lifecycle work-phase diff (slug worktree) that touches `docs/**` is
+**Critical** — out of jurisdiction regardless of the edit's quality or size. A
+doc need discovered mid-build goes to the work driver, which routes its
+authoring on `main` and its independent review
+(`sdlc/procedure/lifecycle/work/build-v2`), never an in-worktree doc edit. This
+rule does not apply to commit reviews of `main`-branch doc commits, which are
+preparation-side or in-context doc work by design.
+
+<!-- /planned-change:issue-128 -->
 
 Missing documentation updates are **Important** findings. Missing config surface updates are **Critical** (agents depend on accurate config specs).
 
@@ -789,6 +868,8 @@ Simplification findings are **Important** severity. The simplify lane only flags
 
 **Authority:** DoD §3 (Testing) + `debugging`. Conditional lane — fires when `kind == "bug"`.
 
+<!-- planned-change:issue-128 -->
+
 When `kind == "bug"`, the `input` artifact is the bug report and the intent source (no `prd`),
 sharpened by the `diagnosis` root cause. Verify:
 
@@ -848,13 +929,87 @@ wrong approach and merely happens to work. This is a narrow, checkable
 exception for when delivery is already correct and only the trailing record is
 wrong about it, not a general softening of root-cause rigor.
 
+<!-- change:issue-128 -->
+
+When `kind == "bug"`, the prepared spec carries the bug's cause: the causal
+mechanism with its evidence, established before the item was prepared
+(`sdlc/concept/defect-evidence`). Verify:
+
+1. Fix addresses the evidenced concern the spec states. Independently apply the
+   debugging procedure's operation-outcome and failure-handling distinction to
+   the cause, then verify that the delivered behavior satisfies that concern
+   under the established conditions. A recorded disposition or named follow-up
+   does not establish delivery.
+2. The cause the fix acts on is the one the spec establishes, and it is sound.
+3. Fix is minimal and targeted: the smallest change that removes the established
+   mechanism where the cause places it — the reproducing site and, for a
+   shared-contract root, every entry in its implementation census — plus a scenario-bound
+   regression test where the project opts into test authorship — and **nothing
+   else**. A delta that removes no part of the cause — guards against causes no
+   evidence has established, extra validation layers, defensive defaults,
+   fallbacks, adjacent refactors, new capability — is a **Critical** scope
+   finding, even when the builder's mechanism note contains it: for a bug, the
+   spec's cause is the scope authority. A family-census site outside that
+   boundary owes nothing in this delivery (`sdlc/concept/defect-evidence`,
+   family site).
+4. The spec's account of the cause is complete: the mechanism, its evidence, and
+   the occurrence or dangerous path it rests on (`sdlc/concept/defect-evidence`).
+5. Where the project opts into test authorship, a reproduction test exists before
+   the fix, binding either a pre-existing scenario or one the prepared spec
+   reserved for this symptom. A
+   contract-defining artifact with no bindable scenario needs no test
+   (`sdlc/policy/testing`, "Contract-defining artifacts are not tested").
+6. The reproduction test passes after the fix when item 5 requires one.
+7. Beyond the scenario item 5 binds, no new contract text shipped unless the
+   established cause is a wrong documented contract — a fix that restores
+   documented behavior carries `doc_impact_none`.
+
+Missing reproduction test for a bug fix is a **Critical** finding only where the
+project opts into test authorship and a bindable scenario exists. Demanding a
+test under a no-tests ruling or for a fix that is itself a declaration is the
+error, not the missing test.
+All other review lanes still apply.
+
+**Record-drift exception to item 2.** "The cause is sound" is not Critical when
+all three hold at once:
+
+1. The delivered code already satisfies every criterion of the prepared spec —
+   Scope verification is clean, nothing is left to build.
+2. The only defect is that the item's recorded notes describe stale reality — a
+   factual claim about what already happened (a root cause, a "this passes at
+   HEAD" claim), not a wrong claim about what should have been built. Nothing
+   about the approach was wrong.
+3. Correcting the record implies no new functional or business decision — a
+   rewrite of a description, not a re-derivation of intent.
+
+When all three hold, the discrepancy is not Critical, does not block the stamp,
+and its remedy is not kickback — record it as a `log` entry on the todo instead:
+a factual note, never a substitute for a real finding. Fail any one condition
+and this is a normal finding at full severity: a root cause that is actually
+wrong — even when the shipped fix happens to pass — does not qualify, nor does a
+fix that took a wrong approach and merely happens to work. This is a narrow,
+checkable exception for when delivery is already correct and only the trailing
+record is wrong about it, not a general softening of root-cause rigor.
+
+<!-- /planned-change:issue-128 -->
+
 ## Rationale
+
+<!-- planned-change:issue-128 -->
 
 The lanes were embedded in the build-review procedure and re-described in the
 plan reviewer, so two reviewers shared one copy and a third forked it — the lane
 set could drift between "what the plan anticipates" and "what build-review
 checks." Defining the lanes once, here, and having every reviewer and the planner
 reference this catalog removes that drift.
+
+<!-- change:issue-128 -->
+
+The lanes are defined once, here, and every reviewer references this catalog,
+so the lanes a delivery is stamped against cannot drift from the lanes a commit
+is reviewed against.
+
+<!-- /planned-change:issue-128 -->
 
 Anchoring them under the Definition of Done makes the coupling explicit: each lane
 is the review-time enforcement of a DoD gate (or the requirement contract for
@@ -872,7 +1027,15 @@ from an author who already knows the answer.
 
 ## Scope
 
+<!-- planned-change:issue-128 -->
+
 Applies to build reviews, commit reviews, and prepare-plan review anticipation.
+
+<!-- change:issue-128 -->
+
+Applies to the work driver's review before it stamps, and to commit reviews.
+
+<!-- /planned-change:issue-128 -->
 
 ## Enforcement
 

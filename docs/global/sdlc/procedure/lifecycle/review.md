@@ -243,15 +243,6 @@ a zero offset. This keeps the reported cycle-local count describing the target i
 governs rather than inheriting totals from a boundary that was never persisted
 (`general/principle/grounding`).
 
-<!-- change:issue-128 -->
-
-Review passes are counted within a review cycle; phase-wide counters, reports,
-and verdict evidence remain cumulative. Target or report rewrites remain inside
-the current cycle and reset nothing. This keeps the admitted-pass denominator
-grounded in the target it governs (`general/principle/grounding`).
-
-<!-- /planned-change:issue-128 -->
-
 When a review cycle reaches its configured threshold, the count is reported
 and nothing is refused. The report names the phase, the passes admitted, and the
 threshold, and points at this continuation contract. It is emitted once, on the
@@ -275,6 +266,28 @@ implementation defect within the approved contract stays with the producer. The
 findings and the current verdict are preserved. An unresolved contract dispute
 returns the target to the phase that owns that contract; a review loop never
 carries it to the human, and neither does the round count.
+
+<!-- change:issue-128 -->
+
+The phase orchestrator owns continuation, as it owns the loop's lifecycle
+execution (`general/concept/orchestrator`); the reviewer keeps verdict
+authority, and the producer keeps disposition and implementation authority.
+Before requesting another pass, the orchestrator establishes from the current
+delta and findings what remains unresolved and why the next act can resolve it
+within the frozen scope. Either party may halt continuation by identifying a
+grounded defect in continuing; the orchestrator resolves or routes that defect
+before requesting another pass.
+
+When continuation stops, the phase orchestrator records the grounded cause and
+routes the next contribution under the invoking phase's correction procedure.
+The target returns to drafting only when the evidence requires re-deriving a
+prepared artifact. Reviewer incompleteness stays a review correction; an
+implementation defect within the approved contract stays with the producer. The
+findings and the current verdict are preserved. An unresolved contract dispute
+returns the target to the phase that owns that contract; a review loop never
+carries it to the human.
+
+<!-- /planned-change:issue-128 -->
 
 Neither elapsed rounds nor stopping authorizes approval, scope growth, or a
 weakened finding.

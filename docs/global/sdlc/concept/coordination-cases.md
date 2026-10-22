@@ -243,6 +243,8 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   when the child resumes, the orchestrator grounds a deliberate wait, or the
   escalation lands; the orchestrator then owns watching the child.
 
+<!-- planned-change:issue-128 -->
+
 ##### NC-09 — Review threshold crossed
 
 - **Evidence available:** configured round threshold, round counter, current review
@@ -260,6 +262,27 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Stop and settlement:** stop after the pointer. Settle when the orchestrator
   records its continuation ground or its stop cause and routing, or grounds that
   the remaining decision is independently human-owned.
+
+<!-- change:issue-128 -->
+
+##### NC-09 — Review loop continuing without a grounded account
+
+- **Evidence available:** the passes so far, the current findings and verdict, and
+  the phase orchestrator's recorded continuation ground or stop cause.
+- **Ownership:** the phase orchestrator owns continuation and routing the next
+  contribution under the shared convergence contract
+  (`sdlc/procedure/lifecycle/review`); reviewer and producer retain verdict,
+  finding-disposition, and remediation authority; the lifecycle machine owns
+  resulting state.
+- **Coordinator:** when passes continue with no grounded account of what the next
+  pass resolves, point to the convergence contract's address and the current
+  findings address. Do not send findings content or the decision to Human merely
+  because passes keep coming, and do not judge the loop.
+- **Stop and settlement:** stop after the pointer. Settle when the orchestrator
+  records its continuation ground or its stop cause and routing, or grounds that
+  the remaining decision is independently human-owned.
+
+<!-- /planned-change:issue-128 -->
 
 ##### NC-10 — Integrator drained the queue
 

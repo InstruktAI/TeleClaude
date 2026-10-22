@@ -135,21 +135,10 @@ veto a better, approved target without examination.
 
 ### Input artifact quality
 
-<!-- planned-change:issue-128 -->
-
 The `input` artifact is the human's intent dropped into the workflow before
 intake. It describes WHAT the human wants and WHY. It does NOT prescribe
 WHERE durable docs land — that's intake's classification job
 (see `sdlc/procedure/lifecycle/prepare/intake` step 1.5).
-
-<!-- change:issue-128 -->
-
-The `input` artifact is the human's intent dropped into the workflow before
-intake. It describes WHAT the human wants and WHY. It does NOT prescribe
-WHERE durable docs land — the author decides that when it authors the spec's
-durable contract changes (`sdlc/procedure/lifecycle/prepare/intake-v2`).
-
-<!-- /planned-change:issue-128 -->
 
 Concrete signals of leakage in `input` — each is a defect:
 
@@ -244,21 +233,10 @@ the reviewed plan's tasks. A placement, name, or decomposition that one of these
 itself decides — an ownership boundary, a layering rule, an invariant — binds as
 that decision, not as a plan detail.
 
-<!-- planned-change:issue-128 -->
-
 A reviewed architecture decision that code reality contradicts is not settled
 inside the work phase; it goes to kickback under
 `sdlc/procedure/lifecycle/work/build`, whatever the builder's own adaptation
 would be.
-
-<!-- change:issue-128 -->
-
-A reviewed architecture decision that code reality contradicts is not settled
-inside the work phase; it goes to kickback by the work driver
-(`sdlc/procedure/lifecycle/work/overview-v2`), whatever the builder's own
-adaptation would be.
-
-<!-- /planned-change:issue-128 -->
 
 Within those bounds the builder decides placement, names, and decomposition from
 the code in front of it, including splitting a module to meet a quality limit,
@@ -267,24 +245,11 @@ names is recorded in the todo `log` with its reason, where the build reviewer
 reads it. The plan and other prepare-owned artifacts are not edited to match the
 build.
 
-<!-- planned-change:issue-128 -->
-
 Build review judges the actual diff. A difference from the plan's placement,
 names, or decomposition is neither a finding nor a plan defect by itself: a
 finding cites the contract the difference violates and establishes the
 contradiction (`sdlc/procedure/lifecycle/review`), and a kickback rests on the
 triggers of `sdlc/procedure/lifecycle/work/build`, never on the difference.
-
-<!-- change:issue-128 -->
-
-Build review judges the actual diff. A difference from the plan's placement,
-names, or decomposition is neither a finding nor a plan defect by itself: a
-finding cites the contract the difference violates and establishes the
-contradiction (`sdlc/procedure/lifecycle/review`), and a kickback rests on the
-spec being wrong or unbuildable (`sdlc/procedure/lifecycle/work/overview-v2`),
-never on the difference.
-
-<!-- /planned-change:issue-128 -->
 
 ### Missing upstream intent — reconstruct before you invent or escalate
 
@@ -409,8 +374,6 @@ A qualifier that appears where the source stated none, or a condition attached
 to something the source stated unconditionally, is a defect regardless of how
 reasonable it reads.
 
-<!-- planned-change:issue-128 -->
-
 ### Owner-directed literal PRD corrections
 
 An exact correction supplied by the human owner in a live conversation does
@@ -431,9 +394,6 @@ it does not claim that an independent reviewer ran. The claimant may then stamp
 impersonates or names the human. If applying the correction requires synthesis,
 reconciliation, or judgment beyond the exact replacement, the exception does
 not apply and normal independent review remains mandatory.
-
-<!-- change:issue-128 -->
-<!-- /planned-change:issue-128 -->
 
 ### Architecture artifact quality
 
@@ -572,9 +532,6 @@ docs/local/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The task
 - Tasks trace to the approved intent artifact, architecture, or feature-spec
   scenarios. No orphan tasks (gold-plating) and no orphan intent criteria
   (coverage gaps).
-
-<!-- planned-change:issue-128 -->
-
 - Referenced file paths are explicit in the plan tasks for grounding and
   staleness review.
 - The implementation plan declares exactly one ` ```referenced-paths ` fenced
@@ -583,18 +540,6 @@ docs/local/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The task
   the work and is not an allowlist of builder edits. Per-task prose may still
   name files for builder grounding, but prose path mentions are not part of the
   drift contract.
-
-<!-- change:issue-128 -->
-
-- Referenced file paths are explicit in the plan tasks for grounding.
-- The implementation plan declares exactly one ` ```referenced-paths ` fenced
-  contract block listing every file the grounded plan expects the work to create
-  or modify. It anticipates the work and is not an allowlist of builder edits.
-  Per-task prose may still name files for builder grounding, but prose path
-  mentions are not part of that block.
-
-<!-- /planned-change:issue-128 -->
-
 - **A remediation carries its premise through the whole plan.** When a fix
   changes something the plan stands on — a mechanism or scope boundary —
   every statement that depends on it is brought into line in the same
