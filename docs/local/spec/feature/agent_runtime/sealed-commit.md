@@ -46,11 +46,12 @@ Within a single context root, and outside any nested root, the scope remains tra
 On the repo-root `main` branch, a non-integrator agent invoking `telec code commit` without `--approved` surfaces the **commit-first and review-routing gate** and does not commit. A bare invocation (no message) is discovery and **exits 0** — serving the gate is the successful outcome; an invocation that carries a message but omits `--approved` means the gate was forgotten and **exits non-zero**. `--approved` is the agent-owned sealed-gate acknowledgment that lets the commit proceed; it is not human approval. On a worktree or integrator role, `--approved` is still required but the gate surfacing is bypassed.
 
 A caller whose identity cannot be resolved to an agent session or verified
-terminal person is refused without producing a commit. An explicitly declared
-commit path that cannot be matched to repository state is rejected before Git;
-the diagnostic names each invalid declaration and the whole commit is refused.
-If the partial-staging gate cannot verify staged/working-tree overlap, it fails
-closed rather than allowing the commit.
+terminal person receives an identity-resolution diagnostic and no commit is
+produced. An explicitly declared commit path that cannot be matched to
+repository state is rejected before staging or commit; the diagnostic names
+each invalid declaration and the whole commit is refused. If the partial-staging
+gate cannot verify staged/working-tree overlap, it fails closed rather than
+allowing the commit.
 
 ## Canonical fields
 
@@ -205,7 +206,7 @@ And the message carries no Session: trailer
 Scenario: Review the scope summary at the main-branch gate
   Given a developer is preparing a commit on main through a non-integrator agent
   When the commit-first gate card appears
-  Then it shows a per-file summary of the resolved commit scope
+  Then it shows a per-file diffstat of the resolved commit scope against HEAD
   And identifies when the scope is empty
   And if the scope cannot be resolved, directs the agent to inspect the diff
 
