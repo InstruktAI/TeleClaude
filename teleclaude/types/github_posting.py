@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from enum import StrEnum
 from typing import Annotated, Literal, Self
 
@@ -9,11 +10,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from teleclaude.core.roles import RoleName
 from teleclaude.types.github_account import GitHubAccount
+from teleclaude.types.github_binding import GitHubWorkTarget
+from teleclaude.types.workflow_record import Act, Phase
 
 _SOURCE_DISCRIMINATOR = "kind"
 _DIGEST_PATTERN = r"^[0-9a-f]{64}$"
 _MIRROR_ORDER_INVALID = "Mirror part must be within its source-owned total"
 _REVIEW_HEAD_REQUIRED = "A review association requires the exact reviewed SHA"
+_NATIVE_NOTE_REQUIRED = "Native context requires the canonical note act and no inferred phase"
 
 
 class GitHubPostSourceKind(StrEnum):
@@ -68,6 +72,25 @@ GitHubPostSource = Annotated[
     NativeGitHubPostSource | SealedGitHubPostSource | ReflectedGitHubPostSource,
     Field(discriminator=_SOURCE_DISCRIMINATOR),
 ]
+
+
+class GitHubIssueCommentRequest(BaseModel):
+    """One owner-admitted body-only append, never an arbitrary API request."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    target: GitHubWorkTarget
+    body: str
+    act: Act
+    phase: Phase | None = None
+    source: GitHubPostSource
+
+    @model_validator(mode="after")
+    def require_native_context(self) -> Self:
+        """A native request cannot manufacture a lifecycle act or phase."""
+        if isinstance(self.source, NativeGitHubPostSource) and (self.act is not Act.NOTE or self.phase is not None):
+            raise ValueError(_NATIVE_NOTE_REQUIRED)
+        return self
 
 
 class GitHubObjectKind(StrEnum):
@@ -150,6 +173,9 @@ class GitHubPostFailure(StrEnum):
     ACTOR_MISMATCH = "actor_mismatch"
     RESULT_UNVERIFIED = "result_unverified"
     ASSOCIATION_FAILED = "association_failed"
+    CREDENTIAL_REFUSED = "credential_refused"
+    BINARY_UNAVAILABLE = "binary_unavailable"
+    PROVIDER_REFUSED = "provider_refused"
 
 
 class GitHubPostResult(BaseModel):
@@ -163,6 +189,9 @@ class GitHubPostResult(BaseModel):
     body_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     edit_evidence: GitHubEditEvidence | None = None
     reviewed_sha: str | None = Field(default=None, min_length=1)
+    provider_status: int | None = Field(default=None, ge=100, le=599)
+    retry_after: timedelta | None = None
+    credential_refusal: str | None = None
 
     @property
     def attributed(self) -> bool:
