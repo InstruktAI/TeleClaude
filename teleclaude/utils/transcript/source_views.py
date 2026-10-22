@@ -143,10 +143,6 @@ _TRANSCRIPT_VIEWS_LOCK = RLock()
 @contextmanager
 def transcript_read_scope() -> Iterator[None]:
     """Pin each source's normalized view throughout one composed projection pass."""
-    existing = _TRANSCRIPT_READ_SCOPE.get()
-    if existing is not None and existing.active:
-        yield
-        return
     scope = _ReadScope()
     token = _TRANSCRIPT_READ_SCOPE.set(scope)
     try:
