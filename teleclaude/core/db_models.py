@@ -92,6 +92,7 @@ class GitHubSessionBindingRow(SQLModel, table=True):
     session_id: str = Field(primary_key=True)
     binding_json: str
     native_target_json: str | None = None
+    push_proofs_json: str = "[]"
 
 
 class GitHubObjectAssociationRow(SQLModel, table=True):

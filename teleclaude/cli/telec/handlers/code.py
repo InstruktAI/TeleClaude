@@ -88,6 +88,7 @@ _CODE_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code capab
 _COMMIT_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code or docs capability"
 _MERGE_WORKTREE_DIFF_ARGUMENTS = ("--name-only", "-z", "--")
 _NUL_CHARACTER = "\x00"
+_COMMITTED_HEAD = "HEAD"
 _ERR_TODO_LOOKUP = "ERROR: cannot resolve todo association for {slug!r}: {error}"
 _TODO_ASSOCIATION_LINE = "{key}: {slug}"
 _DOC_LAYER_WORKTREE_ERROR = "ERROR: doc-layer paths cannot be committed from a slug worktree:"
@@ -505,8 +506,9 @@ def handle_code_commit(args: list[str]) -> None:
             human_involved=human_involved,
             todo_slug=todo_slug,
         )
+        committed_head = Repo(str(project_root)).git.rev_parse(_COMMITTED_HEAD).strip()
 
-    publish_todo_branch(project_root)
+    publish_todo_branch(project_root, committed_head)
 
 
 def _resolve_human_involvement_declaration(reason: str | None) -> bool:

@@ -813,7 +813,8 @@ CREATE TABLE IF NOT EXISTS conversation_bindings (
 CREATE TABLE IF NOT EXISTS github_session_bindings (
     session_id TEXT PRIMARY KEY,
     binding_json TEXT NOT NULL,
-    native_target_json TEXT
+    native_target_json TEXT,
+    push_proofs_json TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS github_object_associations (

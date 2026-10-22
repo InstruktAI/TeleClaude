@@ -22,6 +22,15 @@ from teleclaude.paths import BIN_DIR, DEFAULT_BIN_DIR
 _GIT_LOCAL_ENV_VARS_ARGUMENT = "--local-env-vars"
 _GIT_LINKED_WORKTREE_ARGUMENTS = ("--path-format=absolute", "--git-dir", "--git-common-dir")
 _GIT_INDEX_FILE_ENVIRONMENT_VARIABLE = "GIT_INDEX_FILE"
+_PUBLICATION_HOST_ENVIRONMENT = frozenset({"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "SYSTEMROOT", "WINDIR"})
+_PUBLICATION_GIT_ENVIRONMENT = {
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_SYSTEM": os.devnull,
+    "GIT_CONFIG_GLOBAL": os.devnull,
+    "GIT_TERMINAL_PROMPT": "0",
+    "GIT_NO_REPLACE_OBJECTS": "1",
+    "GIT_ATTR_NOSYSTEM": "1",
+}
 
 
 def _wrapper_dirs() -> set[Path]:
@@ -177,6 +186,16 @@ def no_autostash_env() -> dict[str, str]:
     env[f"GIT_CONFIG_VALUE_{count + 1}"] = "false"
     env["GIT_CONFIG_COUNT"] = str(count + 2)
     return env
+
+
+def publication_environment() -> dict[str, str]:
+    """Confine a publication child without inheriting transport/config/loader overrides."""
+    environment = {
+        name: value
+        for name, value in os.environ.items()  # guard: direct-env-read - child-process environment construction
+        if name in _PUBLICATION_HOST_ENVIRONMENT
+    }
+    return {**environment, **_PUBLICATION_GIT_ENVIRONMENT}
 
 
 def _active_git_index_file() -> str | None:

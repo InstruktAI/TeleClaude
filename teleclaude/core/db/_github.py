@@ -20,10 +20,13 @@ from teleclaude.types.github_posting import (
     GitHubObjectRef,
     NativeGitHubPostSource,
 )
+from teleclaude.types.github_publication import GitHubPushProof
 
 _MUTATION_APPEND_PATH = "$[#]"
 _JSON_ARRAY = "array"
 _MUTATIONS_ADAPTER = TypeAdapter(tuple[GitHubObjectMutation, ...])
+_PUSH_PROOFS_ADAPTER = TypeAdapter(tuple[GitHubPushProof, ...])
+_HEADS = "refs/heads/"
 
 
 class GitHubBindingRefusal(StrEnum):
@@ -50,6 +53,71 @@ class GitHubBindingRefused(ValueError):
 
 class DbGitHubMixin:
     """Persist assignments through the existing session database transaction."""
+
+    async def get_github_push_proofs(self, session_id: str) -> tuple[GitHubPushProof, ...]:
+        """Read retained producing-session evidence, without reconstructing it from provider discovery."""
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.GitHubSessionBindingRow, session_id)
+        if row is None:
+            return ()
+        proofs = _PUSH_PROOFS_ADAPTER.validate_json(row.push_proofs_json)
+        if any(proof.binding.session_id != session_id for proof in proofs):
+            raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+        return proofs
+
+    async def record_github_push_proof(self, proof: GitHubPushProof) -> GitHubPushProof:
+        """Append actual-child/observed corroboration under the unchanged authoritative binding."""
+        session_id = proof.binding.session_id
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.GitHubSessionBindingRow, session_id)
+            session = await db_session.get(db_models.Session, session_id)
+            if row is None or row.native_target_json is None:
+                raise GitHubBindingRefused(GitHubBindingRefusal.ACTOR_UNBOUND)
+            if session is None or session.closed_at is not None or session.deleted_at is not None:
+                raise GitHubBindingRefused(GitHubBindingRefusal.SESSION_UNAVAILABLE)
+            binding = GitHubSessionBinding.model_validate_json(row.binding_json)
+            target = GitHubWorkTarget.model_validate_json(row.native_target_json)
+            project = resolve_owning_checkout(Path(session.project_path)) if session.project_path else None
+            if (
+                binding != proof.binding
+                or target != proof.target
+                or session.role != binding.role.value
+                or target.work_item != session.working_slug
+                or project is None
+                or resolve_owning_checkout(target.project_path) != project
+                or not target.branch
+                or not target.base
+                or target.branch == target.base
+                or proof.ref != _HEADS + target.branch
+                or proof.before == proof.after
+            ):
+                raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+            existing = _PUSH_PROOFS_ADAPTER.validate_json(row.push_proofs_json)
+            if proof in existing:
+                return proof
+            statement = (
+                update(db_models.GitHubSessionBindingRow)
+                .where(
+                    db_models.GitHubSessionBindingRow.session_id == session_id,
+                    db_models.GitHubSessionBindingRow.binding_json == row.binding_json,
+                    db_models.GitHubSessionBindingRow.native_target_json == row.native_target_json,
+                    func.json_valid(db_models.GitHubSessionBindingRow.push_proofs_json) == 1,
+                    func.json_type(db_models.GitHubSessionBindingRow.push_proofs_json) == _JSON_ARRAY,
+                )
+                .values(
+                    push_proofs_json=func.json_insert(
+                        db_models.GitHubSessionBindingRow.push_proofs_json,
+                        _MUTATION_APPEND_PATH,
+                        func.json(proof.model_dump_json()),
+                    )
+                )
+                .execution_options(synchronize_session=False)
+            )
+            result = await db_session.exec(statement)
+            if result.rowcount != 1:
+                raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+            await db_session.commit()
+        return proof
 
     async def get_github_session_binding(self, session_id: str) -> GitHubSessionBinding | None:
         """Read the durable assignment without selecting another actor."""
