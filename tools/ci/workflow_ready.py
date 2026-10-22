@@ -408,7 +408,9 @@ def _claim_held_ready(
         reasonone_credit = "result names the mapped W4 session and public note"
     else:
         _fail(f"reasonone returned neither the approved pending nor claimed outcome: {result!r}")
-    _startup_record, startup_launch, _startup_role = _startup(flow, w4, ROLE_WORK, flow_module.PROC_WORK)
+    _startup_record, startup_launch, _startup_role = _startup(
+        flow, w4, ROLE_WORK, flow_module.PROC_WORK, activation=True
+    )
     _actor_delta(flow, baseline, {first, second, w4}, "B7 reasonone")
     record = flow.session_record(w4)
     if record.get(FIELD_ROLE) != ROLE_WORK or record.get("title") != f"{ROLE_WORK} {flow_module.ITEM}":
