@@ -32,9 +32,10 @@ present, with explicit null clearing the binding; an absent key leaves it
 unchanged. An unchanged metadata update or an update for a missing session is a
 successful no-op.
 
-Native metadata updates already accepted into the outbox may be applied after
-session close, preserving the binding needed for revival; other hook events for
-closed sessions remain ignored.
+Closed sessions still receive the effects of `checkpoint-seen`,
+`native-metadata-update`, and `native-session-refresh` outbox entries; ordinary
+hook events for closed sessions remain ignored. A late native-metadata update
+preserves the binding needed for revival.
 
 ## Canonical fields
 
