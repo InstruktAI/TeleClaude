@@ -62,7 +62,7 @@ Then that person receives it on their routed channel
 And nobody else receives it
 ```
 
-#### UC-PAM3: A system-rooted session's unnamed message reaches every platform admin
+#### UC-PAM3: A system-rooted session can message the platform admins
 
 ```gherkin
 Given an agent session running under system authority
@@ -72,18 +72,18 @@ Then each admin receives it on their own routed channel
 And the agent is told which admins received it and on which channel
 ```
 
-#### UC-PAM4: A default recipient that resolves to nobody is refused
-
-#### UC-PAM5: An agent learns which admins received its message
-
 ```gherkin
-Scenario: Report partial delivery to platform admins
+Scenario: Partial delivery still reaches each available admin
   Given an agent session runs under system authority
   And at least one platform admin is reachable and another is not
   When the agent sends a person-addressed message without naming a recipient
   Then every reachable admin receives the message on their own channel
   And the send succeeds while naming admins who were not reached and why
 ```
+
+#### UC-PAM4: A default recipient that resolves to nobody is refused
+
+#### UC-PAM5: An agent learns which admins received its message
 
 #### UC-PAM6: Reaching no admin fails the send
 
