@@ -549,6 +549,7 @@ jobs:
     outputs:
       artifact_id: ${{ steps.candidate_upload.outputs.artifact-id }}
       artifact_digest: ${{ steps.candidate_upload.outputs.artifact-digest }}
+      artifact_manifest_sha256: ${{ steps.prepared_manifest.outputs.artifact_manifest_sha256 }}
       candidate_version: ${{ steps.candidate_version.outputs.version }}
       candidate_sha: ${{ steps.prepare_auto.outputs.candidate_sha || steps.prepare_manual.outputs.candidate_sha }}
       candidate_tree_sha: ${{ steps.prepare_auto.outputs.candidate_tree_sha || steps.prepare_manual.outputs.candidate_tree_sha }}
@@ -653,78 +654,176 @@ jobs:
         shell: bash
         run: |
           set +e
-          telec code lint --all > "$RUNNER_TEMP/candidate-lint.log" 2>&1
+          telec code lint --all > "$RUNNER_TEMP/release-candidate/candidate-lint.log" 2>&1
           result=$?
-          cat "$RUNNER_TEMP/candidate-lint.log"
+          cat "$RUNNER_TEMP/release-candidate/candidate-lint.log"
           echo "exit_code=$result" >> "$GITHUB_OUTPUT"
           if [ "$result" -eq 0 ] && [ -z "$(git status --porcelain)" ]; then exit 0; fi
           exit 1
-      - name: Run full runtime acceptance on the frozen candidate
-        id: runtime_acceptance
-        if: ${{ always() && (steps.prepare_auto.outcome == 'success' || steps.prepare_manual.outcome == 'success') }}
-        continue-on-error: true
-        timeout-minutes: 65
+      - name: Detect retained candidate files
+        id: candidate_files
+        if: always()
+        shell: bash
+        run: tools/ci/detect_release_artifacts.sh file "$RUNNER_TEMP/release-candidate/candidate-identity.json"
+      - name: Manifest the prepared candidate without executing acceptance
+        id: prepared_manifest
+        if: ${{ always() && steps.candidate_files.outputs.present == 'true' }}
+        run: uv run python -m tools.ci.release_stage write-artifact-manifest --root "$RUNNER_TEMP/release-candidate"
+      - name: Upload immutable prepared candidate and lint result
+        id: candidate_upload
+        if: ${{ always() && steps.candidate_files.outputs.present == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-prepared-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-candidate
+          if-no-files-found: error
+          retention-days: 90
+      - name: Confirm candidate artifact identity
+        if: ${{ always() && steps.candidate_upload.outcome == 'success' }}
         env:
-          PYTHONPATH: ${{ github.workspace }}
-          CANDIDATE_SHA: ${{ steps.prepare_auto.outputs.candidate_sha || steps.prepare_manual.outputs.candidate_sha }}
-          CANDIDATE_TREE_SHA: ${{ steps.prepare_auto.outputs.candidate_tree_sha || steps.prepare_manual.outputs.candidate_tree_sha }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/release-candidate"
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          test "$(git rev-parse 'HEAD^{tree}')" = "$CANDIDATE_TREE_SHA"
-          set +e
-          uv run --no-project --python 3.12 python -P tools/ci/runtime_acceptance.py \
-            --profile full \
-            --root "$GITHUB_WORKSPACE" \
-            --source-revision "$CANDIDATE_SHA" \
-            --source-tree "$CANDIDATE_TREE_SHA" \
-            --report "$RUNNER_TEMP/release-candidate/runtime-acceptance-report.json"
-          result=$?
-          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
-          exit "$result"
-      - name: Verify the runtime profile left the frozen candidate unchanged
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          uv run python -m tools.ci.release_stage confirm-upload
+          --name "release-prepared-candidate-${{ github.run_id }}-${{ github.run_attempt }}"
+          --artifact-id "${{ steps.candidate_upload.outputs.artifact-id }}"
+          --digest "${{ steps.candidate_upload.outputs.artifact-digest }}"
+
+  runtime-acceptance:
+    name: Full runtime acceptance in a fresh credential-free job
+    needs: [release-analysis, candidate]
+    if: ${{ !cancelled() && needs.candidate.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    outputs:
+      artifact_id: ${{ steps.runtime_upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.runtime_upload.outputs.artifact-digest }}
+      artifact_manifest_sha256: ${{ steps.runtime_manifest.outputs.artifact_manifest_sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.release-analysis.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: false
+      - name: Install existing controller dependencies
+        run: uv sync --frozen --group dev --no-install-project
+      - name: Receive only the exact prepared artifact through native Actions transport
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          artifact-ids: ${{ needs.candidate.outputs.artifact_id }}
+          path: ${{ runner.temp }}/release-prepared-candidate
+      - name: Verify the prepared inventory and byte identities
+        run: >-
+          uv run python -m tools.ci.release_stage verify-artifact-manifest
+          --root "$RUNNER_TEMP/release-prepared-candidate"
+          --manifest-sha256 "${{ needs.candidate.outputs.artifact_manifest_sha256 }}"
+      - name: Select the exact bundled candidate
+        run: >-
+          uv run python -m tools.ci.release_stage prepare-proof-checkout
+          --candidate "$RUNNER_TEMP/release-prepared-candidate/candidate-identity.json"
+          --bundle "$RUNNER_TEMP/release-prepared-candidate/candidate.bundle"
+      - name: Run the existing full profile directly on this hosted VM
+        timeout-minutes: 65
+        run: >-
+          uv run --no-project --python 3.12 python -P tools/ci/runtime_acceptance.py
+          --profile full --root "$GITHUB_WORKSPACE"
+          --source-revision "${{ needs.candidate.outputs.candidate_sha }}"
+          --source-tree "${{ needs.candidate.outputs.candidate_tree_sha }}"
+          --report "$RUNNER_TEMP/release-runtime-acceptance/runtime-acceptance-report.json"
+      - name: Verify the full profile left the candidate unchanged
         if: always()
         env:
-          CANDIDATE_SHA: ${{ steps.prepare_auto.outputs.candidate_sha || steps.prepare_manual.outputs.candidate_sha }}
-          CANDIDATE_TREE_SHA: ${{ steps.prepare_auto.outputs.candidate_tree_sha || steps.prepare_manual.outputs.candidate_tree_sha }}
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.candidate_sha }}
+          CANDIDATE_TREE_SHA: ${{ needs.candidate.outputs.candidate_tree_sha }}
         run: |
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test "$(git rev-parse 'HEAD^{tree}')" = "$CANDIDATE_TREE_SHA"
           git diff --exit-code
           git diff --cached --exit-code
           test -z "$(git ls-files --others --exclude-standard)"
-      - name: Detect retained candidate files
-        id: candidate_files
+      - name: Manifest only the named report and diagnostics
+        id: runtime_manifest
         if: always()
-        shell: bash
-        run: tools/ci/detect_release_artifacts.sh file "$RUNNER_TEMP/release-candidate/candidate-identity.json"
-      - name: Bind lint result to the committed candidate
-        if: ${{ always() && steps.candidate_files.outputs.present == 'true' }}
-        env:
-          LINT_SUCCEEDED: ${{ steps.lint.outcome == 'success' }}
-        run: |
-          args=(--candidate "$RUNNER_TEMP/release-candidate/candidate-identity.json" --log "$RUNNER_TEMP/candidate-lint.log" --output "$RUNNER_TEMP/release-candidate/candidate-check.json")
-          args+=(--runtime-report "$RUNNER_TEMP/release-candidate/runtime-acceptance-report.json")
-          if [ "$LINT_SUCCEEDED" = 'true' ]; then args+=(--success); fi
-          if [ "${{ steps.runtime_acceptance.outcome }}" = 'success' ]; then args+=(--runtime-success); fi
-          uv run python -m tools.ci.release_stage record-candidate-check "${args[@]}"
-      - name: Upload immutable candidate and lint result
-        id: candidate_upload
-        if: ${{ always() && steps.candidate_files.outputs.present == 'true' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        run: uv run python -m tools.ci.release_stage write-artifact-manifest --root "$RUNNER_TEMP/release-runtime-acceptance"
+      - name: Retain available acceptance evidence on success or failure
+        id: runtime_upload
+        if: ${{ always() && steps.runtime_manifest.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: release-candidate-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/release-candidate/candidate.bundle
-            ${{ runner.temp }}/release-candidate/candidate-identity.json
-            ${{ runner.temp }}/release-candidate/commit-notes.md
-            ${{ runner.temp }}/release-candidate/candidate-check.json
-            ${{ runner.temp }}/release-candidate/runtime-acceptance-report.json
-            ${{ runner.temp }}/release-candidate/runtime-acceptance-report.json.b13-waiting-kickback.json
+          name: release-runtime-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-runtime-acceptance
           if-no-files-found: error
           retention-days: 90
-      - name: Confirm candidate artifact identity
-        if: ${{ always() && steps.candidate_upload.outcome == 'success' }}
+
+  candidate-finalize:
+    name: Bind successful acceptance to the immutable candidate on a fresh job
+    needs: [release-analysis, candidate, runtime-acceptance]
+    if: ${{ !cancelled() && needs.candidate.result == 'success' && needs.runtime-acceptance.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      artifact_id: ${{ steps.candidate_upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.candidate_upload.outputs.artifact-digest }}
+      candidate_version: ${{ needs.candidate.outputs.candidate_version }}
+      candidate_sha: ${{ needs.candidate.outputs.candidate_sha }}
+      candidate_tree_sha: ${{ needs.candidate.outputs.candidate_tree_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.release-analysis.outputs.source_sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: false
+      - name: Install existing finalization dependencies without running the candidate
+        run: uv sync --frozen --group dev --no-install-project
+      - name: Verify the original prepared artifact through its recorded identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          uv run python -m tools.ci.release_stage download-artifact
+          --name "release-prepared-candidate-${{ github.run_id }}-${{ github.run_attempt }}"
+          --artifact-id "${{ needs.candidate.outputs.artifact_id }}"
+          --digest "${{ needs.candidate.outputs.artifact_digest }}"
+          --manifest-sha256 "${{ needs.candidate.outputs.artifact_manifest_sha256 }}"
+          --destination "$RUNNER_TEMP/release-prepared-download"
+      - name: Verify evidence from the successful acceptance job
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          uv run python -m tools.ci.release_stage download-artifact
+          --name "release-runtime-acceptance-${{ github.run_id }}-${{ github.run_attempt }}"
+          --artifact-id "${{ needs.runtime-acceptance.outputs.artifact_id }}"
+          --digest "${{ needs.runtime-acceptance.outputs.artifact_digest }}"
+          --manifest-sha256 "${{ needs.runtime-acceptance.outputs.artifact_manifest_sha256 }}"
+          --destination "$RUNNER_TEMP/release-runtime-download"
+      - name: Validate the full report and compose the existing candidate proof artifact
+        run: >-
+          uv run python -m tools.ci.release_stage finalize-runtime-candidate
+          --prepared-directory "$RUNNER_TEMP/release-prepared-download/files"
+          --runtime-directory "$RUNNER_TEMP/release-runtime-download/files"
+          --output-directory "$RUNNER_TEMP/release-candidate"
+          --success --runtime-success
+      - name: Upload the same candidate/report handoff consumed by installer proof and publication
+        id: candidate_upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-candidate
+          if-no-files-found: error
+          retention-days: 90
+      - name: Confirm the finalized candidate artifact identity
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >-
@@ -735,8 +834,8 @@ jobs:
 
   installer-proof:
     name: Prove the exact candidate on hosted macOS
-    if: ${{ !cancelled() && needs.candidate.result == 'success' }}
-    needs: [release-analysis, candidate]
+    if: ${{ !cancelled() && needs.candidate-finalize.result == 'success' }}
+    needs: [release-analysis, candidate-finalize]
     runs-on: macos-latest
     timeout-minutes: 20
     permissions:
@@ -771,8 +870,8 @@ jobs:
         run: >-
           uv run python -m tools.ci.release_stage download-artifact-exact
           --name "release-candidate-${{ github.run_id }}-${{ github.run_attempt }}"
-          --artifact-id "${{ needs.candidate.outputs.artifact_id }}"
-          --digest "${{ needs.candidate.outputs.artifact_digest }}"
+          --artifact-id "${{ needs.candidate-finalize.outputs.artifact_id }}"
+          --digest "${{ needs.candidate-finalize.outputs.artifact_digest }}"
           --destination "$RUNNER_TEMP/release-candidate-download-${{ github.run_id }}-${{ github.run_attempt }}"
           --files candidate.bundle candidate-identity.json commit-notes.md candidate-check.json runtime-acceptance-report.json
       - name: Keep captured source as local main and select candidate
@@ -838,7 +937,7 @@ jobs:
     if: >-
       ${{
         !cancelled() &&
-        needs.candidate.result == 'success' &&
+        needs.candidate-finalize.result == 'success' &&
         needs.installer-proof.result == 'success' &&
         (
           (
@@ -853,7 +952,7 @@ jobs:
           )
         )
       }}
-    needs: [release-analysis, candidate, installer-proof]
+    needs: [release-analysis, candidate-finalize, installer-proof]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -880,8 +979,8 @@ jobs:
         run: |
           uv run python -m tools.ci.release_stage download-artifact-exact \
             --name "release-candidate-${{ github.run_id }}-${{ github.run_attempt }}" \
-            --artifact-id "${{ needs.candidate.outputs.artifact_id }}" \
-            --digest "${{ needs.candidate.outputs.artifact_digest }}" \
+            --artifact-id "${{ needs.candidate-finalize.outputs.artifact_id }}" \
+            --digest "${{ needs.candidate-finalize.outputs.artifact_digest }}" \
             --destination "$RUNNER_TEMP/candidate" \
             --files candidate.bundle candidate-identity.json commit-notes.md candidate-check.json runtime-acceptance-report.json
           uv run python -m tools.ci.release_stage download-artifact-exact \
@@ -930,7 +1029,17 @@ jobs:
   release-summary:
     name: Report release outcome
     if: always()
-    needs: [recover-publication, seed-auth, release-analysis, candidate, installer-proof, publish]
+    needs:
+      [
+        recover-publication,
+        seed-auth,
+        release-analysis,
+        candidate,
+        runtime-acceptance,
+        candidate-finalize,
+        installer-proof,
+        publish,
+      ]
     runs-on: ubuntu-24.04
     permissions: {}
     steps:
@@ -950,9 +1059,11 @@ jobs:
           SELECTED_CLASSIFICATION: ${{ needs.release-analysis.outputs.selected_classification }}
           CODEX_FAILURE: ${{ needs.release-analysis.outputs.codex_failure }}
           PUBLICATION_ENABLED: ${{ needs.release-analysis.outputs.publication_enabled }}
-          CANDIDATE_RESULT: ${{ needs.candidate.result }}
-          CANDIDATE_VERSION: ${{ needs.candidate.outputs.candidate_version }}
-          CANDIDATE_SHA: ${{ needs.candidate.outputs.candidate_sha }}
+          PREPARATION_RESULT: ${{ needs.candidate.result }}
+          RUNTIME_RESULT: ${{ needs.runtime-acceptance.result }}
+          CANDIDATE_RESULT: ${{ needs.candidate-finalize.result }}
+          CANDIDATE_VERSION: ${{ needs.candidate-finalize.outputs.candidate_version }}
+          CANDIDATE_SHA: ${{ needs.candidate-finalize.outputs.candidate_sha }}
           PROOF_DIGEST: ${{ needs.installer-proof.outputs.proof_evidence_sha256 }}
           PROOF_ARTIFACT_ID: ${{ needs.installer-proof.outputs.artifact_id }}
           PROOF_ARTIFACT_DIGEST: ${{ needs.installer-proof.outputs.artifact_digest }}
@@ -960,4 +1071,4 @@ jobs:
           PUBLISH_RESULT: ${{ needs.publish.result }}
           RELEASE_URL: ${{ needs.publish.outputs.release_url }}
         run: >-
-          echo "Release summary: operation=$OPERATION recovery=$RECOVERY_RESULT recovered=$RECOVERED recovered_url=$RECOVERED_URL seed=$SEED_RESULT capture=$CAPTURE_STATUS decision=$DECISION_MODE requested_version=$REQUESTED_VERSION analysis=$ANALYSIS_RESULT provider=$SELECTED_PROVIDER classification=$SELECTED_CLASSIFICATION codex_failure=$CODEX_FAILURE publication_enabled=$CHECKED_IN_PUBLICATION_ENABLED candidate=$CANDIDATE_RESULT candidate_version=$CANDIDATE_VERSION candidate_sha=$CANDIDATE_SHA proof=$PROOF_RESULT proof_sha256=$PROOF_DIGEST proof_artifact_id=$PROOF_ARTIFACT_ID proof_artifact_digest=$PROOF_ARTIFACT_DIGEST publish=$PUBLISH_RESULT release_url=$RELEASE_URL"
+          echo "Release summary: operation=$OPERATION recovery=$RECOVERY_RESULT recovered=$RECOVERED recovered_url=$RECOVERED_URL seed=$SEED_RESULT capture=$CAPTURE_STATUS decision=$DECISION_MODE requested_version=$REQUESTED_VERSION analysis=$ANALYSIS_RESULT provider=$SELECTED_PROVIDER classification=$SELECTED_CLASSIFICATION codex_failure=$CODEX_FAILURE publication_enabled=$CHECKED_IN_PUBLICATION_ENABLED preparation=$PREPARATION_RESULT runtime=$RUNTIME_RESULT candidate=$CANDIDATE_RESULT candidate_version=$CANDIDATE_VERSION candidate_sha=$CANDIDATE_SHA proof=$PROOF_RESULT proof_sha256=$PROOF_DIGEST proof_artifact_id=$PROOF_ARTIFACT_ID proof_artifact_digest=$PROOF_ARTIFACT_DIGEST publish=$PUBLISH_RESULT release_url=$RELEASE_URL"

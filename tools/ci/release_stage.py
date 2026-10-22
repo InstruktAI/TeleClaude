@@ -1068,6 +1068,34 @@ def record_candidate_check(
         raise RuntimeError(_DEFAULT_FAILURE)
 
 
+def finalize_runtime_candidate(
+    prepared_directory: Path,
+    runtime_directory: Path,
+    output_directory: Path,
+    lint_succeeded: bool,
+    runtime_succeeded: bool,
+) -> None:
+    """Compose the existing exact-candidate proof artifact after the separate acceptance job succeeds.
+
+    The workflow supplies actual prerequisite job outcomes. Its existing
+    authenticated download and manifest checks precede this local composition;
+    this stage executes no candidate code and invents no replacement proof.
+    """
+    output_directory.mkdir(mode=0o700, parents=True, exist_ok=False)
+    for name in (_BUNDLE_FILENAME, _CANDIDATE_FILENAME, _COMMIT_NOTES_FILENAME):
+        shutil.copyfile(prepared_directory / name, output_directory / name)
+    report = output_directory / _RUNTIME_ACCEPTANCE_REPORT_FILENAME
+    shutil.copyfile(runtime_directory / _RUNTIME_ACCEPTANCE_REPORT_FILENAME, report)
+    record_candidate_check(
+        output_directory / _CANDIDATE_FILENAME,
+        prepared_directory / "candidate-lint.log",
+        report,
+        output_directory / _CANDIDATE_CHECK_FILENAME,
+        lint_succeeded,
+        runtime_succeeded,
+    )
+
+
 def record_proof(
     candidate_path: Path,
     candidate_check_path: Path,
@@ -1379,6 +1407,9 @@ def main(argv: list[str] | None = None) -> int:
     confirm_upload.add_argument("--digest", required=True)
     manifest = commands.add_parser("write-artifact-manifest")
     manifest.add_argument("--root", type=Path, required=True)
+    verify_manifest = commands.add_parser("verify-artifact-manifest")
+    verify_manifest.add_argument("--root", type=Path, required=True)
+    verify_manifest.add_argument("--manifest-sha256", required=True)
     download = commands.add_parser("download-artifact")
     download.add_argument("--name", required=True)
     download.add_argument("--artifact-id", type=int, required=True)
@@ -1409,6 +1440,12 @@ def main(argv: list[str] | None = None) -> int:
     lint_record.add_argument("--output", type=Path, required=True)
     lint_record.add_argument("--success", action="store_true")
     lint_record.add_argument("--runtime-success", action="store_true")
+    finalize_candidate = commands.add_parser("finalize-runtime-candidate")
+    finalize_candidate.add_argument("--prepared-directory", type=Path, required=True)
+    finalize_candidate.add_argument("--runtime-directory", type=Path, required=True)
+    finalize_candidate.add_argument("--output-directory", type=Path, required=True)
+    finalize_candidate.add_argument("--success", action="store_true")
+    finalize_candidate.add_argument("--runtime-success", action="store_true")
     record_proof_parser = commands.add_parser("record-proof")
     record_proof_parser.add_argument("--candidate", type=Path, required=True)
     record_proof_parser.add_argument("--candidate-check", type=Path, required=True)
@@ -1465,6 +1502,7 @@ def _stage_handler(args: argparse.Namespace) -> Callable[[], object]:
         "ensure-provider-attempt": lambda: ensure_provider_attempt(args.path, ProviderName(args.provider)),
         "confirm-upload": lambda: confirm_uploaded_artifact(args.name, args.artifact_id, args.digest),
         "write-artifact-manifest": lambda: write_artifact_manifest(args.root),
+        "verify-artifact-manifest": lambda: verify_artifact_manifest(args.root, args.manifest_sha256),
         "download-artifact": lambda: _download_manifest_command(args),
         "download-artifact-exact": lambda: _download_exact_command(args),
         "select": lambda: finish_inspection(
@@ -1474,6 +1512,9 @@ def _stage_handler(args: argparse.Namespace) -> Callable[[], object]:
         "prepare-proof-checkout": lambda: prepare_proof_checkout(Path.cwd(), args.candidate, args.bundle),
         "record-candidate-check": lambda: record_candidate_check(
             args.candidate, args.log, args.runtime_report, args.output, args.success, args.runtime_success
+        ),
+        "finalize-runtime-candidate": lambda: finalize_runtime_candidate(
+            args.prepared_directory, args.runtime_directory, args.output_directory, args.success, args.runtime_success
         ),
         "record-proof": lambda: record_proof(
             args.candidate,
