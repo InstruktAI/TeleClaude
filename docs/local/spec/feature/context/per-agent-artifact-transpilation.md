@@ -47,7 +47,6 @@ Scenario: Gemini skill is transpiled to Markdown/YAML, not TOML
   Then the Gemini skill transform delegates to the shared frontmatter emitter
   And the output is Markdown with YAML frontmatter (same shape as the Claude skill output)
   And the "hooks" key is removed from the emitted frontmatter
-  And the parameters preamble is rendered into the body as HTML comments
   And the required source name is checked against the skill folder before emission
 ```
 
@@ -109,10 +108,6 @@ Scenario: Per-target skill emission is limited to tier-local packages
 - Skill folders are the runtime identity, and every source `SKILL.md` must declare
   the same `name` plus a non-empty `description`. An upstream heading taxonomy is
   always preserved. Target transforms emit the package under its folder name.
-- The parameter preamble is injected into the artifact body as HTML comments;
-  it is NOT preserved in frontmatter. Downstream consumers that read the
-  Deployed artifact as YAML/TOML alone will NOT see `parameters` — they must
-  also parse the body preamble.
 - Token substitution (`{AGENT_PREFIX}`, `{{agent}}`) happens at the body
   level only — source authors cannot reference the prefix inside frontmatter.
 - Per-agent output directory creation is silent; operators reviewing a diff

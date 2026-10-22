@@ -13,12 +13,12 @@ visibility: 'public'
 
 The hooks-frontmatter transform is a per-agent artifact transpilation rule
 that conditionally preserves or removes the `hooks` key from emitted artifact
-frontmatter based on the target agent. For Claude targets, `hooks` is left
-intact; for Codex and Gemini targets, the key is stripped before frontmatter
-is emitted. This is a STATIC artifact transform owned by the context bounded
-context — it is distinct from the live agent CLI hook installation that
-plumbs runtime hooks into each agent's settings file at project setup
-time (owned by agent_runtime).
+frontmatter based on the target agent. The shared frontmatter filter preserves
+`hooks` for Claude and strips it for Codex and Gemini. Claude skill output is a
+special case: its emitted frontmatter contains `name` and `description`, so it
+does not carry `hooks`. The context owns this artifact transform; agent_runtime
+owns the separate live hook installation into each agent's settings file at
+project setup time.
 
 The two concepts share the word "hooks" but live in different parts of the
 system. Confusing them mixes a documentation/frontmatter concern with a
@@ -51,10 +51,6 @@ runtime plumbing concern.
   frontmatter filter AND the Gemini skill transform explicitly remove
   `hooks`. Either alone would suffice today, but both are wired in so that a
   pipeline refactor cannot accidentally leak `hooks` into Gemini output.
-- No equivalent conditional transform exists for the `parameters` field — it
-  is stripped universally because the preamble-injection step takes
-  ownership of it for every target agent. Per-agent variation applies only
-  to `hooks`.
 - Renaming or aliasing `hooks` in artifact frontmatter would silently bypass
   the per-agent filter. The strip rule keys off the literal `"hooks"` field
   name in metadata.
