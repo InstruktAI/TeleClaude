@@ -254,3 +254,18 @@ to the native caller or the owning sealed/reflection recovery. They supply no
 stale workflow state or actor fallback; the daemon remains available
 (`sdlc/policy/code-quality-practices`). Body rereads do not promise atomic
 commit-instant revision fencing or provider edit-history completeness.
+
+Provider support also bounds native review maintenance. GitHub's review-delete
+endpoint applies only to pending reviews; submitted reviews cannot be deleted.
+A native delete of a submitted COMMENT review therefore refuses, without
+dismissal, emptying its body or changing its review event
+([review endpoints](https://docs.github.com/en/rest/pulls/reviews#delete-a-pending-review-for-a-pull-request)).
+Native diff-review replies require the explicit ID of a top-level review
+comment; GitHub does not support replying to a reply. Reply-to-reply therefore
+refuses rather than walking to another root
+([review-comment endpoints](https://docs.github.com/en/rest/pulls/comments#create-a-reply-for-a-review-comment)).
+
+These limits apply to submitted review objects and diff-review threads in the
+supported-write table. PR issue comments remain in their separate issue-comment
+namespace; the table and canonical envelope section above retain their context
+and source-Delivery distinctions.
