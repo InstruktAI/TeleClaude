@@ -21,7 +21,7 @@ line and through the session_mirrors service's search capability that the
 cross-computer federation layer calls.
 
 The search composes free-text terms (AND-combined), an agent filter
-(`claude`, `codex`, `gemini`, comma-separated, or `all`), an optional
+(`claude`, `codex`, `gemini`, `deepseek`, comma-separated, or `all`), an optional
 computer filter, and a default exclusion of dispatched-worker mirrors
 
 (`is_worker = 0`) that a caller opts out of to search worker sessions

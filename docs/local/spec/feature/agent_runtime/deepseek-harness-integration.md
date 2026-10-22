@@ -78,13 +78,6 @@ Then the guidance and applicable artifacts are available when a DeepSeek session
 
 #### UC-DSH-SEARCH-1: An operator can find a past DeepSeek conversation
 
-```gherkin
-Given an operator wants to find a past DeepSeek conversation
-When they search history for terms with the DeepSeek filter
-Then matching DeepSeek conversations are shown
-And an all-agent search includes those conversations
-```
-
 #### UC-DSH-SCOPE-1: An operator can review a DeepSeek session and its changed paths
 
 ```gherkin
