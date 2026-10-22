@@ -82,15 +82,13 @@ still decides whether a listing that asks for it shows it
 
 ### Use cases
 
-#### UC-DV1: A platform administrator and the system principal see everything
+#### UC-DV1: A platform administrator sees records across subjects and computers
 
 ```gherkin
-Given a person holding the platform administrator role, or an agent session whose lineage roots at the system principal
-When it lists or receives platform data on any computer
-Then every record is eligible, whatever its subject
-And a platform administrator who is not the system principal does not receive another person's private local documentation
-And records with no subject are included
-And records whose subject the showing computer does not know are included
+Given a person holds the platform administrator role
+When they list or receive platform data on any computer
+Then they see records for every subject, including records with no subject or a subject the computer does not know
+And they do not see another person's private local documentation
 ```
 
 #### UC-DV2: Everyone else sees exactly the subjects their reach admits
@@ -171,10 +169,9 @@ And any other principal sees it exactly when their own reach admits it
 #### UC-DV13: A company administrator reads the shared documentation in full
 
 ```gherkin
-Given a person who administers a company and holds no platform role
-When an agent session rooted at them reads the platform's shared documentation
-Then every shared snippet is returned at full depth, internal ones included
-And a member of that company below administrator receives only the shared snippets published as public
+Given a person administers a company and is not a platform administrator
+When their agent reads the platform's shared documentation
+Then the full shared documentation is available, including internal snippets
 ```
 
 #### UC-DV14: An unregistered desk visitor reaches what was recorded under their own platform identity

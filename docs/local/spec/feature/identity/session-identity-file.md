@@ -30,18 +30,12 @@ owner-only file permissions.
 #### UC-SIF1: A person has an agent act under their current identity
 
 ```gherkin
-Scenario: Use the identity carried by a person-rooted session
-  Given a registered person has an agent session rooted at their identity
-  When the agent in that session resolves the caller for a TeleClaude command
-  Then it acts as that person with the role the registry holds at that time
+Scenario: The person's agent acts with their current identity
+  Given a person has a TeleClaude session acting for them
+  When their agent uses a TeleClaude command
+  Then it acts as that person with their current role
   And a terminal login does not replace the session identity
-  And a role change takes effect on the next resolution
-
-Scenario: An unregistered lineage has no person role
-  Given a session lineage no longer resolves to a registered person
-  When a process in that session resolves its caller
-  Then no person role is assigned
-  And no terminal login is consulted
+  And after a role change the next command uses the new role
 ```
 
 #### UC-SIF2: A session with system lineage acts as the system

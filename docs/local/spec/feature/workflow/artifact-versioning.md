@@ -9,7 +9,15 @@ visibility: 'public'
 
 The Artifact aggregate inside the `workflow` bounded context persists every Artifact write (PRD, architecture, implementation-plan, etc.) as a content-addressed version. Each write computes the SHA256 digest of the content, appends a new version record, and updates the current-version pointer in place. Previous versions remain addressable by digest so the workflow service can render unified diffs between any two versions on demand.
 
+<!-- planned-change:issue-128 -->
+
 Artifact provenance — the `origin/main` SHA at write time (captured via the workflow's origin-main-sha helper, never local HEAD) and the workspace paths referenced by the artifact body — is captured alongside the digest, but it is stored on the Todo's lifecycle state (the artifact lifecycle stamp), not on the artifact version itself. The artifact records stay narrow: id, slug, name, content, digest, updated_by, timestamps. The lifecycle stamp is the carrier of the extended drift-evidence fields (`upstream_digests`, `owned_snippet_digests`, `referenced_snippet_digests`, `produced_at`) — see `@spec/feature/workflow/drift-detection` for their per-class semantics and the single workflow provenance boundary that populates them.
+
+<!-- change:issue-128 -->
+
+Artifact provenance — the `origin/main` SHA at write time (captured via the workflow's origin-main-sha helper, never local HEAD) and the workspace paths referenced by the artifact body — is captured alongside the digest, but it is stored on the Todo's lifecycle state (the artifact lifecycle stamp), not on the artifact version itself. The artifact records stay narrow: id, slug, name, content, digest, updated_by, timestamps. The lifecycle stamp is the carrier of the extended provenance fields (`upstream_digests`, `owned_snippet_digests`, `referenced_snippet_digests`, `produced_at`), populated by the single workflow provenance boundary.
+
+<!-- /planned-change:issue-128 -->
 
 Removal of an artifact deletes both the current record and the full version history atomically. Artifact kinds are enumerated; the canonical list is enforced at the workflow boundary before any state mutation. Each artifact kind is unique per Todo (one `prd` per slug, one `implementation-plan` per slug, etc.).
 
@@ -311,8 +319,16 @@ And the current report pointer advances to that pass, even when an older report 
 And the verdict stamp binds the current report digest rather than inferring evidence from report content or transcript state
 ```
 
+<!-- planned-change:issue-128 -->
+
 - `integration` — drift analysis reads each artifact's `codebase_sha_at_write` and `referenced_paths` from the Todo's lifecycle state (not from the artifact record) to detect codebase drift since the artifact was authored.
 - `workflow` (state machines) — artifact presence and digests drive lifecycle phase readiness (e.g., a non-empty `prd` digest advances the prepare state machine out of intake).
+
+<!-- change:issue-128 -->
+
+- `workflow` (item lifecycle) — the digest of the item's intent body (`input`) is the body revision that the prepared act names and that work is checked against (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`).
+
+<!-- /planned-change:issue-128 -->
 
 ## Known caveats
 
@@ -344,7 +360,17 @@ And the verdict stamp binds the current report digest rather than inferring evid
   `input` before removing the plan when the only artifacts are `input` and
   `implementation-plan`.
 - Artifact writes against a delivered todo are blocked to keep delivered todos read-only.
+
+<!-- planned-change:issue-128 -->
+
 - The CLI write path constructs the `codebase_sha_at_write` and `referenced_paths` request body by calling the workflow's origin-main-sha helper (the canonical drift anchor per `@spec/feature/workflow/drift-detection`) and the referenced-paths extractor against the invocation cwd; the workflow service uses those if supplied, otherwise recomputes them via the same helper.
+
+<!-- change:issue-128 -->
+
+- The CLI write path constructs the `codebase_sha_at_write` and `referenced_paths` request body by calling the workflow's origin-main-sha helper and the referenced-paths extractor against the invocation cwd; the workflow service uses those if supplied, otherwise recomputes them via the same helper.
+
+<!-- /planned-change:issue-128 -->
+
 - `list_artifacts` returns names only; version metadata (digest, timestamps) requires a follow-up `artifact_versions` call.
 
 ## See Also

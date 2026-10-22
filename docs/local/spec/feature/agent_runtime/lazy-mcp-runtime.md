@@ -101,6 +101,12 @@ Scenario: Use a tool discovered for the person's server
   When the assistant invokes that tool
   Then the result returns to the assistant through the person's own server
   And no other person's server receives the call or result
+
+Scenario: Refuse a personal server whose secret is unavailable
+  Given a person's configured MCP server requires a secret that their own secret store does not safely provide
+  When their assistant asks to use that server
+  Then the server is not started
+  And the refusal names the missing requirement without exposing any secret or another person's identity
 ```
 
 #### UC-LMCP-4: Concurrent callers remain isolated
@@ -118,14 +124,6 @@ Scenario: Use the updated server after its configuration changes
 ```
 
 #### UC-LMCP-7: A person receives a safe refusal when their server secret is unavailable
-
-```gherkin
-Scenario: A person receives a safe refusal when their server secret is unavailable
-  Given a person's configured MCP server needs a secret that their own secret store does not safely provide
-  When their assistant asks to use that server
-  Then the server is not started
-  And the refusal names the missing requirement without exposing any secret or another person's identity
-```
 
 #### UC-LMCP-8: A developer validates MCP registry files offline
 
@@ -153,7 +151,7 @@ Scenario: An operator shares a global service across eligible callers
   And its credentials come from the global TeleClaude environment
 ```
 
-#### UC-LMCP-12: Rotating a personal secret invalidates only its owner lease
+#### UC-LMCP-12: A person rotates a personal MCP secret without interrupting others
 
 ```gherkin
 Scenario: Use the rotated secret on the person's next request

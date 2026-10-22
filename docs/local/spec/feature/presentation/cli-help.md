@@ -60,29 +60,7 @@ namespace help when their work is redirected.
 
 #### UC-CH1: An agent finds help for commands available to its role
 
-```gherkin
-Scenario: A role-bound agent consults help for its focused command set
-  Given an agent session has an assigned role
-  When the agent requests detailed help for its role
-  Then the response describes the commands available to that role
-  And commands outside that role's permitted surface are absent
-
-Scenario: A roleless agent receives a useful refusal
-  Given an agent session has no assigned role
-  When it requests detailed help for a role
-  Then the response explains that no role is assigned
-  And names complete expansion as the available route
-  And warns that complete expansion can produce substantial output
-```
-
 #### UC-CH2: An agent finds help for work outside its focused role
-
-```gherkin
-Given a full-reach agent redirected to work outside its focused role set
-When it requests ordinary or expanded-all help for that namespace
-Then the response includes the requested commands outside its focused set
-And no change of session role is needed to retrieve that help
-```
 
 #### UC-CH3: A restricted agent receives only permitted help
 

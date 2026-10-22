@@ -62,6 +62,13 @@ identify ordinary human spans. A prompt containing such a span receives one
 short, transient context cue recalling stewardship, attunement, and leadership.
 It reinforces human input as steering (`general/policy/human-contract`).
 
+At session start, the transient provider context carries the person's declared
+identity and personalization fields, while excluding per-person credentials,
+subscriptions, and runtime overlay settings. At prompt boundaries, human
+steering cues come only from ordinary human spans. Recognized wake and
+procedure occurrences continue through their existing control-delivery path;
+other platform or runtime artifacts do not become new human input.
+
 Peer-only entries, platform controls, reminders, command loaders, runtime
 artifacts, and empty prompts receive no human cue. Mixed entries retain their
 ordinary human spans for this decision. The cue is composed with any pending
@@ -73,178 +80,35 @@ no stored control payload, extra model turn, approval gate, or transcript read.
 
 #### UC-R1: Claude session_start with additional context injection
 
-```gherkin
-Given Claude Code is configured with a SessionStart hook pointing at the receiver
-And the project has memory snippets and a configured human-in-the-loop person
-When Claude starts a new session and invokes the receiver for SessionStart
-Then the Claude adapter parses the hook payload
-And the receiver maps the event to the canonical agent-session-start hook event
-And the receiver resolves the TeleClaude session id, minting one only when the invocation has neither a managed identity marker nor attachment to a pane on TeleClaude's own tmux server
-And the receiver fetches memory context and the person header for the project
-And emits adapter-formatted additional context (plain text for Claude)
-And persists the native session id and native log file as a native-metadata-update outbox entry
-And enqueues the agent-session-start event into the per-session hook outbox
-And signals success to the agent CLI
-```
-
 #### UC-R2: Stop hook blocked with checkpoint instruction
-
-```gherkin
-Given a Claude session has uncommitted turn-local changes
-Or the session's current HEAD differs from the turn-start anchor SHA on main
-And the persistent checkpoint clear flag is not set
-And the post-commit review flag for the current HEAD has not already fired
-When Claude invokes the receiver with a Stop event after the agent attempts to stop
-Then the receiver maps the event to agent-stop
-And the checkpoint engine evaluates the session row and gathers evidence
-And the engine returns a non-empty checkpoint reason
-And when HEAD advanced on main, the reason includes the post-commit review-gate surfacing action even if no dirty files remain
-And that action instructs the agent to set a conditional five-minute reminder when it recommends review
-And if the reminder fires without a user response approving or declining review, the agent dispatches the commit(s) to review and waits for REVIEW COMPLETE
-And repeated Stop hooks for the same HEAD do not include that action again
-And a checkpoint-seen outbox entry is recorded
-And the Claude adapter formats a block decision carrying the reason
-And the receiver emits the block decision to the agent CLI BEFORE the agent-stop event is enqueued
-And Claude reads the block decision and re-prompts itself with the checkpoint reason
-```
 
 #### UC-R3: Codex subagent event dropped pre-resolution
 
-```gherkin
-Given Codex emits a hook event from a subagent transcript path
-When the receiver detects the event originates from a subagent transcript
-Then the event is dropped BEFORE session resolution runs
-And no session-map entry is written that would bind the subagent native id to the parent session
-And the receiver exits cleanly with no outbox row
-And a subagent-drop debug log is recorded
-```
-
 #### UC-R4: System-injected user_prompt_submit dropped
-
-```gherkin
-Given Claude posts a user-prompt-submit event whose prompt body starts with "[TeleClaude Checkpoint]" or another TeleClaude-owned envelope prefix
-When the receiver processes the event
-Then the receiver recognizes the system-injected envelope
-And the event is dropped (no outbox row written)
-And the per-turn recheck flag is NOT reset
-```
 
 #### UC-R5: Unhandled hook event silently dropped
 
-```gherkin
-Given an agent emits a hook event whose canonical type is outside the receiver-handled set
-When the receiver processes the event
-Then a "dropped unhandled hook event" debug log is emitted
-And the receiver exits cleanly with no outbox row written
-```
-
 #### UC-R6: Invalid payload — best-effort error path
-
-```gherkin
-Given the agent CLI invokes the receiver with a malformed payload
-When the receiver attempts to parse via the adapter
-Then the parse failure is caught
-And the best-effort error helper is invoked with an invalid-payload code
-And inside that helper:
-    - no raw payload data is available for session resolution
-    - cached session lookup returns no result
-    - native-session lookup returns no result
-    - the helper logs "receiver error with unknown session" at error level
-    - NO outbox row is enqueued
-And the receiver exits with a failure status
-
-Given a hypothetical caller path that did supply payload data with a resolvable native session id
-When the error helper runs
-Then session resolution succeeds and an error outbox row IS enqueued
-But the parse-failure path does NOT supply such data, so this branch is not reached on the parse path
-```
 
 #### UC-R7: Receiver runs under the project venv
 
-```gherkin
-Given the receiver is invoked by an agent CLI from an arbitrary working directory where the resolved Python is the system Python
-When the receiver bootstrap resolves the repo root
-And finds a project virtualenv interpreter beneath it
-Then the receiver re-executes under the project virtualenv interpreter
-And continues with the same arguments under that interpreter
-And all project dependencies are importable
-```
-
 #### UC-R8: Managed background child retains parent lineage without becoming a session
-
-```gherkin
-Given an agent process inherits a valid TeleClaude session identity marker
-And the process is not attached to a pane on TeleClaude's own tmux server
-And its hook payload carries a native session id different from the managed primary binding
-When the adapter classifies the invocation as a managed descendant
-Then the receiver resolves the owning TeleClaude session from the marker
-And retains the child native session id and managed-descendant source kind in the hook envelope
-And never mints or authorizes a headless session for that invocation
-And a descendant agent-session-start is dropped before context injection, metadata mutation, and outbox enqueue
-And later handled activity hooks may be forwarded under the owning session
-But the descendant native id and transcript path never replace the managed primary binding
-```
 
 #### UC-R9: Ambiguous marker-bearing invocation fails closed
 
-```gherkin
-Given a hook invocation has a session identity marker that is malformed, stale, or incompatible
-When session resolution cannot prove a live managed owner
-Then the receiver records the managed identity failure
-And drops the event or uses the managed teardown fallback when applicable
-And never enters the headless mint path
-```
-
-#### UC-R10: Antigravity hooks preserve the conversation lifecycle
+#### UC-R10: A person can use one Antigravity conversation with their identity context
 
 ```gherkin
-Given an Antigravity agent starts a new conversation for a configured human
-When the conversation reaches its first model invocation
-Then TeleClaude registers exactly one session start before the model runs
-And the agent receives the complete non-null person identity entry as transient system context
-And that profile is valid, human-readable YAML beneath a single `human` root
-And configured extension fields remain present
-And per-person credentials, subscriptions, and runtime overlay settings are absent
-And the provider receives its documented successful startup response
-When the same execution invokes the model again
-Then TeleClaude emits no session-start or user-prompt event
-And performs no session lookup, checkpoint reset, context injection, or outbox write for that invocation
-And the provider receives its documented neutral response
-When the provider reports a tool invocation
-Then TeleClaude records exactly one tool-activity event for the owning session
-And the provider receives its documented successful tool-hook response
-When the execution loop stops while provider-owned background work remains active
-Then TeleClaude does not evaluate checkpoint obligations
-And does not mark the turn complete, extract final output, or enqueue an agent-stop event
-And the provider receives its documented stop-allowing response
-When Antigravity later stops with all provider-owned background work complete
-Then TeleClaude evaluates checkpoint obligations
-And either returns the documented continuation response or enqueues exactly one agent-stop event
+Given a person starts an Antigravity conversation in their TeleClaude session
+When they continue through model and tool interactions
+Then the conversation carries their configured identity context from startup
+And later activity remains part of the same conversation
+And the session is not reported complete while provider work remains active
 ```
 
 #### UC-R11: Control context uses each native event's model-facing channel
 
-```gherkin
-Given a control payload is pending when an installed agent hook reaches a delivery boundary
-When the receiver composes the provider response
-Then every provider receives a response valid for that native event
-And no provider response contains a null continuation reason
-And Claude and DeepSeek UserPromptSubmit context does not block or swallow the user's prompt
-And Antigravity PreInvocation and PostInvocation context uses injection steps without a decision
-And the delivered context is observable in the agent transcript or the next model turn
-```
-
 #### UC-R12: Native subagent invocation is blocked in a managed Antigravity session
-
-```gherkin
-Given an Antigravity conversation runs as the managed primary of a TeleClaude session
-When it attempts to invoke a provider-native subagent
-Then the invocation is denied before the child execution starts
-And no native child is adopted or forwarded as session activity
-And the owning session's canonical native session id and transcript path remain the primary conversation's
-And the primary conversation's ordinary lifecycle hooks continue to be processed
-And explicitly dispatched TeleClaude worker sessions remain available
-```
 
 ### Cross-context references
 
@@ -280,6 +144,12 @@ And explicitly dispatched TeleClaude worker sessions remain available
   task-notification and system-reminder envelopes. Without this filter,
   agents would treat their own injected prompts as new user input and
   loop.
+- Codex hooks from provider-native subagent transcripts are discarded before
+  session mapping; a child native session id is never associated with its
+  managed parent.
+- Managed Antigravity sessions deny provider-native subagent invocations before
+  child execution. Work requiring a child remains available through an
+  explicitly dispatched TeleClaude worker.
 - All four adapters support hook checkpoints. The continuation response
   differs per provider:
   - Claude → block decision with reason.

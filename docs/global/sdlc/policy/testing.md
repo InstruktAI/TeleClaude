@@ -52,11 +52,20 @@ never blesses a diff its own change produced.
    independent preparation review as the check that the scenario derives from the authorized
    intent rather than from the code that will satisfy it. A later build pass binds it. A test
    is never written by the same pass that authored its scenario — that is grading one's own work and
-   collapses the guarantee. The bug lane, which has no intake, carries one bounded exception: the
+   collapses the guarantee.
+
+   <!-- planned-change:issue-128 -->
+
+   The bug lane, which has no intake, carries one bounded exception: the
    bug's plan phase authors at most one pending regression scenario encoding exactly the reported
    symptom (see `lifecycle/prepare/plan-draft`, bug-scope clamp), and the build pass binds it — the
    author/binder separation holds across the phases. Any scenario beyond that one is invention, not
    the exception.
+
+   <!-- change:issue-128 -->
+
+   <!-- /planned-change:issue-128 -->
+
 3. **The applicable language testing policy owns unit-test eligibility.** It states whether the
    language's compile-time guarantees justify colocated unit tests or whether behavior is verified
    only through functional and smoke tests. Generic testing doctrine does not infer that decision

@@ -20,6 +20,10 @@ resolves the name through typed configuration, then completes that command's
 person-band clearance on the exact directory it will use before any project
 action or daemon request. The name is never treated as a project slug.
 
+For a cleared session-start command, the client carries its resolved caller to
+agent_runtime; session-lifecycle owns the child's stored initiator and principal
+(`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`).
+
 ## Canonical fields
 
 ### Roleless platform caller
@@ -34,45 +38,6 @@ remain with their owning contracts (`general/principle/trust-and-guardrails`).
 #### UC-CCRD1: Platform authority without a system role
 
 ### Use cases
-
-```
-Given an agent inside a session whose resolved system role is `worker`
-And the verb it performs is `telec todo show`
-And the CLI surface allowlist for `todo show` system band contains `worker`
-When command clearance runs
-Then the system band is evaluated and the caller is admitted
-```
-
-```
-Given the same agent, but the verb it performs is `telec sessions start`
-And the CLI surface allowlist for `sessions start` system band does NOT contain `worker`
-When command clearance runs
-Then the caller is refused with a not-permitted failure naming the role and verb
-```
-
-```
-Given an operator at a terminal whose login names a registered person with role `member`
-And the verb they perform is `telec todo prepare`
-And the verb's human band includes admin + member
-When command clearance runs
-Then `member` is evaluated against the human band and the caller is admitted
-```
-
-```
-Given any caller
-And a verb that does not resolve to any known CLI surface entry
-When command clearance runs
-Then the verb resolver returns no match
-And the caller is refused (fail-closed)
-```
-
-```
-Given an agent whose resolved system role is `worker`
-And a verb whose system band is empty but whose human band contains the role of the person the session carries
-When command clearance runs
-Then only the system branch is evaluated
-And the caller is refused — the human band is never consulted for agent callers
-```
 
 #### UC-CCS1: A company administrator works as an administrator in their company's projects
 
@@ -245,14 +210,13 @@ Each command's declaration names the command capability that admits agent caller
 
 The read commands `telec todo list`, `telec todo show`, `telec todo artifacts list`, `telec todo artifacts read`, `telec todo artifacts diff`, `telec bugs list`, and `telec bugs suppressions`, and a `telec history search` or `telec history show` that reads this computer's mirrors, are cleared in the process that runs them, against the same verb allowlist. The caller is the one the identity context's shared caller resolution yields (`local/projects/teleclaude/spec/identity-and-auth` §6): inside a session, the session record its identity document names; outside any session, the person the terminal's login names. The caller's system role is derived from that record by the identity context's system-role derivation, and its person role is the role the people registry holds for its principal when the command runs. A caller that resolves to no person and no system principal is refused before any content is read. A role outside the verb's band is refused with the not-permitted failure naming the role and verb. The gate sends no request to the daemon, so these reads answer while the daemon is not running.
 
-#### UC-CCL1: A read is cleared and answered without the daemon
+#### UC-CCL1: A project maintainer reads their todo list while the daemon is unavailable
 
-```
-Given the daemon's local service is not reachable
-And an agent works inside a session whose record carries the system role `worker`
-When it runs `telec todo list` in a project checkout
-Then the project's todo list is printed
-And no request is sent to the daemon's local service
+```gherkin
+Given a project maintainer's worker agent is in a project checkout
+And the daemon's local service is unavailable
+When the agent requests the project's todo list
+Then the project's current todo list is displayed
 ```
 
 #### UC-CCL2: A caller with no usable identity reads nothing
@@ -279,13 +243,6 @@ invariant 5).
 #### UC-CCA2: A caller with no usable identity asks the daemon nothing
 
 #### UC-CCA3: A cleared command's request carries the caller the client resolved
-
-```
-Given an agent inside a session whose system role admits `telec sessions run`
-When it runs `telec sessions run`
-Then the new session records the agent's session as its initiator
-And the new session carries the principal the agent's session resolves to
-```
 
 #### UC-CCA4: A command naming another computer is authorized there
 

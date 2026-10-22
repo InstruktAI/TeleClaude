@@ -58,14 +58,6 @@ And the worktree home does not replace the live platform environment
 
 #### UC-IAH6: Checkout grading uses the worktree's home
 
-```gherkin
-Given an agent works in a slug worktree whose code differs from the installed checkout
-When the agent runs the quality gate for that worktree
-Then the worktree's code is graded with the tracked configuration in its worktree home
-And no quality step assembles a separate partial home
-And the live home is unchanged
-```
-
 #### UC-IAH7: A missing worktree home is refused
 
 #### UC-IAH8: Releasing the worktree deletes its home

@@ -83,13 +83,22 @@ make surface, and installation reaches the runtime only through it.
   without the first-run guide; and, in the launch profile, a prompt completes a
   turn without a turn error and a turn completes while a hook returns
   additional context.
+  The gate uses a temporary user home and working directory. It removes them,
+  stops its terminal server and terminates every process it starts after either
+  a passing or failing check; its test sessions do not appear in the operator's
+  session list or history.
 - **Run in progress.** Another convergence holds the stack. A run changes
   nothing while another run is in progress. Running DeepSeek sessions are not
   inspected: the runtime and profile packages are replaced in place.
 - **Outcome.** Exactly one of: upgraded, unchanged, rolled back, or rollback
   incomplete. The report names the outcome and the evidence behind it,
   including every library advisory of the adopted set; an unchanged outcome
-  names whether no newer set fits or another run was in progress.
+  names whether no newer set fits or another run was in progress. When no newer
+  set fits, it lists each blocking package, its declared requirement and the
+  version that fails it. Apply or verification failure restores the runtime and
+  every profile's manifest and lock state from the snapshot, and the report
+  names the failed step or check. A rollback-incomplete report lists every part
+  of the stack that still differs from the snapshot.
 
 ### Use cases
 
@@ -106,137 +115,64 @@ And the operator's report lists each package's previous and adopted version
 
 #### UC-DSC2: A runtime release that would cost a plugin is passed over
 
-```gherkin
-Given the newest candidate runtime leaves an installed plugin without a fit
-And an older candidate, still newer than the installed runtime, keeps every installed package fitting
-When an operator runs the DeepSeek stack convergence
-Then the runtime moves to that older candidate
-And every plugin installed before the run is still installed in every profile that held it
-```
-
 #### UC-DSC3: With no consistent newer set the machine stays put and says why
-
-```gherkin
-Given no candidate runtime, the installed one included, keeps every installed package and every required plugin fitting, or the newest set that fits is already installed
-When an operator runs the DeepSeek stack convergence
-Then the runtime, every profile manifest and every profile's lock state are unchanged
-And the operator's report names each blocking package, the requirement it declares, and the version that fails it
-```
 
 #### UC-DSC4: A compatibility exemption is never granted on the operator's behalf
 
-```gherkin
-Given a plugin could load with a candidate runtime only under a vendor compatibility exemption
-When the DeepSeek stack convergence runs
-Then no exemption is granted
-And that plugin counts as not fitting that candidate
-```
-
 #### UC-DSC5: Profiles converge on one reference per plugin
-
-```gherkin
-Given two profiles hold the same registry plugin through different references
-When the DeepSeek stack convergence adopts a set
-Then both profiles reference that plugin through the same registry requirement
-And a plugin installed from a local checkout keeps its local reference
-```
 
 #### UC-DSC6: A verified set is kept
 
-```gherkin
-Given the DeepSeek stack convergence has applied an adopted set
-When every check of the verification gate passes
-Then the adopted set remains installed
-And the operator's report states the outcome as upgraded
-```
-
 #### UC-DSC7: A failed apply or a failed check restores the snapshot
-
-```gherkin
-Given the DeepSeek stack convergence has taken its snapshot and begun changing the machine
-When applying the adopted set fails, or any check of the verification gate fails
-Then the runtime version, every profile manifest and every profile's lock state are restored from the snapshot
-And every profile starts as it did before the run
-And the operator's report states the outcome as rolled back and names the failed step or check
-```
 
 #### UC-DSC8: A restore that cannot complete is reported as such
 
+#### UC-DSC9: An operator can verify the stack without leaving sessions behind
+
 ```gherkin
-Given the DeepSeek stack convergence is restoring its snapshot
-When part of the restore fails
-Then the operator's report states the outcome as rollback incomplete
-And names every part of the stack that differs from the snapshot
+Given an operator runs the DeepSeek stack convergence
+When its verification passes or fails
+Then no process or runtime session started by verification remains
+And no verification session appears in the operator's session list or history
 ```
 
-#### UC-DSC9: Verification leaves nothing behind
+#### UC-DSC10: An operator can finish installation when DeepSeek cannot advance
 
 ```gherkin
-Given the verification gate has run, whether it passed or failed
-When the DeepSeek stack convergence finishes
-Then no working directory, process or runtime session the gate started remains
-And no session started by the gate's turns appears in the operator's session list or history
+Given an operator installs TeleClaude with DeepSeek enabled
+When DeepSeek stack convergence reports unchanged or rolled back
+Then the installation finishes and shows that outcome to the operator
 ```
 
-#### UC-DSC10: Installation reaches the runtime only through convergence
+#### UC-DSC11: A local plugin remains installed during a runtime update
 
 ```gherkin
-Given DeepSeek is enabled as an agent runtime
-When an operator runs the installer
-Then the runtime is installed or moved only through the DeepSeek stack convergence
-And after the installer finishes every profile still holds the set convergence left in place
-And an unchanged or rolled-back outcome is shown to the operator without failing the rest of the installation
-```
-
-#### UC-DSC11: An unpublished local plugin is judged by its own manifest
-
-```gherkin
-Given a profile holds a plugin installed from a local checkout that has no published version
-And its manifest's compatibility requirements hold for a newer candidate runtime
-And every other installed package fits that candidate
-When an operator runs the DeepSeek stack convergence
-Then the runtime moves to that candidate
-And the local plugin stays installed through its local reference
+Given an operator has a locally installed plugin compatible with a newer DeepSeek runtime
+When they run stack convergence
+Then the runtime updates and the local plugin remains installed
 ```
 
 #### UC-DSC12: A profile missing a required plugin gains it within the adopted set
 
-```gherkin
-Given a profile does not hold one of the required plugins
-When the DeepSeek stack convergence adopts a set in which that plugin fits
-Then the profile holds the plugin after the run, at its fitting version or through its local reference
-```
-
 #### UC-DSC13: A run changes nothing while another run is in progress
 
+#### UC-DSC14: An operator can update plugins without changing the runtime
+
 ```gherkin
-Given another DeepSeek stack convergence is in progress
-When an operator or the installer runs the DeepSeek stack convergence
-Then the runtime, every profile manifest and every profile's lock state are unchanged
-And the operator's report states the outcome as unchanged because another run was in progress
+Given an operator has a newer TUI or plugin version compatible with the installed DeepSeek runtime
+When they run stack convergence
+Then the compatible package updates while the runtime stays at its installed release
+And the resulting stack is verified and restored on failure
 ```
 
-#### UC-DSC14: Newer plugin releases are adopted on the installed runtime
+#### UC-DSC15: An operator can prepare a missing DeepSeek launch profile
 
 ```gherkin
-Given the installed runtime is the newest candidate for which every package and required plugin fits
-And a newer published version of the TUI or of an installed plugin fits it
-When an operator runs the DeepSeek stack convergence
-Then the runtime stays at the installed release
-And each profile moves to the newest fitting version of that package
-And the set is verified, and restored on failure, like any adopted set
-```
-
-#### UC-DSC15: A missing launch profile is created within the adopted set
-
-```gherkin
-Given the launch profile does not exist
-And a candidate runtime exists at which the TUI, every required plugin and every installed package fit
-When an operator or the installer runs the DeepSeek stack convergence
-Then the launch profile holds the TUI and every required plugin, at their fitting versions or through their local references
-And the verification gate's checks have passed in it
-And no other profile is created
-And the operator's report states the outcome as upgraded and says the launch profile was created
+Given an operator has an installed DeepSeek runtime without its launch profile
+And the required plugins and TUI fit that runtime
+When they run stack convergence
+Then the launch profile is created and passes the readiness checks
+And the operator is told that the profile was created
 ```
 
 #### UC-DSC16: A machine that has never run DeepSeek becomes startable through installation
@@ -254,41 +190,11 @@ And TeleClaude can start a DeepSeek session in the launch profile with no manual
 
 #### UC-DSC17: The launch profile is created even when nothing else would move
 
-```gherkin
-Given the launch profile does not exist
-And the installed runtime and every installed package are already the newest that fit
-When an operator runs the DeepSeek stack convergence
-Then the runtime stays at the installed release
-And the launch profile is created within an adopted set, verified and restored on failure like any other
-```
-
 #### UC-DSC18: A creation that does not survive leaves no launch profile behind
-
-```gherkin
-Given the launch profile does not exist
-When the DeepSeek stack convergence finds no candidate at which the TUI and every required plugin fit, or applying or verifying the set that creates the launch profile fails and the restore completes
-Then no launch profile exists after the run
-And the runtime and every other profile are as they were before the run
-And the operator's report names the blocking package, or the failed step or check
-```
 
 #### UC-DSC20: A created launch profile that cannot be removed is reported
 
-```gherkin
-Given the DeepSeek stack convergence created the launch profile and is restoring its snapshot
-When removing the created launch profile fails
-Then the operator's report states the outcome as rollback incomplete
-And names the launch profile among the parts of the stack that differ from the snapshot
-```
-
 #### UC-DSC19: An existing launch profile is never recreated or reset
-
-```gherkin
-Given the launch profile exists
-When the DeepSeek stack convergence runs
-Then the launch profile is not recreated, reset or replaced
-And it changes only as the convergence changes every existing profile
-```
 
 ## Known caveats
 

@@ -58,7 +58,7 @@ Then the reflected text matches what the person sent
 
 #### UC-OPD8: Host-pane snapshot timeout during snapshot collection
 
-#### UC-OPD9: New input does not repost the assistant's previous output
+#### UC-OPD9: A person can send new input without seeing the previous response reposted
 
 ```gherkin
 Given a person can already see their assistant's current response

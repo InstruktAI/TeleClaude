@@ -10,14 +10,13 @@ visibility: 'public'
 Four single-purpose send capabilities, one per outbound channel:
 
 - Telegram direct message (text or document with caption)
-- Discord direct message
+- Discord direct message (text or file attachment with accompanying text)
 - WhatsApp Cloud API message
-- Email via Brevo SMTP
+- Email via Brevo SMTP (HTML with optional plain-text alternative and file attachments)
 
 Each is a thin provider-client invocation: read credentials from the typed
 machine-config aggregate (or an explicit per-call argument), validate inputs,
-truncate long content to the
-channel's hard limit (with a warning), submit the message to the
+truncate long content to the channel's hard limit where supported, submit the message to the
 provider, parse the response, and return the provider's message
 identifier (or nothing for SMTP). They are NOT subscribers and NOT
 dispatchers — they are pure delivery primitives that adapter classes
@@ -28,124 +27,45 @@ into per-provider delivery adapters registered for each admin-with-
 credentials at integration service startup. The email helper is called
 directly from the invitation flow to send invitation links.
 
+Telegram text sends disable link previews. Email sends an HTML body with a
+plain-text alternative; when no plain-text body is supplied, it is derived from
+the HTML. Attachments must be existing regular files, and their MIME type is
+inferred from the filename. Telegram, Discord and WhatsApp reject missing
+credentials before provider calls; missing email credentials reach SMTP login
+and surface as a send error. Empty Telegram text without an attachment is
+rejected. Telegram, Discord and WhatsApp truncate long text or captions at the
+provider's hard limit with a warning and do not split messages; email sends the
+complete body. Successful API sends return the provider's message identifier;
+SMTP returns none. Provider failures are surfaced to the caller.
+
 ## Canonical fields
+
+### Client shutdown
+
+A provider client closing after its event loop is already closed logs a warning
+and returns normally; other close errors remain visible to the caller.
 
 ### Use cases
 
 #### UC-MP1: Telegram DM (text)
 
-```gherkin
-Given the Telegram bot token is configured
-When send-telegram-dm is invoked for chat "12345" with text "Hello world"
-Then the Telegram send-message endpoint receives the message with link previews disabled
-And on a successful response the helper returns the message id as a string
-And on text length above 4000 characters: the text is truncated and a warning "message truncated" is logged
-```
-
 #### UC-MP2: Telegram document with caption
-
-```gherkin
-Given send-telegram-dm is invoked for chat "12345" with caption "Caption text" and file "/tmp/report.pdf"
-And the file exists and is a regular file
-When the call runs
-Then the mime type is inferred from the filename ("application/pdf")
-And the Telegram send-document endpoint receives the file as multipart with caption metadata
-And caption is truncated to 1024 characters (Telegram caption limit) with a warning when exceeded
-And on success: returns the message id
-Otherwise (file missing): raises a not-found error
-Otherwise (not a file): raises an invalid-argument error
-```
 
 #### UC-MP3: Discord DM (create-channel-then-send)
 
-```gherkin
-Given the Discord bot token is configured
-When send-discord-dm is invoked for user "user-id-1" with content "hi"
-Then a DM channel is opened with the recipient
-And the message is sent on that channel
-And on success: returns the message id as a string
-And content above 2000 characters is truncated with a warning
-And on a forbidden response from channel creation: raises an error reflecting the API detail (the bot must share a guild with the user — platform limitation, not code)
-```
-
 #### UC-MP9: Discord DM with file attachment
-
-```gherkin
-Given the Discord bot token is configured
-When send-discord-dm is invoked for user "user-id-1" with content "Caption text" and file "/tmp/report.pdf"
-And the file exists and is a regular file
-Then a DM channel is opened with the recipient
-And the file is uploaded as a multipart message on that channel with the content as the accompanying text
-And on success: returns the message id as a string
-Otherwise (file missing): raises a not-found error
-Otherwise (not a file): raises an invalid-argument error
-```
 
 #### UC-MP4: WhatsApp Cloud API send
 
-```gherkin
-Given access token, phone-number id, and API version are provided
-When send-whatsapp-message is invoked for "31612345678" with content "hi"
-Then a WhatsApp Cloud API text message is submitted under the configured phone-number id
-And on success: returns the first message id from the response
-And content above 4096 characters is truncated with a warning
-And on a client or server error response: raises an error with the API error message
-```
-
 #### UC-MP5: Email via Brevo SMTP
-
-```gherkin
-Given the Brevo SMTP credentials and sender email are configured
-When send-email is invoked for "alice@example.com" with subject and HTML body
-Then a multipart "alternative" message is built
-And if a plain-text body is omitted, a fallback is derived from the HTML by stripping tags
-And the SMTP send sequence runs off the main loop: connect, STARTTLS, login, send, close
-And on success: logs "email sent to <addr>: <subject>"
-And on SMTP error: raises an error with the underlying exception chained
-And the configured sender-name env var (default "TeleClaude") becomes the From display name
-```
 
 #### UC-MP10: Email with file attachment
 
-```gherkin
-Given the Brevo SMTP credentials and sender email are configured
-When send-email is invoked with subject, HTML body, and an attachment file path
-And the file exists and is a regular file
-Then a multipart "mixed" message is built wrapping the "alternative" text/HTML part
-And the file is attached with its mime type inferred from the filename
-And the SMTP send sequence is unchanged
-Otherwise (file missing): raises a not-found error
-Otherwise (not a file): raises an invalid-argument error
-And when no attachment is supplied the message shape is the plain "alternative" multipart, unchanged
-```
-
 #### UC-MP6: Missing credentials raise an invalid-argument error
-
-```gherkin
-Given the relevant typed config field or explicit call argument is missing or empty
-When the send capability runs its credential check
-Then it raises an invalid-argument error ("missing <provider> token" or "missing required Brevo SMTP credentials: ...")
-And no provider call is attempted
-```
 
 #### UC-MP7: Empty content rejected
 
-```gherkin
-Given content is empty or whitespace-only and no file is provided (for Telegram)
-When the send capability evaluates inputs
-Then it raises an invalid-argument error ("notification content is empty")
-```
-
 #### UC-MP8: Provider client closed safely across shutdown
-
-```gherkin
-Given the integration service is shutting down and the underlying event loop is closing
-When the per-provider client is closed
-And the close raises an "event loop is closed" runtime error
-Then the helper catches that specific runtime error
-And logs a warning "<provider> client close hit closed loop"
-And returns normally (other runtime errors propagate)
-```
 
 ### Cross-context references
 
@@ -181,9 +101,9 @@ And returns normally (other runtime errors propagate)
 - **Email plain-text fallback is regex stripping**, not a proper HTML →
   text converter. Recipients with text-only mail clients may see
   artifacts.
-- **All helpers truncate at the provider hard limit with a warning**
-  rather than splitting into chained messages. Long bodies risk losing
-  trailing content.
+- **Telegram, Discord and WhatsApp truncate at the provider hard limit with a
+  warning** rather than splitting into chained messages. Email sends the
+  complete body without truncation.
 
 - **No per-helper rate limiting.** A burst of admin notifications can
   hit provider rate limits (especially Discord's per-bot limits). The

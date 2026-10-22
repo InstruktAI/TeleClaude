@@ -48,33 +48,9 @@ to `local/projects/teleclaude/policy/agent-service-control` and never to install
 
 #### UC-LSI1: Installation withdraws the retired docs-watch unit
 
-```gherkin
-Given a host carries a loaded docs-watch launch unit
-When an agent runs the installer on that host
-Then the installer states that it withdrew the docs-watch unit
-And the service manager that owns the unit, asked for it by name in that manager's own scope, answers that it is not loaded
-And the unit's definition file is no longer present
-```
-
 #### UC-LSI2: A host without the unit is left alone
 
-```gherkin
-Given a host carries no docs-watch launch unit
-When an agent runs the installer on that host
-Then the installer states that there was no docs-watch unit to withdraw
-And the service manager that owns the unit answers for it, in that manager's own scope, exactly as it did before the run
-And the run completes successfully
-```
-
 #### UC-LSI3: A withdrawal that cannot complete fails the installation
-
-```gherkin
-Given a host carries a loaded docs-watch launch unit
-And the host's service manager refuses to unload it, or its definition file cannot be removed
-When an agent runs the installer on that host
-Then the installer states the withdrawal failure and names the unit
-And the run exits non-zero rather than stating a successful installation
-```
 
 ## Known caveats
 

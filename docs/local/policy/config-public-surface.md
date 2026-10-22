@@ -8,20 +8,6 @@ visibility: internal
 
 ## Rules
 
-<!-- planned:central-shared-configuration -->
-
-- **Authority scope, execution applicability and editability are separate.**
-  Repository-owned key definitions identify shared cluster/project values under
-  `local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
-  These values have no machine-document or environment-reference write surface;
-  their typed runtime projections retain their consumers' execution
-  applicability. Sensitive shared values are stored through the configuration
-  owner, masked on operator surfaces and resolved internally for runtime use.
-  The generation and environment-reference rules below govern local
-  machine-document fields.
-
-<!-- /planned:central-shared-configuration -->
-
 - Every machine-config field carries an editability **tier**, declared in code on
   the field: `internal` (the default), `public`, or `tui`.
 - **`internal` is the default.** A field with no tier marker is internal —
@@ -68,13 +54,6 @@ visibility: internal
   members.
 
 ## Rationale
-
-<!-- planned:central-shared-configuration -->
-
-One shared authority prevents computers from resolving the same setting to
-different values. Separating storage from execution applicability preserves
-local eligibility without manufacturing a second declaration.
-<!-- /planned:central-shared-configuration -->
 
 - Routing mutation through the config context preserves one transaction-wide
   lock and validation-before-replacement authority; direct backing-file edits
