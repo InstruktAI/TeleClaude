@@ -58,14 +58,6 @@ Scenario: Manage the platform through Discord
 
 #### UC-COA5: An operator can manage a project forum while the master handles conversations
 
-```gherkin
-Scenario: Manage a project forum on its owning computer
-  Given a non-master computer owns a project's Discord forum and the master handles conversation entry
-  When an operator uses the forum's administrative controls
-  Then those controls remain available on the owning computer
-  And conversation input remains under the master ownership rule
-```
-
 ### Cross-context references
 
 - **integration** owns provider-boundary input normalization and response
