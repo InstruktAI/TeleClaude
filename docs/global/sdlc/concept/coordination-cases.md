@@ -145,9 +145,20 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 
 ##### NC-04 — Prepare's ordered process-authority beacon
 
+<!-- planned-change:issue-128 -->
+
 - **Evidence available:** Prepare refusal, the process delta and rationale, the human
   decision record or its absence, and current delivery state
   (`sdlc/procedure/lifecycle/prepare/overview`).
+
+<!-- change:issue-128 -->
+
+- **Evidence available:** Prepare refusal, the process delta and rationale, the human
+  decision record or its absence, and current delivery state
+  (`sdlc/procedure/lifecycle/prepare/overview-v2`).
+
+<!-- /planned-change:issue-128 -->
+
 - **Ownership:** Human owns only a consequence on the closed list of
   `general/policy/human-contract` that the process delta carries
   (`sdlc/policy/process-change-authority`); Prepare Orchestrator presents that
@@ -197,9 +208,20 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 
 ##### NC-07 — Idle Work Orchestrator on unfinished work
 
+<!-- planned-change:issue-128 -->
+
 - **Evidence available:** live Work Orchestrator, nonterminal slug, last state-machine
   output, relevant artifacts/child state, and terminal-handoff/recovery contracts in
   `sdlc/procedure/lifecycle/work/overview`.
+
+<!-- change:issue-128 -->
+
+- **Evidence available:** live Work Orchestrator, nonterminal slug, last state-machine
+  output, relevant artifacts/child state, and terminal-handoff/recovery contracts in
+  `sdlc/procedure/lifecycle/work/overview-v2`.
+
+<!-- /planned-change:issue-128 -->
+
 - **Ownership:** Work Orchestrator judges and executes its next work/recovery act; the
   Work state machine owns phase state.
 - **Coordinator:** idle is positive evidence of unfinished work, not by itself of
@@ -357,6 +379,8 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   watching only an in-session handoff until work-produced evidence shows uptake or a
   grounded contract state explains the wait.
 
+<!-- planned-change:issue-128 -->
+
 ##### NC-17 — Prepared artifact with referenced-path drift
 
 - **Evidence available:** grounding stamps, artifact path references, current path
@@ -370,6 +394,9 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   owner or recovery path exists, preserve the missing path as a mechanism finding.
 - **Stop and settlement:** stop after pointer or unresolved finding. Settle on the
   digest/path-bound `drift-reviewed` verdict and resulting re-entry or continuation.
+
+<!-- change:issue-128 -->
+<!-- /planned-change:issue-128 -->
 
 ##### NC-18 — Declared dependency ordering
 
@@ -402,6 +429,8 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Stop and settlement:** stop after one pointer. Settle when the triage owner records
   a disposition and affected roles act, or grounds why both are intentional.
 
+<!-- planned-change:issue-128 -->
+
 ##### NC-20-a — Deferral overlap before todo creation
 
 - **Evidence available:** deferral entry, current open-todo landscape, suggested
@@ -414,6 +443,9 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   creation check was skipped, point it to the deferral and existing-todo addresses.
 - **Stop and settlement:** stop after one pointer. Settle when the worker records its
   overlap decision and creates, links, or marks no-op accordingly.
+
+<!-- change:issue-128 -->
+<!-- /planned-change:issue-128 -->
 
 ##### NC-20-b — Deferral overlap discovered after creation
 
@@ -483,6 +515,8 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 
 #### Responsibility 5 — Human interface and irreducible decisions
 
+<!-- planned-change:issue-128 -->
+
 ##### NC-27 — Human PRD approval gate
 
 - **Evidence available:** reviewed PRD, Prepare gate state, approval absence, current
@@ -507,6 +541,23 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   orchestrator.
 - **Stop and settlement:** settle when the orchestrator's recorded direction and the
   state machine produce the resulting state.
+
+<!-- change:issue-128 -->
+
+##### NC-28 — Kickback
+
+- **Evidence available:** the reason the spec is wrong or unbuildable, the work
+  driver's read, the prepared spec, the item's commits, current state and delivery
+  record (`sdlc/procedure/lifecycle/work/overview-v2`, Kickback).
+- **Ownership:** the work driver owns the technical kickback decision and performs the
+  kickback act (`sdlc/procedure/lifecycle/work/overview-v2`, Kickback); the lifecycle
+  machine mutates lifecycle state.
+- **Coordinator:** never perform the act, recommend kickback from plausibility, or
+  bypass the driver.
+- **Stop and settlement:** settle when the driver's recorded reason and the lifecycle
+  machine produce the resulting state.
+
+<!-- /planned-change:issue-128 -->
 
 ##### NC-29 — Escalation answered by a governing contract
 
@@ -615,6 +666,8 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 
 ## Why
 
+<!-- planned-change:issue-128 -->
+
 The loaded lifecycle contracts describe how each role _executes_; they do not
 say how an outsider reads its session states. That a work orchestrator alive
 and idle means unfinished work, or that a prepare session parked at the PRD
@@ -622,3 +675,15 @@ gate is waiting correctly, is observer knowledge and is not derivable from
 those contracts — so it is recorded here, once, instead of being re-derived
 each sweep or hand-copied into the procedure. Cases are recognition semantics,
 not a checklist to sweep: most sessions match no case and need nothing.
+
+<!-- change:issue-128 -->
+
+The loaded lifecycle contracts describe how each role _executes_; they do not
+say how an outsider reads its session states. That a work orchestrator alive
+and idle means unfinished work, or that an item waiting on a person with no
+driver is waiting correctly, is observer knowledge and is not derivable from
+those contracts — so it is recorded here, once, instead of being re-derived
+each sweep or hand-copied into the procedure. Cases are recognition semantics,
+not a checklist to sweep: most sessions match no case and need nothing.
+
+<!-- /planned-change:issue-128 -->

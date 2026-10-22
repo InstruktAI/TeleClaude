@@ -46,11 +46,22 @@ Code that wraps, validates, scores, or auto-edits agent free-text output. Most c
 
 ## Enforcement
 
+<!-- planned-change:issue-128 -->
+
 Caught at review. Required-read mounted in:
 
 - `sdlc/procedure/lifecycle/work/build.md` — prevent before writing.
 - `sdlc/procedure/lifecycle/work/review-build.md` — catch in review.
 - `sdlc/procedure/lifecycle/fix-review-findings.md` — prevent re-introduction during fix.
+
+<!-- change:issue-128 -->
+
+Caught at review, in the intelligence-boundaries lane of
+`sdlc/policy/definition-of-done-lanes`. This policy is part of the `sdlc`
+baseline, so every builder carries it before writing and every reviewer carries
+it in review.
+
+<!-- /planned-change:issue-128 -->
 
 The baseline `intelligence-boundaries` principle carries the trigger heuristic; this policy carries the catalog.
 

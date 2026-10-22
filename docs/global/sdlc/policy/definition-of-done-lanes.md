@@ -23,15 +23,15 @@ the requirement contract). They are defined once here and consumed by:
 <!-- planned-change:issue-128 -->
 
 - `sdlc/procedure/lifecycle/work/review-build` — the build reviewer, which **executes** the applicable lanes.
+- `sdlc/procedure/lifecycle/work/review-commits` — the commit reviewer, which executes the same lanes; that procedure resolves the scope lane's intent basis.
+- `sdlc/procedure/lifecycle/prepare/plan-draft` and `.../prepare/review-plan` — the planner and plan reviewer, which **anticipate** the lanes (the plan must pre-satisfy what build-review will check).
 
 <!-- change:issue-128 -->
 
 - `sdlc/procedure/lifecycle/work/overview-v2` — the work driver, which executes the applicable lanes against the item's whole delta before it stamps, and records one line per lane in the stamp's text. It qualifies as the independent reviewer because it did not write the code. It stamps only when no Requirement-Violation, Critical or Important finding is unresolved.
+- `sdlc/procedure/lifecycle/work/review-commits` — the commit reviewer, which executes the same lanes; that procedure resolves the scope lane's intent basis.
 
 <!-- /planned-change:issue-128 -->
-
-- `sdlc/procedure/lifecycle/work/review-commits` — the commit reviewer, which executes the same lanes; that procedure resolves the scope lane's intent basis.
-- `sdlc/procedure/lifecycle/prepare/plan-draft` and `.../prepare/review-plan` — the planner and plan reviewer, which **anticipate** the lanes (the plan must pre-satisfy what build-review will check).
 
 Severity tiers, citation rules, the lane execution gate, and verdict arithmetic
 live in the review procedure, not here — this catalog defines _what each lane
@@ -103,6 +103,8 @@ judgment gates.
 
 ### Lane coverage is reported in full — no silent skips
 
+<!-- planned-change:issue-128 -->
+
 Lane coverage is a complete checklist, not a best-effort scan. The planner, the
 plan reviewer, and the build reviewer each report **one line per lane in the
 catalog above** — marking it satisfied (naming how), unmet (a finding), or `N/A`
@@ -117,6 +119,24 @@ that produce no artifact — `code` Duplication, `paradigm` Component reuse, and
 re-derives, mirrors, or re-implements logic an existing symbol already provides,
 instead of extracting it once and reusing it, is a duplication finding on this
 checklist.
+
+<!-- change:issue-128 -->
+
+Lane coverage is a complete checklist, not a best-effort scan. The work driver,
+in the text of its stamp, and the commit reviewer each report **one line per
+lane in the catalog above** — marking it satisfied (naming how), unmet (a
+finding), or `N/A` (with reason). A catalog lane with no line is itself a
+defect: silence is not coverage.
+
+Deliverable-producing lanes (tests, security, docs, config, browser/UI, ADR) are
+reported by naming the artifact and the commit or diff that delivers it. The
+lanes that produce no artifact — `code` Duplication, `paradigm` Component reuse,
+and `simplify` — are reported against the changed surface itself: the diff. A
+change that re-derives, mirrors, or re-implements logic an existing symbol
+already provides, instead of extracting it once and reusing it, is a
+duplication finding on this checklist.
+
+<!-- /planned-change:issue-128 -->
 
 ### A restriction answers what it no longer covers
 

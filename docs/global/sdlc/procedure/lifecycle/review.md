@@ -222,6 +222,8 @@ points converges one leftover per pass
 (`sdlc/policy/preparation-artifact-quality`). A second edit to the same region
 establishes neither by itself.
 
+<!-- planned-change:issue-128 -->
+
 Review passes are counted within a review cycle. A valid substantive-drift stamp
 ends the current cycle for every review target it invalidates and starts a new
 cycle for each replacement target, counted from zero; phase-wide counters,
@@ -240,6 +242,15 @@ counts from zero while cumulative history is unchanged. Other legacy shapes keep
 a zero offset. This keeps the reported cycle-local count describing the target it
 governs rather than inheriting totals from a boundary that was never persisted
 (`general/principle/grounding`).
+
+<!-- change:issue-128 -->
+
+Review passes are counted within a review cycle; phase-wide counters, reports,
+and verdict evidence remain cumulative. Target or report rewrites remain inside
+the current cycle and reset nothing. This keeps the admitted-pass denominator
+grounded in the target it governs (`general/principle/grounding`).
+
+<!-- /planned-change:issue-128 -->
 
 When a review cycle reaches its configured threshold, the count is reported
 and nothing is refused. The report names the phase, the passes admitted, and the

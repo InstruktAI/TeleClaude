@@ -11,6 +11,8 @@ dispatch:
 
 ## Required reads
 
+<!-- planned-change:issue-128 -->
+
 - @~/.teleclaude/docs/sdlc/concept/coordination-cases.md
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/overview.md
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/overview.md
@@ -22,6 +24,19 @@ dispatch:
 - @~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
 - @~/.teleclaude/docs/general/policy/conflict-resolution.md
 - @~/.teleclaude/docs/general/policy/human-contract.md
+
+<!-- change:issue-128 -->
+
+- @~/.teleclaude/docs/sdlc/concept/coordination-cases.md
+- @~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/overview-v2.md
+- @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/overview-v2.md
+- @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/build-v2.md
+- @~/.teleclaude/docs/sdlc/procedure/lifecycle/integrate.md
+- @~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
+- @~/.teleclaude/docs/general/policy/conflict-resolution.md
+- @~/.teleclaude/docs/general/policy/human-contract.md
+
+<!-- /planned-change:issue-128 -->
 
 ## Goal
 

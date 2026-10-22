@@ -38,5 +38,14 @@ domain intelligence already present in the model.
 
 ## See Also
 
+<!-- planned-change:issue-128 -->
+
 - ~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/intake.md
 - ~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
+
+<!-- change:issue-128 -->
+
+- ~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/intake-v2.md
+- ~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
+
+<!-- /planned-change:issue-128 -->
