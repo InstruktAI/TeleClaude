@@ -11,7 +11,7 @@ from urllib.parse import quote
 
 from githubkit.auth.app import AppAuthStrategy
 from githubkit.cache.mem_cache import MemCacheStrategy
-from githubkit.exception import GitHubException
+from githubkit.exception import GitHubException, RateLimitExceeded
 from githubkit.github import GitHub
 from githubkit_schemas.v2026_03_10.models import AppPermissions, InstallationToken
 from githubkit_schemas.v2026_03_10.types import AppPermissionsType
@@ -19,7 +19,7 @@ from instrukt_ai_logging import get_logger
 from jwt.exceptions import PyJWTError
 from pydantic import SecretStr
 
-from teleclaude.github.accounts import GitHubAccountDirectory, GitHubAccountLookupRefused
+from teleclaude.github.accounts import GitHubAccountDirectory, GitHubAccountLookupRefused, GitHubRateLimitFacts
 from teleclaude.types.github_binding import GitHubActorAssignment, GitHubWorkTarget
 
 logger = get_logger(__name__)
@@ -46,14 +46,16 @@ class GitHubCredentialFailure(StrEnum):
     EXPIRY_UNVERIFIED = "expiry_unverified"
     ACTOR_MISMATCH = "actor_mismatch"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
+    RATE_LIMITED = "rate_limited"
 
 
 class GitHubCredentialRefused(RuntimeError):
     """No credential may be forwarded to a provider child."""
 
-    def __init__(self, reason: GitHubCredentialFailure) -> None:
+    def __init__(self, reason: GitHubCredentialFailure, *, rate_limit: GitHubRateLimitFacts | None = None) -> None:
         super().__init__(reason)
         self.reason = reason
+        self.rate_limit = rate_limit
 
 
 @dataclass(frozen=True)
@@ -198,11 +200,15 @@ async def issue_github_installation_credential(
     except GitHubCredentialRefused as error:
         logger.warning(_REFUSAL_LOG, error.reason, assignment.app_id, target.repository_id)
         raise
-    except (GitHubException, GitHubAccountLookupRefused, PyJWTError, TimeoutError, ValueError):
+    except (GitHubException, GitHubAccountLookupRefused, PyJWTError, TimeoutError, ValueError) as error:
         # SDK/crypto exceptions can contain request headers or key/parser details.
-        logger.warning(
-            _REFUSAL_LOG, GitHubCredentialFailure.PROVIDER_UNAVAILABLE, assignment.app_id, target.repository_id
-        )
-        raise GitHubCredentialRefused(GitHubCredentialFailure.PROVIDER_UNAVAILABLE) from None
+        rate_limit = None
+        if isinstance(error, RateLimitExceeded):
+            rate_limit = GitHubRateLimitFacts.from_sdk(error)
+        elif isinstance(error, GitHubAccountLookupRefused):
+            rate_limit = error.rate_limit
+        reason = GitHubCredentialFailure.RATE_LIMITED if rate_limit else GitHubCredentialFailure.PROVIDER_UNAVAILABLE
+        logger.warning(_REFUSAL_LOG, reason, assignment.app_id, target.repository_id)
+        raise GitHubCredentialRefused(reason, rate_limit=rate_limit) from None
     finally:
         await cache.acleanup()

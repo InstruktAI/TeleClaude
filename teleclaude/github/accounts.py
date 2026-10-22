@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import timedelta
+from typing import Self
 from urllib.parse import quote
 
 from githubkit.auth.token import TokenAuthStrategy
-from githubkit.exception import GitHubException
+from githubkit.exception import GitHubException, RateLimitExceeded
 from githubkit.github import GitHub
 
 from teleclaude.types.github_account import GitHubAccount
@@ -15,8 +18,25 @@ _EMPTY = ""
 _GITHUB_API_URL = "https://api.github.com/"
 
 
+@dataclass(frozen=True)
+class GitHubRateLimitFacts:
+    """SDK recovery facts without its secret-bearing request/response objects."""
+
+    status_code: int
+    retry_after: timedelta
+
+    @classmethod
+    def from_sdk(cls, error: RateLimitExceeded) -> Self:
+        """Copy only public status and delay; retain no raw SDK exception."""
+        return cls(status_code=error.response.status_code, retry_after=error.retry_after)
+
+
 class GitHubAccountLookupRefused(RuntimeError):
     """The provider lookup yielded no authenticated account fact."""
+
+    def __init__(self, message: str, *, rate_limit: GitHubRateLimitFacts | None = None) -> None:
+        super().__init__(message)
+        self.rate_limit = rate_limit
 
 
 class GitHubAccountDirectory:
@@ -38,6 +58,8 @@ class GitHubAccountDirectory:
             if response.status_code != 200:
                 raise GitHubAccountLookupRefused(_LOOKUP_REFUSED)
             account = GitHubAccount.model_validate(response.json())
+        except RateLimitExceeded as error:
+            raise GitHubAccountLookupRefused(_LOOKUP_REFUSED, rate_limit=GitHubRateLimitFacts.from_sdk(error)) from None
         except (GitHubException, ValueError):
             raise GitHubAccountLookupRefused(_LOOKUP_REFUSED) from None
         if account.login.casefold() != handle.casefold():
