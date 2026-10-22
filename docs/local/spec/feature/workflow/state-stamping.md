@@ -11,6 +11,8 @@ visibility: 'public'
 
 `telec todo stamp` is the single domain surface every caller — human operator, Worker session, or Orchestrator — uses to record a fact about a Todo: a reviewer's Verdict, a human PRD approval, an architecture skip with reason, a drift-reviewed acknowledgment, a worker's `build_complete` claim, or a worker's `finalize_ready` handoff. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit, and the approvals and review managers are the typed owners for approval-shaped and verdict-shaped mutations. The stamp records the fact; the state machine reads the fact on its next dispatch and advances the canonical `lifecycle_phase` accordingly. There is no path that writes Todo state outside this boundary.
 
+A one-shot task-outcome success reconciles lifecycle markers only in the task's own project; it does not read or change another project's documentation. A code-review record retains the reviewed commit, verdict, reviewer identity, and supplied reason. It is also recorded on the Todo claimed by the stamping session, or by its initiating session when the reviewer has no claim; if neither has a claim, no Todo review state is written.
+
 <!-- change:issue-128 -->
 
 `telec todo stamp` is the domain surface through which a caller records a fact about a Todo that no lifecycle act records, such as a human's authorization of a task's plan or a task firing's outcome. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit. There is no path that writes Todo state outside this boundary.
@@ -262,26 +264,7 @@ And an unresolved stamp with an empty or missing reason is refused before any wr
 
 #### UC-WSS23: Task success delivers within the todo's own project
 
-```gherkin
-Given a Todo of kind="task" with a one-shot schedule in a project other than the one the workflow daemon runs from
-When its run session runs "telec todo stamp my-slug --task-outcome success" from within that project
-Then the delivery reconciles the lifecycle markers in that project's documentation
-And no other project's documentation is read or changed by the delivery
-```
-
 #### UC-WSS24: A commit-review stamp lands on the todo its session chain claims
-
-```gherkin
-Given a prepare orchestrator session P holds the lifecycle claim on my-feature
-And P authored commits A and B on main
-And P started a commit-review session R for A and B
-When R runs "telec code stamp A,B --verdict approve"
-Then my-feature's review state records approve for A and for B, with R as the stamping session
-And P's authored-main-commit review gate is discharged
-When P runs "telec code stamp C --verdict approve --reason 'removes a retired section'" for its own commit C
-Then my-feature's review state records approve for C, with P as the stamping session and the reason
-And a stamp by a session whose chain holds no lifecycle claim records nothing on any todo and still discharges that chain's review gate
-```
 
 ### Cross-context references
 
