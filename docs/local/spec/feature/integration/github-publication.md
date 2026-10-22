@@ -71,6 +71,24 @@ platform push or authorize first-push draft creation. Publication does not
 blindly repeat, rewrite or delete the ref to resolve that ambiguity
 (`sdlc/policy/code-quality-practices`).
 
+The isolated Git realization must preserve the existing native protected
+rebase decision using the captured work ref, its matching remote-tracking ref
+(or verified absence), and faithful snapshots of their source reflogs in a
+files-backed repository. If those refs or reflogs are inaccessible,
+inconsistent, or cannot be represented faithfully, publication refuses that
+input. It does not synthesize history, weaken the protection to fast-forward
+only, or replace Git's inclusion decision with a new engine.
+
+Repository-activity reads are bounded observed corroboration, not a provider
+causal receipt, atomic page-set snapshot, or guarantee against historical
+backfill. Each pre-send and post-send traversal must complete within its
+10-page limit and 30-second total phase budget, including its fixed remote-ref
+read. Exceeded bounds, busy or incomplete pagination, and missing, delayed,
+inconsistent or ambiguous evidence remain unverified with any possible remote
+effect reported; they cannot authorize PR creation or replay. A verified empty
+baseline requires a completed traversal. Generic pagination uses the existing
+`gh`/GitHubKit surface; this contract adds no proof framework.
+
 Production App setup and scoped content/push grants are prerequisites supplied
 under the identity contract. A coordination push under an installed human login
 or a correct commit author is not platform-App verification evidence
