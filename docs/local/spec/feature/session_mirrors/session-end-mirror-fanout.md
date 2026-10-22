@@ -51,13 +51,6 @@ Scenario: Read a conversation after the agent finishes a turn
 
 #### UC-SEMF-4: An operator can read the complete conversation after session closure
 
-```gherkin
-Scenario: Read the final conversation after closure
-  Given a human operator closes a session after its final exchange
-  When the operator opens the session's historical conversation
-  Then the conversation includes that final exchange
-```
-
 ## Known caveats
 
 - The agent-stop path runs AFTER the agent_runtime coordinator's per-event
