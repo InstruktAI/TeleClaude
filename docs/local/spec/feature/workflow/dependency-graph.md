@@ -144,9 +144,9 @@ And the resolver reports the candidate as dependency-blocked for the prepare lan
 
 ```gherkin
 Given entries [parent, child] with edge {child: [parent]} and parent in preparation (not yet PREPARED)
-When the prepare orchestrator resolves the next prepare-runnable slug
-Then "child" is skipped because the prepare gate requires "parent" to be PREPARED
-And the resolver reports the candidate as dependency-blocked for the prepare lane
+When the lifecycle runner evaluates the project's todos for preparation
+Then no preparation driver is requested for "child" because the prepare gate requires "parent" to be PREPARED
+And "child" is reported as dependency-blocked for the prepare lane
 ```
 
 <!-- /planned-change:issue-128 -->

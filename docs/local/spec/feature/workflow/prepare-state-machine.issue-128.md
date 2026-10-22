@@ -45,14 +45,14 @@ And the machine never writes lifecycle state for the holder
 And if every direct child is already prepared or delivered, the instruction explains which terminal state the holder reached
 ```
 
-#### UC-WPS6: Task todos bypass the prepare machine
+#### UC-WPS6: A task is prepared by the task lane
 
 ```gherkin
 Given a Todo has kind="task" at lifecycle_phase="task_plan_drafting"
 When an operator runs `telec todo prepare my-task`
-Then the prepare state machine does not own task preparation
-And it routes the operator to the task lane (`sdlc/procedure/lifecycle/task/prepare-task`, dispatched by the lifecycle runner)
-And it requires no PRD, architecture, implementation-plan, or reviewer verdict for the task
+Then it routes the operator to the task lane (`sdlc/procedure/lifecycle/task/prepare-task`, dispatched by the lifecycle runner)
+And the task lane drafts the task's `task-plan` for a human's authorization
+And no preparation driver is started for the task
 ```
 
 ## Known caveats

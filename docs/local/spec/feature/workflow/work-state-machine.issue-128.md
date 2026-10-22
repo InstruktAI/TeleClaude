@@ -38,7 +38,7 @@ And the machine emits "telec reminders set session-departure"
 And the machine does NOT select a ready todo from the roadmap
 ```
 
-#### UC-WSM4: Task execution uses run-task, not Phase B build
+#### UC-WSM4: A prepared, authorized task runs through run-task
 
 ```gherkin
 Given a Todo has kind="task", lifecycle_phase="prepared", a `task-plan`, and a task authorization stamp
@@ -54,7 +54,6 @@ And records or preserves lifecycle_phase="task_running" while the task session i
 Given a task lacks authorization, lacks a `task-plan`, has a future schedule, is held, or already names a live task session as `active_runner`
 When the lifecycle runner evaluates eligible work for the project
 Then it does not start `sdlc/procedure/lifecycle/task/run-task`
-And it leaves the SDLC work state machine untouched
 ```
 
 ```gherkin
@@ -62,7 +61,6 @@ Given `sdlc/procedure/lifecycle/task/run-task` reaches the end of the task-plan
 When it stamps the firing outcome
 Then a `success` firing ends the session — a one-shot delivers the todo, a recurring records the firing and leaves the todo live for its next instant
 And an `error` firing holds the todo and stays alive as the human-inspection beacon
-And it does not stamp build-complete, dispatch review, or enter finalize-ready
 ```
 
 ```gherkin
