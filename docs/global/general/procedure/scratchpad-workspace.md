@@ -21,14 +21,19 @@ contributors; the index is a map to the work, not a session diary
 
 ## Preconditions
 
-- A human or another session needs identified working material as input to
-  active collaboration or a concrete handoff, under the routing contract in
-  `general/spec/scratchpad-workspaces`.
+- For the proposed write, a human or another session needs identified working
+  material as input to active collaboration or a concrete handoff, under the
+  exclusive-use contract in `general/spec/scratchpad-workspaces`.
 - The project provides a version-control-ignored `scratchpad/` at the root of
   its canonical checkout (`general/spec/scratchpad-workspaces`).
 
 ## Steps
 
+0. **Establish the shared purpose before every write.** Identify the human or
+   session that needs the proposed material and the collaboration or handoff it
+   serves. Apply the exclusive-use contract in
+   `general/spec/scratchpad-workspaces`; proceed only when the proposed material
+   meets it. Reassess updates to an existing workspace by the same criterion.
 1. **Join before creating.** List `scratchpad/` for a workspace on the same
    topic — a peer's, or an earlier pass. Join it when it exists; one activity has
    one shared workspace. Otherwise create the directory the spec names. Publish

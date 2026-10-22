@@ -13,14 +13,17 @@ remains non-authoritative (`general/principle/attunement`).
 
 ## Canonical fields
 
-- **Route by intended reader.** By default, regular planning, reasoning, notes, experiments
+- **Exclusive use, assessed per write.** A project scratchpad holds only
+  identified material a human or another session needs as input to active
+  collaboration or a concrete handoff. Any other use is forbidden. This boundary
+  applies to every write, including updates in an existing shared workspace.
+  Personal continuity, including preservation against context loss, does not
+  establish a shared-input need. Regular planning, reasoning, notes, experiments
   and disposable probes stay in the agent's own environment, using its native
-  planning and temporary-file facilities. A project scratchpad holds identified
-  material a human or another session needs as input to active collaboration or
-  a concrete handoff. Task length, complexity, human presence, or having a
-  reviewer alone does not establish that need. For an implementation review,
-  the shared input can be the commit, governing contract and necessary evidence;
-  the agent's working notes remain local.
+  planning and temporary-file facilities. Task length, complexity, human
+  presence, or having a reviewer alone does not establish that need. For an
+  implementation review, the shared input can be the commit, governing contract
+  and necessary evidence; the agent's working notes remain local.
 - **Required artifacts keep their owner.** Plans, diagnoses, review findings
   and other deliverables required by a workflow use that workflow's canonical
   artifact store, including while they are drafts. A shared scratchpad holds
