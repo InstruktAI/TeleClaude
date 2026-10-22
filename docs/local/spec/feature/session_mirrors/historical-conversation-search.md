@@ -122,7 +122,6 @@ Scenario: Identify a result attributed to a TeleClaude session
   Given an operator reviews a history result attributed to a TeleClaude session
   When the operator inspects its identifier
   Then the result displays that TeleClaude id labelled as such
-  And that id remains the address across the session's full transcript chain and after runtime closure or soft deletion
 
 Scenario: Identify a result with no session attribution
   Given an operator reviews a history result with no TeleClaude session association
