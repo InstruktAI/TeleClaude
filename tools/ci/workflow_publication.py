@@ -128,22 +128,13 @@ def file_body(source: str) -> str:
     return _text(parts[2]).strip() if len(parts) == 3 else ""
 
 
-def classify_bodies(
-    pending: Mapping[str, str], current: Mapping[str, str], files: Mapping[str, str]
-) -> tuple[str, str]:
-    """Apply the original publication generation classifier to its already-read bodies."""
+def classify_bodies(pending: Mapping[str, str], current: Mapping[str, str]) -> tuple[str, str]:
+    """Classify public body parity; eligibility alone does not bind a candidate commit."""
     if all(current[identity] == pending[identity] for identity in FOLD_IDS):
         return GENERATION_FIXTURE, "all four current bodies equal the pending bodies"
-    if all(current[identity] != pending[identity] and current[identity] == files[identity] for identity in FOLD_IDS):
-        return GENERATION_CANDIDATE, "all four current bodies equal the candidate live files and differ from pending"
-    detail = {
-        identity: {
-            "equals_pending": current[identity] == pending[identity],
-            "equals_candidate_file": current[identity] == files[identity],
-            "first_difference": _first_difference(current[identity], files[identity]),
-        }
-        for identity in FOLD_IDS
-    }
+    if all(current[identity] != pending[identity] for identity in FOLD_IDS):
+        return GENERATION_CANDIDATE_ELIGIBLE, "all four current bodies differ from pending"
+    detail = {identity: {"equals_pending": current[identity] == pending[identity]} for identity in FOLD_IDS}
     return GENERATION_INCONSISTENT, repr(detail)
 
 
@@ -497,34 +488,38 @@ class Publication:
     def classify_generation(self) -> tuple[str, str]:
         """The installed generation from public reads alone, and the evidence for it.
 
-        Fixture generation: all four current bodies equal the pending ones. Candidate generation: all four differ from
-        the pending bodies and equal the candidate checkout's live files. Anything else is inconsistent.
+        Fixture generation: all four current bodies equal pending. All four differing is candidate-eligible only;
+        the candidate commit is bound by this case's own publication. Anything else is inconsistent.
         """
         pending = {identity: self.body_of(identity, pending=True) for identity in FOLD_IDS}
         current = {identity: self.body_of(identity, pending=False) for identity in FOLD_IDS}
-        files = {identity: self._file_body(identity) for identity in FOLD_IDS}
-        return classify_bodies(pending, current, files)
+        return classify_bodies(pending, current)
 
     def release_candidate_files(self) -> None:
         """Take the candidate\'s live bodies from its checkout, so a restoration can be verified from the start."""
         self.live_bodies = {identity: self._file_body(identity) for identity in FOLD_IDS}
 
     def ensure_candidate(self) -> str:
-        """Own the starting generation: reuse nothing, restore the candidate first when the fold is installed.
-
-        A `prepare` is never issued before this has verified the candidate generation by public reads. A fixture
-        generation is restored (the candidate checkout published through the supported entry point) and verified; an
-        inconsistent one stops the case as a binding failure.
-        """
+        """Bind the starting generation to the recorded candidate through an owned publication before any prepare."""
         state, evidence = self.classify_generation()
         path = f"generation {state}: {evidence}"
-        if state == GENERATION_FIXTURE:
-            self.attempted = True  # the attempt is owned before the bounded command that may exchange the generation
-            self._publish(self._fresh_copy(self.source_root, "ensure"))
-            state, evidence = self.classify_generation()
-            path += f"; restored the candidate, then generation {state}: {evidence}"
+        if state == GENERATION_INCONSISTENT:
+            self.note("generation-path", path)
+            raise creation.binding_failure(DETAIL_GENERATION.format(path=path))
+        copy = self._fresh_copy(self.source_root, "ensure")
+        copy_head = self._run(
+            (GIT, "rev-parse", "HEAD"), copy, CLONE_TIMEOUT_SECONDS, what="git rev-parse candidate copy HEAD"
+        ).output.strip()
+        if copy_head != self.candidate.split()[1]:
+            raise creation.binding_failure(
+                DETAIL_IDENTITY_MOVED.format(before=self.candidate, after=f"copy commit {copy_head}")
+            )
+        self.attempted = True  # a failed invocation may already have exchanged the generation
+        self._publish(copy)
+        state, evidence = self.classify_generation()
+        path += f"; published candidate {copy_head}, then generation {state}: {evidence}"
         self.note("generation-path", path)
-        if state != GENERATION_CANDIDATE:
+        if state != GENERATION_CANDIDATE_ELIGIBLE:
             raise creation.binding_failure(DETAIL_GENERATION.format(path=path))
         return path
 
@@ -665,12 +660,18 @@ class Publication:
         return copy
 
     def _publish(self, checkout: Path) -> None:
-        self._run(
+        outcome = self._run(
             (UV, "run", "--project", str(self.source_root), "--no-sync", "python", "-m", INSTALL_MODULE),
             checkout,
             PUBLISH_TIMEOUT_SECONDS,
             what="install_publication",
         )
+        if outcome.diagnostics:
+            raise creation.binding_failure(
+                DETAIL_COMMAND.format(
+                    command="install_publication", status=outcome.exit_status, output=outcome.diagnostics
+                )
+            )
 
     def publish(self) -> None:
         """B-P6: publish the fold. The attempt is recorded first: a bounded command that fails may have exchanged it."""
@@ -710,12 +711,6 @@ class Publication:
         return [] if after == self.candidate else [DETAIL_IDENTITY_MOVED.format(before=self.candidate, after=after)]
 
 
-def _first_difference(left: str, right: str) -> str:
-    """Where two texts first differ, with a window of each, for a failure message only."""
-    index = next((i for i, (a, b) in enumerate(zip(left, right, strict=False)) if a != b), min(len(left), len(right)))
-    return f"at {index} of {len(left)}/{len(right)}: {left[max(0, index - 40) : index + 80]!r} vs {right[max(0, index - 40) : index + 80]!r}"
-
-
 def log_evidence(host: FoundationHost, terms: Sequence[str]) -> str:
     """The daemon\'s recent log text for a failed case, bounded, for the failure message itself; never an oracle.
 
@@ -745,7 +740,7 @@ def log_evidence(host: FoundationHost, terms: Sequence[str]) -> str:
     return " || ".join(texts)
 
 
-GENERATION_CANDIDATE: Final = "candidate"
+GENERATION_CANDIDATE_ELIGIBLE: Final = "candidate-eligible"
 GENERATION_FIXTURE: Final = "fixture"
 GENERATION_INCONSISTENT: Final = "inconsistent"
 DETAIL_GENERATION: Final = (
