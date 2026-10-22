@@ -72,9 +72,9 @@ class SessionRow(TelecMixin, Widget):
     output_highlight = reactive(False)
     activity_event = reactive("")  # hook event type, not persisted
     activity_text = reactive("", layout=True)  # tool name or summary
-    activity_at = reactive("")  # timestamp of the activity event
+    activity_at: reactive[str | None] = reactive(None)  # timestamp of the activity event
     last_output_summary = reactive("", layout=True)  # retained out-line text used by the render fallback
-    last_output_at = reactive("")  # timestamp of the event that produced last_output_summary
+    last_output_at: reactive[str | None] = reactive(None)  # timestamp of the event that produced last_output_summary
     skip_bottom_connector = reactive(False)
     is_last_child = reactive(False)
 
@@ -490,8 +490,8 @@ class SessionRow(TelecMixin, Widget):
     def watch_last_output_summary(self, _value: str) -> None:
         self.refresh()
 
-    def watch_activity_at(self, _value: str) -> None:
+    def watch_activity_at(self, _value: str | None) -> None:
         self.refresh()
 
-    def watch_last_output_at(self, _value: str) -> None:
+    def watch_last_output_at(self, _value: str | None) -> None:
         self.refresh()

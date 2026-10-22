@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from enum import StrEnum
 
 from teleclaude.api_models import SessionDTO
 from teleclaude.cli.tui.messages import StickyChanged
@@ -13,6 +14,14 @@ from teleclaude.core.session_status import SessionLifecycleStatus
 # Auto-clear highlights on preview session after this many seconds
 PREVIEW_HIGHLIGHT_DURATION = 3.0
 HIDDEN_SESSION_STATUSES = frozenset({SessionLifecycleStatus.CLOSED})
+
+
+class OutputSummaryField(StrEnum):
+    """Keys of one persisted agent_stop summary record."""
+
+    TEXT = "text"
+    AT = "at"
+    TS = "ts"
 
 
 class SessionsViewHighlightsMixin:
@@ -196,27 +205,26 @@ class SessionsViewHighlightsMixin:
         # out line never drops once a value has appeared. user_prompt_submit and
         # empty-text events are not out-bearing and must not overwrite it.
         out_bearing = hook_type in ("pre_tool_use", "thinking", "agent_stop") and bool(text)
-        event_at = at or ""
-        self._retained_activity[session_id] = (hook_type, text, event_at)  # type: ignore[attr-defined]
+        self._retained_activity[session_id] = (hook_type, text, at)  # type: ignore[attr-defined]
         for widget in self._nav_items:  # type: ignore[attr-defined]
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
                 widget.activity_event = hook_type
                 widget.activity_text = text
-                widget.activity_at = event_at
+                widget.activity_at = at
                 if out_bearing:
                     widget.last_output_summary = text
-                    widget.last_output_at = event_at
+                    widget.last_output_at = at
                 break
         if out_bearing:
-            self._retained_out[session_id] = (text, event_at)  # type: ignore[attr-defined]
+            self._retained_out[session_id] = (text, at)  # type: ignore[attr-defined]
         # Persist only the agent_stop summary to disk so output survives a
         # restart. Live pre_tool_use/thinking values are retained in memory
         # (_retained_out) only — per-event disk writes are too heavy.
         if hook_type == "agent_stop" and text:
             self._last_output_summary[session_id] = {  # type: ignore[attr-defined]
-                "text": text,
-                "at": event_at,
-                "ts": time.monotonic(),
+                OutputSummaryField.TEXT: text,
+                OutputSummaryField.AT: at,
+                OutputSummaryField.TS: time.monotonic(),
             }
         if session_id == self.preview_session_id:  # type: ignore[attr-defined]
             self._schedule_highlight_clear(session_id)  # type: ignore[attr-defined]
@@ -229,9 +237,9 @@ class SessionsViewHighlightsMixin:
             "input_highlights": sorted(self._input_highlights),  # type: ignore[attr-defined]
             "output_highlights": sorted(self._output_highlights),  # type: ignore[attr-defined]
             "last_output_summary": {
-                k: {"text": str(v.get("text", "")), "at": str(v.get("at", "")), "ts": float(v.get("ts", 0))}
+                k: dict(v)
                 for k, v in sorted(self._last_output_summary.items())  # type: ignore[attr-defined]
-                if v.get("text")
+                if v.get(OutputSummaryField.TEXT)
             },
             "collapsed_sessions": sorted(self._collapsed_sessions),  # type: ignore[attr-defined]
             "collapsed_computers": sorted(self._collapsed_computers),  # type: ignore[attr-defined]
