@@ -123,7 +123,7 @@ Scenario: Use the updated server after its configuration changes
   And the stale server session is no longer used
 ```
 
-#### UC-LMCP-7
+#### UC-LMCP-7:
 
 #### UC-LMCP-8: A developer validates MCP registry files offline
 
