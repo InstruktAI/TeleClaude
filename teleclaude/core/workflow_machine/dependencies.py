@@ -10,7 +10,6 @@ does not clear a dependent's preparation.
 from __future__ import annotations
 
 from teleclaude.core.next_machine.kinds import KIND_TASK
-from teleclaude.core.next_machine.slug_resolution import effective_delivered_slugs_for_dependencies
 from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.phase_reading import read_phase
 from teleclaude.core.workflow_store.store import WorkflowStore
@@ -62,16 +61,18 @@ async def _prepared_parents(store: WorkflowStore, delivered: set[str], entries: 
     return _with_holder_rollup(prepared, entries)
 
 
-async def prepared_slugs(store: WorkflowStore) -> set[str]:
+async def prepared_slugs(store: WorkflowStore, delivered: set[str] | None = None) -> set[str]:
     """The slugs that count as prepared parents: delivered, or read as prepared or beyond, with holders rolled up."""
-    delivered = await effective_delivered_slugs_for_dependencies(store)
+    delivered = await delivered_slugs(store, delivered)
     entries = await store.list_todo(include_delivered=True, include_holders=True)
     return await _prepared_parents(store, delivered, entries)
 
 
-async def delivered_slugs(store: WorkflowStore) -> set[str]:
+async def delivered_slugs(store: WorkflowStore, delivered: set[str] | None = None) -> set[str]:
     """The slugs that count as delivered parents."""
-    return await effective_delivered_slugs_for_dependencies(store)
+    settled = set(delivered if delivered is not None else await store.delivered_slugs())
+    entries = await store.list_todo(include_delivered=True, include_holders=True)
+    return _with_holder_rollup(settled, entries)
 
 
 async def unmet_for_preparation(store: WorkflowStore, item: str) -> list[str]:

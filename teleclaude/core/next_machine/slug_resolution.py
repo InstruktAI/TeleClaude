@@ -8,20 +8,21 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from teleclaude.core.next_machine._types import ItemPhase, StateValue
-from teleclaude.core.next_machine.kinds import KIND_TASK
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     coerce_lifecycle_phase,
     is_ready_for_work,
-    is_work_lifecycle_phase,
     lifecycle_phase_index,
-    plan_review_current,
 )
+from teleclaude.core.workflow_machine.dependencies import delivered_slugs, prepared_slugs
+from teleclaude.core.workflow_machine.lane import resolve_lane
+from teleclaude.core.workflow_machine.phase_reading import in_task_lane, read_phase
 from teleclaude.types.lifecycle import TASK_LIFECYCLE_PHASES
 from teleclaude.types.todos import TodoState
+from teleclaude.types.workflow_record import Phase
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -29,6 +30,8 @@ from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.core.workflow_store.types import ItemChange
+
+WORK_ENTRY_PHASES: Final = frozenset({Phase.PREPARED, Phase.WORK, Phase.READY})
 
 
 class HolderResolutionMode(StrEnum):
@@ -92,7 +95,9 @@ async def resolve_slug_async(
         if phase == ItemPhase.DONE.value:
             continue
 
-        is_ready = phase == ItemPhase.IN_PROGRESS.value or await _is_ready_for_work_db(todos_db, found_slug)
+        is_ready = await _is_ready_for_work_db(
+            todos_db, found_slug, legacy_in_progress=phase == ItemPhase.IN_PROGRESS.value
+        )
 
         if ready_only and not is_ready:
             continue
@@ -132,14 +137,17 @@ async def _get_item_phase_db(
     raise ValueError(msg)
 
 
-async def _is_ready_for_work_db(todos_db: WorkflowStore, slug: str) -> bool:
+async def _is_ready_for_work_db(todos_db: WorkflowStore, slug: str, *, legacy_in_progress: bool = False) -> bool:
     """DB-backed wrapper around the canonical readiness gate."""
     state = await todos_db.read_state(slug)
     if state is None:
         return False
     todo_state = TodoState.model_validate(state)
-    ready, _ = is_ready_for_work(kind=todo_state.kind, lifecycle_phase=todo_state.lifecycle_phase.value)
-    return ready
+    if in_task_lane(todo_state):
+        ready, _ = is_ready_for_work(kind=todo_state.kind, lifecycle_phase=todo_state.lifecycle_phase.value)
+        return legacy_in_progress or ready
+    lane = await resolve_lane(todos_db, str(todos_db.project_root), slug, state, todo_state)
+    return read_phase(todo_state, lane).phase in WORK_ENTRY_PHASES
 
 
 def deps_satisfied(dependencies: dict[str, list[str]], satisfied_set: set[str], slug: str) -> bool:
@@ -186,41 +194,7 @@ async def effective_delivered_slugs_for_dependencies(
     a holder dependency is satisfied when every direct child has delivered; this
     mirrors the todo list projection without mutating the holder row itself.
     """
-    effective = set(delivered if delivered is not None else await todos_db.delivered_slugs())
-    entries = await todos_db.list_todo(include_delivered=True, include_holders=True)
-    grouped_children = _children_by_group(entries)
-    candidates = {entry["slug"] for entry in entries}
-
-    changed = True
-    while changed:
-        changed = False
-        for slug in candidates - effective:
-            children = await _resolve_holder_children_from_entries(todos_db, slug, grouped_children)
-            if children and all(child in effective for child in children):
-                effective.add(slug)
-                changed = True
-
-    return effective
-
-
-def _state_counts_as_dependency_prepared(state: dict[str, StateValue] | None) -> bool:
-    """Return True when a todo has crossed the prepare dependency gate."""
-    if state is None:
-        return False
-    if state.get("kind") == KIND_TASK:
-        # A task's deliverable is a run product: its PREPARED phase records only
-        # that the task-plan is drafted, not that anything was produced. A task
-        # dependency is satisfied solely through the delivered set, never here.
-        return False
-    if not plan_review_current(state):
-        return False
-    approvals = state.get("approvals")
-    if isinstance(approvals, dict):
-        prd_approval = approvals.get("prd_approved")
-        if isinstance(prd_approval, dict) and prd_approval.get("approved") is True:
-            return True
-    phase = coerce_lifecycle_phase(state.get("lifecycle_phase"))
-    return phase == LifecyclePhase.PREPARED or (phase is not None and is_work_lifecycle_phase(phase))
+    return await delivered_slugs(todos_db, delivered)
 
 
 async def effective_prepared_slugs_for_dependencies(
@@ -228,31 +202,12 @@ async def effective_prepared_slugs_for_dependencies(
     delivered: set[str] | None = None,
 ) -> set[str]:
     """Return delivered/prepared slugs plus holders whose children are all prepared."""
-    effective = set(delivered if delivered is not None else await todos_db.delivered_slugs())
-    entries = await todos_db.list_todo(include_delivered=True, include_holders=True)
-    for entry in entries:
-        slug = entry["slug"]
-        if slug in effective:
-            continue
-        if _state_counts_as_dependency_prepared(await todos_db.read_state(slug)):
-            effective.add(slug)
-
-    grouped_children = _children_by_group(entries)
-    candidates = {entry["slug"] for entry in entries}
-
-    changed = True
-    while changed:
-        changed = False
-        for slug in candidates - effective:
-            children = await _resolve_holder_children_from_entries(todos_db, slug, grouped_children)
-            if children and all(child in effective for child in children):
-                effective.add(slug)
-                changed = True
-
-    return effective
+    return await prepared_slugs(todos_db, delivered)
 
 
-def _is_prepare_runnable_lifecycle(state: dict[str, StateValue] | None) -> bool:
+async def _is_prepare_runnable_lifecycle(
+    todos_db: WorkflowStore, slug: str, state: dict[str, StateValue] | None
+) -> bool:
     """Return True when a child still needs prepare and can be targeted by prepare."""
     if state is None:
         return False
@@ -261,7 +216,11 @@ def _is_prepare_runnable_lifecycle(state: dict[str, StateValue] | None) -> bool:
         return False
     if phase in TASK_LIFECYCLE_PHASES:
         return phase is LifecyclePhase.TASK_PLAN_DRAFTING
-    return lifecycle_phase_index(phase) < lifecycle_phase_index(LifecyclePhase.PREPARED)
+    todo_state = TodoState.model_validate(state)
+    if in_task_lane(todo_state):
+        return lifecycle_phase_index(phase) < lifecycle_phase_index(LifecyclePhase.PREPARED)
+    lane = await resolve_lane(todos_db, str(todos_db.project_root), slug, state, todo_state)
+    return read_phase(todo_state, lane).phase is Phase.PREPARATION
 
 
 async def set_item_phase_db(todos_db: WorkflowStore, slug: str, phase: str) -> None:
@@ -307,6 +266,7 @@ async def resolve_runnable_holder_children_db(
     has_incomplete_children = False
     has_deps_blocked = False
     has_not_ready = False
+    has_unprepared_child = False
 
     for child in children:
         if child in delivered:
@@ -323,11 +283,16 @@ async def resolve_runnable_holder_children_db(
         has_incomplete_children = True
         if mode is HolderResolutionMode.PREPARE:
             state = await todos_db.read_state(child)
-            if not _is_prepare_runnable_lifecycle(state):
+            if not await _is_prepare_runnable_lifecycle(todos_db, child, state):
                 has_not_ready = True
+                task_lane = state is not None and in_task_lane(TodoState.model_validate(state))
+                if not task_lane and child not in dependency_satisfied:
+                    has_unprepared_child = True
                 continue
         else:
-            is_ready = phase == ItemPhase.IN_PROGRESS.value or await _is_ready_for_work_db(todos_db, child)
+            is_ready = await _is_ready_for_work_db(
+                todos_db, child, legacy_in_progress=phase == ItemPhase.IN_PROGRESS.value
+            )
             if not is_ready:
                 has_not_ready = True
                 continue
@@ -352,7 +317,7 @@ async def resolve_runnable_holder_children_db(
         return HolderChildResolution(
             children=tuple(children), runnable=(), reason=HolderResolutionReason.DEPS_UNSATISFIED
         )
-    if mode is HolderResolutionMode.PREPARE and has_not_ready:
+    if mode is HolderResolutionMode.PREPARE and has_not_ready and not has_unprepared_child:
         return HolderChildResolution(children=tuple(children), runnable=(), reason=HolderResolutionReason.ALL_PREPARED)
     return HolderChildResolution(children=tuple(children), runnable=(), reason=HolderResolutionReason.ITEM_NOT_READY)
 
