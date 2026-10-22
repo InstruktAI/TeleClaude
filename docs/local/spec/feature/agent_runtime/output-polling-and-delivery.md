@@ -170,9 +170,12 @@ And the silent turn neither replaces it with empty content nor delivers it again
 
 - **Derived reading state retains history.** Initial reads and eviction recovery
   still parse the source needed by existing ancestry and receipt contracts.
-  Cache bounds account for decoded source bytes and source count, not actual
-  Python heap size; one oversized source remains eligible for reuse. Returned
-  entry records are read-only shared source data.
+  The source-byte budget scales with host memory up to its cap; source count is
+  bounded separately. These bounds do not measure actual Python heap size;
+  one oversized source remains eligible for reuse. Failed reads release their
+  registered view and remain retryable. Working sets beyond the budget can
+  cause rebuilds; evictions are observable. Returned entry records are read-only
+  shared source data.
 - **JSONL append reading trusts an immutable prefix.** Identity, truncation and
   boundary checks detect observed replacement, not every possible in-place
   rewrite that also grows a file. A valid final object without a newline is

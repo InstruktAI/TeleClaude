@@ -8,9 +8,13 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
+from functools import cache
 from pathlib import Path
 from threading import RLock
 from typing import Protocol
+
+import psutil
+from instrukt_ai_logging import get_logger
 
 from teleclaude.agent_registry import AgentName
 from teleclaude.core.models._types import JsonDict, JsonValue
@@ -18,12 +22,28 @@ from teleclaude.core.models._types import JsonDict, JsonValue
 from ._utils import _parse_timestamp
 from .source_reader import SourceChange, SourceFormat, TranscriptSourceReader
 
-_MAX_CACHED_TRANSCRIPTS = 8
-_MAX_CACHED_SOURCE_BYTES = 384 * 1024 * 1024
+logger = get_logger(__name__)
+
+_MAX_CACHED_TRANSCRIPTS = 128
+_MAX_CACHED_SOURCE_BYTES = 1024 * 1024 * 1024
+_SOURCE_MEMORY_DIVISOR = 32
+_FALLBACK_CACHED_SOURCE_BYTES = 128 * 1024 * 1024
+_CACHE_MEMORY_UNAVAILABLE_EVENT = "transcript_source_cache_memory_unavailable"
+_CACHE_EVICTED_EVENT = "transcript_source_view_evicted"
 _ENTRY_TIMESTAMP_FIELD = "timestamp"
 _MIN_TIMESTAMP = datetime.min.replace(tzinfo=UTC)
 _TRANSCRIPT_READ_SCOPE: ContextVar[_ReadScope | None] = ContextVar("transcript_read_scope", default=None)
 type FormatMismatchHandler = Callable[[str, Path, json.JSONDecodeError], None]
+
+
+@cache
+def _source_budget_bytes() -> int:
+    """Reserve a capped fraction of host memory for decoded source retention."""
+    try:
+        return min(_MAX_CACHED_SOURCE_BYTES, max(1, int(psutil.virtual_memory().total) // _SOURCE_MEMORY_DIVISOR))
+    except (OSError, psutil.Error):
+        logger.warning(_CACHE_MEMORY_UNAVAILABLE_EVENT, exc_info=True)
+        return _FALLBACK_CACHED_SOURCE_BYTES
 
 
 class _ReadScope:
@@ -173,11 +193,15 @@ def _cached_entries(
         _TRANSCRIPT_VIEWS.move_to_end(key)
     try:
         result = view.read(path)
-    except json.JSONDecodeError as exc:
-        if view.reader.format_mismatch_agent is None:
-            raise
-        report_mismatch(view.reader.format_mismatch_agent, path, exc)
-        return []
+    except Exception as exc:
+        with _TRANSCRIPT_VIEWS_LOCK:
+            if _TRANSCRIPT_VIEWS.get(key) is view:
+                del _TRANSCRIPT_VIEWS[key]
+        if isinstance(exc, json.JSONDecodeError) and view.reader.format_mismatch_agent is not None:
+            report_mismatch(view.reader.format_mismatch_agent, path, exc)
+            return []
+        raise
+    budget = _source_budget_bytes()
     with _TRANSCRIPT_VIEWS_LOCK:
         if _TRANSCRIPT_VIEWS.get(key) is view:
             _TRANSCRIPT_VIEWS.move_to_end(key)
@@ -185,9 +209,16 @@ def _cached_entries(
             # excluding the large transcripts that need incremental reads most.
             while len(_TRANSCRIPT_VIEWS) > 1 and (
                 len(_TRANSCRIPT_VIEWS) > _MAX_CACHED_TRANSCRIPTS
-                or sum(item.cached_bytes for item in _TRANSCRIPT_VIEWS.values()) > _MAX_CACHED_SOURCE_BYTES
+                or sum(item.cached_bytes for item in _TRANSCRIPT_VIEWS.values()) > budget
             ):
-                _TRANSCRIPT_VIEWS.popitem(last=False)
+                evicted_key, evicted = _TRANSCRIPT_VIEWS.popitem(last=False)
+                logger.debug(
+                    _CACHE_EVICTED_EVENT,
+                    source=evicted_key[0].name,
+                    source_bytes=evicted.cached_bytes,
+                    source_budget_bytes=budget,
+                    max_source_count=_MAX_CACHED_TRANSCRIPTS,
+                )
     return result
 
 
