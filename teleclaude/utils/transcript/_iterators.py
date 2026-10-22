@@ -6,6 +6,7 @@ import io
 import json
 import os
 import re
+from bisect import bisect_right
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -27,6 +28,7 @@ from ._checkpoint_anchors import find_last_checkpoint_anchor
 from ._parsers import normalize_transcript_entry_message
 from ._user_turns import find_last_turn_start, is_turn_start_entry
 from ._utils import CHECKPOINT_JSONL_TAIL_READ_BYTES, _apply_tail_limit, _apply_tail_limit_codex, _parse_timestamp
+from .source_views import TranscriptEntries, read_transcript_entries
 
 logger = get_logger(__name__)
 
@@ -34,6 +36,9 @@ _REPORTED_TRANSCRIPT_FORMAT_MISMATCHES: set[tuple[str, str]] = set()
 _FORMAT_MISMATCH_SINK: ContextVar[Callable[[str, Path, json.JSONDecodeError], None] | None] = ContextVar(
     "transcript_format_mismatch_sink", default=None
 )
+_GEMINI_MESSAGES_FIELD = "messages"
+_CODEX_RECORD_TYPE_FIELD = "type"
+_CODEX_SESSION_META_TYPE = "session_meta"
 
 
 @contextmanager
@@ -552,6 +557,11 @@ def _normalize_agy_entry(message: JsonDict) -> JsonDict | None:
 def _iter_gemini_entries(
     path: Path,
 ) -> Iterable[JsonDict]:
+    """Read and normalize Gemini/agy records through the native format reader."""
+    yield from _normalize_gemini_entries(_iter_gemini_records(path))
+
+
+def _normalize_gemini_entries(records: Iterable[JsonDict]) -> Iterable[JsonDict]:
     """Yield normalized entries from Gemini/agy session files.
 
     Routes each record by schema: agy records carry an uppercase ``source``
@@ -561,7 +571,7 @@ def _iter_gemini_entries(
     guard: allow-string-compare
     """
 
-    for message in _iter_gemini_records(path):
+    for message in records:
         if message.get("source") in _AGY_SOURCES:
             entry = _normalize_agy_entry(message)
             if entry is not None:
@@ -633,15 +643,20 @@ def _start_index_after_timestamp_or_rotation(
     if since_timestamp.tzinfo is None:
         since_timestamp = since_timestamp.replace(tzinfo=UTC)
 
-    for i, entry in enumerate(entries):
-        entry_ts_str = entry.get("timestamp")
-        if isinstance(entry_ts_str, str):
-            entry_dt = _parse_timestamp(entry_ts_str)
-            if entry_dt:
-                if entry_dt.tzinfo is None:
-                    entry_dt = entry_dt.replace(tzinfo=UTC)
-                if entry_dt > since_timestamp:
-                    return i
+    if isinstance(entries, TranscriptEntries) and tuple(entries) == entries.snapshot:
+        index = bisect_right(entries.timestamp_maxima, since_timestamp)
+        if index < len(entries):
+            return index
+    else:
+        for i, entry in enumerate(entries):
+            entry_ts_str = entry.get("timestamp")
+            if isinstance(entry_ts_str, str):
+                entry_dt = _parse_timestamp(entry_ts_str)
+                if entry_dt:
+                    if entry_dt.tzinfo is None:
+                        entry_dt = entry_dt.replace(tzinfo=UTC)
+                    if entry_dt > since_timestamp:
+                        return i
 
     if _is_rotation_fallback_candidate(entries, agent_name):
         logger.info(
@@ -679,6 +694,22 @@ def _dsh_event_timestamp(event: Mapping[str, object]) -> str | None:
 
 
 def _iter_deepseek_entries(path: Path) -> Iterable[JsonDict]:
+    """Read and normalize native DeepSeek records."""
+    yield from _normalize_deepseek_entries(_read_dsh_records(path))
+
+
+def _read_dsh_records(path: Path) -> Iterable[JsonDict]:
+    """Decode native DeepSeek JSONL records for uncached historical readers."""
+    for line in _read_dsh_session_lines(path):
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict):
+            yield cast(JsonDict, event)
+
+
+def _normalize_deepseek_entries(records: Iterable[JsonDict]) -> Iterable[JsonDict]:
     """Yield DeepSeek Harness session events normalized to the shared entry shape.
 
     DSH persists one JSON object per line ({"seq", "time", "type", "data"}) in
@@ -695,13 +726,7 @@ def _iter_deepseek_entries(path: Path) -> Iterable[JsonDict]:
     ``timestamp`` so the shared projection watermark advances per event instead
     of re-projecting the whole transcript on every pass.
     """
-    for line in _read_dsh_session_lines(path):
-        try:
-            event = json.loads(line)
-        except ValueError:
-            continue
-        if not isinstance(event, dict):
-            continue
+    for event in records:
         data = event.get("data")
         if not isinstance(data, dict):
             continue
@@ -843,6 +868,26 @@ def _codex_checkpoint_window(entries: Sequence[JsonDict]) -> list[JsonDict]:
     return list(_normalize_codex_entries(entries))
 
 
+def _native_records(records: Iterable[JsonDict]) -> Iterable[JsonDict]:
+    """Keep native Claude entries without a second representation."""
+    return records
+
+
+def _document_record(document: JsonValue) -> Iterable[JsonDict]:
+    """Expose a single native JSON object to a record normalizer."""
+    return (document,) if isinstance(document, dict) else ()
+
+
+def _gemini_document_records(document: JsonValue) -> Iterable[JsonDict]:
+    """Select the existing legacy Gemini document's message collection."""
+    return _coerce_dict_list(document.get(_GEMINI_MESSAGES_FIELD)) if isinstance(document, dict) else ()
+
+
+def _codex_append_anchor(entry: JsonDict) -> bool:
+    """Retain the significant record a subsequent abort can reinterpret."""
+    return entry.get(_CODEX_RECORD_TYPE_FIELD) != _CODEX_SESSION_META_TYPE
+
+
 @dataclass(frozen=True)
 class TranscriptReader:
     """How one runtime's native transcript is read and presented.
@@ -856,17 +901,45 @@ class TranscriptReader:
     read: Callable[[Path, int | None], Iterable[JsonDict]]
     tail_limit: Callable[[str, int], str]
     checkpoint_window: Callable[[Sequence[JsonDict]], list[JsonDict]] | None
+    normalize: Callable[[Iterable[JsonDict]], Iterable[JsonDict]]
+    document_records: Callable[[JsonValue], Iterable[JsonDict]] = _document_record
+    append_anchor: Callable[[JsonDict], bool] | None = None
+    format_mismatch_agent: str | None = None
 
 
 TRANSCRIPT_READERS: Mapping[AgentName, TranscriptReader] = MappingProxyType(
     {
-        AgentName.CLAUDE: TranscriptReader("Claude Code", _read_claude, _apply_tail_limit, _claude_checkpoint_window),
-        AgentName.CODEX: TranscriptReader("Codex", _read_codex, _apply_tail_limit_codex, _codex_checkpoint_window),
-        AgentName.GEMINI: TranscriptReader("Gemini", _read_gemini, _apply_tail_limit, None),
-        AgentName.DEEPSEEK: TranscriptReader("DeepSeek Harness", _read_deepseek, _apply_tail_limit, None),
+        AgentName.CLAUDE: TranscriptReader(
+            "Claude Code", _read_claude, _apply_tail_limit, _claude_checkpoint_window, _native_records
+        ),
+        AgentName.CODEX: TranscriptReader(
+            "Codex",
+            _read_codex,
+            _apply_tail_limit_codex,
+            _codex_checkpoint_window,
+            _normalize_codex_entries,
+            append_anchor=_codex_append_anchor,
+        ),
+        AgentName.GEMINI: TranscriptReader(
+            "Gemini",
+            _read_gemini,
+            _apply_tail_limit,
+            None,
+            _normalize_gemini_entries,
+            _gemini_document_records,
+            format_mismatch_agent="gemini",
+        ),
+        AgentName.DEEPSEEK: TranscriptReader(
+            "DeepSeek Harness", _read_deepseek, _apply_tail_limit, None, _normalize_deepseek_entries
+        ),
     }
 )
 """The one reader per runtime; onboarding a harness adds its record here."""
+
+
+def _cached_entries(path: Path, agent_name: AgentName) -> list[JsonDict] | None:
+    """Read through the shared source-view owner using this runtime's codec."""
+    return read_transcript_entries(path, agent_name, TRANSCRIPT_READERS[agent_name], _report_transcript_format_mismatch)
 
 
 def _get_entries_for_agent(
@@ -880,9 +953,11 @@ def _get_entries_for_agent(
     Returns None if the path doesn't exist.
     """
     path = Path(transcript_path).expanduser()
-    if not path.exists():
-        return None
-    return list(TRANSCRIPT_READERS[agent_name].read(path, tail_entries))
+    if tail_entries is not None:
+        if not path.exists():
+            return None
+        return list(TRANSCRIPT_READERS[agent_name].read(path, tail_entries))
+    return _cached_entries(path, agent_name)
 
 
 def _get_checkpoint_entries_for_agent(transcript_path: str, agent_name: AgentName) -> list[JsonDict] | None:
