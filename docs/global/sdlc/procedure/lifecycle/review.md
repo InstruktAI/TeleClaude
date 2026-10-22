@@ -181,6 +181,8 @@ Overall quality, prior patterns, merge state, review-round count, or the absence
 of a fix loop never overrides this arithmetic. A count decreases only when
 evidence establishes that the finding is invalid or resolved.
 
+<!-- planned-change:issue-128 -->
+
 Write the complete structured report to the review artifact named by the
 invoking procedure on every pass, including a clean pass, before stamping the
 verdict. The report is the durable audit record for that pass: it includes every
@@ -188,6 +190,21 @@ executed lane, the arithmetic verdict, and the `Why No Issues` evidence when
 required. The verdict stamp binds the current review target digest and the
 current report digest; neither the transcript nor an earlier report substitutes
 for that artifact.
+
+<!-- change:issue-128 -->
+
+Deliver the complete structured report on every pass, including a clean pass,
+before the verdict is recorded. The report is the audit record for that pass: it
+includes every executed lane, the arithmetic verdict, and the `Why No Issues`
+evidence when required. The invoking procedure names where the report goes and
+how its verdict is recorded and bound: a commit review prints the report and
+stamps the verdict on the reviewed commits
+(`sdlc/procedure/lifecycle/work/review-commits`); the work driver's lane report
+is the text of its stamp at the reviewed commit
+(`sdlc/procedure/lifecycle/work/overview-v2`). Neither the transcript nor an
+earlier report substitutes for the current pass's report.
+
+<!-- /planned-change:issue-128 -->
 
 ### 6. Bound the convergence
 
@@ -300,10 +317,21 @@ incompleteness.
 
 ## Outputs
 
+<!-- planned-change:issue-128 -->
+
 - A complete, current review artifact covering every applicable lane, even when
   the pass is clean.
 - An arithmetic `APPROVE` or `REQUEST CHANGES` verdict bound to that artifact
   and the reviewed target.
+
+<!-- change:issue-128 -->
+
+- A complete report of the current pass covering every applicable lane, even
+  when the pass is clean, delivered where the invoking procedure names.
+- An arithmetic `APPROVE` or `REQUEST CHANGES` verdict, recorded and bound to
+  the reviewed target as the invoking procedure records it.
+
+<!-- /planned-change:issue-128 -->
 
 ### Report format
 
