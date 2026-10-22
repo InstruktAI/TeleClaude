@@ -27,7 +27,10 @@ restart, then check the logs` is directive. One string reaching a human and an
   agent alike resolves to contract. That no test binds such text makes the change
   higher-risk, not lower. Its remedy is exactly two things: reflect it in the
   owning snippet, and put the commit through independent review. It is never
-  labelled copy-only, wording, or "no logic change."
+  labelled copy-only, wording, or "no logic change." A model prompt that shapes
+  only how output reads — a summary's voice, a title's style — directs no
+  agent's action; it is presentation prose, and its review is decided by
+  `general/policy/commits`.
 - **A snippet without `delivered_by` is the current contract; staleness is a
   defect.** If code changes and a current snippet does not, the change updates it
   or marks it pending. Pending state and its clearing on delivery are
@@ -68,10 +71,12 @@ restart, then check the logs` is directive. One string reaching a human and an
 ### Review and cross-project authoring
 
 - **Governed documentation is never self-reviewed.** A doc-only commit that
-  changes a snippet gets an independent fast doc-hygiene review via
-  `sdlc/procedure/lifecycle/work/review-commits` on its SHA, covering the security lane's
-  repository-privacy check and the doc-hygiene lane. Both are reviewer judgment,
-  never prose scanning. Standalone descriptive prose outside the snippet system,
+  changes what a snippet establishes or directs gets an independent fast
+  doc-hygiene review via `sdlc/procedure/lifecycle/work/review-commits` on its
+  SHA, covering the security lane's repository-privacy check and the doc-hygiene
+  lane. Both are reviewer judgment, never prose scanning. A typo, formatting or
+  link repair changes neither, and its author stamps it
+  (`general/policy/commits`). Standalone descriptive prose outside the snippet system,
   such as a README, is not governed content; directive text is, wherever it lives.
 - **Cross-project doc work preserves the authoring session.** The session holding
   the design context writes the complete content to caller-owned temporary files
