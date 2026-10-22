@@ -230,6 +230,35 @@ body/revision realization remain with the WorkflowStore owner; a provider
 effect sequence is not represented as one GitHub transaction
 (`sdlc/policy/domain-ownership`).
 
+<!-- planned:issue-129 -->
+
+For daemon/relayed posting, the admitted principal is carried apart from its
+origin computer/session through
+`local/projects/teleclaude/spec/identity-and-auth` and receipt-backed work
+through `local/projects/teleclaude/design/architecture/operation-receipts`.
+Before credentials or provider effect, the posting composition reads the
+origin session's public fixed binding through the existing reached
+`SESSION_RECORD` owner in
+`local/projects/teleclaude/spec/feature/agent_runtime/session-inspection`.
+An absent legacy principal, unavailable read, closed/deleted session, or
+disagreeing origin binding refuses; credentials remain with the existing
+protected config/identity owners.
+
+For a remote accepted post, the existing immutable provider-object association
+retains the admitted principal, origin computer/session, assigned actor/role,
+target, and owner source identity as creation evidence. It never copies a
+foreign session binding into the executor's local authority. Provider
+acceptance without that association remains incomplete with known IDs and
+possible effects; no blind replay or new receipt is introduced.
+
+No remote send is connected until #130 publishes a consistency-checked mapping
+from the executor's selected project and opaque (`WorkItemId`, `StoreAddress`)
+pair to the existing `GitHubWorkTarget`. Posting does not decode the address or
+expand that target type. Positive workflow-state attribution remains separate
+and unavailable until its existing association consumer is published; echo
+qualification does not supply that attribution.
+<!-- /planned:issue-129 -->
+
 ### Use cases
 
 This contract supports the existing goals of spec collaboration, human
