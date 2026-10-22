@@ -22,10 +22,31 @@ _MAX_CACHED_TRANSCRIPTS = 8
 _MAX_CACHED_SOURCE_BYTES = 384 * 1024 * 1024
 _ENTRY_TIMESTAMP_FIELD = "timestamp"
 _MIN_TIMESTAMP = datetime.min.replace(tzinfo=UTC)
-_TRANSCRIPT_READ_SCOPE: ContextVar[dict[tuple[Path, AgentName], list[JsonDict]] | None] = ContextVar(
-    "transcript_read_scope", default=None
-)
+_TRANSCRIPT_READ_SCOPE: ContextVar[_ReadScope | None] = ContextVar("transcript_read_scope", default=None)
 type FormatMismatchHandler = Callable[[str, Path, json.JSONDecodeError], None]
+
+
+class _ReadScope:
+    """A pass-owned view whose inherited contexts expire with the pass."""
+
+    def __init__(self) -> None:
+        self.active = True
+        self._entries: dict[tuple[Path, AgentName], list[JsonDict]] = {}
+        self._lock = RLock()
+
+    def get(self, key: tuple[Path, AgentName]) -> list[JsonDict] | None:
+        with self._lock:
+            return self._entries.get(key) if self.active else None
+
+    def put(self, key: tuple[Path, AgentName], entries: list[JsonDict]) -> None:
+        with self._lock:
+            if self.active:
+                self._entries[key] = entries
+
+    def close(self) -> None:
+        with self._lock:
+            self.active = False
+            self._entries.clear()
 
 
 class TranscriptCodec(Protocol):
@@ -122,13 +143,16 @@ _TRANSCRIPT_VIEWS_LOCK = RLock()
 @contextmanager
 def transcript_read_scope() -> Iterator[None]:
     """Pin each source's normalized view throughout one composed projection pass."""
-    if _TRANSCRIPT_READ_SCOPE.get() is not None:
+    existing = _TRANSCRIPT_READ_SCOPE.get()
+    if existing is not None and existing.active:
         yield
         return
-    token = _TRANSCRIPT_READ_SCOPE.set({})
+    scope = _ReadScope()
+    token = _TRANSCRIPT_READ_SCOPE.set(scope)
     try:
         yield
     finally:
+        scope.close()
         _TRANSCRIPT_READ_SCOPE.reset(token)
 
 
@@ -177,11 +201,12 @@ def read_transcript_entries(
     """Reuse a pinned or current view without changing its delivery obligations."""
     scope = _TRANSCRIPT_READ_SCOPE.get()
     key = (path, agent_name)
-    if scope is not None and key in scope:
-        return _copy_entry_view(scope[key])
+    pinned = scope.get(key) if scope is not None else None
+    if pinned is not None:
+        return _copy_entry_view(pinned)
     if not path.exists():
         return None
     entries = _cached_entries(path, agent_name, reader, report_mismatch)
     if scope is not None:
-        scope[key] = entries
+        scope.put(key, entries)
     return entries
