@@ -16,8 +16,7 @@ Four single-purpose send capabilities, one per outbound channel:
 
 Each is a thin provider-client invocation: read credentials from the typed
 machine-config aggregate (or an explicit per-call argument), validate inputs,
-truncate long content to the
-channel's hard limit (with a warning), submit the message to the
+truncate long content to the channel's hard limit where supported, submit the message to the
 provider, parse the response, and return the provider's message
 identifier (or nothing for SMTP). They are NOT subscribers and NOT
 dispatchers — they are pure delivery primitives that adapter classes
@@ -31,11 +30,13 @@ directly from the invitation flow to send invitation links.
 Telegram text sends disable link previews. Email sends an HTML body with a
 plain-text alternative; when no plain-text body is supplied, it is derived from
 the HTML. Attachments must be existing regular files, and their MIME type is
-inferred from the filename. Missing credentials are rejected before a provider
-call; empty Telegram text without an attachment is rejected. Long content is
-truncated at the provider's hard limit with a warning, never split into multiple messages.
-Successful API sends return the provider's message identifier; SMTP returns
-none. Provider failures are surfaced to the caller.
+inferred from the filename. Telegram, Discord and WhatsApp reject missing
+credentials before provider calls; missing email credentials reach SMTP login
+and surface as a send error. Empty Telegram text without an attachment is
+rejected. Telegram, Discord and WhatsApp truncate long text or captions at the
+provider's hard limit with a warning and do not split messages; email sends the
+complete body. Successful API sends return the provider's message identifier;
+SMTP returns none. Provider failures are surfaced to the caller.
 
 ## Canonical fields
 
@@ -100,9 +101,9 @@ and returns normally; other close errors remain visible to the caller.
 - **Email plain-text fallback is regex stripping**, not a proper HTML →
   text converter. Recipients with text-only mail clients may see
   artifacts.
-- **All helpers truncate at the provider hard limit with a warning**
-  rather than splitting into chained messages. Long bodies risk losing
-  trailing content.
+- **Telegram, Discord and WhatsApp truncate at the provider hard limit with a
+  warning** rather than splitting into chained messages. Email sends the
+  complete body without truncation.
 
 - **No per-helper rate limiting.** A burst of admin notifications can
   hit provider rate limits (especially Discord's per-bot limits). The
