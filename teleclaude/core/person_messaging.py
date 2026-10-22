@@ -527,12 +527,12 @@ def resolve_person_channel(slug: str, *, channel: MessagingChannel | None = None
 def _channel_available(channel: MessagingChannel) -> bool:
     """Whether this computer's effective configuration enables and completes the channel's provider section."""
     if channel is MessagingChannel.TELEGRAM:
-        return is_section_available(MessagingChannel.TELEGRAM.value, config.telegram)
+        return is_section_available(MessagingChannel.TELEGRAM.value, config)
     if channel is MessagingChannel.DISCORD:
-        return is_section_available(MessagingChannel.DISCORD.value, config.discord)
+        return is_section_available(MessagingChannel.DISCORD.value, config)
     if channel is MessagingChannel.WHATSAPP:
-        return is_section_available(MessagingChannel.WHATSAPP.value, config.whatsapp)
-    return is_section_available(MessagingChannel.EMAIL.value, config.email)
+        return is_section_available(MessagingChannel.WHATSAPP.value, config)
+    return is_section_available(MessagingChannel.EMAIL.value, config)
 
 
 async def send_person_message(
