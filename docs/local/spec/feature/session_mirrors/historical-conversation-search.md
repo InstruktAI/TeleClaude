@@ -35,6 +35,8 @@ The default worker exclusion is the same on the terminal and service search
 paths. The local CLI opt-in removes only that exclusion; the other search
 filters and role-scoped access remain in effect.
 
+An unrecognized agent filter is rejected with a validation error naming the filter.
+
 Role-scoped access (see
 `role-scoped-history-access`) further constrains visibility before the
 store query runs. Results sort by `timestamp_start` falling back to
