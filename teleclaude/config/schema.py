@@ -20,6 +20,7 @@ from teleclaude.config.field_constraints import (
     refuse_unmet_requirements,
     refuse_violations,
 )
+from teleclaude.config.github_schema import GlobalGitHubConfig, PersonGitHubConfig
 from teleclaude.config.identity_schema import CompanyMember, PersonEntry
 from teleclaude.config.project_models import CapabilityConfig, TodoStoreConfig
 from teleclaude.config.tiers import Tier
@@ -34,7 +35,7 @@ from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import RESERVED_HOME_IDENTITY_PREFIXES
 
-CURRENT_SCHEMA_VERSION = 23
+CURRENT_SCHEMA_VERSION = 24
 _PROBE_REQUIRES_DEFER_ERROR = "owed_probe belongs only to an action whose on_demand is defer"
 _EVENT_BINDING_SCOPE_ERROR = "a binding names one trigger kind: events or scope, never both"
 _EVENT_BINDING_EMPTY_ERROR = "a binding that names events must name at least one event type pattern"
@@ -831,6 +832,7 @@ class GlobalConfig(TierDocument):
     interests: list[str] = []
     checkout_root: str | None = Field(default=None, json_schema_extra={"tier": Tier.INTERNAL})
     hooks: GlobalHooksConfig = GlobalHooksConfig()
+    github: GlobalGitHubConfig = Field(default_factory=GlobalGitHubConfig)
 
     @field_validator("jobs")
     @classmethod
@@ -885,6 +887,7 @@ class PersonConfig(TierDocument):
     name: str | None = None
     description: str | None = None
     creds: CredsConfig = CredsConfig()
+    github: PersonGitHubConfig = Field(default_factory=PersonGitHubConfig)
     subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     mail_accounts: list[MailAccount] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     interests: list[str] = []

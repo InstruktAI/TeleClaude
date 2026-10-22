@@ -45,6 +45,14 @@ _TMUX_DISPLAY_MESSAGE = "display-message"
 _TMUX_COMMAND_SEPARATOR = ";"
 _TMUX_TARGET_FLAG = "-t"
 _TMUX_PRINT_FLAG = "-p"
+_TMUX_SOCKET_FLAG = "-S"
+_PANE_PID_FORMAT = "#{pane_pid}"
+_SERVER_PANE_PROCESS_FORMAT = "#{session_name}\t#{pane_pid}\t#{pane_tty}"
+_TMUX_LIST_PANES = "list-panes"
+_TMUX_ALL_FLAG = "-a"
+_TMUX_FORMAT_FLAG = "-F"
+_FIELD_SEPARATOR = "\t"
+_SERVER_PANE_PROCESS_ERROR = "Platform pane-process snapshot is unavailable"
 _TMUX_ESCAPES_FLAG = "-e"
 _OBSERVE_FAILED_LOG = "Failed to observe pane from session %s: returncode=%d, stderr=%s"
 _OBSERVE_TIMEOUT_LOG = "Timeout observing pane from session %s: %s"
@@ -104,6 +112,48 @@ class PaneObservation:
     cursor: PaneCursor | None
 
 
+@dataclass(frozen=True)
+class PaneProcessIdentity:
+    """A server-observed pane root and terminal, independent of caller markers."""
+
+    session_name: str
+    pid: int
+    tty: str
+
+
+async def get_server_pane_processes(socket_path: Path) -> tuple[PaneProcessIdentity, ...] | None:
+    """Read all pane roots from one explicitly selected platform server."""
+    command = (
+        config.computer.tmux_binary,
+        _TMUX_SOCKET_FLAG,
+        str(socket_path),
+        _TMUX_LIST_PANES,
+        _TMUX_ALL_FLAG,
+        _TMUX_FORMAT_FLAG,
+        _SERVER_PANE_PROCESS_FORMAT,
+    )
+    try:
+        # tmux is the authoritative live pane source and has no project Python binding.
+        process = await asyncio.create_subprocess_exec(
+            *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await communicate_with_timeout(process, None, SUBPROCESS_TIMEOUT_QUICK, _TMUX_OPERATION_LABEL)
+        if process.returncode != 0:
+            logger.warning(_SERVER_PANE_PROCESS_ERROR)
+            return None
+        panes: list[PaneProcessIdentity] = []
+        for line in stdout.decode(_OUTPUT_ENCODING).splitlines():
+            fields = line.split(_FIELD_SEPARATOR)
+            if len(fields) != 3 or not fields[0] or not fields[1].isdigit() or int(fields[1]) <= 0:
+                logger.warning(_SERVER_PANE_PROCESS_ERROR)
+                return None
+            panes.append(PaneProcessIdentity(fields[0], int(fields[1]), fields[2]))
+        return tuple(panes)
+    except _TMUX_OPERATION_ERRORS:
+        logger.warning(_SERVER_PANE_PROCESS_ERROR, exc_info=True)
+        return None
+
+
 def _normalize_pane_output(text: str) -> str:
     """Normalize pane text for generic tmux change detection."""
     stripped = strip_ansi_codes(text).replace("\r\n", "\n").replace("\r", "\n")
@@ -145,14 +195,18 @@ async def get_pane_tty(session_name: str) -> str | None:
         return None
 
 
-async def get_pane_pid(session_name: str) -> int | None:
+async def get_pane_pid(session_name: str, *, socket_path: Path | None = None) -> int | None:
     """Get shell PID for the tmux pane backing a session."""
     try:
-        cmd = [config.computer.tmux_binary, "display-message", "-p", "-t", session_name, "#{pane_pid}"]
+        cmd = [config.computer.tmux_binary]
+        if socket_path is not None:
+            cmd.extend((_TMUX_SOCKET_FLAG, str(socket_path)))
+        cmd.extend((_TMUX_DISPLAY_MESSAGE, _TMUX_PRINT_FLAG, _TMUX_TARGET_FLAG, session_name, _PANE_PID_FORMAT))
+        # tmux owns live pane identity; the existing subprocess boundary queries its server.
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
+        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, _TMUX_OPERATION_LABEL)
         if result.returncode != 0:
             logger.error(
                 "Failed to get pane PID for session %s: %s",

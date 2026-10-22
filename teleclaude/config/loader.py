@@ -1,6 +1,9 @@
 """Configuration file loading and validation."""
 
-from collections.abc import Mapping
+from base64 import b64decode
+from binascii import Error as Base64Error
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -8,14 +11,18 @@ from typing import Any
 
 import yaml
 from instrukt_ai_logging import get_logger
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, SecretStr, ValidationError
 
 from teleclaude.config._environment import (
     company_environment_creation_mode,
     expand_environment_references,
     find_environment_references,
     read_environment_file,
+    read_environment_transaction,
     reconcile_environment_references,
+    replace_environment_value,
+    replace_environment_values,
+    require_owner_only_environment,
     write_environment_values,
 )
 from teleclaude.config._unresolved import NO_OVERRIDES, drop_unresolved_fields
@@ -34,6 +41,7 @@ from teleclaude.config.field_constraints import (
     UNRESOLVED_CONTEXT_KEY,
     refuses_only_unmet_requirements,
 )
+from teleclaude.config.github_schema import require_bare_github_key_references
 from teleclaude.config.identity_schema import CompanyMember, PersonEntry
 from teleclaude.config.inbound_secret_references import require_inbound_secret_references
 from teleclaude.config.machine import config as machine_config
@@ -56,9 +64,11 @@ from teleclaude.config.schema import (
     TierDocument,
 )
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.core.roles import RoleName
 from teleclaude.file_transaction import FileTransaction, file_transaction
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 from teleclaude.slug import validate_slug
+from teleclaude.types.github_binding import GitHubActorAssignment
 
 logger = get_logger(__name__)
 _PERSON_SLUG_FIELD = "slug"
@@ -84,6 +94,8 @@ _STAGED_DECLARATION_MAPPING_ERROR = "{path}: declaration must be a mapping"
 _STAGED_DECLARATION_KIND_ERROR = "{path}: declaration kind must be one of: global, project, person, company"
 _STAGED_DECLARATION_SCHEMA_ERROR = "{path}: invalid {kind} declaration: {error}"
 _FINDINGS_SEPARATOR = "; "
+_GITHUB_KEY_REFUSED_EVENT = "github_app_key_refused app_id=%s reason=%s"
+_OWNER_ONLY_MODE = 0o600
 
 
 @dataclass(frozen=True)
@@ -105,6 +117,8 @@ class ResolvedOverlay:
 
 def expanded_overlay_input(path: Path, document: object, kind: ConfigKind) -> ExpandedOverlayInput:
     """Expand environment references using only the overlay's sibling `.env`."""
+    if kind is ConfigKind.GLOBAL and isinstance(document, Mapping):
+        require_bare_github_key_references(document)
     references = find_environment_references(document)
     if not references:
         return ExpandedOverlayInput(value=document, environment_path=None)
@@ -122,6 +136,8 @@ def resolve_overlay_references(
     document: object, environment: Mapping[str, str], kind: ConfigKind, path: Path
 ) -> ResolvedOverlay:
     """Expand a tier document's references from ``environment``; one with no value here leaves its field absent."""
+    if kind is ConfigKind.GLOBAL and isinstance(document, Mapping):
+        require_bare_github_key_references(document)
     expanded = expand_environment_references(document, environment, config_path=path, preserve_unresolved=True)
     unresolved = {
         reference.path: reference.name
@@ -198,6 +214,8 @@ def validate_tier_candidate(
     """
     document = {**candidate, _KIND_FIELD: kind.value}
     require_inbound_secret_references(path, document)
+    if kind is ConfigKind.GLOBAL:
+        require_bare_github_key_references(document)
     environment: dict[str, str] = {}
     if environment_override is not None:
         environment.update(environment_override)
@@ -478,6 +496,113 @@ def load_global_config(path: Path | None = None) -> GlobalConfig:
     return load_config(path, GlobalConfig, ConfigKind.GLOBAL, path.parent)
 
 
+def read_global_config_transaction(transaction: FileTransaction) -> GlobalConfig:
+    """Validate the latest global declaration through its already-held lock."""
+    if not transaction.path.exists():
+        return GlobalConfig(kind=ConfigKind.GLOBAL)
+    raw = _read_config_mapping(transaction.path)
+    return _validated_model(transaction.path, raw, GlobalConfig, ConfigKind.GLOBAL)
+
+
+def global_environment_creation_mode(
+    declaration: GlobalConfig, transaction: FileTransaction, names: Iterable[str]
+) -> int | None:
+    """Apply declared App-key custody while the declaration and environment locks are held."""
+    protected = {profile.private_key_base64_env for profile in declaration.github.apps}
+    if not protected.intersection(names):
+        return None
+    if transaction.path.exists():
+        require_owner_only_environment(transaction.path)
+    return _OWNER_ONLY_MODE
+
+
+@contextmanager
+def _global_environment_write(
+    names: Iterable[str], declaration_path: Path = GLOBAL_CONFIG_PATH
+) -> Iterator[tuple[FileTransaction, int | None]]:
+    """Hold the existing global locks across current classification and mutation."""
+    with file_transaction(declaration_path) as declaration_transaction:
+        declaration = read_global_config_transaction(declaration_transaction)
+        with file_transaction(declaration_path.with_name(ConfigFileName.ENV)) as environment_transaction:
+            creation_mode = global_environment_creation_mode(declaration, environment_transaction, names)
+            yield environment_transaction, creation_mode
+
+
+def update_global_environment(name: str, value: str | None) -> None:
+    """Keep single-key set/clear semantics under declaration-then-environment locks."""
+    with _global_environment_write((name,)) as (transaction, creation_mode):
+        if creation_mode is not None and not transaction.path.exists() and value is None:
+            return
+        replace_environment_value(transaction, name, value, creation_mode=creation_mode)
+
+
+def github_actor_for_role(role: RoleName) -> GitHubActorAssignment | None:
+    """Answer a configured declaration for the actual role; confer no caller authority."""
+    with file_transaction(GLOBAL_CONFIG_PATH) as transaction:
+        declaration = read_global_config_transaction(transaction)
+        app_id = declaration.github.roles.get(role)
+        return next(
+            (profile.assignment for profile in declaration.github.apps if profile.assignment.app_id == app_id), None
+        )
+
+
+class GitHubAppKeyFailure(StrEnum):
+    """Value-free prerequisite failures from protected config resolution."""
+
+    CONFIG_UNAVAILABLE = "config_unavailable"
+    PROFILE_MISSING = "profile_missing"
+    ACTOR_MISMATCH = "actor_mismatch"
+    KEY_UNAVAILABLE = "key_unavailable"
+    KEY_MISSING = "key_missing"
+    KEY_MALFORMED = "key_malformed"
+
+
+class GitHubAppKeyRefused(ValueError):
+    """The config owner supplies no usable key for the assigned actor."""
+
+    def __init__(self, reason: GitHubAppKeyFailure) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def resolve_github_app_private_key(assignment: GitHubActorAssignment) -> SecretStr:
+    """Resolve only the recorded App after authenticated admission, with no ambient fallback."""
+    try:
+        with file_transaction(GLOBAL_CONFIG_PATH) as declaration_transaction:
+            try:
+                declaration = read_global_config_transaction(declaration_transaction)
+            except (ConfigLoadError, OSError, ValueError, yaml.YAMLError):
+                raise GitHubAppKeyRefused(GitHubAppKeyFailure.CONFIG_UNAVAILABLE) from None
+            profile = next(
+                (item for item in declaration.github.apps if item.assignment.app_id == assignment.app_id), None
+            )
+            if profile is None:
+                raise GitHubAppKeyRefused(GitHubAppKeyFailure.PROFILE_MISSING)
+            if not profile.assignment.actor.same_account(assignment.actor):
+                raise GitHubAppKeyRefused(GitHubAppKeyFailure.ACTOR_MISMATCH)
+            with file_transaction(GLOBAL_CONFIG_PATH.with_name(ConfigFileName.ENV)) as environment_transaction:
+                try:
+                    values = read_environment_transaction(environment_transaction, owner_only=True, interpolate=False)
+                except (OSError, ValueError):
+                    raise GitHubAppKeyRefused(GitHubAppKeyFailure.KEY_UNAVAILABLE) from None
+                encoded = values.get(profile.private_key_base64_env)
+                if not encoded:
+                    raise GitHubAppKeyRefused(GitHubAppKeyFailure.KEY_MISSING)
+                try:
+                    pem = b64decode(encoded, validate=True).decode(_UTF8)
+                except (Base64Error, ValueError):
+                    raise GitHubAppKeyRefused(GitHubAppKeyFailure.KEY_MALFORMED) from None
+                if not pem.strip():
+                    raise GitHubAppKeyRefused(GitHubAppKeyFailure.KEY_MALFORMED)
+                return SecretStr(pem)
+    except GitHubAppKeyRefused as error:
+        logger.warning(_GITHUB_KEY_REFUSED_EVENT, assignment.app_id, error.reason)
+        raise
+    except OSError:
+        logger.warning(_GITHUB_KEY_REFUSED_EVENT, assignment.app_id, GitHubAppKeyFailure.KEY_UNAVAILABLE)
+        raise GitHubAppKeyRefused(GitHubAppKeyFailure.KEY_UNAVAILABLE) from None
+
+
 def load_person_config(path: Path, *, registered_slug: str | None = None) -> PersonConfig:
     """Load per-person configuration."""
     default_fields = {_PERSON_SLUG_FIELD: registered_slug} if registered_slug is not None else None
@@ -689,6 +814,10 @@ def _reconcile_overlay_document(
 def _write_overlay_environment(path: Path, kind: ConfigKind, updates: Mapping[str, str]) -> None:
     """Apply placeholder-backed changes only to the owning sibling environment file."""
     if not updates:
+        return
+    if kind is ConfigKind.GLOBAL:
+        with _global_environment_write(updates, path) as (transaction, creation_mode):
+            replace_environment_values(transaction, updates, creation_mode=creation_mode)
         return
     creation_mode = company_environment_creation_mode() if kind is ConfigKind.COMPANY else None
     write_environment_values(path.with_name(ConfigFileName.ENV), updates, creation_mode=creation_mode)

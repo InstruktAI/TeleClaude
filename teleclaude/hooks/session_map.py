@@ -26,6 +26,7 @@ from teleclaude.core.session_status import is_session_terminal
 from teleclaude.hooks.main_db import main_sync_engine
 from teleclaude.identity_reach import Reach, ReachResolutionError
 from teleclaude.memory.context.builder import generate_context_sync
+from teleclaude.runtime.tmux_socket import own_tmux_socket_path
 
 try:
     import fcntl
@@ -35,10 +36,6 @@ except ImportError:  # pragma: no cover - platform-dependent.
 logger = get_logger("teleclaude.hooks.receiver")
 
 _TMUX_ENV = "TMUX"
-_TMUX_TMPDIR_ENV = "TMUX_TMPDIR"
-_TMUX_DEFAULT_TMPDIR = "/tmp"
-_TMUX_SOCKET_DIR_PREFIX = "tmux-"
-_TMUX_DEFAULT_SOCKET_NAME = "default"
 _TMUX_ENV_FIELD_SEPARATOR = ","
 
 _SESSION_EXPORTS = [
@@ -272,9 +269,7 @@ def _resolved_or_none(path: Path) -> Path | None:
 
 def _own_tmux_socket_path() -> Path | None:
     """Return the socket of the tmux server TeleClaude hosts its own panes on."""
-    tmux_tmpdir = os.getenv(_TMUX_TMPDIR_ENV) or _TMUX_DEFAULT_TMPDIR  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
-    socket_dir = f"{_TMUX_SOCKET_DIR_PREFIX}{os.getuid()}"
-    return _resolved_or_none(Path(tmux_tmpdir) / socket_dir / _TMUX_DEFAULT_SOCKET_NAME)
+    return own_tmux_socket_path()
 
 
 def _in_own_tmux_pane() -> bool:
