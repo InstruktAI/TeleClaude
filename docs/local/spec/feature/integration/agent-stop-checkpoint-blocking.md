@@ -625,58 +625,13 @@ And its required action instructs the agent to commit them
 
 #### UC-CP33: Dirty paths the session never declared raise no obligation
 
-```gherkin
-Given an agent session on a shared branch reaches an agent-stop checkpoint boundary
-And the working tree holds dirty paths that session has not declared
-And no successful shell command of that session in the current checkpoint cycle writes to any of them
-When checkpoint evaluation completes
-Then no obligation is raised for those paths
-And any decision produced for another reason names none of them
-```
-
 #### UC-CP34: A todo worktree writer owes its dirty tree
-
-```gherkin
-Given the todo's builder or finalizer session is working from that todo's worktree
-And that worktree holds dirty paths the session has declared none of
-When checkpoint evaluation completes
-Then a checkpoint decision is produced naming those paths
-And its required actions are the ones their categories carry
-```
 
 #### UC-CP35: A reviewer in a todo worktree owes no commit for the builder's changes
 
-```gherkin
-Given a builder session has left uncommitted changes in a non-main todo worktree
-And a review-only session in the same worktree has made no source edits
-When checkpoint evaluation completes at the reviewer's agent-stop boundary
-Then no checkpoint decision directs the reviewer to commit those paths
-And a later reviewer agent-stop over the same uncommitted changes directs none either
-```
-
 #### UC-CP36: A shell write the session has not declared is put to it as a question
 
-```gherkin
-Given an agent session on a shared branch reaches an agent-stop checkpoint boundary
-And a successful shell command of that session in the current checkpoint cycle writes to a dirty path
-And the session has not declared that path
-When checkpoint evaluation completes
-Then a checkpoint decision names that path and the declaration command for it
-And it states that the path is to be declared only if it is the session's own
-And no declaration is written for the path
-And no obligation to commit the path is raised
-And a later checkpoint cycle does not repeat the question unless new shell activity writes to the path again
-```
-
 #### UC-CP37: A file written through an edit tool is already declared at the stop
-
-```gherkin
-Given an agent session on a shared branch edited a file through an edit tool whose input names that file
-And the call succeeded
-When the session reaches an agent-stop checkpoint boundary with that file dirty
-Then the file is among the session's declared paths
-And the checkpoint treats it as the session's own undelivered work rather than asking about it
-```
 
 #### UC-CP38: A retiring parent's edit owes its empty companion no mirror
 
