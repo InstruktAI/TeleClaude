@@ -285,6 +285,12 @@ The inbox terminal result `not delivered` is returned by a completed activation 
 **A reservation is released on terminal evidence for exactly its request.** The request's notice went out, every activation it caused is terminal, and no open session entitled to that request remains that could still claim. An open session bound to the item but entitled only to an earlier request is not counted, signalled or ended. A clock decides nothing: activations never captured, or whose assigned session is not recorded, leave the reservation held and unknown.
 <!-- /planned:issue-128 -->
 
+<!-- planned:issue-128 -->
+
+**A request from `prepared` also stands on the prepared body.** For a request whose reservation was made from `prepared`, the item's current intent-body revision must also equal the revision its prepared act named (#124 INV-S3). The judgment that reads the holder and the reservation reads that revision too, immediately before it wakes or creates a session. An item or body that cannot be read does not stand. A request that does not stand starts nothing: its activation reaches `not delivered` with the reason `stale request`, and its reservation is released only on terminal evidence for exactly that request, as above. A reservation made from any other phase is judged by the holder and the reservation alone.
+
+<!-- /planned:issue-128 -->
+
 ### Company on a human-directed session
 
 A session created with `--company` operates for that company once
