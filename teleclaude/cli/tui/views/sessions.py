@@ -121,17 +121,17 @@ class SessionsView(
         self._preview_revision = 0
         self._input_highlights: set[str] = set()
         self._output_highlights: set[str] = set()
-        # session_id → {"text": str, "ts": float (monotonic)}
+        # session_id → {"text": str, "at": str (event timestamp), "ts": float (monotonic)}
         self._last_output_summary: dict[str, dict[str, object]] = {}  # guard: loose-dict
-        # session_id → last non-empty out-line text. In-memory only, never
-        # persisted to disk: retains the live out value across the
+        # session_id → (last non-empty out-line text, its event timestamp). In-memory
+        # only, never persisted to disk: retains the live out value across the
         # user_prompt_submit clear and tree rebuilds so the out line never drops.
-        self._retained_out: dict[str, str] = {}
-        # Live activity survives tree rebuilds the same way the out-line text
-        # does: a fresh row would otherwise reset activity_event and drop the
-        # out-line's live highlight until the agent's next event — up to its
-        # full inter-event gap on a quiet agent.
-        self._retained_activity: dict[str, tuple[str, str]] = {}
+        self._retained_out: dict[str, tuple[str, str]] = {}
+        # Live activity (hook type, text, event timestamp) survives tree rebuilds
+        # the same way the out-line text does: a fresh row would otherwise reset
+        # activity_event and drop the out-line's live highlight until the agent's
+        # next event — up to its full inter-event gap on a quiet agent.
+        self._retained_activity: dict[str, tuple[str, str, str]] = {}
         self._session_state_pruned = False
         self._collapsed_sessions: set[str] = set()
         self._collapsed_computers: set[str] = set()
@@ -574,11 +574,12 @@ class SessionsView(
             stored = self._last_output_summary.get(session.session_id)
             retained_activity = self._retained_activity.get(session.session_id)
             if retained_activity is not None:
-                row.activity_event, row.activity_text = retained_activity
+                row.activity_event, row.activity_text, row.activity_at = retained_activity
             if retained:
-                row.last_output_summary = retained
-            elif stored and stored.get("text"):
+                row.last_output_summary, row.last_output_at = retained
+            elif stored and stored.get("text") and stored.get("at"):
                 row.last_output_summary = str(stored["text"])
+                row.last_output_at = str(stored["at"])
 
             # Recurse into AI-to-AI children
             for child in node.children:
