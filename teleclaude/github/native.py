@@ -1,0 +1,180 @@
+"""Admit a bound native issue-comment request and collect its opaque prose before credentials."""
+
+from __future__ import annotations
+
+import argparse
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from enum import StrEnum
+from pathlib import Path
+from typing import BinaryIO, Never
+from urllib.parse import unquote, urlsplit
+
+from teleclaude.core.github_identity import GitHubPostingContext
+from teleclaude.types.github_posting import NativeGitHubPostSource
+
+_PROGRAM = "gh issue comment"
+_UTF8 = "utf-8"
+_STDIN_PATH = "-"
+_PATH_SEPARATOR = "/"
+_HTTPS = "https"
+_GITHUB_HOST = "github.com"
+_HOST_PREFIX = _GITHUB_HOST + _PATH_SEPARATOR
+_ISSUES_SEGMENT = "issues"
+
+
+class _Command(StrEnum):
+    ISSUE = "issue"
+    COMMENT = "comment"
+
+
+_COMMENT_PATH = (_Command.ISSUE, _Command.COMMENT)
+
+
+class _Flag(StrEnum):
+    BODY = "--body"
+    BODY_SHORT = "-b"
+    BODY_FILE = "--body-file"
+    BODY_FILE_SHORT = "-F"
+    EDITOR = "--editor"
+    EDITOR_SHORT = "-e"
+    REPOSITORY = "--repo"
+    REPOSITORY_SHORT = "-R"
+
+
+class _Argument(StrEnum):
+    TARGET = "target"
+    BODY = "body"
+    BODY_FILE = "body_file"
+    EDITOR = "editor"
+    REPOSITORY = "repository"
+
+
+class _Action(StrEnum):
+    APPEND = "append"
+    COUNT = "count"
+
+
+class NativeCommentRefusal(StrEnum):
+    """Pre-effect admission failures, without echoing arguments or prose."""
+
+    UNSUPPORTED_OPERATION = "unsupported_operation"
+    INVALID_ARGUMENTS = "invalid_arguments"
+    TARGET_MISMATCH = "target_mismatch"
+    BODY_UNAVAILABLE = "body_unavailable"
+    EDITOR_UNAVAILABLE = "editor_unavailable"
+
+
+class NativeCommentRefused(ValueError):
+    """The invocation produced no provider request or credential lookup."""
+
+    def __init__(self, reason: NativeCommentRefusal) -> None:
+        super().__init__(reason.value)
+        self.reason = reason
+
+
+class _Parser(argparse.ArgumentParser):
+    def error(self, message: str) -> Never:
+        """Refuse without allowing argparse to print caller-supplied values."""
+        raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+
+
+class _Arguments(argparse.Namespace):
+    target: str
+    body: list[str] | None = None
+    body_file: list[str] | None = None
+    repository: list[str] | None = None
+    editor: int = 0
+
+
+@dataclass(frozen=True)
+class NativeIssueCommentRequest:
+    """One admitted body-only append; source identity is structurally absent."""
+
+    context: GitHubPostingContext
+    body: str
+    source: NativeGitHubPostSource = field(default_factory=NativeGitHubPostSource, init=False)
+
+
+def prepare_native_issue_comment(
+    arguments: Sequence[str],
+    context: GitHubPostingContext,
+    *,
+    directory: Path,
+    stdin: BinaryIO,
+    editor: Callable[[], str] | None = None,
+) -> NativeIssueCommentRequest:
+    """Resolve all fields and the exact bound target before reading prose or loading credentials."""
+    if tuple(arguments[:2]) != _COMMENT_PATH:
+        raise NativeCommentRefused(NativeCommentRefusal.UNSUPPORTED_OPERATION)
+    values = _parse(arguments[2:])
+    if any(len(value) > 1 for value in (values.body, values.body_file, values.repository) if value is not None):
+        raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+    if values.editor > 1:
+        raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+    target = context.target
+    repository = values.repository[0] if values.repository else target.repository
+    if repository.casefold().removeprefix(_HOST_PREFIX) != target.repository.casefold():
+        raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
+    if _issue_number(values.target, target.repository) != target.issue_number:
+        raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
+    try:
+        if values.body is not None:
+            body = values.body[0]
+        elif values.body_file is not None:
+            source = values.body_file[0]
+            body = (
+                stdin.read().decode(_UTF8)
+                if source == _STDIN_PATH
+                else (directory / Path(source)).read_bytes().decode(_UTF8)
+            )
+        else:
+            if editor is None:
+                raise NativeCommentRefused(NativeCommentRefusal.EDITOR_UNAVAILABLE)
+            body = editor()
+        body.encode(_UTF8)
+    except (OSError, UnicodeError):
+        raise NativeCommentRefused(NativeCommentRefusal.BODY_UNAVAILABLE) from None
+    return NativeIssueCommentRequest(context, body)
+
+
+def _parse(arguments: Sequence[str]) -> _Arguments:
+    parser = _Parser(prog=_PROGRAM, add_help=False, allow_abbrev=False, exit_on_error=False)
+    parser.add_argument(_Argument.TARGET)
+    body = parser.add_mutually_exclusive_group()
+    body.add_argument(_Flag.BODY, _Flag.BODY_SHORT, dest=_Argument.BODY, action=_Action.APPEND)
+    body.add_argument(_Flag.BODY_FILE, _Flag.BODY_FILE_SHORT, dest=_Argument.BODY_FILE, action=_Action.APPEND)
+    body.add_argument(_Flag.EDITOR, _Flag.EDITOR_SHORT, dest=_Argument.EDITOR, action=_Action.COUNT)
+    parser.add_argument(_Flag.REPOSITORY, _Flag.REPOSITORY_SHORT, dest=_Argument.REPOSITORY, action=_Action.APPEND)
+    values = _Arguments()
+    try:
+        parser.parse_args(arguments, namespace=values)
+    except argparse.ArgumentError:
+        raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS) from None
+    return values
+
+
+def _issue_number(selector: str, repository: str) -> int:
+    """Resolve only an explicit number or matching GitHub issue URL."""
+    try:
+        if selector.isascii() and selector.isdecimal():
+            return int(selector)
+        parsed = urlsplit(selector)
+        fields = parsed.path.split(_PATH_SEPARATOR)
+        if (
+            parsed.scheme != _HTTPS
+            or parsed.hostname != _GITHUB_HOST
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.port is not None
+            or parsed.query
+            or len(fields) != 5
+            or fields[3] != _ISSUES_SEGMENT
+            or _PATH_SEPARATOR.join(unquote(value) for value in fields[1:3]).casefold() != repository.casefold()
+            or not fields[4].isascii()
+            or not fields[4].isdecimal()
+        ):
+            raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
+        return int(fields[4])
+    except ValueError:
+        raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH) from None

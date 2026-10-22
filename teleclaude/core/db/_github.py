@@ -12,6 +12,7 @@ from sqlmodel import col
 from teleclaude.core import db_models
 from teleclaude.core.roles import Role, resolve_session_role
 from teleclaude.types.github_binding import GitHubActorAssignment, GitHubSessionBinding, GitHubWorkTarget
+from teleclaude.types.github_posting import GitHubObjectAssociation, GitHubObjectRef, NativeGitHubPostSource
 
 
 class GitHubBindingRefusal(StrEnum):
@@ -25,6 +26,7 @@ class GitHubBindingRefusal(StrEnum):
     ACTOR_COLLISION = "actor_collision"
     ASSIGNMENT_CONFLICT = "assignment_conflict"
     ACTOR_UNBOUND = "actor_unbound"
+    ASSOCIATION_CONFLICT = "association_conflict"
 
 
 class GitHubBindingRefused(ValueError):
@@ -128,3 +130,53 @@ class DbGitHubMixin:
                 or GitHubWorkTarget.model_validate_json(stored.native_target_json) != target
             ):
                 raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
+
+    async def get_github_object_association(self, ref: GitHubObjectRef) -> GitHubObjectAssociation | None:
+        """Read exact creation provenance; envelopes and last-comment selection are not inputs."""
+        key = (ref.repository_id, ref.container_number, ref.kind.value, ref.provider_id)
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.GitHubObjectAssociationRow, key)
+        if row is None:
+            return None
+        stored = GitHubObjectAssociation.model_validate_json(row.creation_json)
+        if stored.object != ref:
+            raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+        return stored
+
+    async def record_github_object_association(self, association: GitHubObjectAssociation) -> GitHubObjectAssociation:
+        """Record verified creation once; a conflict never replaces another producer's facts."""
+        ref = association.object
+        key = (ref.repository_id, ref.container_number, ref.kind.value, ref.provider_id)
+        statement = sqlite_insert(db_models.GitHubObjectAssociationRow).values(
+            repository_id=ref.repository_id,
+            container_number=ref.container_number,
+            object_kind=ref.kind.value,
+            provider_id=ref.provider_id,
+            creation_json=association.model_dump_json(),
+        )
+        async with self._session() as db_session:
+            binding_row = await db_session.get(db_models.GitHubSessionBindingRow, association.session_id)
+            if binding_row is None:
+                raise GitHubBindingRefused(GitHubBindingRefusal.ACTOR_UNBOUND)
+            binding = GitHubSessionBinding.model_validate_json(binding_row.binding_json)
+            if (
+                binding.session_id != association.session_id
+                or binding.role is not association.role
+                or not binding.assignment.actor.same_account(association.actor)
+            ):
+                raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+            if isinstance(association.source, NativeGitHubPostSource):
+                if binding_row.native_target_json is None:
+                    raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
+                target = GitHubWorkTarget.model_validate_json(binding_row.native_target_json)
+                if target.repository_id != ref.repository_id or target.issue_number != association.work_issue_number:
+                    raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
+            await db_session.exec(statement.on_conflict_do_nothing())
+            await db_session.commit()
+            row = await db_session.get(db_models.GitHubObjectAssociationRow, key)
+            if row is None:
+                raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+            stored = GitHubObjectAssociation.model_validate_json(row.creation_json)
+            if not stored.same_creation(association):
+                raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+        return stored

@@ -94,6 +94,19 @@ class GitHubSessionBindingRow(SQLModel, table=True):
     native_target_json: str | None = None
 
 
+class GitHubObjectAssociationRow(SQLModel, table=True):
+    """Immutable provider-object creation attribution, scoped to its container."""
+
+    __tablename__ = "github_object_associations"
+    __table_args__ = {"extend_existing": True}
+
+    repository_id: int = Field(primary_key=True)
+    container_number: int = Field(primary_key=True)
+    object_kind: str = Field(primary_key=True)
+    provider_id: int = Field(primary_key=True)
+    creation_json: str
+
+
 class VoiceAssignment(SQLModel, table=True):
     """voice_assignments table."""
 

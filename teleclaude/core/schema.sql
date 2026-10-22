@@ -815,3 +815,12 @@ CREATE TABLE IF NOT EXISTS github_session_bindings (
     binding_json TEXT NOT NULL,
     native_target_json TEXT
 );
+
+CREATE TABLE IF NOT EXISTS github_object_associations (
+    repository_id INTEGER NOT NULL,
+    container_number INTEGER NOT NULL,
+    object_kind TEXT NOT NULL,
+    provider_id INTEGER NOT NULL,
+    creation_json TEXT NOT NULL,
+    PRIMARY KEY (repository_id, container_number, object_kind, provider_id)
+);
