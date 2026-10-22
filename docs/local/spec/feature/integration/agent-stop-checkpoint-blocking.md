@@ -111,7 +111,9 @@ Without a turn-start anchor, the stop is not blocked. If evaluation fails before
 establishing a complete action set, it produces no block and does not mark the
 cycle checked. A worktree session resolves path and branch scope against the
 checkout named by its recorded worktree subdirectory. A sealed commit after the
-last relevant edit satisfies the commit obligation for those changes.
+last relevant edit satisfies the commit obligation for those changes. An
+evaluation with no required action and no outstanding assessment emits no
+checkpoint and records no checkpoint-seen entry.
 
 ## Canonical fields
 
@@ -119,37 +121,11 @@ last relevant edit satisfies the commit obligation for those changes.
 
 #### UC-CP1: Uncommitted code changes block stop
 
-```gherkin
-Given a Claude session has modified source files in the current turn
-And no commit has been recorded since the last mutation
-And the turn-scoped clear flag is not set
-When Claude invokes the receiver with a Stop event
-Then the checkpoint pre-emit step loads the session row
-And resolves the project path (falling back to a transcript-derived working directory, adjusted for any worktree subdirectory)
-And the turn-start timestamp is computed as the later of last user message and last checkpoint
-And the heuristic engine evaluates the turn window
-And the engine reports code category present with a required commit action
-And a checkpoint message is composed listing required actions, prefixed so the receiver's system-prompt filter can drop the echoed prompt on the next turn
-And a checkpoint-seen outbox entry is recorded with the current timestamp
-And the Claude adapter formats a block decision carrying the message
-And the receiver emits the block decision and exits cleanly BEFORE enqueueing the agent-stop event
-```
-
 #### UC-CP2: Turn-scoped clear flag skips checkpoint for the current turn
 
 #### UC-CP3: No turn start → no checkpoint
 
 #### UC-CP4: No turn-local changes → no checkpoint
-
-```gherkin
-Given the heuristic engine returns an empty checkpoint result (no required actions)
-And no integrator-maintenance marker is present
-When the checkpoint pre-emit step runs
-Then a debug log records "checkpoint skipped: no turn-local changes"
-And no decision is produced
-And no checkpoint-seen entry is enqueued
-And the agent-stop event enqueues normally
-```
 
 #### UC-CP5: Turn-scoped markers cleared on new user prompt
 
@@ -394,22 +370,6 @@ Then the existing commit-action decision is applied unchanged
 ```
 
 #### UC-CP19: A turn's own commit is not counted as a mutation of the files it commits
-
-```gherkin
-Given a turn's only turn-local change to the attributed files is a sealed `telec code commit ... --only <files>` that commits exactly those files
-And the committed files are documentation only, so no other required action or observation is owed
-And the working tree is dirty from an unrelated concurrent change, so the clean-tree commit-action floor (UC-CP18) does not apply
-When the heuristic engine decides whether a commit action is owed
-Then the commit is recognized as the evidence that discharges the commit obligation for those files
-And the commit action is not required
-And no "No code changes detected this turn" checkpoint is produced
-
-Given a turn edits a file and then commits it via a sealed `telec code commit` in the same turn
-When the heuristic engine decides whether a commit action is owed
-Then the edit is the last mutation and the later commit discharges it
-And the commit action is not required
-(A commit persists already-made mutations; it is never itself a mutation of the files it commits, so it can never be the last mutation those files must be committed after — the self-referential ordering that would demand a commit strictly after the commit is excluded.)
-```
 
 <!-- planned-change:installation-activation-inspection -->
 
