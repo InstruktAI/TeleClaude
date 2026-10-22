@@ -1,0 +1,1 @@
+Error: 409 — kickback is refused: b3-item is in work. Door: the driver start in progress (reservation {{b14:reservation8}}, requested by the lifecycle runner or a person at a terminal); the session it is starting, {{b14:starting-session}}, claims it. The act that replaces it is kickback, performed by the holding driver.
