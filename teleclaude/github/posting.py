@@ -8,11 +8,8 @@ import os
 import shlex
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from hashlib import sha256
-from http.client import HTTPException, parse_headers
-from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import BinaryIO, TextIO
@@ -33,23 +30,30 @@ from teleclaude.core.github_identity import (
     resolve_admitted_github_posting_context,
     resolve_native_github_posting_context,
 )
+from teleclaude.github import _native_gh
 from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
 from teleclaude.github.envelope import render_github_envelope
 from teleclaude.github.native import (
     NativeCommentRefusal,
     NativeCommentRefused,
+    prepare_native_comment_maintenance,
     prepare_native_issue_comment,
     prepare_native_issue_view,
 )
-from teleclaude.paths import BIN_DIR
 from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
 from teleclaude.types.github_binding import GitHubWorkTarget
 from teleclaude.types.github_posting import (
     GitHubAcceptance,
+    GitHubCommentMaintenanceOperation,
+    GitHubCommentMaintenanceResult,
+    GitHubCommentMaintenanceStage,
     GitHubEditEvidence,
+    GitHubIssueCommentDeleteRequest,
+    GitHubIssueCommentEditRequest,
     GitHubIssueCommentRequest,
     GitHubObjectAssociation,
     GitHubObjectKind,
+    GitHubObjectMutation,
     GitHubObjectRef,
     GitHubPostFailure,
     GitHubPostResult,
@@ -63,12 +67,8 @@ _CANCELLED_EVENT = (
     "github_comment_post_cancelled acceptance=%s failure=%s session_id=%s provider_id=%s provider_status=%s"
 )
 _CANCELLED_MESSAGE = "GitHub posting cancelled; available provider evidence is attached"
-_GH = "gh"
-_PATH = "PATH"
 _UTF8 = "utf-8"
 _EMPTY = ""
-_EMPTY_BYTES = b""
-_BASE_ENVIRONMENT = frozenset({_PATH, "HOME", "LANG", "LC_ALL", "LC_CTYPE", "SYSTEMROOT", "WINDIR"})
 _GH_TOKEN = "GH_TOKEN"
 _GH_CONFIG_DIR = "GH_CONFIG_DIR"
 _FIXED_ENVIRONMENT = {
@@ -81,32 +81,10 @@ _CONFIG_PREFIX = "teleclaude-gh-"
 _BODY = "body"
 _REPOSITORY_SEPARATOR = "/"
 _COMMENT_ENDPOINT = "repos/{owner}/{repo}/issues/{number}/comments"
+_COMMENT_OBJECT_ENDPOINT = "repos/{owner}/{repo}/issues/comments/{identifier}"
 _ISSUE_URL = "https://api.github.com/repos/{owner}/{repo}/issues/{number}"
 _COMMENT_URL = "https://api.github.com/repos/{owner}/{repo}/issues/comments/{identifier}"
-_GH_ARGUMENTS = (
-    "api",
-    "--hostname",
-    "github.com",
-    "--method",
-    "POST",
-    "--include",
-    "--input",
-    "-",
-    "--header",
-    "Accept: application/vnd.github+json",
-    "--header",
-    "Content-Type: application/json",
-    "--header",
-    "X-GitHub-Api-Version: 2026-03-10",
-)
-_SEND_TIMEOUT_SECONDS = 60.0
-_HTTP_PREFIX = b"HTTP/"
-_RETRY_AFTER = "Retry-After"
-_RATE_REMAINING = "X-RateLimit-Remaining"
-_RATE_RESET = "X-RateLimit-Reset"
-_ZERO = "0"
 _DEFINITIVE_REJECTIONS = frozenset({400, 401, 403, 404, 405, 406, 410, 413, 414, 415, 422, 429})
-_WRAPPER_DIRECTORY = Path("install/wrappers")
 _UNVERIFIED_OBJECT = "GitHub comment result could not be verified"
 _ISSUE_COMMENT_PERMISSIONS: AppPermissionsType = {"issues": "write"}
 _ASSOCIATION = "association"
@@ -153,20 +131,19 @@ _NATIVE_UNAVAILABLE = "native execution unavailable"
 _NATIVE_CONTEXT_CHANGED = "session scope changed"
 _COMMENT_WEB_URL = "https://github.com/{repository}/issues/{number}#issuecomment-{identifier}"
 _EXIT_REFUSED = 2
-
-
-@dataclass(frozen=True)
-class _Response:
-    status: int | None
-    body: bytes = _EMPTY_BYTES
-    retry_after: timedelta | None = None
-    started: bool = True
-
-
-class _SendCancelled(asyncio.CancelledError):
-    def __init__(self, response: _Response) -> None:
-        super().__init__()
-        self.response = response
+_API_COMMAND = "api"
+_MUTATION = "mutation"
+_STAGE = "stage"
+_MUTATION_EVENT = (
+    "github_comment_maintenance operation=%s stage=%s acceptance=%s failure=%s session_id=%s provider_id=%s"
+)
+_PROVIDER_STATUS = "provider_status"
+_RETRY_DELAY = "retry_after"
+_ACCEPTANCE = "acceptance"
+_BODY_DIGEST = "body_digest"
+_EDIT_EVIDENCE = "edit_evidence"
+_PREFLIGHT_DIGEST = "preflight_digest"
+_CREDENTIAL_REFUSAL = "credential_refusal"
 
 
 class GitHubPostingCancelled(asyncio.CancelledError):
@@ -177,96 +154,12 @@ class GitHubPostingCancelled(asyncio.CancelledError):
         self.result = result
 
 
-def _launch_environment() -> dict[str, str]:
-    """Keep only host basics; provider controls and loader/proxy overrides never pass through."""
-    return {
-        name: value
-        for name, value in os.environ.items()  # guard: direct-env-read - child-process startup seam
-        if name in _BASE_ENVIRONMENT
-    }
+class GitHubMaintenanceCancelled(asyncio.CancelledError):
+    """Cancellation retains the maintenance stage and safe effect evidence, never replay advice."""
 
-
-def _gh_binary(environment: Mapping[str, str]) -> Path | None:
-    wrapper = (BIN_DIR / _GH).resolve()
-    source_wrapper = (Path(__file__).resolve().parents[1] / _WRAPPER_DIRECTORY / _GH).resolve()
-    for directory in environment.get(_PATH, os.defpath).split(os.pathsep):
-        candidate = (Path(directory) / _GH).resolve()
-        if candidate not in (wrapper, source_wrapper) and candidate.is_file() and os.access(candidate, os.X_OK):
-            return candidate
-    return None
-
-
-def _response(stdout: bytes) -> _Response:
-    """Translate gh's included response with the standard-library header parser, without raw diagnostics."""
-    stream = BytesIO(stdout)
-    line = stream.readline()
-    try:
-        status = int(line.split()[1]) if line.startswith(_HTTP_PREFIX) else None
-    except (IndexError, ValueError):
-        status = None
-    if status is None or not 100 <= status <= 599:
-        return _Response(None)
-    try:
-        headers = parse_headers(stream)
-    except HTTPException:
-        return _Response(status)
-    delay = None
-    if status in (403, 429):
-        try:
-            seconds = headers.get(_RETRY_AFTER)
-            reset = headers.get(_RATE_RESET)
-            if seconds is not None:
-                delay = timedelta(seconds=max(0, int(seconds)))
-            elif headers.get(_RATE_REMAINING) == _ZERO and reset is not None:
-                delay = max(datetime.fromtimestamp(int(reset), UTC) - datetime.now(UTC), timedelta())
-        except (OverflowError, OSError, ValueError):
-            delay = None
-    return _Response(status, stream.read(), delay)
-
-
-async def _send(
-    binary: Path, endpoint: str, payload: bytes, environment: Mapping[str, str], directory: str
-) -> _Response:
-    # Real gh owns provider HTTP/auth behavior; subprocess execution preserves the adopted native client contract.
-    try:
-        process = await asyncio.create_subprocess_exec(
-            str(binary),
-            *_GH_ARGUMENTS,
-            endpoint,
-            cwd=directory,
-            env=environment,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-    except OSError:
-        return _Response(None, started=False)
-    try:
-        stdout, _ = await asyncio.wait_for(process.communicate(payload), timeout=_SEND_TIMEOUT_SECONDS)
-    except (TimeoutError, OSError):
-        return _response(await _reap(process))
-    except asyncio.CancelledError:
-        try:
-            recovered = _response(await _reap(process))
-        except OSError:
-            recovered = _Response(None)
-        raise _SendCancelled(recovered) from None
-    # A process exit code is neither acceptance evidence nor safe-retry permission.
-    return _response(stdout)
-
-
-async def _reap(process: asyncio.subprocess.Process) -> bytes:
-    """Settle the actual child after timeout, failed I/O or cancellation, without retrying its request."""
-    try:
-        process.kill()
-    except ProcessLookupError:
-        pass
-    try:
-        stdout, _ = await process.communicate()
-        return stdout
-    except OSError:
-        await process.wait()
-        return _EMPTY_BYTES
+    def __init__(self, result: GitHubCommentMaintenanceResult) -> None:
+        super().__init__(_CANCELLED_MESSAGE)
+        self.result = result
 
 
 async def _current_context(context: GitHubPostingContext, target: GitHubWorkTarget, *, native: bool) -> bool:
@@ -280,8 +173,36 @@ async def _current_context(context: GitHubPostingContext, target: GitHubWorkTarg
     return isinstance(current, GitHubPostingContext) and current == context and target == current.target
 
 
+def _comment_reference(comment: IssueComment, target: GitHubWorkTarget) -> GitHubObjectRef:
+    owner, repo = target.repository.split(_REPOSITORY_SEPARATOR)
+    if (
+        comment.id <= 0
+        or comment.issue_url.casefold()
+        != _ISSUE_URL.format(owner=owner, repo=repo, number=target.issue_number).casefold()
+        or comment.url.casefold() != _COMMENT_URL.format(owner=owner, repo=repo, identifier=comment.id).casefold()
+    ):
+        raise ValueError(_UNVERIFIED_OBJECT)
+    return GitHubObjectRef(
+        repository_id=target.repository_id,
+        container_number=target.issue_number,
+        kind=GitHubObjectKind.ISSUE_COMMENT,
+        provider_id=comment.id,
+    )
+
+
+def _comment_actor(comment: IssueComment) -> GitHubAccount:
+    if comment.user is None:
+        raise ValueError(_UNVERIFIED_OBJECT)
+    return GitHubAccount(
+        id=comment.user.id,
+        node_id=comment.user.node_id,
+        login=comment.user.login,
+        type=GitHubAccountKind(comment.user.type),
+    )
+
+
 def _accepted(
-    response: _Response, request: GitHubIssueCommentRequest, context: GitHubPostingContext, body: str
+    response: _native_gh.Response, request: GitHubIssueCommentRequest, context: GitHubPostingContext, body: str
 ) -> GitHubPostResult:
     """Verify actual object, scope, body and stable author independently of the envelope's assertions."""
     ref = None
@@ -289,30 +210,12 @@ def _accepted(
     evidence = None
     try:
         comment = IssueComment.model_validate_json(response.body)
-        owner, repo = request.target.repository.split(_REPOSITORY_SEPARATOR)
-        if (
-            comment.id <= 0
-            or comment.issue_url.casefold()
-            != _ISSUE_URL.format(owner=owner, repo=repo, number=request.target.issue_number).casefold()
-            or comment.url.casefold() != _COMMENT_URL.format(owner=owner, repo=repo, identifier=comment.id).casefold()
-        ):
-            raise ValueError(_UNVERIFIED_OBJECT)
-        ref = GitHubObjectRef(
-            repository_id=request.target.repository_id,
-            container_number=request.target.issue_number,
-            kind=GitHubObjectKind.ISSUE_COMMENT,
-            provider_id=comment.id,
-        )
+        ref = _comment_reference(comment, request.target)
         if not isinstance(comment.body, str) or comment.body != body or comment.user is None:
             raise ValueError(_UNVERIFIED_OBJECT)
         digest = sha256(comment.body.encode(_UTF8)).hexdigest()
         evidence = GitHubEditEvidence(updated_at=comment.updated_at.isoformat())
-        author = GitHubAccount(
-            id=comment.user.id,
-            node_id=comment.user.node_id,
-            login=comment.user.login,
-            type=GitHubAccountKind(comment.user.type),
-        )
+        author = _comment_actor(comment)
         if not author.same_account(context.binding.assignment.actor):
             return GitHubPostResult(
                 acceptance=GitHubAcceptance.CONFIRMED,
@@ -352,7 +255,7 @@ def _accepted(
 
 
 def _provider_result(
-    response: _Response, request: GitHubIssueCommentRequest, context: GitHubPostingContext, body: str
+    response: _native_gh.Response, request: GitHubIssueCommentRequest, context: GitHubPostingContext, body: str
 ) -> GitHubPostResult:
     """Classify the same received evidence for normal completion and cancellation."""
     if not response.started:
@@ -411,8 +314,8 @@ async def post_github_issue_comment(
             context.binding.role, context.binding.session_id, request.act, request.phase, request.source, request.body
         )
         payload = json.dumps({_BODY: body}, ensure_ascii=False).encode(_UTF8)
-        environment = _launch_environment()
-        binary = _gh_binary(environment)
+        environment = _native_gh.launch_environment()
+        binary = _native_gh.gh_binary(environment)
         if binary is None:
             return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.BINARY_UNAVAILABLE)
         owner, repo = request.target.repository.split(_REPOSITORY_SEPARATOR)
@@ -421,7 +324,7 @@ async def post_github_issue_comment(
         )
     except (OSError, ValueError, SQLAlchemyError):
         return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED)
-    response: _Response | None = None
+    response: _native_gh.Response | None = None
     cancelled = False
     try:
         with TemporaryDirectory(prefix=_CONFIG_PREFIX) as directory:
@@ -441,13 +344,13 @@ async def post_github_issue_comment(
                 _GH_TOKEN: credential.token.get_secret_value(),
             }
             try:
-                response = await _send(binary, endpoint, payload, child_environment, directory)
-            except _SendCancelled as error:
+                response = await _native_gh.send(binary, endpoint, payload, child_environment, directory)
+            except _native_gh.SendCancelled as error:
                 response = error.response
                 cancelled = True
             except OSError:
                 # Failure while settling an already-started child leaves acceptance unknown.
-                response = _Response(None)
+                response = _native_gh.Response(None)
     except GitHubCredentialRefused as error:
         return _credential_result(error)
     except (OSError, ValueError, SQLAlchemyError):
@@ -514,6 +417,282 @@ async def _post_native_comment(
     return await post_github_issue_comment(context, request)
 
 
+async def _native_creator(context: GitHubPostingContext, ref: GitHubObjectRef) -> GitHubObjectAssociation | None:
+    store = await get_db()
+    creation = await store.get_github_object_association(ref)
+    if (
+        creation is None
+        or not isinstance(creation.source, NativeGitHubPostSource)
+        or creation.object != ref
+        or creation.session_id != context.binding.session_id
+        or creation.role is not context.binding.role
+        or not creation.actor.same_account(context.binding.assignment.actor)
+        or creation.work_issue_number != context.target.issue_number
+        or ref.repository_id != context.target.repository_id
+        or ref.container_number != context.target.issue_number
+        or ref.kind is not GitHubObjectKind.ISSUE_COMMENT
+    ):
+        return None
+    return creation
+
+
+def _maintenance_observation(
+    response: _native_gh.Response,
+    request: GitHubIssueCommentEditRequest | GitHubIssueCommentDeleteRequest,
+    creation: GitHubObjectAssociation,
+    *,
+    body: str | None = None,
+) -> tuple[str, GitHubEditEvidence, GitHubAccount]:
+    comment = IssueComment.model_validate_json(response.body)
+    ref = _comment_reference(comment, request.target)
+    actor = _comment_actor(comment)
+    if (
+        ref != request.object
+        or not actor.same_account(creation.actor)
+        or not isinstance(comment.body, str)
+        or (body is not None and comment.body != body)
+    ):
+        raise ValueError(_UNVERIFIED_OBJECT)
+    return (
+        sha256(comment.body.encode(_UTF8)).hexdigest(),
+        GitHubEditEvidence(updated_at=comment.updated_at.isoformat()),
+        actor,
+    )
+
+
+def _maintenance_response(
+    response: _native_gh.Response,
+    result: GitHubCommentMaintenanceResult,
+    request: GitHubIssueCommentEditRequest | GitHubIssueCommentDeleteRequest,
+    creation: GitHubObjectAssociation,
+    context: GitHubPostingContext,
+    body: str | None,
+) -> tuple[GitHubCommentMaintenanceResult, GitHubObjectMutation | None]:
+    result = result.model_copy(update={_PROVIDER_STATUS: response.status, _RETRY_DELAY: response.retry_after})
+    if not response.started:
+        return result.model_copy(
+            update={_ACCEPTANCE: GitHubAcceptance.NO_EFFECT, _FAILURE: GitHubPostFailure.BINARY_UNAVAILABLE}
+        ), None
+    if response.status in _DEFINITIVE_REJECTIONS:
+        return result.model_copy(
+            update={_ACCEPTANCE: GitHubAcceptance.NO_EFFECT, _FAILURE: GitHubPostFailure.PROVIDER_REFUSED}
+        ), None
+    expected = 200 if result.operation is GitHubCommentMaintenanceOperation.EDIT else 204
+    if response.status != expected:
+        return result, None
+    result = result.model_copy(update={_ACCEPTANCE: GitHubAcceptance.CONFIRMED, _FAILURE: None})
+    digest = None
+    evidence = None
+    actor = context.binding.assignment.actor
+    if result.operation is GitHubCommentMaintenanceOperation.EDIT:
+        try:
+            digest, evidence, actor = _maintenance_observation(response, request, creation, body=body)
+        except ValueError:
+            return result.model_copy(update={_FAILURE: GitHubPostFailure.RESULT_UNVERIFIED}), None
+    result = result.model_copy(update={_BODY_DIGEST: digest, _EDIT_EVIDENCE: evidence})
+    if result.preflight_digest is None:
+        return result.model_copy(update={_FAILURE: GitHubPostFailure.RESULT_UNVERIFIED}), None
+    try:
+        mutation = GitHubObjectMutation(
+            object=request.object,
+            operation=result.operation,
+            session_id=context.binding.session_id,
+            role=context.binding.role,
+            actor=actor,
+            observed_at=datetime.now(UTC),
+            provider_status=expected,
+            preflight_digest=result.preflight_digest,
+            body_digest=digest,
+            edit_evidence=evidence,
+        )
+    except ValueError:
+        return result.model_copy(update={_FAILURE: GitHubPostFailure.RESULT_UNVERIFIED}), None
+    return result, mutation
+
+
+async def _maintenance_exchange(
+    context: GitHubPostingContext,
+    request: GitHubIssueCommentEditRequest | GitHubIssueCommentDeleteRequest,
+    creation: GitHubObjectAssociation,
+    binary: Path,
+    endpoint: str,
+    body: str | None,
+    payload: bytes | None,
+    directory: str,
+    environment: Mapping[str, str],
+    result: GitHubCommentMaintenanceResult,
+) -> tuple[GitHubCommentMaintenanceResult, GitHubObjectMutation | None, bool]:
+    """Keep the read and effect stages separate, even while settling a cancelled child."""
+    cancelled = False
+    try:
+        if (
+            not await _current_context(context, request.target, native=True)
+            or await _native_creator(context, request.object) != creation
+        ):
+            return result, None, False
+        result = result.model_copy(
+            update={_STAGE: GitHubCommentMaintenanceStage.PREFLIGHT, _FAILURE: GitHubPostFailure.PREFLIGHT_FAILED}
+        )
+        try:
+            response = await _native_gh.send(
+                binary, endpoint, None, environment, directory, method=_native_gh.CommentMethod.GET
+            )
+        except _native_gh.SendCancelled as error:
+            response = error.response
+            cancelled = True
+        result = result.model_copy(update={_PROVIDER_STATUS: response.status, _RETRY_DELAY: response.retry_after})
+        if response.status != 200:
+            return result, None, cancelled
+        digest, evidence, _actor = _maintenance_observation(response, request, creation)
+        result = result.model_copy(update={_PREFLIGHT_DIGEST: digest, _EDIT_EVIDENCE: evidence})
+        if cancelled:
+            return result.model_copy(update={_FAILURE: GitHubPostFailure.CANCELLED}), None, True
+        if (
+            not await _current_context(context, request.target, native=True)
+            or await _native_creator(context, request.object) != creation
+        ):
+            return result.model_copy(update={_FAILURE: GitHubPostFailure.ADMISSION_REFUSED}), None, False
+        result = result.model_copy(
+            update={
+                _STAGE: GitHubCommentMaintenanceStage.MUTATION,
+                _ACCEPTANCE: GitHubAcceptance.UNKNOWN,
+                _FAILURE: GitHubPostFailure.SEND_UNCERTAIN,
+                _PROVIDER_STATUS: None,
+                _RETRY_DELAY: None,
+                _EDIT_EVIDENCE: None,
+            }
+        )
+        method = (
+            _native_gh.CommentMethod.PATCH
+            if isinstance(request, GitHubIssueCommentEditRequest)
+            else _native_gh.CommentMethod.DELETE
+        )
+        try:
+            response = await _native_gh.send(binary, endpoint, payload, environment, directory, method=method)
+        except _native_gh.SendCancelled as error:
+            response = error.response
+            cancelled = True
+        result, mutation = _maintenance_response(response, result, request, creation, context, body)
+        return result, mutation, cancelled
+    except asyncio.CancelledError:
+        failure = (
+            GitHubPostFailure.CANCELLED
+            if result.acceptance is GitHubAcceptance.NO_EFFECT
+            else GitHubPostFailure.SEND_UNCERTAIN
+        )
+        return result.model_copy(update={_FAILURE: failure}), None, True
+    except (OSError, ValueError, SQLAlchemyError):
+        return result, None, cancelled
+
+
+def _maintenance_cancelled(result: GitHubCommentMaintenanceResult, session_id: str) -> GitHubMaintenanceCancelled:
+    if result.acceptance is GitHubAcceptance.CONFIRMED and result.failure is None:
+        result = result.model_copy(update={_FAILURE: GitHubPostFailure.ASSOCIATION_FAILED})
+    logger.warning(
+        _MUTATION_EVENT,
+        result.operation,
+        result.stage,
+        result.acceptance,
+        result.failure,
+        session_id,
+        result.object.provider_id,
+    )
+    return GitHubMaintenanceCancelled(result)
+
+
+async def _maintain_native_comment(
+    context: GitHubPostingContext, request: GitHubIssueCommentEditRequest | GitHubIssueCommentDeleteRequest
+) -> GitHubCommentMaintenanceResult:
+    operation = (
+        GitHubCommentMaintenanceOperation.EDIT
+        if isinstance(request, GitHubIssueCommentEditRequest)
+        else GitHubCommentMaintenanceOperation.DELETE
+    )
+    result = GitHubCommentMaintenanceResult(
+        operation=operation,
+        object=request.object,
+        stage=GitHubCommentMaintenanceStage.ADMISSION,
+        acceptance=GitHubAcceptance.NO_EFFECT,
+        failure=GitHubPostFailure.ADMISSION_REFUSED,
+    )
+    mutation = None
+    cancelled = False
+    creation = None
+    try:
+        if not await _current_context(context, request.target, native=True):
+            return result
+        creation = await _native_creator(context, request.object)
+        if creation is None:
+            return result
+        body = (
+            render_github_envelope(
+                context.binding.role, context.binding.session_id, Act.NOTE, None, NativeGitHubPostSource(), request.body
+            )
+            if isinstance(request, GitHubIssueCommentEditRequest)
+            else None
+        )
+        payload = json.dumps({_BODY: body}, ensure_ascii=False).encode(_UTF8) if body is not None else None
+        environment = _native_gh.launch_environment()
+        binary = _native_gh.gh_binary(environment)
+        if binary is None:
+            return result.model_copy(update={_FAILURE: GitHubPostFailure.BINARY_UNAVAILABLE})
+        owner, repo = request.target.repository.split(_REPOSITORY_SEPARATOR)
+        endpoint = _COMMENT_OBJECT_ENDPOINT.format(
+            owner=quote(owner, safe=_EMPTY), repo=quote(repo, safe=_EMPTY), identifier=request.object.provider_id
+        )
+        with TemporaryDirectory(prefix=_CONFIG_PREFIX) as directory:
+            credential = await issue_github_installation_credential(
+                context.binding.assignment, request.target, _ISSUE_COMMENT_PERMISSIONS
+            )
+            environment = {
+                **environment,
+                **_FIXED_ENVIRONMENT,
+                _GH_CONFIG_DIR: directory,
+                _GH_TOKEN: credential.token.get_secret_value(),
+            }
+            result, mutation, cancelled = await _maintenance_exchange(
+                context, request, creation, binary, endpoint, body, payload, directory, environment, result
+            )
+    except GitHubCredentialRefused as error:
+        refused = _credential_result(error)
+        return result.model_copy(
+            update={
+                _FAILURE: refused.failure,
+                _PROVIDER_STATUS: refused.provider_status,
+                _RETRY_DELAY: refused.retry_after,
+                _CREDENTIAL_REFUSAL: refused.credential_refusal,
+            }
+        )
+    except asyncio.CancelledError:
+        cancelled = True
+        result = result.model_copy(update={_FAILURE: GitHubPostFailure.CANCELLED})
+    except (OSError, ValueError, SQLAlchemyError):
+        # Cleanup cannot turn a received mutation response into no-effect or erase cancellation.
+        pass
+    if cancelled:
+        raise _maintenance_cancelled(result, context.binding.session_id)
+    if mutation is not None and creation is not None:
+        result = result.model_copy(update={_STAGE: GitHubCommentMaintenanceStage.ATTRIBUTION})
+        try:
+            store = await get_db()
+            recorded = await store.record_github_object_mutation(mutation, creation=creation)
+            result = result.model_copy(update={_MUTATION: recorded})
+        except asyncio.CancelledError:
+            raise _maintenance_cancelled(result, context.binding.session_id) from None
+        except (OSError, ValueError, SQLAlchemyError):
+            result = result.model_copy(update={_FAILURE: GitHubPostFailure.ASSOCIATION_FAILED})
+    logger.info(
+        _MUTATION_EVENT,
+        result.operation,
+        result.stage,
+        result.acceptance,
+        result.failure,
+        context.binding.session_id,
+        result.object.provider_id,
+    )
+    return result
+
+
 def _help_arguments(arguments: tuple[str, ...]) -> tuple[str, ...] | None:
     if not arguments or arguments == (_HELP_COMMAND,):
         return (_HELP_ARGUMENT,)
@@ -544,7 +723,7 @@ def _editor_body(directory: Path) -> str:
             body_path = Path(temporary) / _EDITOR_FILE
             body_path.touch(mode=0o600, exist_ok=False)
             completed = subprocess.run(
-                (*command, str(body_path)), cwd=directory, env=_launch_environment(), check=False
+                (*command, str(body_path)), cwd=directory, env=_native_gh.launch_environment(), check=False
             )
             if completed.returncode != 0:
                 raise NativeCommentRefused(NativeCommentRefusal.BODY_UNAVAILABLE)
@@ -553,35 +732,6 @@ def _editor_body(directory: Path) -> str:
         raise
     except (OSError, ValueError):
         raise NativeCommentRefused(NativeCommentRefusal.BODY_UNAVAILABLE) from None
-
-
-async def _native_read_process(
-    binary: Path,
-    arguments: tuple[str, ...],
-    directory: str,
-    environment: Mapping[str, str],
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int:
-    """Run only reconstructed read/help arguments; real gh owns provider reads and formatting."""
-    process = await asyncio.create_subprocess_exec(
-        str(binary),
-        *arguments,
-        cwd=directory,
-        env=environment,
-        stdin=asyncio.subprocess.DEVNULL,
-        stdout=stdout,
-        stderr=stderr,
-    )
-    try:
-        return await asyncio.wait_for(process.wait(), timeout=_SEND_TIMEOUT_SECONDS)
-    except (TimeoutError, asyncio.CancelledError):
-        try:
-            process.kill()
-        except ProcessLookupError:
-            pass
-        await process.wait()
-        raise
 
 
 def _native_failure(reason: str, stderr: TextIO) -> int:
@@ -599,6 +749,14 @@ def _native_result(result: GitHubPostResult, context: GitHubPostingContext, stdo
             ),
             file=stdout,
         )
+        return 0
+    print(_NATIVE_INCOMPLETE + result.model_dump_json(), file=stderr)
+    return _EXIT_REFUSED
+
+
+def _native_maintenance_result(result: GitHubCommentMaintenanceResult, stdout: TextIO, stderr: TextIO) -> int:
+    if result.attributed:
+        print(result.model_dump_json(), file=stdout)
         return 0
     print(_NATIVE_INCOMPLETE + result.model_dump_json(), file=stderr)
     return _EXIT_REFUSED
@@ -622,12 +780,12 @@ async def _native_view(
             if not await _current_context(context, context.target, native=True):
                 return _native_failure(_NATIVE_CONTEXT_CHANGED, stderr)
             environment = {
-                **_launch_environment(),
+                **_native_gh.launch_environment(),
                 **_FIXED_ENVIRONMENT,
                 _GH_CONFIG_DIR: directory,
                 _GH_TOKEN: credential.token.get_secret_value(),
             }
-            return await _native_read_process(binary, admitted, directory, environment, stdout, stderr)
+            return await _native_gh.native_read_process(binary, admitted, directory, environment, stdout, stderr)
     except GitHubCredentialRefused as error:
         return _native_result(_credential_result(error), context, stdout, stderr)
 
@@ -638,14 +796,14 @@ async def execute_native_github(
     """Serve the native entry with exact disclosure-free help, observed scope and finite bound handlers."""
     arguments = tuple(arguments)
     try:
-        environment = _launch_environment()
-        binary = _gh_binary(environment)
+        environment = _native_gh.launch_environment()
+        binary = _native_gh.gh_binary(environment)
         if binary is None:
             return _native_failure(_NATIVE_UNAVAILABLE, stderr)
         help_arguments = _help_arguments(arguments)
         if help_arguments is not None:
             with TemporaryDirectory(prefix=_CONFIG_PREFIX) as temporary:
-                return await _native_read_process(
+                return await _native_gh.native_read_process(
                     binary,
                     help_arguments,
                     temporary,
@@ -663,6 +821,14 @@ async def execute_native_github(
             original = dict(os.environ)  # guard: direct-env-read - preserve native pass-through startup environment
             os.chdir(directory)
             os.execve(str(binary), (str(binary), *arguments), original)
+        if arguments[:1] == (_API_COMMAND,):
+            request = prepare_native_comment_maintenance(arguments, context, directory=directory, stdin=stdin)
+            try:
+                maintained = await _maintain_native_comment(context, request)
+            except GitHubMaintenanceCancelled as error:
+                _native_maintenance_result(error.result, stdout, stderr)
+                raise
+            return _native_maintenance_result(maintained, stdout, stderr)
         if arguments[:2] == _ISSUE_VIEW:
             return await _native_view(context, binary, arguments, stdout, stderr)
         if arguments[:2] != _ISSUE_COMMENT:

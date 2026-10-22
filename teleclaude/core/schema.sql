@@ -822,5 +822,6 @@ CREATE TABLE IF NOT EXISTS github_object_associations (
     object_kind TEXT NOT NULL,
     provider_id INTEGER NOT NULL,
     creation_json TEXT NOT NULL,
+    mutations_json TEXT NOT NULL DEFAULT '[]',
     PRIMARY KEY (repository_id, container_number, object_kind, provider_id)
 );

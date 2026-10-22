@@ -6,7 +6,7 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from teleclaude.core.roles import RoleName
 from teleclaude.types.github_account import GitHubAccount
@@ -18,6 +18,8 @@ _DIGEST_PATTERN = r"^[0-9a-f]{64}$"
 _MIRROR_ORDER_INVALID = "Mirror part must be within its source-owned total"
 _REVIEW_HEAD_REQUIRED = "A review association requires the exact reviewed SHA"
 _NATIVE_NOTE_REQUIRED = "Native context requires the canonical note act and no inferred phase"
+_MAINTENANCE_TARGET_INVALID = "Maintenance requires the exact bound issue comment"
+_MUTATION_EVIDENCE_INVALID = "Maintenance evidence must match its confirmed provider operation"
 
 
 class GitHubPostSourceKind(StrEnum):
@@ -176,6 +178,8 @@ class GitHubPostFailure(StrEnum):
     CREDENTIAL_REFUSED = "credential_refused"
     BINARY_UNAVAILABLE = "binary_unavailable"
     PROVIDER_REFUSED = "provider_refused"
+    PREFLIGHT_FAILED = "preflight_failed"
+    CANCELLED = "cancelled"
 
 
 class GitHubPostResult(BaseModel):
@@ -201,4 +205,120 @@ class GitHubPostResult(BaseModel):
             and self.failure is None
             and self.association is not None
             and self.object == self.association.object
+        )
+
+
+def _maintenance_target(target: GitHubWorkTarget, ref: GitHubObjectRef) -> None:
+    if (
+        ref.kind is not GitHubObjectKind.ISSUE_COMMENT
+        or ref.repository_id != target.repository_id
+        or ref.container_number != target.issue_number
+    ):
+        raise ValueError(_MAINTENANCE_TARGET_INVALID)
+
+
+class GitHubIssueCommentEditRequest(BaseModel):
+    """A body-only replacement of one explicit bound comment, with no actor/source selector."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    target: GitHubWorkTarget
+    object: GitHubObjectRef
+    body: str
+
+    @model_validator(mode="after")
+    def validate_target(self) -> Self:
+        """Keep the object in the owning request's exact namespace."""
+        _maintenance_target(self.target, self.object)
+        return self
+
+
+class GitHubIssueCommentDeleteRequest(BaseModel):
+    """Deletion of one explicit bound comment, without a payload or implicit selection."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    target: GitHubWorkTarget
+    object: GitHubObjectRef
+
+    @model_validator(mode="after")
+    def validate_target(self) -> Self:
+        """Keep the object in the owning request's exact namespace."""
+        _maintenance_target(self.target, self.object)
+        return self
+
+
+class GitHubCommentMaintenanceOperation(StrEnum):
+    """Finite native effects, separate from workflow acts."""
+
+    EDIT = "edit"
+    DELETE = "delete"
+
+
+class GitHubCommentMaintenanceStage(StrEnum):
+    """The stage whose evidence is reported; a read is never mutation acceptance."""
+
+    ADMISSION = "admission"
+    PREFLIGHT = "preflight"
+    MUTATION = "mutation"
+    ATTRIBUTION = "attribution"
+
+
+class GitHubObjectMutation(BaseModel):
+    """One confirmed native maintenance observation; neither current state nor complete history."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    object: GitHubObjectRef
+    operation: GitHubCommentMaintenanceOperation
+    session_id: str = Field(min_length=1)
+    role: RoleName
+    actor: GitHubAccount
+    observed_at: AwareDatetime
+    source: NativeGitHubPostSource = Field(default_factory=NativeGitHubPostSource)
+    provider_status: int
+    preflight_digest: str = Field(pattern=_DIGEST_PATTERN)
+    body_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
+    edit_evidence: GitHubEditEvidence | None = None
+
+    @model_validator(mode="after")
+    def validate_effect(self) -> Self:
+        """Keep edit and deletion evidence distinct."""
+        if self.object.kind is not GitHubObjectKind.ISSUE_COMMENT or (
+            (
+                self.operation is GitHubCommentMaintenanceOperation.EDIT
+                and (self.provider_status != 200 or self.body_digest is None)
+            )
+            or (
+                self.operation is GitHubCommentMaintenanceOperation.DELETE
+                and (self.provider_status != 204 or self.body_digest is not None)
+            )
+        ):
+            raise ValueError(_MUTATION_EVIDENCE_INVALID)
+        return self
+
+
+class GitHubCommentMaintenanceResult(BaseModel):
+    """Safe stage/acceptance facts plus separately confirmed durable mutation attribution."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    operation: GitHubCommentMaintenanceOperation
+    object: GitHubObjectRef
+    stage: GitHubCommentMaintenanceStage
+    acceptance: GitHubAcceptance
+    failure: GitHubPostFailure | None = None
+    mutation: GitHubObjectMutation | None = None
+    preflight_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
+    body_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
+    edit_evidence: GitHubEditEvidence | None = None
+    provider_status: int | None = Field(default=None, ge=100, le=599)
+    retry_after: timedelta | None = None
+    credential_refusal: str | None = None
+
+    @property
+    def attributed(self) -> bool:
+        """Require the maintenance append, independently of the existing creator record."""
+        return (
+            self.acceptance is GitHubAcceptance.CONFIRMED
+            and self.failure is None
+            and self.mutation is not None
+            and self.mutation.object == self.object
+            and self.mutation.operation is self.operation
         )

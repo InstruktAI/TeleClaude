@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -11,7 +12,13 @@ from typing import BinaryIO, Never
 from urllib.parse import unquote, urlsplit
 
 from teleclaude.core.github_identity import GitHubPostingContext
-from teleclaude.types.github_posting import NativeGitHubPostSource
+from teleclaude.types.github_posting import (
+    GitHubIssueCommentDeleteRequest,
+    GitHubIssueCommentEditRequest,
+    GitHubObjectKind,
+    GitHubObjectRef,
+    NativeGitHubPostSource,
+)
 
 _PROGRAM = "gh issue comment"
 _UTF8 = "utf-8"
@@ -31,6 +38,23 @@ _COMMA = ","
 _VIEW_FIELDS = frozenset(
     {"id", "number", "url", "title", "body", "state", "comments", "author", "createdAt", "updatedAt"}
 )
+_API_COMMAND = "api"
+_API_PROGRAM = "gh api comment maintenance"
+_METHOD_FLAG = "--method"
+_METHOD_SHORT_FLAG = "-X"
+_RAW_FIELD_FLAG = "--raw-field"
+_RAW_FIELD_SHORT_FLAG = "-f"
+_INPUT_FLAG = "--input"
+_METHOD_ARGUMENT = "methods"
+_FIELD_ARGUMENT = "fields"
+_INPUT_ARGUMENT = "inputs"
+_ENDPOINT_ARGUMENT = "endpoint"
+_PATCH_METHOD = "PATCH"
+_DELETE_METHOD = "DELETE"
+_REPOS_SEGMENT = "repos"
+_COMMENTS_SEGMENT = "comments"
+_BODY_FIELD = "body"
+_BODY_ASSIGNMENT = "body="
 
 
 class _Command(StrEnum):
@@ -102,6 +126,93 @@ class _ViewArguments(argparse.Namespace):
     repository: list[str] | None = None
     comments: int = 0
     fields: list[str] | None = None
+
+
+class _MaintenanceArguments(argparse.Namespace):
+    endpoint: str
+    methods: list[str] | None = None
+    fields: list[str] | None = None
+    inputs: list[str] | None = None
+
+
+def _json_body_pairs(pairs: list[tuple[str, object]]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for key, value in pairs:
+        if key in result or not isinstance(value, str):
+            raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+        result[key] = value
+    return result
+
+
+def prepare_native_comment_maintenance(
+    arguments: Sequence[str], context: GitHubPostingContext, *, directory: Path, stdin: BinaryIO
+) -> GitHubIssueCommentEditRequest | GitHubIssueCommentDeleteRequest:
+    """Admit only explicit comment PATCH/DELETE and one body string, rejecting duplicate JSON keys."""
+    if not arguments or arguments[0] != _API_COMMAND:
+        raise NativeCommentRefused(NativeCommentRefusal.UNSUPPORTED_OPERATION)
+    parser = _Parser(prog=_API_PROGRAM, add_help=False, allow_abbrev=False, exit_on_error=False)
+    parser.add_argument(_ENDPOINT_ARGUMENT)
+    parser.add_argument(_METHOD_FLAG, _METHOD_SHORT_FLAG, dest=_METHOD_ARGUMENT, action=_Action.APPEND)
+    payload = parser.add_mutually_exclusive_group()
+    payload.add_argument(_RAW_FIELD_FLAG, _RAW_FIELD_SHORT_FLAG, dest=_FIELD_ARGUMENT, action=_Action.APPEND)
+    payload.add_argument(_INPUT_FLAG, dest=_INPUT_ARGUMENT, action=_Action.APPEND)
+    values = _MaintenanceArguments()
+    try:
+        parser.parse_args(arguments[1:], namespace=values)
+    except argparse.ArgumentError:
+        raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS) from None
+    if (
+        values.methods is None
+        or len(values.methods) != 1
+        or any(len(value) != 1 for value in (values.fields, values.inputs) if value is not None)
+    ):
+        raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+    method = values.methods[0]
+    if method not in (_PATCH_METHOD, _DELETE_METHOD):
+        raise NativeCommentRefused(NativeCommentRefusal.UNSUPPORTED_OPERATION)
+    parts = values.endpoint.split(_PATH_SEPARATOR)
+    target = context.target
+    if (
+        len(parts) != 6
+        or parts[0] != _REPOS_SEGMENT
+        or parts[3:5] != [_ISSUES_SEGMENT, _COMMENTS_SEGMENT]
+        or _PATH_SEPARATOR.join(parts[1:3]).casefold() != target.repository.casefold()
+        or not parts[5].isascii()
+        or not parts[5].isdecimal()
+        or int(parts[5]) <= 0
+    ):
+        raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
+    ref = GitHubObjectRef(
+        repository_id=target.repository_id,
+        container_number=target.issue_number,
+        kind=GitHubObjectKind.ISSUE_COMMENT,
+        provider_id=int(parts[5]),
+    )
+    if method == _DELETE_METHOD:
+        if values.fields is not None or values.inputs is not None:
+            raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+        return GitHubIssueCommentDeleteRequest(target=target, object=ref)
+    try:
+        if values.fields is not None:
+            field = values.fields[0]
+            if not field.startswith(_BODY_ASSIGNMENT):
+                raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+            body = field.removeprefix(_BODY_ASSIGNMENT)
+        elif values.inputs is not None:
+            source = values.inputs[0]
+            contents = stdin.read() if source == _STDIN_PATH else (directory / Path(source)).read_bytes()
+            decoded: object = json.loads(contents.decode(_UTF8), object_pairs_hook=_json_body_pairs)
+            if not isinstance(decoded, dict) or set(decoded) != {_BODY_FIELD}:
+                raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+            body = decoded[_BODY_FIELD]
+            if not isinstance(body, str):
+                raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+        else:
+            raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+        body.encode(_UTF8)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise NativeCommentRefused(NativeCommentRefusal.BODY_UNAVAILABLE) from None
+    return GitHubIssueCommentEditRequest(target=target, object=ref, body=body)
 
 
 @dataclass(frozen=True)

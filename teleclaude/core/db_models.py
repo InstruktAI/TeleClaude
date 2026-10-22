@@ -105,6 +105,7 @@ class GitHubObjectAssociationRow(SQLModel, table=True):
     object_kind: str = Field(primary_key=True)
     provider_id: int = Field(primary_key=True)
     creation_json: str
+    mutations_json: str = "[]"
 
 
 class VoiceAssignment(SQLModel, table=True):

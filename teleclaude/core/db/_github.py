@@ -5,14 +5,25 @@ from __future__ import annotations
 from enum import StrEnum
 from pathlib import Path
 
-from sqlalchemy import update
+from pydantic import TypeAdapter
+from sqlalchemy import func, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlmodel import col
 
 from teleclaude.core import db_models
+from teleclaude.core.project_state import resolve_owning_checkout
 from teleclaude.core.roles import Role, resolve_session_role
 from teleclaude.types.github_binding import GitHubActorAssignment, GitHubSessionBinding, GitHubWorkTarget
-from teleclaude.types.github_posting import GitHubObjectAssociation, GitHubObjectRef, NativeGitHubPostSource
+from teleclaude.types.github_posting import (
+    GitHubObjectAssociation,
+    GitHubObjectMutation,
+    GitHubObjectRef,
+    NativeGitHubPostSource,
+)
+
+_MUTATION_APPEND_PATH = "$[#]"
+_JSON_ARRAY = "array"
+_MUTATIONS_ADAPTER = TypeAdapter(tuple[GitHubObjectMutation, ...])
 
 
 class GitHubBindingRefusal(StrEnum):
@@ -180,3 +191,81 @@ class DbGitHubMixin:
             if not stored.same_creation(association):
                 raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
         return stored
+
+    async def get_github_object_mutations(self, ref: GitHubObjectRef) -> tuple[GitHubObjectMutation, ...]:
+        """Read recorded observations without asserting provider order or current state."""
+        key = (ref.repository_id, ref.container_number, ref.kind.value, ref.provider_id)
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.GitHubObjectAssociationRow, key)
+        if row is None:
+            return ()
+        values = _MUTATIONS_ADAPTER.validate_json(row.mutations_json)
+        if any(value.object != ref for value in values):
+            raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+        return values
+
+    async def record_github_object_mutation(
+        self, mutation: GitHubObjectMutation, *, creation: GitHubObjectAssociation
+    ) -> GitHubObjectMutation:
+        """Append confirmed native evidence atomically, preserving the exact immutable creator row."""
+        ref = mutation.object
+        if (
+            not isinstance(creation.source, NativeGitHubPostSource)
+            or creation.object != ref
+            or creation.session_id != mutation.session_id
+            or creation.role is not mutation.role
+            or not creation.actor.same_account(mutation.actor)
+        ):
+            raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+        key = (ref.repository_id, ref.container_number, ref.kind.value, ref.provider_id)
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.GitHubObjectAssociationRow, key)
+            session = await db_session.get(db_models.Session, mutation.session_id)
+            binding_row = await db_session.get(db_models.GitHubSessionBindingRow, mutation.session_id)
+            if row is None or GitHubObjectAssociation.model_validate_json(row.creation_json) != creation:
+                raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+            if session is None or session.closed_at is not None or session.deleted_at is not None:
+                raise GitHubBindingRefused(GitHubBindingRefusal.SESSION_UNAVAILABLE)
+            if binding_row is None or binding_row.native_target_json is None:
+                raise GitHubBindingRefused(GitHubBindingRefusal.ACTOR_UNBOUND)
+            binding = GitHubSessionBinding.model_validate_json(binding_row.binding_json)
+            target = GitHubWorkTarget.model_validate_json(binding_row.native_target_json)
+            project = resolve_owning_checkout(Path(session.project_path)) if session.project_path else None
+            if (
+                binding.session_id != mutation.session_id
+                or session.role != mutation.role.value
+                or binding.role is not mutation.role
+                or not binding.assignment.actor.same_account(mutation.actor)
+                or target.repository_id != ref.repository_id
+                or target.issue_number != ref.container_number
+                or target.issue_number != creation.work_issue_number
+                or target.work_item != session.working_slug
+                or project is None
+                or resolve_owning_checkout(target.project_path) != project
+            ):
+                raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+            statement = (
+                update(db_models.GitHubObjectAssociationRow)
+                .where(
+                    db_models.GitHubObjectAssociationRow.repository_id == ref.repository_id,
+                    db_models.GitHubObjectAssociationRow.container_number == ref.container_number,
+                    db_models.GitHubObjectAssociationRow.object_kind == ref.kind.value,
+                    db_models.GitHubObjectAssociationRow.provider_id == ref.provider_id,
+                    db_models.GitHubObjectAssociationRow.creation_json == row.creation_json,
+                    func.json_valid(db_models.GitHubObjectAssociationRow.mutations_json) == 1,
+                    func.json_type(db_models.GitHubObjectAssociationRow.mutations_json) == _JSON_ARRAY,
+                )
+                .values(
+                    mutations_json=func.json_insert(
+                        db_models.GitHubObjectAssociationRow.mutations_json,
+                        _MUTATION_APPEND_PATH,
+                        func.json(mutation.model_dump_json()),
+                    )
+                )
+                .execution_options(synchronize_session=False)
+            )
+            result = await db_session.exec(statement)
+            if result.rowcount != 1:
+                raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+            await db_session.commit()
+        return mutation
