@@ -501,7 +501,6 @@ class WorkflowFlow:
         self.project = self.project.resolve()
         self.source_root = self.source_root.resolve()
         self.root = self.setup.control.parent / FLOW_NAME
-        self.retain(RETAINED_MARKER.format(path=self.root))
         self.root.mkdir(parents=True)
         self.observer = Observer(self.host)
         self.controls = controls.Controls(self.setup, FLOW_NAME)
@@ -1379,23 +1378,12 @@ class WorkflowFlow:
 
     def record_profile_stop(self, outcome: str) -> None:
         """Record supported shutdown independently from unresolved public start/claim settlement."""
-        stop_proven = outcome == "stopped"
-        finalizer = self.finalizer_summary
-        p1 = finalizer.get("P1_session_lifecycle") if finalizer else "unproven"
-        p2 = finalizer.get("P2_start_consumption") if finalizer else "unproven"
-        self.write_retained_marker(
-            {
-                "daemon_stop_outcome": outcome or "unobserved",
-                "proofs": {
-                    "P1_session_lifecycle": "proven" if p1 == "proven" else "unproven",
-                    "P2_start_consumption": "unproven" if p2 != "classified" else "classified",
-                    "P3_daemon_stopped": "proven" if stop_proven else "unproven",
-                },
-            }
-        )
+        self.write_manifest({"daemon_stop_outcome": outcome or "unobserved"})
+        if outcome != "stopped" or self.retained_path.exists():
+            self.write_retained_marker({"daemon_stop_outcome": outcome or "unobserved"})
 
     def finalize(self, failure: str | None = None) -> None:
-        """Close owned public sessions and preserve all resources under the approved SFC boundary."""
+        """Run existing public cleanup; retain actual errors without requiring universal descendant proof."""
         if self.finalized:
             return
         self.finalized = True
@@ -1474,6 +1462,8 @@ class WorkflowFlow:
                 raise ValueError(self.finalizer_end_ledger.error)
             self.ledger = current
             self.finalizer_ledger_error = None
+            if any(attempt.kind == start_ledger.RECORD_UNKNOWN for attempt in current.attempts.values()):
+                issues.append("an actual start result remains unknown")
         except (OSError, ValueError) as error:
             current = None
             self.ledger = None
@@ -1485,7 +1475,7 @@ class WorkflowFlow:
             else (["unreadable-ledger"] if self.finalizer_ledger_error else [])
         )
         self.finalizer_summary = {
-            "status": RETAINED_STATE,
+            "status": RETAINED_STATE if issues else "public-cleanup-complete",
             "failure": failure,
             "issues": cast(JsonValue, issues),
             "sessions": cast(JsonValue, session_rows),
@@ -1516,7 +1506,6 @@ class WorkflowFlow:
             if classification_complete
             and all(isinstance(row, Mapping) and row.get("closed") is True for row in session_rows.values())
             else "unproven",
-            "P2_start_consumption": "unproven; explicit starts and async launch backlog lack public settlement evidence",
         }
         self.finalizer_summary.update(
             {
@@ -1528,7 +1517,13 @@ class WorkflowFlow:
         )
         try:
             self.write_manifest({"finalizer": self.finalizer_summary})
-            self.write_retained_marker({"finalizer": self.finalizer_summary})
+            if issues:
+                self.retain(RETAINED_MARKER.format(path=self.root))
+                self.write_retained_marker({"finalizer": self.finalizer_summary})
+            else:
+                # This is this invocation's own provisional cleanup marker.
+                # Actual journey/finalizer failures remain independently retained.
+                self.retained_path.unlink()
         except BaseException as error:
             self._finalizer_failure(error)
 
