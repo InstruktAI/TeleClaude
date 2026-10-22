@@ -47,11 +47,11 @@ environment is unchanged.
 
 #### UC-IAH3: Sessions on one worktree share its home
 
-#### UC-IAH5: An operator can use the live platform from a worktree
+#### UC-IAH5: An operator can use installed commands from a worktree
 
 ```gherkin
-Given an operator is working in a slug worktree and needs an installed platform command
-When they use that command from the worktree
+Given an operator needs to use an installed command while working in a slug worktree
+When they invoke their installed platform command
 Then it operates on the live home as it does outside the worktree
 And the worktree home does not replace the live platform environment
 ```
@@ -78,11 +78,11 @@ And the live home is unchanged
 
 #### UC-IAH14: A renamed todo's worktree keeps its home
 
-#### UC-IAH15: A developer can run worktree code without accessing the live home
+#### UC-IAH15: A developer can run worktree code without reaching the live home
 
 ```gherkin
-Given a developer runs code from a slug worktree
-When the code starts with any `TELECLAUDE_HOME` value
+Given a developer asks their agent to run code from a slug worktree
+When the code starts
 Then it uses that worktree's isolated home
 And the live home remains unchanged
 ```
