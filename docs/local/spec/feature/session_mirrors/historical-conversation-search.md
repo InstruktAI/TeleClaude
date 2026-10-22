@@ -54,19 +54,6 @@ An empty text query without an identity or project selector returns no rows.
 
 ### Use cases
 
-#### CLI search rendering
-
-```
-Given an operator runs `telec history search <terms>`
-When the local mirror search returns one or more hits
-Then the terminal prints a header "Search results for '<terms>' (<n> found):"
-And each hit prints as two lines: a metadata line, then its matched snippet indented beneath
-And the metadata line carries the UTC timestamp to the second, the agent, the labelled identifier, and the full project path
-And the row's snippet prefers the full-text match, falling back to the title, then to the first 70 characters of the conversation
-And no index column and no revive footer are printed
-And no rows print "No conversations found matching '<terms>' across <agents>"
-```
-
 #### UC-HCS-4: An operator can choose whether history search includes worker sessions
 
 ```gherkin
@@ -160,13 +147,19 @@ And the legacy mirror identity is reconciled from its transcript and cannot be r
 And a conversation with no TeleClaude association retains its labelled agent-native identifier
 ```
 
-#### UC-HCS-13: Quoted dash-leading search text
+#### UC-HCS-13: An operator finds past conversations by text
 
 ```gherkin
-Given a human operator searches historical conversations for '--human-approved'
-When the operator supplies that search text in either single or double shell quotes
-Then the search runs using that text rather than rejecting it as an unknown option
-And the operator receives the matching conversations or the normal no-results response
+Scenario: Find conversations matching a text term
+  Given an operator wants to find past conversations containing a term
+  When the operator searches history for that term
+  Then matching conversations are returned with their labelled identity and query-centered snippet
+  And the ordinary no-results response is returned when nothing matches
+
+Scenario: Search for text that resembles a command option
+  Given an operator wants to find past conversations containing '--human-approved'
+  When they provide that term in single or double shell quotes
+  Then the search uses the term as text and returns matches or the ordinary no-results response
 ```
 
 ## Known caveats
