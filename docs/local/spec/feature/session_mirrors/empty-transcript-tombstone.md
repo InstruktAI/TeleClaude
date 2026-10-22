@@ -17,10 +17,9 @@ transcripts trimmed to tool-only blocks, sessions that never reached the user
 prompt — or it yields fewer messages than a mirror whose derivation version is
 current or newer, which is refused so partial parsing cannot replace a complete
 record. Re-extracting a declined candidate on every reconciliation tick wastes
-IO and CPU. The
-session_mirrors service maintains a tombstone record for each declined transcript,
-keyed by `source_identity` and carrying the transcript's `file_size` and
-`file_mtime` at the time of the determination.
+IO and CPU. The session_mirrors service maintains a tombstone record for each
+declined transcript, keyed by `source_identity` and carrying the transcript's
+`file_size` and `file_mtime` at the time of the determination.
 
 A declined candidate never replaces an existing mirror; its stored conversation
 remains unchanged. A shorter projection from an older derivation version may be
