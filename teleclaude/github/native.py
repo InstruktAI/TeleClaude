@@ -12,11 +12,13 @@ from typing import BinaryIO, Never
 from urllib.parse import unquote, urlsplit
 
 from teleclaude.core.github_identity import GitHubPostingContext
-from teleclaude.github._conversation_scope import resolve_native_comment, resolve_pr_scope
+from teleclaude.github._conversation_scope import resolve_native_comment, resolve_native_review, resolve_pr_scope
 from teleclaude.types.github_posting import (
     GitHubIssueCommentDeleteRequest,
     GitHubIssueCommentEditRequest,
     GitHubObjectRef,
+    GitHubReviewEditRequest,
+    GitHubReviewRequest,
     NativeGitHubPostSource,
 )
 
@@ -52,6 +54,13 @@ _INPUT_ARGUMENT = "inputs"
 _ENDPOINT_ARGUMENT = "endpoint"
 _PATCH_METHOD = "PATCH"
 _DELETE_METHOD = "DELETE"
+_PUT_METHOD = "PUT"
+_REVIEW_COMMAND = "review"
+_REVIEW_FLAG = "--comment"
+_REVIEW_SHORT_FLAG = "-c"
+_REVIEW_ARGUMENT = "comment"
+_PULLS_SEGMENT = "pulls"
+_REVIEWS_SEGMENT = "reviews"
 _REPOS_SEGMENT = "repos"
 _COMMENTS_SEGMENT = "comments"
 _BODY_FIELD = "body"
@@ -126,6 +135,7 @@ class _Arguments(argparse.Namespace):
     body_file: list[str] | None = None
     repository: list[str] | None = None
     editor: int = 0
+    comment: int = 0
 
 
 class _ViewArguments(argparse.Namespace):
@@ -153,8 +163,8 @@ def _json_body_pairs(pairs: list[tuple[str, object]]) -> dict[str, str]:
 
 async def prepare_native_comment_maintenance(
     arguments: Sequence[str], context: GitHubPostingContext, *, directory: Path, stdin: BinaryIO
-) -> GitHubIssueCommentEditRequest | GitHubIssueCommentDeleteRequest:
-    """Admit only explicit comment PATCH/DELETE and one body string, rejecting duplicate JSON keys."""
+) -> GitHubIssueCommentEditRequest | GitHubIssueCommentDeleteRequest | GitHubReviewEditRequest:
+    """Admit exact comment PATCH/DELETE or submitted-review body PUT, rejecting duplicate JSON keys."""
     if not arguments or arguments[0] != _API_COMMAND:
         raise NativeCommentRefused(NativeCommentRefusal.UNSUPPORTED_OPERATION)
     parser = _Parser(prog=_API_PROGRAM, add_help=False, allow_abbrev=False, exit_on_error=False)
@@ -175,12 +185,28 @@ async def prepare_native_comment_maintenance(
     ):
         raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
     method = values.methods[0]
-    if method not in (_PATCH_METHOD, _DELETE_METHOD):
+    if method not in (_PATCH_METHOD, _DELETE_METHOD, _PUT_METHOD):
         raise NativeCommentRefused(NativeCommentRefusal.UNSUPPORTED_OPERATION)
     parts = values.endpoint.split(_PATH_SEPARATOR)
     target = context.target
+    if len(parts) == 7 and parts[3] == _PULLS_SEGMENT and parts[5] == _REVIEWS_SEGMENT:
+        if (
+            method != _PUT_METHOD
+            or parts[0] != _REPOS_SEGMENT
+            or _PATH_SEPARATOR.join(parts[1:3]).casefold() != target.repository.casefold()
+            or any(not value.isascii() or not value.isdecimal() or int(value) <= 0 for value in (parts[4], parts[6]))
+        ):
+            raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
+        review = await resolve_native_review(context, int(parts[6]))
+        if review is None or review[0].object.container_number != int(parts[4]):
+            raise NativeCommentRefused(NativeCommentRefusal.CREATOR_UNAVAILABLE)
+        creation, scope = review
+        return GitHubReviewEditRequest(
+            target=target, object=creation.object, pr_scope=scope.object, body=_api_body(values, directory, stdin)
+        )
     if (
-        len(parts) != 6
+        method == _PUT_METHOD
+        or len(parts) != 6
         or parts[0] != _REPOS_SEGMENT
         or parts[3:5] != [_ISSUES_SEGMENT, _COMMENTS_SEGMENT]
         or _PATH_SEPARATOR.join(parts[1:3]).casefold() != target.repository.casefold()
@@ -199,6 +225,13 @@ async def prepare_native_comment_maintenance(
         if values.fields is not None or values.inputs is not None:
             raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
         return GitHubIssueCommentDeleteRequest(target=target, object=ref, pr_scope=pr_scope)
+    return GitHubIssueCommentEditRequest(
+        target=target, object=ref, body=_api_body(values, directory, stdin), pr_scope=pr_scope
+    )
+
+
+def _api_body(values: _MaintenanceArguments, directory: Path, stdin: BinaryIO) -> str:
+    """Read exactly one body field after immutable object selection; duplicate keys refuse."""
     try:
         if values.fields is not None:
             field = values.fields[0]
@@ -219,7 +252,7 @@ async def prepare_native_comment_maintenance(
         body.encode(_UTF8)
     except (OSError, UnicodeError, json.JSONDecodeError):
         raise NativeCommentRefused(NativeCommentRefusal.BODY_UNAVAILABLE) from None
-    return GitHubIssueCommentEditRequest(target=target, object=ref, body=body, pr_scope=pr_scope)
+    return body
 
 
 @dataclass(frozen=True)
@@ -327,13 +360,48 @@ async def prepare_native_issue_comment(
     return NativeIssueCommentRequest(context, body, pr_scope)
 
 
-def _parse(arguments: Sequence[str]) -> _Arguments:
+async def prepare_native_review(
+    arguments: Sequence[str], context: GitHubPostingContext, *, directory: Path, stdin: BinaryIO
+) -> GitHubReviewRequest:
+    """Require explicit PR, COMMENT and body before any credential; never create a pending review."""
+    if tuple(arguments[:2]) != (_Command.PR, _REVIEW_COMMAND):
+        raise NativeCommentRefused(NativeCommentRefusal.UNSUPPORTED_OPERATION)
+    values = _parse(arguments[2:], review=True)
+    if values.comment != 1 or (values.body is None and values.body_file is None):
+        raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+    if any(len(value) != 1 for value in (values.body, values.body_file, values.repository) if value is not None):
+        raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+    repository = values.repository[0] if values.repository else context.target.repository
+    if repository.casefold().removeprefix(_HOST_PREFIX) != context.target.repository.casefold():
+        raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
+    number = _issue_number(values.target, context.target.repository, pull_request=True)
+    scope = await resolve_pr_scope(context, number)
+    if scope is None:
+        raise NativeCommentRefused(NativeCommentRefusal.PR_SCOPE_UNAVAILABLE)
+    try:
+        if values.body is not None:
+            body = values.body[0]
+        else:
+            if values.body_file is None:
+                raise NativeCommentRefused(NativeCommentRefusal.BODY_UNAVAILABLE)
+            source = values.body_file[0]
+            body = (stdin.read() if source == _STDIN_PATH else (directory / Path(source)).read_bytes()).decode(_UTF8)
+        body.encode(_UTF8)
+    except (OSError, UnicodeError):
+        raise NativeCommentRefused(NativeCommentRefusal.BODY_UNAVAILABLE) from None
+    return GitHubReviewRequest(target=context.target, pr_scope=scope.object, body=body)
+
+
+def _parse(arguments: Sequence[str], *, review: bool = False) -> _Arguments:
     parser = _Parser(prog=_PROGRAM, add_help=False, allow_abbrev=False, exit_on_error=False)
     parser.add_argument(_Argument.TARGET)
     body = parser.add_mutually_exclusive_group()
     body.add_argument(_Flag.BODY, _Flag.BODY_SHORT, dest=_Argument.BODY, action=_Action.APPEND)
     body.add_argument(_Flag.BODY_FILE, _Flag.BODY_FILE_SHORT, dest=_Argument.BODY_FILE, action=_Action.APPEND)
-    body.add_argument(_Flag.EDITOR, _Flag.EDITOR_SHORT, dest=_Argument.EDITOR, action=_Action.COUNT)
+    if review:
+        parser.add_argument(_REVIEW_FLAG, _REVIEW_SHORT_FLAG, dest=_REVIEW_ARGUMENT, action=_Action.COUNT)
+    else:
+        body.add_argument(_Flag.EDITOR, _Flag.EDITOR_SHORT, dest=_Argument.EDITOR, action=_Action.COUNT)
     parser.add_argument(_Flag.REPOSITORY, _Flag.REPOSITORY_SHORT, dest=_Argument.REPOSITORY, action=_Action.APPEND)
     values = _Arguments()
     try:

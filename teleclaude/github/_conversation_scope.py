@@ -50,10 +50,10 @@ async def requested_pr_scope(
     return scope is not None and scope.object == ref, scope
 
 
-def native_comment_creator_matches(context: GitHubPostingContext, creation: GitHubObjectAssociation) -> bool:
+def _native_creator_matches(context: GitHubPostingContext, creation: GitHubObjectAssociation) -> bool:
     """Same App or prose is insufficient: maintenance belongs to the exact recorded native writer."""
     return (
-        creation.object.kind is GitHubObjectKind.ISSUE_COMMENT
+        creation.object.kind in (GitHubObjectKind.ISSUE_COMMENT, GitHubObjectKind.REVIEW)
         and creation.object.repository_id == context.target.repository_id
         and creation.work_issue_number == context.target.issue_number
         and isinstance(creation.source, NativeGitHubPostSource)
@@ -68,18 +68,34 @@ async def resolve_native_comment(
     provider_id: int,
 ) -> tuple[GitHubObjectAssociation, GitHubObjectAssociation | None] | None:
     """Resolve the explicit canonical object's recorded container before credentials or prose collection."""
+    return await _resolve_native_object(context, provider_id, GitHubObjectKind.ISSUE_COMMENT)
+
+
+async def resolve_native_review(
+    context: GitHubPostingContext, provider_id: int
+) -> tuple[GitHubObjectAssociation, GitHubObjectAssociation] | None:
+    """A review always belongs to an existing PR relationship and this exact native writer."""
+    resolved = await _resolve_native_object(context, provider_id, GitHubObjectKind.REVIEW)
+    if resolved is None or resolved[1] is None:
+        return None
+    return resolved[0], resolved[1]
+
+
+async def _resolve_native_object(
+    context: GitHubPostingContext, provider_id: int, kind: GitHubObjectKind
+) -> tuple[GitHubObjectAssociation, GitHubObjectAssociation | None] | None:
     try:
         store = await get_db()
         creation = await store.find_github_object_association(
             context.target.repository_id,
-            GitHubObjectKind.ISSUE_COMMENT,
+            kind,
             provider_id,
         )
     except (SQLAlchemyError, OSError, ValueError):
         return None
-    if creation is None or not native_comment_creator_matches(context, creation):
+    if creation is None or not _native_creator_matches(context, creation):
         return None
-    if creation.object.container_number == context.target.issue_number:
+    if kind is GitHubObjectKind.ISSUE_COMMENT and creation.object.container_number == context.target.issue_number:
         return creation, None
     scope = await resolve_pr_scope(context, creation.object.container_number)
     return (creation, scope) if scope is not None else None

@@ -278,6 +278,42 @@ class GitHubIssueCommentDeleteRequest(BaseModel):
         return self
 
 
+class GitHubReviewRequest(BaseModel):
+    """One native COMMENT review of an explicitly associated PR; no event or SHA selector."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    target: GitHubWorkTarget
+    pr_scope: GitHubObjectRef
+    body: str
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> Self:
+        """The provider read supplies the reviewed SHA after structural admission."""
+        if (
+            self.pr_scope.kind is not GitHubObjectKind.PULL_REQUEST
+            or self.pr_scope.repository_id != self.target.repository_id
+        ):
+            raise ValueError(_MAINTENANCE_TARGET_INVALID)
+        return self
+
+
+class GitHubReviewEditRequest(GitHubReviewRequest):
+    """Only the body of one immutable native submitted review can change."""
+
+    object: GitHubObjectRef
+
+    @model_validator(mode="after")
+    def validate_review(self) -> Self:
+        """Keep review IDs distinct from issue-comment and review-comment IDs."""
+        if (
+            self.object.kind is not GitHubObjectKind.REVIEW
+            or self.object.repository_id != self.target.repository_id
+            or self.object.container_number != self.pr_scope.container_number
+        ):
+            raise ValueError(_MAINTENANCE_TARGET_INVALID)
+        return self
+
+
 class GitHubCommentMaintenanceOperation(StrEnum):
     """Finite native effects, separate from workflow acts."""
 
@@ -309,11 +345,19 @@ class GitHubObjectMutation(BaseModel):
     preflight_digest: str = Field(pattern=_DIGEST_PATTERN)
     body_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     edit_evidence: GitHubEditEvidence | None = None
+    reviewed_sha: str | None = Field(default=None, pattern=_COMMIT_PATTERN)
 
     @model_validator(mode="after")
     def validate_effect(self) -> Self:
         """Keep edit and deletion evidence distinct."""
-        if self.object.kind is not GitHubObjectKind.ISSUE_COMMENT or (
+        if (
+            self.object.kind not in (GitHubObjectKind.ISSUE_COMMENT, GitHubObjectKind.REVIEW)
+            or (
+                self.object.kind is GitHubObjectKind.REVIEW
+                and (self.operation is not GitHubCommentMaintenanceOperation.EDIT or self.reviewed_sha is None)
+            )
+            or (self.object.kind is GitHubObjectKind.ISSUE_COMMENT and self.reviewed_sha is not None)
+        ) or (
             (
                 self.operation is GitHubCommentMaintenanceOperation.EDIT
                 and (self.provider_status != 200 or self.body_digest is None)
@@ -340,6 +384,7 @@ class GitHubCommentMaintenanceResult(BaseModel):
     preflight_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     body_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     edit_evidence: GitHubEditEvidence | None = None
+    reviewed_sha: str | None = None
     provider_status: int | None = Field(default=None, ge=100, le=599)
     retry_after: timedelta | None = None
     credential_refusal: str | None = None

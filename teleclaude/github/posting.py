@@ -63,8 +63,10 @@ from teleclaude.github.native import (
     prepare_native_comment_maintenance,
     prepare_native_issue_comment,
     prepare_native_issue_view,
+    prepare_native_review,
 )
 from teleclaude.github.pull_requests import GitHubPullRequestCancelled, edit_native_pull_request
+from teleclaude.github.reviews import GitHubReviewCancelled, execute_native_review
 from teleclaude.types.github_account import GitHubAccount
 from teleclaude.types.github_binding import GitHubWorkTarget
 from teleclaude.types.github_posting import (
@@ -81,6 +83,8 @@ from teleclaude.types.github_posting import (
     GitHubObjectRef,
     GitHubPostFailure,
     GitHubPostResult,
+    GitHubReviewEditRequest,
+    GitHubReviewRequest,
     NativeGitHubPostSource,
 )
 from teleclaude.types.github_publication import GitHubPullRequestEditRequest, GitHubPullRequestResult
@@ -145,6 +149,7 @@ _ISSUE_VIEW = ("issue", "view")
 _ISSUE_COMMENT = ("issue", "comment")
 _PR_COMMENT = ("pr", "comment")
 _PR_EDIT = ("pr", "edit")
+_PR_REVIEW = ("pr", "review")
 _ISSUE_READ_PERMISSIONS: AppPermissionsType = {"issues": "read"}
 _EDITOR_ENVIRONMENT = ("GH_EDITOR", "VISUAL", "EDITOR")
 _EDITOR_FILE = "comment.md"
@@ -779,12 +784,17 @@ async def execute_native_github(
             return _native_pr_result(pr_result, stdout, stderr)
         if arguments[:1] == (_API_COMMAND,):
             request = await prepare_native_comment_maintenance(arguments, context, directory=directory, stdin=stdin)
+            if isinstance(request, GitHubReviewEditRequest):
+                return await _native_review(context, request, stdout, stderr)
             try:
                 maintained = await _maintain_native_comment(context, request)
             except GitHubMaintenanceCancelled as error:
                 _native_maintenance_result(error.result, stdout, stderr)
                 raise
             return _native_maintenance_result(maintained, stdout, stderr)
+        if arguments[:2] == _PR_REVIEW:
+            review = await prepare_native_review(arguments, context, directory=directory, stdin=stdin)
+            return await _native_review(context, review, stdout, stderr)
         if arguments[:2] == _ISSUE_VIEW:
             return await _native_view(context, binary, arguments, stdout, stderr)
         if arguments[:2] not in (_ISSUE_COMMENT, _PR_COMMENT):
@@ -805,5 +815,17 @@ async def execute_native_github(
 
 def _native_pr_result(result: GitHubPullRequestResult, stdout: TextIO, stderr: TextIO) -> int:
     """Print only safe typed facts; a creator association alone never stands in for later edit attribution."""
+    print(result.model_dump_json(), file=stdout if result.attributed else stderr)
+    return 0 if result.attributed else 1
+
+
+async def _native_review(
+    context: GitHubPostingContext, request: GitHubReviewRequest, stdout: TextIO, stderr: TextIO
+) -> int:
+    try:
+        result = await execute_native_review(context, request)
+    except GitHubReviewCancelled as error:
+        print(error.result.model_dump_json(), file=stderr)
+        raise
     print(result.model_dump_json(), file=stdout if result.attributed else stderr)
     return 0 if result.attributed else 1

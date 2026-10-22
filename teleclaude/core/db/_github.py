@@ -306,7 +306,7 @@ class DbGitHubMixin:
         ):
             raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
 
-    async def _check_native_comment_writer(
+    async def _check_native_conversation_writer(
         self,
         db_session: AsyncSession,
         association: GitHubObjectAssociation,
@@ -375,8 +375,13 @@ class DbGitHubMixin:
             creation_json=association.model_dump_json(),
         )
         async with self._session() as db_session:
-            if isinstance(association.source, NativeGitHubPostSource) and ref.kind is GitHubObjectKind.ISSUE_COMMENT:
-                await self._check_native_comment_writer(db_session, association, pr_scope)
+            if isinstance(association.source, NativeGitHubPostSource) and ref.kind in (
+                GitHubObjectKind.ISSUE_COMMENT,
+                GitHubObjectKind.REVIEW,
+            ):
+                if ref.kind is GitHubObjectKind.REVIEW and pr_scope is None:
+                    raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
+                await self._check_native_conversation_writer(db_session, association, pr_scope)
             elif pr_scope is not None:
                 raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
             binding_row = await db_session.get(db_models.GitHubSessionBindingRow, association.session_id)
@@ -609,6 +614,10 @@ class DbGitHubMixin:
             or creation.session_id != mutation.session_id
             or creation.role is not mutation.role
             or not creation.actor.same_account(mutation.actor)
+            or (
+                ref.kind is GitHubObjectKind.REVIEW
+                and (pr_scope is None or mutation.reviewed_sha != creation.reviewed_sha)
+            )
         ):
             raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
         key = (ref.repository_id, ref.container_number, ref.kind.value, ref.provider_id)
