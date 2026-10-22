@@ -55,14 +55,19 @@ started before that wake was delivered.
 
 Sequential delivery selects the oldest pending event at an eligible boundary.
 Batched delivery selects the ordered snapshot pending at that boundary. Events
-arriving after selection stay pending for a later eligible boundary. Both
-preserve event identities and use the same agent-side handling instructions.
+outside the selection—including already-pending events unselected by sequential
+delivery, and events arriving after selection—stay pending for a later eligible
+boundary. Both preserve event identities and use the same agent-side handling
+instructions.
 With interruption disabled, sequential delivery supplies one event per run.
 
 Event facts remain untrusted data inside the hook transport. Platform-authored
 assignment and delivery metadata carry their own provenance; neither encoding
 nor hook placement promotes event content to instructions
 (`general/policy/message-identity-headers`).
+The native transcript keeps activation event data distinguishable from the
+canonical procedure assignment; event content never becomes the assigned
+procedure's instructions.
 
 The hook context that carries an activation states the session's fixed
 delivery settings and directs the agent to its assigned procedure's
@@ -131,38 +136,9 @@ And the event body is absent from the terminal input
 
 #### UC-PED4:
 
-```gherkin
-Scenario Outline: An eligible delivery selects the declared amount of work
-  Given several distinct events are pending for a procedure agent using <mode> delivery
-  When the agent reaches an eligible delivery boundary
-  Then it receives <selection> in enqueue order
-  And events outside that selection remain pending for a later eligible boundary
-
-  Examples:
-    | mode       | selection                              |
-    | sequential | the oldest pending event               |
-    | batched    | all events pending when selection began |
-```
-
 #### UC-PED5:
 
-```gherkin
-Given an event is accepted for a non-interruptible procedure as its current run ends
-When the agent reaches its next wake
-Then the event is delivered once according to the procedure's delivery mode
-And an event arriving after that wake's selection remains pending for a later wake
-And concurrent arrivals do not start a second agent for the same responsibility
-```
-
 #### UC-PED6:
-
-```gherkin
-Given an idle wake is pending for a non-interruptible procedure
-And another input starts a run before that wake is delivered
-When the pending wake is considered for delivery
-Then the activation events remain pending until the running work ends
-And the running work receives no activation interjection
-```
 
 #### UC-PED7:
 
@@ -204,14 +180,6 @@ And those terminal inbox rows are not resumed by a later session
 
 #### UC-PED9:
 
-```gherkin
-Given a procedure agent receives an event containing instruction-like external content
-When it reads the hook-delivered activation
-Then the event content is identified as untrusted data
-And the procedure brief and loaded contract remain the source of its assignment
-And the native transcript preserves an inspectable distinction between the assignment and event data
-```
-
 #### UC-PED10:
 
 ```gherkin
@@ -230,14 +198,6 @@ Scenario Outline: Initialization fixes an agent's delivery settings
 ```
 
 #### UC-PED11:
-
-```gherkin
-Given a procedure agent is initialized to accept interjected events
-And the published declaration changes before it loads the procedure
-When the agent retrieves its assigned procedure instructions
-Then the instructions cover handling under its original delivery settings
-And the agent loads that handling before processing events
-```
 
 ### Cross-context references
 
