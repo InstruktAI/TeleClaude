@@ -1156,7 +1156,7 @@ def require_b14_kickback(
         elif case is B14Case.STALE_WORK_UNCLAIMED:
             valid = (
                 valid
-                and state.get(FIELD_PHASE) == standing.get(FIELD_STANDING_PHASE) == B14_PHASE_WORK
+                and standing.get(FIELD_STANDING_PHASE) == B14_PHASE_WORK
                 and state.get(FIELD_RUNNER) in (None, EMPTY)
                 and not standing.get(B14_FIELD_HELD)
                 and not standing.get(B14_FIELD_ADMITTED)
