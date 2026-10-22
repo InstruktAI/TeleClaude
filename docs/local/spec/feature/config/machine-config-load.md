@@ -61,7 +61,7 @@ for its consumers under
 
 #### UC-CFG-LOAD-1b: The bundled blueprint seeds and backfills the machine config
 
-#### UC-CFG-LOAD-10: Installation produces a machine configuration from the schema
+#### UC-CFG-LOAD-10: An operator installs without hand-authoring machine configuration
 
 ```
 Given a host carrying no machine configuration at <RuntimeConfig.home>/config.yml
@@ -72,7 +72,7 @@ And each field declared sensitive is written as its derived environment referenc
 And no field's resolved secret value is written
 ```
 
-#### UC-CFG-LOAD-11: Installation leaves an existing machine configuration alone
+#### UC-CFG-LOAD-11: An operator upgrades without losing existing machine settings
 
 ```
 Given a host already carrying a machine configuration at <RuntimeConfig.home>/config.yml
