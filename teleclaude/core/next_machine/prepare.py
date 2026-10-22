@@ -1,4 +1,4 @@
-"""Prepare stage — Phase A dispatcher."""
+"""Prepare entry responses outside the item machine: explicit slugs, holders and tasks."""
 
 from __future__ import annotations
 
@@ -21,12 +21,11 @@ from teleclaude.constants import (
     STATE_KEY_REQUIREMENTS,
 )
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT
 from teleclaude.core.next_machine.commit_review_stamps import OutstandingCommit, outstanding_claim_period_commits
+from teleclaude.core.next_machine.kinds import KIND_TASK
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     adopt_prepare_handoff_phase,
-    is_work_lifecycle_phase,
     require_lifecycle_phase,
 )
 from teleclaude.core.next_machine.output_formatting import (
@@ -37,14 +36,13 @@ from teleclaude.core.next_machine.output_formatting import (
     format_prepared_withheld,
     format_procedure_load,
 )
-from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
+from teleclaude.core.next_machine.prepare_step_support import prepare_step_prepared
 from teleclaude.core.next_machine.provenance import (
     read_owned_snippet_digests,
     read_referenced_snippet_digests,
     refresh_referenced_paths,
     sync_artifact_provenance,
 )
-from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.session_identity import get_session_id
@@ -54,7 +52,6 @@ from teleclaude.types.state_value import StateValue
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
 
-from teleclaude.core.next_machine._types import PreparePhase as _PP
 from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionMode,
@@ -66,6 +63,10 @@ from teleclaude.core.workflow_store.store import get_workflow_store
 logger = get_logger(__name__)
 
 _PREPARED_WITHHELD_LOG = "prepared_withheld"
+_MISSING_STATE_TEMPLATE = "Contract violation: no state record for slug {slug!r}"
+_ITEM_ENTRY_REQUIRED_TEMPLATE = "Item {slug!r} must enter preparation through the workflow machine"
+_LIFECYCLE_PHASE_FIELD = "lifecycle_phase"
+_TASK_PREPARE_CONTEXT_TEMPLATE = "next_prepare({slug})"
 _TASK_PREPARER_HAT = "Task preparer"
 _TASK_PREPARER_EXPECTED = "a durable task-plan and a human authorization request"
 _TASK_RUNNING_ERROR_CODE = "TASK_RUNNING"
@@ -163,14 +164,14 @@ async def _hydrate_artifact_presence_for_adoption(
         )
 
 
-async def _adopt_prepare_phase(
+async def _adopt_task_phase(
     todos_db: WorkflowStore,
     slug: str,
     raw_state: dict[str, StateValue],
     *,
     repo_root: str,
 ) -> tuple[dict[str, StateValue], list[OutstandingCommit]]:
-    """Adopt the derived prepare phase and report the commits that withhold ``PREPARED``.
+    """Adopt only the task lane phase and retain its existing reviewed-commit handoff.
 
     The second element lists the calling session's claim-period commits on main
     that lack an ``approve`` stamp; it is non-empty only when the derivation would
@@ -187,67 +188,13 @@ async def _adopt_prepare_phase(
         return bool(outstanding)
 
     await _hydrate_artifact_presence_for_adoption(todos_db, slug, writer, repo_root=repo_root)
-    artifact_metadata = {metadata["name"]: metadata for metadata in await todos_db.artifact_metadata(slug)}
-    artifact_names = dict(_ADOPTION_ARTIFACTS)
-    for phase, artifacts in REVIEW_EVIDENCE_ARTIFACTS.items():
-        if artifacts.target_artifact_key is None:
-            continue
-        review = writer.review(phase)
-        if not review.cycle.reconciliation_pending:
-            continue
-        target = getattr(writer.state.artifacts, artifacts.target_artifact_key)
-        target_metadata = artifact_metadata.get(artifact_names[artifacts.target_artifact_key])
-        report_metadata = artifact_metadata.get(artifacts.report_artifact_name)
-        target_written_at = target_metadata["updated_at"] if target_metadata is not None else target.produced_at
-        report_written_at = report_metadata["updated_at"] if report_metadata is not None else ""
-        has_empty_bindings = not any((review.verdict, review.reviewed_target_digest, review.review_report_digest))
-        if has_empty_bindings and report_written_at and target_written_at > report_written_at:
-            review.open_new_cycle()
-        else:
-            review.cycle.reconciliation_pending = False
-    report_digests = {
-        artifacts.report_artifact_name: await todos_db.artifact_digest(slug, artifacts.report_artifact_name)
-        for artifacts in REVIEW_EVIDENCE_ARTIFACTS.values()
-        if artifacts.target_artifact_key is not None
-    }
-    artifact_write_timestamps = {
-        state_key: artifact_metadata[artifact_name]["updated_at"] if artifact_name in artifact_metadata else ""
-        for state_key, artifact_name in _ADOPTION_ARTIFACTS
-    }
     derived = adopt_prepare_handoff_phase(
         writer.state,
         repo_root=repo_root,
-        report_digests=report_digests,
-        artifact_write_timestamps=artifact_write_timestamps,
+        report_digests={},
+        artifact_write_timestamps={},
         prepared_withheld=prepared_withheld,
     )
-    for phase, artifacts in REVIEW_EVIDENCE_ARTIFACTS.items():
-        if artifacts.target_artifact_key is None:
-            continue
-        review = getattr(writer.state, phase)
-        if not review.verdict:
-            continue
-        current_target_digest = getattr(writer.state.artifacts, artifacts.target_artifact_key).digest
-        current_report_digest = report_digests[artifacts.report_artifact_name]
-        is_current = (
-            bool(review.reviewed_target_digest)
-            and bool(review.review_report_digest)
-            and review.reviewed_target_digest == current_target_digest
-            and review.review_report_digest == current_report_digest
-        )
-        logger.info(
-            "workflow.review_evidence_evaluated",
-            slug=slug,
-            phase=phase,
-            outcome="current" if is_current else "stale",
-            bound_target_digest=review.reviewed_target_digest,
-            current_target_digest=current_target_digest,
-            bound_report_digest=review.review_report_digest,
-            current_report_digest=current_report_digest,
-            caller_session_id=review.caller_session_id,
-            reviewed_at=review.reviewed_at,
-            resulting_phase=derived.value,
-        )
     writer.state.lifecycle_phase = derived
     payload = writer.to_dict()
     if payload != raw_state:
@@ -257,8 +204,8 @@ async def _adopt_prepare_phase(
 
 
 async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
-    """Dispatch the current prepare lifecycle step from authoritative state."""
-    _ = _commit_writer
+    """Answer a holder, missing-slug or task request; ordinary items use the workflow entry verb."""
+    _ = db
 
     cwd = str(resolve_project_root(cwd))
     todos_db = await get_workflow_store(cwd)
@@ -306,61 +253,37 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE.format(slug=resolved_slug),
         )
 
-    for iteration in range(_PREPARE_LOOP_LIMIT):
-        state = await todos_db.read_state(resolved_slug)
-        if state is None:
-            raise RuntimeError(f"Contract violation: no state record for slug {resolved_slug!r}")
-
-        state, outstanding = await _adopt_prepare_phase(todos_db, resolved_slug, state, repo_root=cwd)
-        if outstanding:
-            logger.info(
-                _PREPARED_WITHHELD_LOG,
-                slug=resolved_slug,
-                pending_shas=[commit.sha for commit in outstanding],
-            )
-            return format_prepared_withheld(resolved_slug, outstanding)
-        writer = StateWriter(state)
-        lifecycle = require_lifecycle_phase(writer.state.lifecycle_phase, context=f"next_prepare({resolved_slug})")
-        if lifecycle is LifecyclePhase.TASK_PLAN_DRAFTING:
-            return format_procedure_load(
-                slug=resolved_slug,
-                procedure_id=LifecycleProcedure.PREPARE_TASK.value,
-                hat=_TASK_PREPARER_HAT,
-                expected=_TASK_PREPARER_EXPECTED,
-            )
-        if lifecycle is LifecyclePhase.TASK_RUNNING:
-            return format_error(
-                _TASK_RUNNING_ERROR_CODE,
-                _TASK_RUNNING_MESSAGE_TEMPLATE.format(slug=resolved_slug),
-            )
-        phase = (
-            _PP.PREPARED
-            if lifecycle == LifecyclePhase.PREPARED or is_work_lifecycle_phase(lifecycle)
-            else _PP(lifecycle.value)
+    state = await todos_db.read_state(resolved_slug)
+    if state is None:
+        raise RuntimeError(_MISSING_STATE_TEMPLATE.format(slug=resolved_slug))
+    writer = StateWriter(state)
+    if writer.state.kind != KIND_TASK:
+        raise ValueError(_ITEM_ENTRY_REQUIRED_TEMPLATE.format(slug=resolved_slug))
+    if writer.state.lifecycle_phase is LifecyclePhase.TASK_RUNNING:
+        return format_error(
+            _TASK_RUNNING_ERROR_CODE,
+            _TASK_RUNNING_MESSAGE_TEMPLATE.format(slug=resolved_slug),
         )
-        logger.info("NEXT_PREPARE_PHASE slug=%s phase=%s iter=%d", resolved_slug, phase.value, iteration)
-
-        keep_going, instruction = await _prepare_dispatch(
-            db=db,
-            todos_db=todos_db,
+    state, outstanding = await _adopt_task_phase(todos_db, resolved_slug, state, repo_root=cwd)
+    if outstanding:
+        logger.info(
+            _PREPARED_WITHHELD_LOG,
             slug=resolved_slug,
-            cwd=cwd,
-            phase=phase,
-            state=state,
+            pending_shas=[commit.sha for commit in outstanding],
         )
-        if not keep_going:
-            return instruction
-
-    instruction = (
-        "The prepare state machine could not converge. Inspect the todo state "
-        f"via `telec todo show {resolved_slug}` and surface to the user — the lifecycle "
-        "cannot self-resolve."
+        return format_prepared_withheld(resolved_slug, outstanding)
+    lifecycle = require_lifecycle_phase(
+        state.get(_LIFECYCLE_PHASE_FIELD), context=_TASK_PREPARE_CONTEXT_TEMPLATE.format(slug=resolved_slug)
     )
-    return format_blocker_resolution(
-        resolved_slug,
-        instruction,
-        blockers=[f"prepare loop exceeded {_PREPARE_LOOP_LIMIT} internal transitions"],
-    )
+    if lifecycle is LifecyclePhase.TASK_PLAN_DRAFTING:
+        return format_procedure_load(
+            slug=resolved_slug,
+            procedure_id=LifecycleProcedure.PREPARE_TASK.value,
+            hat=_TASK_PREPARER_HAT,
+            expected=_TASK_PREPARER_EXPECTED,
+        )
+    _, instruction = await prepare_step_prepared(db, todos_db, resolved_slug, project_root=cwd)
+    return instruction
 
 
 __all__ = ["next_prepare"]

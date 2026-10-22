@@ -14,16 +14,7 @@ from teleclaude.core.next_machine.lanes import DRIVER_ROLES, LifecycleProcedure
 from teleclaude.core.session_status import AgentStatusValue
 
 CommandValues = str | tuple[str, ...]
-PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (
-    LifecycleProcedure.PREPARE.value,
-    LifecycleProcedure.INTAKE.value,
-    LifecycleProcedure.ARCHITECTURE.value,
-    LifecycleProcedure.DIAGNOSE.value,
-    LifecycleProcedure.PLAN_DRAFT.value,
-    LifecycleProcedure.REVIEW_ARCHITECTURE.value,
-    LifecycleProcedure.REVIEW_PLAN.value,
-    LifecycleProcedure.DRIFT_ANALYZE.value,
-)
+PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (LifecycleProcedure.PREPARE.value,)
 
 
 def _normalize_commands(command_values: CommandValues) -> tuple[str, ...]:
@@ -137,24 +128,6 @@ async def is_live_session_id(db: Db, session_id: str) -> bool:
     if session.closed_at is not None:
         return False
     return session.lifecycle_status != "closed"
-
-
-async def find_live_prepare_worker_for_slug(db: Db, slug: str, command_value: str) -> str | None:
-    """Return the newest live prepare worker id for an exact slug+command match.
-
-    Prepare workers run on repo root (subdir=None). A bare ``startswith`` match
-    is unsafe here because a colliding slug (``my-slug-extra``) would match a
-    lookup for ``my-slug``. This helper requires the session title to equal
-    ``/cmd slug`` or to be followed by whitespace, so longer slugs that begin
-    with the target slug as a prefix cannot match.
-    """
-    sessions = await db.list_sessions(include_closed=False)
-    for session in sessions:
-        if session.subdir is not None:
-            continue
-        if session.working_slug == slug and _matches_command(session.command, command_value):
-            return session.session_id
-    return None
 
 
 async def find_live_reviewer_for_slug(

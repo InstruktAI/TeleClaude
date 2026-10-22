@@ -277,7 +277,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=[
                     "Creates a fresh session that carries the role the procedure declares and starts from a short loader that directs the agent to retrieve its procedure instructions.",
                     "Name the procedure by its domain-qualified snippet ID; a retired command name is refused.",
-                    "Worker lifecycle procedures: build, review-build, finalize (sdlc/procedure/lifecycle/work/...).",
+                    "Item lifecycle procedures: prepare/overview-v2, prepare/intake-v2, work/overview-v2, work/build-v2 (sdlc/procedure/lifecycle/...).",
                     (
                         "--detach: do not use unless explicitly instructed. Sanctioned only for a "
                         "personal-assistant dispatching an orchestrator to a project. --detach disables "
@@ -286,8 +286,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                 ],
                 examples=[
-                    "telec sessions run --command sdlc/procedure/lifecycle/work/build --args my-slug",
-                    "telec sessions run --command sdlc/procedure/lifecycle/prepare/review-plan --args my-slug",
+                    "telec sessions run --command sdlc/procedure/lifecycle/work/build-v2 --args my-slug",
+                    "telec sessions run --command sdlc/procedure/lifecycle/prepare/intake-v2 --args my-slug",
                 ],
                 auth=CommandAuth(
                     capability=Capability.SESSION_ACT,

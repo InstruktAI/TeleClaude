@@ -16,21 +16,10 @@ from teleclaude.core.roles import RoleName
 class LifecycleProcedure(StrEnum):
     """The entry procedures the lifecycle state machines and the platform's own dispatchers name."""
 
-    PREPARE = "sdlc/procedure/lifecycle/prepare/overview"
-    INTAKE = "sdlc/procedure/lifecycle/prepare/intake"
-    ARCHITECTURE = "sdlc/procedure/lifecycle/prepare/architecture"
-    PLAN_DRAFT = "sdlc/procedure/lifecycle/prepare/plan-draft"
-    DIAGNOSE = "sdlc/procedure/lifecycle/prepare/diagnose-peer"
-    REVIEW_PRD = "sdlc/procedure/lifecycle/prepare/review-prd"
-    REVIEW_ARCHITECTURE = "sdlc/procedure/lifecycle/prepare/review-architecture"
-    REVIEW_PLAN = "sdlc/procedure/lifecycle/prepare/review-plan"
-    DRIFT_ANALYZE = "sdlc/procedure/lifecycle/prepare/drift-analyze"
-    WORK = "sdlc/procedure/lifecycle/work/overview"
-    BUILD = "sdlc/procedure/lifecycle/work/build"
-    REVIEW_BUILD = "sdlc/procedure/lifecycle/work/review-build"
+    PREPARE = "sdlc/procedure/lifecycle/prepare/overview-v2"
+    WORK = "sdlc/procedure/lifecycle/work/overview-v2"
+    BUILD = "sdlc/procedure/lifecycle/work/build-v2"
     REVIEW_COMMITS = "sdlc/procedure/lifecycle/work/review-commits"
-    FINALIZE = "sdlc/procedure/lifecycle/work/finalize"
-    DEFERRALS = "sdlc/procedure/lifecycle/work/deferrals"
     INTEGRATE = "sdlc/procedure/lifecycle/integrate"
     COORDINATE = "sdlc/procedure/lifecycle/coordinate"
     PREPARE_TASK = "sdlc/procedure/lifecycle/task/prepare-task"
@@ -49,9 +38,7 @@ LANE_ENTRY_PROCEDURES: dict[RunnerLane, LifecycleProcedure] = {
 }
 
 #: The procedures whose session must run in the todo's worktree: the work lane's per-slug workers.
-WORKTREE_BOUND_PROCEDURES: frozenset[str] = frozenset(
-    {LifecycleProcedure.BUILD.value, LifecycleProcedure.REVIEW_BUILD.value, LifecycleProcedure.FINALIZE.value}
-)
+WORKTREE_BOUND_PROCEDURES: frozenset[str] = frozenset({LifecycleProcedure.BUILD.value})
 
 #: The roles that drive a todo's lifecycle: a prepare or work orchestrator, a creative orchestrator, and the
 #: prepare drafting phases a prepare orchestrator performs inline.

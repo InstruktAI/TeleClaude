@@ -10,7 +10,6 @@ dependencies arise from sub-modules importing from core.py.
 
 from __future__ import annotations
 
-import threading
 from dataclasses import dataclass
 from enum import Enum
 from typing import TypedDict
@@ -68,35 +67,6 @@ class ItemPhase(str, Enum):
     DONE = "done"
 
 
-class PreparePhase(str, Enum):
-    """All valid prepare lifecycle phases for the state machine."""
-
-    DRAFT = "draft"
-    PRD_DRAFTING = "prd_drafting"
-    PRD_REVIEW = "prd_review"
-    PRD_HUMAN_APPROVAL = "prd_human_approval"
-    ARCHITECTURE_DRAFTING = "architecture_drafting"
-    ARCHITECTURE_REVIEW = "architecture_review"
-    DIAGNOSE = "diagnose"
-    PLAN_DRAFTING = "plan_drafting"
-    PLAN_REVIEW = "plan_review"
-    PREPARED = "prepared"
-    BLOCKED = "blocked"
-
-
-class WorkPhase(str, Enum):
-    """Canonical work-lane lifecycle phases."""
-
-    BUILD_STARTED = "build_started"
-    BUILD_COMPLETE = "build_complete"
-    REVIEW_CHANGES_REQUESTED = "review_changes_requested"
-    REVIEW_APPROVED = "review_approved"
-    FINALIZE_READY = "finalize_ready"
-
-
-WORK_PHASE_ORDER: list[str] = [phase.value for phase in WorkPhase]
-
-
 class CreativePhase(str, Enum):
     """All valid creative lifecycle phases for the state machine."""
 
@@ -117,9 +87,6 @@ class CreativePhase(str, Enum):
     CREATIVE_COMPLETE = "creative_complete"
     BLOCKED = "blocked"
 
-
-_PREPARE_LOOP_LIMIT = 20
-_WORK_LOOP_LIMIT = 10
 
 DOR_READY_THRESHOLD = 8
 
@@ -152,7 +119,6 @@ _PREP_ROOT_INPUT_FILES = (
     ConfigFileName.MACHINE,
     "tools/worktree-prepare.sh",
 )
-_SINGLE_FLIGHT_GUARD = threading.Lock()
 ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {
     STATE_KEY_PRD: (STATE_KEY_INPUT,),
     STATE_KEY_ARCHITECTURE: (STATE_KEY_PRD,),

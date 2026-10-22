@@ -47,7 +47,6 @@ __all__ = [
     "format_terminal_claim_handoff",
     "format_tool_call",
     "format_uncommitted_changes",
-    "format_work_entry_drift_bounce",
     "format_work_returned_to_preparation",
     "format_worker_redispatch",
 ]
@@ -491,38 +490,6 @@ def format_uncommitted_changes(slug: str) -> str:
     return f"""UNCOMMITTED CHANGES in {WORKTREE_DIR}/{slug}
 
 NEXT: Resolve these changes according to the commit policy, then call telec todo work {slug} to continue."""
-
-
-def _work_entry_analyze_post_block(slug: str) -> str:
-    return f"""WHEN WORKER COMPLETES:
-The worker stamps a --drift-reviewed verdict for every pending artifact and drives no further step.
-1. Tail the worker's final output to verify it stamped every pending artifact.
-2. Call `telec todo work {slug}` to re-enter the work state machine, which reads the stamped verdict and continues."""
-
-
-def format_work_entry_drift_bounce(
-    *,
-    slug: str,
-    project_root: str,
-    pending_classes: str,
-) -> str:
-    """Dispatch the drift analyzer from the work-entry bounce on pending drift.
-
-    The work state machine owns the work-entry drift path end-to-end: on a
-    ``pending`` collapsed status it dispatches the ``drift-analyze`` worker
-    and tells the orchestrator to re-enter ``telec todo work`` once the analyzer
-    idles. The work orchestrator never calls ``telec todo prepare`` — its only
-    verb is ``telec todo work``.
-    """
-    request = ToolCallRequest(
-        command=LifecycleProcedure.DRIFT_ANALYZE.value,
-        args=slug,
-        project=project_root,
-        subfolder="",
-        post_block=_work_entry_analyze_post_block(slug),
-        additional_context=pending_classes,
-    )
-    return format_tool_call(request)
 
 
 def format_work_returned_to_preparation(slug: str, reason: str) -> str:
