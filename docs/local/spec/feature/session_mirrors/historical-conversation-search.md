@@ -50,19 +50,9 @@ source selectors read source provenance without multiplying that result.
 Native references remain source aliases under
 `local/projects/teleclaude/spec/feature/session_mirrors/session-id-namespaces`.
 Existing history reach and worker/subagent selection rules remain applicable.
+An empty text query without an identity or project selector returns no rows.
 
 ### Use cases
-
-#### Term composition and full-text match
-
-```
-Given a search query of one or more whitespace-separated terms
-When the session_mirrors service builds the match expression
-Then each term is treated as a literal phrase (internal quotes escaped)
-And the terms are AND-joined into a single match expression
-And an empty or whitespace-only query with no selector returns no rows without invoking the index
-And an empty query accompanied by an identity or project selector is a selector-only search, which selects by that filter and orders by recency without invoking the index
-```
 
 #### CLI search rendering
 
