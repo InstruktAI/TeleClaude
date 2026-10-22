@@ -112,7 +112,8 @@ establishing a complete action set, it produces no block and does not mark the
 cycle checked. A worktree session resolves path and branch scope against the
 checkout named by its recorded worktree subdirectory. A sealed commit after the
 last relevant edit satisfies the commit obligation for those changes. An
-evaluation with no required action and no outstanding assessment emits no
+evaluation with no required action, no outstanding assessment, and nothing else
+to surface — including no observations or advisory questions — emits no
 checkpoint and records no checkpoint-seen entry.
 
 ## Canonical fields
