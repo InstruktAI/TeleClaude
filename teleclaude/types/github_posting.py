@@ -88,12 +88,19 @@ class GitHubIssueCommentRequest(BaseModel):
     act: Act
     phase: Phase | None = None
     source: GitHubPostSource
+    pr_scope: GitHubObjectRef | None = None
 
     @model_validator(mode="after")
     def require_native_context(self) -> Self:
         """A native request cannot manufacture a lifecycle act or phase."""
         if isinstance(self.source, NativeGitHubPostSource) and (self.act is not Act.NOTE or self.phase is not None):
             raise ValueError(_NATIVE_NOTE_REQUIRED)
+        if self.pr_scope is not None and (
+            not isinstance(self.source, NativeGitHubPostSource)
+            or self.pr_scope.kind is not GitHubObjectKind.PULL_REQUEST
+            or self.pr_scope.repository_id != self.target.repository_id
+        ):
+            raise ValueError(_MAINTENANCE_TARGET_INVALID)
         return self
 
 
@@ -226,11 +233,16 @@ class GitHubPostResult(BaseModel):
         )
 
 
-def _maintenance_target(target: GitHubWorkTarget, ref: GitHubObjectRef) -> None:
+def _maintenance_target(target: GitHubWorkTarget, ref: GitHubObjectRef, pr_scope: GitHubObjectRef | None) -> None:
+    container = target.issue_number
+    if pr_scope is not None:
+        if pr_scope.kind is not GitHubObjectKind.PULL_REQUEST or pr_scope.repository_id != target.repository_id:
+            raise ValueError(_MAINTENANCE_TARGET_INVALID)
+        container = pr_scope.container_number
     if (
         ref.kind is not GitHubObjectKind.ISSUE_COMMENT
         or ref.repository_id != target.repository_id
-        or ref.container_number != target.issue_number
+        or ref.container_number != container
     ):
         raise ValueError(_MAINTENANCE_TARGET_INVALID)
 
@@ -242,11 +254,12 @@ class GitHubIssueCommentEditRequest(BaseModel):
     target: GitHubWorkTarget
     object: GitHubObjectRef
     body: str
+    pr_scope: GitHubObjectRef | None = None
 
     @model_validator(mode="after")
     def validate_target(self) -> Self:
         """Keep the object in the owning request's exact namespace."""
-        _maintenance_target(self.target, self.object)
+        _maintenance_target(self.target, self.object, self.pr_scope)
         return self
 
 
@@ -256,11 +269,12 @@ class GitHubIssueCommentDeleteRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     target: GitHubWorkTarget
     object: GitHubObjectRef
+    pr_scope: GitHubObjectRef | None = None
 
     @model_validator(mode="after")
     def validate_target(self) -> Self:
         """Keep the object in the owning request's exact namespace."""
-        _maintenance_target(self.target, self.object)
+        _maintenance_target(self.target, self.object, self.pr_scope)
         return self
 
 

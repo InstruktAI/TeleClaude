@@ -12,10 +12,10 @@ from typing import BinaryIO, Never
 from urllib.parse import unquote, urlsplit
 
 from teleclaude.core.github_identity import GitHubPostingContext
+from teleclaude.github._conversation_scope import resolve_native_comment, resolve_pr_scope
 from teleclaude.types.github_posting import (
     GitHubIssueCommentDeleteRequest,
     GitHubIssueCommentEditRequest,
-    GitHubObjectKind,
     GitHubObjectRef,
     NativeGitHubPostSource,
 )
@@ -28,6 +28,7 @@ _HTTPS = "https"
 _GITHUB_HOST = "github.com"
 _HOST_PREFIX = _GITHUB_HOST + _PATH_SEPARATOR
 _ISSUES_SEGMENT = "issues"
+_PULL_SEGMENT = "pull"
 _VIEW_PROGRAM = "gh issue view"
 _VIEW_COMMAND = "view"
 _COMMENTS_FLAG = "--comments"
@@ -60,9 +61,11 @@ _BODY_ASSIGNMENT = "body="
 class _Command(StrEnum):
     ISSUE = "issue"
     COMMENT = "comment"
+    PR = "pr"
 
 
 _COMMENT_PATH = (_Command.ISSUE, _Command.COMMENT)
+_PR_COMMENT_PATH = (_Command.PR, _Command.COMMENT)
 
 
 class _Flag(StrEnum):
@@ -99,6 +102,8 @@ class NativeCommentRefusal(StrEnum):
     EDITOR_UNAVAILABLE = "editor_unavailable"
     BUILDER_REQUIRED = "current_builder_required"
     WORK_REF_UNAVAILABLE = "authoritative_branch_or_base_unavailable"
+    PR_SCOPE_UNAVAILABLE = "recorded_pr_relationship_unavailable"
+    CREATOR_UNAVAILABLE = "recorded_native_creator_unavailable"
 
 
 class NativeCommentRefused(ValueError):
@@ -146,7 +151,7 @@ def _json_body_pairs(pairs: list[tuple[str, object]]) -> dict[str, str]:
     return result
 
 
-def prepare_native_comment_maintenance(
+async def prepare_native_comment_maintenance(
     arguments: Sequence[str], context: GitHubPostingContext, *, directory: Path, stdin: BinaryIO
 ) -> GitHubIssueCommentEditRequest | GitHubIssueCommentDeleteRequest:
     """Admit only explicit comment PATCH/DELETE and one body string, rejecting duplicate JSON keys."""
@@ -184,16 +189,16 @@ def prepare_native_comment_maintenance(
         or int(parts[5]) <= 0
     ):
         raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
-    ref = GitHubObjectRef(
-        repository_id=target.repository_id,
-        container_number=target.issue_number,
-        kind=GitHubObjectKind.ISSUE_COMMENT,
-        provider_id=int(parts[5]),
-    )
+    resolved = await resolve_native_comment(context, int(parts[5]))
+    if resolved is None:
+        raise NativeCommentRefused(NativeCommentRefusal.CREATOR_UNAVAILABLE)
+    creation, scope = resolved
+    ref = creation.object
+    pr_scope = scope.object if scope is not None else None
     if method == _DELETE_METHOD:
         if values.fields is not None or values.inputs is not None:
             raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
-        return GitHubIssueCommentDeleteRequest(target=target, object=ref)
+        return GitHubIssueCommentDeleteRequest(target=target, object=ref, pr_scope=pr_scope)
     try:
         if values.fields is not None:
             field = values.fields[0]
@@ -214,7 +219,7 @@ def prepare_native_comment_maintenance(
         body.encode(_UTF8)
     except (OSError, UnicodeError, json.JSONDecodeError):
         raise NativeCommentRefused(NativeCommentRefusal.BODY_UNAVAILABLE) from None
-    return GitHubIssueCommentEditRequest(target=target, object=ref, body=body)
+    return GitHubIssueCommentEditRequest(target=target, object=ref, body=body, pr_scope=pr_scope)
 
 
 @dataclass(frozen=True)
@@ -223,6 +228,7 @@ class NativeIssueCommentRequest:
 
     context: GitHubPostingContext
     body: str
+    pr_scope: GitHubObjectRef | None = None
     source: NativeGitHubPostSource = field(default_factory=NativeGitHubPostSource, init=False)
 
 
@@ -271,7 +277,7 @@ def prepare_native_issue_view(arguments: Sequence[str], context: GitHubPostingCo
     return result
 
 
-def prepare_native_issue_comment(
+async def prepare_native_issue_comment(
     arguments: Sequence[str],
     context: GitHubPostingContext,
     *,
@@ -280,7 +286,8 @@ def prepare_native_issue_comment(
     editor: Callable[[], str] | None = None,
 ) -> NativeIssueCommentRequest:
     """Resolve all fields and the exact bound target before reading prose or loading credentials."""
-    if tuple(arguments[:2]) != _COMMENT_PATH:
+    path = tuple(arguments[:2])
+    if path not in (_COMMENT_PATH, _PR_COMMENT_PATH):
         raise NativeCommentRefused(NativeCommentRefusal.UNSUPPORTED_OPERATION)
     values = _parse(arguments[2:])
     if any(len(value) > 1 for value in (values.body, values.body_file, values.repository) if value is not None):
@@ -291,7 +298,14 @@ def prepare_native_issue_comment(
     repository = values.repository[0] if values.repository else target.repository
     if repository.casefold().removeprefix(_HOST_PREFIX) != target.repository.casefold():
         raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
-    if _issue_number(values.target, target.repository) != target.issue_number:
+    number = _issue_number(values.target, target.repository, pull_request=path == _PR_COMMENT_PATH)
+    pr_scope = None
+    if path == _PR_COMMENT_PATH:
+        scope = await resolve_pr_scope(context, number)
+        if scope is None:
+            raise NativeCommentRefused(NativeCommentRefusal.PR_SCOPE_UNAVAILABLE)
+        pr_scope = scope.object
+    elif number != target.issue_number:
         raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
     try:
         if values.body is not None:
@@ -310,7 +324,7 @@ def prepare_native_issue_comment(
         body.encode(_UTF8)
     except (OSError, UnicodeError):
         raise NativeCommentRefused(NativeCommentRefusal.BODY_UNAVAILABLE) from None
-    return NativeIssueCommentRequest(context, body)
+    return NativeIssueCommentRequest(context, body, pr_scope)
 
 
 def _parse(arguments: Sequence[str]) -> _Arguments:
@@ -329,7 +343,7 @@ def _parse(arguments: Sequence[str]) -> _Arguments:
     return values
 
 
-def _issue_number(selector: str, repository: str) -> int:
+def _issue_number(selector: str, repository: str, *, pull_request: bool = False) -> int:
     """Resolve only an explicit number or matching GitHub issue URL."""
     try:
         if selector.isascii() and selector.isdecimal():
@@ -344,7 +358,8 @@ def _issue_number(selector: str, repository: str) -> int:
             or parsed.port is not None
             or parsed.query
             or len(fields) != 5
-            or fields[3] != _ISSUES_SEGMENT
+            or fields[3] != (_PULL_SEGMENT if pull_request else _ISSUES_SEGMENT)
+            or (pull_request and parsed.fragment)
             or _PATH_SEPARATOR.join(unquote(value) for value in fields[1:3]).casefold() != repository.casefold()
             or not fields[4].isascii()
             or not fields[4].isdecimal()

@@ -19,7 +19,7 @@ from githubkit_schemas.v2026_03_10.models import GitRef, PullRequest, PullReques
 
 from teleclaude.core.github_identity import GitHubPostingContext
 from teleclaude.github.credentials import GitHubInstallationCredential
-from teleclaude.types.github_posting import GitHubObjectKind, GitHubObjectRef
+from teleclaude.types.github_posting import GitHubObjectAssociation, GitHubObjectKind, GitHubObjectRef
 from teleclaude.types.github_publication import GitHubPullRequestSnapshot
 
 _UTF8 = "utf-8"
@@ -117,6 +117,23 @@ def verify_pr(data: PullRequest, context: GitHubPostingContext, head_sha: str) -
     )
 
 
+def verify_pr_membership(data: PullRequest, context: GitHubPostingContext, scope: GitHubObjectAssociation) -> None:
+    """Conversation follows the recorded PR creator, independently of the current comment writer."""
+    ref = pr_reference(data, context)
+    creator = scope.actor
+    if (
+        ref != scope.object
+        or scope.work_issue_number != context.target.issue_number
+        or scope.pull_request is None
+        or data.user.id != creator.id
+        or data.user.node_id != creator.node_id
+        or data.user.type != creator.type.value
+        or data.html_url.casefold()
+        != _WEB_PR.format(repository=context.target.repository, number=data.number).casefold()
+    ):
+        raise ValueError(_INVALID)
+
+
 def _ref_sha(data: GitRef, ref: str) -> str:
     if data.ref != ref or data.object_.type != _COMMIT:
         raise ValueError(_INVALID)
@@ -130,12 +147,10 @@ class PullRequestReader:
         self.credential = credential
         self.owner, self.repository = (quote(part, safe=_EMPTY) for part in credential.target.repository.split(_SLASH))
         branch = credential.target.branch
-        if not branch:
-            raise ValueError(_INVALID)
         self.branch = branch
         self.root = _API_ROOT.format(repository=credential.target.repository)
-        self.ref_root = _REF_ROOT.format(repository=credential.target.repository, branch=self.branch)
-        self.head_filter = credential.target.repository.split(_SLASH)[0] + _COLON + self.branch
+        self.ref_root = _REF_ROOT.format(repository=credential.target.repository, branch=branch) if branch else None
+        self.head_filter = credential.target.repository.split(_SLASH)[0] + _COLON + branch if branch else None
         self.number: int | None = None
         self.discovery: set[httpx.URL] | None = None
 
@@ -175,6 +190,8 @@ class PullRequestReader:
 
     async def discover(self, client: GitHub[TokenAuthStrategy]) -> PullRequestDiscovery:
         """Complete all-state branch discovery; a partial traversal never establishes absence."""
+        if self.branch is None or self.head_filter is None:
+            raise ValueError(_INVALID)
         self.discovery = set()
         try:
             async with asyncio.timeout(_DISCOVERY_SECONDS):
@@ -211,12 +228,13 @@ class PullRequestReader:
 
     async def head(self, client: GitHub[TokenAuthStrategy]) -> str:
         """Read the actual same-repository ref; absence is an unavailable push prerequisite."""
-        response = await client.rest.git.async_get_ref(
-            self.owner, self.repository, quote(_HEADS + self.branch, safe=_EMPTY)
-        )
+        branch = self.branch
+        if not branch:
+            raise ValueError(_INVALID)
+        response = await client.rest.git.async_get_ref(self.owner, self.repository, quote(_HEADS + branch, safe=_EMPTY))
         if response.status_code != 200:
             raise ValueError(_INVALID)
-        return _ref_sha(response.parsed_data, _FULL_HEADS + self.branch)
+        return _ref_sha(response.parsed_data, _FULL_HEADS + branch)
 
 
 def _read_pr(data: PullRequest, number: int) -> PullRequest:

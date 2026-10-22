@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
 
 from pydantic import TypeAdapter
 from sqlalchemy import func, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlmodel import col
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from teleclaude.core import db_models
@@ -31,6 +32,24 @@ _JSON_ARRAY = "array"
 _MUTATIONS_ADAPTER = TypeAdapter(tuple[GitHubObjectMutationRecord, ...])
 _PUSH_PROOFS_ADAPTER = TypeAdapter(tuple[GitHubPushProof, ...])
 _HEADS = "refs/heads/"
+
+
+def _unique_association(rows: Sequence[db_models.GitHubObjectAssociationRow]) -> GitHubObjectAssociation | None:
+    if not rows:
+        return None
+    if len(rows) != 1:
+        raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+    row = rows[0]
+    value = GitHubObjectAssociation.model_validate_json(row.creation_json)
+    ref = value.object
+    if (ref.repository_id, ref.container_number, ref.kind.value, ref.provider_id) != (
+        row.repository_id,
+        row.container_number,
+        row.object_kind,
+        row.provider_id,
+    ):
+        raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+    return value
 
 
 class GitHubBindingRefusal(StrEnum):
@@ -226,7 +245,122 @@ class DbGitHubMixin:
             raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
         return stored
 
-    async def record_github_object_association(self, association: GitHubObjectAssociation) -> GitHubObjectAssociation:
+    async def find_github_object_association(
+        self,
+        repository_id: int,
+        kind: GitHubObjectKind,
+        provider_id: int,
+    ) -> GitHubObjectAssociation | None:
+        """Resolve one explicit provider object within its repository/kind; ambiguity is no authority."""
+        async with self._session() as db_session:
+            rows = await db_session.exec(
+                select(db_models.GitHubObjectAssociationRow)
+                .where(
+                    db_models.GitHubObjectAssociationRow.repository_id == repository_id,
+                    db_models.GitHubObjectAssociationRow.object_kind == kind.value,
+                    db_models.GitHubObjectAssociationRow.provider_id == provider_id,
+                )
+                .limit(2)
+            )
+            return _unique_association(rows.all())
+
+    async def find_github_pr_association(self, repository_id: int, number: int) -> GitHubObjectAssociation | None:
+        """Read the one retained PR relationship, without reconstructing it from branch or prose."""
+        async with self._session() as db_session:
+            rows = await db_session.exec(
+                select(db_models.GitHubObjectAssociationRow)
+                .where(
+                    db_models.GitHubObjectAssociationRow.repository_id == repository_id,
+                    db_models.GitHubObjectAssociationRow.object_kind == GitHubObjectKind.PULL_REQUEST.value,
+                    db_models.GitHubObjectAssociationRow.container_number == number,
+                )
+                .limit(2)
+            )
+            return _unique_association(rows.all())
+
+    async def _check_pr_relationship(
+        self,
+        db_session: AsyncSession,
+        scope: GitHubObjectAssociation,
+        target: GitHubWorkTarget,
+    ) -> None:
+        """A historical creator can be closed; its exact immutable PR/work relationship must remain."""
+        ref = scope.object
+        rows = await db_session.exec(
+            select(db_models.GitHubObjectAssociationRow)
+            .where(
+                db_models.GitHubObjectAssociationRow.repository_id == ref.repository_id,
+                db_models.GitHubObjectAssociationRow.object_kind == GitHubObjectKind.PULL_REQUEST.value,
+                db_models.GitHubObjectAssociationRow.container_number == ref.container_number,
+            )
+            .limit(2)
+        )
+        current = _unique_association(rows.all())
+        if (
+            ref.kind is not GitHubObjectKind.PULL_REQUEST
+            or ref.repository_id != target.repository_id
+            or scope.work_issue_number != target.issue_number
+            or scope.pull_request is None
+            or current is None
+            or not current.same_creation(scope)
+        ):
+            raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
+
+    async def _check_native_comment_writer(
+        self,
+        db_session: AsyncSession,
+        association: GitHubObjectAssociation,
+        pr_scope: GitHubObjectAssociation | None,
+    ) -> None:
+        session = await db_session.get(db_models.Session, association.session_id)
+        row = await db_session.get(db_models.GitHubSessionBindingRow, association.session_id)
+        if (
+            session is None
+            or session.closed_at is not None
+            or session.deleted_at is not None
+            or row is None
+            or row.native_target_json is None
+        ):
+            raise GitHubBindingRefused(GitHubBindingRefusal.SESSION_UNAVAILABLE)
+        binding = GitHubSessionBinding.model_validate_json(row.binding_json)
+        target = GitHubWorkTarget.model_validate_json(row.native_target_json)
+        project = resolve_owning_checkout(Path(session.project_path)) if session.project_path else None
+        if (
+            binding.session_id != session.session_id
+            or binding.role is not association.role
+            or session.role != association.role.value
+            or not binding.assignment.actor.same_account(association.actor)
+            or target.repository_id != association.object.repository_id
+            or target.issue_number != association.work_issue_number
+            or session.working_slug != target.work_item
+            or project is None
+            or resolve_owning_checkout(target.project_path) != project
+        ):
+            raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+        if pr_scope is not None:
+            await self._check_pr_relationship(db_session, pr_scope, target)
+        expected = pr_scope.object.container_number if pr_scope is not None else target.issue_number
+        if association.object.container_number != expected:
+            raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
+        rows = await db_session.exec(
+            select(db_models.GitHubObjectAssociationRow)
+            .where(
+                db_models.GitHubObjectAssociationRow.repository_id == association.object.repository_id,
+                db_models.GitHubObjectAssociationRow.object_kind == association.object.kind.value,
+                db_models.GitHubObjectAssociationRow.provider_id == association.object.provider_id,
+            )
+            .limit(2)
+        )
+        existing = _unique_association(rows.all())
+        if existing is not None and not existing.same_creation(association):
+            raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+
+    async def record_github_object_association(
+        self,
+        association: GitHubObjectAssociation,
+        *,
+        pr_scope: GitHubObjectAssociation | None = None,
+    ) -> GitHubObjectAssociation:
         """Record verified creation once; a conflict never replaces another producer's facts."""
         ref = association.object
         if ref.kind is GitHubObjectKind.PULL_REQUEST and isinstance(association.source, NativeGitHubPostSource):
@@ -241,6 +375,10 @@ class DbGitHubMixin:
             creation_json=association.model_dump_json(),
         )
         async with self._session() as db_session:
+            if isinstance(association.source, NativeGitHubPostSource) and ref.kind is GitHubObjectKind.ISSUE_COMMENT:
+                await self._check_native_comment_writer(db_session, association, pr_scope)
+            elif pr_scope is not None:
+                raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
             binding_row = await db_session.get(db_models.GitHubSessionBindingRow, association.session_id)
             if binding_row is None:
                 raise GitHubBindingRefused(GitHubBindingRefusal.ACTOR_UNBOUND)
@@ -457,7 +595,11 @@ class DbGitHubMixin:
         return mutation
 
     async def record_github_object_mutation(
-        self, mutation: GitHubObjectMutation, *, creation: GitHubObjectAssociation
+        self,
+        mutation: GitHubObjectMutation,
+        *,
+        creation: GitHubObjectAssociation,
+        pr_scope: GitHubObjectAssociation | None = None,
     ) -> GitHubObjectMutation:
         """Append confirmed native evidence atomically, preserving the exact immutable creator row."""
         ref = mutation.object
@@ -482,6 +624,9 @@ class DbGitHubMixin:
                 raise GitHubBindingRefused(GitHubBindingRefusal.ACTOR_UNBOUND)
             binding = GitHubSessionBinding.model_validate_json(binding_row.binding_json)
             target = GitHubWorkTarget.model_validate_json(binding_row.native_target_json)
+            if pr_scope is not None:
+                await self._check_pr_relationship(db_session, pr_scope, target)
+            expected = pr_scope.object.container_number if pr_scope is not None else target.issue_number
             project = resolve_owning_checkout(Path(session.project_path)) if session.project_path else None
             if (
                 binding.session_id != mutation.session_id
@@ -489,7 +634,7 @@ class DbGitHubMixin:
                 or binding.role is not mutation.role
                 or not binding.assignment.actor.same_account(mutation.actor)
                 or target.repository_id != ref.repository_id
-                or target.issue_number != ref.container_number
+                or expected != ref.container_number
                 or target.issue_number != creation.work_issue_number
                 or target.work_item != session.working_slug
                 or project is None
