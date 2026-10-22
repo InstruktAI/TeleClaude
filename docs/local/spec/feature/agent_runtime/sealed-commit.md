@@ -16,6 +16,8 @@ The **sealed commit contract** is the agent-facing channel for landing changes i
 
 Ordinary raw `git add` and `git commit` invocations in a sealed repository are refused, exit non-zero, and do not stage or commit; read-only inspection such as `git diff`, `git status`, and `git log` remains available. A trusted external tool may set `TELECLAUDE_TRUSTED_TOOL=1` to step aside the wrapper entirely and execute real Git, bypassing all wrapper gates; the bypass is logged. The DeepSeek gate uses this path in its isolated home.
 
+Within a slug worktree, an ordinary agent may not use a local `main` reference for any Git command, including read-only inspection; refusal identifies `origin/main` as the baseline. The restriction applies to ref arguments before `--`, so a pathspec named `main` after `--` is unaffected. This agent rule remains distinct from the trusted external-tool path above, which bypasses the wrapper.
+
 The seal is scoped to invocation context roots, and which of them it covers is read from the project-subscription axis of `local/projects/teleclaude/spec/feature/config/tier-permissions`. A project root is sealed when it subscribes `code` or `docs` (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and a project subscribing neither keeps ordinary git. An invocation context root whose tier carries no project subscriptions at all is sealed: it has no subscription to decide with, and the sanctioned path is its commit channel. Passthrough is decided by the repository, not by the location inside it. Where the repository's own root carries no declaration at all, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. Where the repository's root is itself a declared non-project invocation context, the seal covers the whole repository: an invocation beneath it that resolves to no context root is refused rather than passed through. A project repository is unchanged: its seal follows its subscriptions exactly as above, and every location beneath it resolves to the project's own context root.
 
 The contract resolves four classes of file state at commit time:
@@ -80,17 +82,6 @@ And any other role is refused with the integrator-only message
 ```
 
 #### UC-LMR-1 — A slug worktree cannot reference local main
-
-```
-Given an agent session running inside its host pane in a sealed repository
-And the working directory is a slug worktree under trees/<slug> (not trees/_integration/)
-When the agent invokes any git subcommand whose ref-position arguments (those before `--`) name the local main branch — `main`, `heads/main`, `refs/heads/main`, or a range with one of those as an endpoint
-Then the wrapper prints an error naming `origin/main` as the worktree's only baseline
-And exits non-zero without running the command, for read-only subcommands as well as commit-producing ones
-And no `--confirmed` form and no environment variable lifts the refusal
-And the same invocation with `origin/main` in place of the local ref passes through unchanged
-And a pathspec after `--` that happens to be named main is not a ref and is unaffected
-```
 
 #### UC-CGIP-41 — Bare telec code commit on main surfaces the commit-first review-routing gate
 
