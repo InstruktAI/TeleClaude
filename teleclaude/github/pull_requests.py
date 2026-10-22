@@ -268,6 +268,7 @@ async def edit_native_pull_request(
                     return result(GitHubPullRequestFailure.PROVIDER)
                 before_snapshot = snapshot
                 stage = GitHubPullRequestStage.MUTATION
+                acceptance = GitHubAcceptance.UNKNOWN
                 try:
                     response = await _native_gh.send(
                         binary,
