@@ -93,86 +93,17 @@ Scenario Outline: The interests decide which domain events reach the person
 
 #### UC-SD3: Only events whose origin the person can see are told
 
-```gherkin
-Scenario Outline: Reach bounds what interests can select
-  Given a person whose "erp" notification interests are switched on with the pattern "*"
-  And the person's reach <reach> the origin of an event
-  When an event of type "erp.invoice.paid" with that origin occurs
-  Then the person <outcome>
-
-  Examples:
-    | reach          | outcome              |
-    | admits         | receives one message |
-    | does not admit | receives no message  |
-```
-
 #### UC-SD9: A company's roster alone does not bring its projects' events
-
-```gherkin
-Scenario Outline: Membership reaches the company, not its projects
-  Given a person whose "sdlc" notification interests are switched on with the pattern "*"
-  And whose only reach comes from being a member on a company's roster
-  When an event of type "sdlc.review.approved" happens in <origin>
-  Then the person <outcome>
-
-  Examples:
-    | origin                     | outcome              |
-    | the company itself         | receives one message |
-    | a project the company owns | receives no message  |
-```
 
 #### UC-SD4: Every domain event is its own message
 
-```gherkin
-Given a person whose notification interests select an event type and who can see its origin
-When two events of that type about the same thing occur
-Then the person receives two messages, one for each event
-And no message tells that anything was resolved, closed or working again
-```
-
 #### UC-SD5: Platform events are not told as domain events
-
-```gherkin
-Given a person whose notification interests select every event of a published domain
-When the platform emits an event about its own operation
-Then the person receives no domain-event message about it
-```
 
 #### UC-SD6: Only the computer where it happened tells it
 
-```gherkin
-Given a fleet of two computers that both receive every platform event
-And a person whose notification interests select an event type and who can see its origin
-When an event of that type happens on one of the computers
-Then the person receives exactly one message about it
-And it names the computer where the event happened
-```
-
 #### UC-SD7: A person who cannot be reached is not counted as told
 
-```gherkin
-Given two people whose notification interests select an event type and who can see its origin
-And the channel of one of them fails to accept messages
-When an event of that type occurs
-Then the other person receives one message about it
-And the message to the unreachable person is attempted again, without repeating it to the other
-And when it still cannot be delivered, the undelivered message is parked where it can be inspected
-```
-
 #### UC-SD8: A selected event is delivered at least once
-
-```gherkin
-Scenario Outline: An interruption never loses a message and repeats only an unrecorded one
-  Given an event that the person's interests select and whose origin the person can see
-  When the event's handling is interrupted, such as by a restart, <when>
-  Then the person <outcome>
-
-  Examples:
-    | when                                                          | outcome                                         |
-    | before the message reached the channel                        | receives the message once it is handled again   |
-    | after the channel accepted the message and it was recorded    | receives no second message                      |
-    | after the channel accepted the message, before it was recorded | receives the message a second time              |
-```
 
 ## Known caveats
 
