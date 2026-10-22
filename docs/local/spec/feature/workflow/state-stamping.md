@@ -221,13 +221,6 @@ And the integrator dispatch consumes the finalize-ready handoff to merge the can
 
 <!-- /planned-change:issue-128 -->
 
-```
-Given a caller submits state that does not validate against the Todo state model
-When the state-write boundary runs its full-state validation
-Then a state-mutation error is raised with the underlying validation text
-And no commit happens — the stamp call exits before any partial mutation lands
-```
-
 #### UC-WSS12: One-shot task success outcome delivers the todo
 
 #### UC-WSS13: Recurring task success outcome clears an error-hold and stays live
