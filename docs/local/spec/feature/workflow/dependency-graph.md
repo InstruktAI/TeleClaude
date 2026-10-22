@@ -17,10 +17,12 @@ Todo entries can declare ordering constraints via `after` edges: "A is `after: [
 
 The graph has two responsibilities:
 
-1. **Refuse cycles at the boundary.** Mutations that would introduce a cycle are rejected before they reach durable storage. Cycle detection is pure depth-first traversal over an in-memory snapshot of the current graph plus the proposed edge set — no state is mutated on the failure path.
+1. **Refuse cycles at the boundary.** Mutations that would introduce a cycle are rejected before they reach durable storage. A cycle refusal identifies the cycle path and persists no proposed edge. Cycle detection is pure depth-first traversal over an in-memory snapshot of the current graph plus the proposed edge set — no state is mutated on the failure path.
 2. **Gate dispatch by readiness.** The prepare and work orchestrators consult the graph when resolving the next runnable slug. Each candidate's `after` list is evaluated against the lane it is entering: the prepare lane waits for parent `PREPARED`, while the work lane waits for parent delivery.
 
 Dependency mutations land via `telec todo update <slug> --after <dep>...`, which converges on the workflow service's set-deps capability after existence validation and cycle detection. The public `set-deps` verb is retired. To clear all dependencies, pass `--after ""`; omitting `--after` leaves deps untouched.
+
+Group membership and dependencies cannot make a todo depend on its own holder or an ancestor holder. A group update that would create that overlap is refused, including when it also adds the dependency in the same request; a todo outside the group may still depend on its holder.
 
 For kind=`task`, dependency edges and a task `schedule` are mutually exclusive execution gates. A task may use `after` dependencies to wait for delivered parents, or a `schedule` (a one-shot instant or a recurring rule) to wait for a clock instant, but not both. The create/update boundary refuses any live state that would persist both a non-empty `after` set and a `schedule`.
 
@@ -50,7 +52,7 @@ An `after` edge is **gate-only**: it is dispatch-blocking ordering metadata cons
 Both gates apply in **both dispatch directions**:
 
 1. **Create-time dispatch** — when a todo is created (the todo-created event), the lifecycle router consults the dependency graph before auto-dispatching. A dep-blocked child is not auto-dispatched (see `@spec/feature/workflow/todo-creation`).
-2. **Resolution-time dispatch** — when the prepare/work orchestrators resolve the next runnable slug, the same phase-specific gate skips dep-blocked candidates.
+2. **Resolution-time dispatch** — when the prepare/work orchestrators resolve the next runnable slug, the same phase-specific gate skips dep-blocked candidates. An unsatisfied candidate does not stop the search; resolution continues to later candidates.
 
 The prepared-set used by the prepare gate, like the delivered-set used by the work gate, is computed with holder roll-up: a holder dependency is satisfied for the prepare gate when every direct child has reached `PREPARED`, mirroring `effective_delivered_slugs_for_dependencies` for the delivered-set.
 
@@ -59,72 +61,15 @@ The prepared-set used by the prepare gate, like the delivered-set used by the wo
 ### Use cases
 
 ```
-Given an empty dependency graph
-When the operator runs "telec todo set-deps feature-a --after feature-b --after feature-c"
-Then both "feature-b" and "feature-c" are validated as existing todo slugs
-And cycle detection runs over the current graph plus the proposed edges
-And the deps are persisted, replacing any prior edges for "feature-a"
+Given active todos "feature-a", "feature-b", and "feature-c"
+When the operator sets "feature-b" and "feature-c" as prerequisites for "feature-a" through the todo update surface
+Then "feature-a" waits for both prerequisites to be delivered before it enters work
 ```
 
 ```
-Given an empty dependency graph
-When the operator runs "telec todo update feature-a --after feature-b --after feature-c"
-Then both "feature-b" and "feature-c" are validated as existing todo slugs
-And cycle detection runs over the current graph plus the proposed edges
-And the deps are persisted, replacing any prior edges for "feature-a"
-```
-
-```
-Given a graph where "alpha" depends on "beta" and "beta" depends on "gamma"
-When the operator runs "telec todo set-deps gamma --after alpha"
-Then cycle detection identifies the cycle path [gamma -> alpha -> beta -> gamma]
-And the workflow service refuses the mutation with a cycle-conflict error citing the cycle path
-And no edge is persisted
-```
-
-```
-Given the operator runs "telec todo set-deps alpha --after alpha"
-When the workflow service validates the request
-Then the self-edge is rejected as invalid
-And no further validation or write happens
-```
-
-```
-Given the operator runs "telec todo set-deps alpha --after ghost" where "ghost" is not in the todo list
-When the workflow service validates the deps
-Then the missing-slug check fires before cycle detection
-And the workflow service refuses the mutation with a not-found error
-And no edge is persisted
-```
-
-```
-Given todo entries [a, b, c] with edges {b: [a], c: [b]} and only "a" delivered
-When the work orchestrator searches for the next runnable slug
-Then "b" is selected because its only dependency "a" is delivered
-And "c" is skipped because "b" is not yet delivered
-And the resolver returns the next runnable candidate as "b"
-```
-
-```
-Given an entry "c" depending on iceboxed entry "b"
-When the work orchestrator evaluates "c"
-Then "b" is not in the delivered set (icebox is not delivery)
-And "c" is reported as dependency-blocked
-And the resolver continues searching the rest of the todo list
-```
-
-```
-Given the operator runs "telec todo set-deps alpha" with no --after flag
-When the workflow service writes the deps
-Then all existing edges for that slug are removed
-And the workflow service reports "dependencies cleared for 'alpha'"
-```
-
-```
-Given the operator runs "telec todo update alpha --after """
-When the workflow service writes the dependency leg
-Then all existing edges for that slug are removed
-And the workflow service reports that dependencies were cleared for "alpha"
+Given active todo "alpha" is waiting for prerequisite todos
+When the operator clears its prerequisites through the todo update surface
+Then "alpha" no longer waits for those prerequisites
 ```
 
 ### Use cases
@@ -153,13 +98,6 @@ And "child" is reported as dependency-blocked for the prepare lane
 
 #### UC-WDG2: PREPARED clears only the prepare gate
 
-```gherkin
-Given entries [parent, child] with edge {child: [parent]} and parent at lifecycle_phase=PREPARED but not delivered
-When the prepare orchestrator resolves the next prepare-runnable slug
-Then "child" is prepare-runnable because the prepare gate is cleared by PREPARED
-And the same "child" is still WORK-blocked until "parent" is delivered
-```
-
 #### UC-WDG3: Create-time dispatch honors the prepare gate
 
 <!-- planned-change:issue-128 -->
@@ -186,74 +124,29 @@ And "child" waits until "parent" reaches PREPARED, when the lifecycle runner req
 
 #### UC-WDG4: Task schedule excludes dependency edges
 
-```gherkin
-Given a task has a non-empty `after` dependency set
-When a caller updates the same task with `--schedule <iso-instant>` without clearing dependencies
-Then workflow refuses the mutation before persistence
-And the task keeps its previous dependency set and schedule state
-```
-
-```gherkin
-Given a task has a schedule
-When a caller updates the same task with a non-empty `--after` set without clearing schedule
-Then workflow refuses the mutation before persistence
-And the task keeps its previous dependency set and schedule state
-```
-
-```gherkin
-Given a task has a schedule
-When the caller clears schedule and sets `--after parent` in the same accepted mutation
-Then workflow persists the dependency edge and leaves schedule empty
-```
-
 #### UC-WDG5: A group member cannot depend on its own holder
-
-```gherkin
-Given "child-a" is in the todo list with group_slug="parent-slug" (so "parent-slug" is a holder)
-When a caller runs `telec todo update child-a --after parent-slug`
-Then the request is refused with a conflict error stating that group membership and an "after" dependency on the same holder are mutually exclusive
-And "child-a"'s existing dependencies are left unchanged
-And the same refusal applies when the requested dependency is any ancestor holder of "child-a" reached by walking group_slug transitively
-And a dependency from a non-member todo onto the holder is still allowed
-```
 
 #### UC-WDG9: A todo cannot join a group it depends on
 
-```gherkin
-Given "child-a" is an active todo with an "after" dependency on "parent-slug"
-When a caller updates "child-a" to belong to "parent-slug"
-Then the request is refused with a conflict error stating that group membership and an "after" dependency on the same holder are mutually exclusive
-And "child-a"'s group membership and dependencies are left unchanged
-And the same refusal applies when "child-a" depends on any holder that "parent-slug" is itself grouped under
-And the same refusal applies when one update both joins the group and adds the dependency
-```
-
 #### UC-WDG6: A task parent clears the prepare gate only on delivery
-
-```gherkin
-Given entries [task-parent, child] with edge {child: [task-parent]} and task-parent is kind=task at lifecycle_phase=prepared (task-plan drafted, authorized) but not delivered
-When the prepare orchestrator resolves the next prepare-runnable slug
-Then "child" is skipped because a kind=task parent does not clear the prepare gate at PREPARED
-And "child" becomes prepare-runnable only once "task-parent" is delivered
-```
 
 #### UC-WDG7: A cross-band dependency mutation succeeds with a warning naming the frozen dependency
 
 An `after` edge from an open (active) todo onto an iceboxed todo is legitimate — whether the edge is correct filing is the filer's judgment, never tool validation. The mutation boundary's duty is visibility: it admits the edge and warns, naming each iceboxed dependency, so the caller knows the open todo will not dispatch until the dependency thaws. A todo created into or already in the icebox produces no warning; its dependencies have meaning only at thaw.
 
 ```gherkin
-Given an active todo "open-child" and an iceboxed todo "frozen-parent"
-When a caller runs "telec todo update open-child --after frozen-parent"
-Then the mutation succeeds and the edge is persisted
-And the response carries a warning naming "frozen-parent" as an iceboxed dependency that blocks dispatch of "open-child"
-```
+Scenario: Adding an active todo's iceboxed prerequisite warns without refusing
+  Given an active todo "open-child" and an iceboxed todo "frozen-parent"
+  When a caller runs "telec todo update open-child --after frozen-parent"
+  Then the mutation succeeds and the edge is persisted
+  And the response carries a warning naming "frozen-parent" as an iceboxed dependency that blocks dispatch of "open-child"
 
-```gherkin
-Given an iceboxed todo "frozen-parent"
-When a caller creates an active todo with "telec todo create open-child '<content>' --kind change --after frozen-parent"
-Then the todo is created and the edge is persisted
-And the creation response carries a warning naming "frozen-parent" as an iceboxed dependency
-But the same creation with "--icebox" produces no warning
+Scenario: An iceboxed todo receives no warning about its prerequisites
+  Given an iceboxed todo "frozen-parent"
+  When a caller creates an active todo with "telec todo create open-child '<content>' --kind change --after frozen-parent"
+  Then the todo is created and the edge is persisted
+  And the creation response carries a warning naming "frozen-parent" as an iceboxed dependency
+  But the same creation with "--icebox" produces no warning
 ```
 
 #### UC-WDG8: Kickback re-closes the prepare gate until the parent is prepared again
@@ -295,7 +188,6 @@ And the gate does not self-resolve merely because parent was prepared before or 
 
 - A `kind=task` parent is the exception to the prepare-gate rule: it clears the prepare gate only on `delivered`, never on `PREPARED`, because a task's deliverable is a run product (see the phase-specific gates section).
 
-- `set-deps` is a full replacement: passing no `--after` clears all edges for the slug; there is no incremental add/remove surface. To merge edges, the caller must read the current edges first and submit the union.
 - `telec todo update --after` carries the same full-replacement semantics. To clear all edges, pass `--after ""`; omitting `--after` leaves deps untouched. There is no incremental add/remove dependency surface; callers that want to merge edges must read the current set and submit the union.
 - At slug retirement, the workflow context scrubs the deleted slug out of other entries' `depends_on` lists — without that, removing a slug could leave dangling deps that block its dependents forever.
 
