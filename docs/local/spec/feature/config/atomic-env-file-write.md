@@ -68,6 +68,38 @@ optional env-file path override, and returns the written path.
   may converge on this same atomic writer. The contract above mandates the
   shape; if a second writer is unified, the same contract applies.
 
+<!-- planned:issue-129 -->
+
+### Protected global GitHub App-key path
+
+Global environment set and clear read the latest validated global declaration
+under its file transaction before acquiring the sibling `.env` transaction;
+both locks remain held through key classification and mutation. Global
+non-App keys take the declaration lock as well, so a catalog change cannot
+race the classification. A declared App-key name receives the protected
+custody rule on set and clear, including unchanged or already-absent requests:
+existing storage is checked before returning a no-change result. Unsafe
+existing storage refuses without chmod, migration or changes to unrelated
+entries. A protected set may create an absent `.env` with owner-only mode;
+clearing an absent store creates no file. Generic values retain the existing
+line-preserving and newline-validation behavior.
+
+Global reference edits, late protected reads and environment reconciliations
+use the same global-declaration-then-`.env` lock order. A field edit reuses its
+already-held transactions; a reconciled write reopens both and classifies from
+the current catalog rather than carrying earlier classification across the
+gap. The credential read uses the same protected file check and disables dotenv
+interpolation. These per-file transactions serialize classification and
+mutation, but do not make the configuration document and `.env` one atomic
+write.
+
+The protected path creates its sibling temporary with owner-only mode before
+the first content write. A new file uses mode `0600`; replacement preserves
+the verified existing target mode. Flush, fsync, atomic replacement and
+failure cleanup remain in the existing writer. This closes the interval in
+which a secret-bearing temporary could inherit a more permissive umask.
+<!-- /planned:issue-129 -->
+
 ## Allowed values
 
 - `name`: env var name; cannot contain `\r`, `\n`, or `=`.
@@ -78,6 +110,13 @@ optional env-file path override, and returns the written path.
 
 ## Known caveats
 
+- **Protected temporary content is currently written before chmod.**
+  `FileTransaction.replace_text` writes the sibling temporary first and only
+  then applies the existing target or requested creation mode. A newly written
+  secret-bearing temporary can therefore inherit a more permissive umask
+  before owner-only mode is applied; passing `creation_mode=0600` alone does
+  not prevent that interval. The pending protected-path contract above requires
+  mode to be established before the first content write.
 - **In-process env update is post-write only.** The in-process environment update
   fires only after the atomic replace succeeds. If the write fails,
   the in-process environment is also unchanged (UC-AEFW-2).

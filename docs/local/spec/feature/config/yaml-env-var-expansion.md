@@ -46,6 +46,20 @@ No row inherits, shadows, or falls back to another row. The selected YAML path d
 - Saving an effective configuration preserves existing `${NAME}` references for values that were not explicitly replaced, including references whose value is absent on the saving computer. An environment-backed edit writes the value to the owning `.env` and retains the reference in YAML; an edit to the value the reference already resolves to, its default included, writes nothing.
 - Arbitrary `.env` entries are not injected as model fields. Consumers that need an unreferenced credential use the config context's scope-owned credential-store interface.
 
+<!-- planned:issue-129 -->
+
+The global App profile's `private_key_base64_env` is a bare environment-key
+name, not a YAML placeholder. It is validated before generic reference
+expansion, and ordinary load, `get`, editor, validation and publication paths
+never resolve its key. After authenticated invocation and operation admission,
+the identity credential path asks the config owner to read only the selected
+profile's value from the global sibling `.env`, with dotenv interpolation
+disabled and owner-only file checks applied. No process-environment, other-tier
+or placeholder fallback participates. The answer is a protected `SecretStr`,
+never a generic configuration value. All other YAML reference syntax and
+resolution behavior in this spec remain unchanged.
+<!-- /planned:issue-129 -->
+
 ### Use cases
 
 #### UC-CFG-EXPAND-1: An operator uses a scoped environment value in configuration

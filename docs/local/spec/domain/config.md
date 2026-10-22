@@ -24,6 +24,25 @@ TeleClaudeNext.
 
 <!-- /planned:issue-129 -->
 
+<!-- planned:issue-129 -->
+
+- **Also owns:** the typed global GitHub App catalog and canonical `RoleName`-to-App
+  mapping, including validation of the bare, sensitive `private_key_base64_env`
+  declaration before placeholder expansion. The global shape is documented in
+  `local/projects/teleclaude/spec/teleclaude-config`; App and session meaning
+  belongs to
+  `local/projects/teleclaude/spec/feature/identity/platform-github-identity`.
+- **Also owns:** protected resolution and persistence of declared global App-key
+  names through the existing global sibling `.env`. Global environment paths
+  re-read the current validated catalog while holding the global declaration
+  transaction before the `.env` transaction, and retain both locks through
+  classification and access. This covers set, clear, reference edits,
+  reconciled writes and the late credential read. It adds no multi-file atomic
+  commit guarantee; generic global environment values retain their existing
+  value and newline rules.
+
+<!-- /planned:issue-129 -->
+
 - **Schema authority:** `teleclaude/config/` and the published configuration
   schema.
 - **Operator surfaces:** `telec config` commands and the TUI configuration view.

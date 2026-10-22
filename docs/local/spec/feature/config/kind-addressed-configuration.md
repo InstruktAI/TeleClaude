@@ -211,6 +211,19 @@ editing its effective value changes the referenced value. Both execute through
 the same daemon-owned configuration commands. This contract supplies the shared
 capability to web clients; it does not define a web-console screen.
 
+<!-- planned:issue-129 -->
+
+For a global field edit whose environment key is declared by a GitHub App
+profile, protected-key classification comes from the latest validated global
+declaration while its transaction is held. The edit acquires the global
+declaration lock before the sibling `.env` lock and keeps both through the
+protected storage check and replacement or clear; it does not reacquire either
+lock through a convenience writer. This is the field-reference route's share
+of the global App-key custody rule. Other tiers and unrelated global value
+semantics remain unchanged, and the two files gain no shared atomic-commit
+promise.
+<!-- /planned:issue-129 -->
+
 ### Read paths
 
 Dotted paths passed to `get` address the selected configuration document. The
