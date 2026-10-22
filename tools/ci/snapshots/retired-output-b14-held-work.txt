@@ -1,0 +1,1 @@
+Error: 409 — kickback is refused: b3-item is in work. Door: the holding session {{b14:holder}}, whose `telec todo act b3-item kickback` returns the item. The act that replaces it is kickback, performed by the holding driver.
