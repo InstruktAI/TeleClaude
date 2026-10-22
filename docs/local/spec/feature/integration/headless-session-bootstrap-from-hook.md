@@ -15,6 +15,9 @@ does not contain its TeleClaude id, it synthesizes a create-session command from
 the hook payload and creates the session record before continuing dispatch.
 An unknown session-start without receiver-owned headless authorization is
 dropped rather than interpreted as permission to create a row.
+Session identity follows the terminal-resolved caller: a registered person keeps
+their current identity and role; when no person resolves, the new session has
+the customer role.
 
 The bootstrap is "headless" because the resulting session has no live
 supervised process — only a record. The agent CLI was already running
@@ -30,10 +33,16 @@ invocations from a terminal) observable as TeleClaude sessions.
 #### UC-HB1: A person brings a manually started agent into TeleClaude
 
 ```gherkin
-Given a person manually starts a supported agent from an authenticated terminal in an adopted project
-When TeleClaude recognizes the running agent
-Then a session for that project appears in TeleClaude
-And the running agent continues its work outside TeleClaude's launch flow
+Scenario: Recognize a manually started agent from an adopted project
+  Given a person manually starts a supported agent from an authenticated terminal in an adopted project
+  When TeleClaude recognizes the running agent
+  Then a session for that project appears in TeleClaude
+  And the running agent continues its work outside TeleClaude's launch flow
+
+Scenario: Recognize a manually started agent from a project worktree
+  Given a person manually starts a supported agent from a registered project's linked worktree
+  When TeleClaude recognizes the running agent
+  Then the session appears under its registered project and shows the branch from which the agent is working
 ```
 
 #### UC-HB2: Non-session-start event for unknown session is dropped
@@ -49,34 +58,9 @@ And project-scoped behavior does not apply to it
 
 #### UC-HB4: Caller email role assignment
 
-```gherkin
-Given the current caller's email resolves to "mo@example.com"
-When the headless-bootstrap path builds the create-session command
-Then origin metadata is a terminal origin carrying email="mo@example.com"
-And the human role is left unset (allowing config role resolution)
-Otherwise (no email): the human role defaults to the customer role
-```
-
 #### UC-HB5: Worktree subdir captured from cwd
 
-```gherkin
-Given the cwd is /Users/me/work/myproject/trees/feature-x
-And /Users/me/work/myproject is a project registry entry
-When the headless project-context resolver runs
-Then project_path = "/Users/me/work/myproject", subdir = "trees/feature-x"
-And the create-session command carries both
-And the session record reflects the worktree branch
-```
-
 #### UC-HB6: SESSION_STARTED event fires after creation
-
-```gherkin
-Given the headless-bootstrap path successfully created a session record
-When the bootstrap completes
-Then a session-started event is published with cluster visibility
-And downstream cluster consumers see the new session
-And UI watchers, live agent-runtime state, and notification subscribers all observe the bootstrap
-```
 
 #### UC-HB7: Creation failure raises and triggers retry
 
