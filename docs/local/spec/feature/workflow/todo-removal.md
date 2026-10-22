@@ -27,20 +27,6 @@ A retained removed entry can be reactivated by durable identity before purge, un
 
 #### UC-TR-REMOVE-UNWANTED: Remove a Todo that is no longer wanted
 
-```gherkin
-Given an active Todo "feature-x" is no longer wanted
-When the operator runs "telec todo remove feature-x"
-Then it no longer appears in default reads during the recovery window
-And it remains recoverable by its durable identity until that window ends
-```
-
-```gherkin
-Given an active Todo "feature-x" is held by a live session
-When the operator removes it with the explicit override
-Then it is removed despite the hold
-And the removed entry records the override and displaced claim
-```
-
 #### UC-TR-REACTIVATES-PENDING: Reactivate removed work during its recovery window
 
 ```gherkin
