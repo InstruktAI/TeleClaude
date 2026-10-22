@@ -11,7 +11,7 @@ The timeline surface returns observations chronologically arranged around a sing
 
 Only current memories are returned: a retired memory or a business prospect is never a result of this surface (`local/projects/teleclaude/spec/feature/memory/memory-curation` UC-MC3).
 
-The CLI defaults to three observations before and after the anchor.
+Omitted before/after depths use the CLI-defined defaults.
 
 ## Canonical fields
 
