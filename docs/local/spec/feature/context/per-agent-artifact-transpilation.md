@@ -1,5 +1,5 @@
 ---
-description: 'Source artifacts render into the shared command corpus and per-agent masters and tier-local skills, with YAML frontmatter and parameter preambles emitted directly by their transforms.'
+description: 'Source artifacts render into per-agent masters and tier-local skills with YAML frontmatter; procedure-entry owns parameter preambles.'
 visibility: 'public'
 ---
 
@@ -31,79 +31,11 @@ emitter.
 
 ### Use cases
 
-```
-Scenario: Codex output preserves quoted frontmatter values
-  Given a source artifact whose frontmatter contains a value with single quotes
-  When the transpiler processes the artifact for the Codex target
-  Then the shared YAML emitter preserves the frontmatter values
-  And the emitted frontmatter is parsable by the upstream Codex YAML parser
-  And the artifact is written under the Codex per-agent output directory
-```
-
-```
-Scenario: Gemini skill is transpiled to Markdown/YAML, not TOML
-  Given a source skill artifact with name, description, and parameters
-  When the transpiler processes the skill for the Gemini target
-  Then the Gemini skill transform delegates to the shared frontmatter emitter
-  And the output is Markdown with YAML frontmatter (same shape as the Claude skill output)
-  And the "hooks" key is removed from the emitted frontmatter
-  And the parameters preamble is rendered into the body as HTML comments
-  And the required source name is checked against the skill folder before emission
-```
-
-```
-Scenario: UC-PAT4 No target receives a subagent definition; the Gemini target keeps its master and skills only
-  Given the source tree carries no subagent definitions, because they are not an artifact class
-  When the transpiler processes artifacts for the Gemini target
-  Then no agent definition is transpiled to TOML or written under any Gemini output directory
-  And tier-local skills continue to use the Markdown/YAML path on the same sync invocation
-```
-
-```
-Scenario: Missing per-agent output directory is created automatically
-  Given the per-agent output directory for the Codex target does not exist
-  When the transpiler is asked to write a Codex artifact
-  Then the directory is created as needed
-  And the artifact is written to the new directory
-  And no error is raised for the missing parent path
-```
-
 #### UC-PAT1: A skill package retains its upstream structure
-
-```gherkin
-Scenario: An agent synchronizes a skill package with upstream-authored structure
-  Given an agent authors a skill package with valid identity metadata
-  And its Markdown does not follow TeleClaude's normalized skill section taxonomy
-  When the agent synchronizes the skill
-  Then the package body produces no taxonomy-validation finding
-  And inline directives and agent tokens are rendered through the normal pipeline
-  And the package keeps the source folder's name wherever it is emitted
-```
 
 #### UC-PAT2: Only tier-local skill packages are emitted per target
 
-```gherkin
-Scenario: Per-target skill emission is limited to tier-local packages
-  Given a repository publishes one global skill package and authors one tier-local skill package for its own sessions
-  When sync renders skills for the enabled runtimes
-  Then the tier-local package is emitted under its folder name into each enabled runtime's native skill directory at that repository's root
-  And the global package is composed into the TeleClaude skills home only and is emitted into no runtime's skill directory
-  And neither package is emitted into a runtime's user-global skill directory
-  And every other skill-rendering rule applies identically to both packages
-```
-
 #### UC-PAT5: Generated artifacts require no external Markdown formatter
-
-Authored-source formatting is owned by `sdlc/policy/linting-requirements`.
-
-```gherkin
-Given committed artifact sources whose required reads can be resolved
-And no external Markdown formatter is available
-When the transpiler renders those sources for publication
-Then the generated artifacts are emitted directly by their target transforms
-And no formatter process or formatter download is started
-And frontmatter serialization, parameter preambles and self-contained entrypoint checks remain effective
-```
 
 ### Cross-context references
 
@@ -120,10 +52,6 @@ And frontmatter serialization, parameter preambles and self-contained entrypoint
 - Skill folders are the runtime identity, and every source `SKILL.md` must declare
   the same `name` plus a non-empty `description`. An upstream heading taxonomy is
   always preserved. Target transforms emit the package under its folder name.
-- The parameter preamble is injected into the artifact body as HTML comments;
-  it is NOT preserved in frontmatter. Downstream consumers that read the
-  Deployed artifact as YAML/TOML alone will NOT see `parameters` — they must
-  also parse the body preamble.
 - Token substitution (`{AGENT_PREFIX}`, `{{agent}}`) happens at the body
   level only — source authors cannot reference the prefix inside frontmatter.
 - Per-agent output directory creation is silent; operators reviewing a diff

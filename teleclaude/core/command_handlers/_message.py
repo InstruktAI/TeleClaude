@@ -46,6 +46,7 @@ from teleclaude.core.injected_text import (
     wake_occurrence_key,
 )
 from teleclaude.core.interactive_procedure_input import resolve_interactive_input
+from teleclaude.core.message_lifetime import retains_human_conversation_input
 from teleclaude.core.models import (
     CleanupTrigger,
     MessageAuthor,
@@ -378,16 +379,22 @@ async def handle_voice(
             return None
         # The voice workflow snapshots the sender for its explicit, origin
         # targeted UI update; adapters only receive ordinary plain text.
-        if metadata.cleanup_trigger == "next_turn" and cmd.actor_name:
+        if metadata.cleanup_trigger == CleanupTrigger.NEXT_TURN.value and cmd.actor_name:
             metadata.reflection_actor_id = cmd.actor_id
             metadata.reflection_actor_name = cmd.actor_name
             metadata.reflection_actor_avatar_url = cmd.actor_avatar_url
             metadata.reflection_origin = cmd.origin
             metadata.target_adapter_key = cmd.origin
+        retains_transcript = (
+            metadata.cleanup_trigger == CleanupTrigger.NEXT_TURN.value
+            and cmd.origin is not None
+            and retains_human_conversation_input(InputOrigin(cmd.origin))
+        )
         return await client.send_message(
             session,
             message,
             metadata=metadata,
+            ephemeral=not retains_transcript,
         )
 
     async def _edit_status(

@@ -20,47 +20,15 @@ The agent-restart action is the one place where v1 deliberately diverges from th
 
 #### UC-SRAB1: A worker may restart its own session
 
-```gherkin
-Given a worker agent session with system_role=`worker`
-When the session restarts its own agent
-Then clearance admits the self-restart (the target is the caller's own session)
-And the standard verb allowlist is not consulted
-And the restart is dispatched
-```
-
 #### UC-SRAB2: A worker may not use self-restart authority on another session
 
-```gherkin
-Given the same worker session
-When it restarts the agent of a DIFFERENT session
-Then the self-restart shape does not apply (the target is another session)
-And the worker short-circuit refuses the restart
-And the refusal is the not-permitted failure for `telec sessions restart`, given before any request is sent
-```
-
 #### UC-SRAB3: An orchestrator may restart another session through ordinary clearance
-
-```gherkin
-Given an orchestrator-Role agent session (system_role=`orchestrator`) whose Role is in the `telec sessions restart` system band
-When it restarts the agent of another session
-Then the self-restart shape does not apply
-And the standard verb clearance admits the orchestrator
-And the cross-session restart is dispatched
-```
 
 #### UC-SRAB4
 
 #### UC-SRAB5
 
 #### UC-SRAB6: A terminal caller uses ordinary human-role clearance
-
-```gherkin
-Given an operator at a terminal or in the TUI, outside any session
-When they restart a session's agent
-Then the self-restart shape does not apply (the caller is not a session)
-And the standard rule runs against the person's role
-And admin callers restart the agent; others are refused before any request is sent
-```
 
 ### Cross-context references
 

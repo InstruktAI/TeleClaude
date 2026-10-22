@@ -46,10 +46,15 @@ change does not republish it as locally originated work.
 ### Local state
 
 The cache owner reconciles local sessions from their current authoritative
-source. Startup supplies session identities to the same materialization
-capability that consumes local session-change notifications. Started, updated,
-closed and failed-close notifications request reconciliation; a historical
-notification does not determine the current row's existence or lifecycle.
+source. The daemon binds that materialization capability to its session-source
+change boundary after storage initialization and before startup mutations.
+Committed local changes attempt reconciliation before event publication,
+independently of stream backlog or publication availability. Startup and the
+live session-change consumer supply identities to the same capability;
+historical notifications do not determine current row existence or lifecycle.
+The binding is removed before materializer and storage shutdown. This source
+projection boundary follows `sdlc/policy/domain-ownership` and
+`sdlc/principle/design-fundamentals`.
 
 The materialization operation owns source reads, projection and cache
 publication as one serialized operation for a session. Source reads occur
@@ -59,6 +64,14 @@ Source mutations remain independent transactions, so later invalidations
 converge the projection rather than providing a synchronous read-after-write
 barrier. This separation follows `sdlc/principle/architectural-defaults` and
 `sdlc/policy/domain-ownership`.
+
+An unchanged materialized row emits no cache notification or peer publication.
+Failed local reconciliation remains dirty for owner-local retry. A live source
+reader reconciles open source identities and previously cached local identities
+before accepting new invalidations, including after a connection failure.
+Changes published by other processes reach that same materializer without
+historical replay. These repeated requests share the source owner's
+idempotent projection under `sdlc/policy/code-quality-practices`.
 
 A missing local source record permits removal of a locally owned cached row;
 it supplies no deletion evidence for a peer-owned record. Retention, deletion,
@@ -99,6 +112,11 @@ The API server reads this consolidated view and projects eligible state under
   recovery; reconnecting a UI alone does not recreate missing cluster state.
 - A failed peer bootstrap retains the available cache and remains retryable
   through the transport's bootstrap lifecycle.
+- A failed local reconciliation preserves the available cache and is logged;
+  event publication is still attempted. A publication failure remains visible
+  after local reconciliation and does not roll back the source or projection.
+  Source changes from other processes converge through live invalidation and
+  source recovery; obsolete notifications are not a lifecycle ledger.
 
 ## See Also
 

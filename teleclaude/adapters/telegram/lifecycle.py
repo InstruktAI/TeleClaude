@@ -48,7 +48,6 @@ if TYPE_CHECKING:
         _receiving_liveness: SupervisedTask | None
         bot_token: str
         computer_name: str
-        is_master: bool
         _qos_scheduler: OutputQoSScheduler
         _startup_housekeeping_task: asyncio.Task[None] | None
         _handle_private_start: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
@@ -107,7 +106,6 @@ class LifecycleMixin:
     Required from host class:
     - bot_token: str
     - computer_name: str
-    - is_master: bool (only the declared master starts the update receiver)
     - _qos_scheduler: OutputQoSScheduler
     - _startup_housekeeping_task: asyncio.Task[None] | None
     - _handle_private_start, _handle_private_text
@@ -230,17 +228,13 @@ class LifecycleMixin:
         await self.app.initialize()
         receiving_tasks: list[asyncio.Task[object]] = []
         # Polling is what claims Telegram updates: only the declared master receives them.
-        receiver_active = bool(host.is_master)
         try:
             receiving_tasks.append(
                 await _start_capturing_task(self.app.start, _UPDATE_FETCHER_TASK_NAME, _UPDATE_FETCHER_DESCRIPTION)
             )
-            if receiver_active:
-                receiving_tasks.append(
-                    await _start_capturing_task(
-                        self.app.updater.start_polling, _POLLING_TASK_NAME, _POLLING_DESCRIPTION
-                    )
-                )
+            receiving_tasks.append(
+                await _start_capturing_task(self.app.updater.start_polling, _POLLING_TASK_NAME, _POLLING_DESCRIPTION)
+            )
         except TelegramReceivingTaskNotFound:
             # The application is running unobserved; a failed start leaves nothing of it behind.
             await self.stop()
@@ -256,7 +250,7 @@ class LifecycleMixin:
         logger.info(
             "telegram_adapter_surface_ready",
             outcome="conversation_only",
-            receiver_active=receiver_active,
+            receiver_active=True,
             operator_command_count=operator_command_count,
             binding_command_count=binding_command_count,
             supported_modalities="text,voice,document,photo",

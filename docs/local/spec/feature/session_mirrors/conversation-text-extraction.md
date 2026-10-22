@@ -39,96 +39,39 @@ separate from the agent's compacted working context.
 
 ### Use cases
 
-#### UC-CTE-1:
+#### UC-CTE-1: An operator reviews a session's conversation
 
 ```gherkin
-Given an agent retrieves a mirrored conversation whose source includes tools and reasoning
-When the conversation is projected
-Then human and assistant conversational messages are retained
-And tool invocations, tool results and reasoning are absent
+Given an operator wants to review a session's conversation
+When they read its mirror
+Then each conversational message is available in source order with its speaker and recorded timestamp
+And human and assistant text remains without tool calls, results, reasoning or injected platform instructions
+And empty messages are omitted
+And assistant response quotes remain while surrounding whitespace is removed
 ```
 
-#### UC-CTE-2:
+#### UC-CTE-2: An operator sees human conversation without injected instructions
 
-```gherkin
-Given an agent retrieves a conversation containing runtime-injected instructions alongside human input
-When the source is projected through its structural provenance
-Then the human's conversation remains
-And injected platform instructions are omitted
-And an entry with no remaining conversational text contributes no message
-```
-
-#### UC-CTE-3:
-
-```gherkin
-Given an agent retrieves an assistant's conversational response
-When the mirror renders that response
-Then its text is preserved with surrounding whitespace removed
-And quoted material inside that response remains part of the response
-```
+#### UC-CTE-3: An operator can read an assistant reply with its quoted content
 
 #### UC-CTE-4:
 
-```gherkin
-Given an operator retrieves an archived conversation with an established launch assignment
-When its launch facts and worker classification are presented
-Then they follow the assignment recorded by the platform for that session
-And command-like text in the conversation does not change those facts
-```
-
 #### UC-CTE-5:
 
-```gherkin
-Given an operator has named a conversation
-When its mirror is refreshed
-Then the mirror presents the title established by the owning session
-And a later refresh that supplies no title does not erase the recorded title
-```
-
-#### UC-CTE-6:
-
-```gherkin
-Given an agent reads a non-empty mirrored conversation
-When the conversation is rendered
-Then each message identifies its human or assistant speaker
-And recorded message timestamps accompany their messages without time-zone rewriting
-And messages remain separated in their recorded order
-```
+#### UC-CTE-6: An operator can follow who said what and when
 
 #### UC-CTE-7:
 
-```gherkin
-Given an operator can retrieve an existing conversation mirror
-When a refresh produces no conversation or an unexpectedly shorter read under the same projection rules
-Then the retained conversation remains readable
-And the refresh does not claim that missing source content was erased from the conversation
-```
-
 #### UC-CTE-8:
-
-```gherkin
-Given an agent requests a mirror refresh with readable conversational content
-When that refresh succeeds
-Then the stored mirror contains the resulting conversation and its source coverage
-And refreshing it preserves its original creation identity
-```
 
 #### UC-CTE-9:
 
-```gherkin
-Given an agent requests mirror generation through its asynchronous capability
-When the request completes
-Then it reports the same projection and persistence outcome as the synchronous capability
-And source processing does not occupy the caller's event loop
-```
-
-#### UC-CTE-10:
+#### UC-CTE-10: An operator can identify the mirror's source
 
 ```gherkin
-Given an agent inspects the provenance of a mirrored conversation
-When a native source identity is established
-Then its value follows the producing runtime's transcript storage convention
-And the appropriate filename, directory component or stored metadata supplies it under that convention
+Given an operator is investigating a mirrored conversation
+When they inspect its provenance
+Then they can identify the source transcript
 ```
 
 ## Known caveats

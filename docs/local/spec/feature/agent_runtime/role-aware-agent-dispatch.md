@@ -60,7 +60,8 @@ identity facts and never participate in agent selection.
 The global automatic order is Claude, Codex, Gemini, DeepSeek. It applies to
 generic session creation with no procedure; an entry procedure without a
 dispatch declaration is a publication defect and is refused before any session
-exists.
+exists. That rejection records one structured error without prompt or argument
+content.
 
 ### Thinking-mode resolution
 
@@ -120,8 +121,7 @@ startup context.
 ```gherkin
 Given an operator starts fresh work through a procedure with an ordered agent preference
 When TeleClaude selects the session agent
-Then it uses the procedure's declared order among eligible agents
-And configuration iteration order does not change the selection
+Then it selects the first eligible agent in the procedure's declared order
 ```
 
 #### UC-RAAD-3: Automatic eligibility is strict
@@ -143,10 +143,12 @@ Scenario: Start generic work using the platform order
   When TeleClaude selects the agent
   Then it uses Claude, Codex, Gemini, and DeepSeek in that order
 
-Scenario: Refuse a procedure without dispatch defaults
-  Given an operator starts work through a published procedure with no dispatch declaration
+Scenario: Refuse generic work when no agent is eligible
+  Given an operator starts generic fresh work without an agent or procedure
+  And no agent is eligible
   When TeleClaude resolves the request
-  Then it refuses before session creation and names the publication defect
+  Then it reports a clear failure
+  And no session or runtime is created
 ```
 
 #### UC-RAAD-6: Manual agent selection never substitutes
@@ -178,13 +180,6 @@ And the operator receives the continuation status or refusal for the bound agent
 #### UC-RAAD-9: Omission remains automatic intent
 
 #### UC-RAAD-10: An operator receives a clear failure when no agent is eligible
-
-```gherkin
-Given an operator requests fresh work for which no agent is eligible
-When TeleClaude resolves the request
-Then it reports a clear failure
-And no session or runtime is created
-```
 
 #### UC-RAAD-11: Human-facing fallback remains explainable
 
@@ -234,33 +229,28 @@ Examples:
 Given an operator attempts to start a published procedure that declares a role but no dispatch defaults
 When TeleClaude resolves the request
 Then the request is rejected before session creation as a publication defect naming the procedure
-And one structured ERROR records the missing declaration without prompt or argument content
 ```
 
 #### UC-RAAD-16: A resolved procedure supplies its declared mode
 
 #### UC-RAAD-17: An automated caller's agent preference falls back when ineligible
 
-```gherkin
-Given an automated caller explicitly prefers an agent for fresh work
-And that agent is degraded or unavailable
-And another automatically eligible agent exists
-When TeleClaude selects the session agent
-Then the preferred agent is not selected
-And normal automatic ordering selects the fallback
-And the caller receives the selected agent and typed fallback reason
-```
-
 #### UC-RAAD-18: Reviewer preference uses ordinary automatic eligibility
 
 #### UC-RAAD-19: A job owner can select ordered agent preferences
 
 ```gherkin
-Given an operator configures ordered agent preferences for a scheduled job
-When the job is dispatched
-Then TeleClaude selects from only those candidates in their declared order
-And automatic eligibility rules apply and the result identifies declaration-sourced selection
-And no eligible candidate results in an explicit refusal before session creation
+Scenario: Start a job using its ordered preferences
+  Given an operator has set ordered agent preferences for a scheduled job
+  When the job starts with more than one eligible candidate
+  Then the first eligible candidate in the declared order is selected
+
+Scenario: Refuse when none of the job's candidates are eligible
+  Given an operator has set ordered agent preferences for a scheduled job
+  And none of its candidates is eligible
+  When the job starts
+  Then no session is created
+  And the operator receives an explicit failure
 ```
 
 #### UC-RAAD-20: A reviewer request excludes agents that already reviewed its target

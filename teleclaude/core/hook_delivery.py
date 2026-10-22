@@ -153,7 +153,7 @@ def emit_pending_control_payloads(
     write_emission: EmissionWriter,
     initial_procedure_entry_id: str | None = None,
     procedure_wake_occurrence_id: str | None = None,
-    startup_context: str | None = None,
+    additional_context: str | None = None,
 ) -> bool:
     """Drain one session's ordered control batch at an adapter-declared boundary."""
     if raw_event_type not in adapter.delivery_events:
@@ -273,8 +273,8 @@ def emit_pending_control_payloads(
                 internal_event=internal_event,
                 eligibility=ControlDeliveryEligibility.NO_PENDING,
             )
-            if startup_context is not None:
-                write_emission(adapter.render_response(raw_event_type, DeliverContext(startup_context)))
+            if additional_context is not None:
+                write_emission(adapter.render_response(raw_event_type, DeliverContext(additional_context)))
                 return True
             return False
         row_ids = [row.id for row in rows if row.id is not None]
@@ -289,7 +289,7 @@ def emit_pending_control_payloads(
         context = _CONTEXT_SEPARATOR.join(
             part
             for part in (
-                startup_context,
+                additional_context,
                 *(_render_procedure_event_payload(row, delivery_state) for row in procedure_rows),
                 *(_render_control_payload(row) for row in rows),
             )

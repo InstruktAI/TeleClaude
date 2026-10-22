@@ -549,7 +549,7 @@ class ChannelOperationsMixin:
         cleaned = 0
         for forum_id in self._get_managed_forum_ids():
             cleaned += await self._cleanup_forum_threads(forum_id, ThreadMatchField.THREAD_ID)
-        if teleclaude_config.config.computer.is_master:
+        if teleclaude_config.config.master_scope_applies():
             for forums in self._desk_forums.values():
                 if forums.customer_sessions is not None:
                     cleaned += await self._cleanup_forum_threads(

@@ -1,10 +1,11 @@
-"""Schema-owned descriptors for the machine configuration's public surface."""
+"""Schema-owned descriptors and applicability paths for machine configuration."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import lru_cache
 from types import UnionType
 from typing import Any, Union, get_args, get_origin
 
@@ -13,6 +14,8 @@ from pydantic.fields import FieldInfo
 from teleclaude.closed_model import ClosedModel, field_is_sensitive
 from teleclaude.config._coerce import declares_true
 from teleclaude.config._models import TeleclaudeConfig
+from teleclaude.config._schema_paths import master_scoped_paths as _schema_master_scoped_paths
+from teleclaude.config._schema_paths import resolve_schema_scope as _resolve_schema_scope
 from teleclaude.config.tiers import (
     UNGOVERNED_BODY_METADATA_KEY,
     Scope,
@@ -57,20 +60,31 @@ def machine_config_surface() -> tuple[ConfigSurfaceDescriptor, ...]:
 
 
 def master_scoped_sections() -> tuple[str, ...]:
-    """Return the top-level machine-config sections that are meaningful only on the master."""
-    declared = (
-        name
-        for name, field_info in TeleclaudeConfig.model_fields.items()
-        if pydantic_field_scope(field_info) is Scope.MASTER
-    )
-    return tuple(declared)
+    """Return top-level machine-config sections scoped to the master."""
+    return tuple(path[0] for path in master_scoped_paths() if len(path) == 1)
 
 
 def sections_outside_scope(raw: Mapping[object, object]) -> tuple[str, ...]:
     """Return the master-scoped sections that do not apply to the computer ``raw`` describes."""
     computer = raw.get(_COMPUTER_SECTION)
     is_master = isinstance(computer, Mapping) and declares_true(computer.get(_IS_MASTER_FIELD))
-    return () if is_master else master_scoped_sections()
+    return () if is_master else tuple(_PATH_SEPARATOR.join(path) for path in inapplicable_paths(is_master=False))
+
+
+@lru_cache(maxsize=1)
+def master_scoped_paths() -> tuple[tuple[str, ...], ...]:
+    """Return the minimal schema paths whose effective scope is master."""
+    return _schema_master_scoped_paths(TeleclaudeConfig)
+
+
+def inapplicable_paths(*, is_master: bool) -> tuple[tuple[str, ...], ...]:
+    """Return minimal schema paths that do not apply to the current computer."""
+    return () if is_master else master_scoped_paths()
+
+
+def resolve_schema_scope(path: str | tuple[str, ...]) -> Scope:
+    """Resolve a declared machine-config path, including dynamic container instances."""
+    return _resolve_schema_scope(TeleclaudeConfig, path)
 
 
 def _walk_schema(

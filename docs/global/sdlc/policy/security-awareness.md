@@ -139,7 +139,7 @@ change the intent calls for has already passed them, and a change it does not
 call for is a scope finding. For an item driven by the lifecycle machine the
 approved intent is its prepared spec, where the preparing session's challenge
 settles them. Build, review, and fix never escalate them
-(`sdlc/procedure/lifecycle/work/overview`, `sdlc/procedure/lifecycle/work/overview-v2`).
+(`sdlc/procedure/lifecycle/work/overview-v2`).
 <!-- /planned-change:issue-128 -->
 
 ## Rationale

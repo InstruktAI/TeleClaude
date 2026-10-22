@@ -43,6 +43,22 @@ property of that connector rather than an unexamined one.
 
 ## Canonical fields
 
+Before a connector runs, the invocation must resolve an acting person and name
+one of that person's declared mail accounts. A missing person or account is
+refused without choosing an account or creating or changing credential or
+connection state; an identity address is not a mailbox unless declared as one,
+and refusing its use does not make the person unresolvable. Once selected,
+credential and connection state is directed to that person's own location,
+never a default, and an invocation cannot act for an undeclared account.
+The refusal identifies the missing person or account; the boundary never infers
+an account, even when the person has declared only one.
+
+Account-settings changes are refused before the connector runs, whether the
+request uses a connector's settings operation or a generic pass-through that
+reaches a settings endpoint; the settings remain unchanged. Only operations
+permitted for that run execute; an operation outside the set, including one
+never seen before, is refused.
+
 ### Use cases
 
 #### UC-ACI-1: An unresolved person refuses the invocation
@@ -57,58 +73,15 @@ And no credential or connection state is created or modified anywhere
 
 #### UC-ACI-2: An invocation not bound to a declared account is refused
 
-```gherkin
-Given a resolved person who has declared one or more mail accounts
-When a connector invocation does not name which account it acts as
-Then it is refused before the connector runs
-And the refusal states that no account was named
-And no account is chosen on the invocation's behalf, even where the person has declared only one
-```
-
 #### UC-ACI-3: A person's identity address is not a mailbox
-
-```gherkin
-Given a person whose identifying address is not among their declared mail accounts
-When a connector invocation acts as that address on their behalf
-Then it is refused before the connector runs
-And the person remains resolvable as a person
-```
 
 #### UC-ACI-4: State is directed at the acting person's own store
 
-```gherkin
-Given a connector invocation for a resolved person
-When it reads or writes credential or connection state
-Then the state location and connection it is directed at are that person's own
-And it is never directed at a default location instead
-```
-
 #### UC-ACI-5: An invocation never reaches an account outside its person's declaration
-
-```gherkin
-Given a connector invocation on a person's behalf
-When it reads or writes connector state
-Then it does so only for an account that person has declared
-And it does not reach state belonging to any account outside that declaration
-```
 
 #### UC-ACI-7: A settings change is refused whether or not the command name shows it
 
-```gherkin
-Given a connector invocation on a person's behalf
-When it would change account settings — whether through the connector's own settings operation or a generic pass-through request reaching a settings endpoint
-Then it is refused before the connector runs
-And the account's settings are unchanged
-```
-
 #### UC-ACI-8: An operation outside the permitted set does not run
-
-```gherkin
-Given a connector invocation naming an operation the connector has not been permitted for this run
-When the invocation is made
-Then that operation does not execute
-And this holds for an operation never seen before as well as one recognised as prohibited
-```
 
 ## Known caveats
 

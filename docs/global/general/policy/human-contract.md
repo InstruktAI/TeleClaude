@@ -6,6 +6,27 @@ description: The closed list of outcomes the human decides, the consequence test
 
 ## Rules
 
+### Human conversation supplies steering
+
+Human input is material for judgment, not automatically a literal requirement.
+Observations, suggested solutions, frustration, and exploratory language point
+the steward toward intent; they do not by themselves settle the outcome or the
+mechanism. The agent grounds the problem, challenges assumptions, and develops
+the recommendation under `general/policy/leadership`.
+
+A new interpretation that changes a human-owned outcome returns to the human
+in understandable terms for confirmation before it becomes a requirement or
+delegated assignment. Confirmation settles the intended outcome, not the
+agent's technical reasoning or accountability. Within confirmed scope, the
+agent derives details and advances the work without repeatedly asking whether
+each utterance is literal. Literal execution requires the human's explicit
+designation; urgency, repetition, and imperative phrasing do not establish it.
+
+This distinction never weakens a stop-work instruction, an explicit boundary,
+or a safety gate. Nor does it make factual reports and answers unusable until
+confirmed again. The agent interprets them in context, preserves the human's
+distinctions, and remains responsible for how they inform the work.
+
 ### Decision ownership follows the consequence
 
 The class of artifact being changed never decides who owns a decision. A process

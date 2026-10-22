@@ -1,12 +1,9 @@
 """Event consumers: independent reactions to platform events, each with its own progress through the stream.
 
-A consumer is a declared name, an interest and a handler. The runtime gives every consumer its own
-consumer group and a stable reader name on the platform stream, so its progress, retries and dead
-letters are its own and one consumer's failure or lag never holds back or hides another. Selection
-reads the event's attributes only; a handler is handed the received event and nothing else. The
-platform hands a consumer each event once: a record of handled event ids, kept per consumer in the
-computer's events database, makes a repeat skip, while handling that was interrupted before its
-record was written is handed again.
+A consumer declares its interest, handler and delivery lifetime. Retained reactions keep independent
+consumer groups and handled-event records. Live reactions use a bounded in-memory cursor and their
+owner's source recovery, without historical replay or a pending ledger. Selection reads only event
+attributes, and handlers receive the event rather than its transport state.
 """
 
 from __future__ import annotations
@@ -15,13 +12,15 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.events.db import EventDB
 from teleclaude.events.envelope import EventHomeKind, EventHomeRef, ReceivedEvent
+from teleclaude.events.live_reader import LiveEventReader, LiveStreamClient, SourceRecovery
 from teleclaude.events.processor import STREAM_NAME, EventProcessor
 from teleclaude.events.references import ReferenceKind
 from teleclaude.events.type_pattern import TypePattern
@@ -44,7 +43,15 @@ _NO_NAME_ERROR = "a consumer is declared with a name"
 _DUPLICATE_NAMES_ERROR = "consumer names must be unique on a computer; declared more than once: {names}"
 _NAME_SEPARATOR = ", "
 _CONSUMER_STARTED_EVENT = "Event consumer starting"
+_RECOVERY_REQUIRES_LIVE_ERROR = "Source recovery and coalescing belong to live consumers"
 _CONSUMER_TASK_TEMPLATE = "event-consumer-{name}"
+
+
+class ConsumerDelivery(StrEnum):
+    """The consuming owner's need for occurrence replay or current live notification."""
+
+    RETAINED = "retained"
+    LIVE = "live"
 
 
 def consumer_group_name(name: str, computer: str) -> str:
@@ -92,10 +99,15 @@ class Consumer:
     name: str
     interest: Interest
     handler: EventHandler
+    delivery: ConsumerDelivery = ConsumerDelivery.RETAINED
+    recover: SourceRecovery | None = None
+    coalesce: bool = False
 
     def __post_init__(self) -> None:
         if not self.name:
             raise ValueError(_NO_NAME_ERROR)
+        if self.delivery is ConsumerDelivery.RETAINED and (self.recover is not None or self.coalesce):
+            raise ValueError(_RECOVERY_REQUIRES_LIVE_ERROR)
 
 
 def _received(event: StreamEvent) -> ReceivedEvent:
@@ -112,9 +124,12 @@ class _ConsumerPipeline:
         self._computer = computer
 
     async def execute(self, event: StreamEvent, /) -> None:
-        """Hand the event to the consumer once; a handler failure propagates to the processor's retry."""
+        """Apply interest and delivery lifetime before invoking the owning reaction."""
         consumer = self._consumer
         if not consumer.interest.selects(event, self._computer):
+            return
+        if consumer.delivery is ConsumerDelivery.LIVE:
+            await consumer.handler(_received(event))
             return
         if await self._db.has_handled_event(consumer.name, event.id):
             return
@@ -123,7 +138,7 @@ class _ConsumerPipeline:
 
 
 class ConsumerRuntime:
-    """Runs a set of consumers on this computer, each as its own ordered reader of the platform stream."""
+    """Compose independent retained and live readers on one computer."""
 
     def __init__(
         self,
@@ -142,7 +157,18 @@ class ConsumerRuntime:
         self._processors = [
             (
                 consumer.name,
-                EventProcessor(
+                LiveEventReader(
+                    cast(LiveStreamClient, redis_client),
+                    _ConsumerPipeline(consumer, db, computer).execute,
+                    stream=stream,
+                    name=consumer.name,
+                    retired_group=consumer_group_name(consumer.name, computer),
+                    codec=codec,
+                    recover=consumer.recover,
+                    coalesce=consumer.coalesce,
+                )
+                if consumer.delivery is ConsumerDelivery.LIVE
+                else EventProcessor(
                     redis_client,
                     _ConsumerPipeline(consumer, db, computer),
                     codec=codec,
@@ -157,7 +183,7 @@ class ConsumerRuntime:
         ]
 
     async def prepare_group_positions(self) -> None:
-        """Prepare every stable reader group before any consumer task can execute handlers."""
+        """Prepare retained positions and live boundaries before any handler executes."""
         await asyncio.gather(*(processor.prepare_group_position() for _name, processor in self._processors))
 
     def supervise(self, registry: TaskRegistry, shutdown_event: asyncio.Event) -> tuple[SupervisedTask, ...]:
@@ -171,6 +197,8 @@ class ConsumerRuntime:
             for name, processor in self._processors
         )
 
-    async def _run_one(self, name: str, processor: EventProcessor[StreamEvent], shutdown_event: asyncio.Event) -> None:
+    async def _run_one(
+        self, name: str, processor: EventProcessor[StreamEvent] | LiveEventReader, shutdown_event: asyncio.Event
+    ) -> None:
         logger.info(_CONSUMER_STARTED_EVENT, consumer=name)
         await processor.start(shutdown_event)

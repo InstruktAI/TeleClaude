@@ -125,137 +125,84 @@ ordinary disruptive-step deferral contract.
 
 ### Use cases
 
-#### UC-ODM1: A run performs the root's maintenance step by step
+#### UC-ODM1: An operator runs the root’s maintenance on demand
 
 ```gherkin
-Given an agent in the canonical checkout of a project on its main branch
-When the agent runs telec sync
-Then every maintenance step the project's registry declares runs in declared order
-And the agent sees each step's outcome as that step completes
-And the structured records hold the same per-step outcomes commit-boundary maintenance records
+Scenario: Apply the root's declared maintenance
+  Given an operator wants to run maintenance from an eligible canonical checkout
+  When their agent runs `telec sync`
+  Then every maintenance step declared by that root is attempted in order
+  And the operator sees each step's result as it completes
+
+Scenario: Continue maintenance after a step fails
+  Given the root's maintenance has later steps still owed
+  When one step fails during the run
+  Then every later step is still attempted
+  And the run reports the failure and exits unsuccessfully
+
+Scenario: Run maintenance in the platform's checkout
+  Given the platform root declares daemon replacement
+  When an operator runs `telec sync` there
+  Then the daemon is stopped before maintenance steps begin
+  And it is started and verified after the final step
+
+Scenario: Keep uncommitted changes out of publication
+  Given the root's working tree has uncommitted edits
+  When an operator runs `telec sync`
+  Then the changed paths and known holders are reported before the first step
+  And publication uses committed source and does not publish the uncommitted edits
+
+Scenario: Leave other running services alone
+  Given installation would deploy a changed definition for another running service
+  When an operator runs `telec sync` outside the daemon-replacement window
+  Then the service remains running and its changed definition is reported as owed
+  And the report names the command that deploys it
+
+Scenario: See the recovery route for an earlier failure
+  Given an earlier commit-boundary maintenance run recorded a step as failed
+  When an operator runs `telec sync` in that root
+  Then the report names the failed step and its replay command
+  And the failed record remains and its owning integrator is named
+
+Scenario: Refuse a run from an ineligible checkout
+  Given an operator runs `telec sync` outside canonical main or the installed release checkout
+  When the command begins
+  Then it refuses before any step runs
+  And names an eligible maintenance checkout
 ```
 
 #### UC-ODM2: A failed step does not stop the rest
 
-```gherkin
-Given a root whose maintenance includes more than one step
-When one step fails during telec sync
-Then every later step still runs
-And the agent sees which step failed and its outcome
-And telec sync exits non-zero
-```
-
 #### UC-ODM3: A downstream project converges its own plumbing
-
-```gherkin
-Given a downstream project whose installed plumbing lags its declaration
-When an agent runs telec sync in that project's canonical checkout on main
-Then the project's plumbing is converged
-And the project's capability-gated publication runs
-And no step carried only by another project's declaration runs
-```
 
 #### UC-ODM4: A run in the platform's checkout replaces the daemon
 
-```gherkin
-Given an agent in the platform's canonical checkout
-When the agent runs telec sync
-Then the run is performed inside the stopped-daemon window
-And the agent sees the window open before the first step and the daemon's verified start after the last
-```
-
 #### UC-ODM5: Nothing owed adds nothing
-
-```gherkin
-Given the running terminal interface runs the code telec sync just converged
-When telec sync finishes its steps
-Then the run reports no owed reload
-```
 
 #### UC-ODM7: An earlier recorded failure is named with its replay
 
-```gherkin
-Given an earlier commit-boundary maintenance run recorded a step as failed
-When an agent runs telec sync in that root
-Then the run names that failed step and the command that replays it for its original range
-And the failed record remains for that replay
-And the agent is told that the standing integrator owns that replay
-```
-
-#### UC-ODM8: Listing changes nothing
+#### UC-ODM8: An operator previews the root’s maintenance steps
 
 ```gherkin
-Given an agent in a root's canonical checkout on main
-When the agent runs telec sync --list
-Then the agent sees the steps a run would perform there, in order
-And no step runs and no record is written
+Given an operator wants to inspect the maintenance plan before running it
+When their agent runs `telec sync --list`
+Then the operator sees the root's declared steps in order
+And no step runs and no maintenance record is written
 ```
 
 #### UC-ODM9: A run outside an eligible maintenance checkout refuses
 
-```gherkin
-Given an agent in a todo worktree or another checkout that is neither canonical main nor the installed release checkout
-When the agent runs telec sync
-Then telec sync refuses before any step runs
-And the agent is told to run it from an eligible maintenance checkout
-```
-
 #### UC-ODM10: Uncommitted edits are named, and never published
-
-```gherkin
-Given a root whose working tree holds uncommitted edits
-When an agent runs telec sync there
-Then before the first step the agent sees those uncommitted paths and, where known, the sessions holding them
-And every step runs
-And publication publishes the committed source selected for that checkout
-And no uncommitted edit appears in the published output
-```
 
 #### UC-ODM11: A run during automatic maintenance does not collide with it
 
-```gherkin
-Given commit-boundary maintenance for a recent advancement is still running
-When an agent runs telec sync in the same root
-Then no step runs at the same time in both
-And both runs' outcome records remain accurate
-```
-
 #### UC-ODM12: A repeated run changes nothing
-
-```gherkin
-Given telec sync has just completed in a root with every step succeeding
-And nothing has changed since
-When an agent runs telec sync again
-Then deployed output and machine state remain as the first run left them
-```
 
 #### UC-ODM13: Help presents the fallback
 
-```gherkin
-Given an agent unsure how to recover a root after maintenance did not run
-When the agent reads telec sync's help
-Then the help describes it as the manual fallback for commit-boundary maintenance
-And states that it performs the root's maintenance steps, stops the daemon before them and starts it after them in the platform's checkout, leaves reloads undone, and names what is owed
-```
-
 #### UC-ODM14: A step with nothing to act on completes without failing
 
-```gherkin
-Given a root that declares nothing to install and does not subscribe code
-When an agent runs telec sync in that root's canonical checkout on main
-Then the installation step runs and reports that there is nothing to install
-And it completes successfully
-And it does not make telec sync exit non-zero
-```
-
 #### UC-ODM15: Installation leaves running services alone
-
-```gherkin
-Given a service whose definition TeleClaude's installation renders differs from the deployed one
-When an agent runs telec sync in that root's canonical checkout on main
-Then installation runs without deploying that definition or restarting any service
-And the run ends by stating that deploying the changed service definitions is owed and names the command that performs it
-```
 
 ## See Also
 

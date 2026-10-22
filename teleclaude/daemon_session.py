@@ -40,7 +40,10 @@ from teleclaude.core.injected_text import (
 )
 from teleclaude.core.models import HumanActionIntent, MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._session import authority_for_entry_point
-from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
+from teleclaude.core.next_machine.session_hold import (
+    clear_active_runner_for_session_end,
+    reconcile_terminal_driver_ownership,
+)
 from teleclaude.core.runtime_readiness import RuntimeReadinessKey
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_continuation import ContinuationRefused, rebuild_continuation_loader
@@ -57,7 +60,7 @@ from teleclaude.core.session_startup import (
     launch_is_owed,
     recovery_for,
 )
-from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.session_status import is_session_final
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.shutdown_drain import get_shutdown_drain
 from teleclaude.core.tmux_bridge import input_effect_scope
@@ -70,7 +73,10 @@ from teleclaude.events.references import SessionRef
 from teleclaude.events.schemas.system import SessionBootstrapFailed, SessionBootstrapFailedData
 from teleclaude.events.wire import LegacyFacts
 from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror_agent_stop
+from teleclaude.project_root import is_project_checkout
+from teleclaude.services.project_catalog.service import get_project_catalog_service
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
+from teleclaude.utils.transcript.source_views import clear_transcript_source
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -168,11 +174,17 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         (Topic_id_invalid). The close-intent path is SESSION_CLOSE_REQUESTED.
 
         """
+        current = await db.get_session(session_id)
+        if current is not None and not (
+            current.deleted_at
+            or is_session_final(lifecycle_status=current.lifecycle_status, closed_at=current.closed_at)
+        ):
+            return
         async with session_runtime_owner(session_id, wait=True):
             current = await db.get_session(session_id)
             if current is not None and not (
                 current.deleted_at
-                or is_session_terminal(lifecycle_status=current.lifecycle_status, closed_at=current.closed_at)
+                or is_session_final(lifecycle_status=current.lifecycle_status, closed_at=current.closed_at)
             ):
                 logger.debug("Skipping delayed close cleanup for revived session %s", session_id)
                 return
@@ -189,10 +201,22 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     except asyncio.CancelledError:
                         pass
             polling_coordinator._cleanup_codex_input_state(session_id)
+            if current is not None and current.native_log_file:
+                clear_transcript_source(current.native_log_file)
             try:
                 await clear_active_runner_for_session_end(db, session_id)
             except Exception as exc:
                 logger.error("Workflow active_runner clear failed for session %s: %s", session_id, exc, exc_info=True)
+
+    async def _recover_session_housekeeping(self) -> None:
+        """Recover resident terminal resources and workflow references from their owners."""
+        identities = set(self._session_outbox_queues) | set(self._session_outbox_workers)
+        identities.update(self._hook_outbox_claim_paused_sessions)
+        for session_id in sorted(identities):
+            await self._handle_session_closed(session_id)
+        for project in get_project_catalog_service().list_projects():
+            if is_project_checkout(project.root):
+                await reconcile_terminal_driver_ownership(db, str(project.root))
 
     async def _handle_system_command_direct(self, context: SystemCommandContext) -> None:
         """Handle system commands routed directly to the runtime owner.

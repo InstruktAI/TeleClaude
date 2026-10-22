@@ -48,13 +48,13 @@ references remain usable (`sdlc/policy/backward-compatibility-hygiene`).
 
 #### UC-SIN-5:
 
-#### UC-SIN-6:
+#### UC-SIN-6: A caller retains access to conversations after identity migration
 
 ```gherkin
-Given historical mirrors include attributed and previously unattributed conversations
-When storage migrates to retained TeleClaude conversation identities
-Then every previously retained conversation remains retrievable
-And existing source references still resolve under the same access rules
+Given a caller has conversation history from before mirror identity migration
+When storage migrates those conversations to retained TeleClaude identities
+Then the caller can retrieve every previously retained conversation under the same access rules
+And existing source references still resolve
 And missing authorship or identity facts remain unknown
 ```
 

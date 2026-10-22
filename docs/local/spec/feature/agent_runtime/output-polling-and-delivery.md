@@ -21,6 +21,29 @@ Distinct from this lane: the on-demand transcript retrieval surface (which proje
 
 ## Canonical fields
 
+### Native source reading
+
+Transcript consumers share a format-aware source view under
+`sdlc/principle/design-fundamentals`. Append-only JSONL sources read newly
+appended records, retaining incomplete bytes and the provider's normalization
+overlap. JSON documents are parsed once per changed source version. Compressed
+JSONL preserves decompression state across appends. An unchanged source reuses
+its normalized view; reflection and delivery may still run when their own
+state changes.
+
+Timestamp selection uses a maintained index over normalized source order;
+records sharing a timestamp or arriving with an older timestamp keep their
+existing selection semantics. The index locates content and never advances a
+delivery watermark.
+
+Source identity changes, truncation and observed rewrites replace derived
+reader state. The source view preserves the complete normalized entries needed
+by cumulative-turn rendering, ancestry and unresolved caller bindings. Cache
+eviction, session closure and restart discard only derived reading state;
+native records, projection watermarks and delivery receipts retain authority.
+Limited checkpoint reads keep their separate scope. These boundaries follow
+`sdlc/policy/domain-ownership`.
+
 ### Use cases
 
 #### UC-OPD4: Discord admin reflection preserves user attribution for text input
@@ -58,7 +81,7 @@ Then the reflected text matches what the person sent
 
 #### UC-OPD8: Host-pane snapshot timeout during snapshot collection
 
-#### UC-OPD9: New input does not repost the assistant's previous output
+#### UC-OPD9: A person can send new input without seeing the previous response reposted
 
 ```gherkin
 Given a person can already see their assistant's current response
@@ -145,7 +168,20 @@ And the silent turn neither replaces it with empty content nor delivers it again
 
 ## Known caveats
 
-- **Host pane is liveness, transcript is truth.** The output payload reported by the pane poller is intentionally discarded — never used as content. All delivered content comes from re-reading the agent's native transcript via the start-of-turn anchor. Don't add code that forwards pane-poller output to the adapter.
+- **Derived reading state retains history.** Initial reads and eviction recovery
+  still parse the source needed by existing ancestry and receipt contracts.
+  The source-byte budget scales with host memory up to its cap; source count is
+  bounded separately. These bounds do not measure actual Python heap size;
+  one oversized source remains eligible for reuse. Failed reads release their
+  registered view and remain retryable. Working sets beyond the budget can
+  cause rebuilds; evictions are observable. Returned entry records are read-only
+  shared source data.
+- **JSONL append reading trusts an immutable prefix.** Identity, truncation and
+  boundary checks detect observed replacement, not every possible in-place
+  rewrite that also grows a file. A valid final object without a newline is
+  exposed provisionally; later growth rebuilds that view. Incomplete bytes stay
+  retryable. These native-format limits follow `sdlc/policy/backward-compatibility-hygiene`.
+- **Host pane is liveness, transcript is truth.** The output payload reported by the pane poller is intentionally discarded — never used as content. All delivered content comes from the native transcript's normalized source view via the start-of-turn anchor. Don't add code that forwards pane-poller output to the adapter.
 - **Cumulative-turn projection, not incremental.** Each tick renders the _entire_ current turn from the start-of-turn anchor forward. Adapters use the digest to decide whether to edit, and integration handles append-vs-edit semantics. The coordinator does not produce diffs.
 - **`last-message-sent-at` is mixed-purpose.** The projection watermark deliberately uses `last-projected-at` instead, because `last-message-sent-at` is touched by multiple writers and would cause projection skips or re-broadcasts. Don't conflate them.
 - **Transcript discovery retries until source truth exists.** If the transcript file has not landed yet, the session remains eligible for later poller or hook-triggered discovery. Once the entry exists, its segmentation is complete from that entry alone.

@@ -67,11 +67,17 @@ Gates (all required):
 
 4. **Approach known**
 
+- The preparation design focuses in `sdlc/policy/preparation-artifact-quality`
+  have informed the approach and its independent challenge. Material choices
+  have source-grounded reasons; a named helper or interface is not evidence that
+  the complete approach has been assessed.
 - Current patterns and credible intended state have been assessed against
   the approved target.
 - Reuse is the default when it serves the target; any adaptation,
   replacement, retirement, or deliberate divergence has a grounded reason.
-- Unknowns are small; if not, an evidence-gathering todo exists first.
+- Remaining unknowns have a concrete next contribution and owner within the
+  authorized scope; their existence does not authorize a research or verification
+  capability (`sdlc/policy/todo-creation-discipline`).
 - No architectural decision that could change the plan remains unresolved.
 - Every plan task names both its bounded-context owner and its architectural
   layer inside that context. Every crossing names the published command,

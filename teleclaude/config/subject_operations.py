@@ -280,7 +280,6 @@ async def _editor_get(standing: ConfigurationStanding, request: ConfigRequest) -
         fields = editor_fields(
             view.ref.kind,
             sections,
-            outside_scope,
             source_sections=view.sections,
             references=references,
         )
@@ -321,12 +320,9 @@ async def _field_edit(standing: ConfigurationStanding, request: ConfigRequest) -
         view = await asyncio.to_thread(read_subject, _subject_ref(request))
         machine_environment = current_machine_environment() if view.ref.kind is ConfigSubjectKind.COMPUTER else None
         references = environment_references(view, machine_environment=machine_environment)
-        outside = view.read_only.get(_MASTER_SCOPED_KEY, [])
-        outside_scope = tuple(str(item) for item in outside) if isinstance(outside, list) else ()
         fields = editor_fields(
             view.ref.kind,
             effective_sections(view, machine_environment=machine_environment),
-            outside_scope,
             source_sections=view.sections,
             references=references,
         )
@@ -606,7 +602,7 @@ async def _discord_voice_bot(standing: ConfigurationStanding, request: ConfigReq
         return refused
     assert request.instance is not None
     discord_token = config.discord.token
-    if discord_token is None or not is_section_available(_DISCORD_SECTION, config.discord):
+    if discord_token is None or not is_section_available(_DISCORD_SECTION, config):
         return ConfigOutcome(failure=ConfigFailure(kind=ConfigFailureKind.REFUSED, message=_DISCORD_NOT_ENABLED))
     try:
         result = await asyncio.to_thread(configure_person_discord_voice_bot, request.instance, discord_token)
@@ -622,7 +618,7 @@ async def _help_desk_links(standing: ConfigurationStanding, request: ConfigReque
     assert request.kind is not None and request.instance is not None
     kind = request.kind.value
     identifier = DeskIdentifier(_DESK_KIND_BY_SUBJECT[request.kind], request.instance)
-    if not config.computer.is_master:
+    if not config.master_scope_applies():
         return _invalid(_DESK_NOT_ON_MASTER)
     if local_desk_endpoint(identifier, config.computer.name, True) is None:
         template = _DESK_NOT_ENABLED if desk_home_present(identifier) else _DESK_NOT_HOSTED
@@ -666,6 +662,7 @@ async def _env_list(_standing: ConfigurationStanding, _request: ConfigRequest) -
                     "service": status.info.adapter,
                     "is_set": status.is_set,
                     "description": status.info.description,
+                    "applicable": config.scope_applies(status.info.path),
                 }
                 for status in statuses
             ]

@@ -55,41 +55,41 @@ without a reachable todos DB validate shape only.
 
 #### UC-SFV1c: In-body markers must be whole-line, non-nested, and balanced
 
-#### UC-SFV2: H1 type suffix is validated from the path-derived type
+#### UC-SFV2: A snippet author receives actionable structural validation feedback
 
 ```
-Given a taxonomy snippet whose path-derived type is "policy"
+Given an author validates a taxonomy snippet whose path-derived type is "policy"
 And its H1 does not end with "— Policy"
-When snippet validation runs
+When validation runs
 Then a snippet_title_suffix_invalid finding is reported for that file
-Given the same taxonomy snippet's H1 ends with "— Policy"
-When snippet validation runs
+Given the same author validates that snippet after its H1 ends with "— Policy"
+When validation runs
 Then no title-suffix finding is reported
-Given a pending companion for a policy snippet
-When snippet validation runs on the companion
+Given the author validates a pending companion for a policy snippet
+When validation runs on the companion
 Then the required H1 suffix is still derived from the parent policy path
 ```
 
 ```
-Scenario: Required reads is not the first H2
-  Given a snippet whose first H2 after H1 is "## What it is"
+Scenario: The author receives a finding when Required reads is not first
+  Given an author validates a snippet whose first H2 after H1 is "## What it is"
   And a "## Required reads" H2 appears later
-  When validation runs
+  When the author runs validation
   Then a "Required reads not first H2" finding is reported
 ```
 
 ```
-Scenario: Inline @ ref leaks outside Required reads
-  Given a snippet whose "## Canonical fields" body contains "@docs/other.md"
+Scenario: The author receives a finding when an inline reference leaks outside Required reads
+  Given an author validates a snippet whose "## Canonical fields" body contains "@docs/other.md"
   And the inline @ ref is not inside an inline code span
-  When validation runs
+  When the author runs validation
   Then a "Required reads outside section" finding is reported
 ```
 
 ```
-Scenario: Per-type required sections missing
-  Given a snippet whose path-derived type is "spec" without a "## Canonical fields" H2
-  When section-shape validation runs
+Scenario: The author receives a finding naming a missing required section
+  Given an author validates a snippet whose path-derived type is "spec" without a "## Canonical fields" H2
+  When the author runs section-shape validation
   Then a missing-section error is reported listing the required H2
 ```
 

@@ -18,7 +18,9 @@ through one of three mutually-exclusive paths:
 
 2. **Agent-error** → handed to the runtime's error-publication capability,
    preserving the error's existing reach and failure contract under
-   `local/projects/teleclaude/design/architecture/event-delivery`.
+   `local/projects/teleclaude/design/architecture/event-delivery`. The outbox
+   entry settles only after the runtime accepts publication; a publication
+   failure remains eligible for the existing retry contract.
 
 3. **All other agent events** (agent-session-start, user-prompt-submit,
    tool-use, agent-stop) → built into an agent-event context and passed
@@ -39,144 +41,39 @@ events bypass capacity throttling and reserve queue slots), and
 exceeds the high watermark; resumes only after drainage past the low
 watermark).
 
+Settlement distinguishes retryable failures, which are deferred for another
+attempt, from non-retryable failures, which are logged and dropped. An
+unknown-session event other than an authorized agent-session-start is ignored
+and settled successfully; a shutdown refusal leaves the entry pending for
+retry.
+
 ## Canonical fields
 
 ### Use cases
 
 #### UC-D1: Normal claim → dispatch → delete
 
-```gherkin
-Given an outbox entry exists with no claim lock and next-attempt-at <= now
-When the worker's polling tick runs
-Then a fetch-batch call returns the entry
-And a claim-batch call atomically sets the claim lock (or refuses if another worker beat it)
-And the entry is enqueued into the per-session pending queue
-And the per-session worker task picks it up
-And the dispatcher runs
-And on success, the entry is removed from the outbox
-And the processed-count metric is incremented
-```
-
 #### UC-D2: Stale non-lifecycle event evicted
-
-```gherkin
-Given an outbox entry whose event type moves no session's agent status has creation timestamp older than the staleness TTL
-When the staleness check evaluates the entry during the polling tick
-And the event type is not in the staleness-exempt set, which holds every event that moves a session's agent status
-Then the entry is removed without dispatch
-And the stale-dropped metric is incremented
-And a summary log records the drop
-```
 
 #### UC-D3: Critical event reserves capacity
 
-```gherkin
-Given a session's pending queue is at maximum pending minus one
-And a critical event (agent-stop) arrives via claim
-Then it is accepted into pending despite being at capacity
-And future bursty events are rejected or coalesced because the critical-reserve slots are reserved
-```
-
 #### UC-D4: Bursty same-type coalesce inside the dispatcher queue
-
-```gherkin
-Given the per-session pending queue has a bursty item not yet dispatched
-And no critical event sits after it in pending
-When another item of the same bursty type arrives via claim
-Then the bursty-coalesce probe locates the existing item
-And the new item replaces the old in pending (same slot)
-And the displaced entry id is added to the delete-on-coalesce list
-And the coalesced-count metric is incremented
-```
 
 #### UC-D5: Watermark hysteresis pauses claims
 
-```gherkin
-Given a session's depth (pending + in-flight) >= the high watermark
-When the pause guard evaluates the session
-Then the session is added to the paused set
-And subsequent fetch-batch calls exclude paused sessions
-And claims resume only after depth drops to <= the low watermark
-```
-
 #### UC-D6: Session-state-mutation events bypass the event bus
-
-```gherkin
-Given a claimed entry has event type in {checkpoint-seen, native-metadata-update, native-session-refresh}
-When the dispatcher runs
-Then the session-state-mutation fork accepts the entry
-And the corresponding mutation handler is invoked
-And the entry is removed on success
-And NO event-bus emit happens for these entries
-```
 
 #### UC-D6b: Non-error agent events use direct coordinator call
 
-```gherkin
-Given a claimed entry has event type in {agent-session-start, user-prompt-submit, tool-use, agent-stop}
-When the dispatcher runs past the state-mutation fork
-Then a typed agent payload is constructed for the event type
-And an agent-event context is built
-And the local agent-event coordinator is awaited DIRECTLY
-And the outbox worker only marks the entry delivered AFTER the coordinator returns
-And NO event-bus emit call is made for this path — outbox serialization depends on the coordinator completing before the entry is marked delivered; a fire-and-forget event-bus emit would not provide that guarantee
-```
-
 #### UC-D6c: Agent-error publication precedes outbox settlement
-
-```gherkin
-Given a claimed entry has event type agent-error
-When the dispatcher runs past the state-mutation fork
-Then the dispatcher hands the normalized error to the runtime's error-publication capability
-And the dispatcher waits for publication acceptance before the worker settles the entry
-And publication failure leaves the entry subject to the dispatcher's existing retry contract
-```
 
 #### UC-D7: Retry with exponential backoff on retryable failure
 
-```gherkin
-Given the dispatcher raises a retryable exception (any error other than an agent-status integrity failure, a "not found" value error, an "extra data" decoding error, or a session-creation refusal)
-When the worker catches the exception
-Then the attempt count is incremented
-And next-attempt-at = now + the configured backoff for that attempt (base 1s, doubling, capped at 60s)
-And the entry is marked failed with the last error recorded
-And the claim lock is cleared so a later poll re-claims the entry
-```
-
 #### UC-D8: Missing-session non-start entry logs and removes (no exception)
-
-```gherkin
-Given a claimed entry has event type != agent-session-start
-And the sessions store has no record for that session id
-When the dispatcher evaluates the guard
-Then it logs "ignoring hook event for unknown session (not session_start)" at debug
-And returns normally (no exception raised)
-And the outbox worker treats the dispatch as successful
-And the entry is removed
-And the processed-count metric is incremented
-The entry is NOT classified as a non-retryable failure; the removal follows the normal "processed successfully" path.
-```
 
 #### UC-D8b: Non-retryable failures still drop on actual non-retryable errors
 
-```gherkin
-Given the dispatcher raises a value error whose message contains "not found", OR a decoding error with "extra data", OR a session-creation refusal of the entry's identity or placement
-When the retryable-error classifier returns false
-Then an error "hook outbox event dropped (non-retryable)" is emitted with entry id, attempt, and error
-And the entry is removed without retry
-And the processed-count metric is incremented
-This branch covers payload-corruption type errors and refused session creation, not missing-session non-start entries (which are silent).
-```
-
 #### UC-D9: Periodic summary log
-
-```gherkin
-Given the summary interval elapses since the last summary
-And processed-count, coalesced-count, stale-dropped-count, or queue depth is non-zero
-When the summary helper runs
-Then an INFO "hook outbox summary" log emits with processed, coalesced, stale-dropped, queue depth, p95/p99 lag samples
-And the last-summary timestamp is updated
-```
 
 ### Cross-context references
 

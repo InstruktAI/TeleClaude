@@ -22,84 +22,33 @@ transcript history list whenever the transcript path changes. This
 produces an in-order history of every transcript file the session ever
 used — essential for session resume and Codex-style transcript chaining.
 
+These state mutations emit no event-bus event, and successful processing settles
+the outbox entry. `checkpoint-seen` updates only the last-checkpoint timestamp.
+`native-metadata-update` changes native session and transcript fields without
+changing the active agent; when the transcript path changes, the previous path
+is appended once and the related fields are stored together. A
+`native-session-refresh` changes the native session ID only when its key is
+present, with explicit null clearing the binding; an absent key leaves it
+unchanged. An unchanged metadata update or an update for a missing session is a
+successful no-op.
+
 ## Canonical fields
 
 ### Use cases
 
 #### UC-SSM1: checkpoint-seen updates last-checkpoint timestamp
 
-```gherkin
-Given the receiver emitted a checkpoint-seen entry with checkpoint-at = "2026-05-19T10:00:00+00:00"
-When the integration service's worker dispatches the entry
-Then the session-state-mutation fork accepts the entry
-And the checkpoint-seen handler updates the session record's last-checkpoint timestamp
-And the entry is removed from the outbox
-And NO event-bus emit happens for this transition
-```
-
 #### UC-SSM2: native-metadata-update with new transcript path archives the old
-
-```gherkin
-Given the session record has native log file = "/var/log/claude/abc.jsonl"
-And a native-metadata-update arrives with native log file = "/var/log/claude/def.jsonl"
-When the metadata-update handler runs
-Then it loads the session record
-And detects the new path differs from the stored path
-And the transcript history helper reads the existing serialized transcript history
-And appends "/var/log/claude/abc.jsonl" to the history (if not already present)
-And serializes the chain back into the transcript history
-And updates the native log file to "/var/log/claude/def.jsonl"
-And persists both fields atomically via a single session update
-```
 
 #### UC-SSM3: native-metadata-update is a no-op when nothing changed
 
-```gherkin
-Given a native-metadata-update arrives with values identical to current session record state
-When the metadata-update handler runs
-Then no field in the update set is populated
-And the session update is NOT invoked (early exit when the update set is empty)
-And the entry is still removed from the outbox as successful processing
-```
-
 #### UC-SSM4: native-metadata-update on missing session is a no-op
-
-```gherkin
-Given the metadata-update handler is invoked for a session id that does not exist
-When the sessions store yields nothing
-Then the handler returns silently
-And no error is raised
-And the entry is removed as processed
-```
 
 #### UC-SSM5: native-session-refresh sets native session id directly
 
-```gherkin
-Given the receiver detected a native-session-id mismatch and emitted a native-session-refresh
-When the refresh handler runs
-Then it confirms the payload contains the native-session-id key
-And invokes a session update for the native session id
-And the entry is removed from the outbox
-```
-
 #### UC-SSM6: native-session-refresh with null clears the binding
 
-```gherkin
-Given a native-session-refresh entry with payload {"native_session_id": null}
-When the refresh handler runs
-Then it updates the session record's native session id to null
-And the session record's native binding is cleared
-```
-
 #### UC-SSM7: metadata update preserves committed runtime ownership
-
-```gherkin
-Given a native-metadata-update belongs to a managed TeleClaude session
-When the metadata-update handler runs
-Then it updates the native session id when that binding changed
-And it archives the previous native transcript before installing a changed transcript path
-And it never changes the active-agent field from hook metadata
-```
 
 #### UC-SSM8: Closed-session-guard bypass
 

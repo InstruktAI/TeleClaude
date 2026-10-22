@@ -13,6 +13,19 @@ visibility: internal
 
 ## What it is
 
+An earlier-layout checkout whose upstream already has the converged layout is
+left unchanged and reported as needing a pull. Dirty touched paths, a missing
+declared slug, or both layout roots present leave only the affected root
+unchanged and blocked; the report names each blocking path. A slug comes from
+the registry declaration, never from the directory name. Other roots in the
+same run may still converge.
+
+If a move, write, stage, or sealed commit fails, rollback restores only bytes,
+moves, and index entries that still match convergence's own changes. It leaves
+intervening edits and reoccupied paths untouched and reports restore conflicts.
+An unattributable run defers roots that need work, changes nothing, and names
+the attributable command for a later retry.
+
 Documentation layout convergence brings every registered repository to the
 documentation layout the context domain reads: local documentation under
 `docs/local/`, local agent artifacts under `agents/local/`, and every snippet
@@ -78,163 +91,56 @@ installation's contract
 
 ### Use cases
 
-#### UC-DLC1: A registered repository on the earlier layout converges in one commit
+#### UC-DLC1:
 
 ```gherkin
-Given a registered repository that carries docs/project or agents/project
-And its declaration names its project slug
-And every path the move and the reference rewrite touch is clean
-And its upstream does not already carry the converged layout
-When layout convergence runs
-Then docs/project is moved to docs/local and agents/project to agents/local
-And its tracked references are rewritten to the new paths and to qualified identities
-And one commit in that repository, made through the sealed commit path, carries exactly the moved and rewritten paths
+Given a maintainer has a registered repository whose folders or project-local references use the earlier documentation layout
+When the maintainer runs layout convergence for that repository
+Then its documentation and local agent artifacts use the current layout
+And its project-local references use qualified identities
+And the change is recorded in one commit in that repository
 And the root is reported as migrated and committed
 ```
 
-#### UC-DLC2: A repository on the converged layout is current
+#### UC-DLC2:
+
+#### UC-DLC3:
+
+#### UC-DLC4:
+
+#### UC-DLC5:
+
+#### UC-DLC6:
+
+#### UC-DLC8:
+
+#### UC-DLC9:
 
 ```gherkin
-Given a registered repository with neither docs/project nor agents/project
-And whose tracked Markdown names every project-local identity with its local/ prefix
-When layout convergence runs
-Then nothing in that repository changes
-And the root is reported as current
-And a second run over a repository converged by UC-DLC1 or UC-DLC13 reports it current
+Given a maintainer owns a registered repository whose published documentation contains unqualified local identities
+When they review the convergence result
+Then those mentions remain unchanged and are listed for the maintainer to resolve
+And changelogs, generated files, and decision-record bodies remain unchanged
 ```
 
-#### UC-DLC3: A clone whose upstream already converged is not migrated again
+#### UC-DLC10:
+
+#### UC-DLC11:
 
 ```gherkin
-Given a registered repository still on the earlier layout
-And its upstream, fetched within the run's bound, carries docs/local and no docs/project
-When layout convergence runs
-Then nothing in that repository changes and no commit is made
-And the root is reported as needing a pull
-```
-
-#### UC-DLC4: A dirty touched path blocks that root
-
-```gherkin
-Given a registered repository on the earlier layout
-And a path the move or the reference rewrite would touch is modified, or an untracked file stands in its way
-When layout convergence runs
-Then the repository is left unchanged
-And the root is reported as blocked by a dirty path, naming it
-And other roots in the run still converge
-```
-
-#### UC-DLC5: An undeclared project slug blocks that root
-
-```gherkin
-Given a registered repository on the earlier layout whose declaration yields no project slug
-When layout convergence runs
-Then the repository is left unchanged
-And the root is reported as blocked by an undeclared slug
-And no identity is derived from the directory name
-```
-
-#### UC-DLC6: Both layouts present block that root
-
-```gherkin
-Given a registered repository that carries docs/local beside docs/project, or agents/local beside agents/project
-When layout convergence runs
-Then the repository is left unchanged
-And the root is reported as blocked by both layouts being present
-```
-
-#### UC-DLC8: A refused commit or a failed write reverses only convergence's own changes
-
-```gherkin
-Given a registered repository that UC-DLC1 would converge
-And the sealed commit refuses the convergence commit, or a move, write or staging step fails after convergence began changing the repository
-When layout convergence runs
-Then convergence reverses only the changes it made: each rewritten file whose bytes still equal what convergence wrote gets its original bytes back, each file convergence moved whose bytes are still the ones convergence left returns to its original path, and each path convergence staged whose index entry still equals what convergence staged returns to the committed entry
-And outside the directories convergence moved, a path convergence neither wrote nor staged is neither restored, recreated nor named, so a directory move that did not happen leaves that directory and its counterpart as found
-And a file whose bytes changed since convergence left them, a file another writer placed in a directory convergence moved, a moved file whose original path is occupied again, or a path convergence changed whose index entry changed since, is left exactly where and as found
-And when any such path exists, the root is reported as a restore conflict naming those paths
-And when no such path exists, every path convergence changed is back in its state before the run, and the root is reported as restored after a refused commit or as failed after a failed write
-```
-
-#### UC-DLC9: Published-half mentions and records are reported, not guessed
-
-```gherkin
-Given a registered repository converged by UC-DLC1
-And its docs/global snippets mention unqualified local identities
-When layout convergence completes for that root
-Then those docs/global mentions are unchanged
-And the root's report lists them for the repository's owner
-And changelogs, generated files, and decision-record bodies are unchanged
-```
-
-#### UC-DLC10: Every computer converges, tag deployments included
-
-```gherkin
-Given a computer that follows the branch and pulls a merge changing the layout owner
-Or a computer that installs or deploys a tagged release
-When the post-merge maintenance or the install completes
-Then layout convergence has run over that computer's registered repositories
-And where that run had no attributable party, it deferred the roots that would converge (UC-DLC12)
-And the next attributable run on that computer converges them
-And from an install or a tag deployment the run's report is printed
-And from the post-merge maintenance action a non-zero result stays that action's result
-```
-
-#### UC-DLC11: The run reports every root and tells failures from blocks
-
-```gherkin
-Given a layout convergence run over the project registry
+Given a maintainer runs layout convergence over registered repositories
 When the run completes
-Then it reports one outcome line per registered root and one run line
-And a registered root that is absent on this computer is reported as unavailable and skipped
-And linked worktrees of a converged root are listed in its report
-And the run exits non-zero when any root is blocked, deferred, failed, restored after a refused commit, or in restore conflict
-And its run line and its exit status tell a run with a failed, restored or conflicted root apart from a run whose only unsettled roots are blocked or deferred
+Then they can tell each root's outcome
+And distinguish a failure from roots that are only blocked or deferred
 ```
 
-#### UC-DLC12: A run without an attributable party changes nothing and defers
+#### UC-DLC12:
 
-```gherkin
-Given a layout convergence run with no attributable commit party — no agent session and no terminal login, as in a deploy pull or a tag install
-When the run walks the project registry
-Then no root is moved, rewritten, or committed
-And each root that would converge is reported as deferred for lack of an attributable party
-And the report names the command that re-runs convergence
-And current roots and roots needing a pull are still reported as such
-```
+#### UC-DLC13:
 
-#### UC-DLC13: A repository naming project-local identities without the local prefix converges in one commit
+#### UC-DLC14:
 
-```gherkin
-Given a registered repository with neither docs/project nor agents/project
-And its tracked Markdown, in either half, names a project-local identity as projects/<slug>/… with a registered project's slug or a <slug>, {slug} or {project} placeholder
-And every path the rewrite touches is clean
-When layout convergence runs with an attributable party
-Then each such identity gains the local/ prefix
-And changelogs, generated files, and decision-record bodies are unchanged
-And one commit in that repository, made through the sealed commit path, carries exactly the rewritten paths
-And the root is reported as migrated and committed
-```
-
-#### UC-DLC14: Overlapping runs over one repository take turns
-
-```gherkin
-Given a layout convergence run is converging a registered repository on a computer
-When a second layout convergence run on that computer reaches the same repository, from post-merge maintenance or from an install
-Then the agent or person who started the second run reads that it is waiting for the other convergence of that repository, before it waits
-And it neither assesses, fetches nor changes that repository until the first run has finished with it
-And it then reports the repository as it stands, as current when the first run converged it
-And no change the first run made is reversed or named by the second run
-```
-
-#### UC-DLC15: A run from a slug worktree reports other checkouts' repositories without failing
-
-```gherkin
-Given a layout convergence run whose code is loaded from a slug worktree
-When it reaches a registered repository other than that worktree's own checkout
-Then the root is reported as belonging to another checkout
-And that root makes the run's result neither blocked, deferred nor failed
-```
+#### UC-DLC15:
 
 ### Cross-context references
 
@@ -247,9 +153,9 @@ And that root makes the run's result neither blocked, deferred nor failed
 - **maintenance** — the post-merge maintenance mechanism and the install paths
   schedule convergence; they decide nothing about its outcome.
 
-- **agent_runtime** — whether code loaded from a slug worktree may change a
-  registered repository (`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`,
-  UC-IAH10); convergence only reports the roots it is refused.
+- **agent_runtime** — UC-IAH10 owns the refusal to change another
+  checkout. Convergence reports an outside checkout as out of scope and does not
+  count it as blocked, deferred, or failed.
 
 ## Known caveats
 

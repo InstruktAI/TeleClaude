@@ -40,143 +40,61 @@ their own assistant and anyone else gets the neutral reply.
 
 ## Canonical fields
 
+### Received message facts
+
+The phone number is the conversation key. Each message updates the resolved
+session's WhatsApp origin metadata with the provider message ID and timestamp.
+The ID supports read receipts; the timestamp governs the 24-hour free-text
+reply window. Provider timestamps in Unix seconds are normalized to UTC, with
+the receive time used when a timestamp is missing or invalid. Voice messages
+and Ogg/Opus audio are delivered as voice input; other audio, images and
+documents are delivered as file input. A message without a phone number is
+logged and not routed; if resolution returns no session, no command is
+dispatched.
+
 ### Use cases
 
 #### UC-WI1: Text message reaches the number's session and dispatches process-message
 
-```gherkin
-Given the integration service has a built-in contract id="builtin-whatsapp-inbound" routing source=whatsapp, type pattern message.* to handler "whatsapp_inbound"
-And this computer is the mesh master
-And "31612345678" is bound to its session at an enabled help desk
-When WhatsApp delivers a webhook with a text message from "31612345678" with body "hello"
-And the inbound framework normalizes via the WhatsApp normalizer
-And produces a hook event(source="whatsapp", type="message.text", properties={phone_number, message_id, text})
-And the dispatcher matches the built-in contract
-And invokes the WhatsApp inbound handler
-Then phone-number normalization strips to digits
-And the handler hands the message to the core conversation seam with the phone number as the conversation key and origin metadata carrying the phone number
-And the seam reaches the session the number's binding names, reviving it when it was closed
-And the WhatsApp session metadata is recorded (phone number, last received message id, last customer message timestamp)
-And the text handler builds a process-message command(session id, text="hello", origin=WHATSAPP, actor id="whatsapp:31612345678", actor name="31612345678")
-And the command is dispatched through the WhatsApp UI adapter's public dispatch path with message metadata
-And the command service's process-message handler runs
-```
-
 #### UC-WI2: Existing session is reused for the same phone number
 
+#### UC-WI3: A person can send a voice message through WhatsApp
+
 ```gherkin
-Given "31612345678" is bound to an open session on the mesh master
-When a new text message arrives from "31612345678"
-Then the message reaches the session the number's binding names
-And no new session is created
-And origin metadata is refreshed (last received message id, last customer message timestamp)
-And the command dispatches to the same session
+Given a person has a WhatsApp conversation bound to an assistant session
+When they send a voice message
+Then its audio reaches the bound session as voice input
 ```
 
-#### UC-WI3: Voice message downloads media as ogg into session voice/ directory
+#### UC-WI4: A person can send an attachment through WhatsApp
 
 ```gherkin
-Given a WhatsApp voice message arrives with audio mime type "audio/ogg; codecs=opus" and id "abc"
-And the session id resolves to "sess-1"
-When the media handler runs for type="message.voice"
-Then the WhatsApp media download is invoked
-And the fetch performs two authenticated requests against the WhatsApp Cloud API:
-    1. retrieve the media URL by id
-    2. retrieve the media bytes from that URL
-And the media subdirectory resolver returns "voice" for message.voice / message.audio types
-And the file is written to <session output dir>/voice/<phone>_<YYYYMMDDHHMMSS>_<media id first 12>.ogg
-And a handle-voice command(session id, file path, origin=WHATSAPP, actor id, actor name) is dispatched
-```
+Scenario Outline: Send <attachment>
+  Given a person has a WhatsApp conversation bound to an assistant session
+  When they send a <attachment>
+  Then it reaches the bound session as file input
 
-#### UC-WI4: Image message downloads into photos/ as handle-file command
-
-```gherkin
-Given a WhatsApp image message arrives with media id "img-1" and mime type "image/jpeg"
-When the media handler runs for type="message.image"
-Then the media subdirectory resolver returns "photos"
-And the file is downloaded as <phone>_<ts>_<id12>.jpg
-And a handle-file command(session id, file path, filename, file size) is dispatched
+  Examples:
+    | attachment |
+    | image      |
+    | document   |
 ```
 
 #### UC-WI5: Document message downloads into files/
 
-```gherkin
-Given a WhatsApp document arrives with media id "doc-1" and mime type "application/pdf"
-When the media handler runs for type="message.document"
-Then the media subdirectory resolver returns "files" (default for non-image, non-voice)
-And the file is downloaded with .pdf extension
-And a handle-file command is dispatched
-```
-
 #### UC-WI6: WhatsApp UI adapter unavailable falls back to direct handler call
-
-```gherkin
-Given the command service's adapter set does not contain a WhatsApp UI adapter (e.g., disabled)
-When the WhatsApp-command router runs
-Then it detects the adapter is missing or not a WhatsApp UI adapter
-And calls the command handler directly without UI adapter routing
-And the command still executes
-```
 
 #### UC-WI7: Missing phone-number drops the event
 
-```gherkin
-Given a normalized hook event has an empty or missing phone-number property
-When the WhatsApp handler runs
-Then a warning "WhatsApp event missing phone_number" is logged
-And the handler returns without further action
-```
-
 #### UC-WI8: Session creation failure drops the event
-
-```gherkin
-Given the session-create API returns a result with an empty session id
-When the resolver evaluates the result
-Then it logs "WhatsApp session creation returned empty session_id"
-And returns nothing
-And the WhatsApp handler returns silently with no command dispatch
-```
 
 #### UC-WI9: WhatsApp Cloud API timestamp normalization
 
-```gherkin
-Given the inbound message carries timestamp = "1700000000" (Unix seconds as string)
-When the event-timestamp normalizer runs
-Then it parses the integer and returns the UTC ISO 8601 form
-And the hook event timestamp is the converted ISO 8601 form
-Otherwise (non-numeric or missing): falls back to the current UTC time in ISO 8601
-```
-
 #### UC-WI10: voice vs audio classification by mime type
-
-```gherkin
-Given an audio message with mime type "audio/ogg; codecs=opus" and message type "voice"
-When the message-type classifier runs
-Then the type "voice" maps to "message.voice"
-Given mime type contains "ogg" even with audio type
-Then the message is classified as "message.voice"
-Otherwise: classified as "message.audio"
-```
 
 #### UC-WI11: An invitation token binds the number and opens the member's assistant
 
-```gherkin
-Given a registered member whose WhatsApp number is not yet bound to them
-When a message arrives from that number whose text is exactly their invitation token
-Then the number is bound to the member
-And a session is created at the member's own assistant
-And later messages from that number without an identifier reach it
-```
-
 #### UC-WI12: A verified message reaches every computer once, about no home
-
-```gherkin
-Given the global configuration declares the WhatsApp source
-When Meta delivers a webhook carrying one text message, signed with the declared secret
-Then the cluster receives one platform event "whatsapp.message.text" whose origin is none and whose subject is the WhatsApp source
-And each computer's WhatsApp handler receives that message once
-And the person the message comes from is resolved by the handler from the phone number, not from the event's origin
-```
 
 ### Cross-context references
 

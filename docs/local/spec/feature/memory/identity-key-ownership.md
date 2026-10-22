@@ -22,61 +22,14 @@ Source sessions and extraction identities carry provenance and progress.
 
 ### Use cases
 
-#### Tag at save
+#### UC-IKO1: An agent retrieves memory for a person
 
 ```
-Given a save request supplies a non-null identity_key
-When the memory service persists the observation
-Then the observation is recorded with that identity scope
-And the observation is later visible to any query that supplies the same key and to any query that supplies no key
-```
-
-#### Save without identity tag
-
-```
-Given a save request omits identity_key
-When the memory service persists the observation
-Then the observation is recorded with no identity scope
-And the observation is later visible to any identity-scoped query (because of the inclusion rule below) and to any non-scoped query
-```
-
-#### Inclusion-of-unscoped on search
-
-```
-Given a search caller supplies identity_key
-When the memory service builds its result set
-Then the response contains observations tagged with that key AND observations with no identity scope
-And observations tagged with any other key are excluded
-
-Given a search caller omits identity_key
-When the memory service builds its result set
-Then no identity-related filter is applied
-And the response contains observations from every identity scope
-```
-
-#### Identity scoping on context injection
-
-```
-Given the session-start consumer resolves a non-null identity_key for the session
-When it requests the memory context for the project
-Then the underlying observation query is identity-scoped
-And the rendered context contains observations tagged with that key and observations with no identity scope only
-```
-
-```
-Given the session-start consumer could not resolve an identity for the session
-When it requests the memory context for the project
-Then the underlying observation query is not identity-scoped
-And the rendered context contains observations from every identity scope for that project
-```
-
-#### CLI never supplies identity_key
-
-```
-Given the CLI memories surface (save, search, list, timeline, delete)
-When any of its verbs builds a request
-Then it does NOT pass identity_key
-And the resulting call is unscoped — saves record no identity scope; queries return observations from every scope
+Scenario: Retrieve memories in the person's identity context
+  Given an agent acts for person X
+  When it searches memory in X's identity context
+  Then results include observations scoped to X and observations with no identity scope
+  And observations scoped to other identities are excluded
 ```
 
 ### Cross-context references

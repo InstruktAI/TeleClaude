@@ -14,79 +14,29 @@ visibility: 'public'
 
 Caller verification is the identity context's single intake capability at the daemon's request surface: it turns the identity an inbound call carries into a typed `CallerIdentity` value (the v1 ancestor of v2's `Principal`) before any business logic runs. The client that sent the call has already resolved and cleared its caller in its own process (`local/projects/teleclaude/spec/identity-and-auth` §6) and carries the result — the caller's session, principal, system role, person role, person email, entry point, and session company when present (`local/projects/teleclaude/spec/identity-and-auth` §2). Caller verification takes those values as given. It loads no session to confirm them, resolves no terminal signal, compares no tmux session, validates no session token, and applies no role band; a call that carries no identity yields a `CallerIdentity` with none, and the operation it reaches decides what a caller without identity may do. The one credential it checks is the daemon's own process-local credential, which resolves the daemon's calls to its system principal.
 
+It does not re-read the people registry to confirm a carried person identity. An invalid daemon credential resolves no identity and leaves any separately carried identity unchanged.
+
+The daemon credential resolves to the system role without a person email or caller session.
+
 ## Canonical fields
 
 ### Use cases
 
 #### UC-CV-CARRIED-SESSION: A call carrying a session's identity is taken as carried
 
-```
-Given a client resolved its caller to a session and carries that session, its principal, and its system role on a call
-When caller verification runs
-Then the returned CallerIdentity carries that session, principal, and system role
-And when the session has a company, it carries that company as business context
-And no session record is loaded to confirm them
-And no terminal, tmux, or token signal is consulted
-```
-
 #### UC-CV-CARRIED-PERSON: A call carrying a person's identity is taken as carried
-
-```
-Given a client at a terminal, or the TUI, resolved its caller to a registered person and carries that person's principal, email, and role on a call
-When caller verification runs
-Then the returned CallerIdentity carries that principal, email, and role, and no session
-And the people registry is not consulted to confirm them
-```
 
 #### UC-CV-NO-IDENTITY: A call that carries no identity reaches its operation as a caller with none
 
-```
-Given a call that carries no caller identity and no daemon credential
-When caller verification runs
-Then the call is not refused by caller verification
-And the returned CallerIdentity carries no session, no principal, and no role
-And an operation that acts only for a calling session refuses the caller itself
-```
-
 #### UC-CV-SIGNALS-NOT-CREDENTIALS: A session token or tmux session on a call resolves nothing
 
-```
-Given a call that presents a session token or a tmux session name alongside, or instead of, a carried identity
-When caller verification runs
-Then neither value is consulted
-And the returned CallerIdentity is exactly the carried identity, or none
-```
-
 #### UC-CV-OPERATION-CARRIES-CALLER: Work the daemon runs for a caller carries that caller
-
-```
-Given the daemon accepted a request from a session and runs work for it after the request returns
-When that work makes a request to the daemon's request surface
-Then the request carries the identity of the session that asked
-And it carries that session's company when one is recorded
-And the work is attributed to that session, never to the daemon's own principal or a terminal login
-```
 
 #### UC-CV-TERMINAL-NO-PERSON
 
 #### UC-CV-DAEMON-SELF: The daemon's own calls resolve to its system principal, never to a person
 
-```
-Given a call carrying the daemon's process-local credential and no session-token or caller-session-id
-When caller verification runs
-Then the returned CallerIdentity carries the daemon's system principal and the system role
-And it carries no email and no session id
-And the terminal-email branch is not taken
-```
-
 #### UC-CV-DAEMON-FORGED: A daemon credential the daemon did not mint resolves nothing
-
-```
-Given a call from outside the daemon process carrying a daemon-credential value the daemon did not mint
-When caller verification runs
-Then the credential resolves no identity
-And the returned CallerIdentity is the identity the call carries, or none
-```
 
 #### UC-CV-SESSION-PRINCIPAL-HUMAN
 

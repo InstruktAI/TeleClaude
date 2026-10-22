@@ -57,117 +57,52 @@ left it, and enters history only through its author's own commit. The record is 
 person's, and passes the same commit gate as every other commit. An activation
 that writes nothing records nothing.
 
+If the commit gate refuses an activation record, nothing is recorded.
+Activation restores each file it wrote to its previous content or absence only
+while that file still holds exactly what activation wrote. A file changed in the
+meantime is left untouched and reported as unrestored, alongside the gate's
+findings.
+
 ## Canonical fields
 
 ### Use cases
 
-#### UC-HOME-1: Activation over a populated home retains only qualifying material
+#### UC-HOME-1: An operator activates safe local home history
 
 ```
-Given a home directory holding authored configuration, per-person material, secrets, runtime databases, generated projections, and links into other repositories
-And the home is not yet under version control
-When an operator activates the home's history
-Then the history is created with no remote
-And its first record holds only the retained files activation itself wrote where none existed before
-And the authored material already present stays unrecorded and untouched until its author commits it
-And the secrets, runtime databases, generated projections, and links into other repositories are not recorded
+Given the home holds configuration and per-person material alongside secrets, runtime databases, generated projections, and foreign repository links
+When the operator activates the home's local history
+Then only qualifying home-owned material is retained
+And secrets, runtime databases, generated projections, and foreign repository links stay excluded
+And the history has no remote
 ```
 
 #### UC-HOME-2: Repeating activation changes nothing
 
-```
-Given the home's history has already been activated
-When an operator activates it again
-Then the retained set is unchanged
-And no remote is introduced
-```
-
 #### UC-HOME-3: The home has no remote
-
-```
-Given the home is under version control
-When an agent or operator inspects where the home's history can be published
-Then no remote is configured
-And no surface presents the home's history as protection against loss of the machine
-```
 
 #### UC-HOME-4: Material appearing later is not retained by default
 
-```
-Given the home's history is active with its retained set established
-When new material appears in the home that has not been established as safe to retain
-Then it does not enter history
-```
-
-#### UC-HOME-5: Material already retained in breach of the rule surfaces
+#### UC-HOME-5: An operator finds material already retained outside the rule
 
 ```
-Given material that the retained-set rule excludes is already present in the home's history
-When the home's retained set is evaluated
+Given the retained-set rule excludes material already present in the home's history
+When the operator evaluates the retained set
 Then that breach is reported to the operator
 And it is not treated as resolved by excluding the material from future retention
 ```
 
 #### UC-HOME-6: A root owned by someone else stays foreign
 
-```
-Given a root inside the home that belongs to another owner
-When the home's retained set is evaluated
-Then that root's contents are not part of the home's retained set
-And asking whether a path under that root belongs to the home returns that it does not
-```
-
 #### UC-HOME-7: Excluded material never enters the record
-
-```
-Given a home directory that is not yet under version control and holds material the retained-set rule excludes
-When the home's history is activated
-Then that material is absent from the record the activation creates
-And it is absent because it was never recorded, not because it was recorded and then dropped
-```
 
 #### UC-HOME-8: Activation over an active history records only its own writes
 
-```
-Given the home's history is active
-And the home holds an authored snippet no one has recorded yet
-And another session has staged a change in the home without committing it
-And activation refreshes a retained template file that was unchanged since the last record
-When an agent or operator activates the home again
-Then the activation's record holds the refreshed template file and nothing else
-And the authored snippet is still unrecorded and untouched
-And the other session's change is still staged and unrecorded
-```
-
 #### UC-HOME-9: An activation that writes nothing records nothing
-
-```
-Given the home's history is active
-And every file activation would write already matches what it would write
-When an agent or operator activates the home again
-Then no record is created
-```
 
 #### UC-HOME-10: The activation's record names the installation as its author
 
-```
-Given activation records a change in the home's history
-When anyone inspects that record
-Then its author is the installation's own identity
-And no person's identity is named as its author
-```
-
 #### UC-HOME-11: A refused activation record leaves the home as activation found it
-
-```
-Given the home's history is active
-And activation wrote retained template files that were unchanged since the last record, or absent
-And the commit gate refuses the activation's record
-When activation completes
-Then nothing is recorded
-And each file activation wrote holds its earlier content again, or is absent again if it was absent
-And the refusal is reported with the gate's findings
-```
 
 ## Known caveats
 

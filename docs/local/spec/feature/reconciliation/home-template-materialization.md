@@ -54,6 +54,10 @@ refreshed retained file never leaves the home's working tree dirty.
 A project's help desk is seeded the same way, into the project's repository,
 by that project's convergence while its declaration enables it, and the project
 records it; machine installation never writes into a project's working tree.
+Company help desks are likewise outside machine installation: it writes no desk
+files and does not add a desk folder to the activation record. Baseline
+materialization creates the missing baseline files, not an additional
+documentation taxonomy scaffold.
 
 ## Canonical fields
 
@@ -85,7 +89,7 @@ records it; machine installation never writes into a project's working tree.
   mapped to `<name>`.
 - **Layer union.** A target receives the union of its layers' files. Two layers
   of one target that produce the same relative path fail before any target is
-  written.
+  written, naming that path and both contributing layers.
 - **File kind.** Sources and targets are regular files. Symbolic links are never
   created by this materialization path.
 - **Content gate.** Each template is rendered per the template-installation
@@ -119,107 +123,40 @@ records it; machine installation never writes into a project's working tree.
 
 #### UC-HTM1: Installation materializes home templates as regular files
 
-```gherkin
-Given the canonical checkout contains repository-owned home repository-layer templates
-And dot-prefixed target paths use the dot_ source marker
-And a target under the TeleClaude home is absent, identical, or byte-different
-When an agent runs machine installation
-Then every repository-layer template is present at its mapped home-relative path as a regular file
-And an identical target is left untouched
-And a missing target, or one differing from the template's rendered content, receives that rendered content
-And no materialized target is a symbolic link
-```
-
 #### UC-HTM2: A filesystem-type conflict fails without deleting the target
-
-```gherkin
-Given a home template source is a regular file
-And its matching target exists with a different filesystem type
-When an agent runs machine installation
-Then installation identifies the conflicting target and exits non-zero
-And the conflicting target is not removed or replaced
-And home-repository activation does not begin
-```
 
 #### UC-HTM3: Activation records the materialized retained-set declaration
 
-```gherkin
-Given the home template tree carries its dot_gitignore declaration and dot_vscode projection-only settings
-When an agent runs machine installation
-Then the templates are materialized before the activation scan begins
-And membership evaluation consumes the same retained-set declaration that activation records
-And the projection-only settings remain outside the retained set
-```
-
-#### UC-HTM4: Installation creates missing baselines and renders no master
+#### UC-HTM4: An operator installs without losing edited home baselines
 
 ```gherkin
-Given a declared person home and a declared company home
-And one holds local baselines its owner has edited
-And the other holds no local baselines
-When an agent runs machine installation
-Then the edited local baselines keep their content byte for byte
-And the missing local baselines are created from the documentation layer
-And no AGENTS.master.md in either home is written by installation
-And no documentation taxonomy directory is created in either home
+Given a declared person home has owner-edited documentation baselines
+And a declared company home is missing its documentation baselines
+When the operator runs machine installation
+Then the edited baselines remain byte for byte unchanged
+And the missing baselines are created from the documentation layer
+And neither home's master file is seeded by installation
 ```
 
 #### UC-HTM5: The TeleClaude home receives no documentation layer
 
-```gherkin
-Given the TeleClaude home holds the published documentation generation under docs/
-When an agent runs machine installation
-Then no file under the home's docs/ is written or replaced by materialization
-```
-
 #### UC-HTM6: Installation renders no help desk
-
-```gherkin
-Given a company declaration enables its help desk
-When an agent runs machine installation
-Then nothing is written into the company help desk
-And the desk folder does not enter the activation's record
-```
 
 #### UC-HTM7: A refreshed retained file enters the activation record
 
-```gherkin
-Given the TeleClaude home's retained .gitignore differs from its template and carries no unrecorded change
-When an agent runs machine installation
-Then the refreshed .gitignore is recorded by the activation commit
-And the home's working tree holds no change to a retained path afterward
-```
-
 #### UC-HTM8: Two layers producing one path fail before any write
 
-```gherkin
-Given two layers of one target each carry a template that maps to the same relative path
-When an agent runs machine installation
-Then installation fails naming that path and both layers
-And no target of any home is written
-And home-repository activation does not begin
-```
-
-#### UC-HTM9: A target carrying an unrecorded change is held
+#### UC-HTM9: An operator preserves unrecorded home edits during installation
 
 ```gherkin
-Given the TeleClaude home's history is active
-And the home's retained .gitignore carries an edit no one has recorded
-When an agent runs machine installation twice
-Then the file keeps its content byte for byte
-And it is not recorded by activation
-And each installation reports its path as held because of its unrecorded change
+Given the home's retained .gitignore contains an unrecorded local edit
+When the operator runs machine installation
+Then the file remains byte for byte unchanged
+And activation does not record the file
+And installation reports that path as held because of its unrecorded change
 ```
 
 #### UC-HTM10: A held target converges once its change is recorded
-
-```gherkin
-Given the TeleClaude home's retained .gitignore was held because of an unrecorded edit
-And its author has since recorded that edit
-When an agent runs machine installation
-Then the .gitignore equals the rendering of its template
-And the refresh is recorded by the activation commit
-```
 
 ## Known caveats
 

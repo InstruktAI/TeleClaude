@@ -47,16 +47,6 @@ Scenario: Keep the upstream skill package structure
 
 #### UC-AAV2: A repository's artifact sources are validated within its declared reach
 
-```gherkin
-Scenario: An agent validates a repository whose sources exceed its declared reach
-  Given a repository that is not the mother declares the domains it publishes
-  And it carries authored sources under agents/local/ and agents/global/
-  When the agent runs artifact validation
-  Then every agents/local/ source is validated as authored input
-  And a global skill is refused with a finding naming the file and the reach it exceeds
-  And nothing under .agents/ is read as an authored source
-```
-
 #### UC-AAV3: Scoped validation grades the artifacts in its path set
 
 #### UC-AAV4: The commit gate validates the artifacts in its pathspec

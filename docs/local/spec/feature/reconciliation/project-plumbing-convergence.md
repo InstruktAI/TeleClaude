@@ -151,162 +151,54 @@ publication.
 
 #### UC-RPC1: Convergence removes the driver when docs is unsubscribed
 
+#### UC-RPC2: An operator can use home references in a docs-enabled project
+
 ```gherkin
-Given a project whose git config carries the TeleClaude docs filter driver
-And the project's declaration does not subscribe docs
-When an agent runs project initialization for that project
-Then the docs filter driver is removed from the project's git config
-And no project-tracked file is edited
+Given an operator has a docs-enabled project with references to their TeleClaude home
+When they adopt the project on their machine
+Then those references resolve to that machine's home
+And locally modified documentation keeps its local content
 ```
 
-#### UC-RPC2: Convergence installs the driver and repairs an unexpanded checkout
+#### UC-RPC3: A project operator keeps their own hook during TeleClaude setup
 
 ```gherkin
-Given a project subscribing docs whose filter attributes are written
-And whose tracked documentation still holds unexpanded portable references
-When an agent runs project initialization for that project
-Then the docs filter driver is configured in the project's git config
-And those documentation files read as absolute home paths in the working copy
-And a file carrying local modifications keeps its local content
-```
-
-#### UC-RPC3: Convergence refreshes TeleClaude's hooks and preserves the project's own
-
-```gherkin
-Given a project whose enabled capabilities or declared bindings resolve an executable action
-And whose installed hooks include hooks TeleClaude owns
-And which also carries a hook the project authored itself
-When an agent runs project initialization for that repository
-Then the TeleClaude-owned hooks are refreshed from their current templates
-And the project-authored hook is left in place
+Given a project has a hook its owner authored alongside TeleClaude's declared hooks
+When an operator initializes the project
+Then TeleClaude's hooks are current
+And the project-authored hook is unchanged
 ```
 
 #### UC-RPC17: A project-authored hook that itself calls TeleClaude's dispatch is preserved
 
-```gherkin
-Given a project-authored hook that carries no TeleClaude sentinel
-And that hook itself invokes telec code <hook-name> alongside its own logic
-When an agent runs project initialization or fleet convergence for that project
-Then that hook is left in place, unmodified
-And it is not converged when the platform's hook template next changes
-```
-
 #### UC-RPC4: A project subscribing neither receives no git plumbing
-
-```gherkin
-Given a repository whose declaration activates no executable action binding
-And whose declaration does not subscribe docs
-When an agent runs project initialization for that repository
-Then no TeleClaude-owned git hook is installed for it
-And no docs filter driver is configured for it
-```
 
 #### UC-RPC7: Machine installation converges the platform home's plumbing
 
-```gherkin
-Given the platform home repository, declaring the global tier and holding person and company documentation homes
-When the machine installation target runs
-Then TeleClaude's hooks and the docs filter driver are installed in the home's git directory when absent
-And an installed hook is rewritten only when the content rendered from TeleClaude's hook template differs from what is installed, and is otherwise left untouched
-And hooks the home carries that TeleClaude does not own are preserved
-And a repeated run with nothing changed writes nothing
-```
-
 #### UC-RPC6: Publication converges no project plumbing
-
-```gherkin
-Given a project whose git hooks and docs filter driver are both out of date
-When publication deploys that project's committed sources
-Then no git hook is installed or refreshed
-And the docs filter driver is neither configured nor removed
-```
 
 #### UC-RPC8: A changed hook template converges every registered root
 
-```gherkin
-Given a TeleClaude-owned hook template has changed
-And that change advances the canonical checkout's main branch
-When the commit-boundary maintenance runs
-Then every registered root on that machine converges its installed plumbing
-And a root whose installed plumbing already matches its template is left untouched
-And a hook a root authored itself is preserved
-And no tracked file is written and no commit is produced in any converged root
-```
-
 #### UC-RPC9: Machine installation converges this checkout through the same act
-
-```gherkin
-Given the TeleClaude checkout carries a hook TeleClaude does not own
-And one of its TeleClaude-owned hooks lags its current template
-And another already matches its current template
-When the machine installation target runs
-Then the lagging hook is refreshed from its template
-And the hook already matching its template is not rewritten
-And the hook the checkout authored itself is preserved
-And every hook in the TeleClaude-owned set is covered, none omitted
-And the checkout's docs filter driver is configured
-```
 
 #### UC-RPC11: One act converges plumbing, whatever triggers it
 
-```gherkin
-Given plumbing is converged from project initialization, from machine installation, from the commit-boundary trigger, and from an on-demand maintenance run
-When any of those paths runs
-Then each performs the same comparison against the current templates
-And each preserves a hook its root authored itself
-And no trigger carries an installer whose semantics differ from the others
-```
-
 #### UC-RPC10: An unavailable root does not fail the convergence run
 
-```gherkin
-Given the registry names a root that is not present on this machine
-When fleet convergence runs
-Then that root is reported as unavailable
-And every other registered root still converges
-```
-
-#### UC-RPC12: Convergence links an adopted project to the published schemas
+#### UC-RPC12: An operator can use published configuration schemas in an adopted project
 
 ```gherkin
-Given an adopted project whose root carries no configuration-schema link, or a link pointing elsewhere
-When an agent runs project initialization or fleet convergence for that project
-Then the project's configuration-schema link points at the TeleClaude home's published schema directory
-And the schema reference in the project's committed configuration resolves to the published project schema
-And the link does not appear among the project's untracked files
-And no project-tracked file is edited
+Given an operator adopts a project whose configuration references a TeleClaude schema
+When they use that configuration on this machine
+Then the schema reference resolves to the published schema
+And the machine-local connection adds no untracked project file
 ```
 
 #### UC-RPC13: Convergence removes a stray untracked schema copy
 
-```gherkin
-Given an adopted project whose root holds a schema copy the project does not track
-And that copy holds only TeleClaude-generated schema files
-When an agent runs project initialization or fleet convergence for that project
-Then that schema copy is removed
-And the project's convergence completes successfully
-```
-
 #### UC-RPC14: A tracked or foreign schema copy is reported and kept
 
-```gherkin
-Given an adopted project whose root holds a schema copy that the project tracks or that holds a file TeleClaude did not generate
-When an agent runs fleet convergence
-Then that copy and every file in it are left in place
-And the agent sees that root reported as retaining a schema copy
-And no commit is made in that project
-And every other registered root still converges
-```
-
 #### UC-RPC15: An occupied link path is reported and kept
-
-```gherkin
-Given an adopted project whose configuration-schema link path is occupied by a directory or a regular file
-When an agent runs fleet convergence
-Then the occupying entry is left unchanged
-And the agent sees that root reported as having its schema link path occupied
-And the project's hooks and docs filter driver still converge
-```
 
 #### UC-RPC18: An adopted project never offers TeleClaude's local state for commit
 
@@ -318,17 +210,6 @@ And the same holds for a project that subscribes neither code nor docs
 ```
 
 #### UC-RPC19: An on-demand maintenance run converges the root it runs in
-
-```gherkin
-Given a project whose installed TeleClaude-owned hooks lag their current templates
-And which also carries a hook the project authored itself
-And whose docs filter driver does not match its docs subscription
-When an agent runs telec sync in that project's canonical checkout on main
-Then the project's TeleClaude-owned hooks are refreshed
-And the project-authored hook is left in place
-And the docs filter driver matches the project's docs subscription
-And no tracked file is written and no commit is produced
-```
 
 ## Known caveats
 

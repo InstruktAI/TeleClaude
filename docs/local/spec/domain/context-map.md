@@ -30,12 +30,14 @@ contracts and never creates shared ownership.
   code-integration workflow.
 - `config`: file-backed v1 configuration.
 - `reconciliation`: installation and fleet convergence behavior.
-- `presentation`: the ephemeral display state of TeleClaude's own UI clients —
-  the TUI and the CLI: local projections, caches, and
-  rendering policy over data other contexts publish. It owns no published
-  facts, no persistence, and no other context's semantics; it never redefines,
-  validates, defaults, or recovers a publishing context's rules. Its observable
-  behavior is bound by the feature specs its clients realize.
+
+- `presentation`: display policy over data other contexts publish: local TUI
+  and CLI projections, caches and rendering, and chat-message display lifetimes
+  under `local/projects/teleclaude/policy/ux-message-cleanup`. It owns no
+  published session facts or conversation-source persistence, and never
+  redefines, validates, defaults or recovers another context's rules. Adapters
+  execute its lifetime decisions through their existing delivery mechanics;
+  transport and session-input acceptance retain their respective owners.
 
 - `event-catalog`: the platform event stream's envelope shape, the facts every
   event states about itself — its type, source and origin, subject, related

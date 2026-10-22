@@ -77,28 +77,6 @@ persisted surface the wizard writes is documented in
 
 ## Canonical fields
 
-<!-- planned:central-shared-configuration -->
-
-### Shared settings in setup
-
-The wizard completes computer identity and Redis bootstrap locally. It then
-reads and edits shared fields through the shared-subject editor under
-`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`.
-Shared declarations are displayed independently of whether this computer
-executes the configured service; local applicability is shown separately.
-An unavailable shared source is a named configuration prerequisite and never
-causes a local copy to be created. Shared initialization remains the explicit
-installation/migration operation, separate from opening or paging through the
-wizard (`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`).
-
-For migrated fields, the persistence inventory delegates to that shared
-configuration transaction, and completeness checks use the configuration
-owner's masked set/unset answer rather than local environment presence. Local
-fields retain the existing file/environment writers and host preflight checks.
-No provider reachability or native login decision moves into the wizard
-(`sdlc/policy/domain-ownership`).
-<!-- /planned:central-shared-configuration -->
-
 ### Use cases
 
 #### UC-WIZ-1: Fresh-machine single-pass setup
@@ -296,20 +274,9 @@ Then the daemon reports itself ready without requiring a restart
 
 ### Persistence surfaces and writers
 
-<!-- planned-change:central-shared-configuration -->
-
 The wizard writes through six distinct persistence surfaces. The
 wizard does not introduce a parallel store; every persisted value
 lands in one of the six surfaces below.
-<!-- change:central-shared-configuration -->
-
-The inventory below names file writers for local and subject declarations.
-Migrated shared fields use the shared-subject transaction described above;
-their adapter credentials and selection values have no local environment or
-machine-file writer. Local launch overrides and bootstrap secrets retain the
-file writers named here
-(`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`).
-<!-- /planned-change:central-shared-configuration -->
 
 | Wizard scope                                          | Persistence file                             | Typed surface                                      | Writer                                                                |
 | ----------------------------------------------------- | -------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- |
@@ -404,7 +371,7 @@ deterministic verdict per row.
 
 | Check                                              | Mechanism                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Verdict tier                                       |
 | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Telegram required env vars set                     | env-var presence: `TELEGRAM_BOT_TOKEN`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Required runtime-start blocker                     |
+| Telegram env vars set (when applicable, enabled)   | env-var presence: `TELEGRAM_BOT_TOKEN`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Required runtime-start blocker                     |
 | `config.yml` exists and parses                     | File presence + machine-config loader (per `machine-config-load.md`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Required runtime-start blocker                     |
 | Project `teleclaude.yml` exists and validates      | File presence + project overlay validation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Required runtime-start blocker (when in a project) |
 | Global `~/.teleclaude/teleclaude.yml` valid        | File presence + global overlay validation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Optional gap                                       |
@@ -415,6 +382,9 @@ deterministic verdict per row.
 | Discord credentials present (when enabled)         | env-var presence: Discord env vars                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Optional adapter gap                               |
 | Agent CLI auth / OAuth consent (per enabled agent) | Stored OAuth/account credential presence per enabled agent (the agent runtime defines the credential source): Codex → `~/.codex/auth.json`; Gemini → `~/.gemini/oauth_creds.json`; Claude → the Claude Code login credential (macOS Keychain service `Claude Code-credentials`; the CLI's own credential store on other platforms). API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) are **not** a consent source — the agent runtime strips them from CLI subprocess env because they bypass OAuth, so their presence must not flip this row to OK. | Required runtime-start blocker (per enabled agent) |
 | Agent CLI permission readiness (per enabled agent) | Bounded local subprocess probe: invoke the enabled agent binary with its configured non-interactive flags (declared on the agents inventory) and confirm it returns without blocking on an interactive permission prompt                                                                                                                                                                                                                                                                                                                                               | Required runtime-start blocker (per enabled agent) |
+
+Applicability in a row's condition is the configuration owner's answer under
+`local/projects/teleclaude/spec/feature/config/runtime-applicability`.
 
 The two agent-CLI rows status-check the live-consent categories UC-WIZ-8
 requires the section to reflect: the agent's OAuth/browser login (the stored
@@ -470,21 +440,10 @@ rendering concern, not a state concern.
 
 ### Cross-context references
 
-<!-- planned-change:central-shared-configuration -->
-
 - The People view and every config section render from the canonical schemas
   and save to each field's owning file, per-person overlay fields and personal
   MCP secrets included
   (`local/projects/teleclaude/spec/feature/config/schema-driven-config-tui`).
-
-<!-- change:central-shared-configuration -->
-
-- The People view and configuration sections render from canonical schema
-  metadata and submit edits to the field's owning subject through
-  `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`.
-  Personal overlays and MCP secrets retain their existing persistence owners.
-
-<!-- /planned-change:central-shared-configuration -->
 
 - `local/projects/teleclaude/spec/teleclaude-config` is the authoritative surface for the
   config files and env vars the wizard persists. Every new persisted

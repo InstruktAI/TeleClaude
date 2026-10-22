@@ -28,7 +28,8 @@ completed, and the handoff itself remains owned by
 Every row belongs to one computer, and the actions taken from it address that
 computer alone. `R` on a project header restarts the sessions of that project on
 the header's computer; a project at the same path on another computer is another
-row. Starting a session by path on another computer sends the entered path
+row. Path mode refuses a local path that is not a directory before sending a
+request. Starting a session by path on another computer sends the entered path
 without judging it on the computer running the TUI: the computer that runs the
 session decides and answers
 (`local/projects/teleclaude/spec/feature/integration/computer-addressed-execution`).
@@ -50,8 +51,7 @@ gesture, so fast-closing a headless session behaves identically to the keyboard
 ```
 Given a headless session row in the TUI Sessions view
 When the operator fast-closes it with the Option+Shift-click chord
-Then the view requests exactly one close for that session
-And the view requests no revive for that session
+Then the session closes without being revived
 ```
 
 #### UC-SACT-2: An open session's pane remains inspectable during startup
@@ -79,7 +79,7 @@ And the view requests no preview for that session
 And the view requests no close for that session
 ```
 
-#### UC-SACT-4: An operator hands an open session to an automatic successor
+#### UC-SACT-4: An operator can request an automatic handoff for an open session
 
 ```gherkin
 Given a human operator selects an open session row in the TUI Sessions view
@@ -90,7 +90,7 @@ And the operator is told which successor was selected and that handoff started
 And a closed session row receives no handoff request
 ```
 
-#### UC-SACT-5: An operator hands off a project's live sessions from a chosen agent
+#### UC-SACT-5: An operator can request handoff for a project's live sessions from a chosen agent
 
 ```gherkin
 Given a human operator selects a project header in the TUI Sessions view
@@ -138,6 +138,6 @@ And sessions on any other computer receive no request
 ```gherkin
 Given a human operator opens the start-session form in path mode for a computer other than the one running the TUI
 When the operator enters a path and confirms
-Then the view sends the path as entered to that computer without checking it on the computer running the TUI
-But for the computer running the TUI, a path that is not a directory there is refused in the form and no request is sent
+Then the start request uses the path as entered on the selected computer
+And the operator receives that computer's answer
 ```

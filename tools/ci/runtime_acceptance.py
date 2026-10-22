@@ -158,7 +158,7 @@ _SCENARIO_RELEASE_CONFLICT = "UC-RC5"
 _SCENARIO_RELEASE_DEVELOPMENT_CLONE = "UC-RC6"
 _SCENARIO_RELEASE_DECLARATION = "UC-CFG-MIG-17"
 _SCENARIO_RELEASE_PUBLICATION = "UC-SPO34"
-_SCENARIO_RELEASE_BLUEPRINT = "UC-BPF1"
+_SCENARIO_RELEASE_BLUEPRINT = "UC-BPF9"
 _COLD_PROFILE_SCENARIOS = (_SCENARIO_COLD,)
 _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_COLD,
@@ -5399,7 +5399,7 @@ def _release_replay_recorded_publication(
 
 
 def _release_blueprint(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
-    """UC-BPF1: Blueprint maintenance and queries answer for the installed commit, not for local main."""
+    """UC-BPF9: Installed-release Blueprint queries use the installed source baseline."""
     world = _release_world(resources, evidence)
     install = world.primary
     if install is None:

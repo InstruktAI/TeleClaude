@@ -7,20 +7,10 @@ description: V1 configuration ownership for declaration loading, validation, nor
 
 ## What it is
 
-<!-- planned-change:central-shared-configuration -->
-
 The v1 config area owns loading, validation, normalization, and operator editing
 for the appliance's file-backed configuration. These files remain authoritative
 for v1 runtime behavior while all new configuration architecture lives in
 TeleClaudeNext.
-<!-- change:central-shared-configuration -->
-
-The v1 config area owns loading, validation, normalization and operator editing
-of the appliance's configuration. Local documents own local and subject
-declarations; shared runtime values have one configuration-owned authority under
-`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
-The separately governed replacement retains its own architecture.
-<!-- /planned-change:central-shared-configuration -->
 
 ## Canonical fields
 
@@ -34,11 +24,35 @@ The separately governed replacement retains its own architecture.
 
 <!-- /planned:issue-129 -->
 
+<!-- planned:issue-129 -->
+
+- **Also owns:** the config-owned GitHub App key resolution path. After caller
+  authentication and provider-operation admission, it reads the exact assigned
+  profile's bare key name from the global sibling `.env`, with interpolation
+  disabled and no ambient or other-tier fallback. It strictly decodes the
+  single-line standard-base64 UTF-8 PEM and returns `SecretStr` to the
+  credential component. A profile whose App ID or stable Bot identity
+  disagrees with the session assignment refuses without another actor.
+  Missing or malformed config/key material produces value-free diagnostics;
+  raw values and decode exceptions stay out of general config responses and
+  logs. `teleclaude-config` owns the field shape, and
+  raw `GlobalConfig` is checked before generic placeholder expansion so the
+  sensitive key-reference name remains bare and literal.
+  `atomic-env-file-write` owns the file-level custody and temporary-write details.
+- **Also owns:** global environment classification and lock order. Read the
+  latest validated global declaration under its transaction before acquiring
+  the sibling `.env` transaction, and hold both through set, clear,
+  field-reference edits, reconciled writes and protected reads. Generic global
+  environment operations use the same order while keeping their current value
+  semantics. The per-file transactions make no multi-file atomic-commit promise.
+  This is limited to the global App-key path; other environment tiers retain
+  their existing owner and storage contracts.
+
+<!-- /planned:issue-129 -->
+
 - **Schema authority:** `teleclaude/config/` and the published configuration
   schema.
 - **Operator surfaces:** `telec config` commands and the TUI configuration view.
-
-<!-- planned-change:central-shared-configuration -->
 
 - **Runtime authority:** configuration is loaded through
   `teleclaude/runtime/config.py`; externally supplied configuration values enter
@@ -46,32 +60,10 @@ The separately governed replacement retains its own architecture.
   the resolved values only from the typed configuration aggregate. Consumers
   neither consult the process environment nor invent fallback values.
 
-<!-- change:central-shared-configuration -->
-
-- **Runtime authority:** the configuration owner composes local declarations
-  and the shared runtime snapshot into typed consumer inputs. Local environment
-  expansion remains confined to local declarations; shared values follow
-  `local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
-  Consumers read the resolved aggregate under
-  `sdlc/policy/code-quality-practices`.
-
-<!-- /planned-change:central-shared-configuration -->
-
 - **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. File-backed configuration is not
   extended for vNext needs.
 
 ### Ownership boundary
-
-<!-- planned:central-shared-configuration -->
-
-- **Also owns:** shared subject definitions, validated snapshot reads and
-  mutations, revision and operation identity, sensitive-value resolution,
-  durable change creation and recoverable publication. The runtime projection
-  composes this authority with local bootstrap and resource declarations.
-  Application and per-consumer progress retain their integration owner under
-  `local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`.
-
-<!-- /planned:central-shared-configuration -->
 
 - **Owns:** configuration schema, loading, validation, normalization, and
   operator mutation of declared settings.

@@ -90,6 +90,10 @@ source in the global configuration.
   the global WhatsApp secret. Each message it carries is relayed as one event,
   `whatsapp.message.<type>`, with that message as its data. A webhook that
   carries no message is accepted and relays nothing.
+  When one webhook carries several messages, each is relayed as one event in
+  the order received. Meta's subscription handshake accepts only `subscribe`
+  mode with the configured verify token, echoes the challenge as plain text,
+  and relays no event; a missing mode or token is forbidden.
 
 ### Responses
 
@@ -104,191 +108,57 @@ source in the global configuration.
 
 The signature is checked before the body is read as a structured payload, and
 with a constant-time comparison. No response and no log record carries a secret.
+If secret resolution prevents reading a declaring home's configuration, the
+error record identifies that home and unresolved reference without recording a
+secret.
 
 ### Use cases
 
 #### UC-IF3: Verification challenge handshake (WhatsApp / Meta)
 
-```gherkin
-Given the global configuration declares the WhatsApp source with verify token "abc123"
-And Meta issues a verification challenge with mode=subscribe, verify_token=abc123, challenge=xyz
-When the ingress handles the challenge
-Then it echoes the challenge value as plain text in the accepted response
-And no event is relayed
-```
-
 #### UC-IF4: Verification challenge rejected
-
-```gherkin
-Given a verification challenge arrives without the declared verify token, or with a missing mode
-When the ingress evaluates the parameters
-Then it rejects the challenge as forbidden
-```
 
 #### UC-IF5: Verification on a native or GitHub endpoint is unsupported
 
-```gherkin
-Given a native or GitHub endpoint
-When a verification challenge arrives at it
-Then the ingress rejects it as method-not-supported
-```
-
 #### UC-IF8: Invalid body returns a client error
-
-```gherkin
-Given a correctly signed request whose body does not parse as a structured payload
-When the ingress handles it
-Then the request is rejected with an "invalid payload" client error
-And nothing is relayed
-```
 
 #### UC-IF12: Multi-message WhatsApp webhook
 
-```gherkin
-Given a verified WhatsApp webhook carries several messages
-When the ingress handles it
-Then it relays one event per message, in order
-And returns an accepted response
-```
-
-#### UC-IF16: A home's own declaration opens its native endpoint
+#### UC-IF16: An operator can expose a company's native event source
 
 ```gherkin
-Given the company "acme" declares a native source in its own configuration, with its secret in its own .env
-When a producer posts a request signed with that secret to /hooks/inbound/company/acme
-Then the ingress accepts it
-And relays an event whose origin is the company "acme"
+Given an operator has configured a native source for the company "acme"
+When the company's producer sends a valid signed request to that source
+Then the ingress accepts it and relays an event whose origin is the company "acme"
 And whose subject is that company's native source
 ```
 
 #### UC-IF17: A path no declaration opens has no endpoint
 
-```gherkin
-Scenario Outline: Only a home's own declaration opens an endpoint in its name
-  Given <situation>
-  When a signed request arrives at <path>
-  Then the ingress responds not found
-  And nothing is relayed
-
-  Examples:
-    | situation                                              | path                                   |
-    | the company "acme" declares no native source           | /hooks/inbound/company/acme            |
-    | no home "ghost" is registered on the ingress           | /hooks/inbound/person/ghost            |
-    | the project "web" declares a native but no GitHub source | /hooks/inbound/github/project/web    |
-```
-
 #### UC-IF18: Every request is signed
-
-```gherkin
-Scenario Outline: An unsigned or wrongly signed request is refused
-  Given the project "web" declares a GitHub source
-  When a delivery arrives at /hooks/inbound/github/project/web <signature>
-  Then the ingress responds unauthorized
-  And nothing is relayed
-
-  Examples:
-    | signature                                  |
-    | with no signature                          |
-    | signed with a different secret             |
-    | signed with the project's secret but carrying the native protocol's signature instead of GitHub's |
-```
 
 #### UC-IF19: A source without a secret cannot be declared
 
-```gherkin
-Given a home's configuration declares a native source with no secret
-When that configuration is validated
-Then validation fails and names the missing secret
-And the ingress opens no endpoint for that home
-```
-
-#### UC-IF20: A declaration takes effect without a restart
+#### UC-IF20: A person can add a native source while ingress is running
 
 ```gherkin
-Given the ingress is running
-And the person "mo" declares no native source
-When a native source is added to that person's configuration, with its secret in their .env
-And a request signed with that secret arrives at /hooks/inbound/person/mo
-Then the ingress accepts it and relays the event
+Given a person has a running ingress and no native source in their configuration
+When they add a native source and its secret to their own configuration
+And a valid signed request arrives before ingress restarts
+Then the ingress accepts the request without a restart and relays the event
 ```
 
 #### UC-IF21: TeleClaude relays the native payload without interpreting it
 
-```gherkin
-Given a project declares a native source
-When its producer posts a signed request with domain "erp", name "invoice.overdue.reminded" and a payload object with any members
-Then the relayed event is named "erp.invoice.overdue.reminded"
-And its data is exactly the payload the producer sent
-```
-
 #### UC-IF22: A malformed native event name is refused
-
-```gherkin
-Scenario Outline: The relayed name is built only from well-formed segments
-  Given a project declares a native source
-  When its producer posts a signed request with domain <domain> and name <name>
-  Then the ingress rejects it with a client error
-  And nothing is relayed
-
-  Examples:
-    | domain  | name           |
-    | ""      | "paid"         |
-    | "erp"   | ""             |
-    | "Erp"   | "paid"         |
-    | "erp"   | "invoice..paid"|
-    | "e.rp"  | "paid"         |
-```
 
 #### UC-IF23: A failed relay asks the sender to retry
 
-```gherkin
-Given a verified request
-When relaying it to the cluster fails
-Then the ingress responds with a transient failure status
-And the sender may deliver the request again
-```
-
 #### UC-IF24: An unreadable declaring home is a server error
-
-```gherkin
-Given the project "web" declares a GitHub source whose secret references a name missing from its .env on the ingress
-When a delivery arrives at /hooks/inbound/github/project/web
-Then the ingress responds with a server error
-And the error record names the project and the unresolved reference, never a secret
-```
 
 #### UC-IF25: A GitHub delivery is accepted in either content type GitHub offers
 
-```gherkin
-Scenario Outline: Both GitHub content types relay the same event
-  Given the project "web" declares a GitHub source
-  And GitHub delivers a push whose JSON document names the repository "acme/web"
-  When the delivery arrives at /hooks/inbound/github/project/web <encoded>, signed over the raw body with the project's secret
-  Then the ingress accepts it
-  And the cluster receives the platform event "github.push"
-  And its data is the JSON document GitHub delivered
-
-  Examples:
-    | encoded                                                        |
-    | as a JSON body                                                 |
-    | as a form-encoded body whose single field "payload" holds the JSON document |
-```
-
 #### UC-IF26: A form-encoded GitHub delivery without a single payload document is refused
-
-```gherkin
-Scenario Outline: The form body must carry exactly one JSON document
-  Given the project "web" declares a GitHub source
-  When a correctly signed form-encoded delivery arrives at /hooks/inbound/github/project/web <form>
-  Then the ingress rejects it with an "invalid payload" client error
-  And nothing is relayed
-
-  Examples:
-    | form                                           |
-    | with no "payload" field                        |
-    | with the "payload" field given twice           |
-    | whose "payload" field is not a JSON object     |
-```
 
 ### Cross-context references
 

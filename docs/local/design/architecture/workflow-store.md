@@ -26,6 +26,8 @@ storage paths.
 
 ## Inputs/Outputs
 
+<!-- planned-change:issue-130 -->
+
 The canonical item identity is its slug. The typed projection uses
 `WorkItemId` for that identity and a separate opaque `StoreAddress` for local
 row addressing; neither substitutes for the other. Existing protocol methods
@@ -41,6 +43,52 @@ state remains `dict[str, StateValue]`. The selected-store helpers additionally
 use `StorePresence`, `StoreIntegrityStatus`, and the opaque `TransferSource` /
 `TransferResult` pair. Existing task, schedule and creative state remain within
 workflow state and preserve their current ownership and interpretation.
+
+<!-- change:issue-130 -->
+
+The canonical item identity is `WorkItemId`, the identity the selected adapter
+assigns (#124 INV-D1). Consumers treat it as opaque: they never construct it
+from a requested slug and never parse it. A separate opaque `StoreAddress` is
+the selected adapter's address for the item, distinct from `WorkItemId`;
+neither substitutes for the other. Existing protocol methods retain slug and
+row-id string parameters where current consumers use them, and the adapter
+resolves the address. The operation
+records currently used by `WorkflowStore` are `WorkItem`,
+`TodoDiagnosticRecord`, `WorkItemStateRead`, `IdentityResolution`,
+`RemovalRequest`, `ExpiredRemovedItem`, `PurgedItem`, `ArtifactMetadata`,
+`ArtifactWriterSet`, `ArtifactRemoval`, `ArtifactVersion`, `StoreCapabilities`,
+and `TodoProjectionSnapshot` with `TodoProjectionItem`,
+`TodoProjectionMetrics`, and `ArtifactFile`. Dependency operations use
+`DependencyEntry`; workflow state remains `dict[str, StateValue]`. The
+selected-store helpers additionally use `StorePresence`,
+`StoreIntegrityStatus`, and the opaque `TransferSource` / `TransferResult`
+pair. Existing task, schedule and creative state remain within workflow state
+and preserve their current ownership and interpretation.
+
+<!-- /planned-change:issue-130 -->
+
+<!-- planned:issue-130 -->
+
+- **Creation result.** The slug a caller passes to `add_to_todo` or
+  `create_item_with_initial_artifact` is the creation key. Each operation
+  returns the `WorkItemId` of the item that holds that key after the call: the
+  item it created or, for `add_to_todo`'s update of an existing key, that
+  item. Every failure raises. Duplicate refusal stays with the live-conflict
+  check keyed by the requested creation key, before the store is called.
+  Consumers that act on the created item use the returned identity.
+- **Selected backend.** The project resolver exposes the backend it selects
+  from `todos.store` (#124 INV-B1). `WorkflowStore.capabilities` only gates
+  operations; no consumer reads the backend from it.
+- **Native target projection.** The GitHub adapter module supplies a pure
+  projection from the project's repository identity and an item's
+  (`WorkItemId`, `StoreAddress`) pair to a session's native GitHub target
+  (`local/projects/teleclaude/spec/feature/identity/platform-github-identity`).
+  It makes no provider call and reads no workflow state outside the selected
+  store. The projected target names no branch or base. The projection is not a
+  port operation: the seven-part port gains no operation and carries no GitHub
+  type.
+
+<!-- /planned:issue-130 -->
 
 The seven operation parts are realized by the current state and artifact
 operations:
@@ -98,6 +146,21 @@ operations:
   ordering, dependency exclusion, durable checkpoint, lease and parking
   behavior, duplicate-integration guards and final-root confirmation. Delivery
   is recorded once at the confirmed final root SHA.
+
+<!-- planned:issue-128 -->
+
+- The port supplies each act as one coherent logical act together with the
+  artifact revisions it was decided on (#124 INV-S3).
+  - **Local adapter.** It commits the act in one atomic SQL transaction and
+    rolls the whole act back on failure.
+  - **GitHub adapter.** It supplies observed-revision validation: the act records
+    the revisions it observed and checked, and an observed mismatch refuses the
+    act. This is not a cross-object commit-instant fence. Publishing the act
+    neither locks nor overwrites a concurrent body edit.
+  - **Unconfirmed provider acceptance.** It is a separate recovery outcome and
+    supplies no committed-act evidence.
+
+<!-- /planned:issue-128 -->
 
 ## Primary flows
 

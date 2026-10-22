@@ -7,8 +7,6 @@ description: One kind-addressed CLI contract for initializing, listing, reading,
 
 ## What it is
 
-<!-- planned-change:central-shared-configuration -->
-
 `telec config <kind> list|get|patch`, with `init` for every kind but `project`,
 is the agent-facing resource surface for configuration. The singular kind is `computer`, `global`, `person`,
 `company`, or `project`; an overlay subject's kind matches its declared
@@ -20,20 +18,6 @@ creation addresses the folder it makes, and adoption addresses the checkout the
 caller stands in — the owning checkout of the repository that holds the caller's
 current directory, or that directory itself when no repository holds it or when
 the repository holding it is the global home's.
-<!-- change:central-shared-configuration -->
-
-`telec config <kind> list|get|patch` is the agent-facing configuration resource
-surface. File-backed kinds are `computer`, `global`, `person`, `company` and
-`project`; `shared` addresses shared runtime subjects. `init` applies to the
-file-backed kinds except `project`. An overlay subject's kind matches its
-declared `kind`; `computer` addresses the fixed machine file without becoming
-an overlay tier or context root. Computer and global are singletons. Person,
-company and existing project subjects use stable slugs. Creating a project
-addresses the folder it makes; adopting a project addresses the owning checkout
-containing the caller, or the caller's directory when no repository holds it or
-the containing repository is the global home's. Shared subject addressing is
-defined below.
-<!-- /planned-change:central-shared-configuration -->
 
 A project has two verbs of its own besides the resource operations:
 
@@ -169,35 +153,6 @@ not change a kind or instance by implication.
 
 ## Canonical fields
 
-<!-- planned:central-shared-configuration -->
-
-### Shared runtime subjects
-
-`telec config shared list|get|patch` addresses shared runtime values through the
-same daemon-owned configuration command boundary. The instance is `cluster` or
-`project:<slug>`; it is explicit for `get` and `patch`. `list` reports the
-defined subjects without creating one. This resource creates no overlay tier,
-project registration or invocation context. Initialization belongs to the
-configuration migration owner.
-
-`get <subject> [paths...]` returns the subject's `schema_id`, revision, masked
-values and explicit presence state. `--operation-id <id>` also reports that
-subject's retained outcome for the named write. A patch retains the existing
-`--revision`, `--yaml` and `--from-file` transport shape. Its body carries
-`schema_id`, `operation_id`, explicit `set` values by logical path and an
-`unset` path list;
-null is a value, and omission keeps state. Shared reads and writes follow
-`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
-
-The shared editor routes field keep, replace and clear intent to this same
-patch capability. The `computer` editor exposes local declarations and marked
-read-only shared projections; editing a shared projection addresses its shared
-subject and revision. Existing file-subject merge patches retain their current
-meaning. Clients construct requests and render answers without resolving
-shared values or applying configuration
-(`sdlc/principle/architecture-boundary-purity`).
-<!-- /planned:central-shared-configuration -->
-
 ### Shared configuration editor
 
 Configuration editing has one daemon-owned contract, consumed by terminal and
@@ -255,6 +210,15 @@ editing: explicitly changing a stored reference is a document mutation, while
 editing its effective value changes the referenced value. Both execute through
 the same daemon-owned configuration commands. This contract supplies the shared
 capability to web clients; it does not define a web-console screen.
+
+<!-- planned:issue-129 -->
+
+A global field edit that names a GitHub App key still uses this editor's field
+identity, subject revision and explicit keep/replace/clear intent. It delegates
+protected classification and persistence to the config owner; the file-level
+write contract remains
+`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`.
+<!-- /planned:issue-129 -->
 
 ### Read paths
 

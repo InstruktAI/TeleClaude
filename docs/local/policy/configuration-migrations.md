@@ -34,8 +34,6 @@ description: How a configuration migration is written — one numbered step in o
   config-owned hand-off that owner imports from; a migration never writes
   another context's store.
 
-<!-- planned-change:central-shared-configuration -->
-
 - **A value in transit stays readable at its destination.** Until a document is
   stored past the migration that moves a value out of it, the config-owned
   destination's published reader also answers with the value that document still
@@ -46,21 +44,6 @@ description: How a configuration migration is written — one numbered step in o
   documents in transit hold different values for it, the reader answers with
   neither: a read never settles a conflict. Consumers outside the configuration
   context use the destination's published reader alone.
-
-<!-- change:central-shared-configuration -->
-
-- **A value in transit stays readable at its destination.** For a local
-  destination, its published reader also answers from documents below the
-  moving step through the migration list's in-transit query. The query reads
-  each step's own move definition and writes nothing. Conflicting destination
-  or in-transit values yield neither value. A shared destination instead has
-  one initialized authority across computers: its ordinary reader reports an
-  uninitialized or unavailable subject until that authority is readable, and
-  never selects one computer's source. Its migration inventory uses the same
-  step-owned move definitions to collect raw source declarations for explicit
-  import. Consumers use only the destination's published reader.
-
-<!-- /planned-change:central-shared-configuration -->
 
 - **A step may retire config-owned records the list declares obsolete.** A retirement
   effect removes config-owned records that no current code reads. It is idempotent, never touches a configuration document, and runs on every
@@ -114,13 +97,6 @@ description: How a configuration migration is written — one numbered step in o
   unknown wherever they reappear.
 
 ## Rationale
-
-<!-- planned:central-shared-configuration -->
-
-A local fallback for a shared destination lets two computers answer differently
-for one subject. The explicit import protects that authority boundary while
-the source document's version remains the record of its own migration progress.
-<!-- /planned:central-shared-configuration -->
 
 One shared version authority keeps source correctness independent of a later
 reconciliation run.

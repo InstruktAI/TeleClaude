@@ -40,6 +40,10 @@ closure's Required reads name, so the procedure's closure is the complete
 instruction set a dispatched session retrieves at its start
 (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`).
 
+An activation closure lists every included dependency once under `# Required reads (included)`. If an eligible dependency cannot be read, closure fails visibly with that dependency identified and is never presented as complete; pending or visibility-ineligible dependencies are omitted without a hard failure.
+
+The hidden `--closure` form is surfaced only in activation-catalog and procedure-entry instructions and the `telec docs get` leaf-help Notes; it is absent from ordinary usage, generated CLI documentation, baseline instructions and default retrieval. It accepts one delivered taxonomy procedure without scope/project/target filters or third-party IDs; invalid forms fail before fetching content.
+
 ## Canonical fields
 
 ### Use cases
@@ -146,43 +150,9 @@ And Required reads resolution is NOT applied to that ID
 
 #### UC-3PR7: Catalog activation loads the full eligible required-read closure, deduplicated
 
-```
-Given a delivered activatable procedure listed in a generated Activatable Procedures catalog
-And its required-read closure spans multiple dependency levels
-And one dependency snippet is reachable through two different parents in that closure
-When an agent executes the fetch instruction shown by that catalog entry
-Then the output renders the requested snippet body and the body of every snippet in the required-read closure
-And the dependency reachable through two parents renders exactly once
-And a "# Required reads (included)" header names the dependency IDs loaded beyond the requested set
-And no "# Required reads (not loaded)" header is emitted
-```
-
 #### UC-3PR8: The hidden activation option appears only on its authorized surfaces
 
-```
-Given the CLI help, generated CLI documentation, baseline index instructions, default retrieval output, generated Activatable Procedures catalogs, and procedure-entry loaders
-When those surfaces are rendered
-Then the hidden activation option appears in the telec docs get leaf-help Notes
-And it appears in the generated Activatable Procedures catalog instruction
-And it appears in the loader a procedure-entry session receives for its procedure, and in the loader for a procedure read into a running session
-But it is absent from CLI usage and option listings, generated CLI documentation, baseline index instructions, and default retrieval output
-And using it with multiple requested IDs, a snippet that is not a procedure, a pending procedure, a third-party document, or a scope, project, or target filter fails before retrieval
-```
-
 #### UC-3PR9: Catalog activation distinguishes unreadable from ineligible closure members
-
-```
-Given a catalog-directed activatable-procedure fetch whose required-read graph contains an unreadable eligible dependency
-When the fetch resolves the procedure's closure
-Then the command exits non-zero with an error naming the unreadable dependency ID
-And the "# Required reads (included)" header never names a dependency whose body was not rendered
-And the output is never presented as a complete closure
-
-Given the same fetch resolves a dependency that is pending for another delivery and therefore not part of the current contract
-When the fetch resolves the procedure's closure
-Then that dependency is omitted without a hard failure
-And it is absent from the "# Required reads (included)" header
-```
 
 #### UC-3PR10: Documentation retrieval works outside any home
 
@@ -246,47 +216,11 @@ And the refusal is the same whether or not that person is declared
 
 #### UC-3PR16:
 
-```gherkin
-Given an agent loads a procedure with explicitly declared shared handling instructions
-When it requests the complete procedure closure
-Then the closure includes those declared dependencies
-And each dependency is rendered once even when reachable through several paths
-```
-
 #### UC-3PR17:
-
-```gherkin
-Given an agent discovers a subscribed procedure and retrieves it without closure expansion
-When it inspects the procedure's required reads
-Then it sees the dependencies the procedure explicitly declares
-And ordinary retrieval leaves their bodies for explicit follow-up
-And delivery metadata adds no undeclared documentation dependency
-```
 
 #### UC-3PR18:
 
-```gherkin
-Given a subscribed procedure explicitly requires shared handling instructions
-And those instructions are unavailable as eligible current content
-When an agent requests its activation closure
-Then the request fails visibly rather than claiming a complete instruction set
-And the failure identifies the unavailable dependency
-```
-
-The context owner resolves the authored Required reads graph under
-`general/spec/snippet-authoring-schema`. Publication exposes that graph;
-ordinary retrieval lists its dependencies; closure retrieval expands it under
-its visibility and deduplication rules. The procedure and its required shared
-instructions become current together
-(`general/policy/documentation-discipline`, `general/principle/priming`).
-
 #### UC-3PR19:
-
-```gherkin
-Given a delivered procedure whose required reads name a generated domain bundle
-When an agent requests that procedure's one-pass closure
-Then the output renders the bundle once alongside the procedure and its required-read snippets
-```
 
 ### Cross-context references
 
@@ -318,10 +252,8 @@ Then the output renders the bundle once alongside the procedure and its required
   confined to identities the caller names; the tier selectors disclose nothing,
   and the refusal for another person's local half, which is the same whether or
   not that person is declared, discloses nothing either.
-- Phase 1 third-party output ignores `--baseline-only` and `--target` (third-party
-  renders on a separate track), but `--scope` and `--project` do apply to it:
-  `--scope` keeps only third-party entries of that scope, and `--project <slug>`
-  drops third-party entirely, since third-party indexes are loaded for the current
-  project and global only and are never cross-project-loaded.
+- Phase 1 third-party entries are loaded separately from taxonomy entries, so
+  `--baseline-only` does not filter them. `--scope` filters them by their scope;
+  named-home selectors and `--target` omit third-party entries entirely.
 - The v1 CLI namespace is `telec docs *`. The v2 target is `telec context
 docs *`. The verb rename is a known migration cleanup.

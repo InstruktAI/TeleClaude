@@ -79,67 +79,32 @@ Examples:
 
 #### UC-BPF2: Extraction excludes uncommitted and branch-only work
 
-```gherkin
-Given an agent has uncommitted edits in the canonical checkout and branch-only work in a todo worktree
-When automatic Blueprint maintenance extracts committed canonical main
-Then the resulting graph describes the selected committed revision
-And neither uncommitted nor branch-only structure enters that generation
-```
-
 #### UC-BPF3: Successive activations converge without rolling the cache backward
 
-```gherkin
-Given more than one canonical-main advance is awaiting Blueprint maintenance
-When the maintenance executor settles those obligations
-Then an agent sees each obligation reach its own recorded outcome
-And the shared Blueprint converges to the latest committed main revision observed by the actions
-And an obligation finding that revision already current completes without extraction
-```
-
-#### UC-BPF5: Unavailable current evidence is explicit
+#### UC-BPF5: An agent gets no stale blast-radius answer
 
 ```gherkin
-Scenario Outline: A query cannot establish a current complete generation
-Given the current Blueprint is unavailable because <condition>
-When an agent asks for structural dependents
-Then the query reports unavailability and the applicable maintenance recovery reference
-And it returns no older dependents as a successful current answer
-
-Examples:
-| condition |
-| extraction failed |
-| generation was interrupted before publication |
-| the query wait bound expired |
-| maintenance was never recorded |
-| committed canonical main cannot be resolved |
-| the activated graph cannot be read |
+Given an agent asks for the structural dependents of a changed file
+And no complete Blueprint matching the requested checkout's current baseline can be established
+When the query returns
+Then it reports the result as unavailable with the applicable maintenance recovery reference
+And it does not present older dependents as the current answer
 ```
 
 #### UC-BPF6: Failure recovery converges forward
 
-```gherkin
-Given an earlier Blueprint obligation failed and canonical main has advanced again
-When the owning agent replays that failed maintenance action
-Then the outcome retains the earlier obligation's activation identity
-And successful recovery activates a complete generation for committed main selected by the replay
-And it does not replace a current generation with an older revision
-```
-
 #### UC-BPF7: On-demand recovery reuses the maintenance action
-
-```gherkin
-Given a code-enabled project's shared Blueprint is behind committed canonical main
-When an agent runs on-demand maintenance from the canonical checkout on main
-Then Blueprint maintenance converges the shared cache to committed main
-And repeating the run with nothing changed completes without extracting again
-```
 
 #### UC-BPF8: Projects without code do not acquire Blueprint maintenance
 
+#### UC-BPF9: An agent retrieves Blueprint results for a person
+
 ```gherkin
-Given a project has no code capability
-When its canonical main advances or an agent runs on-demand maintenance
-Then the project performs no Blueprint extraction or cache publication
+Scenario: Use the installed release as the query baseline
+  Given an agent acts for person X using an installed release whose source differs from local main
+  When the agent asks for the Blueprint affected view of a changed file
+  Then the result for person X reflects the installed release's source
+  And changes present only in local main do not affect the result
 ```
 
 ## See Also

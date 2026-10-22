@@ -31,19 +31,19 @@ catalog (`local/projects/teleclaude/spec/domain/event-catalog`).
 
 #### UC-ED1
 
-#### UC-ED2: A developer can understand an event type before consuming it
+#### UC-ED2: An operator or developer can understand an event type before consuming it
 
 ```gherkin
-Given a developer needs to understand a listed event type before consuming it
-When they inspect that event type's schema
+Given an operator or developer needs to understand a listed event type before consuming it
+When their agent inspects that event type's schema
 Then they can understand what the event type declares
 ```
 
-#### UC-ED3: A developer can find the event types published by one owner
+#### UC-ED3: An operator or developer can find the event types published by one owner
 
 ```gherkin
-Given a developer needs to discover which event types a selected owner publishes
-When they inspect the event catalog for that owner
+Given an operator or developer needs to discover which event types a selected owner publishes
+When their agent inspects the event catalog for that owner
 Then they can find that owner's declared event types
 ```
 

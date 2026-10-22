@@ -7,6 +7,8 @@ mutations through ``StateWriter`` (full-state validation against
 
 No direct :class:`WorkflowStore` writes happen outside this module in the migrated
 flows — persistence is always driven by ``StateWriter``.
+Terminal driver release uses its conditional field mutation instead of a
+captured full-state write so concurrent assignments remain authoritative.
 """
 
 from __future__ import annotations
@@ -162,6 +164,11 @@ class StateWriter:
         payload = self.to_dict()
         await todos_db.write_state_by_id(todo_id, payload)
         return payload
+
+    @staticmethod
+    async def clear_active_runner_if_matches(todos_db: WorkflowStore, todo_id: str, session_id: str) -> bool:
+        """Release only the still-matching driver, without replacing current state."""
+        return await todos_db.clear_active_runner_if_matches(todo_id, session_id)
 
     def commit_sync(self, todos_db: WorkflowStore, slug: str) -> dict[str, StateValue]:
         """Validate and persist the current state via the sync DB path."""

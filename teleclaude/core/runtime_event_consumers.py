@@ -9,7 +9,8 @@ from pydantic import BaseModel
 
 from teleclaude.config.machine import config
 from teleclaude.core.events import ErrorEventContext, ErrorSeverity
-from teleclaude.events.consumers import Consumer, Interest
+from teleclaude.core.models._session import SessionField
+from teleclaude.events.consumers import Consumer, ConsumerDelivery, Interest
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.events.references import ReferenceKind
 from teleclaude.events.schemas.system import (
@@ -76,7 +77,7 @@ _CURRENT_REQUEST_SURFACE_REQUIRED = "runtime event reaction requires the lifecyc
 
 
 class RuntimeApiSurface(Protocol):
-    """The lifecycle-owned request surface methods used by durable reactions."""
+    """The lifecycle-owned request surface used by live presentation reactions."""
 
     async def handle_runtime_session_status(self, data: RuntimeSessionStatusData) -> None: ...
 
@@ -87,6 +88,16 @@ class RuntimeApiSurface(Protocol):
     async def handle_runtime_error(self, data: RuntimeErrorData) -> None: ...
 
     async def handle_runtime_operation_outcome(self, data: RuntimeOperationOutcomeData, *, succeeded: bool) -> None: ...
+
+    async def recover_runtime_availability(self) -> None: ...
+
+
+class RuntimeVoiceSurface(Protocol):
+    """Discord's current-source voice-focus recovery capability."""
+
+    async def recover_runtime_voice_focus(self) -> None: ...
+
+    async def handle_runtime_session_status(self, context: RuntimeSessionStatusData) -> None: ...
 
 
 def _typed_data[DataT: BaseModel](event: ReceivedEvent, model: type[DataT]) -> DataT:
@@ -105,8 +116,10 @@ def build_runtime_event_consumers(
     lifecycle: DaemonLifecycle,
     client: AdapterClient,
     close_housekeeping: Callable[[str], Awaitable[None]],
+    recover_housekeeping: Callable[[], Awaitable[None]],
     report_error: Callable[[ErrorEventContext], Awaitable[object]],
     discord_voice_status: Callable[[RuntimeSessionStatusData], Awaitable[None]],
+    recover_discord_voice: Callable[[], Awaitable[None]],
     compatibility_ingress: Callable[[InternalEventCompatIngressData, ReceivedEvent], Awaitable[None]],
 ) -> list[Consumer]:
     """Build independent internal-stream reactions while resolving replaceable surfaces at delivery time."""
@@ -126,9 +139,18 @@ def build_runtime_event_consumers(
 
     async def route_session_update(event: ReceivedEvent) -> None:
         data = _typed_data(event, RuntimeSessionSourceChangedData)
-        if data.change is not RuntimeSessionChange.UPDATED or not data.changed_fields:
-            return
-        await client.dispatch_session_update(data.session_id, dict.fromkeys(data.changed_fields))
+        if data.change is RuntimeSessionChange.UPDATED and data.changed_fields:
+            await client.dispatch_session_update(data.session_id, dict.fromkeys(data.changed_fields))
+
+    async def recover_session_updates() -> None:
+        sessions = await lifecycle.session_materializer.source_sessions()
+        for session in sessions:
+            await client.dispatch_session_update(
+                session.session_id, dict.fromkeys(field.value for field in SessionField), ensure_channels=False
+            )
+
+    async def recover_availability() -> None:
+        await _current_api(lifecycle).recover_runtime_availability()
 
     async def api_session_status(event: ReceivedEvent) -> None:
         data = _typed_data(event, RuntimeSessionStatusData)
@@ -139,8 +161,7 @@ def build_runtime_event_consumers(
         await _current_api(lifecycle).handle_runtime_agent_activity(data)
 
     async def api_availability(event: ReceivedEvent) -> None:
-        data = _typed_data(event, RuntimeAgentAvailabilityData)
-        await _current_api(lifecycle).handle_runtime_agent_availability(data)
+        await recover_availability()
 
     async def api_error(event: ReceivedEvent) -> None:
         data = _typed_data(event, RuntimeErrorData)
@@ -172,20 +193,64 @@ def build_runtime_event_consumers(
         await compatibility_ingress(data, event)
 
     async def route_discord_voice_status(event: ReceivedEvent) -> None:
-        data = _typed_data(event, RuntimeSessionStatusData)
-        await discord_voice_status(data)
+        await discord_voice_status(_typed_data(event, RuntimeSessionStatusData))
+
+    async def recover_voice_focus() -> None:
+        await lifecycle.session_materializer.reconcile_current()
+        await recover_discord_voice()
 
     consumers = [
-        Consumer(_MATERIALIZER_CONSUMER, _SESSION_SOURCE_INTEREST, materialize_session),
-        Consumer(_FINAL_CLOSE_CONSUMER, _SESSION_SOURCE_INTEREST, close_final_session),
-        Consumer(_ADAPTER_STATUS_CONSUMER, Interest(types=(TypePattern(_STATUS_CHANGED),)), route_session_status),
-        Consumer(_ADAPTER_UPDATE_CONSUMER, _SESSION_UPDATE_ROUTING_INTEREST, route_session_update),
-        Consumer(_API_STATUS_CONSUMER, Interest(types=(TypePattern(_STATUS_CHANGED),)), api_session_status),
-        Consumer(_API_ACTIVITY_CONSUMER, Interest(types=(TypePattern(_ACTIVITY_OBSERVED),)), api_activity),
-        Consumer(_API_AVAILABILITY_CONSUMER, _AVAILABILITY_INTEREST, api_availability),
-        Consumer(_API_ERROR_CONSUMER, _ERROR_INTEREST, api_error),
-        Consumer(_DAEMON_ERROR_FEEDBACK_CONSUMER, _ERROR_INTEREST, daemon_error),
-        Consumer(_API_OPERATION_CONSUMER, _OPERATION_INTEREST, api_operation_outcome),
+        Consumer(
+            _MATERIALIZER_CONSUMER,
+            _SESSION_SOURCE_INTEREST,
+            materialize_session,
+            delivery=ConsumerDelivery.LIVE,
+            recover=lifecycle.session_materializer.reconcile_current,
+            coalesce=True,
+        ),
+        Consumer(
+            _FINAL_CLOSE_CONSUMER,
+            _SESSION_SOURCE_INTEREST,
+            close_final_session,
+            delivery=ConsumerDelivery.LIVE,
+            recover=recover_housekeeping,
+        ),
+        Consumer(
+            _ADAPTER_STATUS_CONSUMER,
+            Interest(types=(TypePattern(_STATUS_CHANGED),)),
+            route_session_status,
+            delivery=ConsumerDelivery.LIVE,
+        ),
+        Consumer(
+            _ADAPTER_UPDATE_CONSUMER,
+            _SESSION_UPDATE_ROUTING_INTEREST,
+            route_session_update,
+            delivery=ConsumerDelivery.LIVE,
+            recover=recover_session_updates,
+        ),
+        Consumer(
+            _API_STATUS_CONSUMER,
+            Interest(types=(TypePattern(_STATUS_CHANGED),)),
+            api_session_status,
+            delivery=ConsumerDelivery.LIVE,
+        ),
+        Consumer(
+            _API_ACTIVITY_CONSUMER,
+            Interest(types=(TypePattern(_ACTIVITY_OBSERVED),)),
+            api_activity,
+            delivery=ConsumerDelivery.LIVE,
+        ),
+        Consumer(
+            _API_AVAILABILITY_CONSUMER,
+            _AVAILABILITY_INTEREST,
+            api_availability,
+            delivery=ConsumerDelivery.LIVE,
+            recover=recover_availability,
+            coalesce=True,
+        ),
+        Consumer(_API_ERROR_CONSUMER, _ERROR_INTEREST, api_error, delivery=ConsumerDelivery.LIVE),
+        Consumer(_DAEMON_ERROR_FEEDBACK_CONSUMER, _ERROR_INTEREST, daemon_error, delivery=ConsumerDelivery.LIVE),
+        Consumer(_API_OPERATION_CONSUMER, _OPERATION_INTEREST, api_operation_outcome, delivery=ConsumerDelivery.LIVE),
         Consumer(
             _COMPAT_INGRESS_CONSUMER,
             Interest(types=(TypePattern(INTERNAL_COMPAT_INGRESS_TYPE),)),
@@ -198,6 +263,8 @@ def build_runtime_event_consumers(
                 _DISCORD_VOICE_CONSUMER,
                 Interest(types=(TypePattern(_STATUS_CHANGED),)),
                 route_discord_voice_status,
+                delivery=ConsumerDelivery.LIVE,
+                recover=recover_voice_focus,
             )
         )
     return consumers

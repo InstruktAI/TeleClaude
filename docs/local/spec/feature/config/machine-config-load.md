@@ -11,8 +11,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:central-shared-configuration -->
-
 The runtime configuration surface (`config.yml`) is the single per-machine
 file that tells the runtime and the CLI surface who the computer is, which
 agents are installed, where Redis is, which Discord/Telegram credentials
@@ -29,18 +27,6 @@ the raised configuration-load error. Diagnostic rendering depends on the
 calling surface. This is the machine-level inventory layer; it is distinct from the
 `teleclaude.yml` layered-overlay system that resolves per-workspace
 global/project/person settings.
-<!-- change:central-shared-configuration -->
-
-The machine `config.yml` owns computer identity, bootstrap connection and local
-runtime declarations. The configuration owner composes them with the compatible
-shared snapshot into the typed runtime aggregate under
-`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
-Shared leaves are resolved before local environment expansion can treat them as
-machine declarations. Local files and environment values supply no alternative
-for those leaves. Remaining local fields retain their existing defaults,
-environment resolution, closed-model validation and `experiments.yml` behavior.
-The layered `teleclaude.yml` overlays retain their separate composition contract.
-<!-- /planned-change:central-shared-configuration -->
 
 A machine configuration may declare `kind: computer`. The declaration is an
 address, not a setting: the loader accepts it, removes it before typed
@@ -61,23 +47,9 @@ still absent.
 
 ## Canonical fields
 
-<!-- planned:central-shared-configuration -->
-
-### Shared projection application
-
-Bootstrap generation and local validation load without fetching shared values.
-A runtime that consumes shared settings loads a compatible authoritative
-snapshot before starting those consumers. An unavailable or incompatible
-snapshot is a named readiness failure, without local fallback
-(`sdlc/policy/code-quality-practices`).
-
-The shared projection passes component-owned validation before activation.
-Configuration-bound execution, consumer refresh and applied-revision
-confirmation belong to
-`local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`.
-The local file watcher retains its local-file reload responsibility and creates
-no shared revision or shared change occurrence.
-<!-- /planned:central-shared-configuration -->
+The typed aggregate exposes configuration-owned applicability and availability
+for its consumers under
+`local/projects/teleclaude/spec/feature/config/runtime-applicability`.
 
 ### Use cases
 

@@ -25,78 +25,41 @@ The behavioral contract that keeps a permanently multi-version fleet working tog
 - **Removing or breaking a shared shape waits for the slowest node.** A field or behavior the whole fleet relies on may be removed only after every live node — including the slowest channel — no longer needs it.
 - **Capabilities that require agreement refuse rather than guess.** A change that two nodes must agree on to stay safe (a coordination protocol) is not silently bypassed by an unaware node; it holds until both sides support it.
 
+- **Safe removal is decided from the live capability set, not version labels alone.** A compatibility behavior stays until every live node positively advertises the feature ID whose support permits its removal. A missing map, empty live set, or any node without that ID leaves removal unsafe.
+
+- **Peer command errors are diagnosed by capability.** If discovery shows the peer lacks a capability carried by the forwarding node, its command error is reported as a possible outdated-build mismatch with a remedy and the original error preserved. If the peer advertises all capabilities carried by the forwarding node, its error is returned unchanged. A version string supplies context; it does not decide the mismatch.
+
 - **Procedure entry is a capability that requires agreement.** A node advertises `procedure-entry` when it creates sessions by naming a published procedure. A session-create request naming a procedure that is forwarded to a node not advertising it is refused before any side effect, naming the missing capability; a request naming a retired command that reaches a node advertising it is refused naming the unknown command. No node translates between the two shapes. The agent role a session carries travels on an additive `role` field; the older `system_role` and `job_role` fields stay populated with a **legacy projection derived from the role's class and reach** — a worker-class role projects as `worker`, the integrator and coordinator as themselves, any other full-reach role as `orchestrator`, and any other contained role as its own name. A projected value reaches an older node only where no clearance reads it: in session snapshots, caller provenance and authored-turn labels, which that node reads for display and record alone (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`: only the principal crosses as identity, and a role carried in a message is read by no clearance). An older node's clearance reads the relayed principal and its own records, and its record derivation never meets a catalog name, because a session carrying one is created only on a node that advertises `procedure-entry`. A contained role's set is therefore evaluated only where the session was created, and no older node widens or narrows it.
 
 ### Use cases
 
 #### UC-FXI-1: An older node tolerates a newer node's added field
 
-```gherkin
-Given a newer node emits an event that carries a new optional field
-When an older node that predates the field receives the event
-Then the older node ignores the unknown field
-And processes the event using the parts it understands
-And does not error
-```
-
 #### UC-FXI-2: An older node ignores a brand-new capability
-
-```gherkin
-Given a newer node emits an event for a capability the older node has never heard of
-And the capability is one that is safe to ignore
-When the older node receives it
-Then the older node drops the event cleanly
-And continues operating with no error and no side effect
-```
 
 #### UC-FXI-3: A breaking removal waits for the slowest channel
 
-```gherkin
-Given a shared field is being retired
-When the change is proposed
-Then the old field is kept alongside the new form while any live node still depends on it
-And the old field is removed only after every live node — including the slowest, stable — has stopped depending on it
-And at no point does a live node receive a shape it cannot interpret
-```
-
 #### UC-FXI-4: A coordination change refuses rather than splits
-
-```gherkin
-Given a change that two nodes must both honor to remain safe (for example, a shared coordination protocol)
-And one node does not yet support it
-When the two nodes interact
-Then the change is not silently bypassed by the unaware node
-And the interaction holds to the previously agreed safe behavior until both sides support the change
-And no split-brain (both nodes acting on conflicting assumptions) occurs
-```
 
 #### UC-FXI-5: "Safe to remove" is answered from the fleet's actual state
 
-```gherkin
-Given a capability is a candidate for removal
-When the fleet is asked whether removal is safe
-Then the answer is derived from which versions and capabilities the live fleet actually advertises
-And not from a version-number comparison alone
-And removal proceeds only when every live node confirms it no longer needs the capability
-```
-
-#### UC-FXI-6: A command that fails across a version gap is legible, not raw
+#### UC-FXI-6: An operator receives an accurate peer command error
 
 ```gherkin
-Given a node forwards an operator command to a peer running an older build than the forwarding node
+Scenario: The peer lacks a capability carried by the forwarding node
+Given an operator forwards a command to a peer whose advertised capabilities omit one carried by the forwarding node
 When the peer rejects the command with an internal error
-Then the operator is told the peer appears to be running an outdated build and how to remedy it
-And the peer's original error text is preserved for diagnosis rather than surfaced alone
-```
+Then the operator is told the peer may need an update and how to remedy it
+And the peer's original error remains available for diagnosis
 
-#### UC-FXI-7: A same-build failure is surfaced without a false outdated-build claim
-
-```gherkin
-Given a node forwards an operator command to a peer advertising the same build as the forwarding node
+Scenario: The peer carries all capabilities of the forwarding node
+Given an operator forwards a command to a peer that advertises every capability carried by the forwarding node
 When the peer rejects the command with an internal error
 Then the operator sees the peer's error unchanged
 And no outdated-build claim is added
 ```
+
+#### UC-FXI-7: A same-build failure is surfaced without a false outdated-build claim
 
 ### Cross-context references
 

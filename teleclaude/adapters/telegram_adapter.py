@@ -129,7 +129,6 @@ class TelegramAdapter(
         self.computer_name = config.computer.name
         if not self.computer_name:
             raise ValueError("computer.name is required in config.yml")
-        self.is_master = config.computer.is_master
         self.app: TelegramApp | None = None
         self._processed_voice_messages: set[str] = set()  # Track processed voice message IDs with edit state
         self._pending_edits: dict[str, EditContext] = {}  # Track pending edits (message_id -> mutable context)

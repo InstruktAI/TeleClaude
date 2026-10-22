@@ -15,7 +15,8 @@ events whose origin is known. There it matches each event it is handed against
 the published procedure subscriptions and hands each match to the runtime
 contract that owns standing agents, as one activation naming the procedure and
 the event's origin. Routing decides nothing about whether an agent already
-stands, and never starts or addresses a session itself.
+stands, and never starts or addresses a session itself. An event that matches
+no published subscription produces no activation and is not a routing failure.
 
 An event states its own source, origin and subject
 (`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`).
@@ -65,167 +66,31 @@ because one event has one subject.
 
 ### Use cases
 
-#### UC-PSR1: A matched event produces one activation naming the procedure and home
+#### UC-PSR1:
 
-```gherkin
-Given a published procedure declares an event type as activating it and answers events whose origin is a company
-And an event of that type whose origin is a company is emitted on this computer
-When the event is matched against the published procedure subscriptions
-Then an agent inspecting the activation record sees exactly one activation naming that procedure and that company
-And that activation carries the event
-And the agent sees no session started or addressed by the match itself
-```
+#### UC-PSR2:
 
-#### UC-PSR2: Publication is the registration
+#### UC-PSR3:
 
-```gherkin
-Given a procedure declaring the events that activate it and the home kind it answers is published
-And no act beyond that publication has been performed
-When an event of a declared type and origin kind is emitted on this computer
-Then an agent inspecting the activation record sees an activation for that procedure and the event's origin
-```
+#### UC-PSR4:
 
-#### UC-PSR3: An unmatched event produces no activation
+#### UC-PSR5:
 
-```gherkin
-Given an event is emitted on this computer
-And no published procedure declares a pattern its type fits
-When the event is matched against the published procedure subscriptions
-Then an agent inspecting the activation record sees no activation for that event
-And sees no failure recorded for the absence of a match
-```
+#### UC-PSR7:
 
-#### UC-PSR4: A company-tier procedure answers only its company
+#### UC-PSR11:
 
-```gherkin
-Given two companies each publish in their own tier a procedure declaring the same event type and answering company events
-When an event of that type whose origin is one of those companies is emitted on this computer
-Then an agent inspecting the activation record sees an activation for that company only
-And sees none for the other company
-```
+#### UC-PSR12:
 
-#### UC-PSR5: The activation names a system origin, not a fabricated human one
+#### UC-PSR13:
 
-```gherkin
-Given an event with a known home is emitted on this computer
-When a match produces an activation for a published procedure
-Then an agent inspecting the activation sees the platform's system principal named as its origin
-And sees no human principal presented as having initiated it
-```
+#### UC-PSR14:
 
-#### UC-PSR7: Only the computer that emitted an event activates it
+#### UC-PSR15:
 
-```gherkin
-Scenario Outline: A computer that did not emit the event produces no activation
-  Given a procedure is published that answers an event type and its home's kind
-  And an event of that type is read by a computer that <relation to the event>
-  When the event is matched against the published procedure subscriptions
-  Then an agent inspecting that computer's activation record sees <outcome>
-  And sees no failure recorded on any computer that produced no activation
+#### UC-PSR16:
 
-  Examples:
-    | relation to the event                                       | outcome                        |
-    | emitted it                                                  | one activation for the event   |
-    | did not emit it and holds the same home                     | no activation for the event    |
-    | did not emit it and does not hold the home                  | no activation for the event    |
-```
-
-#### UC-PSR11: The home's kind decides which procedures answer
-
-```gherkin
-Scenario Outline: An event activates the procedures that answer its home's kind
-  Given a global-tier procedure declaring an event type answers <declared kind> events
-  And an event of that type is emitted on this computer whose origin is <event origin>
-  When the event is matched against the published procedure subscriptions
-  Then an agent inspecting the activation record sees <outcome>
-
-  Examples:
-    | declared kind | event origin                        | outcome                                          |
-    | company       | a company                         | one activation naming the procedure and company  |
-    | person        | a person                          | one activation naming the procedure and person   |
-    | project       | a project                         | one activation naming the procedure and project  |
-    | platform      | none                              | one activation naming the procedure and platform |
-    | company       | a project that company owns       | no activation                                    |
-    | person        | a project that person owns        | no activation                                    |
-    | project       | a company                         | no activation                                    |
-    | platform      | a project                         | no activation                                    |
-```
-
-#### UC-PSR12: An event whose origin is unknown activates nothing
-
-```gherkin
-Given a procedure is published that answers an event type for every home kind it may declare
-And an event of that type whose origin is unknown is emitted on this computer
-When the event reaches this computer's procedure subscription routing
-Then an agent inspecting the activation record sees no activation for the event
-And sees no failure recorded for it
-```
-
-#### UC-PSR13: A person-tier procedure answers only its person
-
-```gherkin
-Given a procedure published in a person's tier declares an event type and answers person events
-When events of that type are emitted on this computer, one whose origin is that person and one whose origin is another person
-Then an agent inspecting the activation record sees an activation for that person
-And sees none for the other person
-```
-
-#### UC-PSR14: Handing the same event again produces no second activation
-
-```gherkin
-Scenario Outline: A repeat of one event reaches the existing activation
-  Given an event emitted on this computer has produced an activation for a procedure and its home
-  When <repeat>
-  Then an agent inspecting the activation record still sees exactly one activation for that event, procedure, and home
-  And the procedure's standing agent has received the event once
-
-  Examples:
-    | repeat                                                                     |
-    | the stream delivers the event's entry again                                |
-    | routing's handling of the event was interrupted and the event is handed again |
-```
-
-#### UC-PSR15: Distinct events stay distinct activations
-
-```gherkin
-Given a procedure answers an event type for a home
-When two distinct events of that type with that origin are emitted on this computer
-Then an agent inspecting the activation record sees one activation for each event
-And the procedure's standing agent receives both events
-```
-
-#### UC-PSR16: A subscription selects a group of events by type pattern
-
-```gherkin
-Scenario Outline: A pattern matches whole name segments
-  Given a global-tier procedure answering company events subscribes to "<pattern>"
-  When an event of type "<type>" whose origin is a company is emitted on this computer
-  Then an agent inspecting the activation record sees <outcome>
-
-  Examples:
-    | pattern          | type                          | outcome                                          |
-    | erp.invoice.paid | erp.invoice.paid              | one activation naming the procedure and company  |
-    | erp.invoice.*    | erp.invoice.paid              | one activation naming the procedure and company  |
-    | erp.invoice.*    | erp.invoice.overdue.reminded  | one activation naming the procedure and company  |
-    | erp.invoice.*    | erp.invoices.paid             | no activation                                    |
-    | erp.*            | erp.invoice.paid              | one activation naming the procedure and company  |
-```
-
-#### UC-PSR17: An activation carries the agent identity its procedure declares
-
-```gherkin
-Scenario Outline: The declared agent identity travels with every activation
-  Given a global-tier procedure answering company events <declaration>
-  When an event of a subscribed type whose origin is a company is emitted on this computer
-  Then an agent inspecting the activation record sees one activation naming the procedure and company
-  And that activation asks for <agent>
-
-  Examples:
-    | declaration                                    | agent                                  |
-    | declares no agent identity                     | the procedure's agent for that company |
-    | declares the home agent identity               | the procedure's agent for that company |
-    | declares the subject agent identity            | the procedure's agent for the event's subject in that company |
-```
+#### UC-PSR17:
 
 #### UC-PSR18: An activation carries the attendance its procedure declares
 

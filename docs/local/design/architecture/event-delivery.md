@@ -31,6 +31,9 @@ coordination capability under
 - **One reaction path:** domain-event publication appends to its source stream
   and reaction execution follows
   `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`.
+  Source-owned local cache reconciliation is a separate owner capability under
+  `local/projects/teleclaude/design/architecture/cache`; publication does not
+  invoke a general in-process subscriber path.
 - **One owner per effect:** command execution, runtime coordination and event
   reactions retain their distinct completion boundaries. An awaited owner
   operation completes at that operation's boundary rather than at publication
@@ -62,7 +65,7 @@ The source owner commits its change and publishes the declared fact through
 its emission contract. Each interested reaction consumes through the existing
 independent-consumer runtime. Its source selection, retry and duplicate handling
 follow the event-consumer contract; its effects follow the consuming owner.
-Session state, adapter reactions, operation outcomes, activity, voice state,
+Adapter reactions, operation outcomes, activity, voice state,
 project changes and error reporting use this same relationship when they are
 domain notifications.
 
@@ -70,30 +73,20 @@ Existing declarations represent the same fact wherever it is produced;
 compatibility carriers do not create a second lifecycle occurrence. Current
 consumers execute through their bound consumer path throughout wire coexistence.
 
-<!-- planned:central-shared-configuration -->
+### Local session projection
 
-### Recorded occurrence publication
-
-A source owner with a durable handover stages a complete typed occurrence at
-the source boundary before storing its change record. The existing producer
-publishes that recorded occurrence without recomputing its identity, time,
-source, origin, subject or related caller facts. Encoding still follows the
-current source-stream wire compatibility contract. A repeated append retains
-the occurrence identity under
-`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`.
-
-The configuration owner's handover is
-`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
-Its store commit and delivery mark remain source-owned; stream acceptance and
-independent reaction execution retain the event runtime's existing boundary
-under `sdlc/policy/domain-ownership`.
-<!-- /planned:central-shared-configuration -->
+The daemon's session-source change boundary attempts current-source cache
+reconciliation before publishing its domain notification, under
+`local/projects/teleclaude/design/architecture/cache`. The live materializer
+consumer recovers from current source state before retiring its historical
+delivery position. Source projection and notification consumption remain
+separate completion boundaries under `sdlc/policy/domain-ownership`.
 
 ### Source-stream exposure
 
 Public platform facts retain the platform stream and its existing consumers.
 Internal runtime notifications retain the stream owned by
-`INTERNAL_EVENT_STREAM`, with typed decoding and independent ordered consumers
+`INTERNAL_EVENT_STREAM`, with typed decoding and consumer-owned live or retained delivery
 on the same delivery runtime. This stream boundary preserves the existing
 notification, procedure-activation, maintenance and correlation inputs under
 `local/projects/teleclaude/spec/feature/event-catalog/event-envelope`.
@@ -103,6 +96,15 @@ do not enter public automation through translation. Native facts retain their
 truthful source, subject and origin; earlier records retain the limits of the
 facts they carried. Source-stream trimming and the existing dead-letter contract
 remain authoritative; the transport creates no additional payload archive.
+
+Runtime typing, activity, lifecycle feedback, error feedback and operation
+toasts are live presentation. Session cache, adapter metadata, availability,
+voice focus and terminal housekeeping recover from their owning current state
+before replacing historical delivery. Legacy command carriers retain ordered
+delivery until handed to their command owner; public occurrence consumers are
+unchanged. The delivery distinction belongs to each reaction under
+`local/projects/teleclaude/spec/feature/event-catalog/event-consumers`, not to a
+producer's assessment of an event's importance.
 
 Readiness and no-composer evidence remain runtime-owned operations. Explicit
 voice focus completes through its command-owned voice continuation. Local

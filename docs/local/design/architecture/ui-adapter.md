@@ -66,7 +66,11 @@ Invariants
 
 - **Read-Only Core State**: UI adapters never mutate session, database, or domain state directly; all writes via commands.
 - **Platform-Agnostic Commands**: User actions normalized to command objects (CreateSessionCommand, SendMessageCommand); platform details in metadata only.
-- **Consistent Cleanup Rules**: pending_message_deletions enforced uniformly across all UI adapters; trigger conditions identical.
+
+- **Cleanup Ownership**: Presentation declares message display lifetimes under
+  `local/projects/teleclaude/policy/ux-message-cleanup`. The shared cleanup
+  consumer executes eligible adapter-scoped receipts; native-input and
+  completed-transcript enrollment consume the same retention decision.
 
 - **Projection Owned by the Adapter Class**: `UiAdapter` sends each finished agent turn once, on the staged final pass, overflowing into continuation messages when it exceeds `max_message_size`, and declines live renders. `EditableUiAdapter` extends it for platforms whose messages can be edited in place and streams live output by editing the generation's tracked message. Telegram and Discord extend `EditableUiAdapter`; WhatsApp extends `UiAdapter`. No adapter sends a session-identification message.
 

@@ -7,24 +7,11 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:central-shared-configuration -->
-
 The Teleclaude Config surface defines how TeleClaude configuration is initialized and validated across two distinct surfaces:
 
 1. User-facing `teleclaude.yml` files (`GlobalConfig`, `ProjectConfig`, `PersonConfig`)
 2. Daemon runtime `config.yml` loaded by `teleclaude.config`
-   These surfaces are related but not interchangeable. Every environment variable backing a machine-config field derives from that field's path, so the config TUI's environment list for those fields follows the schema rather than a separately maintained registry. Variables outside the machine-config schema — the deployment-time home location, and requirements declared by MCP servers or by operator-authored `ungoverned_body` entries — keep their own sources and are still recorded here.
-
-<!-- change:central-shared-configuration -->
-
-The configuration owner initializes, validates and exposes file-backed subject
-declarations, local machine declarations and shared runtime values. Shared value
-authority and its migration boundary are
-`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
-Local machine environment names derive from their fields; MCP declarations,
-operator-authored provider entries and deployment bootstrap retain their own
-environment naming owners.
-<!-- /planned-change:central-shared-configuration -->
+   These surfaces are related but not interchangeable. Every environment variable backing a machine-config field derives from that field's path, so the config TUI's environment list for those fields follows the schema rather than a separately maintained registry. Each row of that list carries the configuration owner's applicability answer for its field (`local/projects/teleclaude/spec/feature/config/runtime-applicability`), which a client renders rather than derives. Variables outside the machine-config schema — the deployment-time home location, and requirements declared by MCP servers or by operator-authored `ungoverned_body` entries — keep their own sources and are still recorded here.
 
 ### One filename, four tiers
 
@@ -98,16 +85,9 @@ where `computer.is_ingress_node` is set. A person's voice-bot token is needed
 nowhere: without it, that person has no voice room. The per-file published schema cannot express a
 condition on the machine configuration, so it does not carry these needs.
 
-A machine-config section declares its **scope**: `local`, the default, or
-`master`. A master-scoped section is meaningful only on the computer where
-`computer.is_master` holds. On every other computer the configuration reader
-yields it with `enabled` false, and every surface reads that one declaration:
-`telec config wizard` does not offer the section on a non-master, its required
-fields are not judged there, `telec config
-computer get` and the readiness report name it as master-scoped and not
-applicable, and the fleet's view of which adapters a computer runs derives from
-the same effective flag. Scope changes what a non-master consumes, never what
-its file says: the document keeps what the operator wrote.
+Machine-schema applicability and configuration availability are resolved once
+for fields, sections and their consuming feature boundaries under
+`local/projects/teleclaude/spec/feature/config/runtime-applicability`.
 
 A section's `enabled` flag governs the whole section. When its effective value
 is false, the section's fields are not consumed and every `enabled` nested
@@ -326,6 +306,30 @@ subscriptions: list[SubscriptionEntry]
 interests: list[string]
 jobs: list[JobScheduleConfig] # the registry of published jobs with their default settings; a project runs one only by subscribing to it, inside that project
 ```
+
+<!-- planned:issue-129 -->
+
+The global overlay declares the platform GitHub App inventory and the mapping from
+the existing canonical session role name to an App profile:
+
+| Global field   | Shape and meaning                                                                                                                                                                                                     |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github.apps`  | Optional list of closed App profiles, default empty. Each profile carries a `GitHubActorAssignment` containing its App identity and `private_key_base64_env`, a sensitive bare key name in the global sibling `.env`. |
+| `github.roles` | Optional mapping from the existing `RoleName` vocabulary to a configured App ID, default empty.                                                                                                                       |
+
+App IDs and stable Bot identities are unambiguous across profiles; every role
+reference names a configured profile. Multiple roles may map to one App only
+where the existing parent/child actor rule allows it; session creation refuses
+a parent/child collision rather than selecting a fallback. These declarations
+do not carry installation IDs, repository grants or secret values. The project
+tier's `github.enabled` mirror switch remains separate and does not select an
+App credential. This snippet owns the global declaration shape. The config
+domain owns reference validation and protected key resolution; file custody
+and temporary-write behavior belong to
+`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`; session
+actor assignment and credential invocation belong to
+`local/projects/teleclaude/spec/feature/identity/platform-github-identity`.
+<!-- /planned:issue-129 -->
 
 There is no `company_profile` key on the global overlay. Company configuration is
 its own folder-discovered tier (`~/.teleclaude/companies/<slug>/teleclaude.yml`;
@@ -592,17 +596,7 @@ module needing one of those paths imports the constant; a module needing one of
 those filenames references the vocabulary member. Neither is re-derived
 locally, so every consumer resolves to one declaring node.
 
-<!-- planned-change:central-shared-configuration -->
-
 ### Daemon runtime config keys (`config.yml`)
-
-<!-- change:central-shared-configuration -->
-
-### Runtime aggregate and local declarations
-
-<!-- /planned-change:central-shared-configuration -->
-
-<!-- planned-change:central-shared-configuration -->
 
 The daemon runtime config lives at `~/.teleclaude/config.yml` (under `TELECLAUDE_HOME`).
 Installation produces the runtime file from the configuration schema when the host
@@ -616,18 +610,6 @@ file. `make install` writes opted-in agents' `enabled`
 state into the runtime file. The runtime file's path is
 `<TELECLAUDE_HOME>/config.yml` with no override: moving the runtime tree moves
 the config with it.
-<!-- change:central-shared-configuration -->
-
-Local runtime declarations live in `<TELECLAUDE_HOME>/config.yml` with no
-independent path override. Installation generates that local file from its
-schema only while absent, using environment references for its local sensitive
-fields, and brings an existing file forward through the configuration migration
-owner (`local/projects/teleclaude/spec/feature/config/document-migration`).
-The TUI, daemon and installer submit local mutations to the file writer and
-shared mutations to the shared-subject owner. Shared agent selection follows
-`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`;
-local binary availability creates no separate enablement declaration.
-<!-- /planned-change:central-shared-configuration -->
 
 The `agents` config key for the Antigravity agent is `gemini`; its binary resolves to
 `agy` via `resolve_agent_binary`. The installer heals any legacy `agy:` key back to
@@ -646,19 +628,7 @@ enable/mute. Dependencies shared with other features — `mlx-audio` (also the S
 Parakeet backend), `openai` (also STT Whisper and the summarizer) — stay in the core
 dependency set.
 
-<!-- planned-change:central-shared-configuration -->
-
 These keys are loaded by the daemon runtime config parser in `teleclaude/config/__init__.py`.
-<!-- change:central-shared-configuration -->
-
-The inventory below describes members of the typed runtime aggregate. Shared
-members are read-only projections, with their storage and migration defined by
-`local/projects/teleclaude/spec/feature/config/shared-runtime-settings`.
-Environment-variable annotations on shared members identify source inputs for
-the configuration migration owner; runtime projection performs no local
-environment resolution for those members. Remaining members retain their local
-declaration and schema ownership.
-<!-- /planned-change:central-shared-configuration -->
 
 ```yaml
 computer:
@@ -847,21 +817,11 @@ to the inclusive range from zero through `session_max_pending`. The high
 watermark's omitted-value derivation subtracts the literal value eight and is
 independent of a configured critical reserve.
 
-<!-- planned-change:central-shared-configuration -->
-
 Discord provider IDs are not config. `config.yml` carries only the desired setup
 inputs a machine declares — `computer.name`, `computer.is_master`,
 `discord.enabled`, and `discord.guild_id` (the operator's own guild identifier,
 never provider-returned reflection state); the project forums a machine reflects
 follow its project registry (`local/projects/teleclaude/spec/feature/config/project-registry`).
-<!-- change:central-shared-configuration -->
-
-Discord provider IDs are integration state. The typed runtime aggregate carries
-the local computer identity and shared desired setup projections, including
-master eligibility, adapter enablement and the operator's guild identifier.
-The computer's project registry selects the project forums it reflects
-(`local/projects/teleclaude/spec/feature/config/project-registry`).
-<!-- /planned-change:central-shared-configuration -->
 
 Category, channel, forum, thread, and message IDs the Discord provider returns are durable
 reflection records in the runtime database, and the daemon never writes them back

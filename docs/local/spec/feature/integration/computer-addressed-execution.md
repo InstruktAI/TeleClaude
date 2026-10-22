@@ -56,67 +56,42 @@ not carried to that computer
 
 ### Use cases
 
-#### UC-CAE1: A command addressed to another computer runs there and returns its answer
+#### UC-CAE1: A person can work on project tasks held by another computer
 
 ```gherkin
-Given an agent session on one computer
-And a todo in a project on another computer
-When the agent runs a todo command addressed to that other computer — a read of the todo or one of its artifacts, or a lifecycle action on it
-Then the command executes on the other computer against that computer's project
-And the agent receives the result that computer produced
-And nothing is created, read, or changed on the agent's own computer in its place
+Scenario: Work on a remote todo through the computer that owns its project
+  Given a person has a todo in a project on another computer
+  When they ask their agent to read or change that todo or one of its artifacts
+  Then the operation runs on the computer that owns the project
+  And the person receives that computer's result, receipt, or refusal
+  And nothing is created, read, or changed on the person's own computer in its place
+
+Scenario: The remote owner explains why a todo action is refused
+  Given a person asks their agent to perform an action on a remote todo
+  And that todo's state does not allow the action
+  When the owning computer handles the request
+  Then the person receives that computer's refusal as it produced it
+
+Scenario Outline: The person learns when a remote computer cannot take the request
+  Given a person asks their agent to act on a project on another computer
+  And that computer is <condition>
+  When the request is sent
+  Then the person receives an error naming the computer and explaining that it <reason>
+  And the operation does not run on any computer
+
+  Examples:
+    | condition                                      | reason                        |
+    | offline                                        | did not answer                |
+    | unknown to this computer                       | is unknown                    |
+    | running a version that cannot take the request | cannot carry the request      |
 ```
 
 #### UC-CAE2: The owning computer's refusal reaches the caller as the refusal
 
-```gherkin
-Given a human operator addresses an action to a todo on another computer
-And that todo's state does not allow the action
-When the action reaches the other computer
-Then the operator receives the other computer's refusal as that computer produced it
-```
-
 #### UC-CAE3: A receipt-backed operation addressed to another computer is owned there
-
-```gherkin
-Given an agent session addresses a lifecycle operation to a todo on another computer
-When the other computer accepts the operation
-Then the agent receives that computer's receipt, which names that computer
-And the operation runs, is recorded, and reaches its terminal state on that computer
-And the agent reads the operation's record on the computer the receipt names
-```
 
 #### UC-CAE5: An addressed computer that cannot take the request produces a named error
 
-```gherkin
-Scenario Outline: The caller learns which computer could not take the request and why
-  Given a caller addresses a command to a computer that is <condition>
-  When the command is submitted
-  Then the caller receives an error naming that computer and stating that it <reported>
-  And nothing is executed on any computer
-
-  Examples:
-    | condition                                      | reported                       |
-    | offline                                        | did not answer                 |
-    | unknown to this computer                       | is unknown                     |
-    | running a version that cannot take the request | runs a build that cannot take it |
-```
-
 #### UC-CAE6: A command addressed to this computer, or to none, runs here
 
-```gherkin
-Given a caller on a computer
-When the caller runs a daemon-backed command naming that same computer, or naming no computer
-Then the command runs on that computer as it always has
-And no request crosses to any other computer
-```
-
 #### UC-CAE7: A command the other computer fails or refuses leaves that computer answering
-
-```gherkin
-Given a caller addresses a command to another computer
-And running that command on the other computer fails or is refused
-When the command is submitted
-Then the caller receives the error that computer produced
-And commands addressed to that computer afterwards run there and return its answers
-```

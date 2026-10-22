@@ -24,53 +24,13 @@ The driver-vs-sub-worker discriminator is `initiator_session_id`. It is daemon-s
 
 #### UC-SE1: Parentless driver ends itself
 
-```
-Given a worker agent session with system_role=`worker` and initiator_session_id=None
-When the session issues `telec sessions end` for its own session_id
-Then clearance admits the self-end (the target is the caller's own session, with no orchestrating parent)
-And the standard verb allowlist is not consulted
-And the session is ended
-```
-
 #### UC-SE2: Sub-worker self-end is rejected
-
-```
-Given a worker agent session with system_role=`worker` and initiator_session_id set to its orchestrating parent
-When the session issues `telec sessions end` for its own session_id
-Then the self-end shape does not apply (the session has an orchestrating parent)
-And the standard rule refuses the worker, which is not in the `telec sessions end` system band
-And the refusal is the not-permitted failure for `telec sessions end`, given before any request is sent
-```
 
 #### UC-SE3: Worker ending another session is rejected
 
-```
-Given a worker agent session with system_role=`worker`
-When the session issues `telec sessions end` for a DIFFERENT session_id
-Then the self-end shape does not apply (the target is another session)
-And the standard rule refuses the worker, which is not in the `telec sessions end` system band
-And the refusal is the not-permitted failure for `telec sessions end`, given before any request is sent
-```
-
 #### UC-SE4: Orchestrator/integrator ends another session
 
-```
-Given an agent session whose system_role is in the `telec sessions end` system band (e.g. `integrator`)
-When the session issues `telec sessions end` for a DIFFERENT session_id
-Then the self-end shape does not apply
-And the standard verb clearance admits the in-band role
-And the other session is ended
-```
-
 #### UC-SE5: Terminal caller follows the standard human band
-
-```
-Given an operator at a terminal, outside any session
-When they issue `telec sessions end` for a session
-Then the self-end shape does not apply (the caller is not a session)
-And the standard rule runs against the person's role
-And admin/member callers end the session; others are refused before any request is sent
-```
 
 ### Cross-context references
 

@@ -19,7 +19,7 @@ from teleclaude.events.pipeline import failing_stage_from_exception
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import StreamEntryRef
 from teleclaude.events.schemas.system import DeadLetteredData, EventDeadLettered
-from teleclaude.events.wire import EntryCodec, LegacyFacts
+from teleclaude.events.wire import EntryCodec, LegacyFacts, StreamEntry
 
 logger = get_logger(__name__)
 
@@ -33,6 +33,7 @@ _RECOVERY_SWEEP_TASK_NAME = "event-recovery-sweep"
 _RECOVERY_SWEEP_ENDED = "The stale-pending recovery sweep ended while the processor was running"
 _PENDING_PAGE_SIZE = 100
 _PENDING_READ_BATCH_SIZE = 50
+_JSON_SERIALIZATION_MODE = "json"
 
 
 class RecoverySweepEnded(Exception):
@@ -58,7 +59,7 @@ class _ParkedEntry:
     """An entry that reached the attempt ceiling: its dead-letter record and which parking steps are done."""
 
     record: dict[str, str]
-    failed_event_id: str
+    failed_event_id: str | None
     persisted: bool = False
     announced: bool = False
 
@@ -289,7 +290,7 @@ class EventProcessor[DecodedT: BaseModel]:
                 else:
                     await self._process_entry(self._decode(stream), entry_id, data)
 
-    async def _process_entry_in_order(self, stream: str, entry_id: str, data: Any) -> None:
+    async def _process_entry_in_order(self, stream: str, entry_id: str, data: StreamEntry) -> None:
         """Attempt one entry until it is handled or parked; an entry left unsettled is attempted again first."""
         while not await self._attempt_in_order(stream, entry_id, data):
             if self._shutdown_event is not None and self._shutdown_event.is_set():
@@ -297,7 +298,7 @@ class EventProcessor[DecodedT: BaseModel]:
             await self._pause_before_next_attempt()
         self._attempts.pop(entry_id, None)
 
-    async def _attempt_in_order(self, stream: str, entry_id: str, data: Any) -> bool:
+    async def _attempt_in_order(self, stream: str, entry_id: str, data: StreamEntry) -> bool:
         """Run the entry through the pipeline, or, once it reached the ceiling, finish parking it without the handler."""
         state = self._attempts.get(entry_id)
         if state is not None and state.parked is not None:
@@ -314,8 +315,8 @@ class EventProcessor[DecodedT: BaseModel]:
         except TimeoutError:
             pass
 
-    async def _process_entry(self, stream: str, entry_id: str, data: Any) -> bool:
-        """Run one entry through the pipeline; return whether it is settled (handled, parked, or undecodable)."""
+    async def _process_entry(self, stream: str, entry_id: str, data: StreamEntry) -> bool:
+        """Run one entry through the pipeline; ordered decode failures settle through parking."""
         decoded: DecodedT | None = None
         try:
             decoded = self._codec.decode(data, entry_id)
@@ -323,13 +324,13 @@ class EventProcessor[DecodedT: BaseModel]:
         except Exception as exc:
             if decoded is None:
                 logger.exception("EventProcessor failed to deserialize entry", entry_id=entry_id)
-                if self._ordered:
-                    raise
-                return True
+                if not self._ordered:
+                    return True
             return await self._handle_processing_failure(
                 stream=stream,
                 entry_id=entry_id,
                 decoded=decoded,
+                raw_entry=data,
                 exc=exc,
             )
         try:
@@ -345,7 +346,8 @@ class EventProcessor[DecodedT: BaseModel]:
         *,
         stream: str,
         entry_id: str,
-        decoded: DecodedT,
+        decoded: DecodedT | None,
+        raw_entry: StreamEntry,
         exc: Exception,
     ) -> bool:
         """Track a failed attempt and transition to DLQ when the ceiling is reached.
@@ -373,10 +375,11 @@ class EventProcessor[DecodedT: BaseModel]:
                     stream=stream,
                     entry_id=entry_id,
                     decoded=decoded,
+                    raw_entry=raw_entry,
                     exc=exc,
                     state=state,
                 ),
-                failed_event_id=self._codec.event_id(decoded),
+                failed_event_id=self._codec.event_id(decoded) if decoded is not None else None,
             )
         return await self._complete_parking(entry_id, state)
 
@@ -445,12 +448,19 @@ class EventProcessor[DecodedT: BaseModel]:
         *,
         stream: str,
         entry_id: str,
-        decoded: DecodedT,
+        decoded: DecodedT | None,
+        raw_entry: StreamEntry,
         exc: Exception,
         state: _AttemptState,
     ) -> dict[str, str]:
         failing_stage = state.failing_stage or ""
-        original_envelope = json.dumps(decoded.model_dump(mode="json"), sort_keys=True)
+        if decoded is None:
+            original_envelope = json.dumps(
+                {self._decode(key): self._decode(value) for key, value in raw_entry.items()},
+                sort_keys=True,
+            )
+        else:
+            original_envelope = json.dumps(decoded.model_dump(mode=_JSON_SERIALIZATION_MODE), sort_keys=True)
         return {
             "original_envelope": original_envelope,
             "original_stream": stream or self._stream,
@@ -466,7 +476,7 @@ class EventProcessor[DecodedT: BaseModel]:
             "dlq_destination": self._dlq_destination,
         }
 
-    async def _emit_dead_letter_signal(self, record: dict[str, str], failed_event_id: str) -> None:
+    async def _emit_dead_letter_signal(self, record: dict[str, str], failed_event_id: str | None) -> None:
         """Emit the in-band dead-letter growth signal before acknowledging."""
         await publish_event(
             EventDeadLettered(
