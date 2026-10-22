@@ -61,22 +61,6 @@ remain the baseline for other projects and checkouts.
 
 #### UC-BPF1: Every canonical-main advance receives automatic maintenance
 
-```gherkin
-Scenario Outline: A canonical-main activation converges the shared Blueprint
-Given a code-enabled project with installed commit-boundary maintenance
-When canonical main advances through <activation>
-Then an agent observing maintenance sees a Blueprint obligation for that advance
-And successful completion leaves a complete Blueprint for committed canonical main selected by the action
-
-Examples:
-| activation |
-| a source-code commit |
-| a documentation-only commit |
-| an empty commit |
-| a merge commit |
-| a fast-forward merge |
-```
-
 #### UC-BPF2: Extraction excludes uncommitted and branch-only work
 
 #### UC-BPF3: Successive activations converge without rolling the cache backward
@@ -96,6 +80,16 @@ And it does not present older dependents as the current answer
 #### UC-BPF7: On-demand recovery reuses the maintenance action
 
 #### UC-BPF8: Projects without code do not acquire Blueprint maintenance
+
+#### UC-BPF9: An agent queries the installed release's Blueprint
+
+```gherkin
+Scenario: Use the installed release as the query baseline
+  Given the installed release and local main contain different source
+  When an agent asks for the Blueprint affected view of a changed file through the installed runtime
+  Then the result reflects the installed release's source
+  And changes present only in local main do not affect the result
+```
 
 ## See Also
 
