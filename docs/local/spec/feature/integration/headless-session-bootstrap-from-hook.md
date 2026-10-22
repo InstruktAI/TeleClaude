@@ -15,6 +15,8 @@ does not contain its TeleClaude id, it synthesizes a create-session command from
 the hook payload and creates the session record before continuing dispatch.
 An unknown session-start without receiver-owned headless authorization is
 dropped rather than interpreted as permission to create a row.
+An event other than an authorized agent-session-start never creates an unknown
+session; it is ignored without dispatch.
 Session identity follows the terminal-resolved caller: a registered person keeps
 their current identity and role; when no person resolves, the new session has
 the customer role.
