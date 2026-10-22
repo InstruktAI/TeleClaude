@@ -198,14 +198,7 @@ And no step runs and no maintenance record is written
 
 #### UC-ODM12: A repeated run changes nothing
 
-#### UC-ODM13: An agent finds the on-demand maintenance fallback
-
-```gherkin
-Given an agent needs to recover a root after automatic maintenance did not run
-When it reads `telec sync` help
-Then it learns that the command is the manual fallback and where it can run
-And it learns which changes remain owed after the run
-```
+#### UC-ODM13: Help presents the fallback
 
 #### UC-ODM14: A step with nothing to act on completes without failing
 
