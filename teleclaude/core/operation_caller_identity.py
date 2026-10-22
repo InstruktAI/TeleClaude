@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
+from typing import Protocol
 
 _caller_session_id: ContextVar[str | None] = ContextVar(
     "operations_caller_session_id",
@@ -63,10 +64,23 @@ class OperationCallerTokens:
     relayed: Token[RelayedCaller | None]
 
 
-def set_operation_caller(session_id: str | None, computer: str | None) -> OperationCallerTokens:
-    """Restore an admitted operation's persisted caller address, clearing any inherited relay origin."""
+class _StoredOperationCaller(Protocol):
+    """The persisted caller address consumed from an existing operation row."""
+
+    @property
+    def caller_session_id(self) -> str | None: ...
+
+    @property
+    def caller_computer(self) -> str | None: ...
+
+
+def set_operation_caller(operation: _StoredOperationCaller, local_computer: str) -> OperationCallerTokens:
+    """Restore persisted caller locality, clearing inherited relay origin for local operations."""
+    session_id = operation.caller_session_id
+    computer = operation.caller_computer
     session = set_caller_session_id(session_id)
-    relayed = set_relayed_caller(RelayedCaller(computer, session_id) if computer else None)
+    remote = RelayedCaller(computer, session_id) if computer and computer != local_computer else None
+    relayed = set_relayed_caller(remote)
     return OperationCallerTokens(session, relayed)
 
 

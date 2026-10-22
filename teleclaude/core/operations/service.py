@@ -702,7 +702,7 @@ class OperationsService:
                 task.add_done_callback(progress_tasks.discard)
 
             token = set_progress_callback(_capture_progress)
-            caller_token = set_operation_caller(operation.caller_session_id, operation.caller_computer)
+            caller_token = set_operation_caller(operation, config.computer.name)
             async with pin_operation_todo_identity(operation), follow_through_scope() as follow_throughs:
                 outcome = await coro_factory(operation)
             completion = outcome if isinstance(outcome, OperationCompletion) else OperationCompletion(outcome)
