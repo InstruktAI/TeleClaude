@@ -42,20 +42,22 @@ target through the project's remote.
   is not transferred to.
 - **Checkout resolution:** each target resolves its own checkout of a project
   from its own project registry. A target that has no checkout of the project
-  is reported and skipped.
+  is reported and skipped; other project-target pairs continue.
 - **Transfer:** only the parts of the todo state that differ are sent, so a
   repeated transfer of a large todo state moves little data. Both computers'
-  todo state may be in use while it runs. The transfer tool is provisioned on
-  every computer by the installer.
+  todo state may be in use while it runs. A target daemon may remain running
+  and continues from the transferred state. The transfer tool is provisioned
+  on every computer by the installer; if it is absent on either side, the
+  affected pair is refused with the install remedy before target state changes.
 - **Verification:** after the copy, the target checks its copy's integrity and
-  reports the result.
+  reports the result; a failed check marks that pair failed.
 - **Outcome report:** one outcome per project and target — transferred,
   skipped with the reason, or failed with the cause. One pair's failure does
   not stop the others. The command exits unsuccessfully when any pair failed.
 
 ### Use cases
 
-#### UC-TST1: A project's todo state reaches a target that has the project
+#### UC-TST1: Move a project's todo work to another computer
 
 ```gherkin
 Given an admin at a terminal on the origin computer
@@ -68,79 +70,18 @@ And the admin sees the pair reported as transferred
 
 #### UC-TST2: The transfer needs no daemon on the origin
 
-```gherkin
-Given the origin computer's daemon is stopped
-When the admin transfers a project's todo state to an online target
-Then the transfer completes without the origin's daemon
-```
-
 #### UC-TST3: The target keeps running while it receives
-
-```gherkin
-Given the target computer's daemon is running and reading its todo state
-When the admin transfers a project's todo state to that target
-Then the transfer completes without stopping the target's daemon
-And the target's daemon continues from the transferred todo state
-```
 
 #### UC-TST4: A repeated transfer sends only what changed
 
-```gherkin
-Given a project's todo state was transferred to a target before
-And the origin's todo state has changed a little since
-When the admin transfers it to that target again
-Then the data sent is proportional to what changed, not to the size of the todo state
-```
-
 #### UC-TST5: A target without the project is skipped and the rest continue
-
-```gherkin
-Given the admin names two projects and a target that has a checkout of only one of them
-When the admin transfers both projects' todo state to that target
-Then the project the target lacks is reported as skipped, naming the missing checkout
-And the other project's todo state is transferred
-```
 
 #### UC-TST6: An unreachable target fails alone
 
-```gherkin
-Given the admin names two targets and one of them is not online in the peer registry
-When the admin transfers a project's todo state to both
-Then the unreachable target's pair is reported as failed, naming why it could not be reached
-And the online target receives the todo state
-And the command exits unsuccessfully
-```
-
 #### UC-TST7: A copy that fails its integrity check is reported as failed
-
-```gherkin
-Given a transfer to a target completes but the target's copy is not intact
-When the target checks its copy
-Then the pair is reported as failed, naming the integrity check
-And the command exits unsuccessfully
-```
 
 #### UC-TST8: A missing transfer tool is named with its remedy
 
-```gherkin
-Given the transfer tool is missing on the origin or on a target
-When the admin transfers a project's todo state
-Then each affected transfer is refused, naming the missing tool and the install step that provides it
-And no target's todo state is changed by the refused transfer
-```
-
 #### UC-TST9: Only an admin can transfer todo state
 
-```gherkin
-Given a caller who is not an admin, or an agent session carrying an agent role, or a session acting for the platform's principal
-When the caller asks to transfer a project's todo state
-Then the command is refused before anything is sent
-```
-
 #### UC-TST10: An admin's own agent session can transfer todo state
-
-```gherkin
-Given an agent session an admin started without an agent role
-When the agent transfers a project's todo state to an online target that has the project
-Then the transfer is admitted and runs as it does for the admin at a terminal
-```
