@@ -125,16 +125,19 @@ Then the missing-store condition is swallowed
 And the call returns an empty result set
 ```
 
-#### UC-HCS-8: A result line states the namespace of the id it prints
+#### UC-HCS-8: An operator can identify the address of a history result
 
-```
-Given a search result for a mirror attributed to a TeleClaude session
-Then the row prints that session's TeleClaude id, labelled as such
-And this holds across the session's full transcript chain and after runtime closure or soft deletion
-Given a search result for a mirror no session is attributed to
-Then the row prints the agent-native id, labelled as such
-And every row carries the full project path, an agent name, and a UTC timestamp to the second
-And a matched snippet is rendered on one line, with newlines replaced by spaces
+```gherkin
+Scenario: Identify a result attributed to a TeleClaude session
+  Given an operator reviews a history result attributed to a TeleClaude session
+  When the operator inspects its identifier
+  Then the result displays that TeleClaude id labelled as such
+  And that id remains the address across the session's full transcript chain and after runtime closure or soft deletion
+
+Scenario: Identify a result with no session attribution
+  Given an operator reviews a history result with no TeleClaude session association
+  When the operator inspects its identifier
+  Then the result displays the agent-native id labelled as such
 ```
 
 #### UC-HCS-11: An operator finds past conversations for an identity or project
