@@ -67,16 +67,3 @@ Then it runs with that agent and platform surfaces identify it by its canonical 
 ```
 
 #### UC-AV-3: Setup recognizes every supported runtime
-
-```gherkin
-Scenario Outline: Check readiness before managed work
-  Given an operator has enabled a supported agent runtime
-  When the operator runs <setup>
-  Then the operator learns whether the runtime is ready for managed work
-  And an unusable runtime is reported before work is dispatched to it
-
-Examples:
-  | setup |
-  | installation |
-  | runner setup |
-```
