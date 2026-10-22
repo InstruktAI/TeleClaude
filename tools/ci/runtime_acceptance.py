@@ -48,49 +48,9 @@ from tools.ci import workflow_ready as ready
 from tools.ci import workflow_removal as removal
 from tools.ci import workflow_review as review
 from tools.ci import workflow_waiting as waiting
-from tools.ci.enclosure_contract import Action, JsonObject, StaticPackage, parse_object, positive_integer
-from tools.ci.enclosure_exchange import run_helper
-from tools.ci.enclosure_guest import GuestContext, Purpose, Role, request_guest_poweroff
-from tools.ci.enclosure_guest import Record as GuestShutdownRecord
-from tools.ci.enclosure_inner import (
-    PROVISIONAL_REPORT_SCHEMA,
-    PROVISIONAL_STAGE,
-    DeferredRetention,
-    InnerCleanupEvidence,
-    PayloadProvisional,
-    PhysicalCleanupPending,
-    RetentionEmitter,
-    RetentionField,
-)
-from tools.ci.enclosure_journal import Outcome as EnclosureOutcome
-from tools.ci.enclosure_report import (
-    validate_early_inputs,
-    validate_event_inputs,
-    validate_flow_inventory_inputs,
-    validate_flow_session_closure,
-    validate_flow_start_inputs,
-    validate_provisional_bindings,
-    validate_provisional_cleanup,
-)
-from tools.ci.enclosure_setup import run_guest_setup
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
 _UTF8 = "utf-8"
-_ENCLOSURE_ROLE_OPTION = "--enclosure-role"
-_ENCLOSURE_MANIFEST_OPTION = "--enclosure-manifest"
-_ENCLOSURE_ACTION_OPTION = "--enclosure-action"
-_OBSERVATION_KEY_OPTION = "--observation-key"
-_ENCLOSURE_MANIFEST_REQUIRED = "An enclosure role requires its protected manifest."
-_ENCLOSURE_ACTION_ROLE = "An enclosure action belongs only to the privileged role."
-_ENCLOSURE_ACTION_REQUIRED = "The privileged role requires its closed enclosure action."
-_PROFILE_ARGUMENTS_REQUIRED = "Profile execution requires profile, source-revision and source-tree."
-_ENCLOSED_FULL_REQUIRED = "Supervisor and payload roles require the full profile."
-_ENCLOSURE_UNAVAILABLE = "The selected enclosure role is not yet implemented: {role}"
-_QUALIFICATION_PROFILE_REFUSED = (
-    "Qualification accepts only its declared OS vectors, without a product profile/selection."
-)
-_ENCLOSURE_ENTRY_FAILED = "Enclosure entry failed: {error_class}: {detail}"
-_ENCLOSURE_REQUIRED = "Full-profile product work requires the admitted guest payload binding."
 _REPORT_SCHEMA_VERSION = 3
 _DEFAULT_ROOT = "."
 _REPORT_TEMP_SUFFIX = ".tmp"
@@ -901,7 +861,6 @@ class ScenarioStatus(StrEnum):
     PASSED = "passed"
     FAILED = "failed"
     NOT_RUN = "not_run"
-    P4_PENDING_OUTER = "P4_PENDING_OUTER"
 
 
 type JSONValue = str | int | float | bool | None | list[JSONValue] | dict[str, JSONValue]
@@ -995,14 +954,12 @@ class AcceptanceReport:
     retired_act_delivery_path: Path | None = field(default=None, repr=False)
     workflow_waiting_retired_kickback_delivery_path: Path | None = field(default=None, repr=False)
     workflow_waiting_retired_kickback_marker_directory: Path | None = field(default=None, repr=False)
-    payload_provisional: PayloadProvisional | None = field(default=None, repr=False)
 
     @property
     def passed(self) -> bool:
         """A pass of the whole inventory; selected or provisional runs never supply one."""
         return (
-            self.payload_provisional is None
-            and not self.selection
+            not self.selection
             and self.cleanup.status is ScenarioStatus.PASSED
             and len(self.scenarios) == len(self.scenario_inventory)
             and all(result.status is ScenarioStatus.PASSED for result in self.scenarios)
@@ -1013,8 +970,7 @@ class AcceptanceReport:
         """A selected result requires cleanup, including outside physical closure for a newly provisional run."""
         executed = [result for result in self.scenarios if result.status is not ScenarioStatus.NOT_RUN]
         return (
-            self.payload_provisional is None
-            and bool(self.selection)
+            bool(self.selection)
             and self.cleanup.status is ScenarioStatus.PASSED
             and bool(executed)
             and all(result.status is ScenarioStatus.PASSED for result in executed)
@@ -1050,7 +1006,6 @@ def execute_profile(
     scenario_actions: Mapping[str, ScenarioAction],
     cleanup_action: CleanupAction,
     selection: frozenset[str] = frozenset(),
-    payload_provisional: PayloadProvisional | None = None,
 ) -> AcceptanceReport:
     """Run required scenarios in order and retain failures, omissions and cleanup.
 
@@ -1142,14 +1097,6 @@ def execute_profile(
         cleanup_action(cleanup_evidence)
         payload_work.check()
         cleanup = CleanupResult(status=ScenarioStatus.PASSED)
-    except PhysicalCleanupPending as exc:
-        expired = payload_work.expired()
-        pending = payload_provisional is not None and not expired
-        cleanup = CleanupResult(
-            status=ScenarioStatus.P4_PENDING_OUTER if pending else ScenarioStatus.FAILED,
-            detail=_EMPTY if pending else payload_work.EXPIRED if expired else str(exc),
-            commands=_bound_command_evidence(cleanup_evidence),
-        )
     except Exception as exc:
         cleanup = CleanupResult(
             status=ScenarioStatus.FAILED,
@@ -1163,7 +1110,7 @@ def execute_profile(
             commands=_bound_command_evidence(cleanup_evidence),
         )
     return AcceptanceReport(
-        schema_version=PROVISIONAL_REPORT_SCHEMA if payload_provisional is not None else _REPORT_SCHEMA_VERSION,
+        schema_version=_REPORT_SCHEMA_VERSION,
         source_revision=source_revision,
         source_tree=source_tree,
         profile=profile,
@@ -1172,7 +1119,6 @@ def execute_profile(
         cleanup=cleanup,
         duration_seconds=time.monotonic() - started,
         selection=tuple(sorted(selection)),
-        payload_provisional=payload_provisional,
     )
 
 
@@ -1197,9 +1143,7 @@ class FullRuntimeResources:
     source_revision: str
     source_tree: str
     report_path: Path | None = None
-    payload_provisional: PayloadProvisional | None = None
     daemon_stop_outcome: str | None = None
-    inner_cleanup: InnerCleanupEvidence | None = None
     public_cleanup_finished_ns: int | None = None
     daemon_stop_started_ns: int | None = None
     daemon_stop_finished_ns: int | None = None
@@ -1231,13 +1175,10 @@ class FullRuntimeResources:
     b13_marker_path: Path | None = None
     b13_carrier_path: Path | None = None
     retained_keys: dict[str, str] = field(default_factory=dict)
-    deferred_retention: list[DeferredRetention] = field(default_factory=list)
     owner_identity_facts: JSONObject = field(default_factory=dict)
 
     def early_accounting(self, case: str) -> creation.EvidenceObject | None:
         """Retain existing B3/B4 observations only for the admitted new-run report."""
-        if self.payload_provisional is None:
-            return None
         record: creation.EvidenceObject = {
             "schema_version": 1,
             "case": case,
@@ -1306,21 +1247,6 @@ class FullRuntimeResources:
             return
         self.retained_keys[key] = reason
         self.retained.append(reason)
-
-    def defer_retention(self, hold: DeferredRetention) -> None:
-        """Keep owning-emitter typed holds separate from every unclassified failure string/key."""
-        if self.payload_provisional is None or hold.binding_bytes != self.payload_provisional.binding_bytes:
-            raise ValueError(_FULL_RETENTION_KEY_COLLISION)
-        self.deferred_retention.append(hold)
-
-    def retain_event(self, directory: Path) -> None:
-        """Retain original event evidence for outside readback only on the newly admitted report path."""
-        if self.payload_provisional is None:
-            self.retained.append(events.RETAINED_EVIDENCE.format(path=directory))
-        else:
-            self.defer_retention(
-                DeferredRetention(RetentionEmitter.EVENT_EVIDENCE, directory, self.payload_provisional.binding_bytes)
-            )
 
     def release_key(self, key: str) -> None:
         """Clear only the exact reason owned by this retention key."""
@@ -2328,8 +2254,6 @@ def _record_retained_workflow_markers(resources: FullRuntimeResources) -> bool:
                 continue
             if _is_b13_delivery_marker(resources, marker, record, marker_bytes):
                 continue
-            if _is_deferred_flow_marker(resources, marker, record):
-                continue
             reason = record.get(creation.B12Field.REASON) if isinstance(record, Mapping) else None
             resources.retained.append(
                 f"retained marker {marker}: {reason if isinstance(reason, str) else 'unreadable status'}"
@@ -2339,32 +2263,6 @@ def _record_retained_workflow_markers(resources: FullRuntimeResources) -> bool:
             resources.retained.append(f"retained marker {marker} cannot be read: {type(error).__name__}")
             unresolved_marker = True
     return unresolved_marker
-
-
-def _is_deferred_flow_marker(resources: FullRuntimeResources, marker: Path, record: object) -> bool:
-    """Recognize only this live admitted flow's typed hold; every actual failure remains blocking."""
-    flow = resources.workflow_flow
-    provisional = resources.payload_provisional
-    if (
-        provisional is None
-        or flow is None
-        or flow.payload_provisional != provisional
-        or marker != flow.retained_path
-        or not flow.finalized
-        or flow.finalizer_errors
-        or flow.ledger is None
-        or flow.finalizer_summary.get(RetentionField.FAILURE) is not None
-        or flow.finalizer_summary.get(RetentionField.ISSUES) != []
-        or not isinstance(record, Mapping)
-    ):
-        return False
-    native = cast(Mapping[object, object], record)
-    expected = DeferredRetention(RetentionEmitter.SHARED_FLOW, flow.root, provisional.binding_bytes)
-    return (
-        native.get(RetentionField.DEFERRED) == expected.record()
-        and native.get(full_flow.FLOW_ID_FIELD) == flow.ledger.flow_id
-        and native.get(RetentionField.FINALIZER) == flow.finalizer_summary
-    )
 
 
 def _is_b13_delivery_marker(resources: FullRuntimeResources, marker: Path, record: object, marker_bytes: bytes) -> bool:
@@ -2706,31 +2604,12 @@ def _close_full_profile_resources(
     has_retained_marker = _record_retained_workflow_markers(resources)
     _finish_public_cleanup(resources, cleanup_evidence, failures, has_retained_marker=has_retained_marker)
     _stop_profile_runtime(resources, cleanup_evidence, failures)
-    if resources.payload_provisional is not None:
-        work_end = positive_integer(parse_object(resources.payload_provisional.binding_bytes), "payload_end_ns")
-        stop = resources.daemon_stop_execution
-        resources.inner_cleanup = InnerCleanupEvidence(
-            resources.public_cleanup_finished_ns or 0,
-            resources.daemon_stop_started_ns,
-            resources.daemon_stop_finished_ns,
-            resources.daemon_stop_outcome,
-            stop.exit_status if stop is not None else None,
-            stop.diagnostics if stop is not None else _EMPTY,
-            resources.daemon_stop_error,
-            work_end,
-            tuple(failures),
-            tuple(resources.retained),
-        )
     if resources.retained:
         failures.append(_FULL_UNPROVEN_RETAINED.format(reasons=_CLEANUP_FAILURE_SEPARATOR.join(resources.retained)))
-    elif resources.payload_provisional is None:
+    else:
         _remove_legacy_profile_resources(resources, failures)
     if failures:
         raise RuntimeError(_FULL_CLEANUP_FAILURE.format(failures=_CLEANUP_FAILURE_SEPARATOR.join(failures)))
-    if resources.payload_provisional is not None:
-        if resources.inner_cleanup is not None and resources.inner_cleanup.pending_physical:
-            raise PhysicalCleanupPending(ScenarioStatus.P4_PENDING_OUTER.value)
-        raise RuntimeError(_FULL_STOP_UNPROVEN.format(outcome=resources.daemon_stop_outcome or "none"))
 
 
 def _run_readiness_check(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -3128,7 +3007,6 @@ def _full_workflow_waiting(resources: FullRuntimeResources, evidence: list[Comma
         resources.b13_evidence,
         resources.sanitize,
         accounting=resources.early_accounting("B3"),
-        retain_event=resources.retain_event,
     )
 
 
@@ -3140,7 +3018,6 @@ def _full_workflow_prepared(resources: FullRuntimeResources, evidence: list[Comm
     if resources.project_slug is None:
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
     event_binding = events.load_binding(setup.control.parent)
-    resources.retain_event(event_binding.carrier_root)
     prepared.run_prepared(
         _FoundationRunner(resources, evidence),
         setup,
@@ -3154,7 +3031,6 @@ def _full_workflow_prepared(resources: FullRuntimeResources, evidence: list[Comm
         lambda: _register_procedure_fixture_company(resources, evidence),
         resources.retained.append,
         accounting=resources.early_accounting("B4"),
-        retain_event=resources.retain_event,
     )
 
 
@@ -3166,7 +3042,6 @@ def _full_workflow_review(resources: FullRuntimeResources, evidence: list[Comman
     event_binding = events.load_binding(setup.control.parent)
     events.verify_case(event_binding, "B4")
     event_previous_seal = events.seal_for(event_binding, "B4")
-    resources.retain_event(event_binding.carrier_root)
     if resources.workflow_flow is None:
         resources.workflow_flow = full_flow.WorkflowFlow(
             host=_FoundationRunner(resources, evidence),
@@ -3181,8 +3056,6 @@ def _full_workflow_review(resources: FullRuntimeResources, evidence: list[Comman
             event_window=event_binding,
             event_previous_seal=event_previous_seal,
             event_case_seal=event_previous_seal,
-            payload_provisional=resources.payload_provisional,
-            defer_retention=resources.defer_retention,
         )
     flow = resources.workflow_flow
     try:
@@ -6392,8 +6265,7 @@ def _close_release_world(world: ReleaseWorld, evidence: list[CommandEvidence]) -
             finally:
                 terminal.close()
     finally:
-        if world.resources.payload_provisional is None:
-            _make_removable(world.root)
+        _make_removable(world.root)
 
 
 def _release_version(world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall, ref: str) -> str:
@@ -6586,6 +6458,32 @@ def _release_blueprint(resources: FullRuntimeResources, evidence: list[CommandEv
         raise ValueError(_RELEASE_BLUEPRINT_QUERY_ERROR)
 
 
+def _hosted_full_refusal(source_root: Path, source_revision: str, source_tree: str) -> str | None:
+    """Use the same fresh hosted-job precondition as the existing installer proof, for Ubuntu acceptance."""
+    refusal = "Full runtime acceptance requires a fresh GitHub-hosted Ubuntu job and the exact checked candidate."
+    if (
+        os.environ.get("GITHUB_ACTIONS") != "true"
+        or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted"
+        or sys.platform != "linux"
+        or not os.environ.get("HOME")
+    ):
+        return refusal
+    home = Path(os.environ["HOME"])
+    for path in (home / ".teleclaude", Path(_HEALTH_SOCKET_PATH), home / "Workspace/InstruktAI/TeleClaude"):
+        if path.exists() or path.is_symlink():
+            return refusal
+    result = _run_bounded_process(
+        ("git", "rev-parse", "HEAD", "HEAD^{tree}"),
+        cwd=source_root,
+        environment=_full_runtime_environment(),
+        timeout_seconds=_FULL_COMMAND_TIMEOUT_SECONDS,
+        output_limit_bytes=_OUTPUT_LIMIT,
+    )
+    if result.exit_status != 0 or result.diagnostics or result.stdout.splitlines() != [source_revision, source_tree]:
+        return refusal
+    return None
+
+
 def run_profile(
     profile: Profile,
     *,
@@ -6594,26 +6492,33 @@ def run_profile(
     source_tree: str,
     selection: frozenset[str] = frozenset(),
     report_path: Path | None = None,
-    payload_admission: GuestContext | None = None,
 ) -> AcceptanceReport:
     """Run the selected profile with disposable state and report cleanup separately."""
-    provisional = None
     if profile is Profile.FULL:
-        if payload_admission is None:
-            return _unadmitted_full_report(source_revision, source_tree, selection)
-        payload_admission.verify_request(source_root, source_revision, source_tree, selection)
-        provisional = PayloadProvisional.from_admitted(payload_admission)
-    end_ns = payload_admission.payload_deadline().effective_end() if payload_admission is not None else None
-    with payload_work.scope(end_ns):
-        return _run_profile(
-            profile,
-            source_root=source_root,
-            source_revision=source_revision,
-            source_tree=source_tree,
-            selection=selection,
-            report_path=report_path,
-            payload_provisional=provisional,
-        )
+        refusal = _hosted_full_refusal(source_root, source_revision, source_tree)
+        if refusal is not None:
+            return AcceptanceReport(
+                _REPORT_SCHEMA_VERSION,
+                source_revision,
+                source_tree,
+                Profile.FULL,
+                _FULL_PROFILE_SCENARIOS,
+                tuple(
+                    ScenarioResult(case, ScenarioStatus.NOT_RUN, 0.0, diagnostics=refusal)
+                    for case in _FULL_PROFILE_SCENARIOS
+                ),
+                CleanupResult(ScenarioStatus.NOT_RUN, refusal),
+                0.0,
+                selection=tuple(sorted(selection)),
+            )
+    return _run_profile(
+        profile,
+        source_root=source_root,
+        source_revision=source_revision,
+        source_tree=source_tree,
+        selection=selection,
+        report_path=report_path,
+    )
 
 
 def _run_profile(
@@ -6624,13 +6529,13 @@ def _run_profile(
     source_tree: str,
     selection: frozenset[str],
     report_path: Path | None,
-    payload_provisional: PayloadProvisional | None,
 ) -> AcceptanceReport:
     """Execute the existing profile body inside its caller's admitted work scope."""
     payload_work.check()
     resolved_root = source_root.expanduser().resolve()
     temporary_root = Path(tempfile.mkdtemp(prefix=_ENVIRONMENT_CACHE_DIRECTORY))
     resources: FullRuntimeResources | None = None
+    event_evidence: JSONObject = {}
     try:
 
         def cold_action() -> ScenarioResult:
@@ -6654,7 +6559,6 @@ def _run_profile(
                 source_revision=source_revision,
                 source_tree=source_tree,
                 report_path=report_path.resolve() if report_path is not None else None,
-                payload_provisional=payload_provisional,
                 retired_act_selected=not selection or _SCENARIO_WORKFLOW_RETIRED_ACTS_B12 in selection,
                 b13_selected=not selection or _SCENARIO_WORKFLOW_WAITING in selection,
                 retired_act_evidence=creation.empty_retired_act_evidence(
@@ -6802,6 +6706,19 @@ def _run_profile(
             inventory = _FULL_PROFILE_SCENARIOS
 
             def cleanup_full(evidence: list[CommandEvidence]) -> None:
+                nonlocal event_evidence
+                # Consume the existing evidence before owned file cleanup. Its
+                # failure stays separate and still permits the supported stop attempt.
+                try:
+                    event_evidence = events.profile_report(
+                        temporary_root,
+                        selected_cases=tuple(
+                            case for case in events.CASE_SEQUENCE if not selection or f"UC-WF-{case}" in selection
+                        ),
+                    )
+                except Exception as error:
+                    event_evidence = {"status": "unproven", "error": resources.sanitize(str(error))}
+                    resources.retained.append("workflow event report capture failed")
                 _close_full_profile_resources(resources, evidence)
 
             cleanup_action = cleanup_full
@@ -6813,24 +6730,8 @@ def _run_profile(
             scenario_actions=actions,
             cleanup_action=cleanup_action,
             selection=selection,
-            payload_provisional=payload_provisional,
         )
         if resources is not None:
-            try:
-                event_evidence = events.profile_report(
-                    temporary_root,
-                    selected_cases=tuple(
-                        case for case in events.CASE_SEQUENCE if not selection or f"UC-WF-{case}" in selection
-                    )
-                    if payload_provisional is not None
-                    else None,
-                )
-            except Exception as error:
-                event_evidence = {
-                    "status": "unproven",
-                    "case_report_path": str(temporary_root / events.CASE_REPORT_FILE),
-                    "error": str(error),
-                }
             delivery_path: Path | None = None
             delivery_marker = temporary_root / creation.B12_MATRIX_DIRECTORY / creation.B12_MARKER_FILE
             if delivery_marker.is_file():
@@ -6865,31 +6766,10 @@ def _run_profile(
                 retired_act_delivery_path=delivery_path,
                 workflow_waiting_retired_kickback_delivery_path=b13_delivery_path,
                 workflow_waiting_retired_kickback_marker_directory=b13_marker_directory,
-                payload_provisional=payload_provisional.observe(
-                    {
-                        "owned_profile_root": str(temporary_root),
-                        "daemon_stop_outcome": resources.daemon_stop_outcome,
-                        "inner_cleanup": resources.inner_cleanup.record()
-                        if resources.inner_cleanup is not None
-                        else None,
-                        "recorded_retention_reasons": list(resources.retained),
-                        "recorded_retention_keys": dict(resources.retained_keys),
-                        RetentionField.DEFERRED: [hold.record() for hold in resources.deferred_retention],
-                        "flow_finalizer": resources.workflow_flow.finalizer_summary
-                        if resources.workflow_flow is not None
-                        else None,
-                        "flow_finalizer_errors": list(resources.workflow_flow.finalizer_errors)
-                        if resources.workflow_flow is not None
-                        else [],
-                        "early_workflow": resources.early_workflow,
-                    }
-                )
-                if payload_provisional is not None
-                else None,
             )
         return report
     except BaseException:
-        if payload_provisional is None and temporary_root.exists() and (resources is None or not resources.retained):
+        if temporary_root.exists() and (resources is None or not resources.retained):
             shutil.rmtree(temporary_root)
         raise
 
@@ -6919,7 +6799,7 @@ def _write_report_payload(report_path: Path, temporary_path: Path, payload: Mapp
 
 
 def _write_report_bytes(report_path: Path, temporary_path: Path, data: bytes) -> None:
-    """Use the same durable write/readback for original immutable enclosure evidence."""
+    """Durably replace and read back the controller's source-bound report bytes."""
     try:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         with temporary_path.open("wb") as handle:
@@ -6937,11 +6817,6 @@ def _write_report_bytes(report_path: Path, temporary_path: Path, data: bytes) ->
             raise OSError(_REPORT_READBACK_MISMATCH)
     except (OSError, TypeError, ValueError) as exc:
         raise RuntimeError(_REPORT_WRITE_ERROR.format(error=exc)) from exc
-
-
-def _write_enclosure_export(report_path: Path, data: bytes) -> None:
-    """Delegate named outside evidence to the existing atomic report writer."""
-    _write_report_bytes(report_path, report_path.with_suffix(f"{report_path.suffix}{_REPORT_TEMP_SUFFIX}"), data)
 
 
 def _append_b13_failure(existing: str, addition: str) -> str:
@@ -6981,20 +6856,16 @@ def _b13_report_unproven(
     )
 
 
-def _report_payload(report: AcceptanceReport) -> JsonObject:
-    """Keep legacy bytes/schema shape while serializing only newly admitted reports as a typed provisional stage."""
+def _report_payload(report: AcceptanceReport) -> JSONObject:
+    """Serialize the existing report schema without its local delivery addresses."""
     payload = asdict(report)
     for name in (
         _REPORT_RETIRED_ACT_DELIVERY_PATH,
         _B13_REPORT_DELIVERY_PATH_FIELD,
         _B13_REPORT_MARKER_DIRECTORY_FIELD,
-        "payload_provisional",
     ):
         payload.pop(name, None)
-    if report.payload_provisional is not None:
-        payload["stage"] = PROVISIONAL_STAGE
-        payload["payload_provisional"] = report.payload_provisional.record()
-    return cast(JsonObject, payload)
+    return cast(JSONObject, payload)
 
 
 def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceReport:
@@ -7066,10 +6937,7 @@ def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceRepor
         failure_payload = _report_payload(report)
         _write_report_payload(report_path, temporary_path, failure_payload)
         return report
-    if (
-        report.payload_provisional is None
-        and report.workflow_waiting_retired_kickback_evidence.status == waiting.B13_STATUS_COMPLETE
-    ):
+    if report.workflow_waiting_retired_kickback_evidence.status == waiting.B13_STATUS_COMPLETE:
         assert isinstance(b13_marker_directory, Path)
         assert isinstance(b13_delivery_path, Path)
         shutil.rmtree(b13_marker_directory)
@@ -7079,7 +6947,7 @@ def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceRepor
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
-    if report.payload_provisional is None and isinstance(delivery_path, Path):
+    if isinstance(delivery_path, Path):
         _retire_delivered_b12_carrier(delivery_path)
     return report
 
@@ -7525,197 +7393,18 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
         raise ValueError(_FULL_REPORT_INVALID) from None
 
 
-def _validate_provisional_scenarios(report: JsonObject, selection: frozenset[str]) -> tuple[str, ...]:
-    """Require exact ordered coverage, including honest NOT_RUN entries for unselected journeys."""
-    if selection - set(_FULL_PROFILE_SCENARIOS) or any(
-        not set(_SCENARIO_PREREQUISITES.get(scenario_id, ())) <= selection for scenario_id in selection
-    ):
-        raise ValueError(_FULL_REPORT_INVALID)
-    scenarios = report["scenarios"]
-    if not isinstance(scenarios, list) or len(scenarios) != len(_FULL_PROFILE_SCENARIOS):
-        raise ValueError(_FULL_REPORT_INVALID)
-    covered: list[str] = []
-    for expected_id, value in zip(_FULL_PROFILE_SCENARIOS, scenarios, strict=True):
-        if not isinstance(value, dict) or set(value) != {
-            "scenario_id",
-            "status",
-            "duration_seconds",
-            "commands",
-            "diagnostics",
-        }:
-            raise ValueError(_FULL_REPORT_INVALID)
-        duration = value["duration_seconds"]
-        selected = not selection or expected_id in selection
-        if (
-            value["scenario_id"] != expected_id
-            or type(duration) not in (int, float)
-            or not isinstance(duration, (int, float))
-            or not math.isfinite(duration)
-            or duration < 0
-            or value["status"] != (ScenarioStatus.PASSED.value if selected else ScenarioStatus.NOT_RUN.value)
-            or value["diagnostics"] != (_EMPTY if selected else _SCENARIO_NOT_SELECTED)
-        ):
-            raise ValueError(_FULL_REPORT_INVALID)
-        _validate_report_commands(value["commands"])
-        if not selected:
-            if duration != 0 or value["commands"] != []:
-                raise ValueError(_FULL_REPORT_INVALID)
-            continue
-        covered.append(expected_id)
-        if expected_id == _SCENARIO_WORKFLOW_RETIRED_ACTS:
-            _validate_r4_snapshot_commands(value)
-    return tuple(covered)
-
-
-def _validate_provisional_cleanup_commands(report: JsonObject) -> None:
-    """Require successful recorded public cleanup and the single supported stop, in their actual order."""
-    cleanup = report["cleanup"]
-    if not isinstance(cleanup, dict):
-        raise ValueError(_FULL_REPORT_INVALID)
-    commands = cleanup["commands"]
-    _validate_report_commands(commands)
-    if not isinstance(commands, list) or not commands:
-        raise ValueError(_FULL_REPORT_INVALID)
-    stop_argv = [
-        *_SERVICE_STOP_COMMAND,
-        f"{_STOP_OUTCOME_VARIABLE}={_SYNTHETIC_RUNTIME_PLACEHOLDER}/{_STOP_OUTCOME_NAME}",
-    ]
-    stops: list[int] = []
-    for index, command in enumerate(commands):
-        if (
-            not isinstance(command, dict)
-            or type(command["exit_status"]) is not int
-            or command["exit_status"] != _PROCESS_SUCCESS
-            or command["diagnostics"] != _EMPTY
-        ):
-            raise ValueError(_FULL_REPORT_INVALID)
-        if command["argv"] == stop_argv:
-            stops.append(index)
-    if stops != [len(commands) - 1]:
-        raise ValueError(_FULL_REPORT_INVALID)
-
-
-def _validate_provisional_matrices(report: JsonObject, covered: tuple[str, ...]) -> None:
-    """Reuse the reviewed matrices only for actual coverage; unselected data must remain explicitly unexecuted."""
-    source_revision = report["source_revision"]
-    source_tree = report["source_tree"]
-    if not isinstance(source_revision, str) or not isinstance(source_tree, str):
-        raise ValueError(_FULL_REPORT_INVALID)
-    if _SCENARIO_WORKFLOW_RETIRED_ACTS_B12 in covered:
-        _validate_b12_report(report, source_revision, source_tree)
-    elif report[creation.B12Field.RETIRED_ACT_EVIDENCE] != asdict(
-        creation.empty_retired_act_evidence(source_revision=source_revision, source_tree=source_tree)
-    ):
-        raise ValueError(_FULL_REPORT_INVALID)
-    if _SCENARIO_WORKFLOW_WAITING in covered:
-        _validate_b13_report(report, source_revision, source_tree)
-    elif report["workflow_waiting_retired_kickback_evidence"] != asdict(
-        waiting.empty_b13_evidence(source_revision=source_revision, source_tree=source_tree)
-    ):
-        raise ValueError(_FULL_REPORT_INVALID)
-
-
-def validate_provisional_payload_inputs(report_bytes: bytes, manifest: bytes, package: StaticPackage) -> JsonObject:
-    """Check functional coverage and P3 inputs only; P1/P2, actual P4, retention/release and final acceptance remain separate."""
-    report = parse_object(report_bytes)
-    structure = validate_provisional_bindings(report, manifest, package)
-    if structure["purpose"] != Purpose.APPLICATION.value:
-        raise ValueError(_FULL_REPORT_INVALID)
-    expected_fields = {
-        "schema_version",
-        "source_revision",
-        "source_tree",
-        "profile",
-        "scenario_inventory",
-        "scenarios",
-        "cleanup",
-        "duration_seconds",
-        "selection",
-        "workflow_event_evidence",
-        creation.B12Field.RETIRED_ACT_EVIDENCE,
-        "workflow_waiting_retired_kickback_evidence",
-        "stage",
-        "payload_provisional",
-    }
-    duration = report.get("duration_seconds")
-    if (
-        set(report) != expected_fields
-        or report["scenario_inventory"] != list(_FULL_PROFILE_SCENARIOS)
-        or type(duration) not in (int, float)
-        or not isinstance(duration, (int, float))
-        or not math.isfinite(duration)
-        or duration < 0
-        or not isinstance(report["workflow_event_evidence"], dict)
-    ):
-        raise ValueError(_FULL_REPORT_INVALID)
-    selection = report["selection"]
-    if not isinstance(selection, list) or any(not isinstance(item, str) for item in selection):
-        raise ValueError(_FULL_REPORT_INVALID)
-    selected = frozenset(item for item in selection if isinstance(item, str))
-    if selection != sorted(selected):
-        raise ValueError(_FULL_REPORT_INVALID)
-    covered = _validate_provisional_scenarios(report, selected)
-    _validate_provisional_matrices(report, covered)
-    cleanup = validate_provisional_cleanup(report)
-    _validate_provisional_cleanup_commands(report)
-    sessions = validate_flow_session_closure(report)
-    starts = validate_flow_start_inputs(report)
-    early = validate_early_inputs(report, owner_email=_OWNER_SEED_EMAIL, owner_slug=_OWNER_SEED_SLUG)
-    return {
-        "binding_and_ledger_structure": structure,
-        "functional_coverage": list(covered),
-        "selected_run": bool(selected),
-        "inner_cleanup": cleanup,
-        "shared_flow_sessions": sessions,
-        "shared_flow_starts": starts,
-        "shared_flow_inventory": validate_flow_inventory_inputs(report, sessions, starts),
-        "early_workflow_inputs": early,
-        "public_event_inputs": validate_event_inputs(report, sessions, starts, early),
-    }
-
-
-def _unadmitted_full_report(source_revision: str, source_tree: str, selection: frozenset[str]) -> AcceptanceReport:
-    """Refuse before resource creation; absent enclosure admission supplies no journey or cleanup result."""
-    return AcceptanceReport(
-        schema_version=_REPORT_SCHEMA_VERSION,
-        source_revision=source_revision,
-        source_tree=source_tree,
-        profile=Profile.FULL,
-        scenario_inventory=_FULL_PROFILE_SCENARIOS,
-        scenarios=tuple(
-            ScenarioResult(scenario_id, ScenarioStatus.NOT_RUN, 0.0, diagnostics=_ENCLOSURE_REQUIRED)
-            for scenario_id in _FULL_PROFILE_SCENARIOS
-        ),
-        cleanup=CleanupResult(ScenarioStatus.NOT_RUN, _ENCLOSURE_REQUIRED),
-        duration_seconds=0.0,
-        selection=tuple(sorted(selection)),
-    )
-
-
 def _parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=_CLI_DESCRIPTION)
     parser.add_argument(_PROFILE_OPTION, choices=[profile.value for profile in Profile])
     parser.add_argument(_ROOT_OPTION, type=Path, default=Path(_DEFAULT_ROOT))
     parser.add_argument(_SOURCE_REVISION_OPTION)
     parser.add_argument(_SOURCE_TREE_OPTION)
-    parser.add_argument(_ENCLOSURE_ROLE_OPTION, choices=[role.value for role in Role])
-    parser.add_argument(_ENCLOSURE_MANIFEST_OPTION, type=Path)
-    parser.add_argument(_ENCLOSURE_ACTION_OPTION, choices=[action.value for action in Action])
-    parser.add_argument(_OBSERVATION_KEY_OPTION)
     default_report = Path(tempfile.gettempdir()) / _REPORT_NAME_TEMPLATE.format(identifier=uuid.uuid4().hex)
     parser.add_argument(_REPORT_OPTION, type=Path, default=default_report)
     parser.add_argument(_SELECT_OPTION, default=_EMPTY, help=_SELECT_HELP)
     parsed = parser.parse_args(arguments)
-    if parsed.enclosure_role is not None and parsed.enclosure_manifest is None:
-        parser.error(_ENCLOSURE_MANIFEST_REQUIRED)
-    if parsed.enclosure_action is not None and parsed.enclosure_role != Role.PRIVILEGED:
-        parser.error(_ENCLOSURE_ACTION_ROLE)
-    if parsed.enclosure_role in (None, Role.PAYLOAD, Role.SUPERVISOR) and not (
-        parsed.profile and parsed.source_revision and parsed.source_tree
-    ):
-        parser.error(_PROFILE_ARGUMENTS_REQUIRED)
-    if parsed.enclosure_role in (Role.PAYLOAD, Role.SUPERVISOR) and parsed.profile != Profile.FULL:
-        parser.error(_ENCLOSED_FULL_REQUIRED)
+    if not (parsed.profile and parsed.source_revision and parsed.source_tree):
+        parser.error("Profile execution requires profile, source-revision and source-tree.")
     return parsed
 
 
@@ -7747,65 +7436,6 @@ def _handle_profile_termination(_signum: int, _frame: FrameType | None) -> None:
 def main(arguments: list[str] | None = None) -> int:
     """Run the requested profile and write a structured result for the checked source."""
     parsed = _parse_arguments(sys.argv[1:] if arguments is None else arguments)
-    role = Role(parsed.enclosure_role) if parsed.enclosure_role is not None else None
-    if role is Role.PRIVILEGED:
-        if parsed.enclosure_action is None:
-            print(_ENCLOSURE_ACTION_REQUIRED, file=sys.stderr)
-            return _PROCESS_FAILURE
-        try:
-            result = run_helper(parsed.enclosure_manifest, Action(parsed.enclosure_action))
-        except (OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError) as error:
-            print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
-            return _PROCESS_FAILURE
-        return _PROCESS_SUCCESS if result.status is EnclosureOutcome.SUCCEEDED else _PROCESS_FAILURE
-    if role is Role.GUEST_POWEROFF:
-        try:
-            outcome = request_guest_poweroff(GuestContext.load(parsed.enclosure_manifest))
-        except (OSError, ValueError, RuntimeError) as error:
-            print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
-            return _PROCESS_FAILURE
-        return _PROCESS_SUCCESS if outcome is GuestShutdownRecord.ACKNOWLEDGED else _PROCESS_FAILURE
-    if role is Role.GUEST_SETUP:
-        try:
-            facts = run_guest_setup(GuestContext.load(parsed.enclosure_manifest, Role.GUEST_SETUP))
-        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-            print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
-            return _PROCESS_FAILURE
-        print(json.dumps(asdict(facts), sort_keys=True))
-        return _PROCESS_SUCCESS
-    if role in (Role.SUPERVISOR, Role.QUALIFICATION):
-        # The explicit role is separate from ordinary unadmitted CI. Observer
-        # imports occur only after its original protected library admission.
-        from tools.ci.enclosure_supervisor import run_supervisor  # noqa: PLC0415
-
-        try:
-            if role is Role.QUALIFICATION and (parsed.profile is not None or parsed.select):
-                raise ValueError(_QUALIFICATION_PROFILE_REFUSED)
-            selection = (
-                _selection_with_prerequisites(parsed.select, Profile.FULL) if role is Role.SUPERVISOR else frozenset()
-            )
-            supervisor_result = run_supervisor(
-                parsed.enclosure_manifest,
-                parsed.root,
-                parsed.source_revision,
-                parsed.source_tree,
-                selection,
-                validate_provisional_payload_inputs,
-                parsed.report,
-                _write_enclosure_export,
-                purpose=Purpose.APPLICATION if role is Role.SUPERVISOR else Purpose.QUALIFICATION,
-            )
-        except (OSError, ValueError, RuntimeError, KeyError) as error:
-            print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
-            return _PROCESS_FAILURE
-        print(json.dumps(supervisor_result, sort_keys=True))
-        # This source prefix preserves available real evidence but does not yet
-        # implement complete eligibility/release/export acceptance.
-        return _PROCESS_FAILURE
-    if role is not None and role is not Role.PAYLOAD:
-        print(_ENCLOSURE_UNAVAILABLE.format(role=role), file=sys.stderr)
-        return _PROCESS_FAILURE
-    admission = GuestContext.load_payload(parsed.enclosure_manifest) if role is Role.PAYLOAD else None
     selected_profile = Profile(parsed.profile)
     previous_termination_handler = signal.signal(signal.SIGTERM, _handle_profile_termination)
     try:
@@ -7817,7 +7447,6 @@ def main(arguments: list[str] | None = None) -> int:
             source_tree=parsed.source_tree,
             selection=selection,
             report_path=parsed.report,
-            payload_admission=admission,
         )
         report = write_report(report, parsed.report)
         if report.selection:
@@ -7825,6 +7454,14 @@ def main(arguments: list[str] | None = None) -> int:
                 print(_PARTIAL_PASSED, file=sys.stderr)
                 return _EXIT_PARTIAL
             return _PROCESS_FAILURE
+        if selected_profile is Profile.FULL and report.passed:
+            try:
+                validate_full_report_bytes(
+                    parsed.report.read_bytes(), source_revision=parsed.source_revision, source_tree=parsed.source_tree
+                )
+            except (OSError, ValueError) as error:
+                print(str(error), file=sys.stderr)
+                return _PROCESS_FAILURE
         return 0 if report.passed else 1
     finally:
         signal.signal(signal.SIGTERM, previous_termination_handler)

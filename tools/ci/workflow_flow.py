@@ -24,16 +24,9 @@ from tools.ci import workflow_events as events
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_ledger as start_ledger
 from tools.ci import workflow_publication as publication
-from tools.ci.enclosure_contract import parse_object, positive_integer
-from tools.ci.enclosure_inner import (
-    DeferredRetention,
-    LedgerEvidence,
-    PayloadProvisional,
-    RetentionEmitter,
-    RetentionField,
-)
 from tools.ci.workflow_creation import Observer, SessionView
 from tools.ci.workflow_foundation import FixtureSetup, FoundationHost
+from tools.ci.workflow_ledger import LedgerEvidence
 
 FLOW_NAME: Final = "workflow-b5-b7-b6"
 ITEM: Final = "b3-item"
@@ -471,9 +464,8 @@ class WorkflowFlow:
     event_window: events.EventWindowBinding | None = None
     event_previous_seal: start_ledger.JsonObject | None = None
     event_case_seal: start_ledger.JsonObject | None = None
-    payload_provisional: PayloadProvisional | None = None
-    defer_retention: Callable[[DeferredRetention], None] | None = None
     root: Path = field(init=False)
+    created_ns: int = field(default_factory=time.monotonic_ns, init=False)
     observer: Observer = field(init=False)
     controls: controls.Controls = field(init=False)
     publication: publication.Publication = field(init=False)
@@ -513,7 +505,7 @@ class WorkflowFlow:
         self.project = self.project.resolve()
         self.source_root = self.source_root.resolve()
         self.root = self.setup.control.parent / FLOW_NAME
-        self._retain_owned(RetentionEmitter.SHARED_FLOW, self.root, RETAINED_MARKER.format(path=self.root))
+        self.retain(RETAINED_MARKER.format(path=self.root))
         self.root.mkdir(parents=True)
         self.observer = Observer(self.host)
         self.controls = controls.Controls(self.setup, FLOW_NAME)
@@ -525,22 +517,7 @@ class WorkflowFlow:
             self.register_company,
         )
         self.plan_sets = flow_plan_sets(self.chain)
-        if self.event_window is not None:
-            self._retain_owned(
-                RetentionEmitter.EVENT_EVIDENCE,
-                self.event_window.carrier_root,
-                events.RETAINED_EVIDENCE.format(path=self.event_window.carrier_root),
-            )
         self.write_retained_marker()
-
-    def _retain_owned(self, emitter: RetentionEmitter, owner: Path, legacy_reason: str) -> None:
-        """Only these exact owning emitters use typed new-run holds; actual failures still call retain."""
-        if self.payload_provisional is None:
-            self.retain(legacy_reason)
-        elif self.defer_retention is None:
-            raise creation.binding_failure(DETAIL_MANIFEST)
-        else:
-            self.defer_retention(DeferredRetention(emitter, owner, self.payload_provisional.binding_bytes))
 
     def setup_flow(self) -> None:
         """Prepare candidate publication, one fixed chain pool, registry and ledger before any start."""
@@ -552,23 +529,20 @@ class WorkflowFlow:
         creation.require_manual_runner(self.observer)
         creation.enter_project(self.observer, self.project)
         baseline_reads: list[JsonValue] | None = None
-        if self.payload_provisional is not None:
-            baseline_reads = []
-            self.public_inventory_baseline = {
-                "started_ns": time.monotonic_ns(),
-                "finished_ns": None,
-                "commands": baseline_reads,
-                "error": None,
-            }
+        baseline_reads = []
+        self.public_inventory_baseline = {
+            "started_ns": time.monotonic_ns(),
+            "finished_ns": None,
+            "commands": baseline_reads,
+            "error": None,
+        }
         try:
             self.baseline = self.observer.sessions(evidence=baseline_reads)
         except BaseException as error:
-            if self.public_inventory_baseline is not None:
-                self.public_inventory_baseline["error"] = f"{type(error).__name__}: {error}"
+            self.public_inventory_baseline["error"] = f"{type(error).__name__}: {error}"
             raise
         finally:
-            if self.public_inventory_baseline is not None:
-                self.public_inventory_baseline["finished_ns"] = time.monotonic_ns()
+            self.public_inventory_baseline["finished_ns"] = time.monotonic_ns()
         self.publication.begin(own_generation=True)
         self.candidate_identity = self.publication.candidate
         self.publication.prepare()
@@ -1404,10 +1378,6 @@ class WorkflowFlow:
             )
             if extra is not None:
                 current.update(extra)
-            if self.payload_provisional is not None:
-                current[RetentionField.DEFERRED] = DeferredRetention(
-                    RetentionEmitter.SHARED_FLOW, self.root, self.payload_provisional.binding_bytes
-                ).record()
             self._atomic_json(self.retained_path, current)
         except OSError as error:
             raise creation.binding_failure(DETAIL_RETENTION.format(error=type(error).__name__)) from error
@@ -1442,12 +1412,7 @@ class WorkflowFlow:
         sessions = set(self.sessions)
         try:
             sessions.update(
-                set(
-                    self.all_current_project_sessions(
-                        evidence=self.public_inventory_evidence if self.payload_provisional is not None else None
-                    )
-                )
-                - set(baseline_ids)
+                set(self.all_current_project_sessions(evidence=self.public_inventory_evidence)) - set(baseline_ids)
             )
         except BaseException as error:
             issues.append(f"initial session inventory: {error}")
@@ -1560,15 +1525,14 @@ class WorkflowFlow:
             "P2_start_consumption": "unproven; explicit starts and async launch backlog lack public settlement evidence",
             "P4_fixture_processes_and_panes": "unproven by the approved contract",
         }
-        if self.payload_provisional is not None:
-            self.finalizer_summary.update(
-                {
-                    "project_path": str(self.project),
-                    "baseline_inventory": self.public_inventory_baseline,
-                    "public_inventory_evidence": self.public_inventory_evidence,
-                    "public_sweep_evidence": self.public_sweep_evidence,
-                }
-            )
+        self.finalizer_summary.update(
+            {
+                "project_path": str(self.project),
+                "baseline_inventory": self.public_inventory_baseline,
+                "public_inventory_evidence": self.public_inventory_evidence,
+                "public_sweep_evidence": self.public_sweep_evidence,
+            }
+        )
         try:
             self.write_manifest({"finalizer": self.finalizer_summary})
             self.write_retained_marker({"finalizer": self.finalizer_summary})
@@ -1639,11 +1603,10 @@ class WorkflowFlow:
 
     def _bound_roleless(self, session_id: str, record: Json) -> bool:
         """Only the admitted run's actual message-key startup may give a null role a known classification."""
-        if self.payload_provisional is None or self.sessions.get(session_id) != "roleless":
+        if self.sessions.get(session_id) != "roleless":
             return False
-        binding = parse_object(self.payload_provisional.binding_bytes)
-        created = positive_integer(binding, "created_ns")
-        end = positive_integer(binding, "payload_end_ns")
+        created = self.created_ns
+        end = time.monotonic_ns()
         for value in self.public_message_evidence:
             if not isinstance(value, Mapping) or value.get("session_id") != session_id:
                 continue
@@ -1763,45 +1726,38 @@ class WorkflowFlow:
 
     def _finalizer_sweep(self, baseline_ids: frozenset[str], rows: MutableJson, issues: list[str]) -> None:
         for _ in range(3):
-            reads: list[JsonValue] | None = [] if self.payload_provisional is not None else None
+            reads: list[JsonValue] | None = []
             packet: MutableJson | None = None
-            if reads is not None:
-                packet = {
-                    "inventory_index": None,
-                    "started_ns": time.monotonic_ns(),
-                    "finished_ns": None,
-                    "reads": reads,
-                    "open_session_ids": None,
-                    "error": None,
-                }
-                self.public_sweep_evidence.append(packet)
+            packet = {
+                "inventory_index": None,
+                "started_ns": time.monotonic_ns(),
+                "finished_ns": None,
+                "reads": reads,
+                "open_session_ids": None,
+                "error": None,
+            }
+            self.public_sweep_evidence.append(packet)
             try:
                 open_sessions = []
-                current = set(
-                    self.all_current_project_sessions(
-                        evidence=self.public_inventory_evidence if self.payload_provisional is not None else None
-                    )
-                ) - set(baseline_ids)
-                if packet is not None:
-                    packet["inventory_index"] = len(self.public_inventory_evidence) - 1
+                current = set(self.all_current_project_sessions(evidence=self.public_inventory_evidence)) - set(
+                    baseline_ids
+                )
+                packet["inventory_index"] = len(self.public_inventory_evidence) - 1
                 for session_id in current:
                     record = self.session_record(session_id, retain=False, evidence=reads)
                     if record.get(FIELD_CLOSED_AT) is None and record.get(FIELD_LIFECYCLE) != "closed":
                         open_sessions.append(session_id)
-                if packet is not None:
-                    packet["open_session_ids"] = list[JsonValue](sorted(open_sessions))
+                packet["open_session_ids"] = list[JsonValue](sorted(open_sessions))
                 if not open_sessions:
                     return
                 roles = {session: self.sessions.get(session, "unknown") for session in open_sessions}
                 self._finalizer_end_sessions(open_sessions, roles, rows, issues)
             except BaseException as error:
-                if packet is not None:
-                    packet["error"] = f"{type(error).__name__}: {error}"
+                packet["error"] = f"{type(error).__name__}: {error}"
                 issues.append(f"session sweep read: {error}")
                 return
             finally:
-                if packet is not None:
-                    packet["finished_ns"] = time.monotonic_ns()
+                packet["finished_ns"] = time.monotonic_ns()
         issues.append("the public session sweep did not reach an all-closed observation")
 
     def _finalizer_stop_fixtures(self, issues: list[str]) -> None:
@@ -1955,16 +1911,13 @@ class WorkflowFlow:
                 if record is not None and record.get(FIELD_PROJECT_PATH) in owned_paths:
                     found.append(session_id)
             result = tuple(sorted(found))
-            if packet is not None:
-                packet["matched_session_ids"] = list[JsonValue](result)
+            packet["matched_session_ids"] = list[JsonValue](result)
             return result
         except BaseException as error:
-            if packet is not None:
-                packet["error"] = f"{type(error).__name__}: {error}"
+            packet["error"] = f"{type(error).__name__}: {error}"
             raise
         finally:
-            if packet is not None:
-                packet["finished_ns"] = time.monotonic_ns()
+            packet["finished_ns"] = time.monotonic_ns()
 
     def end_session(self, session_id: str, attempt_id: str | None = None) -> Json:
         """Use the public end and operation surfaces, then require the retained record to show closure."""

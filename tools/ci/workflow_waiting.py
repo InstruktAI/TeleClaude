@@ -1712,7 +1712,6 @@ def run_waiting(
     b13_evidence: WaitingKickbackEvidence,
     sanitize: Callable[[str], str],
     accounting: creation.EvidenceObject | None = None,
-    retain_event: Callable[[Path], None] | None = None,
 ) -> None:
     """Journey B3; raises JourneyFailure leading with its class."""
     waiting = _Waiting(
@@ -1752,10 +1751,6 @@ def run_waiting(
         event_binding = events.begin_b3_window(
             observer, setup.control.parent, project, project_slug, project_name, before
         )
-        if retain_event is None:
-            retain(events.RETAINED_EVIDENCE.format(path=event_binding.carrier_root))
-        else:
-            retain_event(event_binding.carrier_root)
         waiting.clone = waiting.publication.prepare()
         creation.enter_project(observer, project)
         publication.negative_control(observer, ITEM, waiting.baseline, before, waiting.starts)

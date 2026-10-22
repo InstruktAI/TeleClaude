@@ -35,15 +35,13 @@ jobs:
         run: make install
         timeout-minutes: 5
 
-      - name: Install locked outside observer for harness type checking
-        run: uv pip install --python .venv/bin/python --no-deps 'https://files.pythonhosted.org/packages/d2/fc/c0a3f4c4eaa5a22fbef91713474666e13d0ea2a69c84532579490a9f2cc8/dbus_next-0.2.3-py3-none-any.whl#sha256=58948f9aff9db08316734c0be2a120f6dc502124d9642f55e90ac82ffb16a18b'
-        timeout-minutes: 2
-
       - name: Run lint
         run: telec code lint --all
         timeout-minutes: 5
 
   runtime-acceptance:
+    # Source/journey review precedes the first separately authorized hosted run.
+    if: github.event_name == 'workflow_dispatch'
     name: Full CLI runtime acceptance
     runs-on: ubuntu-24.04
     timeout-minutes: 75

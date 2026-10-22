@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
+import math
 import os
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, cast
-
-from tools.ci.enclosure_contract import parse_object
 
 ENCODING: Final = "utf-8"
 LINE_BREAK: Final = "\n"
@@ -568,3 +569,110 @@ class StartLedger:
                 or parent.label != declared[1]
             ):
                 raise ValueError(DETAIL_PARENT.format(case=attempt.case, label=attempt.label))
+
+
+ERROR_JSON: Final = "invalid finite JSON object"
+
+
+def _json_value(value: object) -> JsonValue:
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float) and math.isfinite(value):
+        return value
+    if isinstance(value, list):
+        return [_json_value(item) for item in cast(list[object], value)]
+    if isinstance(value, dict):
+        mapping = cast(dict[object, object], value)
+        if all(isinstance(key, str) for key in mapping):
+            return {cast(str, key): _json_value(item) for key, item in mapping.items()}
+    raise ValueError(ERROR_JSON)
+
+
+def object_value(value: JsonValue) -> JsonObject:
+    """Validate the object boundary before accessing declared fields."""
+    if not isinstance(value, dict):
+        raise ValueError(ERROR_JSON)
+    return value
+
+
+def parse_object(data: bytes) -> JsonObject:
+    """Decode finite JSON without accepting duplicate object keys."""
+    parsed: object = json.loads(data, object_pairs_hook=_unique_object)
+    return object_value(_json_value(parsed))
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> JsonObject:
+    result: JsonObject = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(ERROR_JSON)
+        result[key] = _json_value(value)
+    return result
+
+
+@dataclass(frozen=True)
+class LedgerEvidence:
+    """Keep exact bytes and parse failure independently of the derived explicit-start classification."""
+
+    data: bytes
+    expected_cases: tuple[str, ...]
+    ledger: StartLedger | None
+    error: str | None
+    flow_id: str | None
+    missing_cases: tuple[str, ...]
+    extra_cases: tuple[str, ...]
+    pending_triggers: tuple[str, ...]
+    blocking_attempts: tuple[str, ...]
+
+    @classmethod
+    def capture(cls, data: bytes, *, path: Path, expected_cases: tuple[str, ...]) -> LedgerEvidence:
+        """Use the existing complete ledger validator; path is an address only and is never opened here."""
+        try:
+            ledger = StartLedger.from_bytes(data, path=path)
+        except (ValueError, RecursionError) as error:
+            return cls(data, expected_cases, None, str(error), None, expected_cases, (), (), ())
+        cases = frozenset(ledger.closed_lists)
+        attempts = tuple(ledger.attempts.values())
+        pending = tuple(
+            attempt.identifier
+            for attempt in attempts
+            if attempt.kind == RECORD_TRIGGER and attempt.state == RECORD_OPEN
+        )
+        blocking = tuple(
+            attempt.identifier
+            for attempt in attempts
+            if attempt.kind == RECORD_UNKNOWN or (attempt.state == RECORD_OPEN and attempt.kind != RECORD_TRIGGER)
+        )
+        # The flow may keep using the parsed ledger for public settlement.
+        # Snapshot facts are frozen now and cannot follow those later mutations.
+        return cls(
+            data,
+            expected_cases,
+            ledger,
+            None,
+            ledger.flow_id,
+            tuple(sorted(set(expected_cases) - cases)),
+            tuple(sorted(cases - set(expected_cases))),
+            pending,
+            blocking,
+        )
+
+    def record(self) -> JsonObject:
+        """Pending triggers keep their open semantic state; no absence/count supplies consumption or P4."""
+        return {
+            "raw_encoding": "base64",
+            "raw_data": base64.b64encode(self.data).decode("ascii"),
+            "raw_sha256": hashlib.sha256(self.data).hexdigest(),
+            "raw_byte_count": len(self.data),
+            "parse_error": self.error,
+            "flow_id": self.flow_id,
+            "expected_cases": list[JsonValue](self.expected_cases),
+            "missing_case_lists": list[JsonValue](self.missing_cases),
+            "extra_case_lists": list[JsonValue](self.extra_cases),
+            "pending_trigger_ids": list[JsonValue](self.pending_triggers),
+            "blocking_attempt_ids": list[JsonValue](self.blocking_attempts),
+            "recorded_explicit_attempts_settled": self.error is None
+            and not self.missing_cases
+            and not self.extra_cases
+            and not self.blocking_attempts,
+        }
