@@ -226,34 +226,9 @@ And no commit happens — the stamp call exits before any partial mutation lands
 
 #### UC-WSS12: One-shot task success outcome delivers the todo
 
-```gherkin
-Given a Todo has kind="task", a one-shot schedule (no cron recurrence), and a live run session as its active_runner
-When the run session runs "telec todo stamp my-slug --task-outcome success"
-Then the stamp confirms the todo is kind="task" and resolves the schedule as one-shot
-And the todo is delivered through the existing delivery path, satisfying its dependents
-And the lifecycle runner skips the delivered todo and does not re-dispatch sdlc/procedure/lifecycle/task/run-task after the run session closes
-```
-
 #### UC-WSS13: Recurring task success outcome clears an error-hold and stays live
 
-```gherkin
-Given a Todo has kind="task", a recurring cron schedule, and a hold whose hold_audit source is the task-error source
-When the run session runs "telec todo stamp my-slug --task-outcome success"
-Then the stamp resolves the schedule as recurring and clears the task-error hold
-And the todo is not delivered and stays live for its next scheduled instant
-And a hold whose source is a human pause is left untouched by the same success outcome
-```
-
 #### UC-WSS14: Task error outcome holds the todo with its reason
-
-```gherkin
-Given a Todo has kind="task" and a live run session as its active_runner
-When the run session runs "telec todo stamp my-slug --task-outcome error --reason '<why a human is needed>'"
-Then the stamp records hold=true and hold_audit with the task-error source, the reason, and the caller session id
-And the held todo is not auto-re-dispatched and the run session stays alive as the beacon for human resolution
-And an error outcome with an empty or missing reason is refused before any write
-And a task-outcome stamp on a Todo that is not kind="task" is refused before any write
-```
 
 <!-- planned-change:issue-128 -->
 
