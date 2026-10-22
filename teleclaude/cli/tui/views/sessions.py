@@ -298,6 +298,7 @@ class SessionsView(
                     and isinstance(value, dict)
                     and isinstance(value.get(OutputSummaryField.TEXT), str)
                     and isinstance(value.get(OutputSummaryField.AT), str)
+                    and value[OutputSummaryField.AT]
                 ):
                     parsed[session_id] = value
             self._last_output_summary = parsed
