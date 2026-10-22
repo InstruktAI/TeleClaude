@@ -48,19 +48,21 @@ transient operational chatter such as run commands, model changes, or status noi
 """
 
 
+_AGENT_OUTPUT_SUMMARY_PROMPT = """You wrote the response below. Restate it as your own one-line status in \
+**summary** (max {max_summary_words} words).
+
+- Speak as yourself, the author, in first person with the subject dropped.
+- Report what you did or found.
+- Omit UUIDs and opaque strings. If the response is trivial or very short, return it verbatim.
+
+## Your response:
+{agent_output}
+"""
+
+
 def _build_agent_output_summary_prompt(agent_output: str, max_summary_words: int) -> str:
     """Build prompt for summarizing agent output."""
-    return f"""Summarize this assistant response.
-
-## Agent Output:
-{agent_output}
-
-## Output:
-1. **summary** (max {max_summary_words} words): Capture what actually happened in this turn.
-   Use first person only when the agent performed concrete actions. For monitoring, waiting,
-   or status reporting, use natural phrasing (e.g. "Monitoring workers", "Waiting on build
-   results"). Omit UUIDs and opaque strings. If trivial or very short, return verbatim.
-"""
+    return _AGENT_OUTPUT_SUMMARY_PROMPT.format(agent_output=agent_output, max_summary_words=max_summary_words)
 
 
 async def generate_session_title(recent_turns: list[tuple[str, str]]) -> str | None:

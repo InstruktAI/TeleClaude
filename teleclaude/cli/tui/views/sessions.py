@@ -33,6 +33,7 @@ from teleclaude.cli.tui.views.sessions_actions import DOUBLE_PRESS_THRESHOLD, Se
 from teleclaude.cli.tui.views.sessions_highlights import (
     HIDDEN_SESSION_STATUSES,
     PREVIEW_HIGHLIGHT_DURATION,
+    OutputSummaryField,
     SessionsViewHighlightsMixin,
 )
 from teleclaude.cli.tui.widgets.chip import ownership_surface_enabled
@@ -121,17 +122,17 @@ class SessionsView(
         self._preview_revision = 0
         self._input_highlights: set[str] = set()
         self._output_highlights: set[str] = set()
-        # session_id → {"text": str, "ts": float (monotonic)}
+        # session_id → {"text": str, "at": str (event timestamp), "ts": float (monotonic)}
         self._last_output_summary: dict[str, dict[str, object]] = {}  # guard: loose-dict
-        # session_id → last non-empty out-line text. In-memory only, never
-        # persisted to disk: retains the live out value across the
+        # session_id → (last non-empty out-line text, its event timestamp). In-memory
+        # only, never persisted to disk: retains the live out value across the
         # user_prompt_submit clear and tree rebuilds so the out line never drops.
-        self._retained_out: dict[str, str] = {}
-        # Live activity survives tree rebuilds the same way the out-line text
-        # does: a fresh row would otherwise reset activity_event and drop the
-        # out-line's live highlight until the agent's next event — up to its
-        # full inter-event gap on a quiet agent.
-        self._retained_activity: dict[str, tuple[str, str]] = {}
+        self._retained_out: dict[str, tuple[str, str | None]] = {}
+        # Live activity (hook type, text, event timestamp) survives tree rebuilds
+        # the same way the out-line text does: a fresh row would otherwise reset
+        # activity_event and drop the out-line's live highlight until the agent's
+        # next event — up to its full inter-event gap on a quiet agent.
+        self._retained_activity: dict[str, tuple[str, str, str | None]] = {}
         self._session_state_pruned = False
         self._collapsed_sessions: set[str] = set()
         self._collapsed_computers: set[str] = set()
@@ -290,12 +291,16 @@ class SessionsView(
         if isinstance(last_output_summary, dict):
             parsed: dict[str, dict[str, object]] = {}  # guard: loose-dict - persisted activity summaries
             for session_id, value in last_output_summary.items():
-                if not isinstance(session_id, str):
-                    continue
-                if isinstance(value, dict) and "text" in value:
+                # A stored summary is admitted only with its own event time. One saved without
+                # it is dropped here; its row shows the session's own agent_stop summary record.
+                if (
+                    isinstance(session_id, str)
+                    and isinstance(value, dict)
+                    and isinstance(value.get(OutputSummaryField.TEXT), str)
+                    and isinstance(value.get(OutputSummaryField.AT), str)
+                    and value[OutputSummaryField.AT]
+                ):
                     parsed[session_id] = value
-                elif isinstance(value, str):
-                    parsed[session_id] = {"text": value, "ts": 0.0}
             self._last_output_summary = parsed
 
         collapsed_sessions = data.get("collapsed_sessions", [])
@@ -574,11 +579,12 @@ class SessionsView(
             stored = self._last_output_summary.get(session.session_id)
             retained_activity = self._retained_activity.get(session.session_id)
             if retained_activity is not None:
-                row.activity_event, row.activity_text = retained_activity
+                row.activity_event, row.activity_text, row.activity_at = retained_activity
             if retained:
-                row.last_output_summary = retained
-            elif stored and stored.get("text"):
-                row.last_output_summary = str(stored["text"])
+                row.last_output_summary, row.last_output_at = retained
+            elif stored:
+                row.last_output_summary = str(stored[OutputSummaryField.TEXT])
+                row.last_output_at = str(stored[OutputSummaryField.AT])
 
             # Recurse into AI-to-AI children
             for child in node.children:
