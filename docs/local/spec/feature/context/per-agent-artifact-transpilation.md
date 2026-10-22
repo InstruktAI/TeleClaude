@@ -1,5 +1,5 @@
 ---
-description: 'Source artifacts render into the shared command corpus and per-agent masters and tier-local skills, with YAML frontmatter and parameter preambles emitted directly by their transforms.'
+description: 'Source artifacts render into per-agent masters and tier-local skills with YAML frontmatter; procedure-entry owns parameter preambles.'
 visibility: 'public'
 ---
 

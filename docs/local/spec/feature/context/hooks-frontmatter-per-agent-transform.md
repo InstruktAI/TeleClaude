@@ -1,5 +1,5 @@
 ---
-description: 'Artifact "hooks" frontmatter is preserved for Claude output and stripped for Codex/Gemini output during transpilation. Distinct from live agent CLI hook installation.'
+description: 'Artifact hooks are preserved for Claude except in Claude skills, and stripped for Codex/Gemini. Distinct from live CLI hook installation.'
 visibility: 'public'
 ---
 
