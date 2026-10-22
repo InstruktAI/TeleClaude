@@ -516,10 +516,12 @@ CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = ["sdlc/procedure/lifecycle/work/review-com
 # machine's PREPARED hold). The authoring session decides per commit; the
 # surfaces only name candidates and carry this test.
 COMMIT_REVIEW_INTENT_TEST = (
-    "Decide by what each commit set out to do: a commit through which you wrote new or changed code "
-    "or documentation content owes an independent reviewer; a commit through which you wrote neither "
-    "(a removal, a merge of work already reviewed where it was written, a validation or other "
-    "mechanical repair) owes none."
+    "Decide by what a wrong change would cost: review is owed when the commit carries a consequence "
+    "you cannot establish alone — new or changed logic, a state or data shape, a contract between "
+    "components, concurrency, security, or what a snippet or agent artifact directs agents to do. "
+    "Every other commit you stamp yourself, without asking anyone: a removal, a merge of work already "
+    "reviewed where it was written, a validation or mechanical repair, a rename or move, formatting, "
+    "and wording or prompt prose whose effect is presentation, including wording a human shaped with you."
 )
 COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE = "telec code stamp {sha} --verdict approve --reason <text>"
 COMMIT_REVIEW_DISCARD_PLACEHOLDER = "<sha>"
