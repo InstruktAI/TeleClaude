@@ -97,8 +97,8 @@ and preserve their current ownership and interpretation.
   encodes; a key that is not a canonical positive decimal issue number is
   refused, never read leniently. The target has no address field: the
   projection carries no `StoreAddress` into it and neither decodes nor checks
-  it, so the projection establishes repository, issue and work-item identity,
-  not address correspondence.
+  it, so the projection establishes repository, issue and work-item identity;
+  that the address names the same item is the port's identity invariant.
 
 <!-- /planned:issue-130-native-target-projection -->
 
@@ -173,6 +173,16 @@ operations:
     supplies no committed-act evidence.
 
 <!-- /planned:issue-128 -->
+
+<!-- planned:issue-130-native-target-projection -->
+
+- An item's `WorkItemId` and `StoreAddress` name the same item. Wherever the
+  selected adapter returns or resolves both, it reads them from that one
+  stored item, and no operation pairs one item's identity with another item's
+  address. A consumer that carries the pair relies on either value naming the
+  item the other names, without decoding the address.
+
+<!-- /planned:issue-130-native-target-projection -->
 
 ## Primary flows
 
