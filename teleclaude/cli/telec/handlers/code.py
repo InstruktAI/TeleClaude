@@ -42,8 +42,10 @@ from teleclaude.commit_identity import (
     PLANNED_TODO_TRAILER_KEY,
     TODO_TRAILER_KEY,
     CommitIdentityUnresolvable,
+    CommitMessageMetadataReserved,
     compose_commit_footer,
     resolve_commit_identity_from_caller,
+    validate_authored_commit_message,
 )
 from teleclaude.core.db import get_db
 from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
@@ -481,6 +483,12 @@ def handle_code_commit(args: list[str]) -> None:
             file=sys.stderr,
         )
         raise SystemExit(2)
+
+    try:
+        validate_authored_commit_message(message)
+    except CommitMessageMetadataReserved as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(2) from None
 
     human_involved = _resolve_human_involvement_declaration(human_involved_reason)
 

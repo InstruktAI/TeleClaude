@@ -25,10 +25,21 @@ _BLANK_LINE = ""
 SESSION_TRAILER_KEY = "Session"
 TODO_TRAILER_KEY = "Todo"
 PLANNED_TODO_TRAILER_KEY = "Planned-Todo"
+_HUMAN_INVOLVED_TRAILER_KEY = "Human-Involved"
+_TRAILER_SEPARATOR = ":"
 _SESSION_LINE_TEMPLATE = SESSION_TRAILER_KEY + ": {session_id}"
-_HUMAN_INVOLVED_LINE_TEMPLATE = "Human-Involved: {label}"
+_HUMAN_INVOLVED_LINE_TEMPLATE = _HUMAN_INVOLVED_TRAILER_KEY + ": {label}"
 _TODO_ASSOCIATION_LINE_TEMPLATE = "{key}: {slug}"
 _HUMAN_INVOLVED_LABELS: MappingProxyType[bool, str] = MappingProxyType({True: "true", False: "false"})
+_GENERATED_TRAILER_KEYS = frozenset(
+    key.casefold()
+    for key in (SESSION_TRAILER_KEY, _HUMAN_INVOLVED_TRAILER_KEY, TODO_TRAILER_KEY, PLANNED_TODO_TRAILER_KEY)
+)
+_GENERATED_BRANDING = _COMMIT_TRAILER.casefold()
+_ERR_AUTHORED_METADATA = (
+    "Commit message contains platform-owned metadata. Supply only the subject and explanation; "
+    "use --todo for association and --human-involved for the involvement declaration."
+)
 
 _ERR_ACTIVE_AGENT_UNRESOLVED = "agent session {session_id!r} exists but its active agent could not be resolved"
 _ERR_UNKNOWN_AGENT = "agent session {session_id!r} resolved to unknown agent {active_agent!r}"
@@ -45,6 +56,21 @@ class CommitIdentityUnresolvable(RuntimeError):
     party at all — distinct from the honest degrade (a human genuinely at the
     keyboard) that ``resolve_commit_identity`` returns rather than raises.
     """
+
+
+class CommitMessageMetadataReserved(ValueError):
+    """Caller-authored text occupies the commit owner's metadata namespace."""
+
+
+def validate_authored_commit_message(message: str) -> None:
+    """Reject generated metadata lines anywhere in the caller's message."""
+    for line in message.splitlines():
+        normalized = line.strip()
+        key, separator, _ = normalized.partition(_TRAILER_SEPARATOR)
+        if normalized.casefold() == _GENERATED_BRANDING or (
+            separator and key.strip().casefold() in _GENERATED_TRAILER_KEYS
+        ):
+            raise CommitMessageMetadataReserved(_ERR_AUTHORED_METADATA)
 
 
 def resolve_commit_identity() -> tuple[str | None, str | None]:
@@ -113,14 +139,8 @@ def compose_commit_footer(
     human_involved: bool,
     todo_association: tuple[str, str] | None = None,
 ) -> str:
-    """Append the mandated footer to *message*, never reading a byte of it.
-
-    Appends, in order: the original message exactly as given (subject and body,
-    whatever was written — never trimmed or otherwise rewritten), a blank line,
-    the branding line, a blank line, ``Session:`` (only when *session_id* is not
-    ``None``), and ``Human-Involved:``. No scan, no parse, no rejection, no
-    shape inference.
-    """
+    """Preserve valid authored text and append the platform-owned metadata."""
+    validate_authored_commit_message(message)
     footer_lines = [_COMMIT_TRAILER, _BLANK_LINE]
     if session_id is not None:
         footer_lines.append(_SESSION_LINE_TEMPLATE.format(session_id=session_id))
