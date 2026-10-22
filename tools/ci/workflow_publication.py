@@ -122,12 +122,6 @@ def docs_body(output: str) -> str | None:
     return body.split(PENDING_NOTE_MARKER)[0].strip()
 
 
-def file_body(source: str) -> str:
-    """The original body extraction from already-decoded candidate text."""
-    parts = source.split("---", 2)
-    return _text(parts[2]).strip() if len(parts) == 3 else ""
-
-
 def classify_bodies(pending: Mapping[str, str], current: Mapping[str, str]) -> tuple[str, str]:
     """Classify public body parity; eligibility alone does not bind a candidate commit."""
     if all(current[identity] == pending[identity] for identity in FOLD_IDS):
@@ -468,24 +462,7 @@ class Publication:
             if packet is not None:
                 packet["finished_ns"] = time.monotonic_ns()
 
-    def _file_body(self, identity: str) -> str:
-        """The body of a candidate live file: everything after its header block, line ends normalized."""
-        path = self.source_root / DOCS_ROOT / f"{identity}{LIVE_SUFFIX}"
-        packet = self._input_record("candidate_file", identity=identity, path=str(path), text=None)
-        try:
-            text = path.read_text(encoding="utf-8")
-            if packet is not None:
-                packet["text"] = text
-            return file_body(text)
-        except Exception as error:
-            if packet is not None:
-                packet["error"] = f"{type(error).__name__}: {error}"
-            raise
-        finally:
-            if packet is not None:
-                packet["finished_ns"] = time.monotonic_ns()
-
-    def classify_generation(self) -> tuple[str, str]:
+    def classify_generation(self) -> tuple[str, str, dict[str, str]]:
         """The installed generation from public reads alone, and the evidence for it.
 
         Fixture generation: all four current bodies equal pending. All four differing is candidate-eligible only;
@@ -493,15 +470,12 @@ class Publication:
         """
         pending = {identity: self.body_of(identity, pending=True) for identity in FOLD_IDS}
         current = {identity: self.body_of(identity, pending=False) for identity in FOLD_IDS}
-        return classify_bodies(pending, current)
-
-    def release_candidate_files(self) -> None:
-        """Take the candidate\'s live bodies from its checkout, so a restoration can be verified from the start."""
-        self.live_bodies = {identity: self._file_body(identity) for identity in FOLD_IDS}
+        state, evidence = classify_bodies(pending, current)
+        return state, evidence, current
 
     def ensure_candidate(self) -> str:
         """Bind the starting generation to the recorded candidate through an owned publication before any prepare."""
-        state, evidence = self.classify_generation()
+        state, evidence, _current = self.classify_generation()
         path = f"generation {state}: {evidence}"
         if state == GENERATION_INCONSISTENT:
             self.note("generation-path", path)
@@ -516,7 +490,7 @@ class Publication:
             )
         self.attempted = True  # a failed invocation may already have exchanged the generation
         self._publish(copy)
-        state, evidence = self.classify_generation()
+        state, evidence, _current = self.classify_generation()
         path += f"; published candidate {copy_head}, then generation {state}: {evidence}"
         self.note("generation-path", path)
         if state != GENERATION_CANDIDATE_ELIGIBLE:
@@ -529,7 +503,6 @@ class Publication:
         self.note("candidate-identity", self.candidate)
         self.register_company()
         if own_generation:
-            self.release_candidate_files()
             self.ensure_candidate()
         self.live_bodies = {identity: self.body_of(identity, pending=False) for identity in FOLD_IDS}
 
@@ -692,10 +665,22 @@ class Publication:
             return []
         problems: list[str] = []
         try:
-            self._publish(self._fresh_copy(self.source_root, "restore"))
-            for identity, body in self.live_bodies.items():
-                if self.body_of(identity, pending=False) != body:
-                    problems.append(DETAIL_BODY_MISMATCH.format(identity=identity, expected="candidate's live body"))
+            copy = self._fresh_copy(self.source_root, "restore")
+            copy_head = self._run(
+                (GIT, "rev-parse", "HEAD"), copy, CLONE_TIMEOUT_SECONDS, what="git rev-parse restore copy HEAD"
+            ).output.strip()
+            if copy_head != self.candidate.split()[1]:
+                problems.append(DETAIL_IDENTITY_MOVED.format(before=self.candidate, after=f"copy commit {copy_head}"))
+            else:
+                self._publish(copy)
+                state, evidence, current = self.classify_generation()
+                if state != GENERATION_CANDIDATE_ELIGIBLE:
+                    problems.append(DETAIL_GENERATION.format(path=f"restore generation {state}: {evidence}"))
+                for identity, body in self.live_bodies.items():
+                    if current[identity] != body:
+                        problems.append(
+                            DETAIL_BODY_MISMATCH.format(identity=identity, expected="candidate's live body")
+                        )
             if not problems:
                 self.attempted = False
         except BaseException as error:  # the restore reports, never hides, the journey's own failure
