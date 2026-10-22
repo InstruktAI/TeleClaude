@@ -26,20 +26,27 @@ TeleClaudeNext.
 
 <!-- planned:issue-129 -->
 
-- **Also owns:** the typed global GitHub App catalog and canonical `RoleName`-to-App
-  mapping, including validation of the bare, sensitive `private_key_base64_env`
-  declaration before placeholder expansion. The global shape is documented in
-  `local/projects/teleclaude/spec/teleclaude-config`; App and session meaning
-  belongs to
-  `local/projects/teleclaude/spec/feature/identity/platform-github-identity`.
-- **Also owns:** protected resolution and persistence of declared global App-key
-  names through the existing global sibling `.env`. Global environment paths
-  re-read the current validated catalog while holding the global declaration
-  transaction before the `.env` transaction, and retain both locks through
-  classification and access. This covers set, clear, reference edits,
-  reconciled writes and the late credential read. It adds no multi-file atomic
-  commit guarantee; generic global environment values retain their existing
-  value and newline rules.
+- **Also owns:** the config-owned GitHub App key resolution path. After caller
+  authentication and provider-operation admission, it reads the exact assigned
+  profile's bare key name from the global sibling `.env`, with interpolation
+  disabled and no ambient or other-tier fallback. It strictly decodes the
+  single-line standard-base64 UTF-8 PEM and returns `SecretStr` to the
+  credential component. A profile whose App ID or stable Bot identity
+  disagrees with the session assignment refuses without another actor.
+  Missing or malformed config/key material produces value-free diagnostics;
+  raw values and decode exceptions stay out of general config responses and
+  logs. `teleclaude-config` owns the field shape, and
+  raw `GlobalConfig` is checked before generic placeholder expansion so the
+  sensitive key-reference name remains bare and literal.
+  `atomic-env-file-write` owns the file-level custody and temporary-write details.
+- **Also owns:** global environment classification and lock order. Read the
+  latest validated global declaration under its transaction before acquiring
+  the sibling `.env` transaction, and hold both through set, clear,
+  field-reference edits, reconciled writes and protected reads. Generic global
+  environment operations use the same order while keeping their current value
+  semantics. The per-file transactions make no multi-file atomic-commit promise.
+  This is limited to the global App-key path; other environment tiers retain
+  their existing owner and storage contracts.
 
 <!-- /planned:issue-129 -->
 

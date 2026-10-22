@@ -48,16 +48,14 @@ No row inherits, shadows, or falls back to another row. The selected YAML path d
 
 <!-- planned:issue-129 -->
 
-The global App profile's `private_key_base64_env` is a bare environment-key
-name, not a YAML placeholder. It is validated before generic reference
-expansion, and ordinary load, `get`, editor, validation and publication paths
-never resolve its key. After authenticated invocation and operation admission,
-the identity credential path asks the config owner to read only the selected
-profile's value from the global sibling `.env`, with dotenv interpolation
-disabled and owner-only file checks applied. No process-environment, other-tier
-or placeholder fallback participates. The answer is a protected `SecretStr`,
-never a generic configuration value. All other YAML reference syntax and
-resolution behavior in this spec remain unchanged.
+The global App key's bare reference is a config-owned exception; generic YAML
+placeholder expansion does not resolve it. The identity credential path
+consumes the config owner's value for its assigned App. Field shape and lookup
+are owned by `local/projects/teleclaude/spec/domain/config` and
+`local/projects/teleclaude/spec/teleclaude-config`; file custody is
+`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`, and the
+credential call path is
+`local/projects/teleclaude/spec/feature/identity/platform-github-identity`.
 <!-- /planned:issue-129 -->
 
 ### Use cases

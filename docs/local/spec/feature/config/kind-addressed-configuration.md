@@ -213,15 +213,11 @@ capability to web clients; it does not define a web-console screen.
 
 <!-- planned:issue-129 -->
 
-For a global field edit whose environment key is declared by a GitHub App
-profile, protected-key classification comes from the latest validated global
-declaration while its transaction is held. The edit acquires the global
-declaration lock before the sibling `.env` lock and keeps both through the
-protected storage check and replacement or clear; it does not reacquire either
-lock through a convenience writer. This is the field-reference route's share
-of the global App-key custody rule. Other tiers and unrelated global value
-semantics remain unchanged, and the two files gain no shared atomic-commit
-promise.
+A global field edit that names a GitHub App key still uses this editor's field
+identity, subject revision and explicit keep/replace/clear intent. It delegates
+protected classification and persistence to the config owner; the file-level
+write contract remains
+`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`.
 <!-- /planned:issue-129 -->
 
 ### Read paths

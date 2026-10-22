@@ -71,37 +71,23 @@ needs them receives them in its request, from authoritative workflow state.
 
 ### Credential component
 
-The config owner declares a closed global `github.apps` catalog and maps the
-existing canonical `RoleName` vocabulary through `github.roles`. Each profile
-carries a `GitHubActorAssignment` containing its configured App ID and stable
-Bot account identity, and a `private_key_base64_env` field containing only a
-bare key name in the global sibling `.env`. This field is sensitive and is
-validated against the raw, unexpanded document so it cannot be transformed from
-a `${NAME}` placeholder. Generic configuration reads and editor views do not
-resolve it. Profile IDs and stable Bot identities are unambiguous; role
-mappings name configured profiles. A missing role mapping prevents a new
-GitHub binding without disabling local-only sessions. The session owner's
-durable assignment records the selected App ID and stable Bot identity; later
-role-map edits never rebind an existing session.
+The session owner fixes the assigned App and stable Bot identity when it creates
+the session and preserves that binding across role-map edits and restart.
+Credential use consumes that durable session assignment; request content or a
+caller-supplied role cannot select another actor. After caller authentication
+and provider-operation admission, the credential component asks the config
+owner for the key belonging to that assigned profile as a `SecretStr`. The
+global declaration and key-resolution contract is owned by
+`local/projects/teleclaude/spec/domain/config` and
+`local/projects/teleclaude/spec/teleclaude-config`.
 
-The protected key value is one standard-base64 line containing UTF-8 PEM.
-Base64 is a representation, not encryption. After the invocation is
-authenticated and the provider operation is structurally admitted, the config
-owner reads only the exact assigned profile's bare key name from the global
-sibling `.env`, while holding the global declaration lock before the
-environment lock. The file must pass the existing owner-only regular-file,
-owner-UID, mode and readability checks. This read disables dotenv interpolation
-and has no ambient-process or other-tier fallback. Strict standard-base64
-decoding and UTF-8 decoding produce a `SecretStr` for the credential component;
-key validity and JWT signing remain with the existing GitHub SDK. The decoded
-value, raw mapping and decoder/SDK exceptions do not enter generic config
-answers, logs or user-facing errors (`sdlc/policy/ai-agent-security`).
+The credential component passes the config-owned secret answer to the existing
+App authentication path. It receives no raw config mapping and never chooses a
+secret file or environment fallback (`sdlc/policy/ai-agent-security`).
 
-A missing or unreadable file, missing key, unsafe custody, malformed encoding,
-invalid PEM or App/Bot identity mismatch refuses with a value-free diagnostic
-naming only public App and missing-prerequisite facts. Unsafe existing storage
-is never repaired by chmod or copied to another store. The late resolver and
-the corresponding global environment mutation rules are owned by
+A config-owned credential refusal stops the operation without secret fallback
+or value disclosure; an authenticated actor mismatch remains an identity-owned
+refusal. See the config resolver and its file-custody owner:
 `local/projects/teleclaude/spec/domain/config` and
 `local/projects/teleclaude/spec/feature/config/atomic-env-file-write`.
 
