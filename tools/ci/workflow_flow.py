@@ -58,6 +58,7 @@ ARTIFACT_LOG: Final = "artifact_content.log"
 ARTIFACT_INPUT: Final = "artifact_content.input"
 FIELD_ROLE: Final = "role"
 FIELD_JOB: Final = "job"
+FIELD_COMMAND: Final = "command"
 FIELD_PROJECT_PATH: Final = "project_path"
 FIELD_NATIVE: Final = "native_session_id"
 FIELD_INITIATOR: Final = "initiator_session_id"
@@ -868,8 +869,10 @@ class WorkflowFlow:
         self,
         session_id: str,
         expected_role: str,
-        expected_job: str,
+        expected_procedure: str,
         deadline: float,
+        *,
+        activation: bool,
     ) -> tuple[FixtureSetup, Json, Json]:
         """Wait inside the caller's startup window for a fresh public/native launch join."""
         attempts = 0
@@ -878,7 +881,8 @@ class WorkflowFlow:
         last_record: Json | None = None
         last_scan = self._empty_launch_scan()
         native_history: list[str] = []
-        expected = {"role": expected_role, "job": expected_job}
+        procedure_field = FIELD_JOB if activation else FIELD_COMMAND
+        expected = {FIELD_ROLE: expected_role, procedure_field: expected_procedure}
         while time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
             outcome, record = self._public_session_observation(session_id, min(FLOW_COMMAND_SECONDS, remaining))
@@ -946,7 +950,7 @@ class WorkflowFlow:
                         )
                     if not native_history:
                         native_history.append(native)
-                for field_name, expected_value in ((FIELD_ROLE, expected_role), (FIELD_JOB, expected_job)):
+                for field_name, expected_value in ((FIELD_ROLE, expected_role), (procedure_field, expected_procedure)):
                     found = record.get(field_name)
                     if found is not None and found != expected_value:
                         raise self._binding_failure_with_witness(
@@ -988,7 +992,7 @@ class WorkflowFlow:
                     actual_session == session_id
                     and native is not None
                     and record.get(FIELD_ROLE) == expected_role
-                    and record.get(FIELD_JOB) == expected_job
+                    and record.get(procedure_field) == expected_procedure
                     and len(matches) == 1
                 ):
                     setup, launch = matches[0]

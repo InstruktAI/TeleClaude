@@ -27,6 +27,7 @@ OPERATIONS: Final = "operations"
 GET: Final = "get"
 FIELD_OPERATION: Final = "operation_id"
 FIELD_JOB: Final = "job"
+FIELD_COMMAND: Final = "command"
 FIELD_STATE: Final = "state"
 FIELD_RESULT: Final = "result"
 FIELD_ERROR: Final = "error"
@@ -173,7 +174,10 @@ def _startup(
     session: str,
     expected_role: str,
     procedure: str,
+    *,
+    activation: bool,
 ) -> tuple[Mapping[str, object], Mapping[str, object], str]:
+    procedure_field = FIELD_JOB if activation else FIELD_COMMAND
     deadline = time.monotonic() + START_SECONDS
     role_path = flow.publication.clone / driver.DOCS_ROOT / f"{procedure}{driver.LIVE_SUFFIX}"
     folded_role = driver.declared_role(role_path)
@@ -181,9 +185,11 @@ def _startup(
         raise creation.binding_failure(
             DETAIL_FOLDED_ROLE.format(session=session, actual=expected_role, folded=folded_role)
         )
-    setup, initial_record, launch = flow.await_session_binding(session, folded_role, procedure, deadline)
-    if initial_record.get(FIELD_ROLE) != folded_role or initial_record.get(FIELD_JOB) != procedure:
-        _fail(f"session {session} role/job mismatch: {initial_record!r}")
+    setup, initial_record, launch = flow.await_session_binding(
+        session, folded_role, procedure, deadline, activation=activation
+    )
+    if initial_record.get(FIELD_ROLE) != folded_role or initial_record.get(procedure_field) != procedure:
+        _fail(f"session {session} role/{procedure_field} mismatch: {initial_record!r}")
     native = initial_record.get(FIELD_NATIVE)
     if not isinstance(native, str) or launch.get(FIELD_NATIVE) != native:
         raise creation.binding_failure(DETAIL_BINDING.format(detail="native session identity mismatch"))
@@ -198,7 +204,11 @@ def _startup(
         current = journey.record(min(FRAME_SECONDS, remaining), retain=False)
         last = current if current is not None else last
         if current is not None:
-            for field_name, expected in ((FIELD_ROLE, folded_role), (FIELD_JOB, procedure), (FIELD_NATIVE, native)):
+            for field_name, expected in (
+                (FIELD_ROLE, folded_role),
+                (procedure_field, procedure),
+                (FIELD_NATIVE, native),
+            ):
                 found = current.get(field_name)
                 if found is not None and found != expected:
                     _fail(DETAIL_STARTUP_RECORD.format(session=session, predicate=field_name, record=current))
@@ -209,11 +219,15 @@ def _startup(
                 confirmed = journey.record(min(FRAME_SECONDS, max(0.1, deadline - time.monotonic())), retain=True)
                 if journey.started(confirmed, native):
                     if confirmed is not None and (
-                        confirmed.get(FIELD_ROLE) == folded_role and confirmed.get(FIELD_JOB) == procedure
+                        confirmed.get(FIELD_ROLE) == folded_role and confirmed.get(procedure_field) == procedure
                     ):
                         record = confirmed
                         break
-                    _fail(DETAIL_STARTUP_RECORD.format(session=session, predicate="role/job", record=confirmed))
+                    _fail(
+                        DETAIL_STARTUP_RECORD.format(
+                            session=session, predicate=f"role/{procedure_field}", record=confirmed
+                        )
+                    )
                 last = confirmed if confirmed is not None else last
         remaining = deadline - time.monotonic()
         if remaining > 0:
@@ -543,7 +557,7 @@ def _start_work(
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))
         )
     w2 = flow.plan_actor(PROC_WORK, 1, ROLE_WORK)
-    w2_record, w2_launch, w2_role = _startup(flow, w2, ROLE_WORK, PROC_WORK)
+    w2_record, w2_launch, w2_role = _startup(flow, w2, ROLE_WORK, PROC_WORK, activation=True)
     result = terminal.get(FIELD_RESULT)
     reservation_keys = list(B14_RESERVATION_KEY.finditer(result)) if isinstance(result, str) else []
     if len(reservation_keys) != 1:
@@ -568,7 +582,7 @@ def _start_work(
         _fail(f"B5 builder child start text is absent: {child_frame!r}")
     builder = match.group(1)
     flow.require_ledger().record_session(child_attempt, builder)
-    builder_record, builder_launch, _builder_role = _startup(flow, builder, ROLE_BUILDER, PROC_BUILD)
+    builder_record, builder_launch, _builder_role = _startup(flow, builder, ROLE_BUILDER, PROC_BUILD, activation=False)
     child_evidence["public_record"] = cast(flow_module.JsonValue, dict(builder_record))
     child_evidence["launch_record"] = cast(flow_module.JsonValue, dict(builder_launch))
     if builder_record.get(FIELD_INITIATOR) != w2:
@@ -1237,7 +1251,9 @@ def _observe_integrators(
             record = flow.session_record(session, retain=False)
             if record.get(FIELD_ROLE) != ROLE_INTEGRATOR:
                 _fail(f"unexpected B5 session {session}: {record!r}")
-            record, _launch, _role = _startup(flow, session, ROLE_INTEGRATOR, flow_module.PROC_INTEGRATE)
+            record, _launch, _role = _startup(
+                flow, session, ROLE_INTEGRATOR, flow_module.PROC_INTEGRATE, activation=False
+            )
             if record.get(FIELD_INITIATOR) not in (None, ""):
                 _fail(f"standing integrator {session} has an initiator: {record!r}")
             _, control_launch = flow.control_for_session(session)
@@ -1323,7 +1339,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))
         )
     w3 = flow.plan_actor(PROC_WORK, 2, ROLE_WORK)
-    w3_record, w3_launch, w3_role = _startup(flow, w3, ROLE_WORK, PROC_WORK)
+    w3_record, w3_launch, w3_role = _startup(flow, w3, ROLE_WORK, PROC_WORK, activation=True)
     case = driver.DriverCase(
         host=flow.host,
         observer=flow.observer,
