@@ -56,32 +56,11 @@ And assistant response quotes remain while surrounding whitespace is removed
 
 #### UC-CTE-4:
 
-```gherkin
-Given an operator retrieves an archived conversation with an established launch assignment
-When its launch facts and worker classification are presented
-Then they follow the assignment recorded by the platform for that session
-And command-like text in the conversation does not change those facts
-```
-
 #### UC-CTE-5:
-
-```gherkin
-Given an operator has named a conversation
-When its mirror is refreshed
-Then the mirror presents the title established by the owning session
-And a later refresh that supplies no title does not erase the recorded title
-```
 
 #### UC-CTE-6: An operator can follow who said what and when
 
 #### UC-CTE-7:
-
-```gherkin
-Given an operator can retrieve an existing conversation mirror
-When a refresh produces no conversation or an unexpectedly shorter read under the same projection rules
-Then the retained conversation remains readable
-And the refresh does not claim that missing source content was erased from the conversation
-```
 
 #### UC-CTE-8:
 
