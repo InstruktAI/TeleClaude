@@ -11,19 +11,18 @@ visibility: 'public'
 
 ## What it is
 
-Mirror generation declines a candidate in two cases: the transcript yields no
-conversation text after normalization — session-start hooks with no user input,
-transcripts trimmed to tool-only blocks, sessions that never reached the user
-prompt — or it yields fewer messages than a mirror whose derivation version is
-current or newer, which is refused so partial parsing cannot replace a complete
-record. Re-extracting a declined candidate on every reconciliation tick wastes
-IO and CPU. The session_mirrors service maintains a tombstone record for each
-declined transcript, keyed by `source_identity` and carrying the transcript's
-`file_size` and `file_mtime` at the time of the determination.
+Mirror generation can yield no conversation text after normalization — for
+example, a session-start hook with no user input, a tool-only transcript, or a
+session that never reached the user prompt. The stored conversation is left
+unchanged, and a tombstone keyed by `source_identity` records the source's
+`file_size` and `file_mtime` so an unchanged empty source is skipped on later
+reconciliation.
 
-A declined candidate never replaces an existing mirror; its stored conversation
-remains unchanged. A shorter projection from an older derivation version may be
-accepted as part of upgrading the stored representation.
+A smaller projection is refused when the stored mirror's derivation version is
+current or newer; the stored conversation remains unchanged and the shrink
+refusal is recorded separately from tombstones. A smaller projection from an
+older derivation version may be accepted as part of upgrading the stored
+representation.
 
 On the next reconciliation pass the worker compares the candidate file's
 current `(size, mtime)` against the tombstone. If they match, processing is
