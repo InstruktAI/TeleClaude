@@ -46,6 +46,18 @@ No row inherits, shadows, or falls back to another row. The selected YAML path d
 - Saving an effective configuration preserves existing `${NAME}` references for values that were not explicitly replaced, including references whose value is absent on the saving computer. An environment-backed edit writes the value to the owning `.env` and retains the reference in YAML; an edit to the value the reference already resolves to, its default included, writes nothing.
 - Arbitrary `.env` entries are not injected as model fields. Consumers that need an unreferenced credential use the config context's scope-owned credential-store interface.
 
+<!-- planned:issue-129 -->
+
+The global App key's bare reference is a config-owned exception; generic YAML
+placeholder expansion does not resolve it. The identity credential path
+consumes the config owner's value for its assigned App. Field shape and lookup
+are owned by `local/projects/teleclaude/spec/domain/config` and
+`local/projects/teleclaude/spec/teleclaude-config`; file custody is
+`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`, and the
+credential call path is
+`local/projects/teleclaude/spec/feature/identity/platform-github-identity`.
+<!-- /planned:issue-129 -->
+
 ### Use cases
 
 #### UC-CFG-EXPAND-1: An operator uses a scoped environment value in configuration

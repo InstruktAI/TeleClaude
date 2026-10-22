@@ -60,16 +60,22 @@ The prepared-set used by the prepare gate, like the delivered-set used by the wo
 
 ### Use cases
 
-```
-Given active todos "feature-a", "feature-b", and "feature-c"
-When the operator sets "feature-b" and "feature-c" as prerequisites for "feature-a" through the todo update surface
-Then "feature-a" waits for both prerequisites to be delivered before it enters work
+#### UC-WDG10: An operator sets prerequisites for work
+
+```gherkin
+Scenario: Wait for selected prerequisites before work
+  Given active todos "feature-a", "feature-b", and "feature-c"
+  When the operator sets "feature-b" and "feature-c" as prerequisites for "feature-a" through the todo update surface
+  Then "feature-a" waits for both prerequisites to be delivered before it enters work
 ```
 
-```
-Given active todo "alpha" is waiting for prerequisite todos
-When the operator clears its prerequisites through the todo update surface
-Then "alpha" no longer waits for those prerequisites
+#### UC-WDG11: An operator clears a todo's prerequisites
+
+```gherkin
+Scenario: Stop waiting for cleared prerequisites
+  Given active todo "alpha" is waiting for prerequisite todos
+  When the operator clears its prerequisites through the todo update surface
+  Then "alpha" no longer waits for those prerequisites
 ```
 
 ### Use cases

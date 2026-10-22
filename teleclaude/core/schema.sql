@@ -812,3 +812,19 @@ CREATE TABLE IF NOT EXISTS conversation_bindings (
     entered_at TEXT NOT NULL,
     PRIMARY KEY (origin, key_field, conversation_key)
 );
+
+-- Infrastructure assignments are immutable session state, separate from inbound metadata.
+CREATE TABLE IF NOT EXISTS github_session_bindings (
+    session_id TEXT PRIMARY KEY,
+    binding_json TEXT NOT NULL,
+    native_target_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS github_object_associations (
+    repository_id INTEGER NOT NULL,
+    container_number INTEGER NOT NULL,
+    object_kind TEXT NOT NULL,
+    provider_id INTEGER NOT NULL,
+    creation_json TEXT NOT NULL,
+    PRIMARY KEY (repository_id, container_number, object_kind, provider_id)
+);

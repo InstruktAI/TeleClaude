@@ -82,17 +82,24 @@ All Committizen types are allowed.
 - Post-commit review is routed by the committed diff, not by pre-commit
   permission. Functional code/tests are committed first. The post-commit gate
   names the commits that are review candidates; the authoring session decides
-  for each whether independent review is owed, by what the commit set out to
-  do. A commit through which the author wrote new or changed code, or new or
-  changed content in a governed snippet or agent artifact, goes to an
-  independent reviewer, dispatched automatically, and the author waits for the
-  verdict. A commit through which the author wrote neither — a removal, a merge
-  of work already reviewed where it was written, a validation or other
-  mechanical repair — is discarded as a candidate: the author stamps it
-  `approve` with `telec code stamp` and a one-line reason. Which paths the diff
-  touches names the candidate; it never decides that review is owed. Discarding
-  is not reviewing; it records that no review is owed, never that the change
-  is correct. Review is technical stewardship, never a human ratification step.
+  for each whether independent review is owed, by what a wrong change would
+  cost. Review is owed when the change carries a consequence its author cannot
+  establish alone: new or changed logic, a state or data shape, a contract
+  between components, concurrency, security, or what a governed snippet or
+  agent artifact directs other agents to do. The author dispatches that
+  reviewer and waits for the verdict. Every other commit is stamped `approve`
+  by its author with `telec code stamp` and a one-line reason, without asking
+  anyone: a removal, a merge of work already reviewed where it was written, a
+  validation or mechanical repair, a rename or move, formatting, and wording or
+  prompt prose whose effect is presentation. Presentation wording its owner
+  judged while it was being written — wording a human shaped with the authoring
+  session — is already reviewed where it was written. A change carrying one of
+  the consequences above goes to review whoever shaped it, because shaping its
+  intent does not establish its effect on the rest of the system. Which paths
+  the diff touches names the
+  candidate; it never decides that review is owed. Stamping is not reviewing;
+  it records that no review is owed, never that the change is correct. Review
+  is technical stewardship, never a human ratification step.
 
 - Every commit-review outcome is a repository-owned record keyed by the commit
   SHA, available independently of whether a todo exists or a session holds its
@@ -178,6 +185,13 @@ that invite the author to imitate platform output (`general/principle/priming`).
 - Asking before routine commits shifts technical stewardship back to the human
   and leaves completed work unrecorded. The safety boundary is the sealed commit
   gate plus post-commit review routing, not a human permission prompt.
+- A review is worth what it can catch. It earns its cost where a wrong change
+  does damage its author cannot see and an outside standard can find it. A
+  change whose error shows at a glance and undoes in a moment, or whose only
+  standard is the judgment its owner already applied, gives the reviewer
+  nothing to check: the review spends a session and the human's attention and
+  verifies nothing. Deciding by what the commit touches instead of what it
+  risks turns every edit to a code file into a review cycle.
 
 A shell command's text does not reveal which files it wrote. Reading paths out
 of that text mistakes files the command merely inspected or quoted as prose for

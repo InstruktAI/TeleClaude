@@ -258,4 +258,4 @@ hooks:
   inbound:
     github:
       secret: ${GITHUB_WEBHOOK_SECRET}
-schema_version: 23
+schema_version: 24

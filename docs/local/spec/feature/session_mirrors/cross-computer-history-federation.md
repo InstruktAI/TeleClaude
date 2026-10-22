@@ -23,7 +23,8 @@ which answers it within the caller's reach there
 
 For search, all remote calls run in parallel, errors are surfaced per-host,
 and the merged result list is re-sorted by `sort_timestamp` descending
-before rendering. For show, exactly one computer is allowed.
+before rendering. For show, exactly one computer is allowed; a request naming
+multiple computers is refused before any remote call.
 
 ## Canonical fields
 

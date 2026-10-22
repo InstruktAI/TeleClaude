@@ -72,7 +72,9 @@ class SessionRow(TelecMixin, Widget):
     output_highlight = reactive(False)
     activity_event = reactive("")  # hook event type, not persisted
     activity_text = reactive("", layout=True)  # tool name or summary
+    activity_at: reactive[str | None] = reactive(None)  # timestamp of the activity event
     last_output_summary = reactive("", layout=True)  # retained out-line text used by the render fallback
+    last_output_at: reactive[str | None] = reactive(None)  # timestamp of the event that produced last_output_summary
     skip_bottom_connector = reactive(False)
     is_last_child = reactive(False)
 
@@ -339,7 +341,7 @@ class SessionRow(TelecMixin, Widget):
             lines.append(line3)
 
         if self.activity_event == "pre_tool_use" and self.activity_text:
-            activity_time_str = format_time(self.session.last_activity, with_date=with_date)
+            activity_time_str = format_time(self.activity_at, with_date=with_date)
             line4 = Text(no_wrap=True)
             line4.append(_ATTENTION_GUTTER_BLANK)
             line4.append(connector_pad)
@@ -348,7 +350,7 @@ class SessionRow(TelecMixin, Widget):
             line4.append(truncate_text(self.activity_text, text_limit), style=output_style)
             lines.append(line4)
         elif self.activity_event == "thinking" and self.activity_text:
-            activity_time_str = format_time(self.session.last_activity, with_date=with_date)
+            activity_time_str = format_time(self.activity_at, with_date=with_date)
             line4 = Text(no_wrap=True)
             line4.append(_ATTENTION_GUTTER_BLANK)
             line4.append(connector_pad)
@@ -358,8 +360,7 @@ class SessionRow(TelecMixin, Widget):
             lines.append(line4)
         elif self.activity_event == "agent_stop" and self.activity_text:
             output_text = self.activity_text.replace("\n", " ")[:text_limit]
-            summary_at = getattr(self.session, "last_output_summary_at", None) or self.session.last_activity
-            output_time = format_time(summary_at, with_date=with_date)
+            output_time = format_time(self.activity_at, with_date=with_date)
             line4 = Text(no_wrap=True)
             line4.append(_ATTENTION_GUTTER_BLANK)
             line4.append(connector_pad)
@@ -367,12 +368,14 @@ class SessionRow(TelecMixin, Widget):
             line4.append(f"{detail_pad}[{output_time}] out: {output_text}", style=output_style)
             lines.append(line4)
         elif self.last_output_summary or self.session.last_output_summary:
-            # Idle — persisted summary, NOT italic
-            summary_at = getattr(self.session, "last_output_summary_at", None) or self.session.last_activity
-            output_time = format_time(summary_at, with_date=with_date)
-            output_text = (self.last_output_summary or self.session.last_output_summary or "").replace("\n", " ")[
-                :text_limit
-            ]
+            # Idle, NOT italic: the retained out value with its own event time, else the
+            # session's agent_stop summary record with its summary time.
+            if self.last_output_summary:
+                output_value, output_at = self.last_output_summary, self.last_output_at
+            else:
+                output_value, output_at = self.session.last_output_summary or "", self.session.last_output_summary_at
+            output_time = format_time(output_at, with_date=with_date)
+            output_text = output_value.replace("\n", " ")[:text_limit]
             line4 = Text(no_wrap=True)
             line4.append(_ATTENTION_GUTTER_BLANK)
             line4.append(connector_pad)
@@ -485,4 +488,10 @@ class SessionRow(TelecMixin, Widget):
         self.refresh()
 
     def watch_last_output_summary(self, _value: str) -> None:
+        self.refresh()
+
+    def watch_activity_at(self, _value: str | None) -> None:
+        self.refresh()
+
+    def watch_last_output_at(self, _value: str | None) -> None:
         self.refresh()

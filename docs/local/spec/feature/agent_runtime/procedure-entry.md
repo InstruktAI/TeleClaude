@@ -82,9 +82,14 @@ the session visible and eligible for a later lookup.
 1. Resolve a published entry procedure. Unknown, pending or non-procedure IDs,
    missing role or dispatch declarations, and unusable required-read closures
    refuse before a session is created.
+   Remote entry is refused with the missing capability named before any
+   operation or session is created on either computer.
 2. Bind declared parameters once under
    `general/spec/snippet-authoring-schema`, preserving raw arguments. Missing
    required arguments and surplus tokens refuse before session creation.
+   Each refusal identifies its cause: an unresolved procedure names the
+   procedure and gap, a missing required parameter is named, surplus arguments
+   are identified, and a retired command name is refused as unknown.
 3. Resolve the declared role and the caller's dispatch privilege through the
    catalog. Reading a dependency never adopts its declared role.
 4. Resolve agent preference and thinking mode through the shared dispatch
@@ -98,122 +103,29 @@ the session visible and eligible for a later lookup.
 
 #### UC-PE1: A session receives its assignment and procedure reference
 
-```gherkin
-Given an agent is dispatched to a published entry procedure
-When its session starts
-Then its first instruction names its role and bound assignment inputs
-And directs it to retrieve that procedure's complete instructions
-And reading those instructions requires no temporary session brief file
-```
-
 #### UC-PE2: A scheduled job retains its run identity and duties
-
-```gherkin
-Given a configured agent job whose procedure declares its job-handling reads
-When the job runner dispatches the agent
-Then the loader identifies the scheduled invocation and its configured job
-And the procedure's reads supply the applicable reporting and close-out duties
-And the job declaration supplies the run's agent preferences and thinking mode
-```
 
 #### UC-PE3: An activation retains its event-handling context
 
-```gherkin
-Given a subscribed procedure declaring its applicable event-handling reads
-When its activation starts an agent
-Then the loader carries the activation home and applicable subject and delivery facts
-And the procedure's reads supply its event-handling instructions
-```
-
 #### UC-PE4: An unusable entry creates no session
-
-```gherkin
-Given an agent requests an unknown, pending or unusable entry procedure
-When entry resolution runs
-Then the request fails with the specific cause
-And no session is created
-```
 
 #### UC-PE5: Missing required input refuses entry
 
-```gherkin
-Given an agent requests an entry procedure without one of its required inputs
-When entry resolution binds the arguments
-Then the request fails naming the missing input
-And no session is created
-```
-
 #### UC-PE6: Dispatch privilege follows the declared role
-
-```gherkin
-Given an agent caller permitted to dispatch only worker-class sessions
-When it requests a procedure declaring another role class
-Then entry refuses for the missing dispatch privilege
-And a caller with full dispatch reach can start that procedure
-```
 
 #### UC-PE7: An orchestrator starts the integrator
 
-```gherkin
-Given an agent session carrying the work-orchestrator role
-When it requests the integration procedure
-Then entry creates a session carrying the integrator role
-And the integrator's singleton ownership is decided by its owning contract
-```
-
 #### UC-PE8: An inline read preserves the current assignment
-
-```gherkin
-Given an agent reads another procedure inside its existing session
-When that procedure declares a launch role and job-handling reads
-Then the session retains its current role and assignment
-And the read alone creates no scheduled-job close-out obligation
-```
 
 #### UC-PE9: Continuation reconstructs the complete assignment
 
-```gherkin
-Given an agent session with a persisted procedure assignment
-When it restarts, revives or hands off to another agent
-Then its loader retains the procedure, role, bound inputs and entry facts
-And its instructions are retrievable without the former temporary brief file
-```
-
 #### UC-PE10: Interactive procedure input uses the shared entry
-
-```gherkin
-Given an operator submits a published procedure ID and arguments
-When the input surface starts that assignment
-Then it uses the procedure's declared role and shared loader
-And unrecognized procedure input retains the surface's ordinary conversation behavior
-```
 
 #### UC-PE11: Lifecycle dispatch retains its procedure identity
 
-```gherkin
-Given a lifecycle agent dispatches a build procedure
-When the session is created
-Then its recorded command remains the full procedure ID
-And its generated title displays the role and work subject
-```
-
 #### UC-PE12: Unsupported remote entry refuses before side effects
 
-```gherkin
-Given an agent requests procedure entry on a computer without that capability
-When the request is routed
-Then it fails naming the missing capability
-And no session or operation is created on either computer
-```
-
 #### UC-PE13: A retired command name is refused
-
-```gherkin
-Given an agent supplies a retired command name instead of a procedure ID
-When entry resolves the request
-Then it refuses naming the unknown command
-And no session is created
-```
 
 ## See Also
 

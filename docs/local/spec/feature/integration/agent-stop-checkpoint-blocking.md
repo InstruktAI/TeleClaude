@@ -33,9 +33,11 @@ session identifier, selected transcript path, and `address_source` (`hook` or
 `session_row`).
 
 The engine is gated by flag markers, session-scoped unless stated otherwise:
-a turn-scoped **clear flag** skips checkpoints for the current turn and is
-hard-cleared at the next user-prompt-submit; turn scoping prevents ordinary
-file-change checkpoints from re-firing after a checkpoint has been delivered;
+a turn-scoped **clear flag** skips checkpoints for the current turn and clears
+the per-turn recheck latch so later re-enablement can work. The clear flag and
+recheck latch are consumed at the next non-system user-prompt-submit; turn
+scoping prevents ordinary file-change checkpoints from re-firing after a
+checkpoint has been delivered;
 a fixed-name **authored main commit
 marker** is recorded when this session commits **code** on `main` through
 the sealed `telec code commit` path and triggers only the post-commit
@@ -105,72 +107,28 @@ data, such as message text or the content of a file written elsewhere, is not
 written by it and raises no question. Paths the session wrote through its edit
 tools need no question; they are declared when the call succeeds.
 
+Without a turn-start anchor, the stop is not blocked. If evaluation fails before
+establishing a complete action set, it produces no block and does not mark the
+cycle checked. A worktree session resolves path and branch scope against the
+checkout named by its recorded worktree subdirectory. A sealed commit after the
+last relevant edit satisfies the commit obligation for those changes. An
+evaluation with no required action, no outstanding assessment, and nothing else
+to surface — including no observations or advisory questions — emits no
+checkpoint and records no checkpoint-seen entry.
+
 ## Canonical fields
 
 ### Use cases
 
 #### UC-CP1: Uncommitted code changes block stop
 
-```gherkin
-Given a Claude session has modified source files in the current turn
-And no commit has been recorded since the last mutation
-And the turn-scoped clear flag is not set
-When Claude invokes the receiver with a Stop event
-Then the checkpoint pre-emit step loads the session row
-And resolves the project path (falling back to a transcript-derived working directory, adjusted for any worktree subdirectory)
-And the turn-start timestamp is computed as the later of last user message and last checkpoint
-And the heuristic engine evaluates the turn window
-And the engine reports code category present with a required commit action
-And a checkpoint message is composed listing required actions, prefixed so the receiver's system-prompt filter can drop the echoed prompt on the next turn
-And a checkpoint-seen outbox entry is recorded with the current timestamp
-And the Claude adapter formats a block decision carrying the message
-And the receiver emits the block decision and exits cleanly BEFORE enqueueing the agent-stop event
-```
-
 #### UC-CP2: Turn-scoped clear flag skips checkpoint for the current turn
-
-```gherkin
-Given the session-scoped checkpoint clear flag is set
-When the checkpoint pre-emit step runs
-Then the per-turn recheck flag is cleared so a future re-enable can re-arm checkpoints cleanly
-And a "checkpoint skipped (clear flag)" info log emits
-And the checkpoint pre-emit returns no decision
-And the receiver enqueues the agent-stop event normally without emitting a block response
-(The clear flag is itself hard-cleared at the next user-prompt-submit, so the skip lasts one turn only.)
-```
 
 #### UC-CP3: No turn start → no checkpoint
 
-```gherkin
-Given the session row has neither a last user message timestamp nor a last checkpoint timestamp
-When the turn-start resolver returns nothing
-Then the checkpoint pre-emit step logs "checkpoint skipped (no turn start)" at debug
-And returns no decision
-And the receiver proceeds to enqueue the agent-stop event
-```
-
 #### UC-CP4: No turn-local changes → no checkpoint
 
-```gherkin
-Given the heuristic engine returns an empty checkpoint result (no required actions)
-And no integrator-maintenance marker is present
-When the checkpoint pre-emit step runs
-Then a debug log records "checkpoint skipped: no turn-local changes"
-And no decision is produced
-And no checkpoint-seen entry is enqueued
-And the agent-stop event enqueues normally
-```
-
 #### UC-CP5: Turn-scoped markers cleared on new user prompt
-
-```gherkin
-Given a checkpoint fired earlier in this turn and set the per-turn recheck flag
-And the turn may carry a set clear flag
-When a new user-prompt-submit hook arrives that is NOT system-injected
-Then the per-turn recheck flag is consumed
-And the turn-scoped clear flag is consumed
-And the next agent-stop in the new turn may fire a fresh checkpoint
-```
 
 #### UC-CP5A: Main-branch post-commit review action follows code authorship
 
@@ -252,35 +210,9 @@ Then it short-circuits before the heuristic engine runs and the agent-stop event
 
 #### UC-CP7: Evaluation failure does not synthesize a checkpoint
 
-```gherkin
-Given checkpoint evaluation fails before it establishes a complete set of required maintenance actions
-When the engine's outer guard catches the failure
-Then the failure is recorded through the structured logging boundary
-And the engine returns no checkpoint reason
-And no checkpoint-seen entry is recorded for that failed evaluation
-And no generic or exception-derived instruction is displayed
-And the receiver proceeds to enqueue the agent-stop event normally
-```
-
 #### UC-CP8: Worktree subdir resolution for branch detection
 
-```gherkin
-Given the session's subdirectory marks it as a worktree session
-When the checkpoint project-path resolver runs
-Then it composes the project path with the worktree subdirectory into a single working path
-And the heuristic engine runs branch detection against the worktree, not the repo root
-```
-
 #### UC-CP9: Recorded edits with pending commit evidence require the commit step
-
-```gherkin
-Given an agent session has turn-local file changes that owe no maintenance actions
-And the runtime records edits to those files in the current checkpoint cycle
-And the working tree carries uncommitted changes
-And the cycle contains no commit evidence after the last recorded edit
-When the checkpoint evaluates the agent-stop boundary
-Then the agent receives a checkpoint requiring the commit step
-```
 
 #### UC-CP10: Code categories with no per-category action
 
@@ -440,22 +372,6 @@ Then the existing commit-action decision is applied unchanged
 
 #### UC-CP19: A turn's own commit is not counted as a mutation of the files it commits
 
-```gherkin
-Given a turn's only turn-local change to the attributed files is a sealed `telec code commit ... --only <files>` that commits exactly those files
-And the committed files are documentation only, so no other required action or observation is owed
-And the working tree is dirty from an unrelated concurrent change, so the clean-tree commit-action floor (UC-CP18) does not apply
-When the heuristic engine decides whether a commit action is owed
-Then the commit is recognized as the evidence that discharges the commit obligation for those files
-And the commit action is not required
-And no "No code changes detected this turn" checkpoint is produced
-
-Given a turn edits a file and then commits it via a sealed `telec code commit` in the same turn
-When the heuristic engine decides whether a commit action is owed
-Then the edit is the last mutation and the later commit discharges it
-And the commit action is not required
-(A commit persists already-made mutations; it is never itself a mutation of the files it commits, so it can never be the last mutation those files must be committed after — the self-referential ordering that would demand a commit strictly after the commit is excluded.)
-```
-
 <!-- planned-change:installation-activation-inspection -->
 
 #### UC-CP20: Post-advance log judgment begins with a range-only marker
@@ -579,15 +495,6 @@ And the checkout-scoped integrator marker retains that judgment for the standing
 
 #### UC-CP24: Actionless checkpoint evaluation is silent
 
-```gherkin
-Given an agent session reaches an agent-stop checkpoint boundary
-And every obligation in the current checkpoint cycle is either satisfied or ineligible at this working location
-And no commit action, review action, required observation, or other required action remains
-When checkpoint evaluation completes
-Then no checkpoint decision is produced
-And the agent stop is not blocked by an all-clear message
-```
-
 #### UC-CP25: Checkpoint reasons use the hook-boundary control envelope
 
 ```gherkin
@@ -625,58 +532,13 @@ And its required action instructs the agent to commit them
 
 #### UC-CP33: Dirty paths the session never declared raise no obligation
 
-```gherkin
-Given an agent session on a shared branch reaches an agent-stop checkpoint boundary
-And the working tree holds dirty paths that session has not declared
-And no successful shell command of that session in the current checkpoint cycle writes to any of them
-When checkpoint evaluation completes
-Then no obligation is raised for those paths
-And any decision produced for another reason names none of them
-```
-
 #### UC-CP34: A todo worktree writer owes its dirty tree
-
-```gherkin
-Given the todo's builder or finalizer session is working from that todo's worktree
-And that worktree holds dirty paths the session has declared none of
-When checkpoint evaluation completes
-Then a checkpoint decision is produced naming those paths
-And its required actions are the ones their categories carry
-```
 
 #### UC-CP35: A reviewer in a todo worktree owes no commit for the builder's changes
 
-```gherkin
-Given a builder session has left uncommitted changes in a non-main todo worktree
-And a review-only session in the same worktree has made no source edits
-When checkpoint evaluation completes at the reviewer's agent-stop boundary
-Then no checkpoint decision directs the reviewer to commit those paths
-And a later reviewer agent-stop over the same uncommitted changes directs none either
-```
-
 #### UC-CP36: A shell write the session has not declared is put to it as a question
 
-```gherkin
-Given an agent session on a shared branch reaches an agent-stop checkpoint boundary
-And a successful shell command of that session in the current checkpoint cycle writes to a dirty path
-And the session has not declared that path
-When checkpoint evaluation completes
-Then a checkpoint decision names that path and the declaration command for it
-And it states that the path is to be declared only if it is the session's own
-And no declaration is written for the path
-And no obligation to commit the path is raised
-And a later checkpoint cycle does not repeat the question unless new shell activity writes to the path again
-```
-
 #### UC-CP37: A file written through an edit tool is already declared at the stop
-
-```gherkin
-Given an agent session on a shared branch edited a file through an edit tool whose input names that file
-And the call succeeded
-When the session reaches an agent-stop checkpoint boundary with that file dirty
-Then the file is among the session's declared paths
-And the checkpoint treats it as the session's own undelivered work rather than asking about it
-```
 
 #### UC-CP38: A retiring parent's edit owes its empty companion no mirror
 
@@ -689,15 +551,6 @@ Then the agent receives no companion-drift action for that parent
 ```
 
 #### UC-CP39: A commit-review stamp discharges the post-commit review gate
-
-```gherkin
-Given the current branch is main
-And this session's authored-main-commit marker is present
-And a `telec code stamp` covering this session's commits is recorded, by a reviewer this session started or by this session itself
-When the heuristic engine evaluates the turn window
-Then the post-commit review-gate surfacing action is not emitted
-And the authored-main-commit marker is consumed
-```
 
 <!-- planned:installation-activation-inspection -->
 

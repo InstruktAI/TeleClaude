@@ -24,6 +24,32 @@ TeleClaudeNext.
 
 <!-- /planned:issue-129 -->
 
+<!-- planned:issue-129 -->
+
+- **Also owns:** the config-owned GitHub App key resolution path. After caller
+  authentication and provider-operation admission, it reads the exact assigned
+  profile's bare key name from the global sibling `.env`, with interpolation
+  disabled and no ambient or other-tier fallback. It strictly decodes the
+  single-line standard-base64 UTF-8 PEM and returns `SecretStr` to the
+  credential component. A profile whose App ID or stable Bot identity
+  disagrees with the session assignment refuses without another actor.
+  Missing or malformed config/key material produces value-free diagnostics;
+  raw values and decode exceptions stay out of general config responses and
+  logs. `teleclaude-config` owns the field shape, and
+  raw `GlobalConfig` is checked before generic placeholder expansion so the
+  sensitive key-reference name remains bare and literal.
+  `atomic-env-file-write` owns the file-level custody and temporary-write details.
+- **Also owns:** global environment classification and lock order. Read the
+  latest validated global declaration under its transaction before acquiring
+  the sibling `.env` transaction, and hold both through set, clear,
+  field-reference edits, reconciled writes and protected reads. Generic global
+  environment operations use the same order while keeping their current value
+  semantics. The per-file transactions make no multi-file atomic-commit promise.
+  This is limited to the global App-key path; other environment tiers retain
+  their existing owner and storage contracts.
+
+<!-- /planned:issue-129 -->
+
 - **Schema authority:** `teleclaude/config/` and the published configuration
   schema.
 - **Operator surfaces:** `telec config` commands and the TUI configuration view.

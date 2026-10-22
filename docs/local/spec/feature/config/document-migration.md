@@ -214,11 +214,11 @@ Scenario: Stop installation when a covered configuration cannot be migrated
 
 #### UC-CFG-MIG-16: A failed installation migration names what failed
 
-#### UC-CFG-MIG-17: Release maintenance preserves the installed declaration
+#### UC-CFG-MIG-17: An operator migrates configuration without rewriting the installed release declaration
 
 ```gherkin
 Scenario: A readable installed declaration is retained
-  Given an installed release checkout whose tracked project declaration has an older readable schema
+  Given an operator runs configuration migration from an installed release checkout whose tracked project declaration has an older readable schema
   And another registered home has a configuration document requiring migration
   When the installation runs configuration migration maintenance
   Then the installed declaration loads in its current shape without changing its stored bytes

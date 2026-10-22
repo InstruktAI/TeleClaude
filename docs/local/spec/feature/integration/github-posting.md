@@ -18,6 +18,40 @@ trusted owners. Native prose remains opaque and supplies no lifecycle authority
 
 ## Canonical fields
 
+### Native invocation scope
+
+The native entry consumes the identity owner's positively corroborated session
+observation. Its recorded project/context is the only scope input; invocation
+cwd, `gh` arguments, host overrides and repository flags do not select the
+project or backend. Config resolves that project's declared scope, and posting
+consumes the selected-backend answer from
+`local/projects/teleclaude/design/architecture/workflow-store`; valid-default
+and configuration-error behavior remain with those owners. A missing,
+ambiguous, unreadable or invalid scope answer refuses rather than becoming a
+local selection.
+
+Before allowing native pass-through or credential-bearing execution, the entry
+rereads the observed session,
+project context, selected backend and GitHub actor/target bindings. Any existing
+GitHub binding, including a partial or invalid actor or target record, anchors
+the session to GitHub. A changed backend, missing target, unreadable binding or
+project/config disagreement refuses without human credentials or local
+fallback.
+A local backend with any actor or target binding also refuses; a removed or
+changed backend declaration never clears or rebinds existing session scope.
+
+A positively corroborated managed session whose owner-resolved backend is local
+and whose session has no GitHub actor or target binding runs the real `gh` with
+its original arguments, environment, I/O and invocation directory. It receives
+no App credential, envelope or GitHub object association. This includes a
+genuinely absent session role; the identity owner distinguishes that fact from
+an unknown role. A GitHub-selected session requires its canonical role and
+both bindings; a missing or unreadable producer result refuses. Positively
+identified human execution outside managed panes keeps native `gh` behavior.
+The real binary lookup excludes this installed entry to prevent recursion
+(`local/projects/teleclaude/spec/feature/identity/platform-github-identity`,
+`local/projects/teleclaude/spec/domain/config`).
+
 ### Complete supported native mutation set
 
 Each admitted native mutation fits exactly one row below. Target, every field
@@ -69,16 +103,21 @@ reviews refuse before provider effect. Admission is finite structural handling,
 not a generic interception framework or semantic command/prose parser
 (`sdlc/policy/no-semantic-validators`, `sdlc/policy/security-awareness`).
 
-Argument, body-file, stdin and editor prose collection occurs before credential
-injection. An editor receives a sanitized environment and finishes before the
-credential-bearing provider process starts. The concrete provider handler
-receives the collected prose without reopening interactive editor/default
-selection. Read-only native operations and help remain available under
-the credential-disclosure boundary; credential-bearing execution uses controlled
-native configuration and no uncontrolled editor, pager or extension subprocess.
-Token-printing auth commands, token-disclosing status modes, shared auth
-switching and credential/header diagnostics receive no platform token
+Structural target and operation admission completes before prose collection.
+Argument, body-file, stdin and editor prose collection then finishes before
+credential injection. An editor receives a sanitized environment; the fixed
+collected prose reaches the provider process, which cannot reopen an editor,
+pager or default-selection prompt after credentials arrive. Credential-bearing
+execution uses controlled native configuration and no uncontrolled extension
+subprocess. Token-printing auth commands, token-disclosing status modes, shared
+auth switching and credential/header diagnostics receive no platform token
 (`sdlc/policy/ai-agent-security`).
+
+Only structurally exact help/version spellings run as reconstructed bounded
+native commands with sanitized empty native configuration and no App token.
+Other read-only commands must match the supported read shape and use controlled
+configuration. Aliases, extensions, opaque controls and flag-looking text in
+body/file/stdin/editor prose do not select a help or version path.
 
 ### Canonical envelope mapping
 
@@ -161,11 +200,24 @@ input; resolving it to a registered person consumes
 Headers, actor names and absent Delivery do not replace these checks
 (`sdlc/policy/ai-agent-security`).
 
-Associations expose source delivery IDs to adapter/mirror consumers for their
-own echo suppression. The mirror owner retains selection, filtering, ordering
-and resume, and the adapter retains webhook event/wake decisions. Posting
-creates neither an internal event nor a session wake from envelope prose
-(`sdlc/policy/domain-ownership`).
+Outbound source Delivery IDs retain their idempotency role and remain distinct
+from GitHub's inbound webhook delivery IDs. Echo qualification follows UC-19:
+verified ingress and current-state reconciliation continue, while only an event
+whose verified actor and action jointly identify a qualifying post by the exact
+configured TeleClaude App, and whose canonical envelope is structurally valid
+for a sealed/reflected post with its mandatory source Delivery, suppresses
+echo-generated conversation, session wake and outward mirror/reflection. A
+native conversational note with `Delivery: -` remains eligible under the
+existing ingress and attribution rules. External bot input and human edits or
+deletions are not discarded because the object was App-authored. App identity,
+envelope text or delivery-key text alone does not establish an echo.
+
+The adapter and mirror owners retain their event and effect decisions. Echo
+classification supplies no positive session or workflow-state attribution;
+the recorded provider-object association remains required for those facts. The
+association may still be read for attribution, but echo suppression alone does
+not require a cross-computer association lookup or create an internal event or
+session wake from envelope prose (`sdlc/policy/domain-ownership`, #124 UC-19).
 
 ### Separate sealed transport
 
@@ -177,6 +229,35 @@ Adapter-owned payloads, per-item per-fact/occurrence keys, allocation and
 body/revision realization remain with the WorkflowStore owner; a provider
 effect sequence is not represented as one GitHub transaction
 (`sdlc/policy/domain-ownership`).
+
+<!-- planned:issue-129 -->
+
+For daemon/relayed posting, the admitted principal is carried apart from its
+origin computer/session through
+`local/projects/teleclaude/spec/identity-and-auth` and receipt-backed work
+through `local/projects/teleclaude/design/architecture/operation-receipts`.
+Before credentials or provider effect, the posting composition reads the
+origin session's public fixed binding through the existing reached
+`SESSION_RECORD` owner in
+`local/projects/teleclaude/spec/feature/agent_runtime/session-inspection`.
+An absent legacy principal, unavailable read, closed/deleted session, or
+disagreeing origin binding refuses; credentials remain with the existing
+protected config/identity owners.
+
+For a remote accepted post, the existing immutable provider-object association
+retains the admitted principal, origin computer/session, assigned actor/role,
+target, and owner source identity as creation evidence. It never copies a
+foreign session binding into the executor's local authority. Provider
+acceptance without that association remains incomplete with known IDs and
+possible effects; no blind replay or new receipt is introduced.
+
+No remote send is connected until #130 publishes a consistency-checked mapping
+from the executor's selected project and opaque (`WorkItemId`, `StoreAddress`)
+pair to the existing `GitHubWorkTarget`. Posting does not decode the address or
+expand that target type. Positive workflow-state attribution remains separate
+and unavailable until its existing association consumer is published; echo
+qualification does not supply that attribution.
+<!-- /planned:issue-129 -->
 
 ### Use cases
 
@@ -202,3 +283,18 @@ to the native caller or the owning sealed/reflection recovery. They supply no
 stale workflow state or actor fallback; the daemon remains available
 (`sdlc/policy/code-quality-practices`). Body rereads do not promise atomic
 commit-instant revision fencing or provider edit-history completeness.
+
+Provider support also bounds native review maintenance. GitHub's review-delete
+endpoint applies only to pending reviews; submitted reviews cannot be deleted.
+A native delete of a submitted COMMENT review therefore refuses, without
+dismissal, emptying its body or changing its review event
+([review endpoints](https://docs.github.com/en/rest/pulls/reviews#delete-a-pending-review-for-a-pull-request)).
+Native diff-review replies require the explicit ID of a top-level review
+comment; GitHub does not support replying to a reply. Reply-to-reply therefore
+refuses rather than walking to another root
+([review-comment endpoints](https://docs.github.com/en/rest/pulls/comments#create-a-reply-for-a-review-comment)).
+
+These limits apply to submitted review objects and diff-review threads in the
+supported-write table. PR issue comments remain in their separate issue-comment
+namespace; the table and canonical envelope section above retain their context
+and source-Delivery distinctions.

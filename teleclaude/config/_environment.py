@@ -164,13 +164,13 @@ def resolve_whole_reference(value: str, environment: Mapping[str, str]) -> str |
     return reference.default
 
 
-def read_environment_file(path: Path, *, owner_only: bool = False) -> dict[str, str]:
+def read_environment_file(path: Path, *, owner_only: bool = False, interpolate: bool = True) -> dict[str, str]:
     """Read one environment file, enforcing owner-only secret storage when required."""
     if not path.exists():
         return {}
     if owner_only:
-        _require_owner_only_environment(path)
-    return {key: value for key, value in dotenv_values(path).items() if value is not None}
+        require_owner_only_environment(path)
+    return {key: value for key, value in dotenv_values(path, interpolate=interpolate).items() if value is not None}
 
 
 def write_environment_value(path: Path, name: str, value: str, *, creation_mode: int | None = None) -> None:
@@ -188,11 +188,13 @@ def mutate_environment_value(path: Path, name: str, value: str | None, *, creati
         replace_environment_value(transaction, name, value, creation_mode=creation_mode)
 
 
-def read_environment_transaction(transaction: FileTransaction, *, owner_only: bool = False) -> dict[str, str]:
+def read_environment_transaction(
+    transaction: FileTransaction, *, owner_only: bool = False, interpolate: bool = True
+) -> dict[str, str]:
     """Read environment values from an already-held file transaction."""
     if owner_only and transaction.path.exists():
-        _require_owner_only_environment(transaction.path)
-    parsed = dotenv_values(stream=StringIO(transaction.read_text()))
+        require_owner_only_environment(transaction.path)
+    parsed = dotenv_values(stream=StringIO(transaction.read_text()), interpolate=interpolate)
     return {key: value for key, value in parsed.items() if value is not None}
 
 
@@ -239,20 +241,28 @@ def write_environment_values(
     with file_transaction(path) as transaction:
         if only_if_missing and path.exists():
             return False
-        lines = transaction.read_text().splitlines(keepends=True)
-        remaining = dict(values)
-        rewritten: list[str] = []
-        for line in lines:
-            assignment = _environment_assignment(line)
-            if assignment is not None and assignment.name in remaining:
-                rewritten.append(_assignment_line(assignment.name, remaining.pop(assignment.name), assignment.prefix))
-            else:
-                rewritten.append(line)
-        if rewritten and not rewritten[-1].endswith(_NEWLINE):
-            rewritten[-1] = f"{rewritten[-1]}{_NEWLINE}"
-        rewritten.extend(_assignment_line(name, value) for name, value in remaining.items())
-        transaction.replace_text("".join(rewritten), creation_mode=creation_mode)
+        replace_environment_values(transaction, values, creation_mode=creation_mode)
     return True
+
+
+def replace_environment_values(
+    transaction: FileTransaction, values: Mapping[str, str], *, creation_mode: int | None = None
+) -> None:
+    """Apply the existing batch writer through a transaction its owner already holds."""
+    _validate_environment_values(values)
+    lines = transaction.read_text().splitlines(keepends=True)
+    remaining = dict(values)
+    rewritten: list[str] = []
+    for line in lines:
+        assignment = _environment_assignment(line)
+        if assignment is not None and assignment.name in remaining:
+            rewritten.append(_assignment_line(assignment.name, remaining.pop(assignment.name), assignment.prefix))
+        else:
+            rewritten.append(line)
+    if rewritten and not rewritten[-1].endswith(_NEWLINE):
+        rewritten[-1] = f"{rewritten[-1]}{_NEWLINE}"
+    rewritten.extend(_assignment_line(name, value) for name, value in remaining.items())
+    transaction.replace_text(_EMPTY_TEXT.join(rewritten), creation_mode=creation_mode)
 
 
 def reconcile_environment_values(path: Path, values: Mapping[str, str], removals: frozenset[str]) -> None:
@@ -514,7 +524,8 @@ def _render_reference_path(path: tuple[str | int, ...]) -> str:
     return ".".join(str(part) for part in path) or "<root>"
 
 
-def _require_owner_only_environment(path: Path) -> None:
+def require_owner_only_environment(path: Path) -> None:
+    """Require an existing regular readable file owned solely by this OS user."""
     try:
         metadata = os.lstat(path)
     except OSError as exc:

@@ -182,15 +182,6 @@ Then it is rejected naming the missing parameter
 
 #### UC-CLR6: Startup-message assembly composes the runtime-identical loader
 
-```
-Given a run-session request whose command token resolves to a published entry procedure
-When startup-message assembly runs
-Then the startup message is the loader: a structural marker line "TELECLAUDE COMMAND: <procedure-id> [<args>]" followed by the role framing, the bound inputs with the args labelled as its provided inputs, the entry facts, and an instruction to retrieve the procedure's complete instructions through the documentation surface and follow them
-And the loader is identical for every enabled runtime
-And the public full-command (used for the human-visible initial-input echo) carries the bare "<procedure-id> <args>" form
-And structured lifecycle metadata such as role, job, and `working_slug` is resolved from the procedure's declarations and the bound args before or alongside loader assembly, never from the loader message
-```
-
 #### UC-CLR4: A dispatch names its procedure by domain-qualified snippet ID
 
 <!-- planned-change:issue-128 -->
@@ -235,35 +226,9 @@ And no launch delivers the raw command text in place of the loader
 
 #### UC-CLR1: Whether a procedure may run without arguments is its parameter declaration's decision
 
-```
-Given a session launch for a procedure whose arguments are empty
-When the launch is validated
-Then whether empty arguments are acceptable is decided by the procedure's declared parameters — none of them required
-And loader composition applies no argument rule of its own
-And a launch the parameters admit with empty arguments reaches loader composition
-```
-
 #### UC-CLR2: Empty arguments produce the loader message
 
-```
-Given loader composition runs for a published entry procedure
-And the args field is empty
-When the startup message is composed
-Then the startup message is the loader directing the agent to retrieve the procedure's instructions
-And its marker line carries the procedure ID with no argument token
-And its provided-inputs section is empty rather than absent
-```
-
 #### UC-CLR3: A dispatched session's title reflects its record fields and is read by nothing
-
-```
-Given a run-session request with a normalized command and args
-When the session is created
-Then its title is "<role> <args>" composed from the structured dispatch fields — the role the procedure declares in place of the procedure ID, no leading slash and no wrapper token
-And the title is a presentation of those fields: no consumer resolves a session, a command, or a slug by reading it
-And generated titles never replace it while the session's recorded command is set
-And a session created without a dispatch command starts untitled and receives generated titles as today
-```
 
 #### UC-CLR8: The session record carries the command the session was dispatched with
 
@@ -339,14 +304,13 @@ Then the additional context is appended to BOTH the echoed full-command and the 
 And every enabled runtime receives the identical extended message
 ```
 
-#### UC-CLR10: Additional context is carried once, outside the provided inputs
+#### UC-CLR10: A person starts a procedure with additional context
 
 ```
-Given a run-session request supplies additional context
-When the loader startup message is composed
-Then the composed message carries the additional context exactly once
-And the context appears after the loader, never inside the marker line and never inside the provided-inputs section
-And this holds whether the request supplies command arguments or none
+Given a person wants to start a published procedure with additional context
+When they start it with that context
+Then the new agent receives the context exactly once as additional context
+And it remains separate from the procedure's declared inputs
 ```
 
 #### UC-CLR12: An agent dispatches an entry procedure by its snippet ID and nothing shorter

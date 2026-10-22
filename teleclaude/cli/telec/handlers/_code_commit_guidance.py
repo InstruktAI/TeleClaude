@@ -64,6 +64,23 @@ _COMMIT_REVIEW_START_GUIDANCE = (
 _COMMIT_REVIEW_DISPATCH_TEMPLATE = (
     "     telec sessions run --command {command} --args '<sha1,sha2,...>' --mode <med|slow>\n"
 )
+_REVIEW_DECISION_STEP_TEMPLATE = (
+    "3. After committing, decide for each commit whether review is owed.\n"
+    "   {intent_test}\n"
+    "   A commit that owes none you stamp with: {discard_command}\n"
+    "   Remediation only — the diff just applies an open review's findings and adds no\n"
+    "       new reviewable surface -> send it back to that same reviewer to confirm; do\n"
+    "       not offer a fresh review. Its APPROVE is terminal.\n"
+    "   A commit that owes review goes to an independent reviewer you dispatch, in the lane\n"
+    "   its paths name:\n"
+    "   Paths outside documentation ({documentation_patterns}) and agent artifacts\n"
+    "       ({agent_artifact_patterns}) -> code review.\n"
+    "   Documentation snippets ({doc_layer_pattern}) -> doc-hygiene review; you may not review your own.\n"
+    "   Agent artifacts ({agent_artifact_patterns}) -> the pending scope carries\n"
+    "       {agent_artifact_lane}.\n"
+    "   Standalone descriptive prose ({standalone_prose_patterns}) outside {doc_layer_pattern} -> no\n"
+    "       independent review; directive text follows the code review lane.\n"
+)
 
 __all__ = [
     "_NON_CODE_DOCUMENTATION_PATTERNS",
@@ -209,6 +226,15 @@ def _print_commit_review_guidance(project_root: Path, context_root: Path | None)
         )
     scope_diffstat = _resolved_scope_diffstat(project_root, context_root)
     discard_command = COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE.format(sha=COMMIT_REVIEW_DISCARD_PLACEHOLDER)
+    review_decision_step = _REVIEW_DECISION_STEP_TEMPLATE.format(
+        intent_test=COMMIT_REVIEW_INTENT_TEST,
+        discard_command=discard_command,
+        documentation_patterns=documentation_patterns,
+        agent_artifact_patterns=agent_artifact_patterns,
+        doc_layer_pattern=DOC_LAYER_PATTERN,
+        agent_artifact_lane=agent_artifact_lane,
+        standalone_prose_patterns=standalone_prose_patterns,
+    )
     print(
         "COMMIT GATE ACTIVE — CONTINUE NOW\n"
         "\n"
@@ -233,25 +259,7 @@ def _print_commit_review_guidance(project_root: Path, context_root: Path | None)
         "\n"
         "   Foreign staged files are excluded by pathspec. Do not unstage them.\n"
         "\n"
-        "3. After committing, the commit is a review candidate. What the diff touched names the\n"
-        "   candidate; you decide whether review is owed:\n"
-        "   Remediation only — the diff just applies an open review's findings and adds no\n"
-        "       new reviewable surface -> send it back to that same reviewer to confirm; do\n"
-        "       not offer a fresh review. Its APPROVE is terminal.\n"
-        f"   Any path matched by neither documentation ({documentation_patterns}) nor agent artifacts\n"
-        f"       ({agent_artifact_patterns}) ->\n"
-        "       code review candidate (--mode med).\n"
-        f"   Documentation snippets ({DOC_LAYER_PATTERN}) -> doc-hygiene review candidate\n"
-        "       (--mode fast; you may not review your own).\n"
-        f"   Agent artifacts ({agent_artifact_patterns}) -> the pending scope carries\n"
-        f"       {agent_artifact_lane}.\n"
-        f"   Standalone descriptive prose ({standalone_prose_patterns}) outside {DOC_LAYER_PATTERN} -> no\n"
-        "       independent review; directive text follows the functional-code review path.\n"
-        "\n"
-        f"   {COMMIT_REVIEW_INTENT_TEST}\n"
-        "   A commit that owes review goes to an independent reviewer you dispatch.\n"
-        f"   A commit that owes none is discarded with: {discard_command}\n"
-        "\n"
+        f"{review_decision_step}\n"
         f"{review_dispatch}"
         f"{_REVIEW_VERDICT_GUIDANCE}",
         file=sys.stderr,

@@ -31,6 +31,11 @@ carries is of the worker class in the agent role catalog
 orchestrators, task-lane sessions and the integrator stay searchable — they
 drive the work and carry the reasoning a later search is looking for.
 Subagent transcripts are never mirrored, so they cannot appear.
+The default worker exclusion is the same on the terminal and service search
+paths. The local CLI opt-in removes only that exclusion; the other search
+filters and role-scoped access remain in effect.
+
+An unrecognized agent filter is rejected with a validation error naming the filter.
 
 Role-scoped access (see
 `role-scoped-history-access`) further constrains visibility before the
@@ -47,65 +52,25 @@ source selectors read source provenance without multiplying that result.
 Native references remain source aliases under
 `local/projects/teleclaude/spec/feature/session_mirrors/session-id-namespaces`.
 Existing history reach and worker/subagent selection rules remain applicable.
+An empty text query without an identity or project selector returns no rows.
 
 ### Use cases
 
-#### Term composition and full-text match
+#### UC-HCS-4: An operator can choose whether history search includes worker sessions
 
-```
-Given a search query of one or more whitespace-separated terms
-When the session_mirrors service builds the match expression
-Then each term is treated as a literal phrase (internal quotes escaped)
-And the terms are AND-joined into a single match expression
-And an empty or whitespace-only query with no selector returns no rows without invoking the index
-And an empty query accompanied by an identity or project selector is a selector-only search, which selects by that filter and orders by recency without invoking the index
-```
+```gherkin
+Scenario: Include worker conversations in a history search
+  Given an operator searches history for a term present in a worker conversation
+  When the operator opts to include worker conversations on the local CLI
+  Then matching worker conversations appear alongside other matching conversations
+  And the other search filters continue to apply
 
-#### CLI search rendering
-
-```
-Given an operator runs `telec history search <terms>`
-When the local mirror search returns one or more hits
-Then the terminal prints a header "Search results for '<terms>' (<n> found):"
-And each hit prints as two lines: a metadata line, then its matched snippet indented beneath
-And the metadata line carries the UTC timestamp to the second, the agent, the labelled identifier, and the full project path
-And the row's snippet prefers the full-text match, falling back to the title, then to the first 70 characters of the conversation
-And no index column and no revive footer are printed
-And no rows print "No conversations found matching '<terms>' across <agents>"
-```
-
-#### Service search wire format
-
-```
-Given a caller invokes the search capability with q=<query>, agent=<filter>, limit=<n>, and optionally identity=<value> and project=<value>
-And the identity and project selectors compose with the query rather than replacing it
-And a request carrying a selector and an empty query is a selector-only search
-When the service resolves the agent filter
-Then the response is a sequence of rows with fields
-  session_id, computer, agent, project, title, sort_timestamp, timestamp, topic
-And the rows are those within the caller's history scope
-And an unknown agent value is rejected with a validation error referencing the unknown value
-And limit is clamped to the inclusive range [1, 100]
-
-Given a caller the capability cannot identify
-Then the capability refuses the request before any mirror is read
-```
-
-#### UC-HCS-4: Dispatched-worker sessions are excluded, driving sessions are not
-
-```
-Given the mirror store holds human sessions, dispatched-worker mirrors (is_worker = 1), and orchestrator, task-lane and integrator mirrors
-When a search executes without the worker opt-in
-Then only mirrors with is_worker = 0 are eligible for results
-And a session whose record carries a worker-class role never appears
-And orchestrator, task-lane and integrator sessions are eligible like any human session
-And a session with no record, or a record carrying a role of another class, is eligible rather than excluded
-And the exclusion applies identically to the CLI path and the service search wire path
-
-Given the caller opts in to worker sessions on the local path
-When a search executes
-Then the is_worker predicate is not applied and worker mirrors are eligible alongside every other mirror
-And every other filter — agent, role band, limit — applies unchanged
+Scenario: Understand worker conversations excluded from results
+  Given an operator searches without worker inclusion
+  And matching conversations include worker and non-worker conversations
+  When the search results are shown
+  Then the operator sees how many worker matches were excluded
+  And no excluded-worker count is shown when no worker matched
 ```
 
 #### Recency ordering and missing-store tolerance
@@ -122,16 +87,18 @@ Then the missing-store condition is swallowed
 And the call returns an empty result set
 ```
 
-#### UC-HCS-8: A result line states the namespace of the id it prints
+#### UC-HCS-8: An operator can identify the address of a history result
 
-```
-Given a search result for a mirror attributed to a TeleClaude session
-Then the row prints that session's TeleClaude id, labelled as such
-And this holds across the session's full transcript chain and after runtime closure or soft deletion
-Given a search result for a mirror no session is attributed to
-Then the row prints the agent-native id, labelled as such
-And every row carries the full project path, an agent name, and a UTC timestamp to the second
-And a matched snippet is rendered on one line, with newlines replaced by spaces
+```gherkin
+Scenario: Identify a result attributed to a TeleClaude session
+  Given an operator reviews a history result attributed to a TeleClaude session
+  When the operator inspects its identifier
+  Then the result displays that TeleClaude id labelled as such
+
+Scenario: Identify a result with no session attribution
+  Given an operator reviews a history result with no TeleClaude session association
+  When the operator inspects its identifier
+  Then the result displays the agent-native id labelled as such
 ```
 
 #### UC-HCS-11: An operator finds past conversations for an identity or project
@@ -155,13 +122,6 @@ Scenario Outline: Find conversations within an identity or project
 ```
 
 #### UC-HCS-9: Excluded worker matches are reported, not silently dropped
-
-```
-Given a search without the worker opt-in matches both eligible and dispatched-worker mirrors
-When results are rendered
-Then the excluded worker matches are reported as a count alongside the results
-And the count is omitted when no worker mirror matched
-```
 
 #### UC-HCS-10: Machine output carries both ids explicitly
 
@@ -189,13 +149,19 @@ And the legacy mirror identity is reconciled from its transcript and cannot be r
 And a conversation with no TeleClaude association retains its labelled agent-native identifier
 ```
 
-#### UC-HCS-13: Quoted dash-leading search text
+#### UC-HCS-13: An operator finds past conversations by text
 
 ```gherkin
-Given a human operator searches historical conversations for '--human-approved'
-When the operator supplies that search text in either single or double shell quotes
-Then the search runs using that text rather than rejecting it as an unknown option
-And the operator receives the matching conversations or the normal no-results response
+Scenario: Find conversations matching a text term
+  Given an operator wants to find past conversations containing a term
+  When the operator searches history for that term
+  Then matching conversations are returned with their labelled identity and query-centered snippet
+  And the ordinary no-results response is returned when nothing matches
+
+Scenario: Search for text that resembles a command option
+  Given an operator wants to find past conversations containing '--human-approved'
+  When they provide that term in single or double shell quotes
+  Then the search uses the term as text and returns matches or the ordinary no-results response
 ```
 
 ## Known caveats

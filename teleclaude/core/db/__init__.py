@@ -16,6 +16,7 @@ from ._control_delivery import ControlDeliveryRecord, DbControlDeliveryMixin
 from ._conversation_bindings import ConversationBinding, DbConversationBindingsMixin
 from ._conversation_delivery import DbConversationDeliveryMixin
 from ._discord_reflection import DbDiscordReflectionMixin
+from ._github import DbGitHubMixin
 from ._hooks import DbHooksMixin
 from ._inbound import (
     AcceptedTurnBindingRecord,
@@ -61,6 +62,7 @@ from ._voice_transcriptions import DbVoiceTranscriptionsMixin
 
 
 class Db(
+    DbGitHubMixin,
     DbConversationBindingsMixin,
     DbDiscordReflectionMixin,
     DbAgentStopsMixin,

@@ -83,6 +83,30 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     visibility: str | None = "private"
 
 
+class GitHubSessionBindingRow(SQLModel, table=True):
+    """Immutable infrastructure assignment retained with session state."""
+
+    __tablename__ = "github_session_bindings"
+    __table_args__ = {"extend_existing": True}
+
+    session_id: str = Field(primary_key=True)
+    binding_json: str
+    native_target_json: str | None = None
+
+
+class GitHubObjectAssociationRow(SQLModel, table=True):
+    """Immutable provider-object creation attribution, scoped to its container."""
+
+    __tablename__ = "github_object_associations"
+    __table_args__ = {"extend_existing": True}
+
+    repository_id: int = Field(primary_key=True)
+    container_number: int = Field(primary_key=True)
+    object_kind: str = Field(primary_key=True)
+    provider_id: int = Field(primary_key=True)
+    creation_json: str
+
+
 class VoiceAssignment(SQLModel, table=True):
     """voice_assignments table."""
 

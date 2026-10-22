@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
+from typing import Protocol
 
 _caller_session_id: ContextVar[str | None] = ContextVar(
     "operations_caller_session_id",
@@ -53,6 +54,40 @@ def reset_relayed_caller(token: Token[RelayedCaller | None]) -> None:
 def get_relayed_caller() -> RelayedCaller | None:
     """Return the relayed caller of the request being run, or None for a request made on this computer."""
     return _relayed_caller.get()
+
+
+@dataclass(frozen=True)
+class OperationCallerTokens:
+    """Paired restoration tokens for the existing session and relay-origin contexts."""
+
+    session: Token[str | None]
+    relayed: Token[RelayedCaller | None]
+
+
+class _StoredOperationCaller(Protocol):
+    """The persisted caller address consumed from an existing operation row."""
+
+    @property
+    def caller_session_id(self) -> str | None: ...
+
+    @property
+    def caller_computer(self) -> str | None: ...
+
+
+def set_operation_caller(operation: _StoredOperationCaller, local_computer: str) -> OperationCallerTokens:
+    """Restore persisted caller locality, clearing inherited relay origin for local operations."""
+    session_id = operation.caller_session_id
+    computer = operation.caller_computer
+    session = set_caller_session_id(session_id)
+    remote = RelayedCaller(computer, session_id) if computer and computer != local_computer else None
+    relayed = set_relayed_caller(remote)
+    return OperationCallerTokens(session, relayed)
+
+
+def reset_operation_caller(tokens: OperationCallerTokens) -> None:
+    """Restore both contexts on every operation exit."""
+    reset_relayed_caller(tokens.relayed)
+    reset_caller_session_id(tokens.session)
 
 
 def relayed_caller_computer(caller_session_id: str | None) -> str | None:

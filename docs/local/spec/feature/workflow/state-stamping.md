@@ -9,13 +9,17 @@ visibility: 'public'
 
 <!-- planned-change:issue-128 -->
 
-`telec todo stamp` is the single domain surface every caller — human operator, Worker session, or Orchestrator — uses to record a fact about a Todo: a reviewer's Verdict, a human PRD approval, an architecture skip with reason, a drift-reviewed acknowledgment, a worker's `build_complete` claim, or a worker's `finalize_ready` handoff. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit, and the approvals and review managers are the typed owners for approval-shaped and verdict-shaped mutations. The stamp records the fact; the state machine reads the fact on its next dispatch and advances the canonical `lifecycle_phase` accordingly. There is no path that writes Todo state outside this boundary.
+`telec todo stamp` is the single domain surface every caller — human operator, Worker session, or Orchestrator — uses to record a fact about a Todo: a reviewer's Verdict, a human PRD approval, an architecture skip with reason, a drift-reviewed acknowledgment, a worker's `build_complete` claim, or a worker's `finalize_ready` handoff. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit, and the approvals and review managers are the typed owners for approval-shaped and verdict-shaped mutations. When full-state validation fails, the caller receives the underlying validation text, and no partial mutation is persisted. The stamp records the fact; the state machine reads the fact on its next dispatch and advances the canonical `lifecycle_phase` accordingly. There is no path that writes Todo state outside this boundary.
+
+A one-shot task-outcome success reconciles lifecycle markers only in the task's own project; it does not read or change another project's documentation. A code-review record retains the reviewed commit, verdict, reviewer identity, and supplied reason. It is also recorded on the Todo claimed by the stamping session, or by its initiating session when the reviewer has no claim; if neither has a claim, no Todo review state is written.
 
 <!-- change:issue-128 -->
 
-`telec todo stamp` is the domain surface through which a caller records a fact about a Todo that no lifecycle act records, such as a human's authorization of a task's plan or a task firing's outcome. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit. There is no path that writes Todo state outside this boundary.
+`telec todo stamp` is the domain surface through which a caller records a fact about a Todo that no lifecycle act records, such as a human's authorization of a task's plan or a task firing's outcome. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit. When full-state validation fails, the caller receives the underlying validation text, and no partial mutation is persisted. There is no path that writes Todo state outside this boundary.
 
 For an item the lifecycle machine drives, every stamp type that only the previous machine knew is refused at this surface, naming the item's phase and the door for its state, and nothing is written (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`, Acts only the previous machine knew). Such an item's acts are performed through `local/projects/teleclaude/spec/feature/workflow/item-acts`.
+
+A one-shot task-outcome success reconciles lifecycle markers only in the task's own project; it does not read or change another project's documentation. A code-review record retains the reviewed commit, verdict, reviewer identity, and supplied reason. It is also recorded on the Todo claimed by the stamping session, or by its initiating session when the reviewer has no claim; if neither has a claim, no Todo review state is written.
 
 <!-- /planned-change:issue-128 -->
 
@@ -217,43 +221,11 @@ And the integrator dispatch consumes the finalize-ready handoff to merge the can
 
 <!-- /planned-change:issue-128 -->
 
-```
-Given a caller submits state that does not validate against the Todo state model
-When the state-write boundary runs its full-state validation
-Then a state-mutation error is raised with the underlying validation text
-And no commit happens — the stamp call exits before any partial mutation lands
-```
-
 #### UC-WSS12: One-shot task success outcome delivers the todo
-
-```gherkin
-Given a Todo has kind="task", a one-shot schedule (no cron recurrence), and a live run session as its active_runner
-When the run session runs "telec todo stamp my-slug --task-outcome success"
-Then the stamp confirms the todo is kind="task" and resolves the schedule as one-shot
-And the todo is delivered through the existing delivery path, satisfying its dependents
-And the lifecycle runner skips the delivered todo and does not re-dispatch sdlc/procedure/lifecycle/task/run-task after the run session closes
-```
 
 #### UC-WSS13: Recurring task success outcome clears an error-hold and stays live
 
-```gherkin
-Given a Todo has kind="task", a recurring cron schedule, and a hold whose hold_audit source is the task-error source
-When the run session runs "telec todo stamp my-slug --task-outcome success"
-Then the stamp resolves the schedule as recurring and clears the task-error hold
-And the todo is not delivered and stays live for its next scheduled instant
-And a hold whose source is a human pause is left untouched by the same success outcome
-```
-
 #### UC-WSS14: Task error outcome holds the todo with its reason
-
-```gherkin
-Given a Todo has kind="task" and a live run session as its active_runner
-When the run session runs "telec todo stamp my-slug --task-outcome error --reason '<why a human is needed>'"
-Then the stamp records hold=true and hold_audit with the task-error source, the reason, and the caller session id
-And the held todo is not auto-re-dispatched and the run session stays alive as the beacon for human resolution
-And an error outcome with an empty or missing reason is refused before any write
-And a task-outcome stamp on a Todo that is not kind="task" is refused before any write
-```
 
 <!-- planned-change:issue-128 -->
 
@@ -287,26 +259,7 @@ And an unresolved stamp with an empty or missing reason is refused before any wr
 
 #### UC-WSS23: Task success delivers within the todo's own project
 
-```gherkin
-Given a Todo of kind="task" with a one-shot schedule in a project other than the one the workflow daemon runs from
-When its run session runs "telec todo stamp my-slug --task-outcome success" from within that project
-Then the delivery reconciles the lifecycle markers in that project's documentation
-And no other project's documentation is read or changed by the delivery
-```
-
 #### UC-WSS24: A commit-review stamp lands on the todo its session chain claims
-
-```gherkin
-Given a prepare orchestrator session P holds the lifecycle claim on my-feature
-And P authored commits A and B on main
-And P started a commit-review session R for A and B
-When R runs "telec code stamp A,B --verdict approve"
-Then my-feature's review state records approve for A and for B, with R as the stamping session
-And P's authored-main-commit review gate is discharged
-When P runs "telec code stamp C --verdict approve --reason 'removes a retired section'" for its own commit C
-Then my-feature's review state records approve for C, with P as the stamping session and the reason
-And a stamp by a session whose chain holds no lifecycle claim records nothing on any todo and still discharges that chain's review gate
-```
 
 ### Cross-context references
 
@@ -352,8 +305,9 @@ And a stamp by a session whose chain holds no lifecycle claim records nothing on
 
 - `--task-outcome <success|error>` is the **durable firing-outcome** stamp for a
   `kind="task"` Todo, reconciled by the lifecycle runner into a terminal state. A
-  one-shot `success` delivers the Todo; a recurring `success` clears a task-error hold
-  and leaves the Todo live; `error` holds the Todo with the task-error hold source and
+  one-shot `success` delivers the Todo; a recurring `success` clears only a task-error
+  hold and leaves any other hold, including a human-pause hold, intact while keeping
+  the Todo live; `error` holds the Todo with the task-error hold source and
   the reason. The stamp transitions terminal state synchronously and adds no new state
   field. `error` **requires a non-empty reason**, and a task-outcome stamp on a non-task
   Todo is refused before any write. A task-error hold has **no bare-unhold recovery**:

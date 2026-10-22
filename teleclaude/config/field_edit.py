@@ -18,7 +18,11 @@ from teleclaude.config._environment import prepare_environment_value, read_envir
 from teleclaude.config.editor_models import partial_model
 from teleclaude.config.editor_view import editor_fields, editor_revision, person_secret_editor_fields
 from teleclaude.config.effective_view import effective_sections, environment_references
-from teleclaude.config.loader import validate_tier_candidate
+from teleclaude.config.loader import (
+    global_environment_creation_mode,
+    read_global_config_transaction,
+    validate_tier_candidate,
+)
 from teleclaude.config.machine import config_path
 from teleclaude.config.machine_config_mutation import (
     MachineConfigOperation,
@@ -43,7 +47,7 @@ from teleclaude.config.person_secrets import (
 from teleclaude.config.resource_catalog import load_mapping
 from teleclaude.config.resource_contract import CommitEntry, SubjectView, commit_documents
 from teleclaude.config.revision import StaleRevision
-from teleclaude.config.schema import ConfigKind, PersonConfig
+from teleclaude.config.schema import ConfigKind, GlobalConfig, PersonConfig
 from teleclaude.config.transaction_views import read_subject_in_transactions
 from teleclaude.config_subjects import ConfigEnvironment, ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import FileTransaction, file_transaction
@@ -150,10 +154,13 @@ def apply_reference_edit(
     document_paths = _document_paths(ref)
     ordered_paths = (*document_paths, *environment_paths)
     transactions: dict[Path, FileTransaction] = {}
+    global_declaration: GlobalConfig | None = None
     with ExitStack() as stack:
         for path in ordered_paths:
             if path not in transactions:
                 transactions[path] = stack.enter_context(file_transaction(path))
+                if path == GLOBAL_CONFIG_PATH:
+                    global_declaration = read_global_config_transaction(transactions[path])
         view = read_subject_in_transactions(ref, transactions)
         environment_values = _environment_values(ref, transactions)
         machine_environment = (
@@ -179,6 +186,14 @@ def apply_reference_edit(
         active_environment = environment_values.get(plan.reference.environment) if plan.reference is not None else None
         if plan.reference is None or active_environment is None:
             raise ValueError(_INVALID_FIELD_ID)
+        global_creation_mode: int | None = None
+        if plan.reference.environment is _GLOBAL_ENVIRONMENT:
+            assert global_declaration is not None
+            global_creation_mode = global_environment_creation_mode(
+                global_declaration,
+                transactions[_environment_path(ref, _GLOBAL_ENVIRONMENT)],
+                (plan.reference.variable,),
+            )
         current_revision = editor_revision(
             view,
             machine_environment=machine_environment,
@@ -206,7 +221,9 @@ def apply_reference_edit(
         transaction = transactions[path]
         candidate_text = prepare_environment_value(transaction, variable, next_value)
         creation_mode = (
-            person_secret_store_creation_mode(path) if plan.reference.environment is _PERSON_ENVIRONMENT else None
+            person_secret_store_creation_mode(path)
+            if plan.reference.environment is _PERSON_ENVIRONMENT
+            else global_creation_mode
         )
         commit_documents(
             [

@@ -97,6 +97,16 @@ And it does not present older dependents as the current answer
 
 #### UC-BPF8: Projects without code do not acquire Blueprint maintenance
 
+#### UC-BPF9: An agent retrieves Blueprint results for a person
+
+```gherkin
+Scenario: Use the installed release as the query baseline
+  Given an agent acts for person X using an installed release whose source differs from local main
+  When the agent asks for the Blueprint affected view of a changed file
+  Then the result for person X reflects the installed release's source
+  And changes present only in local main do not affect the result
+```
+
 ## See Also
 
 - docs/local/spec/domain/workflow.md — workflow ownership.

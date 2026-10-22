@@ -37,6 +37,8 @@ The highlight system provides visual cues in the TUI to alert users about sessio
 
 6. **Out-line text is retained**: The rendered out-line text value is retained in memory from the first non-empty out-bearing event (`pre_tool_use`, `thinking`, `agent_stop`) and persists across the `user_prompt_submit` clear and tree rebuilds until a newer non-empty out value replaces it. Only the `agent_stop` summary is persisted to disk; live values are retained in memory only. The row height stays stable — the out line never drops once a value has appeared. The highlight (invariant 5) follows live activity independently of the retained text.
 
+7. **The out line shows one event's data**: The out line's text and its time come from the same out-bearing event — the time is that event's own timestamp, retained and persisted together with its text. No other event or session field supplies the time of a value it did not produce. Before any out-bearing event has arrived, the out line shows the session's own `agent_stop` summary record: its summary with its summary time.
+
 ## Primary flows
 
 ### 1. User sends message, agent responds

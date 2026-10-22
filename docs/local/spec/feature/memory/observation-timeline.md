@@ -11,67 +11,20 @@ The timeline surface returns observations chronologically arranged around a sing
 
 Only current memories are returned: a retired memory or a business prospect is never a result of this surface (`local/projects/teleclaude/spec/feature/memory/memory-curation` UC-MC3).
 
+Omitted before/after depths use the CLI-defined defaults.
+
 ## Canonical fields
 
 ### Use cases
 
-#### Timeline via CLI
+#### An operator reviews observations around a chosen memory
 
 ```
-Given a human or agent runs `telec memories timeline <id> [--before N] [--after N] [--project <slug>]`
-And `--before` defaults to 3, `--after` defaults to 3
-When the CLI builds the request
-Then it asks the memory service for the timeline window around the anchor with the supplied depths and optional project filter
-And renders the returned rows in the standard observation table marking the anchor row with the suffix " ◀"
-And prints "No observations found around #<id>" when the response is empty
-```
-
-#### Anchor lookup
-
-```
-Given the memory service receives a timeline request for an anchor id
-When it builds the response
-Then it first looks up the anchor's creation timestamp
-And if no observation matches that id, the response is an empty list
-```
-
-#### Before window
-
-```
-Given the anchor's creation timestamp is known
-And depth_before > 0
-When the memory service computes the before window
-Then it returns up to depth_before observations created at-or-before the anchor's timestamp (excluding the anchor itself)
-And the before window is optionally narrowed by the project filter
-And the before window is ordered so the oldest entry appears first in the merged response
-```
-
-#### Anchor row
-
-```
-Given the anchor exists
-When the memory service composes the response
-Then it includes the anchor observation between the before and after windows
-```
-
-#### After window
-
-```
-Given the anchor's creation timestamp is known
-And depth_after > 0
-When the memory service computes the after window
-Then it returns up to depth_after observations created at-or-after the anchor's timestamp (excluding the anchor itself)
-And the after window is optionally narrowed by the project filter
-And the after window is ordered oldest-first
-```
-
-#### Merged response
-
-```
-Given the before window, anchor, and after window are all resolved
-When the memory service composes the response
-Then it concatenates `before + [anchor] + after` in that order
-And returns the merged list to the caller
+Given an operator has an observation from a prior memory search or list
+When the operator requests its timeline
+Then the CLI shows observations in chronological context around the anchor
+And marks the anchor in the results
+And reports when no observation resolves as the anchor
 ```
 
 ### Cross-context references

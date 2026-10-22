@@ -396,9 +396,10 @@ class TelecAppWsMixin:
             return
 
         sid = message.session_id
+        at = message.timestamp
 
         if hook == "user_prompt_submit":
-            sessions_view.update_activity(sid, "user_prompt_submit")
+            sessions_view.update_activity(sid, "user_prompt_submit", at=at)
             sessions_view.set_input_highlight(sid)
 
         elif hook == "pre_tool_use":
@@ -408,14 +409,14 @@ class TelecAppWsMixin:
                 if preview.startswith(message.tool_name):
                     preview = preview[len(message.tool_name) :].lstrip()
                 tool_info = f"{message.tool_name}: {preview}" if preview else message.tool_name
-            sessions_view.update_activity(sid, "pre_tool_use", tool_info)
+            sessions_view.update_activity(sid, "pre_tool_use", tool_info, at=at)
 
         elif hook == "thinking":
-            sessions_view.update_activity(sid, "thinking", message.text or "")
+            sessions_view.update_activity(sid, "thinking", message.text or "", at=at)
 
         elif hook == "agent_stop":
-            sessions_view.update_activity(sid, "agent_stop", message.summary or "")
-            sessions_view.set_output_highlight(sid, message.summary or "")
+            sessions_view.update_activity(sid, "agent_stop", message.summary or "", at=at)
+            sessions_view.set_output_highlight(sid)
             # Animation trigger
             if self._activity_trigger is not None:  # type: ignore[attr-defined]
                 if isinstance(self._activity_trigger, ActivityTrigger):  # type: ignore[attr-defined]
