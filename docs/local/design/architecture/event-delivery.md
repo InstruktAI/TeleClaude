@@ -77,10 +77,10 @@ consumers execute through their bound consumer path throughout wire coexistence.
 
 The daemon's session-source change boundary attempts current-source cache
 reconciliation before publishing its domain notification, under
-`local/projects/teleclaude/design/architecture/cache`. The existing durable
-materializer consumer retains recovery; its delivery position and owed
-notifications are unchanged. Source projection and notification consumption
-remain separate completion boundaries under `sdlc/policy/domain-ownership`.
+`local/projects/teleclaude/design/architecture/cache`. The live materializer
+consumer recovers from current source state before retiring its historical
+delivery position. Source projection and notification consumption remain
+separate completion boundaries under `sdlc/policy/domain-ownership`.
 
 <!-- planned:central-shared-configuration -->
 

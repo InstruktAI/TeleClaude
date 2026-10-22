@@ -50,7 +50,7 @@ source. The daemon binds that materialization capability to its session-source
 change boundary after storage initialization and before startup mutations.
 Committed local changes attempt reconciliation before event publication,
 independently of stream backlog or publication availability. Startup and the
-durable session-change consumer supply identities to the same capability;
+live session-change consumer supply identities to the same capability;
 historical notifications do not determine current row existence or lifecycle.
 The binding is removed before materializer and storage shutdown. This source
 projection boundary follows `sdlc/policy/domain-ownership` and

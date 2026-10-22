@@ -366,7 +366,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
     async def recover_runtime_availability(self) -> None:
         """Rebuild complete agent/model state after live notification interruption."""
-        for availability in (await agents_routes.read_agent_availability()).values():
+        for availability in (await agents_routes.read_agent_availability(require_complete=True)).values():
             dto = AgentAvailabilityEventDTO(data=availability)
             self._broadcast_payload(dto.event, dto.model_dump(exclude_none=True))
 

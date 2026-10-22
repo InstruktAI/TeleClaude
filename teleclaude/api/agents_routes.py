@@ -64,8 +64,8 @@ def _build_agent_dto(
     )
 
 
-async def read_agent_availability() -> dict[str, AgentAvailabilityDTO]:
-    """Read the complete authoritative agent and model availability projection."""
+async def read_agent_availability(*, require_complete: bool = False) -> dict[str, AgentAvailabilityDTO]:
+    """Read agent/model state, propagating source failures when recovery needs completeness."""
     result: dict[str, AgentAvailabilityDTO] = {}
     known_agents = get_known_agents()
     logger.info(
@@ -91,6 +91,8 @@ async def read_agent_availability() -> dict[str, AgentAvailabilityDTO]:
             models = await db.list_model_availability(agent)
         except _AGENT_AVAILABILITY_EXCEPTIONS as exc:
             logger.error("Failed to get availability for agent %s: %s", agent, exc)
+            if require_complete:
+                raise
             result[agent] = AgentAvailabilityDTO(
                 agent=agent,
                 available=None,  # Unknown due to DB error
