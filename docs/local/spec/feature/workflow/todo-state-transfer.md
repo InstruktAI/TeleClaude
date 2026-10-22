@@ -39,7 +39,8 @@ target through the project's remote.
 - **Addressing:** a target is named by its computer name and reached as the
   user and host it announces in the cluster's peer registry, over key-based
   SSH. A target that is not online in the registry, or is the origin itself,
-  is not transferred to.
+  is not transferred to. An offline target is reported as failed, naming why it
+  could not be reached.
 - **Checkout resolution:** each target resolves its own checkout of a project
   from its own project registry. A target that has no checkout of the project
   is reported and skipped; other project-target pairs continue.
