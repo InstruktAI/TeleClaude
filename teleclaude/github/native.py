@@ -97,6 +97,8 @@ class NativeCommentRefusal(StrEnum):
     TARGET_MISMATCH = "target_mismatch"
     BODY_UNAVAILABLE = "body_unavailable"
     EDITOR_UNAVAILABLE = "editor_unavailable"
+    BUILDER_REQUIRED = "current_builder_required"
+    WORK_REF_UNAVAILABLE = "authoritative_branch_or_base_unavailable"
 
 
 class NativeCommentRefused(ValueError):

@@ -15,6 +15,8 @@ from teleclaude.types.workflow_record import Act, Phase
 
 _SOURCE_DISCRIMINATOR = "kind"
 _DIGEST_PATTERN = r"^[0-9a-f]{64}$"
+_COMMIT_PATTERN = r"^[0-9a-f]{40}$"
+_PR_CREATION_INVALID = "PR creation requires its own coordinates and no reviewed SHA"
 _MIRROR_ORDER_INVALID = "Mirror part must be within its source-owned total"
 _REVIEW_HEAD_REQUIRED = "A review association requires the exact reviewed SHA"
 _NATIVE_NOTE_REQUIRED = "Native context requires the canonical note act and no inferred phase"
@@ -124,6 +126,16 @@ class GitHubEditEvidence(BaseModel):
     last_editor: GitHubAccount | None = None
 
 
+class GitHubPullRequestCreation(BaseModel):
+    """Observed PR creation coordinates, distinct from a review's reviewed commit."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    head_ref: str = Field(min_length=1)
+    base_ref: str = Field(min_length=1)
+    head_sha: str = Field(pattern=_COMMIT_PATTERN)
+    title_digest: str = Field(pattern=_DIGEST_PATTERN)
+
+
 class GitHubObjectAssociation(BaseModel):
     """Immutable creation attribution recorded after verified provider acceptance."""
 
@@ -137,12 +149,17 @@ class GitHubObjectAssociation(BaseModel):
     body_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     reviewed_sha: str | None = Field(default=None, min_length=1)
     edit_evidence: GitHubEditEvidence | None = None
+    pull_request: GitHubPullRequestCreation | None = None
 
     @model_validator(mode="after")
     def require_review_head(self) -> Self:
         """Keep a review's actual head separate from its prose and source identity."""
         if self.object.kind is GitHubObjectKind.REVIEW and self.reviewed_sha is None:
             raise ValueError(_REVIEW_HEAD_REQUIRED)
+        if (self.object.kind is GitHubObjectKind.PULL_REQUEST) != (self.pull_request is not None):
+            raise ValueError(_PR_CREATION_INVALID)
+        if self.pull_request is not None and (self.reviewed_sha is not None or self.body_digest is None):
+            raise ValueError(_PR_CREATION_INVALID)
         return self
 
     def same_creation(self, other: GitHubObjectAssociation) -> bool:
@@ -156,6 +173,7 @@ class GitHubObjectAssociation(BaseModel):
             and self.source == other.source
             and self.body_digest == other.body_digest
             and self.reviewed_sha == other.reviewed_sha
+            and self.pull_request == other.pull_request
         )
 
 
@@ -322,3 +340,39 @@ class GitHubCommentMaintenanceResult(BaseModel):
             and self.mutation.object == self.object
             and self.mutation.operation is self.operation
         )
+
+
+class GitHubPullRequestDescriptionOperation(StrEnum):
+    """One additional finite native maintenance effect, without workflow authority."""
+
+    EDIT = "edit_pr_description"
+
+
+class GitHubPullRequestDescriptionMutation(BaseModel):
+    """Later title/body attribution, never a replacement of the immutable PR creator."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    operation: Literal[GitHubPullRequestDescriptionOperation.EDIT] = GitHubPullRequestDescriptionOperation.EDIT
+    object: GitHubObjectRef
+    session_id: str
+    role: RoleName
+    actor: GitHubAccount
+    observed_at: AwareDatetime
+    head_sha: str = Field(pattern=_COMMIT_PATTERN)
+    title_digest: str = Field(pattern=_DIGEST_PATTERN)
+    body_digest: str = Field(pattern=_DIGEST_PATTERN)
+    before_title_digest: str = Field(pattern=_DIGEST_PATTERN)
+    before_body_digest: str = Field(pattern=_DIGEST_PATTERN)
+    edit_evidence: GitHubEditEvidence
+    source: NativeGitHubPostSource = Field(default_factory=NativeGitHubPostSource)
+    provider_status: Literal[200] = 200
+
+    @model_validator(mode="after")
+    def require_pr(self) -> Self:
+        """Never reinterpret a comment or sealed/reflected record as a PR description edit."""
+        if self.object.kind is not GitHubObjectKind.PULL_REQUEST or self.role is not RoleName.BUILDER:
+            raise ValueError(_MUTATION_EVIDENCE_INVALID)
+        return self
+
+
+GitHubObjectMutationRecord = GitHubObjectMutation | GitHubPullRequestDescriptionMutation

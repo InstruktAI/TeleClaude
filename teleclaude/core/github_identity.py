@@ -16,7 +16,7 @@ from teleclaude.constants import MarkerState
 from teleclaude.core.db import get_db
 from teleclaude.core.operation_caller_identity import get_caller_session_id, get_relayed_caller
 from teleclaude.core.project_state import resolve_owning_checkout
-from teleclaude.core.roles import Role, resolve_session_role
+from teleclaude.core.roles import Role, RoleName, resolve_session_role
 from teleclaude.core.session_identity_facts import SessionIdentityFacts, read_session_identity_facts
 from teleclaude.core.tmux_bridge._pane import get_pane_pid, get_server_pane_processes
 from teleclaude.core.workflow_store.selection import selected_workflow_store_backend
@@ -45,6 +45,7 @@ class GitHubInvocationRefusal(StrEnum):
     EXECUTION_UNRESOLVED = "execution_unresolved"
     ACTOR_BINDING_UNAVAILABLE = "actor_binding_unavailable"
     ACTOR_BINDING_MISMATCH = "actor_binding_mismatch"
+    PARENT_BINDING_UNAVAILABLE = "parent_binding_unavailable"
 
 
 @dataclass(frozen=True)
@@ -260,3 +261,47 @@ async def _bound_context(
     if read_session_identity_facts(str(MAIN_DB_PATH), session.session_id) != session:
         return _refuse(GitHubInvocationRefusal.SESSION_CHANGED, session.session_id)
     return GitHubPostingContext(invocation, binding, target)
+
+
+async def resolve_github_builder_parent(
+    context: GitHubPostingContext,
+) -> GitHubSessionBinding | RefusedGitHubInvocation:
+    """Read the existing local initiating driver and its authoritative fixed work/actor assignment."""
+    child = context.invocation.session
+    parent_id = child.initiator_session_id
+    if context.binding.role is not RoleName.BUILDER or not parent_id:
+        return _refuse(GitHubInvocationRefusal.PARENT_BINDING_UNAVAILABLE, child.session_id)
+    resolved = _local_session(parent_id)
+    if isinstance(resolved, RefusedGitHubInvocation):
+        return resolved
+    parent, role = resolved
+    try:
+        store = await get_db()
+        binding = await store.get_github_session_binding(parent_id)
+        target = await store.get_github_native_target(parent_id)
+        if (
+            role is None
+            or role.name is not RoleName.WORK_ORCHESTRATOR
+            or binding is None
+            or target is None
+            or binding.session_id != parent_id
+            or binding.role is not role.name
+            or parent.computer_name != child.computer_name
+            or parent.working_slug != target.work_item
+            or target.work_item != context.target.work_item
+            or target.repository_id != context.target.repository_id
+            or target.repository.casefold() != context.target.repository.casefold()
+            or target.issue_number != context.target.issue_number
+            or resolve_owning_checkout(target.project_path) != resolve_owning_checkout(context.target.project_path)
+            or not parent.project_path
+            or resolve_owning_checkout(Path(parent.project_path)) != resolve_owning_checkout(target.project_path)
+            or binding.assignment.app_id == context.binding.assignment.app_id
+            or binding.assignment.actor.id == context.binding.assignment.actor.id
+            or binding.assignment.actor.node_id == context.binding.assignment.actor.node_id
+            or read_session_identity_facts(str(MAIN_DB_PATH), parent_id) != parent
+            or read_session_identity_facts(str(MAIN_DB_PATH), child.session_id) != child
+        ):
+            return _refuse(GitHubInvocationRefusal.PARENT_BINDING_UNAVAILABLE, child.session_id)
+        return binding
+    except (OSError, SQLAlchemyError, ValueError):
+        return _refuse(GitHubInvocationRefusal.PARENT_BINDING_UNAVAILABLE, child.session_id)

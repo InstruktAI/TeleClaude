@@ -31,6 +31,7 @@ from teleclaude.core.github_identity import (
     resolve_native_github_posting_context,
 )
 from teleclaude.github import _native_gh
+from teleclaude.github._native_pr import prepare_native_pull_request
 from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
 from teleclaude.github.envelope import render_github_envelope
 from teleclaude.github.native import (
@@ -40,6 +41,7 @@ from teleclaude.github.native import (
     prepare_native_issue_comment,
     prepare_native_issue_view,
 )
+from teleclaude.github.pull_requests import GitHubPullRequestCancelled, edit_native_pull_request
 from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
 from teleclaude.types.github_binding import GitHubWorkTarget
 from teleclaude.types.github_posting import (
@@ -59,6 +61,7 @@ from teleclaude.types.github_posting import (
     GitHubPostResult,
     NativeGitHubPostSource,
 )
+from teleclaude.types.github_publication import GitHubPullRequestEditRequest, GitHubPullRequestResult
 from teleclaude.types.workflow_record import Act
 
 logger = get_logger(__name__)
@@ -122,6 +125,7 @@ _HELP_PATHS = frozenset(
 )
 _ISSUE_VIEW = ("issue", "view")
 _ISSUE_COMMENT = ("issue", "comment")
+_PR_EDIT = ("pr", "edit")
 _ISSUE_READ_PERMISSIONS: AppPermissionsType = {"issues": "read"}
 _EDITOR_ENVIRONMENT = ("GH_EDITOR", "VISUAL", "EDITOR")
 _EDITOR_FILE = "comment.md"
@@ -821,6 +825,18 @@ async def execute_native_github(
             original = dict(os.environ)  # guard: direct-env-read - preserve native pass-through startup environment
             os.chdir(directory)
             os.execve(str(binary), (str(binary), *arguments), original)
+        if arguments[:2] == _PR_EDIT:
+            pr_request = prepare_native_pull_request(
+                arguments, context, directory=directory, stdin=stdin, editor=lambda: _editor_body(directory)
+            )
+            if not isinstance(pr_request, GitHubPullRequestEditRequest):
+                return _native_failure(NativeCommentRefusal.UNSUPPORTED_OPERATION.value, stderr)
+            try:
+                pr_result = await edit_native_pull_request(context, pr_request)
+            except GitHubPullRequestCancelled as error:
+                _native_pr_result(error.result, stdout, stderr)
+                raise
+            return _native_pr_result(pr_result, stdout, stderr)
         if arguments[:1] == (_API_COMMAND,):
             request = prepare_native_comment_maintenance(arguments, context, directory=directory, stdin=stdin)
             try:
@@ -845,3 +861,9 @@ async def execute_native_github(
         return _native_failure(error.reason.value, stderr)
     except (OSError, ValueError, SQLAlchemyError, TimeoutError):
         return _native_failure(_NATIVE_UNAVAILABLE, stderr)
+
+
+def _native_pr_result(result: GitHubPullRequestResult, stdout: TextIO, stderr: TextIO) -> int:
+    """Print only safe typed facts; a creator association alone never stands in for later edit attribution."""
+    print(result.model_dump_json(), file=stdout if result.attributed else stderr)
+    return 0 if result.attributed else 1
