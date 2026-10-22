@@ -48,7 +48,10 @@ from teleclaude.types.workflow_record import Act
 
 logger = get_logger(__name__)
 _POST_EVENT = "github_comment_post acceptance=%s failure=%s session_id=%s provider_id=%s"
-_CANCELLED_EVENT = "github_comment_send_cancelled provider_status=%s"
+_CANCELLED_EVENT = (
+    "github_comment_post_cancelled acceptance=%s failure=%s session_id=%s provider_id=%s provider_status=%s"
+)
+_CANCELLED_MESSAGE = "GitHub posting cancelled; available provider evidence is attached"
 _GH = "gh"
 _PATH = "PATH"
 _UTF8 = "utf-8"
@@ -105,6 +108,20 @@ class _Response:
     body: bytes = _EMPTY_BYTES
     retry_after: timedelta | None = None
     started: bool = True
+
+
+class _SendCancelled(asyncio.CancelledError):
+    def __init__(self, response: _Response) -> None:
+        super().__init__()
+        self.response = response
+
+
+class GitHubPostingCancelled(asyncio.CancelledError):
+    """Propagate cancellation with safe provider evidence, without claiming unrecorded attribution."""
+
+    def __init__(self, result: GitHubPostResult) -> None:
+        super().__init__(_CANCELLED_MESSAGE)
+        self.result = result
 
 
 def _launch_environment() -> dict[str, str]:
@@ -176,9 +193,11 @@ async def _send(
     except (TimeoutError, OSError):
         return _response(await _reap(process))
     except asyncio.CancelledError:
-        recovered = _response(await _reap(process))
-        logger.warning(_CANCELLED_EVENT, recovered.status)
-        raise
+        try:
+            recovered = _response(await _reap(process))
+        except OSError:
+            recovered = _Response(None)
+        raise _SendCancelled(recovered) from None
     # A process exit code is neither acceptance evidence nor safe-retry permission.
     return _response(stdout)
 
@@ -297,6 +316,43 @@ def _accepted(
         )
 
 
+def _provider_result(
+    response: _Response, request: GitHubIssueCommentRequest, context: GitHubPostingContext, body: str
+) -> GitHubPostResult:
+    """Classify the same received evidence for normal completion and cancellation."""
+    if not response.started:
+        return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.BINARY_UNAVAILABLE)
+    if response.status in _DEFINITIVE_REJECTIONS:
+        return GitHubPostResult(
+            acceptance=GitHubAcceptance.NO_EFFECT,
+            failure=GitHubPostFailure.PROVIDER_REFUSED,
+            provider_status=response.status,
+            retry_after=response.retry_after,
+        )
+    if response.status != 201:
+        return GitHubPostResult(
+            acceptance=GitHubAcceptance.UNKNOWN,
+            failure=GitHubPostFailure.SEND_UNCERTAIN,
+            provider_status=response.status,
+            retry_after=response.retry_after,
+        )
+    return _accepted(response, request, context, body)
+
+
+def _cancelled(result: GitHubPostResult, session_id: str) -> GitHubPostingCancelled:
+    if result.association is not None:
+        result = result.model_copy(update={_ASSOCIATION: None, _FAILURE: GitHubPostFailure.ASSOCIATION_FAILED})
+    logger.warning(
+        _CANCELLED_EVENT,
+        result.acceptance,
+        result.failure,
+        session_id,
+        result.object.provider_id if result.object is not None else None,
+        result.provider_status,
+    )
+    return GitHubPostingCancelled(result)
+
+
 async def post_github_issue_comment(
     context: GitHubPostingContext, request: GitHubIssueCommentRequest
 ) -> GitHubPostResult:
@@ -319,6 +375,7 @@ async def post_github_issue_comment(
     except (OSError, ValueError, SQLAlchemyError):
         return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED)
     response: _Response | None = None
+    cancelled = False
     try:
         with TemporaryDirectory(prefix=_CONFIG_PREFIX) as directory:
             credential = await issue_github_installation_credential(
@@ -336,6 +393,9 @@ async def post_github_issue_comment(
             }
             try:
                 response = await _send(binary, endpoint, payload, child_environment, directory)
+            except _SendCancelled as error:
+                response = error.response
+                cancelled = True
             except OSError:
                 # Failure while settling an already-started child leaves acceptance unknown.
                 response = _Response(None)
@@ -350,24 +410,12 @@ async def post_github_issue_comment(
     except (OSError, ValueError, SQLAlchemyError):
         if response is None:
             return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED)
-        # A cleanup failure after a received response cannot undo its provider acceptance.
-    if not response.started:
-        return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.BINARY_UNAVAILABLE)
-    if response.status in _DEFINITIVE_REJECTIONS:
-        return GitHubPostResult(
-            acceptance=GitHubAcceptance.NO_EFFECT,
-            failure=GitHubPostFailure.PROVIDER_REFUSED,
-            provider_status=response.status,
-            retry_after=response.retry_after,
-        )
-    if response.status != 201:
-        return GitHubPostResult(
-            acceptance=GitHubAcceptance.UNKNOWN,
-            failure=GitHubPostFailure.SEND_UNCERTAIN,
-            provider_status=response.status,
-            retry_after=response.retry_after,
-        )
-    result = _accepted(response, request, context, body)
+        # A cleanup failure after a received response cannot undo its provider acceptance or cancellation.
+    result = _provider_result(response, request, context, body)
+    if cancelled:
+        raise _cancelled(result, context.binding.session_id)
+    if result.acceptance is not GitHubAcceptance.CONFIRMED:
+        return result
     if result.association is not None:
         try:
             store = await get_db()
@@ -376,14 +424,7 @@ async def post_github_issue_comment(
         except (SQLAlchemyError, OSError, ValueError):
             result = result.model_copy(update={_ASSOCIATION: None, _FAILURE: GitHubPostFailure.ASSOCIATION_FAILED})
         except asyncio.CancelledError:
-            logger.warning(
-                _POST_EVENT,
-                result.acceptance,
-                GitHubPostFailure.ASSOCIATION_FAILED,
-                context.binding.session_id,
-                result.object.provider_id if result.object is not None else None,
-            )
-            raise
+            raise _cancelled(result, context.binding.session_id) from None
     logger.info(
         _POST_EVENT,
         result.acceptance,
