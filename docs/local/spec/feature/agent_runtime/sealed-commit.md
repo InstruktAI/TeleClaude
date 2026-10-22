@@ -14,6 +14,8 @@ visibility: 'public'
 
 The **sealed commit contract** is the agent-facing channel for landing changes in git. Inside an agent_runtime host pane, agents do not run `git add` or `git commit` directly: the git wrapper intercepts both and redirects to `telec code commit` (and to `telec code add` for the rare cases git's data model genuinely requires staging). The wrapper enforces the seal at the shell level; `telec code commit` enforces the contract internally; the final commit runs with an explicit pathspec so foreign work in the index cannot be swept in.
 
+On a sealed repository, environment variables do not bypass the raw `git add` or `git commit` refusal. Those refusals exit non-zero without staging or committing; read-only inspection such as `git diff`, `git status`, and `git log` remains available.
+
 The seal is scoped to invocation context roots, and which of them it covers is read from the project-subscription axis of `local/projects/teleclaude/spec/feature/config/tier-permissions`. A project root is sealed when it subscribes `code` or `docs` (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and a project subscribing neither keeps ordinary git. An invocation context root whose tier carries no project subscriptions at all is sealed: it has no subscription to decide with, and the sanctioned path is its commit channel. Passthrough is decided by the repository, not by the location inside it. Where the repository's own root carries no declaration at all, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. Where the repository's root is itself a declared non-project invocation context, the seal covers the whole repository: an invocation beneath it that resolves to no context root is refused rather than passed through. A project repository is unchanged: its seal follows its subscriptions exactly as above, and every location beneath it resolves to the project's own context root.
 
 The contract resolves four classes of file state at commit time:
@@ -56,26 +58,6 @@ involvement, declared-file scoping and commit-review behavior keep their own
 contracts.
 
 ### Use cases
-
-#### Wrapper redirects raw git commit to telec code commit
-
-```
-Given an agent session running inside its host pane (identity present)
-When the agent invokes `git commit` in any form
-Then the wrapper prints an error pointing at `telec code commit`
-And exits non-zero without producing a commit
-And there is no env-var bypass on the commit branch
-```
-
-#### Wrapper redirects raw git add to telec code add
-
-```
-Given an agent session running inside its host pane
-When the agent invokes `git add` with any arguments (`-A`, specific path, `--` pathspec, etc.)
-Then the wrapper prints an error pointing at `telec code add` for NEW files and `telec code commit` for the routine case
-And exits non-zero without staging anything
-And inspection commands (`git diff`, `git status`, `git log`) remain available
-```
 
 #### UC-NCR-13 — Wrapper passes through transparently in an undeclared repository
 
