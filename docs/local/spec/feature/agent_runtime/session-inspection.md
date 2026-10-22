@@ -120,8 +120,11 @@ And to listing for the roster and the session's children
   include the reached session owner's optional public `GitHubSessionBinding` and
   `GitHubWorkTarget` as separate related data. The hosting owner resolves these from that
   exact session's persisted binding and target and offers usable posting facts only when
-  the session is open, its stored principal matches the admitted principal, and its
-  catalog role, fixed actor, and work/project binding are consistent. No private key,
+  the session is open and its existing identity owner resolves a principal equal to the
+  admitted principal. Resolution follows `caller_identity.resolve_session_principal` /
+  `identity_for_session`: explicit `principal`, then `human_email`, then the system
+  principal from the stored role. An unresolved identity refuses posting. Its catalog
+  role, fixed actor, and work/project binding must also be consistent. No private key,
   protected key reference, JWT, or token is
   returned. This related result is not inferred from diagnostic session columns and does
   not change grouped or full inspection. Diagnostics can still inspect retained closed
