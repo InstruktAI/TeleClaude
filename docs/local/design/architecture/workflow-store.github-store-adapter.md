@@ -196,11 +196,14 @@ working copy and the repository.
   changed since the last refresh, and rewrites owed reflections. Rebuild and refresh write the working copy without pushing
   records back.
 - **Trust.** A comment is read as record, content or ledger only when the
-  platform App's bot authored it and no one else edited it: its last editor,
-  when it has one, is that bot. A label, title, body, comment or edit by
-  anyone else is never read as state. Refresh that finds a record whose last
-  editor is someone else keeps the working copy's revision and rewrites the
-  record from it.
+  platform App's bot authored it, and only in the last version that bot
+  wrote. When its last editor is someone else, that version is recovered from
+  the comment's edit history, and refresh restores it on GitHub. Because it
+  is the bot's latest write, the restored version is never older than the
+  record's latest committed revision. A comment with no recoverable bot
+  version is **unverifiable**: refresh leaves the working copy as it is, and
+  every write to that item refuses with that cause. A label, title, body,
+  comment or edit by anyone else is never read as state.
 - **Selected-store helpers.** Presence, validation reads and integrity
   checks answer for the working copy. Transfer and database location refuse
   for a GitHub-backed project: each computer reaches the state from GitHub.
@@ -341,11 +344,11 @@ sequenceDiagram
   stay on GitHub, closed; rebuild skips purged records.
 - Rebuild or refresh that cannot read the repository refuses store resolution
   for a missing working copy and leaves an existing one as it is.
-- Rebuild that finds an item's record, content or a commit entry last edited
-  by someone other than the platform App refuses store resolution and names
-  the item: without a working copy there is no trusted revision to restore it
-  from. A computer that holds a working copy repairs the record on its next
-  refresh.
+- A comment that someone else edited, and whose edit history no longer holds
+  the bot's last version, makes its item unverifiable. Writes to the item
+  refuse, and rebuild refuses store resolution naming the item. No working
+  copy is ever published in its place, because a working copy may lag the
+  repository.
 - The native target projection reads an issue number from a `WorkItemId`;
   the GitHub adapter's port identities are working-copy identities, so the
   projection receives no store-produced key it accepts.
