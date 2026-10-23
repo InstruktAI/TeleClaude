@@ -27,6 +27,7 @@ from teleclaude.core.workflow_store.types import (
     ItemChange,
     PendingEffectItem,
     TodoDiagnosticRecord,
+    WorkItemId,
 )
 from teleclaude.git_lock import main_branch_lock_async
 from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, stored_holder, with_claim_change, workflow_record_of
@@ -124,7 +125,7 @@ class _CreateItemHost(Protocol):
         session: SqlAsyncSession,
         documentation_admission: DocumentationAdmission | None = None,
         reconciliation_receipts: list[MarkerReceipt] | None = None,
-    ) -> bool: ...
+    ) -> WorkItemId: ...
 
     async def write_state(
         self,
@@ -310,7 +311,7 @@ class TodosDbWorkflowOperationsMixin:
         artifact_body: str,
         updated_by: str | None,
         documentation_admission: DocumentationAdmission | None = None,
-    ) -> bool:
+    ) -> WorkItemId:
         """Atomically create the item, initial state and first artifact version."""
         reconciliation_receipts: list[MarkerReceipt] = []
         committed = False

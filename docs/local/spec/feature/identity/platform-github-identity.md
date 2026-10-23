@@ -79,6 +79,52 @@ creating write records neither binding. A session's scope is bound once and is
 never rebound. The bound target names no branch or base: an operation that
 needs them receives them in its request, from authoritative workflow state.
 
+<!-- planned:issue-129 -->
+
+The internal session-creation carrier distinguishes a driver form, which has no
+workflow parent, from an admitted child form, which requires the owner-issued
+qualified workflow-parent address `(computer, session_id)` with both values
+nonempty, and its admission fact
+from the existing `item-acts` `ChildPlan`. The `ChildPlan`/`plan_child` path
+owns eligibility; generic initiator linkage, `initiator_session_id`, role or
+parent-like metadata supplies no parent authority. Its producer must carry the
+admitted fact internally to session creation. The current `ChildPlan` does not
+yet export it; this reflection changes no #128 eligibility rule.
+
+When a child requires a workflow parent, a missing, foreign or unavailable
+qualified parent refuses before any local session-ID lookup or write. This
+bounded local creation path does not complete remote-parent integration.
+Generic and non-item local creation without a workflow parent remains
+unchanged. For the identified local parent, the same creation transaction
+checks its persisted GitHub binding agrees on item, repository and project and
+that the child has a distinct App ID and stable Bot account identity by
+provider ID/node ID. It retains the
+qualified parent address in the child's existing GitHub binding as immutable
+creation provenance for restart and parent-sensitive publication. A legacy
+binding without that parent provenance remains unavailable for parent authority;
+the owner never infers or backfills it from initiator linkage or role.
+
+These checks commit with the child session row, actor/target binding, startup
+handover and existing procedure-delivery initialization in one transaction, or
+none commit. Any failure rolls them all back. The old `assign_github_actor` and
+`bind_github_native_target` paths only return success for an already-complete,
+identical binding and target; otherwise they refuse and cannot finish partial
+legacy state. Parent eligibility remains
+`local/projects/teleclaude/spec/feature/workflow/item-acts` (The child command).
+<!-- /planned:issue-129 -->
+
+<!-- planned:issue-129 -->
+
+The session-creation carrier is in-process authority only. Its command serializer
+must omit the field and preserve the existing wire shape when it is `None`, and
+refuse to serialize a populated carrier before forwarding or durable payload persistence,
+so serialization cannot silently strip required binding facts. The decoder
+rejects any API, CLI or relayed payload that names the internal field, including
+with a null value; it cannot construct or restore this carrier. Only its owning
+daemon's trusted workflow producer passes a populated value directly to the
+existing session-creation handler.
+<!-- /planned:issue-129 -->
+
 ### Credential component
 
 The session owner fixes the assigned App and stable Bot identity when it creates

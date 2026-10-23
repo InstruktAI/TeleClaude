@@ -736,7 +736,7 @@ async def todo_content_create(
             request.group,
             icebox=request.icebox,
         )
-        await todos_db.create_item_with_initial_artifact(
+        created_identity = await todos_db.create_item_with_initial_artifact(
             slug,
             state,
             lineage=lineage.encode(),
@@ -758,7 +758,7 @@ async def todo_content_create(
         if written_artifact_name in _DRIFT_TRACKED_ARTIFACT_NAMES:
             await _sync_artifact_provenance_state(
                 todos_db,
-                slug,
+                created_identity,
                 written_artifact_name,
                 repo_root=effective_cwd,
                 artifact_body=written_artifact_body,
@@ -771,12 +771,12 @@ async def todo_content_create(
             # Seed the supplied plan as a plan-drafting basis (see
             # seed_plan_drafting); it must run after the seeding write's
             # provenance sync above, which would otherwise clear the seed.
-            state["lifecycle_phase"] = await seed_plan_drafting(todos_db, slug, repo_root=effective_cwd)
+            state["lifecycle_phase"] = await seed_plan_drafting(todos_db, created_identity, repo_root=effective_cwd)
             todos_db.notify_committed("todo_updated")
         elif request.plan and request.kind == TodoKind.TASK:
             state["lifecycle_phase"] = await seed_task_plan_authorization(
                 todos_db,
-                slug,
+                created_identity,
                 caller_session_id=identity.session_id,
                 prepared_session_id=identity.session_id,
             )
@@ -786,10 +786,10 @@ async def todo_content_create(
         event_lifecycle_phase = lifecycle_phase if isinstance(lifecycle_phase, str) else None
         await publish_event(
             TodoCreated(
-                subject=TodoRef(slug),
+                subject=TodoRef(created_identity),
                 home=home_for_project_path(effective_cwd),
                 data=TodoCreatedData(
-                    slug=slug,
+                    slug=created_identity,
                     kind=map_v1_kind_to_canonical(request.kind),
                     creation_mode="pickup" if pickup_requested else "silent",
                     pickup_requested=pickup_requested,
@@ -807,18 +807,20 @@ async def todo_content_create(
 
         logger.info(
             "todo creation completed",
-            slug=slug,
+            slug=created_identity,
             kind=request.kind,
             cwd=effective_cwd,
             artifact=written_artifact_name,
         )
 
         warnings = (
-            dependency_warnings.frozen_dep_warnings(slug, await todos_db.get_deps_with_status(slug))
+            dependency_warnings.frozen_dep_warnings(
+                created_identity, await todos_db.get_deps_with_status(created_identity)
+            )
             if not request.icebox and request.after
             else []
         )
-        return _SlugStatusResponse(status="ok", slug=slug, warnings=warnings)
+        return _SlugStatusResponse(status="ok", slug=created_identity, warnings=warnings)
     except HTTPException:
         raise
     except HolderReconciliationRefused as exc:

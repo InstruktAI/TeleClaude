@@ -12,7 +12,7 @@ from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import CommitReviewVerdict
 
 WorkItemId = NewType("WorkItemId", str)
-"""Canonical workflow identity: the stable todo slug."""
+"""Canonical identity assigned by the selected adapter; opaque to consumers."""
 
 StoreAddress = NewType("StoreAddress", str)
 """Adapter address for identity-pinned row operations; never workflow identity."""

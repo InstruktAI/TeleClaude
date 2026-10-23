@@ -179,6 +179,8 @@ Valid in both project and global configs.
 - `jobs` holds local job declarations and subscriptions to published global jobs, each identified by its required kebab-case `name`; a subscription overrides any setting it carries except the execution pointer (`local/projects/teleclaude/spec/feature/config/job-declaration-model`).
 - `hooks.inbound` declares this project's own inbound sources, as below.
 
+<!-- planned-change:issue-130-github-item-identity -->
+
 - `todos.store` selects the project workflow-store adapter. Omission defaults to `local`; `github` is a recognized selection and refuses with an explicit unavailable-capability error until its adapter is installed. Local selection requires no GitHub account or repository.
 
 #### Workflow store selection
@@ -190,6 +192,24 @@ refused with the missing capability named; the project never falls back to
 `local` after an explicit `github` selection. This is project-owned workflow
 configuration, not a machine-wide workflow control plane. Local projects need
 no GitHub repository or credentials.
+
+<!-- change:issue-130-github-item-identity -->
+
+- `todos.store` selects the project workflow-store adapter. Omission defaults to `local`. What a `github` selection serves, and how it refuses the rest, is owned by `local/projects/teleclaude/design/architecture/workflow-store`. Local selection requires no GitHub account or repository.
+- `todos.repository` declares the project's GitHub repository by its stable repository ID and canonical owner/name. It is the only source of the project's GitHub repository identity, which is never formed from a slug or origin metadata (`local/projects/teleclaude/spec/feature/identity/platform-github-identity`). The declaration is valid under either selection, so a project still on `local` can name its repository before it switches; declaring it selects nothing. Which reads require a `github` selection and a declaration is owned by `local/projects/teleclaude/design/architecture/workflow-store`.
+
+#### Workflow store selection
+
+An optional `todos.store` project setting selects the workflow store. When it is
+omitted, the project uses `local`. The accepted values are `local` and
+`github`. The project never falls back to `local` after an explicit `github`
+selection. This is project-owned workflow configuration, not a machine-wide
+workflow control plane. Local projects need no GitHub repository or
+credentials. The repository declaration lives in the committed project config,
+so every clone and linked worktree of the project reads the same repository
+facts.
+
+<!-- /planned-change:issue-130-github-item-identity -->
 
 Every home declares the inbound sources that open endpoints in its own name
 under `hooks.inbound`, keyed by protocol, and each tier admits only its own

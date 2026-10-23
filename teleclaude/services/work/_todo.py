@@ -15,6 +15,7 @@ from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, rec
 from teleclaude.core.next_machine.review_evidence import BuildReviewVerdict
 from teleclaude.core.todo import assemble_todo_from_db
 from teleclaude.core.workflow_store.store import get_workflow_store_sync
+from teleclaude.core.workflow_store.types import WorkItemId
 from teleclaude.types.todo_kind import TodoKind
 
 if TYPE_CHECKING:
@@ -155,7 +156,7 @@ class TodoOps:
         description: str = "",
         group: str | None = None,
         after: str | list[str] | None = None,
-    ) -> str:
+    ) -> WorkItemId:
         """Add a new todo entry.
 
         ``lineage`` is the caller's resolved Creation Record chain — this
@@ -167,7 +168,7 @@ class TodoOps:
             after_list = [p.strip() for p in after.split(",") if p.strip()]
         else:
             after_list = after
-        await db.add_to_todo(
+        return await db.add_to_todo(
             slug,
             lineage=lineage,
             group_slug=group,
@@ -175,7 +176,6 @@ class TodoOps:
             description=description,
             cwd=self._base.project_root,
         )
-        return slug
 
     async def remove(self, slug: str) -> bool:
         db = await self._base._ensure_db()

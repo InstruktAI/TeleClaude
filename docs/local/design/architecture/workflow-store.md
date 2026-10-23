@@ -17,6 +17,8 @@ visibility: internal
 
 ## Purpose
 
+<!-- planned-change:issue-130-github-item-identity -->
+
 Give workflow consumers one typed, backend-neutral operation surface. The
 project resolver selects the adapter once for the canonical shared-state root.
 Local remains the default and is the only implemented adapter in this slice;
@@ -24,27 +26,20 @@ explicit `todos.store: github` fails with an unavailable-capability error.
 Consumers do not select a backend, open a connection, inspect tables, or carry
 storage paths.
 
+<!-- change:issue-130-github-item-identity -->
+
+Give workflow consumers one typed, backend-neutral operation surface. The
+project resolver selects the adapter once for the canonical shared-state root.
+Local remains the default and is the only adapter that serves the port.
+Explicit `todos.store: github` refuses every port operation with an
+unavailable-capability error; the GitHub adapter module serves only the
+identity reads and the native target projection below, none of which is a port
+operation. Consumers do not select a backend, open a connection, inspect
+tables, or carry storage paths.
+
+<!-- /planned-change:issue-130-github-item-identity -->
+
 ## Inputs/Outputs
-
-<!-- planned-change:issue-130-creation-identity -->
-
-The canonical item identity is its slug. The typed projection uses
-`WorkItemId` for that identity and a separate opaque `StoreAddress` for local
-row addressing; neither substitutes for the other. Existing protocol methods
-retain slug and row-id string parameters where current consumers use them, and
-the adapter resolves the local address. The operation records currently used
-by `WorkflowStore` are `WorkItem`, `TodoDiagnosticRecord`,
-`WorkItemStateRead`, `IdentityResolution`, `RemovalRequest`,
-`ExpiredRemovedItem`, `PurgedItem`, `ArtifactMetadata`, `ArtifactWriterSet`,
-`ArtifactRemoval`, `ArtifactVersion`, `StoreCapabilities`, and
-`TodoProjectionSnapshot` with `TodoProjectionItem`, `TodoProjectionMetrics`,
-and `ArtifactFile`. Dependency operations use `DependencyEntry`; workflow
-state remains `dict[str, StateValue]`. The selected-store helpers additionally
-use `StorePresence`, `StoreIntegrityStatus`, and the opaque `TransferSource` /
-`TransferResult` pair. Existing task, schedule and creative state remain within
-workflow state and preserve their current ownership and interpretation.
-
-<!-- change:issue-130-creation-identity -->
 
 The canonical item identity is `WorkItemId`, the identity the selected adapter
 assigns (#124 INV-D1). Consumers treat it as opaque: they never construct it
@@ -65,10 +60,6 @@ selected-store helpers additionally use `StorePresence`,
 pair. Existing task, schedule and creative state remain within workflow state
 and preserve their current ownership and interpretation.
 
-<!-- /planned-change:issue-130-creation-identity -->
-
-<!-- planned:issue-130-creation-identity -->
-
 - **Creation result.** The slug a caller passes to `add_to_todo` or
   `create_item_with_initial_artifact` is the creation key. Each operation
   returns the `WorkItemId` of the item that holds that key after the call: the
@@ -79,10 +70,6 @@ and preserve their current ownership and interpretation.
 - **Selected backend.** The project resolver exposes the backend it selects
   from `todos.store` (#124 INV-B1). `WorkflowStore.capabilities` only gates
   operations; no consumer reads the backend from it.
-
-<!-- /planned:issue-130-creation-identity -->
-
-<!-- planned:issue-130-native-target-projection -->
 
 - **Native target projection.** The GitHub adapter module supplies a pure
   projection from the project's repository identity and an item's
@@ -97,10 +84,34 @@ and preserve their current ownership and interpretation.
   encodes; a key that is not a canonical positive decimal issue number is
   refused, never read leniently. The target has no address field: the
   projection carries no `StoreAddress` into it and neither decodes nor checks
-  it, so the projection establishes repository, issue and work-item identity,
-  not address correspondence.
+  it, so the projection establishes repository, issue and work-item identity;
+  that the address names the same item is the port's identity invariant.
 
-<!-- /planned:issue-130-native-target-projection -->
+<!-- planned:issue-130-github-item-identity -->
+
+- **Repository identity.** The GitHub adapter module resolves a project's
+  repository identity from the project's committed repository declaration
+  (`local/projects/teleclaude/spec/teleclaude-config`) and from nothing else:
+  never from a git remote, clone path, checkout name, slug or origin metadata.
+  Its repository facts are the declared stable repository ID and canonical
+  owner/name. Its project path is the canonical shared-state root the project
+  resolver resolves for the requested path, the root the selected store is
+  resolved for, and resolution requires that root to be a project registered
+  and present on this computer whose selected backend is `github`. Every linked
+  worktree of a checkout resolves that checkout's identity; every clone resolves
+  its own root with the same repository facts. The native target projection
+  copies that project path into the target unchanged.
+- **Item identity read.** For a `WorkItemId`, the GitHub adapter module reads
+  the issue that key encodes from the repository identity's repository and
+  returns the `WorkItemId` with that issue's node ID as its `StoreAddress`, both
+  taken from the one provider read. It authenticates through the identity
+  owner's credential component with read-only issue access, as the actor
+  assignment its caller supplies; the store selects no actor
+  (`local/projects/teleclaude/spec/feature/identity/platform-github-identity`).
+  The read retains nothing: no cached pair, no local record, no local fallback.
+  It is a module call with no API, command-line or relayed surface.
+
+<!-- /planned:issue-130-github-item-identity -->
 
 The seven operation parts are realized by the current state and artifact
 operations:
@@ -174,6 +185,12 @@ operations:
 
 <!-- /planned:issue-128 -->
 
+- An item's `WorkItemId` and `StoreAddress` name the same item. Wherever the
+  selected adapter returns or resolves both, it reads them from that one
+  stored item, and no operation pairs one item's identity with another item's
+  address. A consumer that carries the pair relies on either value naming the
+  item the other names, without decoding the address.
+
 ## Primary flows
 
 1. Resolve project context to the canonical state root, read its project config,
@@ -212,6 +229,19 @@ A compatibility upgrade preserves concurrent state changes and satisfies the sam
   collapse distinct current commits.
 - A transfer source is opaque. Exposing a local path would recreate the direct
   storage bypass this boundary owns.
+
+<!-- planned:issue-130-github-item-identity -->
+
+- A GitHub identity read refuses with its cause and creates nothing. A path
+  outside a registered, present project; a selected backend other than
+  `github`; an undeclared repository; a key that is not a canonical issue
+  number; a credential the identity owner refuses, including a declaration its
+  installation scope does not confirm; an issue that is absent, moved or
+  deleted; a pull request where an issue is required; and an unavailable or
+  rate-limited provider each refuse distinctly. A refusal carries no provider
+  response text and no credential.
+
+<!-- /planned:issue-130-github-item-identity -->
 
 ## See Also
 

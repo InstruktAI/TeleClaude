@@ -40,6 +40,7 @@ from .types import (
     TodoDiagnosticRecord,
     TodoProjectionSnapshot,
     WorkItem,
+    WorkItemId,
     WorkItemStateRead,
 )
 
@@ -89,7 +90,7 @@ class WorkflowStore(Protocol):
         artifact_body: str,
         updated_by: str | None,
         documentation_admission: DocumentationAdmission | None = None,
-    ) -> bool: ...
+    ) -> WorkItemId: ...
     async def replace_item_state_and_artifacts(
         self,
         slug: str,
@@ -194,7 +195,7 @@ class WorkflowStore(Protocol):
         human_involved: bool = False,
         context: str | None = None,
         cwd: str,
-    ) -> bool: ...
+    ) -> WorkItemId: ...
     async def read_state(self, slug: str) -> dict[str, StateValue] | None: ...
     async def write_state(self, slug: str, state: dict[str, StateValue]) -> None: ...
     async def write_state_by_id(self, todo_id: str, state: dict[str, StateValue]) -> None: ...
