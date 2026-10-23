@@ -56,8 +56,6 @@ and preserve their current ownership and interpretation.
   from `todos.store` (#124 INV-B1). `WorkflowStore.capabilities` only gates
   operations; no consumer reads the backend from it.
 
-<!-- planned:issue-130-native-target-projection -->
-
 - **Native target projection.** The GitHub adapter module supplies a pure
   projection from the project's repository identity and an item's
   (`WorkItemId`, `StoreAddress`) pair to a session's native GitHub target
@@ -73,8 +71,6 @@ and preserve their current ownership and interpretation.
   projection carries no `StoreAddress` into it and neither decodes nor checks
   it, so the projection establishes repository, issue and work-item identity;
   that the address names the same item is the port's identity invariant.
-
-<!-- /planned:issue-130-native-target-projection -->
 
 The seven operation parts are realized by the current state and artifact
 operations:
@@ -148,15 +144,11 @@ operations:
 
 <!-- /planned:issue-128 -->
 
-<!-- planned:issue-130-native-target-projection -->
-
 - An item's `WorkItemId` and `StoreAddress` name the same item. Wherever the
   selected adapter returns or resolves both, it reads them from that one
   stored item, and no operation pairs one item's identity with another item's
   address. A consumer that carries the pair relies on either value naming the
   item the other names, without decoding the address.
-
-<!-- /planned:issue-130-native-target-projection -->
 
 ## Primary flows
 
