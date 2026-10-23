@@ -290,7 +290,7 @@ derived from intent and situation, not from the todo kind alone:
 - Implementation-internal work stays within the contract it preserves.
 - Product-shaping work may enrich sparse input with situation-specific domain
   intelligence, provided every consequential addition explains why it belongs
-  here and the inference record carries it for the driver's judgment.
+  here and the inference record carries it for the dedicated reviewer's judgment.
 
 The spec carries the horizon into independent review. If shaping discovers a
 product outcome beyond the authority of the intent, that outcome is a question

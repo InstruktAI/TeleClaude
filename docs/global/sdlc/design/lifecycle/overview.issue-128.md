@@ -129,7 +129,7 @@ These are continuous pressures across the lifecycle, not isolated later phases:
 ## Failure modes
 
 - The spec grows mechanisms the authorized outcome does not need because the
-  driver judged only the details, not the whole delivery.
+  reviewer judged only the details, not the whole delivery.
 - Work builds against a body that moved after it was judged ready.
 - Review checks only local correctness and ignores the spec or its contracts.
 - A contract change discovered during work is coded before it is authored and
