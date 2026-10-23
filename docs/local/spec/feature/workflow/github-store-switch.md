@@ -67,10 +67,12 @@ state, dependencies and every version of every artifact with its digest,
 writer and time, so approvals and review stamps bound to a digest still hold.
 
 Delivered and removed items stay in the local store. A moved item grouped
-under a delivered or removed item moves without that membership, and a
-dependency on an item that does not move is not carried. Each such item is
-already finished, so neither the membership nor the dependency has any effect
-on the work that remains.
+under a delivered or removed item moves without that membership: on GitHub it
+lists without that parent, and the parent's slug no longer resolves to it as a
+group, while the item itself is prepared and worked by its own slug as before.
+A dependency on an item that does not move is not carried, because that item
+is delivered, removed, or a holder with no open member, and so already
+satisfies it.
 
 Every commit review and documentation transfer the local store holds moves to
 the repository's project records, because the workflow reads them as evidence
