@@ -89,9 +89,10 @@ qualified workflow-parent address `(computer, session_id)` with both values
 nonempty, and its admission fact
 from the existing `item-acts` `ChildPlan`. The `ChildPlan`/`plan_child` path
 owns eligibility; generic initiator linkage, `initiator_session_id`, role or
-parent-like metadata supplies no parent authority. Its producer must carry the
-admitted fact internally to session creation. The current `ChildPlan` does not
-yet export it; this reflection changes no #128 eligibility rule.
+parent-like metadata supplies no parent authority. Its producer carries the
+admitted fact internally to session creation under the existing
+`local/projects/teleclaude/spec/feature/workflow/item-acts` owner contract; this
+does not change that owner's eligibility rule.
 
 When a child requires a workflow parent, a missing, foreign or unavailable
 qualified parent refuses before any local session-ID lookup or write. This
@@ -163,20 +164,12 @@ Public App, installation and account identifiers and protected secret references
 may be retained by their configuration/identity owners. Private keys remain in
 protected credential storage; JWTs and installation tokens remain in credential
 component memory. The API credential is passed only to the in-process GitHubKit
-client after authenticated operation admission. For optional session issue
-metadata, the snapshot owner resolves the current session's canonical role
-through the existing role-to-App mapping, then uses the existing
-`read_github_item_identity` issue-read path with only `issues:read` for the
-registered project's declared repository. That path uses
-`issue_github_installation_credential` and GitHubKit. The metadata read is
-admitted from the current stored session assignment and repository declaration;
-it does not require or persist a GitHub session binding and grants no write
-authority. Its in-memory target is credential scope, not a workflow binding.
-Git ref updates remain Git operations under the publication owner;
-the current PR #137 head still uses a GitHub CLI credential helper and is not a
-conforming protected transport. Its replacement remains pending and must consume
-the SDK-issued credential without invoking that CLI. Tokens do not reach a
-GitHub API subprocess or a `GH_TOKEN` child environment.
+client after authenticated operation admission. Session navigation metadata is
+owned by `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`;
+it does not select a platform actor or credential. Git ref updates remain Git
+operations under the publication owner and use its protected Git credential
+channel. GitHubKit endpoint operations remain in-process; no provider API
+subprocess or `GH_TOKEN` child environment is used.
 Native credential stores,
 agent-visible parent environments, arguments, configuration documents,
 artifacts, prose and logs receive no token. Errors use the existing credential

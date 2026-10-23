@@ -80,27 +80,23 @@ identified GitHub issue carries none. An unavailable optional lookup leaves
 the session visible and eligible for a later lookup.
 <!-- change:issue-129 -->
 
-A bound issue parameter identifies GitHub work when the issue lookup resolves
-it within the repository declared by the registered project. The owning
-computer's session snapshot may carry the verified number, URL and bound work
-subject as optional display metadata, including for sessions started before the
-display opens. The stored invocation supplies the selector; the registered
-project's `todos.repository` declaration supplies repository identity, even
-when the selected todo backend is local. Cwd, command arguments, ambient Git
-remotes and the developer's native CLI do not select a repository or credential.
+A bound issue parameter supplies optional local session navigation. When an
+assigned issue selector and one unambiguous GitHub.com project `origin` are
+available, the owning computer returns the assigned issue number and its browser
+URL. It reads the project's `origin` through the existing GitPython `Repo`
+interface and uses only the GitHub.com owner/repository path to compose the URL;
+the selector supplies the issue number. This local metadata path does not consult
+the selected todo backend, `todos.repository`, GitHub App credentials, native
+CLI configuration or a provider API. It is display-only: it neither creates
+workflow identity nor verifies issue existence/current state. A removed or
+inaccessible issue may therefore open to a provider unavailable page.
 
-The optional metadata read uses the existing role-to-App assignment owned by
-`local/projects/teleclaude/spec/feature/identity/platform-github-identity`
-and the GitHub adapter's existing `read_github_item_identity` issue-read path,
-which requests only `issues:read` through GitHubKit. Its in-memory target scopes
-that read; it is not persisted as the session's workflow target. The snapshot
-uses the verified issue number and declared repository to form the display URL.
-This is a display read only: it establishes no workflow binding or write
-authority. Missing repository declaration, missing role/App mapping, unavailable
-credential, an unreadable/non-issue selector, or provider failure leaves
-metadata absent while the session remains visible. The lookup remains eligible
-for later refresh under the existing bounded cache. A session without a
-verified issue reference carries none. The TUI consumes this optional
+The stored selector is a positive decimal number, `owner/repo#number`, or a
+full GitHub issue URL; repository-qualified forms must match the project's
+single unambiguous GitHub.com `origin`. Remotes with embedded credentials,
+multiple or missing origins, non-GitHub hosts, invalid numbers or mismatched
+repositories produce no link while the session remains visible. The snapshot
+carries the derived URL and stored work subject; the TUI consumes this optional
 structured reference under
 `local/projects/teleclaude/spec/feature/tui/todo-session-cross-navigation`.
 <!-- /planned-change:issue-129 -->

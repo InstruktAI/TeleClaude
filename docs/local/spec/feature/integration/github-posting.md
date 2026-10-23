@@ -9,10 +9,12 @@ delivered_by:
 
 ## What it is
 
-Integration exposes a finite `telec github` command facade whose accepted
-`gh`-shaped inputs map to fixed GitHubKit REST operations in-process; the syntax
-does not invoke or pass through to the GitHub CLI. It transports native
-conversation and artifact authoring to GitHub under the authenticated
+Integration exposes a finite Python `gh`-shaped facade in GitHub-bound managed
+sessions. Its accepted inputs map to fixed GitHubKit REST operations in-process;
+the Python entrypoint never invokes or passes through to the separately
+installed GitHub CLI. Outside that bound session context, ordinary developer
+`gh` remains external and unmodified. The facade transports native conversation
+and artifact authoring to GitHub under the authenticated
 session/actor facts supplied by
 `local/projects/teleclaude/spec/feature/identity/platform-github-identity`.
 Sealed acts and event reflections enter separately through their existing
@@ -43,16 +45,19 @@ fallback.
 A local backend with any actor or target binding also refuses; a removed or
 changed backend declaration never clears or rebinds existing session scope.
 
-Only an explicit `telec github` invocation enters this product facade. An
-ordinary shell `gh` command remains the separately installed developer CLI,
-including in local-backend or unbound sessions; TeleClaude does not intercept,
-refuse, proxy, or execute it. The product facade itself never starts a provider
-binary. An unbound or local-backend `telec github` invocation returns local help
-or a refusal without a provider effect. This includes a genuinely absent
-session role; the identity owner distinguishes that fact from an unknown role.
-A GitHub-selected facade invocation requires its canonical role and both
-bindings; a missing or unreadable producer result refuses. A person's
-independent GitHub CLI or browser use remains outside this product boundary.
+Only the bound-session Python entrypoint enters this product facade. Within a
+GitHub-bound managed agent session, the ordinary `gh` command name resolves to
+this finite facade; it cannot invoke or fall through to the separately
+installed provider CLI or use that CLI's native authentication. Unsupported
+commands receive a local refusal. Outside that bound path—including
+local-backend and unbound sessions—ordinary shell `gh` remains the separately
+installed developer CLI and TeleClaude does not intercept, refuse, proxy, or
+execute it.
+The bound facade requires a canonical role and both actor/target bindings; a
+missing or unreadable producer result refuses before provider effect. A
+genuinely absent role is distinguished from an unknown role by the identity
+owner. A person's independent GitHub CLI or browser use remains outside this
+product boundary.
 (`local/projects/teleclaude/spec/feature/identity/platform-github-identity`,
 `local/projects/teleclaude/spec/domain/config`).
 
@@ -117,8 +122,8 @@ invoked. Token-printing auth commands, token-disclosing status modes, shared
 auth switching and credential/header diagnostics receive no platform token
 (`sdlc/policy/ai-agent-security`).
 
-Structurally exact `telec github` help/version spellings return facade-owned
-local output without a provider request or credential lookup. Other read-only
+Structurally exact help/version spellings in the bound facade return local
+output without a provider request or credential lookup. Other read-only
 commands must match a supported read shape and map to fixed GitHubKit calls.
 Unknown commands, aliases, extensions, opaque controls and unsupported read
 shapes return a local refusal. Flag-looking text in body/file/stdin/editor
@@ -127,18 +132,30 @@ execute the `gh` binary.
 
 ### Supported conversational read
 
-The complete provider-read surface of this facade is `telec github issue view
-<selector>`, where the selector identifies one issue in the admitted project's
-declared repository. An optional `--repo` or `-R` is accepted only when it
-matches that already-bound repository; it cannot select another project or
-credential. `--comments` or `-c` includes the issue's returned comments in
-provider order. The facade returns human-readable prose containing the
-verified issue number, title, state, URL, author, creation/update times and
-body, followed by comment author, time and body when requested. It does not
-return provider JSON. `--json`, unlisted fields, PR reads, other selectors,
-repository overrides, aliases and raw API reads are refused locally. The
-provider read is one fixed GitHubKit request path and adds no pagination or
-generic query facility. Help output names this exact read and its prose result
+The finite read surface contains three forms:
+
+- `gh issue view <selector>` reads the assigned issue's number, title, state,
+  URL, author, creation/update times and body. `--comments` or `-c` adds all
+  issue comments in provider order.
+- `gh pr view <selector>` reads the associated PR's number, title, state, URL,
+  author, body, base/head refs and exact head SHA. `--comments` or `-c` adds
+  all PR conversation comments in provider order.
+- `gh api GET /repos/{owner}/{repo}/pulls/{number}/comments` reads diff-review
+  comments for the bound PR, including each provider comment ID, reply/root
+  relation, author, body, timestamp and file/line context needed by the supported
+  reply operation. The repository and PR number must equal the bound PR.
+
+An optional `--repo` or `-R` on the issue and PR views is accepted only when it
+matches the bound repository. Every route maps to fixed GitHubKit calls and
+uses its existing pagination support to fetch all pages. The fixed `gh api`
+path accepts only GET and lets the SDK supply page navigation. If a page traversal
+cannot complete, the result explicitly says the list is incomplete and does
+not present a partial list as complete. Results are human-readable prose, not
+provider JSON. `--json`, unlisted fields, other selectors, repository overrides,
+aliases, other HTTP methods and raw API paths are refused locally. These reads
+provide only provider context for the existing write operations; they authorize
+no additional mutation. Help output names these exact shapes and their prose
+results
 (`local/projects/teleclaude/spec/domain/integration`, `sdlc/policy/domain-ownership`).
 
 ### Canonical envelope mapping
@@ -273,12 +290,11 @@ foreign session binding into the executor's local authority. Provider
 acceptance without that association remains incomplete with known IDs and
 possible effects; no blind replay or new receipt is introduced.
 
-No remote send is connected until #130 publishes a consistency-checked mapping
-from the executor's selected project and opaque (`WorkItemId`, `StoreAddress`)
-pair to the existing `GitHubWorkTarget`. Posting does not decode the address or
-expand that target type. Positive workflow-state attribution remains separate
-and unavailable until its existing association consumer is published; echo
-qualification does not supply that attribution.
+Remote posting consumes #130's consistency-checked mapping from the executor's
+selected project and opaque (`WorkItemId`, `StoreAddress`) pair to the existing
+`GitHubWorkTarget`. Posting does not decode the address or expand that target
+type. Positive workflow-state attribution consumes its owning association
+reader; echo qualification does not supply that attribution.
 <!-- /planned:issue-129 -->
 
 ### Use cases
@@ -289,13 +305,6 @@ token handling and attribution add no independent stakeholder goal
 (`sdlc/principle/documentation-first-development`).
 
 ## Known caveats
-
-At PR #137 head `83b062f11f513fb84fc03fa471e1b8b41af4509f`,
-`teleclaude/github/_native_gh.py` still launches the GitHub CLI for provider
-reads and writes, and `teleclaude/github/posting.py` exports `GH_TOKEN` to that
-child. This head does not implement the adopted in-process GitHubKit transport
-or the explicit `telec github` entry contract. Those source corrections remain
-unapplied; this specification does not claim they are delivered.
 
 Provider acceptance followed by a lost response or failed association write is
 an incomplete operation, not attributed state. The failure reports known object
