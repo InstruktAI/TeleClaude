@@ -35,7 +35,7 @@ assesses the subject, then continue the assigned repair on that proposal.
    driver through its review rounds.
 3. A genuine kickback follows the ordinary item lifecycle's closing and
    source-retention contract. It supplies no transfer into another claiming
-   group (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`).
+   group (`local/projects/teleclaude/design/architecture/lifecycle-state-machines`).
 
 ## Outputs
 

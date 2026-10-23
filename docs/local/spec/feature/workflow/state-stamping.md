@@ -7,37 +7,15 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:issue-128 -->
-
 `telec todo stamp` is the single domain surface every caller — human operator, Worker session, or Orchestrator — uses to record a fact about a Todo: a reviewer's Verdict, a human PRD approval, an architecture skip with reason, a drift-reviewed acknowledgment, a worker's `build_complete` claim, or a worker's `finalize_ready` handoff. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit, and the approvals and review managers are the typed owners for approval-shaped and verdict-shaped mutations. When full-state validation fails, the caller receives the underlying validation text, and no partial mutation is persisted. The stamp records the fact; the state machine reads the fact on its next dispatch and advances the canonical `lifecycle_phase` accordingly. There is no path that writes Todo state outside this boundary.
 
 A one-shot task-outcome success reconciles lifecycle markers only in the task's own project; it does not read or change another project's documentation. A code-review record retains the reviewed commit, verdict, reviewer identity, and supplied reason. It is also recorded on the Todo claimed by the stamping session, or by its initiating session when the reviewer has no claim; if neither has a claim, no Todo review state is written.
 
-<!-- change:issue-128 -->
-
-`telec todo stamp` is the domain surface through which a caller records a fact about a Todo that no lifecycle act records, such as a human's authorization of a task's plan or a task firing's outcome. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit. When full-state validation fails, the caller receives the underlying validation text, and no partial mutation is persisted. There is no path that writes Todo state outside this boundary.
-
-For an item the lifecycle machine drives, every stamp type that only the previous machine knew is refused at this surface, naming the item's phase and the door for its state, and nothing is written (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`, Acts only the previous machine knew). Such an item's acts are performed through `local/projects/teleclaude/spec/feature/workflow/item-acts`.
-
-A one-shot task-outcome success reconciles lifecycle markers only in the task's own project; it does not read or change another project's documentation. A code-review record retains the reviewed commit, verdict, reviewer identity, and supplied reason. It is also recorded on the Todo claimed by the stamping session, or by its initiating session when the reviewer has no claim; if neither has a claim, no Todo review state is written.
-
-<!-- /planned-change:issue-128 -->
-
-<!-- planned-change:issue-128 -->
-
 The same state-write boundary owns artifact-write provenance capture. On every `telec todo artifacts write` for a drift-tracked artifact (`input`, `prd`, `architecture`, `implementation-plan`), the workflow's provenance boundary records the evidence needed for every drift class applicable to that artifact. Existing persisted fields: `codebase_sha_at_write` (captured via the origin-main-sha helper — never local HEAD) and `referenced_paths`, plus `upstream_digests` (the persisted-state field, aka `upstream_artifact_digests` in spec/documentation). Added persisted fields: `owned_snippet_digests`, `referenced_snippet_digests`, `produced_at`, and, for the `implementation-plan` only, `dependency_artifact_digests` — pure additive defaults with no migration. See `@spec/feature/workflow/drift-detection` for the per-class semantics. Rewriting an artifact re-captures all provenance fields at the new write and clears every drift-reviewed stamp for that artifact so the next derivation starts from a fresh anchor.
-
-<!-- change:issue-128 -->
-
-The same state-write boundary owns artifact-write provenance capture. On every `telec todo artifacts write` for a provenance-tracked artifact (`input`, `prd`, `architecture`, `implementation-plan`), the workflow's provenance boundary records `codebase_sha_at_write` (captured via the origin-main-sha helper — never local HEAD) and `referenced_paths`, plus `upstream_digests` (the persisted-state field, aka `upstream_artifact_digests` in spec/documentation), `owned_snippet_digests`, `referenced_snippet_digests`, `produced_at`, and, for the `implementation-plan` only, `dependency_artifact_digests`. Rewriting an artifact re-captures all provenance fields at the new write.
-
-<!-- /planned-change:issue-128 -->
 
 ## Canonical fields
 
 ### Use cases
-
-<!-- planned-change:issue-128 -->
 
 ```
 Given a Todo with a written PRD artifact and an existing prd-review verdict of "approve"
@@ -87,10 +65,6 @@ And the stamp is refused before mutation when the report is absent, either curre
 And reviewer authority remains the normal path while orchestrator recovery authority remains unchanged
 ```
 
-<!-- change:issue-128 -->
-
-<!-- /planned-change:issue-128 -->
-
 #### UC-WSS20: Retired requirements review cannot create a live verdict
 
 ```gherkin
@@ -100,8 +74,6 @@ Then the verdict surface refuses the phase before any state mutation
 And legacy import never synthesizes requirements_review or plan_review approval from artifact presence
 And delivered historical records remain unchanged and readable
 ```
-
-<!-- planned-change:issue-128 -->
 
 ```
 Given a Todo whose nature does not require architecture work
@@ -128,10 +100,6 @@ And an approval carrying only agent judgment delivers no notification into any s
 And the agent never messages itself about an approval it recorded
 ```
 
-<!-- change:issue-128 -->
-
-<!-- /planned-change:issue-128 -->
-
 #### UC-WSS9: Human task authorization stamps execution approval
 
 ```gherkin
@@ -155,8 +123,6 @@ When the `task-plan` is edited so its current digest no longer equals the stampe
 Then the lifecycle runner treats the task as unauthorized and does not dispatch `sdlc/procedure/lifecycle/task/run-task`
 And the task stays unauthorized until a fresh `task_approved` stamp re-binds `approved_digest` to the current `task-plan`
 ```
-
-<!-- planned-change:issue-128 -->
 
 ```
 Given an approved prepare artifact whose per-class drift derivation collapses to "pending" on any class enumerated in @spec/feature/workflow/drift-detection
@@ -217,17 +183,11 @@ Then the finalize-ready handler records the finalize stamp with status="ready", 
 And the integrator dispatch consumes the finalize-ready handoff to merge the candidate into main
 ```
 
-<!-- change:issue-128 -->
-
-<!-- /planned-change:issue-128 -->
-
 #### UC-WSS12: One-shot task success outcome delivers the todo
 
 #### UC-WSS13: Recurring task success outcome clears an error-hold and stays live
 
 #### UC-WSS14: Task error outcome holds the todo with its reason
-
-<!-- planned-change:issue-128 -->
 
 #### UC-WSS16: A settled diagnosis stamp binds to the artifact digest that earned it
 
@@ -253,10 +213,6 @@ And the held todo is not auto-re-dispatched to another diagnosis peer
 And an unresolved stamp with an empty or missing reason is refused before any write
 ```
 
-<!-- change:issue-128 -->
-
-<!-- /planned-change:issue-128 -->
-
 #### UC-WSS23: Task success delivers within the todo's own project
 
 #### UC-WSS24: A commit-review stamp lands on the todo its session chain claims
@@ -265,30 +221,14 @@ And an unresolved stamp with an empty or missing reason is refused before any wr
 
 - `identity` — every stamp records the `caller_session_id`; downstream principal resolution turns that into the human or agent principal that authored the stamp, so audit trails name a responsible party.
 
-<!-- planned-change:issue-128 -->
-
 - `agent_runtime` — worker sessions and work-orchestrator sessions invoke `telec todo stamp` at phase boundaries (`--build-complete`, `--finalize-ready`, `--verdict … --phase build_review`); the build-complete ownership check reads the caller's `working_slug` and `system_role` from the agent_runtime sessions table to accept either the owning worker or the work orchestrator.
 
-<!-- change:issue-128 -->
-
-- `agent_runtime` — a task's run session invokes `telec todo stamp --task-outcome` when its firing ends (`sdlc/procedure/lifecycle/task/run-task`).
-
-<!-- /planned-change:issue-128 -->
-
 ## Known caveats
-
-<!-- planned-change:issue-128 -->
 
 - The stamp is the **natural worker-completion authority** for build and finalize phases. The state machine does not advance into review or integration until the stamp lands; conversely, the stamp does not run the gates itself — it records the claim and lets the state machine run gates on its next dispatch. This split prevents long-running stamp calls and the zombie processes a synchronous gate run would create.
 - `--build-complete` is **worker- or orchestrator-owned and locked**: the caller must be either the owning worker (`working_slug == <slug>`) or a work orchestrator (`system_role == orchestrator`). Operators still cannot stamp build-complete from a plain shell; the stamp refuses with a permission error when the session id is missing or the caller is neither accepted shape.
 
-<!-- change:issue-128 -->
-
-<!-- /planned-change:issue-128 -->
-
 - `--build-started` is **machine-owned**: the stamp rejects this flag explicitly and instructs the caller to run `telec todo work <slug>` so the work state machine owns the transition.
-
-<!-- planned-change:issue-128 -->
 
 - The approvals manager clears downstream approvals when an upstream artifact is re-opened. Refining the PRD invalidates the chain of architecture, plan, and finalize-ready approvals that depended on it — the state machine then re-runs the affected review and approval gates on next dispatch.
 - The `--architecture-skipped` skip stamp **requires a non-empty reason**. The empty-reason variant is refused before any write.
@@ -298,10 +238,6 @@ And an unresolved stamp with an empty or missing reason is refused before any wr
 - Rewriting a drift-tracked artifact (via `telec todo artifacts write`) clears all of its drift-reviewed stamps so the next derivation establishes a fresh anchor against newly captured provenance. Substantive verdicts never need explicit expiry — re-derivation is the path back to a fresh stamp.
 - Bug-kind Todos still require the explicit `--build-complete` stamp before the work machine will advance past build — bypassing the stamp leaves the bug stuck in `build_started`. The build worker (`/sdlc/build`) is responsible for issuing it as the last act of the build flow.
 - `--kickback --reason <reason>` is **work-orchestrator-owned and locked**: only a work-orchestrator session whose claim binds the slug may stamp it; a worker session, a plain operator shell, or an orchestrator bound to a different slug is refused before any write. It is the authored counterpart to a substantive plan drift verdict — it appends the reason to `input` (creating `input` when the Todo has none, e.g. a `--plan` Todo), invalidates the implementation-plan so the prepare machine re-derives from `plan_drafting`, clears any outstanding build-complete gate claim, and resets a ready finalize handoff to pending. The worktree, local and remote branch, workspace directory, and build commits are preserved. Once the reason is durable, the stamp releases the Todo's lifecycle claim and the platform ends the slug's work-lane sessions — every session the stamping orchestrator started, then the orchestrator itself, only after the stamp has answered its call; no agent ends them and no human is notified. The lifecycle runner dispatches a fresh prepare orchestrator; after the plan is re-derived and re-approved, that orchestrator ends and the lifecycle runner dispatches a fresh work orchestrator, which re-enters the preserved build and hands the builder machine-derived reconcile instructions naming the old and new implementation-plan digests.
-
-<!-- change:issue-128 -->
-
-<!-- /planned-change:issue-128 -->
 
 - `--task-outcome <success|error>` is the **durable firing-outcome** stamp for a
   `kind="task"` Todo, reconciled by the lifecycle runner into a terminal state. A

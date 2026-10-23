@@ -30,12 +30,6 @@ second project from a cloned declaration
   resolution use the same selected context. An unavailable selected generation
   reports the missing context; it is not silently substituted with the other
   checkout's view (`sdlc/principle/design-fundamentals`).
-- Checkout selection supplies one index view for procedure closure and entry
-  declarations. Lifecycle drivers and their children retain the governing
-  publication established at initialization under
-  `local/projects/teleclaude/design/architecture/workflow-machine`; selecting a
-  checkout does not replace that retained publication with another set of
-  headers.
 - A todo worktree uses its owning development checkout's doc layer. Its code
   and grading still use the worktree's own source contract
   (`local/projects/teleclaude/spec/feature/agent_runtime/checkout-code-selection`).

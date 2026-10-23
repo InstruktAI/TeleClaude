@@ -165,11 +165,6 @@ sequenceDiagram
 9. **Event Emission**: Broadcast `SESSION_CLOSED`
 10. **Resource Cleanup**: Remove listeners, delete workspace directories if temporary
 
-<!-- planned:issue-128 -->
-
-Closing a session of a single-claim procedure follows the responsibility inbox contract in `local/projects/teleclaude/design/architecture/procedure-activation`: its pending activations end as `not delivered` with reason `session closed`, retaining their assignee. The session carries this property from its initialization publication; closing does not reread the current declaration. Every other session keeps its existing pending-event behavior.
-<!-- /planned:issue-128 -->
-
 ## Failure modes
 
 - **Tmux/identity bootstrap failure**: The bootstrap task cannot start the session's host pane or resolve its identity. The daemon emits an actionable session-bootstrap-failed operational event — one of the platform's own infrastructure events in the event catalog, delivered to operators through the actionable-event path — carrying the session id and project path. The session remains `lifecycle_status="initializing"`; it is not auto-resurrected, retried, or transitioned by this path. Recovery is operator-driven (explicit `telec sessions end`) or the inactivity sweep.

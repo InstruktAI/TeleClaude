@@ -67,7 +67,7 @@ decision authority attached. A human-account comment remains attributable to
 its provider account; an unbound collaborator remains a collaborator. The
 owning workflow resolves project authority and its outstanding named-person
 question under
-`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`, without
+`local/projects/teleclaude/design/architecture/lifecycle-state-machines`, without
 treating a declaration or matching account alone as that person's decision
 (`general/policy/human-contract`).
 <!-- /planned:issue-129 -->

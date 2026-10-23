@@ -131,8 +131,6 @@ And the accepted request reports the chosen agent and typed routing reason exact
 
 #### UC-CLR7: Normalization accepts a slash-prefixed procedure ID
 
-<!-- planned-change:issue-128 -->
-
 ```
 Given a request with command "sdlc/procedure/lifecycle/work/build" and args "my-slug"
 When the run-session preparation normalizes the inputs
@@ -147,25 +145,6 @@ When the request is validated
 Then it is accepted and normalized to the procedure ID without the slash
 And no request is rejected for lacking a leading slash
 ```
-
-<!-- change:issue-128 -->
-
-```
-Given a request with command "sdlc/procedure/lifecycle/work/build-v2" and args "my-slug"
-When the run-session preparation normalizes the inputs
-Then a leading slash, when present, is stripped from the token
-And the full command becomes "sdlc/procedure/lifecycle/work/build-v2 my-slug"
-And the token is resolved against the published entry procedures, never against a command set
-```
-
-```
-Given a request whose command carries a leading slash ("/sdlc/procedure/lifecycle/work/build-v2")
-When the request is validated
-Then it is accepted and normalized to the procedure ID without the slash
-And no request is rejected for lacking a leading slash
-```
-
-<!-- /planned-change:issue-128 -->
 
 ```
 Given a request with an empty project
@@ -184,25 +163,12 @@ Then it is rejected naming the missing parameter
 
 #### UC-CLR4: A dispatch names its procedure by domain-qualified snippet ID
 
-<!-- planned-change:issue-128 -->
-
 ```
 Given a run-session request whose command is "sdlc/procedure/lifecycle/work/build"
 When loader composition validates the name before any publication read
 Then the ID is accepted as a canonical snippet identity
 And the loader is composed for the published entry procedure that ID resolves to
 ```
-
-<!-- change:issue-128 -->
-
-```
-Given a run-session request whose command is "sdlc/procedure/lifecycle/work/build-v2"
-When loader composition validates the name before any publication read
-Then the ID is accepted as a canonical snippet identity
-And the loader is composed for the published entry procedure that ID resolves to
-```
-
-<!-- /planned-change:issue-128 -->
 
 #### UC-CLR5: Unsafe names compose no loader and read no file
 
@@ -262,8 +228,6 @@ And an empty/missing subfolder leaves the subdirectory unset, except for a workt
 
 #### UC-SFR1: A worktree-bound worker dispatch that is not bound to the slug's worktree is rejected at the door
 
-<!-- planned-change:issue-128 -->
-
 ```
 Given a run-session request whose command is a worktree-bound worker lifecycle command (build, review-build, finalize)
 And the request resolves a working slug from its command arguments
@@ -273,20 +237,6 @@ Then it is rejected with a detail naming the command, the resolved slug, the exp
 And no session is created
 And the rejection happens at validation, so no session row is ever persisted carrying a working slug without that slug's worktree subdirectory
 ```
-
-<!-- change:issue-128 -->
-
-```
-Given a run-session request whose command is a worktree-bound worker lifecycle command — one whose session must run in the slug's worktree
-And the request resolves a working slug from its command arguments
-And the request's subfolder is anything other than that slug's worktree — empty, missing, or a different path
-When the run-session preparation validates the request
-Then it is rejected with a detail naming the command, the resolved slug, the expected worktree subfolder, and the subfolder actually received
-And no session is created
-And the rejection happens at validation, so no session row is ever persisted carrying a working slug without that slug's worktree subdirectory
-```
-
-<!-- /planned-change:issue-128 -->
 
 ```
 Given a run-session request for a worktree-bound worker lifecycle command whose subfolder is exactly the resolved slug's worktree
@@ -315,8 +265,6 @@ And it remains separate from the procedure's declared inputs
 
 #### UC-CLR12: An agent dispatches an entry procedure by its snippet ID and nothing shorter
 
-<!-- planned-change:issue-128 -->
-
 ```
 Given an agent dispatches a session with the command sdlc/procedure/lifecycle/work/build
 When the session starts
@@ -324,18 +272,6 @@ Then it loads that procedure and no other
 And given the agent instead dispatches a retired command name such as sdlc/build or a bare token such as build
 Then no session is started and the refusal names the unknown command
 ```
-
-<!-- change:issue-128 -->
-
-```
-Given an agent dispatches a session with the command sdlc/procedure/lifecycle/work/build-v2
-When the session starts
-Then it loads that procedure and no other
-And given the agent instead dispatches a retired command name such as sdlc/build or a bare token such as build
-Then no session is started and the refusal names the unknown command
-```
-
-<!-- /planned-change:issue-128 -->
 
 #### UC-CLR13: An orchestrator finds the session it dispatched by the command it dispatched
 
@@ -419,27 +355,12 @@ Then the request is refused with a driver-start conflict that names the holder, 
 And no second session is created for X
 ```
 
-<!-- planned-change:issue-128 -->
-
 ```
 Given a todo slug X already driven by a live driver
 And a producing worker child-spawn that would bind X — a run-session or generic session-create launching a command such as "build" or "review-build" for X
 When the create-door dedup check runs
 Then the request is allowed and the worker session is created sharing working_slug X, because an orchestrator and the producing workers it spawns legitimately share the slug
 ```
-
-<!-- change:issue-128 -->
-
-```
-Given a todo slug X already driven by a live driver
-And a producing worker child-spawn that would bind X — a run-session or generic session-create launching a worker procedure such as the builder for X
-When the create-door dedup check runs
-Then the request is allowed and the worker session is created sharing working_slug X, because an orchestrator and the producing workers it spawns legitimately share the slug
-```
-
-<!-- /planned-change:issue-128 -->
-
-<!-- planned-change:issue-128 -->
 
 #### UC-DSD4: Every request for a held review subject is refused, with nothing a caller can say to admit a second
 
@@ -453,10 +374,6 @@ And the refusal tells the caller how to address the holder instead
 And no request the caller can compose admits a second live reviewer for C on X, so a caller that needs a different reviewer must first cause the holder to end
 And a live reviewer holding a different review command on X does not refuse this one, because each review phase carries its own verdict
 ```
-
-<!-- change:issue-128 -->
-
-<!-- /planned-change:issue-128 -->
 
 ```
 Given a todo slug X already driven by a live driver from a session other than the caller
@@ -690,15 +607,7 @@ And a menu or ambiguous screen is left unchanged
 
 ### Cross-context references
 
-<!-- planned-change:issue-128 -->
-
 - **workflow** — commands resolved here correspond to workflow lifecycle verbs (`build`, `review-build`, `finalize`) listed in the worker-lifecycle command set. Workflow owns the slug semantics and the command documents the composed loader reads.
-
-<!-- change:issue-128 -->
-
-- **workflow** — commands resolved here correspond to workflow lifecycle procedures; workflow owns which of them are worktree-bound, the slug semantics, and the command documents the composed loader reads.
-
-<!-- /planned-change:issue-128 -->
 
 - **identity** — the caller identity (email, system role, session id) gates the run; the run-session clearance is the auth dependency. Email-bearing identities produce terminal-origin metadata; terminal/agent identities form the initiator-session backlink. Dispatch privilege is an identity-domain ACL.
 

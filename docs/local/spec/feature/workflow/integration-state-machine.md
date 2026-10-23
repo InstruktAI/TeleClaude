@@ -207,25 +207,12 @@ And no delivery record is written until the folded repository-root head is confi
 
 #### UC-WISM6: Held or kicked-back candidates are excluded from the integration pool
 
-<!-- planned-change:issue-128 -->
-
 ```gherkin
 Given a finalize-ready candidate is held or its plan review was cleared by a kickback
 When the idle step scans for finalize-ready candidates
 Then that candidate is excluded from the integration pool despite finalize.status being "ready"
 And a human kickback or hold pulls a candidate out of integration without waiting for it to be dequeued
 ```
-
-<!-- change:issue-128 -->
-
-```gherkin
-Given an item that was ready and is now held, is held by a work driver for a stated reason, has a work driver being started, or was returned to preparation
-When the idle step scans for ready candidates
-Then that candidate is excluded from the integration pool
-And a hold, or the start of a work driver, pulls a candidate out of integration without waiting for it to be dequeued
-```
-
-<!-- /planned-change:issue-128 -->
 
 ```
 Given another integrator session holds the integration/main lease and the TTL has not elapsed
@@ -255,23 +242,11 @@ And no candidate is dequeued for this call
 
 #### UC-WISM7: Explicit-slug integration excludes a held or kicked-back candidate
 
-<!-- planned-change:issue-128 -->
-
 ```gherkin
 Given a held or kicked-back candidate whose finalize.status is "ready"
 When "telec todo integrate" is invoked with that candidate's explicit slug
 Then the candidate is excluded from integration — no candidate is dequeued, the checkpoint stays IDLE with items_processed zero, and its branch is never squash-merged
 ```
-
-<!-- change:issue-128 -->
-
-```gherkin
-Given an item that was ready and is now held, held by a work driver, being started, or returned to preparation
-When "telec todo integrate" is invoked with that candidate's explicit slug
-Then the candidate is excluded from integration — no candidate is dequeued, the checkpoint stays IDLE with items_processed zero, and its branch is never squash-merged
-```
-
-<!-- /planned-change:issue-128 -->
 
 #### UC-WISM8: Integrator-maintenance marker accumulates ranges across multiple deliveries
 
@@ -501,24 +476,10 @@ And continues the drain while the held todo remains excluded
 ```
 
 The same request refuses an unheld, conflicted or committed attempt without
-<!-- planned-change:issue-128 -->
 
 discarding its stage. Parking does not reset finalize or review state: an
 authentic work orchestrator owns the subsequent grounded kickback before hold
 release.
-<!-- change:issue-128 -->
-
-discarding its stage. Parking does not reset finalize or review state: an
-authentic work driver owns the subsequent grounded return to preparation before
-hold release.
-<!-- /planned-change:issue-128 -->
-
-<!-- planned:issue-128 -->
-
-Admission is a conditional write on the item. It is refused when the item has a holder or a driver start in progress, naming it, and it merges nothing; a work driver's start for a stated reason on a ready item is refused when the admission came first. Of the two, exactly one takes effect. An item the integrator has queued, has in progress or has parked keeps its checkpoint and candidate key; a queued or parked candidate is withdrawn by a return to preparation, and an in-progress candidate is drained to delivery.
-
-A park and the reset of an abandoned checkpoint (a phantom or foreign candidate) each retire the row admission whose identity matches the abandoned candidate. Every admission has an attempt identity, unique to that admission, recorded in the row and published with the checkpoint's candidate. A park and the reset of an abandoned checkpoint each persist a retirement intent naming that attempt identity in the same durable checkpoint write that parks or resets, and the intent is completed by retiring the row admission that carries that identity, and only that one, and then cleared; the candidate key is preserved. An idle or absent checkpoint entry is not proof that an attempt ended, because the admission is recorded before the checkpoint publishes it. A retirement that fails stays pending as its intent and is retried idempotently, and one that completes late never clears a later attempt at the same commit. The scan and the admission write do not prioritize or accept early a row admission whose attempt a pending retirement intent names. No cleanup acts on absence. A pending retirement intent survives the checkpoint's reset to idle and the clearing of its parked list; only the completion of that exact intent clears it.
-<!-- /planned:issue-128 -->
 
 ### Cross-context references
 

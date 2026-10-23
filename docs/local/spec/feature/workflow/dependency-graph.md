@@ -35,19 +35,9 @@ A dependency is **phase-specific**: a single `after` edge projects into two dist
 
 For a `kind=task` parent, **both** gates key on delivery. A task's `PREPARED` phase records only that its `task-plan` is drafted and authorized; a task produces its deliverable when it **runs**, not when its plan freezes. A dependent's prepare lane has nothing to read from a task parent until the task delivers, so a `kind=task` parent clears the prepare gate only when `delivered` — never via `PREPARED`. The `PREPARED`-clears-prepare rule above applies to SDLC kinds (`feature` / `change` / `bug`) only.
 
-<!-- planned-change:issue-128 -->
-
 `PREPARED` is a durable freeze, not a decaying signal: reaching it clears the prepare gate and does not un-clear. A later parent re-derivation does not reopen the prepare gate; it surfaces on the dependent as dependency-artifact drift (see `@spec/feature/workflow/drift-detection`) and routes the dependent to re-review. Drift propagates the signal; it does not author the change.
 
 An `after` edge is **gate-only**: it is dispatch-blocking ordering metadata consumed by the prepare and work gates, and it is never a drift surface. Mutating the `after` set (adding or removing an edge) or a dependency crossing the freeze/unfreeze boundary changes what is dispatchable, not whether any of the dependent's prepared artifacts are stale — there is nothing to re-derive. Ordering is enforced solely by the dispatch gates above; drift detection tracks no dependency-graph class.
-
-<!-- change:issue-128 -->
-
-A parent clears the prepare gate while the lifecycle reads it as prepared or beyond; a parent read as being in preparation, including one returned there from work, does not (`local/projects/teleclaude/spec/feature/workflow/item-acts`, Dependencies).
-
-An `after` edge is **gate-only**: it is dispatch-blocking ordering metadata consumed by the prepare and work gates. Mutating the `after` set (adding or removing an edge) or a dependency crossing the freeze/unfreeze boundary changes what is dispatchable, not whether any of the dependent's prepared work is stale — there is nothing to re-derive. Ordering is enforced solely by the dispatch gates above.
-
-<!-- /planned-change:issue-128 -->
 
 Both gates apply in **both dispatch directions**:
 
@@ -82,8 +72,6 @@ Scenario: Stop waiting for cleared prerequisites
 
 #### UC-WDG1: Prepare gate waits for parent PREPARED
 
-<!-- planned-change:issue-128 -->
-
 ```gherkin
 Given entries [parent, child] with edge {child: [parent]} and parent at lifecycle_phase=plan_drafting (not yet PREPARED)
 When the prepare orchestrator resolves the next prepare-runnable slug
@@ -91,22 +79,9 @@ Then "child" is skipped because the prepare gate requires "parent" to be PREPARE
 And the resolver reports the candidate as dependency-blocked for the prepare lane
 ```
 
-<!-- change:issue-128 -->
-
-```gherkin
-Given entries [parent, child] with edge {child: [parent]} and parent in preparation (not yet PREPARED)
-When the lifecycle runner evaluates the project's todos for preparation
-Then no preparation driver is requested for "child" because the prepare gate requires "parent" to be PREPARED
-And "child" is reported as dependency-blocked for the prepare lane
-```
-
-<!-- /planned-change:issue-128 -->
-
 #### UC-WDG2: PREPARED clears only the prepare gate
 
 #### UC-WDG3: Create-time dispatch honors the prepare gate
-
-<!-- planned-change:issue-128 -->
 
 ```gherkin
 Given a child created with "telec todo create child --kind change --after parent" while parent is not PREPARED
@@ -115,18 +90,6 @@ Then the router consults the dependency graph and finds the prepare gate unsatis
 And the router does not auto-dispatch sdlc/procedure/lifecycle/prepare/overview for "child"
 And "child" waits until "parent" reaches PREPARED, which triggers auto-continue (see @spec/feature/workflow/prepare-state-machine)
 ```
-
-<!-- change:issue-128 -->
-
-```gherkin
-Given a child created with "telec todo create child --kind change --after parent" while parent is not PREPARED
-When the lifecycle router consumes the todo-created event for "child"
-Then the router consults the dependency graph and finds the prepare gate unsatisfied
-And the router requests no preparation driver for "child"
-And "child" waits until "parent" reaches PREPARED, when the lifecycle runner requests its preparation driver
-```
-
-<!-- /planned-change:issue-128 -->
 
 #### UC-WDG4: Task schedule excludes dependency edges
 
@@ -157,8 +120,6 @@ Scenario: An iceboxed todo receives no warning about its prerequisites
 
 #### UC-WDG8: Kickback re-closes the prepare gate until the parent is prepared again
 
-<!-- planned-change:issue-128 -->
-
 ```gherkin
 Given entries [parent, child] with edge {child: [parent]}
 And parent previously reached PREPARED or a work phase
@@ -168,19 +129,6 @@ Then parent no longer counts as dependency-prepared
 And "child" remains prepare-blocked until parent reaches PREPARED again
 And the gate does not self-resolve merely because parent still has a PRD approval or a stored work-phase pointer
 ```
-
-<!-- change:issue-128 -->
-
-```gherkin
-Given entries [parent, child] with edge {child: [parent]}
-And parent previously reached PREPARED or a work phase
-When parent is kicked back to preparation
-Then parent no longer counts as dependency-prepared
-And "child" remains prepare-blocked until parent reaches PREPARED again
-And the gate does not self-resolve merely because parent was prepared before or keeps its branch
-```
-
-<!-- /planned-change:issue-128 -->
 
 ### Cross-context references
 

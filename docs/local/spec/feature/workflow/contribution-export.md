@@ -63,7 +63,7 @@ before and after native gates. A ready contributor item triggers PR and report
 handoff against the already-published subject. Publication failure leaves the
 item unready and its branch resumable. Upstream-main comparison remains
 independent of that writable ref
-(`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`).
+(`local/projects/teleclaude/design/architecture/work-state-machine`).
 
 Every proposal records its upstream base, head revision, local todo identity,
 upstream PR identity and review-evidence identity. Retry of the same handoff

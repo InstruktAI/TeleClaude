@@ -115,8 +115,6 @@ description: Decide whether a todo should exist, audit that decision at preparat
   consideration, `general/procedure/doc-snippet-authoring` owns the authoring
   gate.
 
-<!-- planned-change:issue-128 -->
-
 - **Execute settled code work in context.** When the approach is known,
   the edit is bounded, and the work needs neither a plan, a builder, nor a
   handoff, make the change on `main` only when an explicit execution request, a
@@ -127,21 +125,6 @@ description: Decide whether a todo should exist, audit that decision at preparat
   genuinely contested still belongs in the lifecycle. A `change` todo created
   despite meeting these criteria may still take the in-context path at prepare
   entry (`sdlc/procedure/lifecycle/prepare/overview`).
-
-<!-- change:issue-128 -->
-
-- **Execute settled code work in context.** When the approach is known,
-  the edit is bounded, and the work needs neither a plan, a builder, nor a
-  handoff, make the change on `main` only when an explicit execution request, a
-  bounded brief, or a completed human conversation in which every active
-  participant agreed the outcome and the human released the edit supplies
-  authority. Human presence alone supplies none. Importance does not decide
-  this boundary; remaining judgment does. A small change whose correctness is
-  genuinely contested still belongs in the lifecycle. A `change` todo created
-  despite meeting these criteria may still take the in-context path at
-  preparation entry (`sdlc/procedure/lifecycle/prepare/overview-v2`).
-
-<!-- /planned-change:issue-128 -->
 
 - **Use the todo's `log` artifact for a breadcrumb.** A minimal FYI that
   changes neither scope nor a decision does not justify a new todo or a rewrite
@@ -175,8 +158,6 @@ description: Decide whether a todo should exist, audit that decision at preparat
 
 The terms below are defined in `sdlc/concept/defect-evidence`.
 
-<!-- planned-change:issue-128 -->
-
 - **A worker's observation is decided by the session that governs it.** A
   worker is a session executing one job for a governing session it reports back to: a
   builder, reviewer, diagnosis peer, fixer, or finalizer. What it notices
@@ -187,21 +168,6 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   deferral worker the work orchestrator dispatches: deciding them, and
   creating or filing what this policy admits, is that worker's job
   (`sdlc/procedure/lifecycle/work/deferrals`).
-
-<!-- change:issue-128 -->
-
-- **A worker's observation is decided by the session that governs it.** A
-  worker is a session executing one job for a governing session it reports back to: a
-  builder, an author, or a reviewer. What it notices
-  outside that job reaches the governing session as an observation — what it
-  saw, where, and how it came to see it — through the channel its own
-  procedure names, or else in its final report. The governing session decides
-  each observation under this standard. A build's entries are decided by the
-  work driver that governs the builder: deciding them, and creating or filing
-  what this policy admits, is that driver's job
-  (`sdlc/procedure/lifecycle/work/overview-v2`).
-
-<!-- /planned-change:issue-128 -->
 
 - **A defect contradicts a current contract.** A defect is observed behavior
   that a current contract states otherwise: a snippet without pending
@@ -220,8 +186,6 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   the work it is. A claim that can cite neither stays an observation with the
   session that holds it.
 
-<!-- planned-change:issue-128 -->
-
 - **A bug report keeps what was observed apart from what it concludes.** It
   carries the observations and their addresses first, and any causal account
   apart from them: each transition with its evidence, the alternatives checked,
@@ -230,25 +194,11 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   preparation confirm it against its sources and spend no peer on what the
   filing already settles (`sdlc/procedure/lifecycle/prepare/diagnose`).
 
-<!-- change:issue-128 -->
-
-- **A bug report keeps what was observed apart from what it concludes.** It
-  carries the observations and their addresses first, and any causal account
-  apart from them: each transition with its evidence, the alternatives checked,
-  and what remains unknown, or the statement that the cause is not established.
-  Filing does not require a completed diagnosis. An account that is present is
-  input to preparation, which accepts it only on its own judgment of the
-  account's evidence (`sdlc/procedure/lifecycle/prepare/overview-v2`).
-
-<!-- /planned-change:issue-128 -->
-
 - **What a human asks for in their own words is authorized intent, not a defect
   claim.** It is filed by its content under the rest of this policy, and
   preparation recovers it from the creating session and never retires it for
   lacking defect evidence. A human's acknowledgement of an agent's proposal to
   file leaves the claim agent-originated; it still owes evidence.
-
-<!-- planned-change:issue-128 -->
 
 - **Preparation decides.** The filer establishes that its evidence exists and
   does not classify the claim. Preparation judges it before spending further
@@ -262,26 +212,7 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   cited evidence is preparation's work; supplying evidence the filing lacked is
   not.
 
-<!-- change:issue-128 -->
-
-- **Preparation decides.** The filer establishes that its evidence exists and
-  does not classify the claim. Preparation judges it before spending further
-  work — the dedicated preparation reviewer's judgment of a bug's cause
-  (`sdlc/procedure/lifecycle/prepare/review-plan`), the entry audit for any
-  other kind — by opening a cited occurrence's address
-  and confirming it shows the claimed defect in real use, or by confirming each
-  step of a cited dangerous path against current sources: the actor holds that
-  access, the surface permits that act, any real-use input is shown, and the
-  consequence meets the bar. A claim whose evidence holds is processed; one
-  without evidence, or whose evidence fails a check, is retired. Confirming
-  cited evidence is preparation's work; supplying evidence the filing lacked is
-  not.
-
-<!-- /planned-change:issue-128 -->
-
 ### Audit at preparation entry
-
-<!-- planned-change:issue-128 -->
 
 - **Audit before deriving from `input`.** At Step 0a, read the mechanically
   stamped creation record and the current `input`, establish the owning
@@ -291,20 +222,6 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   (`general/policy/documentation-discipline`). The creation record establishes lineage,
   entry point, human involvement, and door-specific context; it does not prove
   which sources or todo queries the creator consulted.
-
-<!-- change:issue-128 -->
-
-- **Audit before deriving from `input`.** At preparation entry, before the
-  preparation driver derives the obligations, read the mechanically
-  stamped creation record and the current `input`, establish the owning
-  project, repeat the bounded creation check, apply the governing creation and
-  process-authority contracts, and confirm that functionality work carries its
-  required pending documentation, written by whoever holds the awareness
-  (`general/policy/documentation-discipline`). The creation record establishes lineage,
-  entry point, human involvement, and door-specific context; it does not prove
-  which sources or todo queries the creator consulted.
-
-<!-- /planned-change:issue-128 -->
 
 - **Repair before retiring.** Correct the project, input, missing
   documentation, dependencies, or other repairable omission in place. Retire
@@ -319,8 +236,6 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
 - **Repeat after `input` changes.** A prior reading of different intent does
   not authorize new derivation.
 
-<!-- planned-change:issue-128 -->
-
 - **Perform the kind's deeper landscape judgment at its actual phase.** These
   checks are not equivalent and do not all occur at creation:
   - `feature` — intake Step 1.6 reconciles the broader todo landscape.
@@ -329,18 +244,6 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   - `change` — plan-draft Step 1c handles broader overlap before planning.
   - `task` — only the bounded entry audit exists; deep task-landscape
     reconciliation is not implemented.
-
-<!-- change:issue-128 -->
-
-- **Perform the kind's deeper landscape judgment at its actual phase.** These
-  checks are not equivalent and do not all occur at creation:
-  - `feature`, `bug` and `change` — preparation reconciles the broader todo
-    landscape before it judges the spec ready; for a bug it retires an
-    exact-defect duplicate before investigating the cause.
-  - `task` — only the bounded entry audit exists; deep task-landscape
-    reconciliation is not implemented.
-
-<!-- /planned-change:issue-128 -->
 
 ### Reconcile a flagged live todo
 
@@ -358,21 +261,10 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   durable evidence after understanding; it is never a substitute for delivering
   the flag.
 
-<!-- planned-change:issue-128 -->
-
 - **A flag binds only a live claimant.** An unclaimed todo has no message-based
   flag path and consumes no active preparation effort; its next claimant must
   apply the Step 0a entry audit before deriving from it. Creation lineage is
   audit evidence, not a guarantee that the creator is still reachable.
-
-<!-- change:issue-128 -->
-
-- **A flag binds only a live claimant.** An unclaimed todo has no message-based
-  flag path and consumes no active preparation effort; its next claimant must
-  apply the preparation-entry audit before deriving from it. Creation lineage is
-  audit evidence, not a guarantee that the creator is still reachable.
-
-<!-- /planned-change:issue-128 -->
 
 - **The claimant pauses preparation immediately.** It advances no phase,
   dispatches no new child, and does not act on child output produced for the

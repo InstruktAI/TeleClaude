@@ -121,8 +121,6 @@ All Committizen types are allowed.
   purpose and do not become review approvals
   (`general/concept/lineage-vs-authorship`).
 
-<!-- planned-change:issue-128 -->
-
 - A `REQUEST CHANGES` verdict stays with the authoring session for
   evidence-based rejection or in-scope remediation and re-review. Before
   remediation, the author records each finding's disposition and its
@@ -145,34 +143,6 @@ All Committizen types are allowed.
   integrator publishes committed canonical main after its own maintenance and
   any owed log judgment; it does not inspect or wait for other sessions' review
   verdicts, and their review state is not a direct-main publication gate.
-
-<!-- change:issue-128 -->
-
-- A `REQUEST CHANGES` verdict stays with the authoring session for
-  evidence-based rejection or in-scope remediation and re-review. Before
-  remediation, the author records each finding's disposition and its
-  independently established basis in the follow-up to the continuing reviewer,
-  judging each finding's validity by the rule of
-  `sdlc/procedure/lifecycle/review`. After remediation, the
-  follow-up identifies the fixing commits and closure evidence; an
-  evidence-only rejection names its sources. For commit review, this exchange
-  carries the disposition record, and the stamp records only the verdict. The
-  author retains commit and review-routing responsibilities; the reviewer alone
-  determines the verdict. A genuine unresolved disagreement about a finding's
-  validity or scope follows the isolated adjudication path in
-  `sdlc/procedure/lifecycle/review`; it does not become collaborative redesign
-  or human responsibility. A human-owned decision or safety gate remains held
-  under `general/policy/human-contract` and `general/principle/autonomy`.
-  The main-branch checkpoint's code-scoped review gate applies to every
-  committed non-documentation path; runtime path classification does not infer
-  a weaker review obligation from whether a file appears to be bookkeeping.
-  The authoring session owns acting on its review verdict — remediation,
-  re-review routing and recovery; the verdict itself is the reviewer's. The standing
-  integrator publishes committed canonical main after its own maintenance and
-  any owed log judgment; it does not inspect or wait for other sessions' review
-  verdicts, and their review state is not a direct-main publication gate.
-
-<!-- /planned-change:issue-128 -->
 
 ## Rationale
 

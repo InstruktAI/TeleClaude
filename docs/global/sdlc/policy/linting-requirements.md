@@ -30,15 +30,7 @@ visibility: 'public'
 - Only when required by a third-party limitation or transitional migration
 - Must include a concise comment explaining the reason and scope
 
-<!-- planned-change:issue-128 -->
-
 - When temporary, its removal is carried as work: within a build, a deferred task in `deferrals`; otherwise a todo the comment references
-
-<!-- change:issue-128 -->
-
-- When temporary, its removal is carried as work: within a build, reported to the governing work driver, which decides it under `sdlc/policy/todo-creation-discipline`; otherwise a todo the comment references
-
-<!-- /planned-change:issue-128 -->
 
 - Standing exceptions and first-party path allowlists are project-owned policy. They never live in this generic contract.
 

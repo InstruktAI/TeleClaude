@@ -212,21 +212,6 @@ reinstallation. Evidence is retained on success and failure.
 
 ### Runtime acceptance
 
-<!-- planned:issue-128 -->
-
-Candidate preparation, runtime acceptance and credential-bearing finalization
-run in separate fresh hosted jobs. Preparation freezes and transfers the exact
-candidate without executing the full profile. The dedicated acceptance job
-receives no explicit repository token or product/provider secrets and has only
-read-only repository permissions; candidate processes receive no artifact
-transport credentials. Finalization consumes the existing artifact identities
-and digests, verifies successful acceptance-job completion and the complete
-report against that same candidate, then continues the existing proof and
-publication path. These boundaries apply to both automatic and explicit-version
-attempts (`sdlc/policy/ai-agent-security`).
-
-<!-- /planned:issue-128 -->
-
 The final candidate passes the full runtime profile defined by
 `local/projects/teleclaude/spec/feature/agent_runtime/runtime-acceptance`,
 run on hosted Ubuntu before full installation proof. Publication requires both

@@ -23,21 +23,7 @@ visibility: 'public'
 
 - If Redis is configured for the event platform, startup must expose Redis reachability and pending recovery progress through daemon state or structured logs before continuing degraded; a silent healthy-but-no-Streams state is forbidden.
 
-<!-- planned-change:issue-128 -->
-
 - `make stop` and `make restart` bring down the daemon and its managed launchd units only; they never signal an agent session, the tmux server, or a spawn-registry lease-holder. Sessions and leased detached workers (e.g. the chiptunes worker) outlive the daemon by design: sessions end only through the caller-driven path (see `general/principle/session-lifecycle`); leased workers are re-adopted via adopt-or-kill on the next start (see `local/projects/teleclaude/design/process-lifecycle`).
-
-<!-- change:issue-128 -->
-
-- `make stop` and `make restart` target only the daemon and its managed service units; they never signal an agent session, the tmux server, or a spawn-registry lease-holder. Sessions and leased detached workers (e.g. the chiptunes worker, a stamp's gate runner) outlive the daemon by design: sessions end only through the caller-driven path (see `general/principle/session-lifecycle`); leased workers are re-adopted via adopt-or-kill on the next start (see `local/projects/teleclaude/design/process-lifecycle`). A gate runner is re-classified, not adopted blindly, per the design above.
-
-<!-- /planned-change:issue-128 -->
-
-<!-- planned:issue-128 -->
-
-- On Linux, `make stop` also stops the installed `teleclaude-config.path` watcher and verifies that it is inactive before recording the daemon as stopped. The watcher can activate the daemon even when its service is disabled, so stopping the service alone does not establish the stopped outcome. The stop leaves the watcher's installation and enablement unchanged. `make start` restores the installed, enabled watcher after starting the daemon; a deliberately disabled or masked watcher stays off. A failed watcher stop withholds the stopped outcome, and a failed watcher start is reported as a lifecycle failure. An unreadable or unproved watcher load, activity or enablement state is a lifecycle failure, never evidence that the watcher is absent or deliberately disabled. A machine whose watcher is positively absent and inactive owes no watcher action. These operations stay inside the lifecycle `make` targets.
-
-<!-- /planned:issue-128 -->
 
 - `make stop` prepares the running daemon before stopping it. A preparation that does not complete within its observation window is reported and leaves the daemon running and draining; it is never forcibly terminated by that stop, and once its accepted work settles the daemon completes its own shutdown and the service manager relaunches it. Once the daemon is prepared, the stop is bounded and verified: SIGTERM the daemon, confirm exit within 30 seconds, then SIGKILL it if it has not exited. Termination targets the daemon and managed-unit pids only, never a process-group sweep.
 

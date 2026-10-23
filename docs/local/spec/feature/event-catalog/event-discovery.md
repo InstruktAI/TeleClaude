@@ -46,11 +46,3 @@ Given an operator or developer needs to discover which event types a selected ow
 When their agent inspects the event catalog for that owner
 Then they can find that owner's declared event types
 ```
-
-<!-- planned:issue-128 -->
-
-## See Also
-
-- docs/local/spec/feature/event-catalog/item-event-occurrences.md — inspect one item's retained workflow event trail.
-
-<!-- /planned:issue-128 -->

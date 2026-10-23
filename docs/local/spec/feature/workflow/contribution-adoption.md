@@ -31,7 +31,7 @@ subject; an earlier verdict cannot accept it implicitly. The existing qualified
 content-preserving automatic-upstream-merge relation remains applicable to prior
 review evidence only where its exact conditions hold. Readiness and admission
 still bind the current exact head under
-`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`; this contract
+`local/projects/teleclaude/design/architecture/work-state-machine`; this contract
 creates no broader equivalence rule. A concurrent head
 change is reconciled before publishing a verdict or delivering the proposal.
 
@@ -89,7 +89,7 @@ supplies repair findings to that same waiting builder; repair and review
 continue on the retained proposal. Initial materialization and later executable
 preparation remain distinct, and the builder's waiting assignment executes no
 setup or proposed code before current review permits that continuation
-(`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`).
+(`local/projects/teleclaude/design/architecture/work-state-machine`).
 
 Without prepared owning work, only the pre-item reviewer starts. The operation
 retains its assessment and source handoff, settles that assignment and verifies
@@ -105,7 +105,7 @@ A genuine return to preparation settles the current claiming group under the
 item lifecycle's own rules and retains source and evidence. It is distinct
 from an ordinary repair-feedback round, which keeps its waiting builder;
 workers are never transferred into a later claiming group
-(`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`).
+(`local/projects/teleclaude/design/architecture/lifecycle-state-machines`).
 
 Accepted proposal contracts are associated with the local todo and made
 available through the upstream authoring doc layer before ordinary lifecycle

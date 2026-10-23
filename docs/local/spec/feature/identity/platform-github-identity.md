@@ -65,7 +65,7 @@ it. A phase driver receives the pair from its activation
 child receives it from the child launch, which reads the pair of the item its
 holding driver claims through the store port before the child's session is
 created; an address that resolves to nothing or cannot be read refuses the
-launch (`local/projects/teleclaude/spec/feature/workflow/item-acts`, The child
+launch (`local/projects/teleclaude/design/architecture/next-machine`, The child
 command).
 
 In a project whose selected workflow backend is GitHub (#124 INV-B1), every
@@ -90,7 +90,7 @@ admission fact. These are inputs to identity binding; this contract does not
 decide child eligibility or attribute the carriage to another owner. Generic
 initiator linkage, `initiator_session_id`, role or parent-like metadata supplies
 no parent authority. The child command's eligibility remains owned by
-`local/projects/teleclaude/spec/feature/workflow/item-acts` (The child command).
+`local/projects/teleclaude/design/architecture/next-machine` (The child command).
 
 When a child requires a workflow parent, a missing, foreign or unavailable
 qualified parent refuses before any local session-ID lookup or write. This
@@ -111,7 +111,7 @@ none commit. Any failure rolls them all back. The old `assign_github_actor` and
 `bind_github_native_target` paths only return success for an already-complete,
 identical binding and target; otherwise they refuse and cannot finish partial
 legacy state. Parent eligibility remains
-`local/projects/teleclaude/spec/feature/workflow/item-acts` (The child command).
+`local/projects/teleclaude/design/architecture/next-machine` (The child command).
 <!-- /planned:issue-129 -->
 
 <!-- planned:issue-129 -->
@@ -203,8 +203,8 @@ activation evidence (`general/policy/human-contract`).
   conditions in #124 UC-19. It does not replace the posting owner's recorded
   association for positive session or state attribution.
 - Workflow owns canonical performer, holder, phase, revision and head decisions
-  under `local/projects/teleclaude/spec/feature/workflow/item-lifecycle` and
-  `local/projects/teleclaude/spec/feature/workflow/item-acts`.
+  under `local/projects/teleclaude/design/architecture/lifecycle-state-machines` and
+  `local/projects/teleclaude/design/architecture/next-machine`.
 - Push and PR-authorship verification is
   `local/projects/teleclaude/spec/feature/integration/github-publication`.
 

@@ -11,8 +11,6 @@ dispatch:
 
 ## Required reads
 
-<!-- planned-change:issue-128 -->
-
 - @~/.teleclaude/docs/sdlc/concept/coordination-cases.md
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/overview.md
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/overview.md
@@ -24,19 +22,6 @@ dispatch:
 - @~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
 - @~/.teleclaude/docs/general/policy/conflict-resolution.md
 - @~/.teleclaude/docs/general/policy/human-contract.md
-
-<!-- change:issue-128 -->
-
-- @~/.teleclaude/docs/sdlc/concept/coordination-cases.md
-- @~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/overview-v2.md
-- @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/overview-v2.md
-- @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/build-v2.md
-- @~/.teleclaude/docs/sdlc/procedure/lifecycle/integrate.md
-- @~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
-- @~/.teleclaude/docs/general/policy/conflict-resolution.md
-- @~/.teleclaude/docs/general/policy/human-contract.md
-
-<!-- /planned-change:issue-128 -->
 
 ## Goal
 
@@ -254,8 +239,6 @@ clear it. An empty day is a valid day. The log is write-only for this role — i
 is never read back to decide anything; fleet awareness comes from live sources
 each sweep, and the session's own context holds its working state.
 
-<!-- planned-change:issue-128 -->
-
 A loop past its review threshold is continued or stopped by its phase
 orchestrator, which records the grounded cause when it stops. That continuation
 judgment is challengeable like any other owner-held verdict: read the
@@ -266,20 +249,6 @@ between roles — point at it. The entry written carries phase, subject, source,
 and the orchestrator's recorded cause; the log supplies
 precedent and recognizes recurrence and never becomes a read-back decision
 source.
-
-<!-- change:issue-128 -->
-
-A review loop is continued or stopped by its phase orchestrator, which records
-the grounded cause when it stops. That continuation judgment is challengeable
-like any other owner-held verdict: read the orchestrator's session and recorded
-cause, challenge the basis where it is missing, and own none of it. A loop still
-admitting passes with no grounded account of what the next pass resolves is
-attention fallen between roles — point at it. The entry written carries phase,
-subject, source, and the orchestrator's recorded cause; the log supplies
-precedent and recognizes recurrence and never becomes a read-back decision
-source.
-
-<!-- /planned-change:issue-128 -->
 
 ### 7. Carry to the human
 

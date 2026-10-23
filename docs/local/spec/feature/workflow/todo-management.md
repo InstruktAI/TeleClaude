@@ -27,20 +27,6 @@ Removal and delivery are lifecycle transitions on the same aggregate. `telec tod
 
 Lifecycle and artifact-changing actions are addressable by slug or by a todo's durable identity. A slug-addressed action resolves to the live todo that holds the slug. An identity-addressed action acts on exactly the identified todo and never resolves to another todo that shares its slug: on a live todo it performs the same action a slug-addressed request performs, and on a removed or delivered todo it is refused without effect, with a refusal that names the todo's state and the way forward — reactivation for a removed todo; a delivered todo's record is read-only. Reactivating a removed todo is the one change a retained todo accepts, and its retained content stays readable.
 
-<!-- planned:issue-128 -->
-
-**What "the build has started" means for a todo the workflow machine drives.** A todo's build has started when any of these holds, whichever machine began it:
-
-- the legacy evidence: a recorded build start base commit, or a stored phase in the legacy work lane;
-- the workflow machine's evidence: a stored phase of `work` or `ready`; a claim in the item's ledger that was made for work, which records the branch it is bound to; an admitted commit; a stamp; an observed or published head of the item's branch.
-
-The evidence is read from the item itself, so it holds after a kickback has returned the item to preparation: work already begun stays begun, and a slug or kind update of such a todo is refused before anything changes. A todo in preparation, prepared, or waiting on a person during preparation, with none of the work-start evidence above, has not started its build, so its kind update runs; the phase alone never negates evidence of work already begun.
-
-**The mutation boundary.** The refusal is decided inside the update's own row transaction, against the state read there, so a work claim that lands while an update is deciding refuses the update, and the claim and the ledger are unchanged.
-
-**A kind change of a converted todo stays inside the item vocabulary.** For a todo converted to the workflow machine's vocabulary and not yet built, a kind change to a non-task kind leaves `lifecycle_phase` as `preparation`, and a change to the task kind sets the task lane's entry phase. A todo that has not been converted is written as before.
-<!-- /planned:issue-128 -->
-
 ## Canonical fields
 
 ### Use cases
@@ -290,28 +276,12 @@ Then the dependency leg sends an empty replacement set
 And all existing dependencies for my-todo are removed
 ```
 
-<!-- planned-change:issue-128 -->
-
 ```
 Given an active todo whose build has not started
 When the operator runs "telec todo update my-todo --kind bug"
 Then the kind leg handles any orphaned kind-specific artifacts explicitly
 And lifecycle_phase is re-routed to the target kind's entry phase
 ```
-
-<!-- change:issue-128 -->
-
-```
-Given an active todo whose build has not started
-When the operator runs "telec todo update my-todo --kind bug"
-Then the kind leg handles any orphaned kind-specific artifacts explicitly
-And lifecycle_phase is re-routed to the target kind's entry phase
-And a todo whose creative design was converted to the workflow machine's vocabulary at its store's activation is re-routed to preparation when the target is not a task, and to the task lane's entry phase when the target is a task
-```
-
-<!-- /planned-change:issue-128 -->
-
-<!-- planned-change:issue-128 -->
 
 ```
 Given an active todo whose build has started
@@ -320,20 +290,6 @@ Or the operator runs "telec todo update my-todo --kind task"
 Then the workflow service refuses the mutation before changing state
 But dependency-only updates through --after remain allowed
 ```
-
-<!-- change:issue-128 -->
-
-```
-Given an active todo whose build has started
-When the operator runs "telec todo update my-todo --slug new-slug"
-Or the operator runs "telec todo update my-todo --kind task"
-Or the operator runs "telec todo update my-todo --kind bug"
-Then the workflow service refuses the mutation before changing state
-And the refusal is decided inside the mutation's own transaction, so an update that is deciding when a work claim lands is itself refused, and the valid claim and the ledger are preserved
-But dependency-only updates through --after remain allowed
-```
-
-<!-- /planned-change:issue-128 -->
 
 #### UC-WM11: Rename self-excludes the caller's own claiming session
 

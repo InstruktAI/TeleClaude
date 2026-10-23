@@ -7,15 +7,7 @@ visibility: 'public'
 
 ## Required reads
 
-<!-- planned-change:issue-128 -->
-
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/review-build.md
-
-<!-- change:issue-128 -->
-
-- @~/.teleclaude/docs/sdlc/policy/definition-of-done-lanes.md
-
-<!-- /planned-change:issue-128 -->
 
 ## Goal
 
@@ -33,15 +25,7 @@ This procedure evaluates tests; it does not rewrite them.
 1. Define the audit scope and the report slug for this run.
 2. Read the tests in scope one by one.
 
-<!-- planned-change:issue-128 -->
-
 3. Apply only the `Test coverage check` lane from the Review procedure to each test.
-
-<!-- change:issue-128 -->
-
-3. Apply only the `Test coverage check` lane of `sdlc/policy/definition-of-done-lanes` to each test.
-
-<!-- /planned-change:issue-128 -->
 
 4. For every non-compliant test, record the severity, violated rule, reason the test is weak, and recommended action.
 5. Group repeated patterns into hotspots so the report is actionable at suite level instead of only as isolated findings.

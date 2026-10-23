@@ -88,7 +88,7 @@ establishes neither maintenance ownership nor target selection
 (`sdlc/policy/security-awareness`).
 
 The body-write row consumes
-`local/projects/teleclaude/spec/feature/workflow/item-acts` and the existing
+`local/projects/teleclaude/design/architecture/next-machine` and the existing
 WorkflowStore adapter's eligibility/revision operation. Posting supplies
 authenticated facts and carries the result; it decides no holder, claiming
 group, phase, prepared revision or commit-instant fence
@@ -97,8 +97,8 @@ group, phase, prepared revision or commit-instant fence
 Every native mutation outside the table is refused before effect. Lifecycle
 creation, claims, prepared state, stamps, readiness and delivery use their
 sealed owners under
-`local/projects/teleclaude/spec/feature/workflow/item-lifecycle` and
-`local/projects/teleclaude/spec/feature/workflow/item-acts`. Native merge and
+`local/projects/teleclaude/design/architecture/lifecycle-state-machines` and
+`local/projects/teleclaude/design/architecture/next-machine`. Native merge and
 deferred-merge/queue mutations do not substitute for the integrator's delivery
 path, including for an integrator caller, approved PR or matching head
 (`sdlc/policy/domain-ownership`).
@@ -167,7 +167,7 @@ values and performer eligibility; posting consumes its canonical types and
 owner decisions without another enum or allowed-value list. The envelope maps
 trusted posting facts to readable prose only
 (`local/projects/teleclaude/spec/feature/identity/agent-roles`,
-`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`).
+`local/projects/teleclaude/design/architecture/lifecycle-state-machines`).
 
 The one UTF-8 comment prefix is:
 

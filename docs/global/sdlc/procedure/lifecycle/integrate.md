@@ -242,31 +242,12 @@ pre-merge SHA, resets only its integration worktree, and parks the attempt while
 preserving the candidate branch, todo and hold. It refuses conflicted or committed
 attempts.
 
-<!-- planned-change:issue-128 -->
-
 Parking does not invalidate the plan or finalize handoff. For a corrected input,
 route the findings to an orchestrator that can start an authentic work session.
 That session independently grounds an explicit `--kickback` before invoking
 `todo work`; work entry releases the hold and must not come first. Confirm the
 kickback before releasing the hold for preparation. Keep the integration queue
 watch live and continue unrelated candidates.
-
-<!-- change:issue-128 -->
-
-Parking retires the attempt's admission and keeps the candidate's stamp, ready
-time and hold; the item is then read as any unadmitted item is. For a corrected
-input, state the findings through the work entry door its state gives. On an
-item still `ready` at its stamped commit, `telec todo work <item> --reason <findings>`
-starts a work driver that tests the reason and either returns the item to
-preparation or releases it to stay ready
-(`sdlc/procedure/lifecycle/work/overview-v2`); that start leaves the hold set,
-and after a return to preparation the next explicit prepare start clears it. On
-an item whose integration head has moved past its stamp,
-`telec todo work <item>` starts the work driver, which may return it to
-preparation. Keep the integration queue watch live and continue unrelated
-candidates.
-
-<!-- /planned-change:issue-128 -->
 
 ### CONFLICT RESOLUTION REQUIRED
 

@@ -85,7 +85,7 @@ serializes the transition with source placement, including worktree creation
 and integration admission. A refused transition retains the existing ownership
 and names the affected work; it does not repath live work. The lifecycle and
 integration contracts remain owned by
-`local/projects/teleclaude/design/architecture/workflow-machine` and
+`local/projects/teleclaude/design/architecture/next-machine` and
 `local/projects/teleclaude/spec/feature/workflow/integration-state-machine`.
 
 Docs and bootstrap context select the invocation's coherent view under

@@ -133,98 +133,6 @@ reports which installation assessment journeys ran.
 
 <!-- /planned:installation-activation-inspection -->
 
-<!-- planned:issue-128 -->
-
-### Workflow journeys
-
-The full profile exercises the public journeys of
-`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`,
-`local/projects/teleclaude/spec/feature/workflow/item-acts` and
-`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`.
-Journey assertions are independently reviewed against those owning contracts
-before harness implementation, under
-`general/principle/verification-independence`.
-
-For journeys requiring an agent session, the harness may supply an inert
-executable at the external agent-CLI process boundary defined by
-`sdlc/concept/functional-test-boundary`. TeleClaude creates the session,
-assigns its role and binding, admits its native startup and resolves callers
-through the real public paths. The executable follows the provider's documented
-hook protocol and terminal interaction contract; its commands invoke public
-executables as fresh processes inside the platform-created session. It creates
-no session record, caller identity, authentication state or application event
-directly, and imports no application modules. Application components,
-authentication decisions and persistent storage run for real. The disposable
-profile inherits no live host credentials or adapters.
-
-A journey proceeds on positive native-startup and public-operation evidence.
-A missing startup, hook failure, unexpected refusal, timeout or cleanup failure
-fails the journey. The fixture's command and hook outputs are retained as bounded,
-secret-free diagnostics. A fixture does not establish that a model follows an
-instruction; the reported coverage identifies the platform behavior it actually
-exercises.
-
-Legacy-store fixtures are pre-existing input installed before activation in the
-disposable environment. They do not manufacture an authenticated caller or stand
-in for a successful claim. Workflow outcomes are observed through public reads,
-logs and operation results; a controller does not edit an item into the outcome
-under assertion. Each report maps executed journeys to their owning contract and
-identifies unexecuted journeys and observations the public surfaces cannot
-provide. An unexecuted journey remains unverified.
-
-<!-- /planned:issue-128 -->
-
-<!-- planned:issue-128 -->
-
-### Hosted full-profile execution
-
-The existing full-profile controller runs directly in a fresh standard
-GitHub-hosted Ubuntu virtual machine dedicated to acceptance. The workflow owns
-job allocation and the provider owns VM disposal. The controller admits the full
-profile only in that hosted context with no existing live TeleClaude home,
-daemon socket or canonical installation; the cold profile keeps its existing
-local entry. Invocation and disposal compose with release through
-`local/projects/teleclaude/design/architecture/runtime-acceptance/overview`.
-
-The acceptance job has read-only repository permissions, checkout credentials
-are not persisted, and no subscription, deployment or production secrets are
-injected. Candidate processes receive only the controller's allowlisted synthetic
-runtime environment. Credential-bearing candidate preparation, confirmation and
-publication execute in different fresh jobs, before or after acceptance. Native
-workflow artifact transport does not export its credentials to candidate
-processes (`sdlc/policy/ai-agent-security`).
-
-The controller uses the supported installer, public CLI and make service targets
-inside that VM. Public session closure, accepted operation results, claim/effect
-settlement and the actual daemon-stop result remain application assertions.
-Native-exit assertions use actual native process or pane observations under
-`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`.
-Fixture and terminal cleanup remains bounded and failures retain their own
-outcome. VM disposal or an empty process observation supplies no missing
-application result (`general/principle/verification-independence`).
-
-One report records the exact source/tree, required and executed journeys,
-command outcomes, original errors and cleanup outcome. The same full-report
-validator serves CI and the immutable release candidate. A selected run remains
-partial. A failed stop, unknown required result, unexecuted required journey,
-timeout, invalid report or cleanup failure cannot become a pass after later
-cleanup. An interrupted or lost job supplies no successful result.
-
-The controller attempts owned cleanup and retains bounded, sanitized diagnostics
-through the existing artifact path. Report or artifact-transfer failure prevents
-acceptance. Only the named report and diagnostics are exported; runtime homes,
-credentials, stores and working resources remain in the disposable VM. No
-post-job resource recovery is promised.
-
-Command and scenario budgets and the workflow deadline retain their existing
-owners. Required source review, independently reviewed journey assertions and
-actual execution evidence remain distinct. Acceptance uses the standard hosted
-substrate and the existing project dependency/installer contracts; it has no
-separate nested-guest provisioning or substrate-qualification lifecycle
-(`sdlc/policy/substrate-anchoring`, `sdlc/policy/process-change-authority`).
-
-<!-- /planned:issue-128 -->
-
 ### Use cases
 
 #### UC-RA1: Cold public entry points execute from the checked source
@@ -398,17 +306,6 @@ Then each operation is refused
 And a fresh authorized memory listing reports no memory added by those attempts
 ```
 
-<!-- planned:issue-128 -->
-
-UC-RA9 reports the actual supported application shutdown and owned cleanup
-outcomes. Hosted VM disposal bounds the test environment's lifetime; it does not
-prove those operations succeeded or that every descendant was observed dead
-before report upload. UC-RA10 requires the complete successful profile and job
-for the immutable candidate commit and tree, followed by the separate full
-installation proof.
-
-<!-- /planned:issue-128 -->
-
 ## Known caveats
 
 - These journeys establish their named observable behavior, not exhaustive CLI,
@@ -417,16 +314,3 @@ installation proof.
   proof, and it uses no live subscription credentials or external messaging.
 - Existing installation proof and target-specific worktree help checks retain
   their own contracts.
-
-<!-- planned:issue-128 -->
-
-- The full profile establishes its named product behavior and cleanup outcomes,
-  not independent physical extinction of every possible descendant before upload.
-  The dedicated hosted job's lifetime is the outer containment boundary.
-- Cancellation, runner loss or failed upload can lose diagnostics. Missing
-  evidence withholds acceptance; no subsequent run upgrades the failed attempt.
-- A hosted image or dependency change may cause real installation or journey
-  failure. Such a failure remains visible; vendor support alone supplies no
-  successful execution evidence.
-
-<!-- /planned:issue-128 -->
