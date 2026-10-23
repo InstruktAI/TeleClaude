@@ -83,7 +83,8 @@ needs them receives them in its request, from authoritative workflow state.
 
 The internal session-creation carrier distinguishes a driver form, which has no
 workflow parent, from an admitted child form, which requires the owner-issued
-qualified workflow-parent address `(computer, session_id)` and admission fact
+qualified workflow-parent address `(computer, session_id)` with both values
+nonempty, and its admission fact
 from the existing `item-acts` `ChildPlan`. The `ChildPlan`/`plan_child` path
 owns eligibility; generic initiator linkage, `initiator_session_id`, role or
 parent-like metadata supplies no parent authority. Its producer must carry the
@@ -96,7 +97,8 @@ bounded local creation path does not complete remote-parent integration.
 Generic and non-item local creation without a workflow parent remains
 unchanged. For the identified local parent, the same creation transaction
 checks its persisted GitHub binding agrees on item, repository and project and
-that the child has a distinct App ID and stable actor identity. It retains the
+that the child has a distinct App ID and stable Bot account identity by
+provider ID/node ID. It retains the
 qualified parent address in the child's existing GitHub binding as immutable
 creation provenance for restart and parent-sensitive publication; it never
 infers or backfills it from initiator linkage or role.
