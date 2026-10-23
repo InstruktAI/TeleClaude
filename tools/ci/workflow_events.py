@@ -609,8 +609,12 @@ def _profile_report(
     )
     if complete or selected_cases:
         try:
-            binding = load_binding(profile_root, captured=captured)
-            verify_case(binding, selected_cases[-1] if selected_cases else "B6", captured=captured)
+            if not isinstance(cases, Mapping):
+                raise creation.binding_failure(DETAIL_SEAL)
+            recorded_cases = tuple(case for case in (selected_cases or CASE_SEQUENCE) if case in cases)
+            if recorded_cases:
+                binding = load_binding(profile_root, captured=captured)
+                verify_case(binding, recorded_cases[-1], captured=captured)
         except creation.JourneyFailure as error:
             complete = False
             if captured is not None:
