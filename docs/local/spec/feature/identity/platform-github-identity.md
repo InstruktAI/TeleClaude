@@ -100,8 +100,9 @@ checks its persisted GitHub binding agrees on item, repository and project and
 that the child has a distinct App ID and stable Bot account identity by
 provider ID/node ID. It retains the
 qualified parent address in the child's existing GitHub binding as immutable
-creation provenance for restart and parent-sensitive publication; it never
-infers or backfills it from initiator linkage or role.
+creation provenance for restart and parent-sensitive publication. A legacy
+binding without that parent provenance remains unavailable for parent authority;
+the owner never infers or backfills it from initiator linkage or role.
 
 These checks commit with the child session row, actor/target binding, startup
 handover and existing procedure-delivery initialization in one transaction, or
