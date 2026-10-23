@@ -642,6 +642,8 @@ def freeze_b13_evidence(
     ):
         raise ValueError(B13_ERROR_SEAL)
     evidence.carrier[B13_ATTEMPTS_PATH_FIELD] = sanitize(str(attempts_path.resolve()))
+    evidence.carrier[B13_ATTEMPTS_SHA_FIELD] = evidence.attempt_ledger[B13_LEDGER_ORIGINAL_SHA_FIELD]
+    evidence.carrier[B13_ATTEMPTS_BYTES_FIELD] = evidence.attempt_ledger[B13_LEDGER_ORIGINAL_BYTES_FIELD]
     payload = _b13_json_bytes(_b13_safe(_b13_payload(evidence), sanitize))
     _b13_atomic_write(carrier_path, payload)
     carrier_sha = hashlib.sha256(payload).hexdigest()
