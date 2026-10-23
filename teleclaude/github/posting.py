@@ -122,7 +122,6 @@ _FIXED_ENVIRONMENT = {
     "GH_PAGER": "",
 }
 _CONFIG_PREFIX = "teleclaude-gh-"
-_BODY = "body"
 _REVIEW_COMMENT = "review_comment"
 _REPOSITORY_SEPARATOR = "/"
 _COMMENT_REQUEST_SECONDS = 60.0
