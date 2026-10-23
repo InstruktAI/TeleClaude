@@ -14,12 +14,27 @@ feature specs remain the current contract.
 ## Canonical fields
 
 - **Current behavior:** `docs/local/spec/feature/workflow/`.
+
+<!-- planned-change:github-store-adapter -->
+
 - **Implementation roots:** `teleclaude/core/workflow_store/` owns the
   backend-neutral workflow-store contract, selection and local adapter;
   `teleclaude/core/todos_db/` remains the local adapter's SQLite implementation
   and migration owner. `teleclaude/core/next_machine/`,
   `teleclaude/core/integration/`, API routes, services and CLI handlers consume
   the workflow-store contract and do not access a backend directly.
+
+<!-- change:github-store-adapter -->
+
+- **Implementation roots:** `teleclaude/core/workflow_store/` owns the
+  backend-neutral workflow-store contract, selection, and the local and GitHub
+  adapters; `teleclaude/core/todos_db/` remains the SQLite implementation and
+  migration owner that both adapters serve the port through, the GitHub adapter
+  on its working copy. `teleclaude/core/next_machine/`,
+  `teleclaude/core/integration/`, API routes, services and CLI handlers consume
+  the workflow-store contract and do not access a backend directly.
+
+<!-- /planned-change:github-store-adapter -->
 
 - **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. Replacement work never uses this store or
   lifecycle.

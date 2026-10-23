@@ -44,6 +44,16 @@ target through the project's remote.
 - **Checkout resolution:** each target resolves its own checkout of a project
   from its own project registry. A target that has no checkout of the project
   is reported and skipped; other project-target pairs continue.
+
+<!-- planned:github-store-adapter -->
+
+- **GitHub-backed projects:** a project whose workflow store is GitHub has no
+  todo state to copy, because every computer reads it from the project's
+  repository (`local/projects/teleclaude/spec/feature/workflow/github-work-record`).
+  It is reported and skipped; other projects continue.
+
+<!-- /planned:github-store-adapter -->
+
 - **Transfer:** only the parts of the todo state that differ are sent, so a
   repeated transfer of a large todo state moves little data. Both computers'
   todo state may be in use while it runs. A target daemon may remain running

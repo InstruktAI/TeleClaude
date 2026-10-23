@@ -208,6 +208,8 @@ is optional, and an omitted block or one without an `enabled` value is
 unsubscribed, so only an explicit value claims a capability
 (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`):
 
+<!-- planned-change:github-store-adapter -->
+
 ```yaml
 code:
   enabled: bool # the project holds code under the TeleClaude lifecycle
@@ -218,6 +220,33 @@ agents:
 todos:
   store: local | github # defaults to local; github refuses until its adapter is installed
 ```
+
+<!-- change:github-store-adapter -->
+
+```yaml
+code:
+  enabled: bool # the project holds code under the TeleClaude lifecycle
+docs:
+  enabled: bool # the project participates in the snippet pipeline
+agents:
+  enabled: bool # the project holds agent artifacts
+todos:
+  store: local | github # defaults to local
+  repository: # required when store is github
+    id: int # the repository's stable GitHub ID
+    full_name: owner/name
+  app: int # required when store is github; the App ID of a profile in the machine's GitHub App inventory
+```
+
+The `todos` block selects the project's workflow store. With `github`, the
+project's work items live in the declared repository and every write to them
+is made as the declared App, which must be installed on that repository with
+issue write access. The App ID names one profile of the machine's GitHub App
+inventory, which holds that App's bot account and protected private-key
+reference; a project declaration carries no secret. What the repository then
+holds is `local/projects/teleclaude/spec/feature/workflow/github-work-record`.
+
+<!-- /planned-change:github-store-adapter -->
 
 A project and a company each declare whether that home keeps a help desk. An
 omitted block, or one without an `enabled` value, keeps none. How the block is
