@@ -198,9 +198,8 @@ working copy and the repository.
 - **Trust.** A comment is read as record, content or ledger only when the
   platform App's bot authored it, and only in the last version that bot
   wrote. When its last editor is someone else, that version is recovered from
-  the comment's edit history, and refresh restores it on GitHub. Because it
-  is the bot's latest write, the restored version is never older than the
-  record's latest committed revision. A comment with no recoverable bot
+  the comment's edit history, and refresh restores it on GitHub. The restored
+  version is never older than the record's latest committed revision. A comment with no recoverable bot
   version is **unverifiable**: refresh leaves the working copy as it is, and
   every write to that item refuses with that cause. A label, title, body,
   comment or edit by anyone else is never read as state.
@@ -347,8 +346,7 @@ sequenceDiagram
 - A comment that someone else edited, and whose edit history no longer holds
   the bot's last version, makes its item unverifiable. Writes to the item
   refuse, and rebuild refuses store resolution naming the item. No working
-  copy is ever published in its place, because a working copy may lag the
-  repository.
+  copy is ever published in its place.
 - The native target projection reads an issue number from a `WorkItemId`;
   the GitHub adapter's port identities are working-copy identities, so the
   projection receives no store-produced key it accepts.
