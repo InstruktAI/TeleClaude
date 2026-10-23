@@ -211,9 +211,9 @@ class DbGitHubMixin:
         """Check complete identical target state; partial legacy rows cannot acquire authority here."""
         async with self._session() as db_session:
             session = await db_session.get(db_models.Session, session_id)
-            row = await db_session.get(db_models.GitHubSessionBindingRow, session_id)
             if session is None or session.closed_at is not None or session.deleted_at is not None:
                 raise GitHubBindingRefused(GitHubBindingRefusal.SESSION_UNAVAILABLE)
+            row = await db_session.get(db_models.GitHubSessionBindingRow, session_id)
             if row is None or row.native_target_json is None:
                 raise GitHubBindingRefused(GitHubBindingRefusal.ACTOR_UNBOUND)
             binding = GitHubSessionBinding.model_validate_json(row.binding_json)
