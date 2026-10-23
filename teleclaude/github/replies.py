@@ -66,7 +66,10 @@ class NativeReplyObservation:
     placement: GitHubReviewCommentPlacement
 
 
-def _reference(comment: PullRequestReviewComment, context: GitHubPostingContext, number: int) -> GitHubObjectRef:
+def review_comment_reference(
+    comment: PullRequestReviewComment, context: GitHubPostingContext, number: int
+) -> GitHubObjectRef:
+    """Verify a root or reply's canonical review-comment namespace and PR membership."""
     repository = context.target.repository
     if (
         comment.id <= 0
@@ -110,7 +113,7 @@ def _observation(
     *,
     body: str | None = None,
 ) -> NativeReplyObservation:
-    ref = _reference(comment, context, number)
+    ref = review_comment_reference(comment, context, number)
     placement = _placement(comment)
     if (
         placement.in_reply_to_id != root_id
@@ -161,7 +164,7 @@ def _accepted(
     placement = None
     try:
         comment = PullRequestReviewComment.model_validate_json(response.body)
-        ref = _reference(comment, context, request.pr_scope.container_number)
+        ref = review_comment_reference(comment, context, request.pr_scope.container_number)
         placement = _placement(comment)
         observed = _observation(comment, context, request.pr_scope.container_number, request.root_id, body=body)
         association = GitHubObjectAssociation(
@@ -258,7 +261,7 @@ async def post_native_review_reply(
             )
             if root_response.status == 200:
                 root = PullRequestReviewComment.model_validate_json(root_response.body)
-                root_ref = _reference(root, context, scope.object.container_number)
+                root_ref = review_comment_reference(root, context, scope.object.container_number)
                 if root_ref.provider_id != request.root_id or root.in_reply_to_id is not UNSET:
                     raise ValueError(_INVALID)
                 if await _current(context, scope):

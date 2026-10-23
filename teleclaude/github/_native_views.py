@@ -26,7 +26,7 @@ from teleclaude.github.accounts import GitHubRateLimitFacts
 from teleclaude.github.client import create_github_client
 from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
 from teleclaude.github.native import NativeReadKind, NativeViewRequest
-from teleclaude.github.replies import _reference as review_comment_reference
+from teleclaude.github.replies import review_comment_reference
 
 _EMPTY = ""
 _SLASH = "/"
@@ -41,6 +41,8 @@ _HUNDRED = "100"
 _READ_SECONDS = 60.0
 _ISSUE_ROOT = "/repos/{repository}/issues/{number}"
 _PR_ROOT = "/repos/{repository}/pulls/{number}"
+_ISSUE_ID_ROOT = "/repositories/{repository_id}/issues/{number}"
+_PR_ID_ROOT = "/repositories/{repository_id}/pulls/{number}"
 _COMMENTS = "/comments"
 _API = "https://api.github.com"
 _ISSUE_URL = "https://github.com/{repository}/issues/{number}"
@@ -71,7 +73,7 @@ async def _current(context: GitHubPostingContext, view: NativeViewRequest) -> bo
 
 
 class _ReadScope:
-    """Confine SDK-owned pagination to the admitted GET paths; no custom page navigation."""
+    """Admit both provider address forms for the exact object; the SDK still navigates pages."""
 
     def __init__(self, context: GitHubPostingContext, view: NativeViewRequest) -> None:
         self.context, self.view = context, view
@@ -79,13 +81,13 @@ class _ReadScope:
         issue = _ISSUE_ROOT.format(repository=repository, number=view.number)
         pr = _PR_ROOT.format(repository=repository, number=view.number)
         self.root = issue if view.kind is NativeReadKind.ISSUE else pr
-        self.list_path = (
-            pr + _COMMENTS
-            if view.kind is NativeReadKind.REVIEW_COMMENTS
-            else issue + _COMMENTS
-            if view.comments
-            else None
-        )
+        self.list_paths: frozenset[str] = frozenset()
+        if view.kind is NativeReadKind.REVIEW_COMMENTS:
+            numeric = _PR_ID_ROOT.format(repository_id=context.target.repository_id, number=view.number)
+            self.list_paths = frozenset({pr + _COMMENTS, numeric + _COMMENTS})
+        elif view.comments:
+            numeric = _ISSUE_ID_ROOT.format(repository_id=context.target.repository_id, number=view.number)
+            self.list_paths = frozenset({issue + _COMMENTS, numeric + _COMMENTS})
         self.seen: set[httpx.URL] = set()
 
     async def check_request(self, request: httpx.Request) -> None:
@@ -107,7 +109,7 @@ class _ReadScope:
         else:
             params = dict(url.params.multi_items())
             if (
-                url.path != self.list_path
+                url.path not in self.list_paths
                 or len(params) != len(url.params.multi_items())
                 or params.get(_PER_PAGE) != _HUNDRED
                 or set(params) - {_PER_PAGE, _PAGE}
