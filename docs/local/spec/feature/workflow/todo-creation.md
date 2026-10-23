@@ -39,7 +39,7 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
 <!-- change:issue-128 -->
 
 - `--plan` — valid with `--kind change` or `--kind task`; rejected for `--kind feature` and `--kind bug`. The supplied content is written as the kind's plan artifact:
-  - `--kind change --plan` writes the content as the `implementation-plan` artifact (prefixed `# <slug> — Implementation Plan`) and stores `preparation`. The supplied plan is input to preparation; it supplies no prepared revision and bypasses no preparation judgment (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`).
+  - `--kind change --plan` retains the content as the `implementation-plan` artifact (prefixed `# <slug> — Implementation Plan`) and stores `preparation`. It provides no prepared revision and bypasses no preparation judgment (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`). The retained plan is not supplied to preparation as governed input: the preparation driver derives the spec from the item's intent body, which this request does not create, so the filer supplies the intent separately. The `--plan` flag help and the create command help say so, and a successful creation returns the same statement as one entry of the create result's existing `warnings`, which the CLI prints.
   - `--kind task --plan` writes the content as the `task-plan` artifact (prefixed `# <slug> — Task Plan`), lands the task at `prepared`, and records the `task_approved` authorization stamp up front with its `approved_digest` set to the just-written `task-plan` digest — so the task is **pre-authorized by construction** and the lifecycle runner routes it straight to `/sdlc/run-task` once its dependency or `schedule` gate passes, with no separate human authorization. A later `task-plan` edit changes the artifact digest and leaves the recorded `approved_digest` stale, so authorization must be renewed before the runner dispatches again.
 
 <!-- /planned-change:issue-128 -->
@@ -277,9 +277,11 @@ Given a human or agent already has a complete implementation plan
 When they run `telec todo create my-feature "<content>" --kind change --plan`
 Then the request carries kind="change" and plan=true
 And the route writes the content as the `implementation-plan` artifact (body prefixed "# my-feature — Implementation Plan")
+And no intent body is created for the item
 And the stored phase, create result and todo-created event report lifecycle_phase="preparation"
 And the route emits the todo-created event with canonical kind="change" and pickup_requested=true
-And the CLI prints "Created todo: my-feature (kind=change)"
+And the create result's warnings carry one entry stating that the plan is retained but not supplied to preparation as governed input, and that the intent is supplied separately
+And the CLI prints "Created todo: my-feature (kind=change)" and, after its creation messages, that warning
 ```
 
 <!-- /planned-change:issue-128 -->
