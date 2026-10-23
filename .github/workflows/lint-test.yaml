@@ -40,8 +40,6 @@ jobs:
         timeout-minutes: 10
 
   runtime-acceptance:
-    # Source/journey review precedes the first separately authorized hosted run.
-    if: github.event_name == 'workflow_dispatch'
     name: Full CLI runtime acceptance
     runs-on: ubuntu-24.04
     timeout-minutes: 75
