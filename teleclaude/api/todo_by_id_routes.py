@@ -17,7 +17,8 @@ from teleclaude.api.todo_update_support import require_slug_found
 from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.constants import SLUG_NOT_IN_ICEBOX_DETAIL
-from teleclaude.core.operations.service import SerializedOperation, get_operations_service
+from teleclaude.core.operations._receipt import SerializedOperation
+from teleclaude.core.operations.service import get_operations_service
 from teleclaude.core.todos_db._todo_soft_delete import TodoIdentityActionRefused, TodoIdentityNotFound
 from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.core.workflow_store.types import IdentityResolution as TodoIdentityResolution

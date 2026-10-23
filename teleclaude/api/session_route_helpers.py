@@ -13,7 +13,7 @@ from teleclaude.config.machine import config
 from teleclaude.core.command_dispatch import RelayFailure, RemoteDispatchReason, dispatch_command, is_remote_target
 from teleclaude.core.db import db
 from teleclaude.core.models import JsonDict, JsonValue, MessageMetadata
-from teleclaude.core.operations.service import SerializedOperation
+from teleclaude.core.operations._receipt import SerializedOperation
 from teleclaude.types.commands import InternalCommand
 
 if TYPE_CHECKING:
