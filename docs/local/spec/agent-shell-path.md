@@ -57,22 +57,27 @@ POSIX-sh so the same text is valid in zsh, bash, and sh.
 
 #### Bound-session GitHub command routing
 
-When the daemon creates a session whose persisted binding has both a GitHub
-actor and target, its per-session PATH places a private command directory under
-that session's existing `$TMPDIR` ahead of the shared tool directories. The
-`gh` entry there invokes the Python facade defined by
-`local/projects/teleclaude/spec/feature/integration/github-posting`; the facade
-uses GitHubKit and has no provider-CLI fallback. Its command grammar, operation
-admission and fresh caller checks remain with the identity and posting owners.
+Every time the daemon builds a pane environment for a session, including
+initial creation, headless resume and recovery/recreation, it resolves that
+session's persisted binding. A session with no GitHub binding gets no `gh`
+override. A complete actor-and-target binding gets the bound route. A partial
+or unreadable binding refuses pane creation, as does failure to rebuild a
+complete bound route; the daemon never starts a bound or uncertain session with
+the installed provider CLI as its `gh` command.
 
-The private directory is scoped to that session and comes before
-`$TELECLAUDE_HOME/bin`, leaving the shared agent-session git wrapper in its
-existing position. Sessions without the persisted GitHub actor-and-target
-binding, including local-backend sessions, receive no `gh` override and keep
-their current PATH resolution. The routing choice comes from the daemon's
-persisted session binding, not a command argument or agent-supplied environment
-value. It selects a command entrypoint but supplies no authentication or
-provider authority; the facade rechecks those facts for each call.
+The PATH order for bound shells remains `$TELECLAUDE_HOME/bin` first for the existing agent
+session git wrapper, then the per-session `$TMPDIR` command directory, then the
+remaining shared and inherited tool paths. The private `gh` entry invokes the
+Python facade defined by
+`local/projects/teleclaude/spec/feature/integration/github-posting`; it uses
+GitHubKit and has no provider-CLI fallback. The three shell rc files and
+`teleclaude-shell` keep the shared git directory first and preserve the
+per-session route behind it.
+
+The routing choice comes from the daemon's persisted session binding, not a
+command argument or agent-supplied environment value. It selects a command
+entrypoint but supplies no authentication or provider authority; the facade
+rechecks those facts for each call.
 <!-- /planned:issue-129 -->
 
 #### Terminal hints
