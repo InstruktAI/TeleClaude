@@ -12,10 +12,16 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from teleclaude.config.machine import config
 from teleclaude.core import db_models
 from teleclaude.core.project_state import resolve_owning_checkout
 from teleclaude.core.roles import Role, RoleName, resolve_session_role
-from teleclaude.types.github_binding import GitHubActorAssignment, GitHubSessionBinding, GitHubWorkTarget
+from teleclaude.types.github_binding import (
+    GitHubActorAssignment,
+    GitHubOriginBindingFacts,
+    GitHubSessionBinding,
+    GitHubWorkTarget,
+)
 from teleclaude.types.github_posting import (
     GitHubObjectAssociation,
     GitHubObjectKind,
@@ -72,6 +78,26 @@ class GitHubBindingRefused(ValueError):
     def __init__(self, reason: GitHubBindingRefusal) -> None:
         super().__init__(reason.value)
         self.reason = reason
+
+
+def _require_remote_creation(association: GitHubObjectAssociation, origin: GitHubOriginBindingFacts) -> None:
+    """The posting owner supplies freshly read origin facts, never a foreign local binding row."""
+    ref, binding, target = association.object, origin.binding, origin.target
+    if (
+        origin.computer == config.computer.name
+        or isinstance(association.source, NativeGitHubPostSource)
+        or ref.kind is not GitHubObjectKind.ISSUE_COMMENT
+        or ref.repository_id != target.repository_id
+        or ref.container_number != target.issue_number
+        or association.work_issue_number != target.issue_number
+        or association.session_id != binding.session_id
+        or association.role is not binding.role
+        or not association.actor.same_account(binding.assignment.actor)
+        or association.producer_principal != origin.principal
+        or association.producer_computer != origin.computer
+        or association.producer_target != target
+    ):
+        raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
 
 
 class DbGitHubMixin:
@@ -360,6 +386,7 @@ class DbGitHubMixin:
         association: GitHubObjectAssociation,
         *,
         pr_scope: GitHubObjectAssociation | None = None,
+        verified_origin: GitHubOriginBindingFacts | None = None,
     ) -> GitHubObjectAssociation:
         """Record verified creation once; a conflict never replaces another producer's facts."""
         ref = association.object
@@ -375,32 +402,49 @@ class DbGitHubMixin:
             creation_json=association.model_dump_json(),
         )
         async with self._session() as db_session:
-            if isinstance(association.source, NativeGitHubPostSource) and ref.kind in (
-                GitHubObjectKind.ISSUE_COMMENT,
-                GitHubObjectKind.REVIEW,
-                GitHubObjectKind.REVIEW_COMMENT,
-            ):
-                if ref.kind in (GitHubObjectKind.REVIEW, GitHubObjectKind.REVIEW_COMMENT) and pr_scope is None:
+            if verified_origin is not None:
+                if pr_scope is not None:
                     raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
-                await self._check_native_conversation_writer(db_session, association, pr_scope)
-            elif pr_scope is not None:
-                raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
-            binding_row = await db_session.get(db_models.GitHubSessionBindingRow, association.session_id)
-            if binding_row is None:
-                raise GitHubBindingRefused(GitHubBindingRefusal.ACTOR_UNBOUND)
-            binding = GitHubSessionBinding.model_validate_json(binding_row.binding_json)
-            if (
-                binding.session_id != association.session_id
-                or binding.role is not association.role
-                or not binding.assignment.actor.same_account(association.actor)
-            ):
-                raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
-            if isinstance(association.source, NativeGitHubPostSource):
-                if binding_row.native_target_json is None:
+                _require_remote_creation(association, verified_origin)
+            else:
+                if any(
+                    value is not None
+                    for value in (
+                        association.producer_principal,
+                        association.producer_computer,
+                        association.producer_target,
+                    )
+                ):
+                    raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+                if isinstance(association.source, NativeGitHubPostSource) and ref.kind in (
+                    GitHubObjectKind.ISSUE_COMMENT,
+                    GitHubObjectKind.REVIEW,
+                    GitHubObjectKind.REVIEW_COMMENT,
+                ):
+                    if ref.kind in (GitHubObjectKind.REVIEW, GitHubObjectKind.REVIEW_COMMENT) and pr_scope is None:
+                        raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
+                    await self._check_native_conversation_writer(db_session, association, pr_scope)
+                elif pr_scope is not None:
                     raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
-                target = GitHubWorkTarget.model_validate_json(binding_row.native_target_json)
-                if target.repository_id != ref.repository_id or target.issue_number != association.work_issue_number:
-                    raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
+                binding_row = await db_session.get(db_models.GitHubSessionBindingRow, association.session_id)
+                if binding_row is None:
+                    raise GitHubBindingRefused(GitHubBindingRefusal.ACTOR_UNBOUND)
+                binding = GitHubSessionBinding.model_validate_json(binding_row.binding_json)
+                if (
+                    binding.session_id != association.session_id
+                    or binding.role is not association.role
+                    or not binding.assignment.actor.same_account(association.actor)
+                ):
+                    raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+                if isinstance(association.source, NativeGitHubPostSource):
+                    if binding_row.native_target_json is None:
+                        raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
+                    target = GitHubWorkTarget.model_validate_json(binding_row.native_target_json)
+                    if (
+                        target.repository_id != ref.repository_id
+                        or target.issue_number != association.work_issue_number
+                    ):
+                        raise GitHubBindingRefused(GitHubBindingRefusal.TARGET_MISMATCH)
             await db_session.exec(statement.on_conflict_do_nothing())
             await db_session.commit()
             row = await db_session.get(db_models.GitHubObjectAssociationRow, key)

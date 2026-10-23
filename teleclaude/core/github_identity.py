@@ -8,23 +8,29 @@ from pathlib import Path
 
 import psutil
 from instrukt_ai_logging import get_logger
+from pydantic import TypeAdapter
 from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.caller_identity import identity_for_session
 from teleclaude.config.machine import config
 from teleclaude.config.project_models import TodoStoreBackend
 from teleclaude.constants import MarkerState
+from teleclaude.core.command_dispatch import RelayFailure, relay_caller_read
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import get_db
-from teleclaude.core.operation_caller_identity import get_caller_session_id, get_relayed_caller
+from teleclaude.core.operation_caller_identity import get_caller_principal, get_caller_session_id, get_relayed_caller
 from teleclaude.core.project_state import resolve_owning_checkout
+from teleclaude.core.relay_reads import RelayRead
 from teleclaude.core.roles import Role, RoleName, resolve_session_role
 from teleclaude.core.session_identity_facts import SessionIdentityFacts, read_session_identity_facts
 from teleclaude.core.tmux_bridge._pane import get_pane_pid, get_server_pane_processes
 from teleclaude.core.workflow_store.selection import selected_workflow_store_backend
 from teleclaude.paths import MAIN_DB_PATH
+from teleclaude.project_manifest import load_registered_roots
 from teleclaude.runtime.tmux_socket import own_tmux_socket_path
 from teleclaude.session_identity import inspect_session_identity_marker
 from teleclaude.types.github_binding import (
+    GITHUB_POSTING_RELATED_FIELD,
     GitHubOriginBindingFacts,
     GitHubOriginBindingRead,
     GitHubOriginBindingRefusal,
@@ -35,6 +41,7 @@ from teleclaude.types.github_binding import (
 logger = get_logger(__name__)
 _REFUSAL_LOG = "github_invocation_refused reason=%s session_id=%s"
 _EXACT_SESSION_TARGET = "={name}"
+_SESSION_FACTS_ADAPTER = TypeAdapter(SessionIdentityFacts)
 
 
 class GitHubInvocationRefusal(StrEnum):
@@ -74,7 +81,7 @@ class ManagedGitHubInvocation:
 
 @dataclass(frozen=True)
 class AdmittedGitHubInvocation:
-    """Local session facts for the command/operation identity already admitted by the platform."""
+    """Owner-read session facts for the command/operation identity already admitted by the platform."""
 
     session: SessionIdentityFacts
     role: Role
@@ -100,6 +107,7 @@ class GitHubPostingContext:
     invocation: ManagedGitHubInvocation | AdmittedGitHubInvocation
     binding: GitHubSessionBinding
     target: GitHubWorkTarget
+    origin: GitHubOriginBindingFacts | None = None
 
 
 def _refuse(reason: GitHubInvocationRefusal, session_id: str | None) -> RefusedGitHubInvocation:
@@ -221,14 +229,18 @@ async def resolve_native_github_posting_context() -> (
         return _refuse(GitHubInvocationRefusal.WORK_CONTEXT_UNRESOLVED, session.session_id)
 
 
-async def resolve_admitted_github_posting_context() -> GitHubPostingContext | RefusedGitHubInvocation:
-    """Join existing admitted local command identity to authoritative bindings, without native pane proof."""
+async def resolve_admitted_github_posting_context(
+    target: GitHubWorkTarget | None = None,
+) -> GitHubPostingContext | RefusedGitHubInvocation:
+    """Join existing admitted identity to owner bindings; a remote call requires its trusted adapter target."""
     session_id = get_caller_session_id()
     if not session_id:
         return _refuse(GitHubInvocationRefusal.EXECUTION_UNRESOLVED, None)
     # A relayed origin handle never selects a local row, even if an identifier happens to match.
     if get_relayed_caller() is not None:
-        return _refuse(GitHubInvocationRefusal.REMOTE_SESSION, session_id)
+        if target is None:
+            return _refuse(GitHubInvocationRefusal.WORK_CONTEXT_UNRESOLVED, session_id)
+        return await _remote_admitted_context(target)
     resolved = _local_session(session_id)
     if isinstance(resolved, RefusedGitHubInvocation):
         return resolved
@@ -236,9 +248,79 @@ async def resolve_admitted_github_posting_context() -> GitHubPostingContext | Re
     if role is None:
         return _refuse(GitHubInvocationRefusal.ROLE_UNRESOLVED, session_id)
     context = await _bound_context(AdmittedGitHubInvocation(session, role))
+    if isinstance(context, GitHubPostingContext) and target is not None and context.target != target:
+        return _refuse(GitHubInvocationRefusal.WORK_CONTEXT_UNRESOLVED, session_id)
     if get_caller_session_id() != session_id or get_relayed_caller() is not None:
         return _refuse(GitHubInvocationRefusal.SESSION_CHANGED, session_id)
     return context
+
+
+async def _remote_admitted_context(target: GitHubWorkTarget) -> GitHubPostingContext | RefusedGitHubInvocation:
+    """Consume only the trusted adapter target and a fresh read from the qualified origin owner."""
+    origin, principal, session_id = get_relayed_caller(), get_caller_principal(), get_caller_session_id()
+    if (
+        origin is None
+        or not principal
+        or not session_id
+        or origin.session_id != session_id
+        or not origin.computer
+        or origin.computer == config.computer.name
+    ):
+        return _refuse(GitHubInvocationRefusal.EXECUTION_UNRESOLVED, session_id)
+    try:
+        # This checks the existing registered executor root; its selection for the act stays with the adapter.
+        project = resolve_owning_checkout(target.project_path)
+        if (
+            project is None
+            or project != target.project_path
+            or not any(
+                root.is_present and resolve_owning_checkout(root.path) == project
+                for root in load_registered_roots(strict=True)
+            )
+            or selected_workflow_store_backend(project) is not TodoStoreBackend.GITHUB
+        ):
+            return _refuse(GitHubInvocationRefusal.WORK_CONTEXT_UNRESOLVED, session_id)
+        record = await relay_caller_read(
+            get_command_service().client,
+            origin.computer,
+            RelayRead.SESSION_RECORD.value,
+            principal=principal,
+            session_id=session_id,
+        )
+        if not isinstance(record, dict):
+            return _refuse(GitHubInvocationRefusal.ACTOR_BINDING_UNAVAILABLE, session_id)
+        read = GitHubOriginBindingRead.model_validate(record.get(GITHUB_POSTING_RELATED_FIELD))
+        facts = read.value
+        if facts is None:
+            return _refuse(GitHubInvocationRefusal.ACTOR_BINDING_UNAVAILABLE, session_id)
+        session = _SESSION_FACTS_ADAPTER.validate_python(record)
+        role = resolve_session_role(facts.binding.role.value, session_id)
+        if (
+            facts.principal != principal
+            or facts.computer != origin.computer
+            or facts.binding.session_id != session_id
+            or session.session_id != session_id
+            or session.computer_name != origin.computer
+            or session.closed_at is not None
+            or session.deleted_at is not None
+            or not isinstance(role, Role)
+            or session.role != facts.binding.role.value
+            or session.working_slug != facts.target.work_item
+            or facts.target.repository_id != target.repository_id
+            or facts.target.repository.casefold() != target.repository.casefold()
+            or facts.target.work_item != target.work_item
+            or facts.target.issue_number != target.issue_number
+        ):
+            return _refuse(GitHubInvocationRefusal.ACTOR_BINDING_MISMATCH, session_id)
+        if (
+            get_relayed_caller() != origin
+            or get_caller_principal() != principal
+            or get_caller_session_id() != session_id
+        ):
+            return _refuse(GitHubInvocationRefusal.SESSION_CHANGED, session_id)
+        return GitHubPostingContext(AdmittedGitHubInvocation(session, role), facts.binding, target, facts)
+    except (RelayFailure, RuntimeError, OSError, ValueError):
+        return _refuse(GitHubInvocationRefusal.ACTOR_BINDING_UNAVAILABLE, session_id)
 
 
 async def read_origin_github_posting_binding(session_id: str, admitted_principal: str) -> GitHubOriginBindingRead:

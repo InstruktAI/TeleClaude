@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
-from enum import StrEnum
 from pathlib import Path
 from typing import assert_never, cast
 
@@ -34,6 +33,7 @@ from teleclaude.core.db import SessionRecordAbsent, SessionRecordFound, SessionR
 from teleclaude.core.models import JsonDict, JsonValue, RedisInboundMessage, SessionEntryPoint
 from teleclaude.core.models._types import json_int
 from teleclaude.core.operations.service import get_operations_service
+from teleclaude.core.relay_reads import RelayRead as RelayRead
 from teleclaude.core.session_inspection import OUTSIDE_REACH_DETAIL_TEMPLATE, inspect_relayed
 from teleclaude.core.session_listing import (
     SESSION_IDS_FIELD,
@@ -103,16 +103,6 @@ _NOT_PERMITTED_DETAIL_TEMPLATE = "role '{role}' is not permitted to call {act} o
 _COMMAND_PAYLOAD_REQUIRED_DETAIL = "command payload is required for relayed execution"
 _INVALID_HISTORY_ACCESS_DETAIL = LOGIN_REQUIRED_DETAIL
 _HISTORY_SHOW_REQUEST_ADAPTER: TypeAdapter[HistoryShowRequest] = TypeAdapter(HistoryShowRequest)
-
-
-class RelayRead(StrEnum):
-    """Closed set of caller-facing reads executed by the computer that owns the data."""
-
-    SESSION_MESSAGES = "get_session_messages"
-    SESSION_PANE = "get_session_pane"
-    OPERATION = "get_operation"
-    SESSIONS = "list_sessions"
-    SESSION_RECORD = "get_session_record"
 
 
 class RelayedReadNotFound(LookupError):

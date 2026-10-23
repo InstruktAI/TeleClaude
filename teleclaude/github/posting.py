@@ -124,6 +124,9 @@ _UNVERIFIED_OBJECT = "GitHub comment result could not be verified"
 _ISSUE_COMMENT_PERMISSIONS: AppPermissionsType = {"issues": "write"}
 _PR_COMMENT_PERMISSIONS: AppPermissionsType = {"pull_requests": "write"}
 _ASSOCIATION = "association"
+_PRODUCER_PRINCIPAL = "producer_principal"
+_PRODUCER_COMPUTER = "producer_computer"
+_PRODUCER_TARGET = "producer_target"
 _FAILURE = "failure"
 _HELP_FLAGS = frozenset({"--help", "-h"})
 _HELP_ARGUMENT = "--help"
@@ -199,7 +202,7 @@ async def _current_context(context: GitHubPostingContext, target: GitHubWorkTarg
     if isinstance(context.invocation, AdmittedGitHubInvocation):
         if native:
             return False
-        current = await resolve_admitted_github_posting_context()
+        current = await resolve_admitted_github_posting_context(target)
     else:
         current = await resolve_native_github_posting_context()
     return isinstance(current, GitHubPostingContext) and current == context and target == current.target
@@ -284,15 +287,7 @@ async def post_github_issue_comment(
         raise _cancelled(result, context.binding.session_id)
     if result.acceptance is not GitHubAcceptance.CONFIRMED:
         return result
-    if result.association is not None:
-        try:
-            store = await get_db()
-            recorded = await store.record_github_object_association(result.association, pr_scope=scope)
-            result = result.model_copy(update={_ASSOCIATION: recorded})
-        except (SQLAlchemyError, OSError, ValueError):
-            result = result.model_copy(update={_ASSOCIATION: None, _FAILURE: GitHubPostFailure.ASSOCIATION_FAILED})
-        except asyncio.CancelledError:
-            raise _cancelled(result, context.binding.session_id) from None
+    result = await _retain_post_result(context, request, result, scope)
     logger.info(
         _POST_EVENT,
         result.acceptance,
@@ -303,11 +298,49 @@ async def post_github_issue_comment(
     return result
 
 
+async def _retain_post_result(
+    context: GitHubPostingContext,
+    request: GitHubIssueCommentRequest,
+    result: GitHubPostResult,
+    scope: GitHubObjectAssociation | None,
+) -> GitHubPostResult:
+    """Retain accepted creation facts without treating origin observations as local binding authority."""
+    if result.association is not None:
+        try:
+            store = await get_db()
+            association = result.association
+            if context.origin is not None:
+                # Authorization is freshly observed at origin; retained creation facts never become a binding cache.
+                current = await resolve_admitted_github_posting_context(request.target)
+                if not isinstance(current, GitHubPostingContext) or current != context:
+                    return result.model_copy(
+                        update={_ASSOCIATION: None, _FAILURE: GitHubPostFailure.ASSOCIATION_FAILED}
+                    )
+                association = association.model_copy(
+                    update={
+                        _PRODUCER_PRINCIPAL: context.origin.principal,
+                        _PRODUCER_COMPUTER: context.origin.computer,
+                        _PRODUCER_TARGET: context.origin.target,
+                    }
+                )
+            recorded = await store.record_github_object_association(
+                association,
+                pr_scope=scope,
+                verified_origin=context.origin,
+            )
+            result = result.model_copy(update={_ASSOCIATION: recorded})
+        except (SQLAlchemyError, OSError, ValueError):
+            result = result.model_copy(update={_ASSOCIATION: None, _FAILURE: GitHubPostFailure.ASSOCIATION_FAILED})
+        except asyncio.CancelledError:
+            raise _cancelled(result, context.binding.session_id) from None
+    return result
+
+
 async def post_admitted_github_issue_comment(request: GitHubIssueCommentRequest) -> GitHubPostResult:
-    """Post an owner-admitted sealed/reflected append as the current local command's durably assigned actor."""
+    """Post the trusted adapter target as the admitted command's current origin-assigned actor."""
     if isinstance(request.source, NativeGitHubPostSource):
         return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED)
-    context = await resolve_admitted_github_posting_context()
+    context = await resolve_admitted_github_posting_context(request.target)
     if not isinstance(context, GitHubPostingContext):
         return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED)
     return await post_github_issue_comment(context, request)

@@ -21,6 +21,7 @@ _MIRROR_ORDER_INVALID = "Mirror part must be within its source-owned total"
 _REVIEW_HEAD_REQUIRED = "A review association requires the exact reviewed SHA"
 _NATIVE_NOTE_REQUIRED = "Native context requires the canonical note act and no inferred phase"
 _MAINTENANCE_TARGET_INVALID = "Maintenance requires the exact bound issue comment"
+_PRODUCER_INVALID = "Qualified producer facts must be complete and match the accepted object target"
 _MUTATION_EVIDENCE_INVALID = "Maintenance evidence must match its confirmed provider operation"
 
 
@@ -175,6 +176,9 @@ class GitHubObjectAssociation(BaseModel):
     edit_evidence: GitHubEditEvidence | None = None
     pull_request: GitHubPullRequestCreation | None = None
     review_comment: GitHubReviewCommentPlacement | None = None
+    producer_principal: str | None = Field(default=None, min_length=1)
+    producer_computer: str | None = Field(default=None, min_length=1)
+    producer_target: GitHubWorkTarget | None = None
 
     @model_validator(mode="after")
     def require_review_head(self) -> Self:
@@ -195,6 +199,14 @@ class GitHubObjectAssociation(BaseModel):
             and (self.review_comment is None or self.reviewed_sha is not None)
         ):
             raise ValueError(_MAINTENANCE_TARGET_INVALID)
+        qualified = (self.producer_principal, self.producer_computer, self.producer_target)
+        if any(value is not None for value in qualified) and (
+            any(value is None for value in qualified)
+            or self.producer_target is None
+            or self.producer_target.repository_id != self.object.repository_id
+            or self.producer_target.issue_number != self.work_issue_number
+        ):
+            raise ValueError(_PRODUCER_INVALID)
         return self
 
     def same_creation(self, other: GitHubObjectAssociation) -> bool:
@@ -210,6 +222,9 @@ class GitHubObjectAssociation(BaseModel):
             and self.reviewed_sha == other.reviewed_sha
             and self.pull_request == other.pull_request
             and self.review_comment == other.review_comment
+            and self.producer_principal == other.producer_principal
+            and self.producer_computer == other.producer_computer
+            and self.producer_target == other.producer_target
         )
 
 
