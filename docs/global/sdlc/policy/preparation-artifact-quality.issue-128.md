@@ -14,15 +14,20 @@ visibility: 'public'
 These rules bind the author that writes an item's spec into its body
 (`sdlc/procedure/lifecycle/prepare/intake-v2`), the preparation driver that
 challenges and judges it (`sdlc/procedure/lifecycle/prepare/overview-v2`), the
-builder whose mechanism note delivers it
-(`sdlc/procedure/lifecycle/work/build-v2`), and the work driver that converges
-on that mechanism and reviews its commits
+builder whose completed implementation delivers it
+(`sdlc/procedure/lifecycle/work/build-v2`), and the work driver that independently
+reviews that completed target
 (`sdlc/procedure/lifecycle/work/overview-v2`).
 
 ### Domain-context loading
 
-Before writing or judging a spec, identify which domain specs it touches and
-load them.
+Before writing or judging a spec, identify which domain specs and implementation
+policies it touches and load them. Apply the relevant language, tooling,
+compatibility, security and testing rules while choosing the approach, even
+when the present artifact is prose. Research an integration's actual required
+capabilities against primary sources and the available native libraries before
+settling its transport. An authored plan cannot make a policy exception for
+itself; a justified divergence from local precedent still owes policy compliance.
 
 - Read the item's intent (or the spec, when judging) and identify the domains it
   affects: documentation system, CLI surface, config surface, messaging,
@@ -230,8 +235,10 @@ and a kickback rests on the spec being wrong or unbuildable
 
 ### The mechanism is checked as a whole
 
-The builder's mechanism note and the work driver's convergence on it judge the
-mechanism as one composition, not as a list of independently correct steps.
+The builder self-checks the complete implementation as one composition. After
+that handoff, the reviewer independently judges the same composition under
+`sdlc/procedure/lifecycle/review`, rather than approving its parts in an early
+design conversation.
 
 - **Changes are checked against each other.** Two changes may each deliver
   their part of the spec faithfully and destroy one another when applied to the
@@ -240,7 +247,7 @@ mechanism as one composition, not as a list of independently correct steps.
   question: after both land, does each still do what the spec says?
 - **A discriminator that gains a caller is enumerated at that caller.** When a
   change reuses an existing predicate, filter, matcher, or classifier at a site
-  that did not call it before, the note states the complete set of inputs that
+  that did not call it before, the change description states the complete set of inputs that
   discriminator matches at the new site — not what it was written for, and not
   who else already calls it. Adding a filter to a call site exposes everything
   that flows through that site.
@@ -326,6 +333,16 @@ predicate another context decides closes by removal or by a one-sentence
 pointer to the owner (`general/policy/snippet-value-contract`, Consumer
 restatement); a remediation that elaborates the duplicate instead is a new
 finding against the remediation, not a closure.
+
+### Separate production and judgment
+
+The producer completes its own approach and self-checks it against these rules;
+the reviewer then evaluates the finished target independently under
+`sdlc/procedure/lifecycle/review`. The pair does not converge on a mechanism
+before judging it. This separation prevents shared commitment to the chosen
+solution from substituting for policy conformance. Readiness requires both a
+coherent outcome and compliance with its governing rules; neither a polished
+rationale nor prior approval establishes the other.
 
 ### A contract clause is checked against the decision it came from
 
@@ -420,17 +437,18 @@ does not admit a use case. Preparation creates no executable tests. Quality rule
 ## Scope
 
 - Applies to an item's intent, its prepared spec and the pending contracts the
-  spec references, and to the builder's mechanism note that delivers it.
+  spec references, and to the builder's completed implementation that delivers it.
 - Applies to the author and the preparation driver, and to the builder and the
   work driver where the implementation meets the spec.
 
 ## Enforcement
 
 - The author self-checks against this policy before reporting the spec ready
-  for challenge; the builder does the same for its mechanism note.
+  for challenge; the builder does the same for the complete implementation before handoff.
 - The preparation driver challenges the spec against it, and the work driver
-  challenges the mechanism note and the commits against it; each violation is a
-  finding with its evidence.
+  reviews the completed implementation against it after authorship ends; each
+  finding meets `sdlc/procedure/lifecycle/review`, including isolation and its
+  causal evidence and bounded-closure requirements.
 
 ## Exceptions
 

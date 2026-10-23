@@ -1,5 +1,5 @@
 ---
-description: 'Write the fleshed-out spec of one item into its body from the intent it carries, and dispose the challenges the preparing session raises.'
+description: Independently complete one item specification and its pending contracts before handing the exact revision to review.
 visibility: 'internal'
 role: intaker
 parameters:
@@ -14,6 +14,8 @@ dispatch:
 
 ## Required reads
 
+@~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
+
 @~/.teleclaude/docs/sdlc/principle/design-fundamentals.md
 @~/.teleclaude/docs/sdlc/principle/module-depth.md
 @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
@@ -21,10 +23,11 @@ dispatch:
 
 ## Goal
 
-Author the spec for one item in that item's body: what the outcome is, any
-admitted user-goal use cases, and the invariants that must hold. The preparing
-session that dispatched you challenges what you write; you own the content and
-dispose every challenge with a change or with evidence.
+Independently turn the item's authorized intent into a complete specification
+and its owning pending contracts. Your preparing session coordinates the work;
+it reviews the finished artifact afterward under
+`sdlc/procedure/lifecycle/review`. You own the artifact and its remediation,
+not its approval.
 
 ## Preconditions
 
@@ -36,61 +39,50 @@ dispose every challenge with a change or with evidence.
 
 ## Steps
 
-1. **Read the intent as it arrived.** A line, a brain dump or a worked proposal
-   all count; the body is the input until you replace it. The item may also
-   carry artifacts, such as a filer's implementation plan or artifacts carried
-   over from an earlier lifecycle; read them with
-   `telec todo show <item> --include-artifact-content`. They are
-   non-authoritative proposals the preparing session judges independently: you
-   write the spec into the body, and the prepared act binds the body revision.
-2. **Bound the design.** Apply the design focuses in
-   `sdlc/policy/preparation-artifact-quality` from the intent and sources before
-   choosing the approach. State the smallest complete outcome at the project's
-   actual operating scale and trust boundary. Ground its delivery in the
-   existing path for comparable outcomes (`sdlc/policy/substrate-anchoring`).
-   Include the requirements this outcome needs; apply KISS and YAGNI to each
-   inferred addition (`sdlc/principle/design-fundamentals`). Name a necessary
-   departure from that path and its reason in the inference record. Scope
-   remains within the authorized intent (`general/policy/human-contract`).
-   Identify the project's testing ruling and existing verification path. Report
-   an evidence gap for driver disposition; a new verification capability belongs
-   in the design only when it is explicitly within the authorized scope
-   (`sdlc/policy/testing`, `general/policy/human-contract`).
-3. **Write the spec into the body.** Keep the original intent at the top. Then:
-   the outcome and prose behavioral contract; user goals admitted under
-   `sdlc/procedure/feature-spec-authoring` as Gherkin `Given / When / Then`;
-   invariants as falsifiable claims, including what holds when a step
-   fails midway, when two actors act at once, and across a restart. Reference
-   contracts other contexts own instead of restating them. For a bug, state the
-   cause the spec rests on: the causal mechanism with its evidence, an occurrence
-   or a dangerous path in the terms of `sdlc/concept/defect-evidence`; a cause
-   the filer supplied is input, and you show the evidence for it or state what is
-   missing. When the spec changes a domain rule, name the single bounded context
-   that owns the rule and the layer used inside it.
-4. **Record what you inferred.** Record a note saying what the body now says
-   beyond the literal input and why each addition belongs. State as a question
-   anything that would change the intent itself.
-   Once the spec converges, author its durable contract changes in the owning
-   pending snippets on the shared branch, through
-   `general/procedure/doc-snippet-authoring`. Use the existing commit and
-   review path (`general/policy/commits`); give the preparing session the
-   snippet IDs and commits for its independent review before readiness.
-   The issue or item body carries the delivery scope and references those
-   contracts (`general/policy/documentation-discipline`).
-5. **Report and stop.** End your turn with one line saying the body is ready for
-   challenge and naming its revision. The preparing session reads that.
-6. **Dispose challenges.** When a challenge arrives as a note, answer each item
-   in one note: changed, with the body edited accordingly, or rejected, with the
-   clause or evidence that rejects it. Then report and stop as in step 5.
+1. **Ground the assignment independently.** Read the authorized intent, carried
+   artifacts and affected owner contracts. Apply
+   `sdlc/policy/preparation-artifact-quality` and
+   `sdlc/policy/definition-of-ready`, including applicable implementation-language,
+   tooling, security and verification policies before choosing the approach.
+   Establish the existing path and relevant external prior art from their
+   sources; a mechanism suggested in the input is a candidate, not authority.
+2. **Complete the specification.** Develop the smallest coherent outcome within
+   the authorized scope, with explicit ownership, failure behavior, dependencies
+   and material assumptions. Write the spec into the item's body. Add Gherkin
+   only for admitted user goals under `sdlc/procedure/feature-spec-authoring`.
+   A bug's spec states the evidenced cause under `sdlc/concept/defect-evidence`.
+   Use the existing log for the reasons and inferences that belong to this work;
+   proposed technical details remain subject to the governing policies.
+3. **Complete the owning contracts.** Author the converged durable changes in
+   pending snippets on the shared branch under
+   `general/procedure/doc-snippet-authoring`. Commit coherent complete content
+   through `general/policy/commits`. Self-check the whole artifact against the
+   applicable policies, ownership boundaries and readiness gates. Do not solicit
+   early draft approval or exchange design proposals with the future reviewer.
+4. **Hand off and stop.** Return the completed body revision, exact pending
+   snippet commits, scope references and available evidence. The preparing
+   session initiates independent review. Continue no edits to that target while
+   its verdict is being formed. A concrete operational obstruction is reported
+   separately; it does not authorize a live design conversation.
+5. **Dispose the complete findings independently.** After the finished verdict,
+   record each finding as changed or rejected with its governing evidence.
+   Implement the smallest compliant correction, carry any changed premise
+   through the whole artifact, then return the new complete revision and stop.
+   A finding cannot enlarge the assignment or prescribe its implementation.
+   A genuine unresolved disagreement is recorded for the preparing session's
+   isolated adjudication path under `sdlc/procedure/lifecycle/review`.
 
 ## Outputs
 
-- The item's body as the spec, with references to its owning contracts.
-- Pending snippet commits for the driver's independent review, or an explicit
-  `doc_impact_none` reason under `general/policy/documentation-discipline`.
-- Notes: the inference record and every disposition.
+- The complete item specification and exact revision for review.
+- Owning pending snippet commits, or the explicit no-impact reason.
+- Inference records, evidence limits and completed finding dispositions in the
+  existing item log.
 
 ## Recovery
 
-- A challenge you cannot dispose with evidence or a change: say so in the
-  disposition and leave it open; the preparing session decides.
+- If authorized intent or necessary owner evidence is missing, return the
+  precise obstruction and preserved artifact through the preparing session.
+- If a finding is disputed, retain the finding and its evidence-backed
+  disposition. Await the independent determination instead of negotiating
+  approval or implementing an unsupported demand.

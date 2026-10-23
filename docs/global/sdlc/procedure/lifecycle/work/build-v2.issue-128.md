@@ -1,5 +1,5 @@
 ---
-description: "Build the spec of a prepared item on its branch, commit as you go, and answer the delivering session's findings."
+description: Independently finish the prepared implementation, then answer a complete review verdict with a coherent remediation.
 visibility: 'internal'
 role: builder
 parameters:
@@ -14,16 +14,19 @@ dispatch:
 
 ## Required reads
 
+@~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
+
 @~/.teleclaude/docs/sdlc/principle/design-fundamentals.md
 @~/.teleclaude/docs/sdlc/principle/module-depth.md
 @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
 
 ## Goal
 
-Implement the spec in a prepared item on the branch the platform gave it. The
-mechanism is yours, including changing it when the code disagrees with your
-first note; the spec is not. The delivering session that dispatched you reviews
-every commit and places findings against commits; you answer each of them.
+Implement the prepared specification independently in the assigned worktree.
+You own the mechanism, its policy conformance and the complete delivery. The
+work driver reviews only after you report a completed target; it does not
+co-design the implementation. Findings and remediation follow
+`sdlc/procedure/lifecycle/review`.
 
 ## Preconditions
 
@@ -38,67 +41,48 @@ every commit and places findings against commits; you answer each of them.
 
 ## Steps
 
-<!-- planned:reviewed-pr-contributions -->
-
-### Contributor assignments
-
-For a contributor-proposal assignment, commit through the sealed surface and
-report the exact local commits to the work driver. Its contribution contract
-governs assembly and publication of the reviewed subject. The driver receives
-the local completion notices before public branch publication and retains
-review authority (`sdlc/policy/process-change-authority`).
-
-For an imported proposal, begin with the project's contribution waiting
-assignment under this work driver. Continue its repair findings in this same
-claiming group once its current assessment permits the assigned work.
-<!-- /planned:reviewed-pr-contributions -->
-
-1. **Mechanism note.** Record a note with the mechanism you intend and the
-   invariants you commit to, including behavior on failure midway, concurrent
-   actors and restart. Report and stop your turn; the delivering session
-   challenges the note. Dispose each item in a note: changed, or rejected with
-   evidence. The note names the existing path being extended and the
-   smallest complete implementation path. Use the project's existing checks
-   and the journey coverage its testing ruling admits for this assignment.
-   Report an evidence gap to the driver; build a new verification capability only
-   when that capability is explicitly in scope (`sdlc/policy/testing`,
-   `general/policy/human-contract`). Temporary investigation stays in the
-   session's scratch space under that ruling. Apply KISS and
-   YAGNI to the complete mechanism, using module depth rather than helper counts
-   (`sdlc/principle/design-fundamentals`, `sdlc/principle/module-depth`). Coding
-   against the reviewed prepared contracts may proceed alongside the challenge.
-2. **Contracts first.** Consume the prepared pending snippets through the
-   delivery's target view before implementing their behavior. A missing or
-   contradictory contract goes to the driver for preparation recovery. When
-   implementation evidence requires a contract revision, give that evidence to
-   the driver; it routes authoring on the shared branch and independent review
-   before the affected code proceeds. Continue work independent of that revision
-   (`general/policy/documentation-discipline`,
-   `general/procedure/doc-snippet-authoring`).
-3. **Build and commit.** Implement the spec. Commit each coherent step through
-   `telec code commit --approved "<message>"` in the worktree; the commit
-   publishes the branch, so you push nothing separately. End your turn with one
-   line naming the commits pushed; the delivering session reviews them. On a bug,
-   change nothing beyond what the spec's cause requires
-   (`sdlc/procedure/debugging`). Report to the delivering session any temporary
-   suppression whose removal you defer; it decides under
-   `sdlc/policy/todo-creation-discipline`.
-4. **Answer findings.** Findings reach you at the start of each turn and when
-   you stop. Reply to each, naming it: changed, with the fixing commit, or
-   rejected, with evidence. Stop only for a finding you accept as a
-   contradiction of the spec; everything else continues.
-5. **Build complete.** When the spec is implemented and every finding is
-   answered, record a note that the build is complete naming the head commit,
-   and stop. The delivering session decides readiness.
+1. **Ground and choose the mechanism.** Read the prepared body and owning
+   pending contracts, affected source and applicable language/tooling policies.
+   Establish the existing path and relevant prior art before choosing parts.
+   Use the assignment's existing checks and admitted journey coverage under
+   the project's testing ruling. An evidence gap is reported as such; it does
+   not authorize a new verification capability. Keep material design reasons
+   with the change description rather than submitting an early mechanism for
+   the future reviewer to approve.
+2. **Build the complete scoped outcome.** Implement and self-check against the
+   governing policies and prepared contract. Commit coherent steps through the
+   sealed worktree flow; publication records progress, not review approval.
+   Send operational status or a concrete obstruction when needed, without
+   soliciting interim technical review. On a bug, preserve the evidenced causal
+   scope under `sdlc/procedure/debugging`. A necessary contract revision returns
+   to its existing owner before the affected source proceeds.
+3. **Hand off the completed target.** Once the complete implementation and
+   existing checks are ready, report the exact head, whole delivery scope,
+   validation outcomes and explicit limits, then stop editing that target.
+   The driver starts independent review. A partially finished mechanism or one
+   coherent commit is not the complete-delivery handoff.
+4. **Dispose the finished verdict independently.** Record each finding as fixed
+   or rejected with evidence under the shared review procedure. Choose the
+   smallest compliant remedy yourself, recheck the affected invariant across
+   the change, and commit the coherent remediation. A reviewer supplies no
+   authority for scope expansion or new verification infrastructure.
+5. **Return the complete remediation and stop.** Name the new head, changed
+   findings and closure evidence. Await the reviewer verdict; do not negotiate
+   the implementation in parallel with review. An unresolved validity or scope
+   dispute goes to the driver's isolated adjudication path. Readiness is never
+   inferred from answering a finding.
 
 ## Outputs
 
-- Commits on the branch; the item's log with your notes and replies.
-- The mechanism note and its dispositions.
+- The complete implementation and coherent remediation commits on the branch.
+- A completed-target handoff with exact source identity and existing-check
+  results, including what remains unexercised.
+- Evidence-backed finding dispositions in the existing item record.
 
 ## Recovery
 
-- A finding you cannot answer with a change or evidence: say so in the reply
-  and continue with what does not depend on it.
-- The spec cannot be built as written: record what contradicts it and stop; the
-  delivering session decides whether the item goes back to preparation.
+- A wrong or unbuildable spec returns with its concrete contradiction and
+  preserved source to the work driver for preparation recovery.
+- Missing evidence or a disputed finding remains explicit. Continue only work
+  independent of that obstruction; obtain a completed owner disposition rather
+  than co-designing a workaround with the reviewer.

@@ -32,6 +32,53 @@ citation rules, severity schema, verdict arithmetic, and reviewer separation.
 
 ## Steps
 
+<!-- planned:issue-128 -->
+
+### Sequential review isolation
+
+The producer completes a coherent target before technical review begins. The
+reviewer establishes intent, governing policies, applicable language/tooling
+rules and relevant existing solutions independently, before reading the
+producer's rationale. A proposed contract or an earlier approval does not
+supply its own policy exception (`general/principle/grounding`,
+`general/policy/conflict-resolution`). Preparation review applies the policies
+of the proposed implementation as well as artifact-quality and readiness rules;
+waiting for code to exist would approve a design that its language forbids.
+
+Independence includes design participation, not only file authorship. A reviewer
+has neither authored the target nor chosen, directed or negotiated its solution,
+nor reviewed its in-progress technical drafts.
+The phase driver may review only while that separation holds. Operational
+coordination, the initial intent brief and necessary scope or safety stops do
+not confer design authority. A driver that has co-designed the target obtains
+an unprimed reviewer; that reviewer receives the completed target, authorized
+intent, governing source pointers and factual evidence, not the producer's
+conversation, a proposed verdict or a defense of the chosen mechanism
+(`general/policy/leadership`, Adversarial peer invocation).
+
+Authoring and review occur in separate turns of work. Commit notifications and
+progress updates preserve continuity; they trigger no interim technical review.
+The reviewer returns a complete revision-bound report, then the producer
+independently completes its remediation or evidence-backed rejection. The
+reviewer evaluates that completed response under the convergence rules below;
+there is no live design negotiation between the two. The producer retains
+responsibility for the smallest compliant remedy, and a finding's closure
+condition conveys no implementation or scope authority
+(`sdlc/policy/preparation-artifact-quality`, Evidence does not reallocate ownership).
+
+A genuine unresolved dispute about a finding's validity, applicability or scope
+is assessed by one isolated adjudicator who did not design the target or form
+the disputed finding. The invoking coordinator supplies the exact target,
+authoritative intent and sources; the adjudicator derives the governing
+obligations before examining both recorded positions. Its result determines
+which cited obligation and evidence hold, not a new implementation. The
+responsible reviewer incorporates that evidence and records the resulting
+finding status and arithmetic verdict. A missing contract decision returns to
+its owner. Scope, prior findings and review history survive; an adjudicator's
+presence supplies no approval and no permission to weaken a valid finding
+(`general/policy/leadership`, Uncertainty stays with its owner).
+<!-- /planned:issue-128 -->
+
 ### 0. Ground the target and reuse relevant assessment evidence
 
 Establish the invoking procedure's target, scope and applicable contracts

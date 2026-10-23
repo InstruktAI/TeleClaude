@@ -7,7 +7,7 @@ delivered_by: [issue-128]
 
 ## What it is
 
-In work, two agent sessions cooperate on one item: the work driver, which holds the claim and scrutinizes every commit, and the builder, which owns the code. This spec owns what connects them on the item's own record: the notice that a commit reached the integration head, the findings the driver places against commits, and the stamp that makes the item a candidate. The phases and acts are `local/projects/teleclaude/spec/feature/workflow/item-lifecycle`; the mechanism is `local/projects/teleclaude/design/architecture/workflow-machine`.
+In work, two agent sessions act sequentially on one item: the builder independently completes the implementation, then the work driver reviews that complete target under `sdlc/procedure/lifecycle/review`. The driver holds the claim and coordinates progress without co-designing the solution. This spec owns what connects them on the item's own record: the notice that a commit reached the integration head, the findings the driver places against commits, and the stamp that makes the item a candidate. The phases and acts are `local/projects/teleclaude/spec/feature/workflow/item-lifecycle`; the mechanism is `local/projects/teleclaude/design/architecture/workflow-machine`.
 
 Facing: all actors are agent sessions. The integrator's guarantees (singleton lease, FIFO by ready time, resumable checkpoints, both already-integrated guards, exclusive push of the shared branch, residual-marker gate, one recorded delivery) are `local/projects/teleclaude/spec/feature/workflow/integration-state-machine` and hold as stated there.
 
@@ -32,7 +32,7 @@ One notice is raised for each new integration-head commit, naming the item, bran
 
 A publish whose outcome was not recorded, because the committing session ended between pushing and recording it, raises no notice of its own: a later head does not prove that the commit was ever the ref's tip. The current-head reading and the driver's review of the whole delta cover it.
 
-Delivery is at least once. Heads that landed while the platform was down, or whose publish outcome was not recorded, get no notice of their own; the driver reviews everything since the last commit it recorded as reviewed, so no commit between is skipped. The driver acts once per commit: a repeated notice for a commit it already recorded as reviewed adds nothing.
+Delivery is at least once. Heads that landed while the platform was down, or whose publish outcome was not recorded, get no notice of their own. Notices record progress and the latest head; they do not trigger technical review before the builder reports the completed target. The subsequent review covers the whole delivery delta, including commits without a notice. A repeated notice for a commit already examined in that review adds nothing. Review and completed remediation alternate under `sdlc/procedure/lifecycle/review`.
 
 ### Findings
 
@@ -44,7 +44,7 @@ The findings are item data written by the work driver, not instructions of the p
 
 ### Stamp
 
-The stamp is bound to a commit H. It is accepted only from the work driver, only when H is the integration head, the item's worktree branch head is H and its worktree is clean, and only when the build gates pass at H: the worktree carries commits beyond the shared branch that change files, and the project's native test target passes. Those references are checked again after the gates ran. A refusal names the disagreeing refs or the failing gate. When the integration ref cannot be read, the refusal says so; it never reads that as the ref being absent. The stamp carries the work driver's report of the review lanes it executed against the item's whole delta at H, and a stamp whose text is empty is refused naming the missing report; the machine checks that a report was recorded and grades none of it. The driver stamps only when no unresolved finding of the blocking tiers remains. A stamp makes the item `ready` at H, ends the builder and every other session of the driver's claiming group, and releases the claim. A stamp interrupted partway and run again completes the remaining steps and never writes a second stamp or notice for H.
+The stamp is bound to a commit H. It is accepted only from the work driver, only when H is the integration head, the item's worktree branch head is H and its worktree is clean, and only when the build gates pass at H: the worktree carries commits beyond the shared branch that change files, and the project's native test target passes. Those references are checked again after the gates ran. A refusal names the disagreeing refs or the failing gate. When the integration ref cannot be read, the refusal says so; it never reads that as the ref being absent. The stamp carries the complete independent report of the review lanes executed against the item's whole delta at H, identifying the reviewer if the driver required an unprimed review, and a stamp whose text is empty is refused naming the missing report; the machine checks that a report was recorded and grades none of it. The driver stamps only when no unresolved finding of the blocking tiers remains. A stamp makes the item `ready` at H, ends the builder and every other session of the driver's claiming group, and releases the claim. A stamp interrupted partway and run again completes the remaining steps and never writes a second stamp or notice for H.
 
 The stamp is submitted as a receipt-backed operation: the caller receives a receipt at once and the outcome is delivered to the calling session. The same request submitted again attaches to the same operation. At most one stamp's gates run on an item at a time: while one runs, a stamp that asks for something else is refused, and refusing it does not displace the running one. The phase and the holder are checked where the slot is taken, and a result is recorded only by the invocation that still owns the slot.
 
@@ -63,7 +63,8 @@ Given the builder publishes a commit that becomes the item's integration head
 When the platform observes that head
 Then exactly one notice names the item, branch and commit
 And the session holding the work claim receives it whatever the builder writes in its turn
-And the driver reviews everything since the last commit it recorded as reviewed
+And the notice records progress without starting technical review before the completed-target handoff
+And the subsequent review covers the complete delivery delta
 ```
 
 #### UC-RC2: Only a confirmed head raises a notice

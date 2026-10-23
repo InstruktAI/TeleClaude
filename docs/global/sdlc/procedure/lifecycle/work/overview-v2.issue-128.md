@@ -1,5 +1,5 @@
 ---
-description: 'Drive the delivery of one prepared item: derive the invariants, dispatch one builder, scrutinize every commit against the spec, and decide when it is ready.'
+description: Coordinate a complete independent build, then review the whole pinned delivery before recording readiness.
 visibility: 'internal'
 role: work-orchestrator
 parameters:
@@ -38,6 +38,8 @@ workflow:
 
 ## Required reads
 
+@~/.teleclaude/docs/sdlc/procedure/lifecycle/review.md
+
 @~/.teleclaude/docs/sdlc/principle/design-fundamentals.md
 @~/.teleclaude/docs/sdlc/principle/module-depth.md
 @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
@@ -47,11 +49,11 @@ workflow:
 
 ## Goal
 
-Deliver the spec in a prepared item through one builder you dispatch and
-scrutinize. You hold the claim and decide readiness; the builder owns the
-mechanism. Your findings are bound to commits and placed where the store keeps
-them: as review comments on the pull request where the store has pull requests,
-and as findings in the item's log where it does not.
+Deliver a prepared specification through a builder working independently,
+followed by an isolated review of its complete implementation. You hold the
+claim and route the work; you do not co-design the mechanism you later judge.
+Review eligibility, findings and adjudication follow
+`sdlc/procedure/lifecycle/review`.
 
 ## Preconditions
 
@@ -71,122 +73,74 @@ and as findings in the item's log where it does not.
 
 ## Steps
 
-<!-- planned:reviewed-pr-contributions -->
-
-### Contributor assignments
-
-For a contributor-proposal assignment, follow the project's contribution
-contract's review-before-publication route. Review the complete local subject
-from the builder's commit notices, invoke its recorded branch-publication
-operation for the exact reviewed commit, and then perform the ordinary
-readiness act. The ready-item handoff uses that project's proposal operation.
-The work driver's item authority and native readiness gates remain the
-ordinary lifecycle's (`sdlc/policy/process-change-authority`).
-
-For an imported proposal owned by prepared work, begin with the project's
-read-only admission assessment and its normal child waiting in your claiming
-group. Give ordinary repair findings to that same builder. A real return to
-preparation follows the lifecycle's separate closing contract.
-<!-- /planned:reviewed-pr-contributions -->
-
-1. **Enter.** Call the entry verb for the item. The first call claims the item
-   for you, and its instruction names the branch and worktree the builder works
-   in. Every later call returns the instruction for the phase. When the
-   instruction names the phase `ready`, you hold a ready item that was not yet
-   admitted: follow step 10 and nothing else.
-2. **Derive before reading the builder's note.** Record a note with the
-   obligations you will hold the build to and the failure, ordering,
-   concurrency and representation behavior you expect from the spec.
-   Verify the prepared body points to its reviewed pending contracts or explicit
-   `doc_impact_none` reason before dispatch. A missing handoff stays with the
-   existing preparation owner; route
-   it for completion and preserve any existing builder and worktree. Later
-   contract discoveries follow the same shared-branch authoring and independent
-   review path before the affected implementation continues
-   (`general/policy/documentation-discipline`).
-3. **Dispatch the builder.** Start the child the instruction names. Its turn
-   completions reach you as notifications.
-4. **Converge on the mechanism.** Compare the builder's proposal with your
-   independent derivation and the existing delivery path. Judge necessity and
-   proportionality before challenging implementation details. Ground the
-   product mechanism in its existing owner (`sdlc/policy/substrate-anchoring`).
-   Apply the project's testing ruling to verification: use existing checks and
-   admitted journey coverage. A new verification capability requires explicit
-   scope; a failing check, missing evidence or review finding grants none.
-   Resolve such gaps within the assignment or retain the actual scope question
-   before construction (`sdlc/policy/testing`, `general/policy/human-contract`).
-   Direct removal or simplification of unsupported machinery; the builder owns
-   the implementation. Preserve required guarantees when simplifying their
-   mechanism, and route a necessary contract change through doc-first authoring
-   and independent review (`sdlc/policy/process-change-authority`). Coding
-   against settled contracts may proceed alongside the challenge.
-5. **Scrutinize commits.** Each published commit reaches you as a notice naming
-   the item, branch and commit. Review the delta since the last commit you
-   recorded as reviewed, reading code at that commit from the canonical
-   repository and probing only in your own scratch directory, never in the
-   builder's worktree. Ask of every state change, removed guard, new caller of
-   an existing check and value that can reach a write: what fails midway, what
-   runs at once, what is no longer caught, what representation crosses into a
-   write. Perform the reviewed act for each commit you examined, and place each
-   finding at the commit with the contract it contradicts and the condition that
-   reaches it. A notice for a commit you already recorded adds nothing. On a
-   bug item hold the build to its cause: no change beyond what the cause
-   requires (`sdlc/procedure/debugging`). Decide the removal of a temporary
-   suppression the builder reports as deferred under
-   `sdlc/policy/todo-creation-discipline`.
-   Reassess the whole delivery when a mechanism adds a subsystem or materially
-   expands its verification work. State which remaining change makes the complete
-   outcome usable, and direct the next work toward it; local review progress
-   does not establish delivery readiness. Challenge growth against the same
-   necessity and proportionality judgment used at mechanism convergence
-   (`sdlc/principle/design-fundamentals`).
-6. **Hold the builder to the contract, not to the plan.** The builder replies to
-   each finding and may change the mechanism freely; it stops only for a finding
-   it accepts as a contract contradiction. A finding answered is not a verdict.
-7. **Final pass.** When the builder reports the build complete, review the whole
-   diff against the spec and your ledger. Execute every applicable lane of
-   `sdlc/policy/definition-of-done-lanes` against the item's whole delta at the
-   integration head; you qualify as the independent reviewer because you did not
-   write the code. Readiness is your judgment against contract, evidence and
-   consequence. Ready means no Requirement-Violation, Critical or Important
-   finding is unresolved: perform the stamp act at the integration head with the
-   lane report as its text, one line per lane as that policy requires of a
-   reviewer. The gates run at that commit, and a stamp that succeeds makes the
-   item ready, ends the builder and releases your claim. A stamp without the lane
-   report is refused. Not ready: say what remains and let the builder continue.
-8. **Questions the person owns.** When the work meets a fork that is the
-   person's, perform the waiting act naming them and stating the question; the
-   item waits and you end.
-9. **Kickback.** When the spec itself is wrong or unbuildable, perform the
-   kickback act with the reason, keep the branch, and end; the item returns to
-   preparation.
-10. **A ready item held under a reason.** The instruction lists every reason
-    that was stated for the item since its stamp and carries a key. Test the
-    reasons against the prepared spec at its revision and the delta at the
-    stamped commit. When a reason shows the spec wrong or unbuildable, or the
-    commit not meeting the spec, perform the kickback act with a reason of your
-    own that says which. Otherwise record a note saying why the reasons do not
-    hold and perform the release act with the instruction's key. If the release
-    is refused because a later reason arrived, call the entry verb again, read
-    the new instruction and judge again. End your phase in the turn in which you
-    judge.
+1. **Enter and brief.** Follow the entry instruction. For a ready item returned
+   under a reason, use step 8 only. Otherwise confirm the prepared body revision
+   and reviewed owner contracts, then dispatch the named builder with intent,
+   constraints, source pointers and the existing verification scope. Supply no
+   preferred mechanism. A missing or contradictory contract returns to its
+   existing preparation owner before affected implementation proceeds.
+2. **Let the builder complete the delivery.** Receive commit notices as progress
+   and source identity, not as per-commit review requests. The builder owns its
+   mechanism and self-checks against the policies. Monitor operational liveness
+   and concrete scope or safety obstructions through the existing session
+   procedure; do not exchange design proposals or findings while it is building.
+   Record the latest head without marking it reviewed. A completed blocker
+   assessment may return to preparation; it does not open collaborative design.
+3. **Establish the review independently.** Once the builder reports complete,
+   resolve the exact head and whole delivery delta. Derive the obligations from
+   the prepared intent, governing policies and current source before reading the
+   builder's reasoning. Load every applicable language policy and verify the
+   actual integration paths against it. A spec or previous approval cannot
+   waive a governing rule. If you contributed to the solution, use an unprimed
+   reviewer under `sdlc/procedure/lifecycle/review`; give it the finished target
+   and authoritative inputs, not the builder's conversation or a verdict hint.
+4. **Review the whole target.** Execute every applicable lane of
+   `sdlc/policy/definition-of-done-lanes` at the pinned integration head,
+   including the existing checks admitted by this project's testing ruling.
+   Cover the complete delivery rather than just its last commit. Return the
+   complete report and revision-bound findings in one handoff. The shared
+   review procedure owns evidence standards and the blocking arithmetic;
+   record only actually examined commits through the reviewed act.
+5. **Run sequential remediation.** The builder independently disposes the
+   finished findings and returns a complete revised target. Do not steer its
+   implementation or negotiate findings during that work. Re-review resolves
+   the findings and inspects the remediation delta under the shared convergence
+   rules. Keep source defects, evidence limitations and out-of-scope leads
+   distinct. Route a genuine unresolved scope or validity dispute to one
+   isolated adjudicator; preserve the ledger and target while it is assessed.
+6. **Stamp the approved head.** Require the complete independent report, all
+   applicable lanes and zero unresolved Requirement-Violation, Critical or
+   Important findings. The review must cover the exact integration head and
+   resulting whole delivery. Perform the stamp with that report, identifying
+   the reviewer when it was a separate session. The machine records the report
+   and runs its existing gates; it does not replace the independent judgment.
+   If the head or governing contract moves, resolve that change before stamping.
+   End completed helpers through the normal lifecycle and release the claim.
+7. **Return a wrong contract to its owner.** Evidence that the spec itself is
+   wrong or unbuildable goes through preparation recovery, preserving the branch
+   and findings. Human-owned decisions follow `general/policy/human-contract`;
+   technical uncertainty or disagreement alone never transfers ownership.
+8. **Judge a reason on a ready item.** Test the stated reasons against the
+   prepared revision and stamped delta under the same finding-validity rules.
+   If a valid reason shows the spec or delivery wrong, perform kickback and
+   preserve the branch. Otherwise record why the reason does not hold and
+   perform the release act with the instruction's key. A later reason requires
+   a new reading, never an inferred release.
 
 ## Outputs
 
-- A log that reads as the record of the cooperation: derivation, mechanism
-  convergence, findings with their replies, readiness or kickback.
-- Commits recorded as reviewed, and a stamp bound to the ready commit.
+- A complete implementation at a named head, followed by independent
+  revision-bound review and sequential remediation records.
+- A stamp carrying the complete independent lane report at the approved head,
+  or a grounded return to preparation with the work preserved.
 
 ## Recovery
 
-- The builder stops reporting: silence establishes no failure. Read the
-  builder's session evidence first, its transcript and its live pane
-  (`general/procedure/ai-to-ai-operations`). When the evidence shows the worker
-  failed, start it again once through the same child command; the branch is its
-  resumption point. A failure after that, or a condition the evidence cannot
-  settle, is recorded in a note with the evidence and taken to an independent
-  peer before you act on it.
-- You are started again after an interruption: the entry verb returns your
-  claim and the instruction; your last reviewed commit is in the log, and you
-  continue from it.
-- You are started for an item you no longer hold: the entry verb says so; end.
+- Use `general/procedure/ai-to-ai-operations` for concrete session failures;
+  silence and commit notices alone do not establish readiness or failure.
+- A resumed driver re-establishes source identity, existing findings and its
+  independence. A driver that helped shape the solution obtains an unprimed
+  review rather than certifying that contribution.
+- A missing prerequisite stays with its named owner. Preserve completed work
+  and route only the contribution actually needed to proceed.
+- If the entry instruction says the item is no longer held, end.
