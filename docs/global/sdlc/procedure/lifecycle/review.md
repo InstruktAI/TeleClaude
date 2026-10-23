@@ -1,12 +1,5 @@
 ---
-description: Shared independent review contract, also directly dispatchable for a completed target with a caller-supplied intent and revision.
-role: reviewer
-parameters:
-  - name: target
-    required: true
-dispatch:
-  agent: [codex, claude, gemini, deepseek]
-  thinking_mode: slow
+description: Shared review execution contract for lanes, evidence, citations, severity, verdict arithmetic, and reviewer separation.
 ---
 
 # Review — Procedure
@@ -33,44 +26,15 @@ citation rules, severity schema, verdict arithmetic, and reviewer separation.
 
 ## Preconditions
 
-- The invoking procedure or direct dispatch brief has resolved the exact review target.
-- The invoking procedure or direct dispatch brief has named the applicable intent or governing contract.
+- The invoking procedure has resolved the exact review target.
+- The invoking procedure has named the applicable intent or governing contract.
 - The target's complete changed-file surface is available.
 
 ## Steps
 
-### Direct invocation
-
-When this procedure is the session's launch assignment, `$ARGUMENTS` names the
-completed target. The dispatch brief supplies the review kind (preparation,
-coherent commit, or whole delivery), authoritative intent, source pointers and
-exact revision: body revision and contract commits for preparation, or base and
-head commits plus the prepared spec revision for source review. The producer
-has finished that target and stopped editing it. Missing target or authority
-returns a concrete gap to the caller before a verdict.
-
-For preparation, load `sdlc/policy/definition-of-ready` and
-`sdlc/policy/preparation-artifact-quality`, derive the obligations independently
-and anticipate the applicable delivery lanes, including the implementation's
-language/tooling policies. For a v2 issue specification, assess those readiness
-properties in the completed body and its referenced contracts; no separate
-legacy plan artifact or legacy phase stamp is implied. For source, execute the lanes against the named
-commit or resulting whole delivery. Reconcile prior evidence with its revision
-limits. Apply all shared evidence, finding and convergence rules below.
-
-Return one complete report in your own turn output, bound to your reviewer
-identity, exact target, intent revision and review kind. Include every
-applicable lane, evidence limits, finding dispositions and the arithmetic
-verdict. The calling driver records the report through its existing result
-surface. Direct invocation performs no code or lifecycle stamp and edits no
-delivery artifact. When another procedure loads this one as a required read,
-that invoking procedure continues to own target resolution and result writes.
+<!-- planned:issue-128 -->
 
 ### Sequential review isolation
-
-The handoff and cadence rules in this section govern the v2 prepare/work
-procedures. Other invoking procedures retain their own phase and result
-mechanics; their reviewers still apply the shared finding and separation rules.
 
 The producer completes a coherent target before technical review begins. The
 reviewer establishes intent, governing policies, applicable language/tooling
@@ -91,9 +55,7 @@ sources independently before reconciling the producer's recorded rationale
 (`general/policy/leadership`, Adversarial peer invocation).
 
 Review follows each completed coherent commit and, separately, the completed
-whole delivery. Review classification still follows `general/policy/commits`:
-a mechanical merge that authors no new content does not create another source
-review gate. A commit is one intelligible change with a stated purpose,
+whole delivery. A commit is one intelligible change with a stated purpose,
 boundaries and checks; it need not implement the whole feature. Review tests
 the obligations that apply at that step and preserves planned later work as
 later work. An enabled broken path or policy violation is a present defect;
@@ -134,6 +96,7 @@ finding status and arithmetic verdict. A missing contract decision returns to
 its owner. Scope, prior findings and review history survive; an adjudicator's
 presence supplies no approval and no permission to weaken a valid finding
 (`general/policy/leadership`, Uncertainty stays with its owner).
+<!-- /planned:issue-128 -->
 
 ### 0. Ground the target and reuse relevant assessment evidence
 
