@@ -10,6 +10,15 @@
 # the override is absent. Tests and ops that point TELECLAUDE_HOME at a
 # tmp tree get a self-consistent shell environment in that tree.
 TC_HOME="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
+# The daemon supplies this command-only route after reading persisted bindings.
+# Missing routing material must not select the external provider CLI instead.
+if [ -n "${TELECLAUDE_GITHUB_BIN:-}" ]; then
+  if [ ! -d "$TELECLAUDE_GITHUB_BIN" ] || [ ! -x "$TELECLAUDE_GITHUB_BIN/gh" ]; then
+    printf '%s\n' 'TeleClaude bound GitHub command route unavailable' >&2
+    exit 72
+  fi
+  PATH="$TELECLAUDE_GITHUB_BIN:$PATH"
+fi
 case ":$PATH:" in
   ":$TC_HOME/bin:"*) ;;
   *) PATH="$TC_HOME/bin:$PATH" ;;

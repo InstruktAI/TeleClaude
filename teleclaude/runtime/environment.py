@@ -20,7 +20,8 @@ from teleclaude.paths import BIN_DIR
 
 logger = get_logger(__name__)
 _SHELL_ENV_CAPTURE_TIMEOUT_SECONDS = 5
-_SHELL_CAPTURE_ENV_REMOVALS = ("ZDOTDIR", "BASH_ENV", "ENV", "TELECLAUDE_HOST_SHELL")
+GITHUB_COMMAND_ROUTE_ENV = "TELECLAUDE_GITHUB_BIN"
+_SHELL_CAPTURE_ENV_REMOVALS = ("ZDOTDIR", "BASH_ENV", "ENV", "TELECLAUDE_HOST_SHELL", GITHUB_COMMAND_ROUTE_ENV)
 _PATH_ENV_NAME = "PATH"
 _HOST_XDG_ENV_NAMES: tuple[str, ...] = ("XDG_DATA_HOME", "XDG_CACHE_HOME")
 _CAPTURED_ENV_NAMES: tuple[str, ...] = (_PATH_ENV_NAME, *_HOST_XDG_ENV_NAMES)
@@ -240,9 +241,12 @@ def _dedupe_path_entries(entries: list[str]) -> list[str]:
     return deduped
 
 
-def compose_runtime_path(path_value: str, *, teleclaude_bin: Path = BIN_DIR) -> str:
-    """Return PATH with TeleClaude bin first and all existing entries preserved."""
-    entries = [str(teleclaude_bin), *path_value.split(os.pathsep)]
+def compose_runtime_path(path_value: str, *, teleclaude_bin: Path = BIN_DIR, github_bin: Path | None = None) -> str:
+    """Pin the git wrapper first, an assigned private GitHub route second, then inherited tools."""
+    entries = [str(teleclaude_bin)]
+    if github_bin is not None:
+        entries.append(str(github_bin))
+    entries.extend(path_value.split(os.pathsep))
     return os.pathsep.join(_dedupe_path_entries(entries))
 
 

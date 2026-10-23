@@ -19,6 +19,15 @@ for _tc_dir in "$HOME/.npm-global/bin" "$HOME/.cargo/bin" "$HOME/.local/bin"; do
     *) PATH="$_tc_dir:$PATH" ;;
   esac
 done
+# The daemon supplies this command-only route after reading persisted bindings.
+# Missing routing material must not select the external provider CLI instead.
+if [ -n "${TELECLAUDE_GITHUB_BIN:-}" ]; then
+  if [ ! -d "$TELECLAUDE_GITHUB_BIN" ] || [ ! -x "$TELECLAUDE_GITHUB_BIN/gh" ]; then
+    printf '%s\n' 'TeleClaude bound GitHub command route unavailable' >&2
+    exit 72
+  fi
+  PATH="$TELECLAUDE_GITHUB_BIN:$PATH"
+fi
 # The agent-session git wrapper MUST win: $TC_HOME/bin first. Front-anchored
 # guard so a non-first occurrence is moved to the front.
 case ":$PATH:" in

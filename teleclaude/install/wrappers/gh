@@ -1,0 +1,10 @@
+#!/bin/sh
+# This entry is reached only through the daemon's absolute per-session symlink.
+# It runs the finite Python facade, never the separately installed provider CLI.
+set -eu
+
+SOURCE="$(readlink "$0")"
+INSTALL_DIR="$(cd "$(dirname "$SOURCE")/../../.." && pwd)"
+export TELEC_INVOCATION_CWD="$PWD"
+cd "$INSTALL_DIR"
+exec "$INSTALL_DIR/.venv/bin/python" -m teleclaude.entrypoints.github "$@"

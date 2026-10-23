@@ -5,14 +5,19 @@ import os
 import re
 import shlex
 import shutil
+import stat
 from pathlib import Path
+from typing import Final
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.config.machine import config
+from teleclaude.core.db import get_db
 from teleclaude.paths import (
     BIN_DIR,
     DEFAULT_TELECLAUDE_HOME,
+    REPO_ROOT,
     SESSION_DECLARATIONS_FILENAME,
     SHELL_DIR,
     TELECLAUDE_HOME,
@@ -20,10 +25,13 @@ from teleclaude.paths import (
     session_tmp_dir,
 )
 from teleclaude.runtime.environment import (
+    GITHUB_COMMAND_ROUTE_ENV,
+    compose_runtime_path,
     filter_platform_session_environment,
     host_xdg_env,
     resolve_runtime_environment,
 )
+from teleclaude.session_identity import write_session_identity_to
 
 from ._pane import kill_session, session_exists
 from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout
@@ -33,6 +41,62 @@ logger = get_logger(__name__)
 _SETUP_STEP_NO_COLOR_DONE = "__tc_setup_no_color_done__"
 _SETUP_STEP_DESTROY_DONE = "__tc_setup_destroy_done__"
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_EMPTY = ""
+_PATH_ENV: Final = "PATH"
+_TMPDIR_ENV = "TMPDIR"
+_TMP_ENV = "TMP"
+_TEMP_ENV = "TEMP"
+_GITHUB_COMMAND_DIRECTORY = "github-bin"
+_GITHUB_COMMAND_NAME = "gh"
+_GITHUB_SHARED_ENTRY = BIN_DIR / _GITHUB_COMMAND_NAME
+_GITHUB_COMMAND_SOURCE = REPO_ROOT / "teleclaude" / "install" / "wrappers" / _GITHUB_COMMAND_NAME
+_RUNTIME_PYTHON = REPO_ROOT / ".venv" / "bin" / "python"
+_GITHUB_ROUTE_UNAVAILABLE = "Complete persisted GitHub binding and private command route are required"
+
+
+class _GitHubRouteRefused(ValueError):
+    """A bound pane must not take the ordinary creation-race fallback after routing fails."""
+
+
+async def _github_route_required(session_id: str | None) -> bool:
+    """Select routing from persisted actor and target facts, never caller environment or arguments."""
+    if session_id is None:
+        return False
+    store = await get_db()
+    binding = await store.get_github_session_binding(session_id)
+    target = await store.get_github_native_target(session_id)
+    if binding is None and target is None:
+        return False
+    if binding is None or target is None or binding.session_id != session_id:
+        raise _GitHubRouteRefused(_GITHUB_ROUTE_UNAVAILABLE)
+    return True
+
+
+def _prepare_github_command_route(session_tmp: Path) -> Path:
+    """Rebuild one private entry in the existing session TMPDIR; it supplies no posting authority."""
+    info = session_tmp.lstat()
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.getuid()
+        or stat.S_IMODE(info.st_mode) & 0o077
+        or _GITHUB_SHARED_ENTRY.exists()
+        or _GITHUB_SHARED_ENTRY.is_symlink()
+        or not _GITHUB_COMMAND_SOURCE.is_file()
+        or not os.access(_GITHUB_COMMAND_SOURCE, os.X_OK)
+        or not _RUNTIME_PYTHON.is_file()
+        or not os.access(_RUNTIME_PYTHON, os.X_OK)
+    ):
+        raise _GitHubRouteRefused(_GITHUB_ROUTE_UNAVAILABLE)
+    route = session_tmp / _GITHUB_COMMAND_DIRECTORY
+    if os.pathsep in str(route):
+        raise _GitHubRouteRefused(_GITHUB_ROUTE_UNAVAILABLE)
+    route.mkdir(mode=0o700)
+    route.chmod(0o700)
+    entry = route / _GITHUB_COMMAND_NAME
+    entry.symlink_to(_GITHUB_COMMAND_SOURCE)
+    if entry.readlink() != _GITHUB_COMMAND_SOURCE or not os.access(entry, os.X_OK):
+        raise _GitHubRouteRefused(_GITHUB_ROUTE_UNAVAILABLE)
+    return route
 
 
 def _describe_setup_chain_failure(stdout: bytes) -> str:
@@ -191,9 +255,10 @@ async def _create_tmux_session(
     Returns:
         True if successful, False otherwise
     """
+    github_bound = await _github_route_required(session_id)
     try:
         agent_env_vars: dict[str, str] = dict(env_vars or {})
-        controlled_env_vars: dict[str, str] = {}
+        controlled_env_vars: dict[str, str] = {GITHUB_COMMAND_ROUTE_ENV: _EMPTY}
 
         # Prevent oh-my-zsh last-working-dir plugin from overriding our -c directory.
         # The plugin auto-restores the last directory when starting in $HOME unless this var is set.
@@ -222,7 +287,7 @@ async def _create_tmux_session(
         controlled_env_vars["BASH_ENV"] = f"{shell_dir}/.bashenv"
         controlled_env_vars["ENV"] = f"{shell_dir}/.profile"
         runtime_env = resolve_runtime_environment()
-        controlled_env_vars["PATH"] = runtime_env["PATH"]
+        controlled_env_vars[_PATH_ENV] = runtime_env[_PATH_ENV]
         controlled_env_vars.update(host_xdg_env(runtime_env))
         host_shell = runtime_env.get("SHELL")
         if host_shell:
@@ -242,11 +307,21 @@ async def _create_tmux_session(
         # Use a per-session, empty TMPDIR to avoid inheriting sockets from global temp directories.
         agent_env_file: Path | None = None
         if session_id:
-            session_tmp_dir = await asyncio.to_thread(_prepare_session_tmp_dir, session_id)
-            controlled_env_vars["TMPDIR"] = str(session_tmp_dir)
-            controlled_env_vars["TMP"] = str(session_tmp_dir)
-            controlled_env_vars["TEMP"] = str(session_tmp_dir)
-            agent_env_file = await asyncio.to_thread(_write_agent_env_file, session_tmp_dir, agent_env_vars)
+            try:
+                session_tmp_dir = await asyncio.to_thread(_prepare_session_tmp_dir, session_id)
+                controlled_env_vars[_TMPDIR_ENV] = str(session_tmp_dir)
+                controlled_env_vars[_TMP_ENV] = str(session_tmp_dir)
+                controlled_env_vars[_TEMP_ENV] = str(session_tmp_dir)
+                if github_bound:
+                    route = await asyncio.to_thread(_prepare_github_command_route, session_tmp_dir)
+                    await asyncio.to_thread(write_session_identity_to, session_tmp_dir, session_id)
+                    controlled_env_vars[GITHUB_COMMAND_ROUTE_ENV] = str(route)
+                    controlled_env_vars[_PATH_ENV] = compose_runtime_path(runtime_env[_PATH_ENV], github_bin=route)
+                agent_env_file = await asyncio.to_thread(_write_agent_env_file, session_tmp_dir, agent_env_vars)
+            except (OSError, ValueError) as error:
+                if github_bound:
+                    raise _GitHubRouteRefused(_GITHUB_ROUTE_UNAVAILABLE) from error
+                raise
         elif agent_env_vars:
             msg = "session_id is required when injecting agent environment variables"
             raise ValueError(msg)
@@ -353,6 +428,8 @@ async def _create_tmux_session(
 
         return True
 
+    except _GitHubRouteRefused:
+        raise
     except (OSError, ValueError, SubprocessTimeoutError) as e:
         print(f"Error creating tmux session: {e}")
         return False
@@ -386,7 +463,7 @@ async def ensure_tmux_session(
         # If creation failed, re-check existence to handle race/duplicate creation.
         return await session_exists(name, log_missing=False)
 
-    except (OSError, ValueError, SubprocessTimeoutError) as e:
+    except (OSError, ValueError, SQLAlchemyError, SubprocessTimeoutError) as e:
         logger.error("Exception ensuring tmux session %s: %s", name, e)
         return False
 
