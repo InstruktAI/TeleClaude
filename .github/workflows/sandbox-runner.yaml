@@ -16,7 +16,7 @@ env:
 jobs:
   build-push:
     name: Build and Push Sandbox Runner
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
@@ -29,7 +29,7 @@ jobs:
         with:
           ref: ${{ env.HEAD_COMMIT }}
           fetch-depth: 2
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: '0.13.4'
 

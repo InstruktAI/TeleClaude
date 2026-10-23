@@ -7,7 +7,7 @@ delivered_by: [issue-128]
 
 ## Purpose
 
-Drive preparation and work of an item with two sessions per phase - a driver that holds the claim and decides readiness, and a child that owns the artifact - without the machine knowing which backend holds the item. The behavior is `local/projects/teleclaude/spec/feature/workflow/item-lifecycle` and `local/projects/teleclaude/spec/feature/workflow/work-review-cycle`; the commands that perform its acts are `local/projects/teleclaude/spec/feature/workflow/item-acts`; the store it reads and writes through is `local/projects/teleclaude/design/architecture/workflow-store`. Procedure activation (`local/projects/teleclaude/design/architecture/procedure-activation`) is the only way an event reaches a driver.
+Drive preparation and work of an item with a coordinating driver holding the claim, a producer child and a dedicated reviewer child without the machine knowing which backend holds the item. The behavior is `local/projects/teleclaude/spec/feature/workflow/item-lifecycle` and `local/projects/teleclaude/spec/feature/workflow/work-review-cycle`; the commands that perform its acts are `local/projects/teleclaude/spec/feature/workflow/item-acts`; the store it reads and writes through is `local/projects/teleclaude/design/architecture/workflow-store`. Procedure activation (`local/projects/teleclaude/design/architecture/procedure-activation`) is the only way an event reaches a driver.
 
 ## Inputs/Outputs
 
@@ -94,7 +94,29 @@ sequenceDiagram
 
 ### The review loop
 
-The builder commits through the sealed commit, which publishes and reports the pushed commit. The platform confirms the commit on the integration ref and raises the head notice, which activation delivers to the agent bound to the item. The driver records the commit as reviewed, places findings as ledger entries bound to commits, and the findings reach the builder at its stop and next turn start. At readiness the driver performs the stamp: the store commits the stamp, the phase and the ready effects together, and the integrator's candidate scan reads ready items through the port.
+The builder finishes a coherent unit and commits through the sealed flow,
+which publishes and reports the pushed commit. The platform confirms the
+integration ref and delivers its head notice to the holding driver. The builder
+hands off that exact unit and stops editing. The driver uses the existing
+session-run helper path to dispatch the dedicated reviewer, then continues that
+same reviewer with subsequent completed targets. The declared workflow child
+remains the producer; this adds no child selector, phase or verdict grader.
+
+The reviewer returns one complete report. The driver retains it with reviewer
+identity and target in the existing item log, records examined commits through
+`reviewed` and places the report's findings through `finding`. The builder waits
+for the complete verdict handoff before responding, even if individual findings
+arrive first through the existing stop/turn-start delivery. It independently
+finishes remediation for re-review; the next unit follows resolution of blocking
+findings. The driver arbitrates scope and procedure under the shared review
+contract without replacing the independent technical verdict.
+
+After all units, the reviewer assesses the resulting whole delivery and records
+its final lane report. The driver stamps only that independently approved head;
+the machine checks the existing references, gates and report presence, not the
+report's meaning. The store commits the stamp, phase and ready effects together,
+and the integrator's candidate scan reads ready items through the port. Existing
+claiming-group cleanup covers the producer, reviewer and any adjudicator.
 
 ## Failure modes
 
@@ -103,7 +125,7 @@ The builder commits through the sealed commit, which publishes and reports the p
 - **A body edit after a start from `prepared` was reserved**, while its request is still queued for delivery or activation, makes the request not stand when activation judges it. No work driver is created or woken, launch recovery releases the reservation, and the next work start is refused naming both revisions. An edit made after the driver was created is caught by the same check in the driver's claim.
 - **An item whose identity read fails, or that leaves the addressable band between admission's reads,** refuses the driver start or the child launch. No session is created and no result is carried.
 - **A body edit racing a claim or a prepared act** is decided by the writer lock: the edit precedes the act, which is refused, or follows it, which stands at the revision it named.
-- **A report lost between the sealed commit and the platform** leaves that commit without its own notice; the periodic reading raises the notice for the current head, and the driver's delta review covers the commits between.
+- **A report lost between the sealed commit and the platform** leaves that commit without its own notice; the periodic reading raises the notice for the current head, and the independent delta review covers the commits between.
 - **A push between the stamp's checks and admission** either fails the stamp's reference checks or leaves a stamp that candidate selection does not admit.
 - **A republish while a driver dispatches its child** launches the child from the driver's persisted set; the new set reaches drivers that start after it.
 - **A driver that ends without the platform learning of it** keeps its claim until it is released by hand.

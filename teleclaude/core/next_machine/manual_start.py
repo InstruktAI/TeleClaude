@@ -46,7 +46,6 @@ from teleclaude.core.next_machine.runner_types import (
     RunnerTodo,
 )
 from teleclaude.core.next_machine.runtime.sessions import (
-    PREPARE_LIFECYCLE_COMMANDS,
     find_live_commit_reviewer_for_initiator,
     find_live_commit_reviewer_for_terminal_human,
     find_live_reviewer_for_slug,
@@ -283,8 +282,7 @@ async def _guard_reviewer_start(
 
     Dispatches on the two subject-identity forms named in
     ``@input#r1`` (fix-commit-review-reuse-is-prose-only-nothin): a slug-bound
-    reviewer (``sdlc/review-build``, ``sdlc/review-plan``,
-    ``sdlc/review-architecture``) is keyed by exact ``(project, slug, command)``;
+    reviewer is keyed by exact ``(project, slug, command)`` regardless of its working directory;
     commit review (``sdlc/review-commits``, no todo slug) is keyed by
     ``(project, driver, command, thinking mode)`` — mode is part of that
     subject because doc-hygiene and code review use different thinking modes,
@@ -302,13 +300,7 @@ async def _guard_reviewer_start(
     runtime_db = db or await get_db()
     command_value = command
     if slug:
-        # /review-plan and /review-architecture run at repo root
-        # (subdir=None); every other slug-bound reviewer runs in the slug
-        # worktree, the lookup's default scope.
-        subdir_override = "" if command_value in PREPARE_LIFECYCLE_COMMANDS else None
-        holder = await find_live_reviewer_for_slug(
-            runtime_db, project_path, slug, command_value, subdir_override=subdir_override
-        )
+        holder = await find_live_reviewer_for_slug(runtime_db, project_path, slug, command_value)
         subject = f"/{command_value} {slug}"
     else:
         subject = f"/{command_value} at {thinking_mode} for this project and driver"

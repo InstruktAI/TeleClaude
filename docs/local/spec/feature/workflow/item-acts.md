@@ -19,18 +19,18 @@ Facing: every actor is an agent session. The person reads the result through the
 
 `telec todo act <item> <act> [<text>]` performs one act on the item named by its identity. The caller's role and session come from the authenticated session. The `<act>` argument is a value of the closed act vocabulary that the command validates, and `<item>` and `--person` name identities that the command resolves and checks. Prose the caller writes, including text shaped like a header or an envelope, supplies no role, session or act.
 
-| Act        | Required                                                     | Text                | Records                                                                                            |
-| ---------- | ------------------------------------------------------------ | ------------------- | -------------------------------------------------------------------------------------------------- |
-| `note`     | the text                                                     | the note            | a note in the log; moves nothing                                                                   |
-| `reviewed` | `--sha <commit>`                                             | optional summary    | the commit as examined by the driver                                                               |
-| `finding`  | `--sha <commit>`                                             | the finding         | a finding bound to the commit; the result names its finding key                                    |
-| `reply`    | `--finding <key>`                                            | the reply           | an answer to that finding                                                                          |
-| `prepared` | `--revision <digest>`                                        | optional summary    | the item prepared at that body revision                                                            |
-| `waiting`  | `--person <slug>`                                            | the question        | the item waiting on that person; the result names the wait key                                     |
-| `decision` | `--wait <key>`                                               | the person's answer | the person's answer to that wait; the waiting clears                                               |
-| `stamp`    | `--sha <commit>`, the text                                   | the lane report     | a stamp bound to that commit, with the driver's lane report; submitted as an operation (see below) |
-| `kickback` | the text                                                     | the reason          | the item returned to preparation, from work or from a held `ready` item                            |
-| `release`  | `--instruction <key>` on a held `ready` item, otherwise none | none                | the holder's claim released; on a held `ready` item the item stays `ready`                         |
+| Act        | Required                                                     | Text                | Records                                                                                                              |
+| ---------- | ------------------------------------------------------------ | ------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `note`     | the text                                                     | the note            | a note in the log; moves nothing                                                                                     |
+| `reviewed` | `--sha <commit>`                                             | optional summary    | the commit as independently examined, recorded by the driver                                                         |
+| `finding`  | `--sha <commit>`                                             | the finding         | a finding bound to the commit; the result names its finding key                                                      |
+| `reply`    | `--finding <key>`                                            | the reply           | an answer to that finding                                                                                            |
+| `prepared` | `--revision <digest>`                                        | optional summary    | the item prepared at that body revision                                                                              |
+| `waiting`  | `--person <slug>`                                            | the question        | the item waiting on that person; the result names the wait key                                                       |
+| `decision` | `--wait <key>`                                               | the person's answer | the person's answer to that wait; the waiting clears                                                                 |
+| `stamp`    | `--sha <commit>`, the text                                   | the lane report     | a stamp bound to that commit, carrying the independent reviewer's lane report; submitted as an operation (see below) |
+| `kickback` | the text                                                     | the reason          | the item returned to preparation, from work or from a held `ready` item                                              |
+| `release`  | `--instruction <key>` on a held `ready` item, otherwise none | none                | the holder's claim released; on a held `ready` item the item stays `ready`                                           |
 
 The intent-body edit is admitted only from the holder or a session in its claiming group, decided inside the artifact write's or removal's own transaction against the holder and phase read there. The acts `create`, `claim`, the intent-body edit and `delivered` are performed through their own surfaces: the create verb, the entry verbs, the artifact write verb under the claiming group's authority, and the integrator.
 
@@ -43,6 +43,14 @@ A decision is accepted only from the person's own session and only for the wait 
 A stamp whose text is empty is refused naming the missing lane report; the machine checks that a report was recorded and grades none of its text. The stamp is submitted as an operation because its gates take minutes. The command prints a receipt, the outcome is delivered to the calling session, and the same request submitted again attaches to the same operation. The gates run once per invocation; a stamp that asks for something else while one runs is refused and does not displace it (`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`).
 
 Every act is appended to the item's log as prose that a person can follow, with the time, the role, the session and the act.
+
+The driver records the complete independent report, its reviewer identity and
+exact target in the existing log before recording examined commits or findings.
+The stamp carries that final report and preserves its verdict and evidence
+limits. These acts record the driver's lifecycle action; they do not attribute
+the independent assessment to the driver or authorize it to replace the verdict.
+Report quality and finding validity remain intelligence judgments, not new
+machine gates.
 
 ### The entry verbs
 
@@ -61,6 +69,10 @@ Dependencies gate by lane: a parent prepared (or delivered) clears the preparati
 ### The child command
 
 `telec todo child <item>` starts the child procedure the holding driver's declarations name, with the role, parameters and launch defaults those declarations give, as a session in the driver's claiming group. It refuses a caller that does not hold the item, or that is releasing it. The start is recorded on the item before the session is created, so the act that releases the claim accounts for it. The declarations a driver started under are carried by the platform from its own record, never supplied by the caller. The child is that of the phase's scope: a scope that names none, as the work procedure's `ready` scope, is refused naming that none exists.
+
+The declared child is the phase's producer. The driver starts its dedicated
+reviewer through the existing `telec sessions run` helper surface under
+`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`, Helpers of a driver; this command gains no reviewer selector.
 
 ### Use cases
 

@@ -1,5 +1,5 @@
 ---
-description: 'Work phase design: a driver that holds the item derives the invariants, dispatches one builder, scrutinizes every published commit, and stamps the item ready after executing the review lanes.'
+description: 'Work phase design: separate builder, reviewer and driver, with coherent commit reviews and final delivery review.'
 visibility: 'public'
 ---
 
@@ -11,102 +11,80 @@ visibility: 'public'
 
 ## Purpose
 
-Define how a prepared spec is realized into code.
-
-Two sessions carry work. The work driver
-(`sdlc/procedure/lifecycle/work/overview-v2`) holds the item, derives the
-invariants it holds the build to, scrutinizes every commit and decides
-readiness. The builder it dispatches (`sdlc/procedure/lifecycle/work/build-v2`)
-owns the mechanism and answers every finding. Review is continuous: each
-published commit reaches the driver, which reviews it against the spec as it
-lands, and the final judgment is the stamp.
+Deliver a prepared specification through a builder that independently completes
+coherent units and a dedicated reviewer that assesses each finished unit and
+the resulting whole delivery. The driver coordinates their handoffs
+(`sdlc/procedure/lifecycle/work/build-v2`,
+`sdlc/procedure/lifecycle/work/overview-v2`). Review isolation, findings and
+adjudication are owned by `sdlc/procedure/lifecycle/review`.
 
 ## Inputs/Outputs
 
-**Inputs**
-
-- the prepared spec at the body revision preparation judged
-- the reviewed pending contracts the spec references
-- the item's branch and worktree
-- computed supporting context and evidence where automation can provide it
-
-**Outputs**
-
-- commits on the item's branch, each recorded as reviewed by the driver
-- findings bound to commits, each answered by the builder
-- a stamp bound to the commit that is ready, carrying the driver's lane report
-- or a return to preparation with its reason, when the spec itself is wrong
+Inputs are the prepared body revision, reviewed owner contracts, assigned branch
+and worktree, governing policies and source evidence. Outputs are the completed
+implementation, revision-bound review and remediation records, and a stamp at
+the independently approved integration head, or a grounded return to preparation.
 
 ## Invariants
 
-- The driver judges and the builder writes. The driver qualifies as the
-  independent reviewer because it did not write the code.
-- Work builds against the prepared spec, not against a plan. The builder may
-  change the mechanism freely; the spec it may not.
-- Every published commit is reviewed against the delta since the last commit the
-  driver recorded as reviewed, so no commit is skipped and none is reviewed
-  twice.
-- A finding names the contract it contradicts and the condition that reaches
-  it. A finding answered is not a verdict.
-- Before the stamp the driver executes every applicable lane of
-  `sdlc/policy/definition-of-done-lanes` against the item's whole delta, and
-  stamps only when no Requirement-Violation, Critical or Important finding is
-  unresolved.
-- The stamp binds one commit at the integration head; a head that moves past it
-  before the integrator admits the item requires a new stamp.
-- Work never edits the spec to make a finding pass. A finding that shows the
-  spec wrong or unbuildable returns the item to preparation.
-- On a bug, nothing changes beyond what the spec's cause requires
-  (`sdlc/procedure/debugging`).
+- The builder owns implementation; the dedicated reviewer owns independent
+  technical assessment; the driver coordinates and arbitrates scope and
+  procedure under `sdlc/procedure/lifecycle/review`.
+- Each coherent commit is reviewed after completion, before the next unit.
+  Commit notices prompt the driver to obtain the factual handoff. The machine
+  does not judge whether a unit is semantically complete. Per-commit review
+  assesses current obligations without demanding the whole feature at each step.
+- Final review covers the resulting whole delivery, cross-unit interactions and
+  every applicable lane of `sdlc/policy/definition-of-done-lanes`, including
+  commits whose notices were missed. Earlier approvals cannot replace it or
+  waive governing policies.
+- Findings and implementation authority remain separate. The reviewer proves
+  each violation and its bounded closure condition; the builder chooses the
+  compliant remedy. Existing scope and verification policy remain binding.
+- Completed verdicts and completed remediations alternate. Disputed findings
+  follow the shared isolated-adjudication path, preserving the review ledger.
+- A stamp names the exact reviewed head and carries the complete independent
+  report. No Requirement-Violation, Critical or Important finding remains open.
+  The existing machine gates and integration-head checks continue to apply.
+- A wrong specification returns to its preparation owner; work does not rewrite
+  its contract to make findings pass. Human involvement follows
+  `general/policy/human-contract`.
 
 ## Primary flows
 
-### The review loop
-
 ```mermaid
 sequenceDiagram
-    participant D as Work driver
+    participant D as Driver
     participant B as Builder
+    participant R as Independent reviewer
     participant I as Integrator
-    D->>D: claim the item, derive the invariants
-    D->>B: dispatch the builder
-    loop each published commit
-        B-->>D: commit notice
-        D->>D: review the delta, record it as reviewed
-        D-->>B: findings bound to the commit
-        B-->>D: a reply to each finding
+    D->>B: Prepared intent, constraints and source pointers
+    loop Each coherent unit, including remediation
+        B->>B: Implement, check and commit
+        B-->>D: Finished SHA, scope and evidence; stop editing
+        D->>R: Exact target and authoritative inputs
+        R->>R: Independent assessment
+        R-->>D: Complete report and verdict
+        D-->>B: Finished verdict and next authorized work
     end
-    B-->>D: build complete at the head commit
-    D->>D: execute the review lanes against the whole delta
-    alt ready
-        D->>D: stamp at the integration head
-        D-->>I: the item is a candidate at that commit
-    else the spec is wrong or unbuildable
-        D->>D: kickback to preparation, branch kept
-    end
+    B-->>D: Whole delivery complete at H
+    D->>R: Final whole-delivery review at H
+    R-->>D: Complete lane report and verdict
+    D->>D: Stamp only independently approved H
+    D-->>I: Candidate at that commit
 ```
 
-### A ready item questioned before admission
-
-Until the integrator admits a ready item, a stated reason can bring a work
-driver back to it. The driver tests the reason against the spec and the stamped
-commit, and either returns the item to preparation or releases it to remain
-ready in its original order.
+A ready item questioned before admission retains its source and review history.
+The driver obtains an independent assessment of the stated reason, arbitrates
+its scope and performs the supported release or kickback act.
 
 ## Failure modes
 
-- The driver reviews only the latest commit and misses what earlier commits
-  changed.
-- Findings become narrow patches that introduce new misalignment, because the
-  driver judged the patch rather than the invariant.
-- A stamp is performed with lanes skipped, or with a blocking finding still
-  unresolved.
-- The builder treats a finding as a verdict and stops, or treats a contract
-  contradiction as a mechanism choice and continues.
-- Work patches around a wrong spec instead of returning the item to preparation.
-
-## See Also
-
-- ~/.teleclaude/docs/sdlc/procedure/lifecycle/work/overview-v2.md —
-  operational steps for driving work
-- ~/.teleclaude/docs/sdlc/procedure/lifecycle/work/build-v2.md
+- Live technical collaboration makes the later reviewer a co-designer.
+- Batch-only review lets policy violations accumulate across unreviewed units.
+- The driver overrides an independent verdict to advance delivery.
+- The last patch is reviewed while the complete delivery remains unexamined.
+- A lane is marked satisfied without source evidence for its actual obligations.
+- A reviewer prescribes extra machinery instead of establishing a scoped defect.
+- The builder treats a reply as approval, or implementation changes during a
+  review leave its verdict bound to the wrong head.

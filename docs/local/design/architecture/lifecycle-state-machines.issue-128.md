@@ -16,7 +16,7 @@ An item's lifecycle is driven by four machines, each owning a distinct lane. A s
 | Task        | the task lane           | the lifecycle runner                                     | `sdlc/spec/todo-kind-task`, `local/projects/teleclaude/spec/feature/workflow/work-state-machine`                                                                                                                  |
 | Integration | the integration machine | the integrator's trigger and its periodic candidate scan | `local/projects/teleclaude/spec/feature/workflow/integration-state-machine`; design `local/projects/teleclaude/design/architecture/integration-state-machine`                                                     |
 
-The item machine drives preparation and work with two sessions per phase: a driver that holds the item's claim and decides readiness, and a child that owns the artifact. The preparation driver is `sdlc/procedure/lifecycle/prepare/overview-v2` and dispatches the author `sdlc/procedure/lifecycle/prepare/intake-v2`; the work driver is `sdlc/procedure/lifecycle/work/overview-v2` and dispatches the builder `sdlc/procedure/lifecycle/work/build-v2`. Which procedure drives which phase, the child it dispatches and the acts that end the phase come from those procedures' declarations.
+The item machine drives preparation and work with three separate responsibilities per phase: a driver holds the item's claim and records readiness, a producer child owns the artifact, and a dedicated reviewer child owns the technical verdict. The preparation driver is `sdlc/procedure/lifecycle/prepare/overview-v2` and dispatches the author `sdlc/procedure/lifecycle/prepare/intake-v2`; the work driver is `sdlc/procedure/lifecycle/work/overview-v2` and dispatches the builder `sdlc/procedure/lifecycle/work/build-v2`. Which procedure drives which phase, its producer child and its ending acts come from those procedures' declarations. The driver dispatches the retained `prepare/review-plan` or `work/review-build` procedure through the existing session-run helper path; the reviewer gains no phase ownership or holder-only acts.
 
 How the entry verbs route a request between these lanes, and how an item's worktree is ensured, is `local/projects/teleclaude/design/architecture/next-machine`.
 
@@ -52,12 +52,12 @@ How the entry verbs route a request between these lanes, and how an item's workt
 ```mermaid
 flowchart LR
     Design["design<br/>(creative machine)"] -->|design complete| Preparation
-    Preparation["preparation<br/>(prepare driver + author)"] -->|prepared| Prepared["prepared"]
+    Preparation["preparation<br/>(prepare driver + author + reviewer)"] -->|prepared| Prepared["prepared"]
     Preparation -->|waiting| Waiting["waiting on a person"]
     Work -->|waiting| Waiting
     Waiting -->|the person's decision| Preparation
     Waiting -->|the person's decision| Work
-    Prepared -->|work claim| Work["work<br/>(work driver + builder)"]
+    Prepared -->|work claim| Work["work<br/>(work driver + builder + reviewer)"]
     Work -->|stamp| Ready["ready"]
     Work -->|kickback| Preparation
     Ready -->|kickback under a stated reason| Preparation
@@ -79,7 +79,7 @@ sequenceDiagram
     M->>A: driver requested for the item's phase
     A->>D: start the driver bound to the item
     D->>M: entry call: claim, then the instruction
-    D->>D: dispatch the child, judge its output, perform the ending act
+    D->>D: coordinate producer and reviewer, record the supported ending act
     D->>M: stamp at the integration head
     M-->>I: ready notice; the candidate scan finds the item with or without it
     I->>I: admit, merge, push, deliver

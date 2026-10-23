@@ -43,6 +43,16 @@ Per-person category overrides accept `off`, `mobile`, `full`, `both`, or
 `null`. `off` hides the category on every projected surface. `null` inherits
 the recipient role default.
 
+<!-- planned:issue-129 -->
+
+### Optional GitHub issue metadata
+
+Session issue metadata is owned by
+`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`;
+projection consumes only the verified structured reference supplied by the
+session snapshot and performs no provider lookup.
+<!-- /planned:issue-129 -->
+
 ### Source truth
 
 - Source order is absolute. Anything rendered to Discord, Telegram, or terminal-facing UI must

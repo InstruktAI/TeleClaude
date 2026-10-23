@@ -53,6 +53,33 @@ execs the host shell; the guarantees live in the three env files.
 Editing any one of the three requires editing all three identically. The body is
 POSIX-sh so the same text is valid in zsh, bash, and sh.
 
+<!-- planned:issue-129 -->
+
+#### Bound-session GitHub command routing
+
+Every time the daemon builds a pane environment for a session, including
+initial creation, headless resume and recovery/recreation, it resolves that
+session's persisted binding. A session with no GitHub binding gets no `gh`
+override. A complete actor-and-target binding gets the bound route. A partial
+or unreadable binding refuses pane creation, as does failure to rebuild a
+complete bound route; the daemon never starts a bound or uncertain session with
+the installed provider CLI as its `gh` command.
+
+The PATH order for bound shells remains `$TELECLAUDE_HOME/bin` first for the existing agent
+session git wrapper, then the per-session `$TMPDIR` command directory, then the
+remaining shared and inherited tool paths. The private `gh` entry invokes the
+Python facade defined by
+`local/projects/teleclaude/spec/feature/integration/github-posting`; it uses
+GitHubKit and has no provider-CLI fallback. The three shell rc files and
+`teleclaude-shell` keep the shared git directory first and preserve the
+per-session route behind it.
+
+The routing choice comes from the daemon's persisted session binding, not a
+command argument or agent-supplied environment value. It selects a command
+entrypoint but supplies no authentication or provider authority; the facade
+rechecks those facts for each call.
+<!-- /planned:issue-129 -->
+
 #### Terminal hints
 
 The terminal-hints block exports two static hints for agent TUIs:

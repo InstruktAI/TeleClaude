@@ -10,11 +10,10 @@ from pathlib import Path
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.agent_status_projection import read_session_agent_status
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine.lanes import DRIVER_ROLES, LifecycleProcedure
+from teleclaude.core.next_machine.lanes import DRIVER_ROLES
 from teleclaude.core.session_status import AgentStatusValue
 
 CommandValues = str | tuple[str, ...]
-PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (LifecycleProcedure.PREPARE.value,)
 
 
 def _normalize_commands(command_values: CommandValues) -> tuple[str, ...]:
@@ -135,25 +134,16 @@ async def find_live_reviewer_for_slug(
     project_path: str | Path,
     slug: str,
     command_value: str,
-    subdir_override: str | None = None,
 ) -> str | None:
     """Return the newest live reviewer session for an exact project+slug+command match.
 
-    Composes exact command and slug fields with :func:`_expected_subdir` for the
-    per-slug scope, and :func:`_same_project_root`
-    so a same-named slug in a different project never holds this subject — R1
-    defines the subject as ``(project, slug, review command)``. This serves all
-    three slug-bound reviewer families — ``/review-build`` runs in the slug
-    worktree (default ``subdir_override``), while ``/review-plan`` and
-    ``/review-architecture`` run at repo root (caller passes
-    ``subdir_override=""``).
+    The subject is ``(project, slug, review command)`` regardless of the working
+    directory selected for the session. Root and worktree starts therefore find
+    the same reviewer, while a same-named slug in another project does not match.
     """
     project_root = Path(project_path).resolve()
-    expected_subdir = _expected_subdir(slug, subdir_override)
     sessions = await db.list_sessions(include_closed=False)
     for session in sessions:
-        if session.subdir != expected_subdir:
-            continue
         if not _same_project_root(session.project_path, project_root):
             continue
         if session.working_slug == slug and _matches_command(session.command, command_value):

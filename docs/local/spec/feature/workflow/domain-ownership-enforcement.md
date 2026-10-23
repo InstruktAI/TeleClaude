@@ -41,7 +41,7 @@ And correct layer placement does not excuse placement in a different context
 
 ```gherkin
 Given an agent prepares work that changes a domain rule
-When the preparing session challenges the spec
+When the dedicated preparation reviewer assesses the completed spec
 Then the spec names the single bounded context that owns the rule
 And the spec names the architectural layer used inside that context
 And every cross-context consumer uses an explicit published contract
@@ -67,7 +67,7 @@ And the change is not approved until the rule is implemented by its owner and co
 #### UC-WDOE-2: Wrong-owner implementation is refused despite local consistency
 
 ```gherkin
-Given the work driver executes the ownership lane against a change that implements a domain rule outside its owning context
+Given the dedicated work reviewer executes the ownership lane against a change that implements a domain rule outside its owning context
 When the changed code matches the surrounding module's patterns or runs in the expected technical layer
 Then the lane reports the wrong-context placement as Critical
 And the lane does not treat current placement or adjacent consistency as ownership evidence

@@ -16,7 +16,13 @@ implementation remain the current appliance contract.
 
 <!-- planned:issue-129 -->
 
-- **Also owns:** finite native GitHub transport, canonical comment-envelope
+- **Also owns:** the finite GitHub command facade and its GitHubKit-backed
+  in-process endpoint transport. The `gh`-shaped interface resolves to a Python
+  entrypoint inside GitHub-bound managed sessions through
+  `local/projects/teleclaude/spec/agent-shell-path`; elsewhere,
+  ordinary developer use of the separately installed CLI remains outside the
+  TeleClaude product boundary. TeleClaude never invokes the provider CLI. The
+  facade owns canonical comment-envelope
   rendering and durable provider-object/session association under
   `local/projects/teleclaude/spec/feature/integration/github-posting`, plus
   platform-authenticated branch publication and creating-builder PR authorship
@@ -24,7 +30,15 @@ implementation remain the current appliance contract.
   `local/projects/teleclaude/spec/feature/integration/github-publication`.
   Identity supplies authenticated account/session facts; workflow and adapter
   owners retain lifecycle eligibility, source identities, retry keys and
-  integration delivery decisions (`sdlc/policy/domain-ownership`).
+  integration delivery decisions. Git ref updates remain under the publication
+  contract's Git transport rather than the provider API client
+  (`sdlc/policy/domain-ownership`).
+
+- **Session issue-link source:** procedure-entry owns optional session issue
+  navigation. It reads the project checkout's GitHub `origin` through the
+  existing Git repository interface only to form a browser URL; this address
+  is not a GitHub workflow identity, provider-read target or credential scope
+  (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`).
 
 <!-- /planned:issue-129 -->
 

@@ -68,6 +68,8 @@ in session details. Display abbreviation does not change dispatch,
 continuation or matching identity.
 <!-- /planned-change:issue-128 -->
 
+<!-- planned-change:issue-129 -->
+
 A bound issue parameter identifies GitHub work when GitHub's issue lookup
 resolves it in the assignment's project. Session snapshots carry its verified
 number, URL, and bound work subject as an optional structured reference,
@@ -76,6 +78,28 @@ selection follows the GitHub CLI used by the assignment. The reference is
 independent of the session title and work-slug claim; an assignment without an
 identified GitHub issue carries none. An unavailable optional lookup leaves
 the session visible and eligible for a later lookup.
+<!-- change:issue-129 -->
+
+A bound issue parameter supplies optional local session navigation. When an
+assigned issue selector and one unambiguous GitHub.com project `origin` are
+available, the owning computer returns the assigned issue number and its browser
+URL. It reads the project's `origin` through the existing GitPython `Repo`
+interface and uses only the GitHub.com owner/repository path to compose the URL;
+the selector supplies the issue number. This local metadata path does not consult
+the selected todo backend, `todos.repository`, GitHub App credentials, native
+CLI configuration or a provider API. It is display-only: it neither creates
+workflow identity nor verifies issue existence/current state. A removed or
+inaccessible issue may therefore open to a provider unavailable page.
+
+The stored selector is a positive decimal number, `owner/repo#number`, or a
+full GitHub issue URL; repository-qualified forms must match the project's
+single unambiguous GitHub.com `origin`. Remotes with embedded credentials,
+multiple or missing origins, non-GitHub hosts, invalid numbers or mismatched
+repositories produce no link while the session remains visible. The snapshot
+carries the derived URL and stored work subject; the TUI consumes this optional
+structured reference under
+`local/projects/teleclaude/spec/feature/tui/todo-session-cross-navigation`.
+<!-- /planned-change:issue-129 -->
 
 ### Resolution
 
