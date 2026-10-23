@@ -3,25 +3,28 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from tempfile import TemporaryDirectory
+from typing import Final
 from urllib.parse import quote
 
+from githubkit.auth.token import TokenAuthStrategy
+from githubkit.cache.mem_cache import MemCacheStrategy
 from githubkit.exception import GitHubException, RateLimitExceeded, RequestFailed
 from githubkit_schemas.v2026_03_10.models import PullRequestReview
 from githubkit_schemas.v2026_03_10.types import AppPermissionsType
+from httpx import HTTPError
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.core.db import get_db
 from teleclaude.core.github_identity import GitHubPostingContext, resolve_native_github_posting_context
-from teleclaude.github import _native_gh
-from teleclaude.github._comment_results import credential_result
+from teleclaude.github._comment_results import CommentResponse, credential_result
 from teleclaude.github._conversation_scope import requested_pr_scope, resolve_native_review
 from teleclaude.github._pr_provider import pr_reader, prose_digest, verify_pr_membership
+from teleclaude.github.accounts import GitHubRateLimitFacts
+from teleclaude.github.client import create_github_client
 from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
 from teleclaude.github.envelope import render_github_envelope
 from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
@@ -43,16 +46,12 @@ from teleclaude.types.github_posting import (
 from teleclaude.types.workflow_record import Act
 
 logger = get_logger(__name__)
-_UTF8 = "utf-8"
 _EMPTY = ""
 _SLASH = "/"
-_BODY = "body"
-_EVENT = "event"
-_COMMENT = "COMMENT"
+_COMMENT: Final = "COMMENT"
+_REQUEST_SECONDS = 60.0
 _COMMENTED = "COMMENTED"
-_COMMIT_ID = "commit_id"
 _SHA = re.compile(r"[0-9a-f]{40}")
-_ENDPOINT = "repos/{repository}/pulls/{number}/reviews"
 _PR_URL = "https://api.github.com/repos/{repository}/pulls/{number}"
 _REVIEW_URL = "https://github.com/{repository}/pull/{number}#pullrequestreview-{identifier}"
 _INVALID = "Review response does not establish exact scope, writer, COMMENT event and reviewed commit"
@@ -60,10 +59,6 @@ _CANCELLED = "Native review cancelled; available provider evidence is attached"
 _LOG = "github_native_review stage=%s acceptance=%s failure=%s session_id=%s provider_id=%s reviewed_sha=%s"
 _PERMISSIONS: AppPermissionsType = {"pull_requests": "write"}
 _REJECTIONS = frozenset({400, 401, 403, 404, 405, 406, 410, 413, 414, 415, 422, 429})
-_CONFIG_PREFIX = "teleclaude-gh-review-"
-_FIXED_ENVIRONMENT = {"GH_HOST": "github.com", "GH_PROMPT_DISABLED": "1", "GH_NO_UPDATE_NOTIFIER": "1", "GH_PAGER": ""}
-_GH_TOKEN = "GH_TOKEN"
-_GH_CONFIG_DIR = "GH_CONFIG_DIR"
 _ACCEPTANCE = "acceptance"
 _FAILURE = "failure"
 _STATUS = "provider_status"
@@ -113,7 +108,7 @@ async def _authority_current(run: _ReviewRun) -> bool:
 
 
 def _observe(
-    response: _native_gh.Response, run: _ReviewRun, *, body: str | None = None, reviewed_sha: str
+    response: CommentResponse, run: _ReviewRun, *, body: str | None = None, reviewed_sha: str
 ) -> tuple[GitHubObjectRef, GitHubAccount, str, str]:
     review = PullRequestReview.model_validate_json(response.body)
     repository, number = run.request.target.repository, run.scope.object.container_number
@@ -156,7 +151,7 @@ def _observe(
     return ref, actor, prose_digest(review.body), reviewed_sha
 
 
-def _received(run: _ReviewRun, response: _native_gh.Response, reviewed_sha: str) -> None:
+def _received(run: _ReviewRun, response: CommentResponse, reviewed_sha: str) -> None:
     run.result = run.result.model_copy(update={_STATUS: response.status, _DELAY: response.retry_after})
     if not response.started or response.status in _REJECTIONS:
         run.result = run.result.model_copy(
@@ -164,7 +159,7 @@ def _received(run: _ReviewRun, response: _native_gh.Response, reviewed_sha: str)
                 _ACCEPTANCE: GitHubAcceptance.NO_EFFECT,
                 _FAILURE: GitHubPostFailure.PROVIDER_REFUSED
                 if response.started
-                else GitHubPostFailure.BINARY_UNAVAILABLE,
+                else GitHubPostFailure.ADMISSION_REFUSED,
             }
         )
         return
@@ -209,79 +204,90 @@ def _received(run: _ReviewRun, response: _native_gh.Response, reviewed_sha: str)
     run.result = run.result.model_copy(update={_FAILURE: None})
 
 
+def _provider_error(run: _ReviewRun, error: Exception) -> None:
+    """Keep safe SDK recovery facts without replacing an already observed response."""
+    if run.result.provider_status is not None:
+        return
+    if isinstance(error, RateLimitExceeded):
+        facts = GitHubRateLimitFacts.from_sdk(error)
+        run.result = run.result.model_copy(update={_STATUS: facts.status_code, _DELAY: facts.retry_after})
+    elif isinstance(error, RequestFailed):
+        run.result = run.result.model_copy(update={_STATUS: error.response.status_code})
+
+
 async def _exchange(run: _ReviewRun) -> None:
-    """Use SDK PR reads and fixed real-gh review GET/POST/PUT; no generic provider request surface."""
+    """Execute fixed SDK review GET/COMMENT POST/body-only PUT, keeping evidence before cleanup."""
     context, request = run.context, run.request
     if not await _authority_current(run):
         return
-    environment = _native_gh.launch_environment()
-    binary = _native_gh.gh_binary(environment)
-    if binary is None:
-        run.result = run.result.model_copy(update={_FAILURE: GitHubPostFailure.BINARY_UNAVAILABLE})
+    credential = await issue_github_installation_credential(context.binding.assignment, request.target, _PERMISSIONS)
+    if not await _authority_current(run):
         return
-    endpoint = _ENDPOINT.format(
-        repository=_SLASH.join(quote(part, safe=_EMPTY) for part in request.target.repository.split(_SLASH)),
-        number=request.pr_scope.container_number,
-    )
-    with TemporaryDirectory(prefix=_CONFIG_PREFIX) as directory:
-        credential = await issue_github_installation_credential(
-            context.binding.assignment, request.target, _PERMISSIONS
-        )
-        if not await _authority_current(run):
-            return
-        run.stage = GitHubCommentMaintenanceStage.PREFLIGHT
-        run.result = run.result.model_copy(update={_FAILURE: GitHubPostFailure.PREFLIGHT_FAILED})
-        async with pr_reader(credential) as (reader, client):
-            pr = await reader.get(client, request.pr_scope.container_number)
-            verify_pr_membership(pr, context, run.scope)
-        # Creation explicitly reviews the observed provider head; later edits retain the original reviewed SHA.
-        reviewed_sha = run.creation.reviewed_sha if run.creation is not None else pr.head.sha
-        if reviewed_sha is None or _SHA.fullmatch(reviewed_sha) is None:
-            raise ValueError(_INVALID)
-        environment = {
-            **environment,
-            **_FIXED_ENVIRONMENT,
-            _GH_CONFIG_DIR: directory,
-            _GH_TOKEN: credential.token.get_secret_value(),
-        }
-        method = _native_gh.CommentMethod.POST
-        fields = {_BODY: run.body, _EVENT: _COMMENT, _COMMIT_ID: reviewed_sha}
-        if isinstance(request, GitHubReviewEditRequest):
-            endpoint += _SLASH + str(request.object.provider_id)
+    run.stage = GitHubCommentMaintenanceStage.PREFLIGHT
+    run.result = run.result.model_copy(update={_FAILURE: GitHubPostFailure.PREFLIGHT_FAILED})
+    async with pr_reader(credential) as (reader, client):
+        pr = await reader.get(client, request.pr_scope.container_number)
+        verify_pr_membership(pr, context, run.scope)
+    # Creation explicitly reviews the observed provider head; later edits retain the original reviewed SHA.
+    reviewed_sha = run.creation.reviewed_sha if run.creation is not None else pr.head.sha
+    if reviewed_sha is None or _SHA.fullmatch(reviewed_sha) is None:
+        raise ValueError(_INVALID)
+    owner, repo = (quote(part, safe=_EMPTY) for part in credential.target.repository.split(_SLASH))
+    number = request.pr_scope.container_number
+    cache = MemCacheStrategy()
+    try:
+        async with create_github_client(TokenAuthStrategy(credential.token.get_secret_value()), cache) as client:
+            if isinstance(request, GitHubReviewEditRequest):
+                async with asyncio.timeout(_REQUEST_SECONDS):
+                    received = await client.rest.pulls.async_get_review(owner, repo, number, request.object.provider_id)
+                response = CommentResponse(received.status_code, received.content)
+                run.result = run.result.model_copy(update={_STATUS: response.status, _DELAY: response.retry_after})
+                if response.status != 200:
+                    return
+                _, _, run.preflight_digest, _ = _observe(response, run, reviewed_sha=reviewed_sha)
+            if not await _authority_current(run):
+                run.result = run.result.model_copy(update={_FAILURE: GitHubPostFailure.ADMISSION_REFUSED})
+                return
+            run.stage = GitHubCommentMaintenanceStage.MUTATION
+            run.result = run.result.model_copy(
+                update={
+                    _ACCEPTANCE: GitHubAcceptance.UNKNOWN,
+                    _FAILURE: GitHubPostFailure.SEND_UNCERTAIN,
+                    _STATUS: None,
+                    _DELAY: None,
+                }
+            )
             try:
-                response = await _native_gh.send(
-                    binary, endpoint, None, environment, directory, method=_native_gh.CommentMethod.GET
+                async with asyncio.timeout(_REQUEST_SECONDS):
+                    if isinstance(request, GitHubReviewEditRequest):
+                        received = await client.rest.pulls.async_update_review(
+                            owner, repo, number, request.object.provider_id, body=run.body
+                        )
+                    else:
+                        received = await client.rest.pulls.async_create_review(
+                            owner, repo, number, body=run.body, event=_COMMENT, commit_id=reviewed_sha
+                        )
+                response = CommentResponse(received.status_code, received.content)
+            except RequestFailed as error:
+                facts = GitHubRateLimitFacts.from_sdk(error) if isinstance(error, RateLimitExceeded) else None
+                response = CommentResponse(
+                    error.response.status_code,
+                    error.response.content,
+                    retry_after=facts.retry_after if facts is not None else None,
                 )
-            except _native_gh.SendCancelled as error:
-                response = error.response
-                run.cancelled = True
-            run.result = run.result.model_copy(update={_STATUS: response.status, _DELAY: response.retry_after})
-            if response.status != 200:
-                return
-            _, _, run.preflight_digest, _ = _observe(response, run, reviewed_sha=reviewed_sha)
-            if run.cancelled:
-                return
-            method = _native_gh.CommentMethod.PUT
-            fields = {_BODY: run.body}
-        if not await _authority_current(run):
-            run.result = run.result.model_copy(update={_FAILURE: GitHubPostFailure.ADMISSION_REFUSED})
-            return
-        payload = json.dumps(fields, ensure_ascii=False).encode(_UTF8)
-        run.stage = GitHubCommentMaintenanceStage.MUTATION
-        run.result = run.result.model_copy(
-            update={
-                _ACCEPTANCE: GitHubAcceptance.UNKNOWN,
-                _FAILURE: GitHubPostFailure.SEND_UNCERTAIN,
-                _STATUS: None,
-                _DELAY: None,
-            }
-        )
+            # Verify known mutation evidence before either resource cleanup can fail or be cancelled.
+            _received(run, response, reviewed_sha)
+    except asyncio.CancelledError:
+        run.cancelled = True
+    except (GitHubException, HTTPError, OSError, ValueError, TimeoutError) as error:
+        _provider_error(run, error)
+    finally:
         try:
-            response = await _native_gh.send(binary, endpoint, payload, environment, directory, method=method)
-        except _native_gh.SendCancelled as error:
-            response = error.response
+            await cache.acleanup()
+        except asyncio.CancelledError:
             run.cancelled = True
-        _received(run, response, reviewed_sha)
+        except (GitHubException, HTTPError, OSError, ValueError, TimeoutError) as error:
+            _provider_error(run, error)
 
 
 def _result(run: _ReviewRun) -> GitHubPostResult | GitHubCommentMaintenanceResult:
@@ -349,11 +355,8 @@ async def execute_native_review(
         run.result = credential_result(error)
     except asyncio.CancelledError:
         run.cancelled = True
-    except (GitHubException, OSError, ValueError, SQLAlchemyError, TimeoutError) as error:
-        if isinstance(error, RequestFailed):
-            run.result = run.result.model_copy(update={_STATUS: error.response.status_code})
-        if isinstance(error, RateLimitExceeded):
-            run.result = run.result.model_copy(update={_DELAY: error.retry_after})
+    except (GitHubException, HTTPError, OSError, ValueError, SQLAlchemyError, TimeoutError) as error:
+        _provider_error(run, error)
     if run.cancelled:
         raise _cancel(run)
     if run.result.acceptance is GitHubAcceptance.CONFIRMED and run.result.failure is None:
