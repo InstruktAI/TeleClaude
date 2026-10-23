@@ -37,6 +37,7 @@ from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_dispatch import forward_command_to_peer
 from teleclaude.core.conversation_messages import format_identity_conversation
 from teleclaude.core.db import db
+from teleclaude.core.db._github_creation import validate_workflow_creation_address
 from teleclaude.core.inbound.fleet import local_conversation_adapters
 from teleclaude.core.integration.session_address import SessionAddressResolved, resolve_session_conversation_url
 from teleclaude.core.models import (
@@ -77,12 +78,11 @@ from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.services.project_catalog.ownership import load_project_ownership_index
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
-from teleclaude.types.creation_record import Lineage
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS
 from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import TRANSCRIPT_READERS, parse_session_transcript
 
-from ._session_identity import resolve_session_creation_identity
+from ._session_identity import read_todo_owner_principal, resolve_session_creation_identity
 from ._utils import EndSessionHandlerResult, SessionDataPayload, with_session
 
 if TYPE_CHECKING:
@@ -100,21 +100,6 @@ _LISTENER_REGISTRATION_SKIPPED_EVENT = "session_listener_registration_skipped"
 _LISTENER_REGISTRATION_FAILED_EVENT = "session_listener_registration_failed"
 _LISTENER_SKIP_REASON_STANDING_ROLE = "standing_role"
 _SESSION_SUBJECT_RESOLUTION_FAILED_EVENT = "session_config_subject_resolution_failed"
-
-
-async def _read_todo_owner_principal(project_path: str, slug: str) -> str | None:
-    """Read a todo's persisted lineage root for the resolved project.
-
-    Returns the chain-root authority (``human:<email>`` or ``system:<id>``), or
-    ``None`` only when a successful read proves the todo has no recorded
-    lineage. Read failures are NOT swallowed: lineage is a required invariant
-    for a slug-bound runner session, so a failed lookup must surface and stop
-    session creation rather than silently degrade to the daemon identity.
-    The caller establishes the human root only from a proven owner; an
-    unreadable owner is an error, never a license to fall back.
-    """
-    todos_db = await get_workflow_store(project_path)
-    return Lineage.root_of(await todos_db.read_lineage(slug))
 
 
 async def _resolve_prepare_todo_kind(project_path: str, slug: str) -> str:
@@ -301,6 +286,12 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     # Do not inherit origin from parent sessions.
     last_input_origin = origin
     initiator_session_id = cmd.initiator_session_id
+    validate_workflow_creation_address(
+        cmd.workflow_creation,
+        config.computer.name,
+        initiator_session_id,
+        cmd.initiator_computer,
+    )
     parent_session = None
     if initiator_session_id:
         parent_session = await db.get_session(initiator_session_id)
@@ -385,7 +376,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     # the daemon principal. Audit-only: role (the authorization band) is left
     # untouched, and a manual start (human_email already set) is never overridden.
     if not human_email and working_slug:
-        owner_principal = await _read_todo_owner_principal(project_path, working_slug)
+        owner_principal = await read_todo_owner_principal(project_path, working_slug)
         if owner_principal and owner_principal.startswith("human:"):
             principal = owner_principal
             human_email = owner_principal.removeprefix("human:")
@@ -451,6 +442,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         origin_metadata=creation_metadata,
         startup_intent=None if cmd.headless else launch,
         procedure_delivery=cmd.procedure_delivery,
+        workflow_creation=cmd.workflow_creation,
         emit_session_started=False,
     )
 

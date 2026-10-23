@@ -390,11 +390,17 @@ async def _bound_context(
 async def resolve_github_builder_parent(
     context: GitHubPostingContext,
 ) -> GitHubSessionBinding | RefusedGitHubInvocation:
-    """Read the existing local initiating driver and its authoritative fixed work/actor assignment."""
+    """Consume stored admitted-parent provenance and fresh binding; generic lineage never grants authority."""
     child = context.invocation.session
-    parent_id = child.initiator_session_id
-    if context.binding.role is not RoleName.BUILDER or not parent_id:
+    address = context.binding.workflow_parent
+    if (
+        context.binding.role is not RoleName.BUILDER
+        or address is None
+        or address.computer != child.computer_name
+        or address.computer != config.computer.name
+    ):
         return _refuse(GitHubInvocationRefusal.PARENT_BINDING_UNAVAILABLE, child.session_id)
+    parent_id = address.session_id
     resolved = _local_session(parent_id)
     if isinstance(resolved, RefusedGitHubInvocation):
         return resolved

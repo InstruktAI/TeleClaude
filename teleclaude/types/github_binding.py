@@ -57,6 +57,14 @@ class GitHubActorAssignment(ClosedModel):
         return self
 
 
+class AdmittedWorkflowParent(BaseModel):
+    """Qualified parent fact issued by the child owner after its existing ChildPlan admission."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    computer: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+
+
 class GitHubSessionBinding(BaseModel):
     """Persisted assignment stamped with the actual session's catalog role."""
 
@@ -65,6 +73,7 @@ class GitHubSessionBinding(BaseModel):
     session_id: str = Field(min_length=1)
     role: RoleName
     assignment: GitHubActorAssignment
+    workflow_parent: AdmittedWorkflowParent | None = None
 
 
 class GitHubOriginBindingRefusal(StrEnum):
