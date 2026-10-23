@@ -608,11 +608,14 @@ async def perform_act(request: ActRequest) -> ActResult:
 
 
 async def _commit(store: WorkflowStore, request: ActRequest, facts: _Facts) -> str:
-    """Commit the act and return the key the transaction recorded it under."""
+    """Commit the act, or return the invocation another call recorded before preflight."""
     raw = await store.read_state(request.item)
     if raw is None:
         raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)
     current = TodoState.model_validate(raw)
+    key = _act_key(request, facts.item_id, current.workflow)
+    if key in current.workflow.act_status:
+        return key
     decided = _DECIDERS[request.act](
         request,
         facts,
