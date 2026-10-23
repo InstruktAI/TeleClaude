@@ -43,7 +43,7 @@ jobs:
   recover-publication:
     name: Recover any partial proved publication
     if: ${{ github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: write
@@ -96,7 +96,7 @@ jobs:
         (inputs.operation == 'seed' || inputs.operation == 'reseed')
       }}
     needs: [recover-publication]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -164,7 +164,7 @@ jobs:
       }}
     needs:
       - recover-publication
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -245,7 +245,7 @@ jobs:
     needs:
       - capture-release
     if: ${{ needs.capture-release.result == 'success' && needs.capture-release.outputs.capture_status == 'ready' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -376,7 +376,7 @@ jobs:
     if:
       ${{ always() && !cancelled() && needs.capture-release.result == 'success' && needs.capture-release.outputs.capture_status == 'ready' && (needs.inspect-codex.result != 'success'
       || needs.inspect-codex.outputs.codex_success != 'true' || needs.inspect-codex.outputs.artifact_id == '' || needs.inspect-codex.outputs.artifact_digest == '' || needs.inspect-codex.outputs.artifact_manifest_sha256 == '') }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -452,7 +452,7 @@ jobs:
       - inspect-codex
       - inspect-claude
     if: ${{ always() && !cancelled() && needs.capture-release.result == 'success' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -541,7 +541,7 @@ jobs:
         )
       }}
     needs: [release-analysis]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     permissions:
       contents: read
@@ -853,7 +853,7 @@ jobs:
         )
       }}
     needs: [release-analysis, candidate, installer-proof]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: write
@@ -930,7 +930,7 @@ jobs:
     name: Report release outcome
     if: always()
     needs: [recover-publication, seed-auth, release-analysis, candidate, installer-proof, publish]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions: {}
     steps:
       - name: Summarize the visible stage outcome
