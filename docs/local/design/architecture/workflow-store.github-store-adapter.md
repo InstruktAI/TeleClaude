@@ -161,8 +161,9 @@ working copy and the repository.
   the adapter writes those changes to GitHub: new content comments first,
   then each changed record, then the reflections. A failed GitHub write
   aborts the local commit and surfaces as the operation's failure. Creating
-  an item opens its issue first, so the item's row is created with the
-  issue's number as its identity.
+  an item opens its issue in the push that commits it; the creation
+  operations return the issue's number as the item's `WorkItemId`, and the
+  working copy's row address is unchanged.
 - **Conflict check.** Before writing a record, the adapter reads its current
   revision from GitHub. A revision newer than the one the working copy was
   derived from means the item changed on another computer: the write is
