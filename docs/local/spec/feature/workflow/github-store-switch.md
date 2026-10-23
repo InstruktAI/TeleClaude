@@ -57,7 +57,8 @@ again: it stays on the computer, frozen, with every record it held.
   holds moves to the repository's project records, because the workflow reads
   them as evidence for the commits and documentation it checks.
 - **Order and atomicity:** each item reaches GitHub whole or not at all, after
-  every moved item it is grouped under or depends on.
+  every moved item it is grouped under. Until a dependency it names has been
+  moved, an item is not ready for work, as with any unsatisfied dependency.
 - **Repeatable:** a run writes only what the GitHub store lacks. An item the
   GitHub store already holds, and a project record already present, are
   skipped. Running the command on a project that already selects GitHub skips
