@@ -225,7 +225,7 @@ todos:
 
 The `code`, `docs` and `agents` blocks each subscribe the project to one
 capability; their shape is owned by `CapabilityConfig`. The `todos` block
-selects the project's workflow store, local by default; its shape is owned by
+selects the project's workflow store; its shape and default are owned by
 `TodoStoreConfig` and `TodoStoreBackend` (all in
 `teleclaude/config/project_models.py`). A project that selects GitHub also
 declares there the repository that holds its work items and the App that
