@@ -79,6 +79,37 @@ creating write records neither binding. A session's scope is bound once and is
 never rebound. The bound target names no branch or base: an operation that
 needs them receives them in its request, from authoritative workflow state.
 
+<!-- planned:issue-129 -->
+
+For a phase-child session, parent-binding checks apply only when the internal
+session-creation carrier contains the owner-issued qualified workflow-parent
+address and admission fact from the existing `item-acts` `ChildPlan`. The
+`ChildPlan`/`plan_child` path owns that eligibility; generic initiator linkage,
+`initiator_session_id`, role or parent-like metadata supplies no parent
+authority. The `ChildPlan` producer must carry its admitted fact internally to
+session creation; this reflection changes no #128 eligibility rule.
+
+When a workflow parent is required, a missing, foreign or unavailable parent
+fact refuses before any local session-ID lookup or write. Generic and non-item
+local creation without a workflow-parent fact remains unchanged. For the
+identified parent, the same creation transaction checks that its persisted
+GitHub binding agrees on item, repository and project and that the child has an
+App and stable actor identity distinct from that parent. These checks commit
+with the child's session row, actor/target binding and startup handover, or none
+commit. They do not expand parent eligibility beyond
+`local/projects/teleclaude/spec/feature/workflow/item-acts` (The child command).
+<!-- /planned:issue-129 -->
+
+<!-- planned:issue-129 -->
+
+The session-creation carrier is in-process authority only. Its command serializer
+must omit the internal field when empty and refuse to serialize a populated
+carrier, so serialization cannot silently strip required binding facts. The
+decoder rejects any API, CLI or relayed payload that names the internal field;
+it cannot construct or restore this carrier. Only its owning daemon's trusted
+workflow producer passes a populated value directly to session creation.
+<!-- /planned:issue-129 -->
+
 ### Credential component
 
 The session owner fixes the assigned App and stable Bot identity when it creates
