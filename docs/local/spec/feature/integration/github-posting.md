@@ -9,8 +9,11 @@ delivered_by:
 
 ## What it is
 
-Integration transports native conversation and artifact authoring to GitHub
-under the authenticated session/actor facts supplied by
+Integration exposes a finite TeleClaude command facade whose accepted
+`gh`-shaped inputs map to fixed GitHubKit REST operations in-process; the syntax
+does not invoke or pass through to the GitHub CLI. It transports native
+conversation and artifact authoring to GitHub under the authenticated
+session/actor facts supplied by
 `local/projects/teleclaude/spec/feature/identity/platform-github-identity`.
 Sealed acts and event reflections enter separately through their existing
 trusted owners. Native prose remains opaque and supplies no lifecycle authority
@@ -22,7 +25,7 @@ trusted owners. Native prose remains opaque and supplies no lifecycle authority
 
 The native entry consumes the identity owner's positively corroborated session
 observation. Its recorded project/context is the only scope input; invocation
-cwd, `gh` arguments, host overrides and repository flags do not select the
+cwd, `gh`-shaped arguments, host overrides and repository flags do not select the
 project or backend. Config resolves that project's declared scope, and posting
 consumes the selected-backend answer from
 `local/projects/teleclaude/design/architecture/workflow-store`; valid-default
@@ -30,7 +33,7 @@ and configuration-error behavior remain with those owners. A missing,
 ambiguous, unreadable or invalid scope answer refuses rather than becoming a
 local selection.
 
-Before allowing native pass-through or credential-bearing execution, the entry
+Before admitting a supported facade operation, the entry
 rereads the observed session,
 project context, selected backend and GitHub actor/target bindings. Any existing
 GitHub binding, including a partial or invalid actor or target record, anchors
@@ -40,15 +43,13 @@ fallback.
 A local backend with any actor or target binding also refuses; a removed or
 changed backend declaration never clears or rebinds existing session scope.
 
-A positively corroborated managed session whose owner-resolved backend is local
-and whose session has no GitHub actor or target binding runs the real `gh` with
-its original arguments, environment, I/O and invocation directory. It receives
-no App credential, envelope or GitHub object association. This includes a
-genuinely absent session role; the identity owner distinguishes that fact from
-an unknown role. A GitHub-selected session requires its canonical role and
-both bindings; a missing or unreadable producer result refuses. Positively
-identified human execution outside managed panes keeps native `gh` behavior.
-The real binary lookup excludes this installed entry to prevent recursion
+An unbound or local-backend product call can receive facade-owned help or a
+local refusal; it never passes its arguments, environment or I/O to a provider
+binary and performs no GitHub effect. This includes a genuinely absent session
+role; the identity owner distinguishes that fact from an unknown role. A
+GitHub-selected session requires its canonical role and both bindings; a
+missing or unreadable producer result refuses. A human's independent GitHub
+CLI or browser use is outside this product boundary.
 (`local/projects/teleclaude/spec/feature/identity/platform-github-identity`,
 `local/projects/teleclaude/spec/domain/config`).
 
@@ -94,10 +95,11 @@ path, including for an integrator caller, approved PR or matching head
 
 ### Finite native execution
 
-Concrete native commands and supported REST write spellings use fixed
-target/argument/payload schemas with the same table's limits. Unknown fields,
-methods, endpoints, aliases, extensions, diagnostics, host/repository overrides
-and defaults do not widen support or acquire an App credential. Native review
+Concrete command spellings and the supported REST-shaped inputs map only to
+fixed GitHubKit calls with the same table's target/argument/payload limits;
+there is no generic HTTP forwarding. Unknown fields, methods, endpoints,
+aliases, extensions, diagnostics, host/repository overrides and defaults do not
+widen support or acquire an App credential. Native review
 verdicts, pending-review verdict submissions and bare undecided interactive
 reviews refuse before provider effect. Admission is finite structural handling,
 not a generic interception framework or semantic command/prose parser
@@ -105,19 +107,19 @@ not a generic interception framework or semantic command/prose parser
 
 Structural target and operation admission completes before prose collection.
 Argument, body-file, stdin and editor prose collection then finishes before
-credential injection. An editor receives a sanitized environment; the fixed
-collected prose reaches the provider process, which cannot reopen an editor,
-pager or default-selection prompt after credentials arrive. Credential-bearing
-execution uses controlled native configuration and no uncontrolled extension
-subprocess. Token-printing auth commands, token-disclosing status modes, shared
+credential lookup. An editor receives a sanitized environment. The fixed
+collected prose is submitted through the in-process GitHubKit request; no
+provider subprocess, environment token, pager, extension or later editor is
+invoked. Token-printing auth commands, token-disclosing status modes, shared
 auth switching and credential/header diagnostics receive no platform token
 (`sdlc/policy/ai-agent-security`).
 
-Only structurally exact help/version spellings run as reconstructed bounded
-native commands with sanitized empty native configuration and no App token.
-Other read-only commands must match the supported read shape and use controlled
-configuration. Aliases, extensions, opaque controls and flag-looking text in
-body/file/stdin/editor prose do not select a help or version path.
+Structurally exact help/version spellings return facade-owned local output
+without a provider request or credential lookup. Other read-only commands must
+match a supported read shape and map to fixed GitHubKit calls. Unknown commands,
+aliases, extensions, opaque controls and unsupported read shapes return a local
+refusal. Flag-looking text in body/file/stdin/editor prose never selects an
+operation, help or version path. The product does not execute the `gh` binary.
 
 ### Canonical envelope mapping
 

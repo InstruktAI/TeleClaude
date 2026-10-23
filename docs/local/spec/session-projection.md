@@ -43,6 +43,29 @@ Per-person category overrides accept `off`, `mobile`, `full`, `both`, or
 `null`. `off` hides the category on every projected surface. `null` inherits
 the recipient role default.
 
+<!-- planned:issue-129 -->
+
+### Optional GitHub issue metadata
+
+When a stored startup invocation carries an issue selector, session projection
+may attach the resolved issue number and URL as optional display metadata. The
+assignment comes from that stored invocation and retains the source session,
+command, registered project and selector. A result applies only while the source
+session id, command and project still match the session being projected; a
+stale result is discarded.
+
+The registered project's GitHub repository selects the read target. The issue
+selector names an issue within that repository and supplies no credential
+authority. The read uses the existing in-process GitHubKit client and an
+already authorized session App credential. It does not invoke the GitHub CLI,
+consult its native login, create a `GitHubWorkTarget`, establish a workflow
+identity, or authorize a write. If no assignment, repository identity or
+authorized credential is available, or the provider read fails, metadata stays
+absent and the session snapshot still completes. Credential and API-client
+ownership remain with `local/projects/teleclaude/spec/feature/identity/platform-github-identity`
+and `local/projects/teleclaude/spec/feature/integration/github-posting`.
+<!-- /planned:issue-129 -->
+
 ### Source truth
 
 - Source order is absolute. Anything rendered to Discord, Telegram, or terminal-facing UI must

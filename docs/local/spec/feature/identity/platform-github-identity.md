@@ -36,7 +36,7 @@ configured tmux server, and PID/create-time ancestry connecting this process to
 that pane. Current session, recorded role, work-binding and pane facts are reread at the
 decision boundary. Missing, closed, remote, detached, inaccessible, ambiguous
 or disagreeing evidence refuses the bound operation. A missing marker cannot
-turn a known managed invocation into native human pass-through; uncertain
+turn a known managed invocation into an unbound product call; uncertain
 execution remains a refusal (`sdlc/policy/ai-agent-security`).
 
 The observation distinguishes a genuinely absent stored role from a present
@@ -46,8 +46,10 @@ evidence; it authenticates no caller and supplies no GitHub authority. The
 GitHub-bound context factory still requires a canonical role before actor,
 target or credential admission. Admitted daemon context also requires its
 canonical role and uses the admitted caller, never native pane evidence.
-Positively corroborated human execution outside managed panes retains native
-behavior (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
+Positively corroborated human execution outside managed panes establishes
+scope only; it supplies no platform actor or credential and authorizes no
+provider effect. A person's own CLI or GitHub UI use remains outside this
+product boundary (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
 
 Actor assignment is durable session state; authentication of an invocation is
 re-observed at execution. Restart reads current session facts and live process
@@ -160,18 +162,21 @@ not an installation-token request to the human-account identity endpoint
 Public App, installation and account identifiers and protected secret references
 may be retained by their configuration/identity owners. Private keys remain in
 protected credential storage; JWTs and installation tokens remain in credential
-component memory. Tokens reach only the authorized child provider process's
-startup environment or protected credential transport. Native credential stores,
+component memory. The API credential is passed only to the in-process GitHubKit
+client after authenticated operation admission. Git ref updates use publication's
+existing protected credential transport. Tokens do not reach a provider
+subprocess.
+Native credential stores,
 agent-visible parent environments, arguments, configuration documents,
 artifacts, prose and logs receive no token. Errors use the existing credential
 masking boundary and disclose only identifiers and missing prerequisites
 (`sdlc/policy/ai-agent-security`).
 
-Native GitHub execution receives process-local credentials after structural
-transport admission under
+The posting facade consumes these credentials only after its structural and
+caller admission under
 `local/projects/teleclaude/spec/feature/integration/github-posting`.
-Computer-wide native auth switching and token disclosure are refused before
-native execution. Credential selection never modifies shared login/keychain
+Computer-wide native auth switching and token disclosure are refused by that
+facade before credential lookup. Credential selection never modifies shared login/keychain
 selection, installs an App token in a human login store or borrows a person's
 native authentication (`sdlc/policy/ai-agent-security`).
 

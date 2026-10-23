@@ -18,6 +18,11 @@ are distinct facts (`general/concept/lineage-vs-authorship`,
 
 ## Canonical fields
 
+GitHub endpoint reads and API mutations in publication use the existing
+in-process GitHubKit client. Ref updates remain Git operations under this
+publication contract; GitHubKit does not replace Git's lease and inclusion
+semantics, and publication invokes no GitHub CLI binary or credential helper.
+
 ### Platform push
 
 The existing publication path consumes the session's fixed actor and a
@@ -26,9 +31,11 @@ effective transport to the intended canonical HTTPS repository and explicit
 ref/head, neutralizing inherited URL rewrites, credential helpers, Git config
 injection and SSH fallback without changing shared git configuration. Local
 repository configuration and hooks cannot select another credential or
-transport. Execution uses an isolated temporary git directory referencing the
-worktree's objects, with controlled configuration and only the intended
-destination/refspec (`sdlc/policy/security-awareness`).
+transport. The assigned scoped App credential reaches standard Git only through
+the existing protected Git credential transport, never a GitHub CLI helper.
+Execution uses an isolated temporary git directory referencing the worktree's
+objects, with controlled configuration and only the intended destination/refspec
+(`sdlc/policy/security-awareness`).
 
 Before sending a ref update, publication observes the prior remote ref. Success
 requires the current ref/head and GitHub repository activity proving the exact
@@ -94,8 +101,9 @@ Each pre-send and post-send traversal must complete within its 10-page limit
 and 30-second total phase budget, including its fixed remote-ref read. Exceeded
 bounds, busy or incomplete pagination, and missing, delayed, inconsistent or
 ambiguous evidence remain unverified with any possible remote effect reported.
-A verified empty baseline requires a completed traversal. Generic pagination
-uses the existing `gh`/GitHubKit surface; this contract adds no proof framework.
+A verified empty baseline requires a completed traversal. Generic API pagination
+uses GitHubKit's existing pagination support; this contract adds no proof
+framework.
 
 Production App setup and scoped content/push grants are prerequisites supplied
 under the identity contract. A coordination push under an installed human login

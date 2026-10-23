@@ -16,7 +16,8 @@ implementation remain the current appliance contract.
 
 <!-- planned:issue-129 -->
 
-- **Also owns:** finite native GitHub transport, canonical comment-envelope
+- **Also owns:** the finite TeleClaude GitHub command facade and its
+  GitHubKit-backed in-process endpoint transport, canonical comment-envelope
   rendering and durable provider-object/session association under
   `local/projects/teleclaude/spec/feature/integration/github-posting`, plus
   platform-authenticated branch publication and creating-builder PR authorship
@@ -24,7 +25,9 @@ implementation remain the current appliance contract.
   `local/projects/teleclaude/spec/feature/integration/github-publication`.
   Identity supplies authenticated account/session facts; workflow and adapter
   owners retain lifecycle eligibility, source identities, retry keys and
-  integration delivery decisions (`sdlc/policy/domain-ownership`).
+  integration delivery decisions. Git ref updates remain under the publication
+  contract's Git transport rather than the provider API client
+  (`sdlc/policy/domain-ownership`).
 
 <!-- /planned:issue-129 -->
 
