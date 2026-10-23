@@ -3,23 +3,26 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from dataclasses import dataclass
-from tempfile import TemporaryDirectory
 from urllib.parse import quote
 
+from githubkit.auth.token import TokenAuthStrategy
+from githubkit.cache.mem_cache import MemCacheStrategy
+from githubkit.exception import GitHubException, RateLimitExceeded, RequestFailed
 from githubkit.utils import UNSET
 from githubkit_schemas.v2026_03_10.models import PullRequestReviewComment
 from githubkit_schemas.v2026_03_10.types import AppPermissionsType
+from httpx import HTTPError
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.core.db import get_db
 from teleclaude.core.github_identity import GitHubPostingContext, resolve_native_github_posting_context
-from teleclaude.github import _native_gh
 from teleclaude.github._comment_results import CommentResponse, cancelled, credential_result
 from teleclaude.github._conversation_scope import preflight_pr_scope, requested_pr_scope
 from teleclaude.github._pr_provider import prose_digest
+from teleclaude.github.accounts import GitHubRateLimitFacts
+from teleclaude.github.client import create_github_client
 from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
 from teleclaude.github.envelope import render_github_envelope
 from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
@@ -38,17 +41,10 @@ from teleclaude.types.github_posting import (
 from teleclaude.types.workflow_record import Act
 
 logger = get_logger(__name__)
-_UTF8 = "utf-8"
 _EMPTY = ""
 _SLASH = "/"
-_BODY = "body"
-_CONFIG_PREFIX = "teleclaude-gh-reply-"
+_REQUEST_SECONDS = 60.0
 _PERMISSIONS: AppPermissionsType = {"pull_requests": "write"}
-_FIXED_ENVIRONMENT = {"GH_HOST": "github.com", "GH_PROMPT_DISABLED": "1", "GH_NO_UPDATE_NOTIFIER": "1", "GH_PAGER": ""}
-_GH_TOKEN = "GH_TOKEN"
-_GH_CONFIG_DIR = "GH_CONFIG_DIR"
-_COMMENT_ENDPOINT = "repos/{repository}/pulls/comments/{identifier}"
-_REPLY_ENDPOINT = "repos/{repository}/pulls/{number}/comments/{identifier}/replies"
 _COMMENT_URL = "https://api.github.com/repos/{repository}/pulls/comments/{identifier}"
 _PR_URL = "https://api.github.com/repos/{repository}/pulls/{number}"
 _WEB_URL = "https://github.com/{repository}/pull/{number}#discussion_r{identifier}"
@@ -159,7 +155,7 @@ def observe_native_reply(
 
 
 def _accepted(
-    response: _native_gh.Response, request: GitHubReviewReplyRequest, context: GitHubPostingContext, body: str
+    response: CommentResponse, request: GitHubReviewReplyRequest, context: GitHubPostingContext, body: str
 ) -> GitHubPostResult:
     ref = None
     placement = None
@@ -199,12 +195,12 @@ def _accepted(
 
 
 def _received(
-    response: _native_gh.Response, request: GitHubReviewReplyRequest, context: GitHubPostingContext, body: str
+    response: CommentResponse, request: GitHubReviewReplyRequest, context: GitHubPostingContext, body: str
 ) -> GitHubPostResult:
     if not response.started or response.status in _REJECTIONS:
         return GitHubPostResult(
             acceptance=GitHubAcceptance.NO_EFFECT,
-            failure=GitHubPostFailure.PROVIDER_REFUSED if response.started else GitHubPostFailure.BINARY_UNAVAILABLE,
+            failure=GitHubPostFailure.PROVIDER_REFUSED if response.started else GitHubPostFailure.ADMISSION_REFUSED,
             provider_status=response.status,
             retry_after=response.retry_after,
         )
@@ -236,76 +232,81 @@ async def post_native_review_reply(
     body = render_github_envelope(
         context.binding.role, context.binding.session_id, Act.NOTE, None, NativeGitHubPostSource(), request.body
     )
-    payload = json.dumps({_BODY: body}, ensure_ascii=False).encode(_UTF8)
-    environment = _native_gh.launch_environment()
-    binary = _native_gh.gh_binary(environment)
-    if binary is None:
-        return refused.model_copy(update={_FAILURE: GitHubPostFailure.BINARY_UNAVAILABLE})
-    repository = _SLASH.join(quote(part, safe=_EMPTY) for part in request.target.repository.split(_SLASH))
-    root_endpoint = _COMMENT_ENDPOINT.format(repository=repository, identifier=request.root_id)
-    endpoint = _REPLY_ENDPOINT.format(
-        repository=repository, number=scope.object.container_number, identifier=request.root_id
-    )
-    response = None
+    response: CommentResponse | None = None
+    cache: MemCacheStrategy | None = None
     dispatching = False
     was_cancelled = False
     try:
-        with TemporaryDirectory(prefix=_CONFIG_PREFIX) as directory:
-            credential = await issue_github_installation_credential(
-                context.binding.assignment, request.target, _PERMISSIONS
-            )
-            preflight = await preflight_pr_scope(context, scope, credential)
-            if preflight is not None:
-                return preflight
-            environment = {
-                **environment,
-                **_FIXED_ENVIRONMENT,
-                _GH_CONFIG_DIR: directory,
-                _GH_TOKEN: credential.token.get_secret_value(),
-            }
-            try:
-                root_response = await _native_gh.send(
-                    binary, root_endpoint, None, environment, directory, method=_native_gh.CommentMethod.GET
-                )
-            except _native_gh.SendCancelled as error:
-                root_response = error.response
-                was_cancelled = True
+        credential = await issue_github_installation_credential(
+            context.binding.assignment, request.target, _PERMISSIONS
+        )
+        preflight = await preflight_pr_scope(context, scope, credential)
+        if preflight is not None:
+            return preflight
+        owner, repo = (quote(part, safe=_EMPTY) for part in credential.target.repository.split(_SLASH))
+        refused = refused.model_copy(update={_FAILURE: GitHubPostFailure.PREFLIGHT_FAILED})
+        cache = MemCacheStrategy()
+        async with create_github_client(TokenAuthStrategy(credential.token.get_secret_value()), cache) as client:
+            async with asyncio.timeout(_REQUEST_SECONDS):
+                received = await client.rest.pulls.async_get_review_comment(owner, repo, request.root_id)
+            root_response = CommentResponse(received.status_code, received.content)
             refused = GitHubPostResult(
                 acceptance=GitHubAcceptance.NO_EFFECT,
                 failure=GitHubPostFailure.PREFLIGHT_FAILED,
                 provider_status=root_response.status,
                 retry_after=root_response.retry_after,
             )
-            if root_response.status != 200:
-                if was_cancelled:
-                    raise asyncio.CancelledError
-                return refused
-            root = PullRequestReviewComment.model_validate_json(root_response.body)
-            root_ref = _reference(root, context, scope.object.container_number)
-            if root_ref.provider_id != request.root_id or root.in_reply_to_id is not UNSET:
-                raise ValueError(_INVALID)
-            if was_cancelled:
-                raise asyncio.CancelledError
-            if not await _current(context, scope):
-                return refused.model_copy(update={_FAILURE: GitHubPostFailure.ADMISSION_REFUSED})
-            # Establish uncertainty before awaiting the actual child, including generic settlement failures.
-            dispatching = True
-            try:
-                response = await _native_gh.send(binary, endpoint, payload, environment, directory)
-            except _native_gh.SendCancelled as error:
-                response = error.response
-                was_cancelled = True
+            if root_response.status == 200:
+                root = PullRequestReviewComment.model_validate_json(root_response.body)
+                root_ref = _reference(root, context, scope.object.container_number)
+                if root_ref.provider_id != request.root_id or root.in_reply_to_id is not UNSET:
+                    raise ValueError(_INVALID)
+                if await _current(context, scope):
+                    # Establish uncertainty before the SDK await; cleanup cannot erase an observed response.
+                    dispatching = True
+                    async with asyncio.timeout(_REQUEST_SECONDS):
+                        received = await client.rest.pulls.async_create_reply_for_review_comment(
+                            owner, repo, scope.object.container_number, request.root_id, body=body
+                        )
+                    response = CommentResponse(received.status_code, received.content)
+                else:
+                    refused = refused.model_copy(update={_FAILURE: GitHubPostFailure.ADMISSION_REFUSED})
     except GitHubCredentialRefused as error:
         return credential_result(error)
     except asyncio.CancelledError:
         was_cancelled = True
-    except (OSError, ValueError, SQLAlchemyError):
-        pass
+    except RequestFailed as error:
+        facts = GitHubRateLimitFacts.from_sdk(error) if isinstance(error, RateLimitExceeded) else None
+        observed = CommentResponse(
+            error.response.status_code,
+            error.response.content,
+            retry_after=facts.retry_after if facts is not None else None,
+        )
+        if dispatching:
+            response = response or observed
+        else:
+            refused = GitHubPostResult(
+                acceptance=GitHubAcceptance.NO_EFFECT,
+                failure=GitHubPostFailure.PREFLIGHT_FAILED,
+                provider_status=observed.status,
+                retry_after=observed.retry_after,
+            )
+    except (GitHubException, HTTPError, OSError, ValueError, SQLAlchemyError, TimeoutError):
+        response = response or (CommentResponse(None) if dispatching else None)
+    finally:
+        if cache is not None:
+            try:
+                await cache.acleanup()
+            except asyncio.CancelledError:
+                was_cancelled = True
+            except (HTTPError, OSError, ValueError, TimeoutError):
+                # Cleanup is not a provider response: retain known evidence or the existing uncertain send.
+                response = response or (CommentResponse(None) if dispatching else None)
     if not dispatching:
         if was_cancelled:
             raise cancelled(refused, context.binding.session_id)
         return refused
-    result = _received(response if response is not None else _native_gh.Response(None), request, context, body)
+    result = _received(response if response is not None else CommentResponse(None), request, context, body)
     if was_cancelled:
         raise cancelled(result, context.binding.session_id)
     if result.association is not None:
