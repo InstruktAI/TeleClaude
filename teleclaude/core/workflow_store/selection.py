@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from teleclaude.config.loader import load_declared_project_config
-from teleclaude.config.project_models import TodoStoreBackend
+from teleclaude.config.project_models import TodoStoreBackend, TodoStoreConfig
 from teleclaude.core.todos_db_path import todos_db_path
 
 from .local import (
@@ -24,10 +24,15 @@ class StoreUnavailable(RuntimeError):
     """The project selected a workflow-store adapter that is not installed."""
 
 
+def selected_workflow_store_config(project_root: Path) -> TodoStoreConfig:
+    """Read declared store settings, using defaults when no project is declared."""
+    project = load_declared_project_config(project_root)
+    return project.todos if project is not None else TodoStoreConfig()
+
+
 def selected_workflow_store_backend(project_root: Path) -> TodoStoreBackend:
     """Read the declared backend for a project root without opening its store."""
-    project = load_declared_project_config(project_root)
-    return project.todos.store if project is not None else TodoStoreBackend.LOCAL
+    return selected_workflow_store_config(project_root).store
 
 
 def _require_local_adapter(project_root: Path) -> None:
