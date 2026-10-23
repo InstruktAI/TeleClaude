@@ -174,8 +174,11 @@ working copy and the repository.
 
   A GitHub write before the commit point that fails aborts the local commit
   and surfaces as the operation's failure. The reflections are written after
-  the local commit; a reflection that fails is logged and rewritten by the
-  item's next push, because nothing reads it. Creating an item opens its
+  the local commit and never decide an operation's outcome. A reflection
+  that fails is logged and recorded as owed in the working copy; every
+  refresh rewrites the owed reflections from the item's record until they
+  are written, so a delivered item's issue closes without another change to
+  the item. Creating an item opens its
   issue in the push that commits it; the creation operations return the
   issue's number as the item's `WorkItemId`, and the working copy's row
   address is unchanged.
@@ -189,8 +192,9 @@ working copy and the repository.
   carries a platform record, and the ledger. A record's pending revision is
   taken only when the ledger holds its transaction's commit entry. The daemon refreshes each
   GitHub-backed project it serves at start and periodically, applying items
-  whose GitHub revision is newer than the working copy's. Rebuild and refresh
-  write the working copy without pushing back.
+  whose GitHub revision is newer than the working copy's and rewriting owed
+  reflections. Rebuild and refresh write the working copy without pushing
+  records back.
 - **Trust.** Only comments the platform App authored are read as record,
   content or ledger. A label, title, body, comment or edit by anyone else is
   never read as state.

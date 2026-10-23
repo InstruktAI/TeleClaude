@@ -223,25 +223,16 @@ todos:
 
 <!-- change:github-store-adapter -->
 
-```yaml
-code:
-  enabled: bool # the project holds code under the TeleClaude lifecycle
-docs:
-  enabled: bool # the project participates in the snippet pipeline
-agents:
-  enabled: bool # the project holds agent artifacts
-todos:
-  store: local | github # defaults to local
-```
-
-The `todos` block selects the project's workflow store; its fields are owned by
-`TodoStoreConfig` in `teleclaude/config/project_models.py`. A project that
-selects `github` also declares there the repository that holds its work items
-and the App that writes them. The App names one profile of the machine's
-GitHub App inventory, which holds that App's bot account and protected
-private-key reference, so a project declaration carries no secret. The App
-must be installed on the repository with issue write access. What the
-repository then holds is
+The `code`, `docs` and `agents` blocks each subscribe the project to one
+capability; their shape is owned by `CapabilityConfig`. The `todos` block
+selects the project's workflow store, local by default; its shape is owned by
+`TodoStoreConfig` and `TodoStoreBackend` (all in
+`teleclaude/config/project_models.py`). A project that selects GitHub also
+declares there the repository that holds its work items and the App that
+writes them. The App names one profile of the machine's GitHub App inventory,
+which holds that App's bot account and protected private-key reference, so a
+project declaration carries no secret. The App must be installed on the
+repository with issue write access. What the repository then holds is
 `local/projects/teleclaude/spec/feature/workflow/github-work-record`.
 
 <!-- /planned-change:github-store-adapter -->
