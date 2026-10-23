@@ -1,4 +1,4 @@
-"""Verified GitHub assignment identity carried by session displays."""
+"""Local GitHub assignment links carried by session displays."""
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_serializer
 
@@ -7,7 +7,7 @@ _URL_FIELD = "url"
 
 
 class GitHubIssueReference(BaseModel):
-    """One resolved issue and its independently bound work subject."""
+    """One assigned issue address and its recorded work subject, without a provider-state claim."""
 
     model_config = ConfigDict(frozen=True)
 
