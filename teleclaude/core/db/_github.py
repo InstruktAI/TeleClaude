@@ -80,6 +80,39 @@ class GitHubBindingRefused(ValueError):
         self.reason = reason
 
 
+async def _append_object_mutation(
+    db_session: AsyncSession,
+    row: db_models.GitHubObjectAssociationRow,
+    mutation: GitHubObjectMutationRecord,
+) -> None:
+    """Append under the caller's existing transaction and exact immutable-creator precondition."""
+    ref = mutation.object
+    statement = (
+        update(db_models.GitHubObjectAssociationRow)
+        .where(
+            db_models.GitHubObjectAssociationRow.repository_id == ref.repository_id,
+            db_models.GitHubObjectAssociationRow.container_number == ref.container_number,
+            db_models.GitHubObjectAssociationRow.object_kind == ref.kind.value,
+            db_models.GitHubObjectAssociationRow.provider_id == ref.provider_id,
+            db_models.GitHubObjectAssociationRow.creation_json == row.creation_json,
+            func.json_valid(db_models.GitHubObjectAssociationRow.mutations_json) == 1,
+            func.json_type(db_models.GitHubObjectAssociationRow.mutations_json) == _JSON_ARRAY,
+        )
+        .values(
+            mutations_json=func.json_insert(
+                db_models.GitHubObjectAssociationRow.mutations_json,
+                _MUTATION_APPEND_PATH,
+                func.json(mutation.model_dump_json()),
+            )
+        )
+        .execution_options(synchronize_session=False)
+    )
+    result = await db_session.exec(statement)
+    if result.rowcount != 1:
+        raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
+    await db_session.commit()
+
+
 def _require_remote_creation(association: GitHubObjectAssociation, origin: GitHubOriginBindingFacts) -> None:
     """The posting owner supplies freshly read origin facts, never a foreign local binding row."""
     ref, binding, target = association.object, origin.binding, origin.target
@@ -586,30 +619,7 @@ class DbGitHubMixin:
                 or mutation.head_sha != proof.after
             ):
                 raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
-            statement = (
-                update(db_models.GitHubObjectAssociationRow)
-                .where(
-                    db_models.GitHubObjectAssociationRow.repository_id == ref.repository_id,
-                    db_models.GitHubObjectAssociationRow.container_number == ref.container_number,
-                    db_models.GitHubObjectAssociationRow.object_kind == ref.kind.value,
-                    db_models.GitHubObjectAssociationRow.provider_id == ref.provider_id,
-                    db_models.GitHubObjectAssociationRow.creation_json == row.creation_json,
-                    func.json_valid(db_models.GitHubObjectAssociationRow.mutations_json) == 1,
-                    func.json_type(db_models.GitHubObjectAssociationRow.mutations_json) == _JSON_ARRAY,
-                )
-                .values(
-                    mutations_json=func.json_insert(
-                        db_models.GitHubObjectAssociationRow.mutations_json,
-                        _MUTATION_APPEND_PATH,
-                        func.json(mutation.model_dump_json()),
-                    )
-                )
-                .execution_options(synchronize_session=False)
-            )
-            result = await db_session.exec(statement)
-            if result.rowcount != 1:
-                raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
-            await db_session.commit()
+            await _append_object_mutation(db_session, row, mutation)
         return mutation
 
     async def record_github_object_mutation(
@@ -672,28 +682,5 @@ class DbGitHubMixin:
                 or resolve_owning_checkout(target.project_path) != project
             ):
                 raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
-            statement = (
-                update(db_models.GitHubObjectAssociationRow)
-                .where(
-                    db_models.GitHubObjectAssociationRow.repository_id == ref.repository_id,
-                    db_models.GitHubObjectAssociationRow.container_number == ref.container_number,
-                    db_models.GitHubObjectAssociationRow.object_kind == ref.kind.value,
-                    db_models.GitHubObjectAssociationRow.provider_id == ref.provider_id,
-                    db_models.GitHubObjectAssociationRow.creation_json == row.creation_json,
-                    func.json_valid(db_models.GitHubObjectAssociationRow.mutations_json) == 1,
-                    func.json_type(db_models.GitHubObjectAssociationRow.mutations_json) == _JSON_ARRAY,
-                )
-                .values(
-                    mutations_json=func.json_insert(
-                        db_models.GitHubObjectAssociationRow.mutations_json,
-                        _MUTATION_APPEND_PATH,
-                        func.json(mutation.model_dump_json()),
-                    )
-                )
-                .execution_options(synchronize_session=False)
-            )
-            result = await db_session.exec(statement)
-            if result.rowcount != 1:
-                raise GitHubBindingRefused(GitHubBindingRefusal.ASSOCIATION_CONFLICT)
-            await db_session.commit()
+            await _append_object_mutation(db_session, row, mutation)
         return mutation
