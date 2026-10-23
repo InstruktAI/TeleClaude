@@ -37,7 +37,12 @@ dispose every challenge with a change or with evidence.
 ## Steps
 
 1. **Read the intent as it arrived.** A line, a brain dump or a worked proposal
-   all count; the body is the input until you replace it.
+   all count; the body is the input until you replace it. The item may also
+   carry artifacts, such as a filer's implementation plan or artifacts carried
+   over from an earlier lifecycle; read them with
+   `telec todo show <item> --include-artifact-content`. They are
+   non-authoritative proposals the preparing session judges independently: you
+   write the spec into the body, and the prepared act binds the body revision.
 2. **Bound the design.** Apply the design focuses in
    `sdlc/policy/preparation-artifact-quality` from the intent and sources before
    choosing the approach. State the smallest complete outcome at the project's
