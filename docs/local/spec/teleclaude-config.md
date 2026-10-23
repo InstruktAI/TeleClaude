@@ -232,19 +232,17 @@ agents:
   enabled: bool # the project holds agent artifacts
 todos:
   store: local | github # defaults to local
-  repository: # required when store is github
-    id: int # the repository's stable GitHub ID
-    full_name: owner/name
-  app: int # required when store is github; the App ID of a profile in the machine's GitHub App inventory
 ```
 
-The `todos` block selects the project's workflow store. With `github`, the
-project's work items live in the declared repository and every write to them
-is made as the declared App, which must be installed on that repository with
-issue write access. The App ID names one profile of the machine's GitHub App
-inventory, which holds that App's bot account and protected private-key
-reference; a project declaration carries no secret. What the repository then
-holds is `local/projects/teleclaude/spec/feature/workflow/github-work-record`.
+The `todos` block selects the project's workflow store; its fields are owned by
+`TodoStoreConfig` in `teleclaude/config/project_models.py`. A project that
+selects `github` also declares there the repository that holds its work items
+and the App that writes them. The App names one profile of the machine's
+GitHub App inventory, which holds that App's bot account and protected
+private-key reference, so a project declaration carries no secret. The App
+must be installed on the repository with issue write access. What the
+repository then holds is
+`local/projects/teleclaude/spec/feature/workflow/github-work-record`.
 
 <!-- /planned-change:github-store-adapter -->
 

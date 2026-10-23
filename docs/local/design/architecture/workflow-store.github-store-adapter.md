@@ -158,19 +158,36 @@ working copy and the repository.
   record and never reads.
 - **Write path.** Every transaction on the working copy records which items
   and project-level records it changes. Before the local commit completes,
-  the adapter writes those changes to GitHub: new content comments first,
-  then each changed record, then the reflections. A failed GitHub write
-  aborts the local commit and surfaces as the operation's failure. Creating
-  an item opens its issue in the push that commits it; the creation
-  operations return the issue's number as the item's `WorkItemId`, and the
-  working copy's row address is unchanged.
+  the adapter writes those changes to GitHub, and exactly one GitHub write is
+  the transaction's **commit point**: what GitHub holds after a refused
+  operation is what it held before. New content comments are appended first;
+  they are unreferenced until a record points at them.
+  - A transaction that changes one item and no project-level record commits
+    by editing that item's record to its next revision.
+  - Any other transaction first writes each changed record with its next
+    revision held as **pending** under the transaction's identity, beside the
+    record's committed revision, then commits by appending one **commit
+    entry** to the ledger that names the transaction and carries its
+    project-level records. A pending revision whose transaction has no commit
+    entry is not part of the record, and the next write of that record
+    replaces it.
+
+  A GitHub write before the commit point that fails aborts the local commit
+  and surfaces as the operation's failure. The reflections are written after
+  the local commit; a reflection that fails is logged and rewritten by the
+  item's next push, because nothing reads it. Creating an item opens its
+  issue in the push that commits it; the creation operations return the
+  issue's number as the item's `WorkItemId`, and the working copy's row
+  address is unchanged.
+
 - **Conflict check.** Before writing a record, the adapter reads its current
   revision from GitHub. A revision newer than the one the working copy was
   derived from means the item changed on another computer: the write is
   refused, the item is refreshed from GitHub, and the caller may retry.
 - **Rebuild and refresh.** A working copy that is absent is rebuilt from the
   repository before first use: every issue the platform App created that
-  carries a platform record, and the ledger. The daemon refreshes each
+  carries a platform record, and the ledger. A record's pending revision is
+  taken only when the ledger holds its transaction's commit entry. The daemon refreshes each
   GitHub-backed project it serves at start and periodically, applying items
   whose GitHub revision is newer than the working copy's. Rebuild and refresh
   write the working copy without pushing back.
@@ -266,7 +283,7 @@ sequenceDiagram
     alt all GitHub writes succeed
         G-->>W: commit proceeds
         W-->>C: result
-    else a GitHub write fails or revision is newer
+    else a write before the commit point fails or revision is newer
         G-->>W: abort
         W-->>C: refusal
     end
@@ -295,9 +312,14 @@ sequenceDiagram
   rate-limited provider each refuse distinctly. A refusal carries no provider
   response text and no credential.
 
-- A GitHub write that fails, is refused by a rate limit, or meets a newer
-  record revision aborts the local commit and refuses the operation with that
-  cause. GitHub supports no conditional writes, so the revision check and the
+- A GitHub write before the commit point that fails, is refused by a rate
+  limit, or meets a newer record revision aborts the local commit and refuses
+  the operation with that cause, and leaves no change on GitHub that any
+  reader takes as part of the record.
+- A commit-point write whose response is lost may have taken effect while the
+  operation reports a refusal. The working copy then lags the repository
+  until refresh, which adopts the committed revision; the repository stays
+  the record. GitHub supports no conditional writes, so the revision check and the
   record write are separate requests: two computers writing the same item
   inside that interval can lose one write. Within one computer this cannot
   occur.
