@@ -588,7 +588,7 @@ recorded `doc_impact_none: <reason>`, is a finding. This is the review backstop
 to the preparation driver's handoff check, so a forgotten snippet update cannot
 reach delivery.
 
-**Work-phase doc freeze (the work driver's review only):** the doc layer is
+**Work-phase doc freeze (lifecycle work review only):** the doc layer is
 authored on `main` and folded at integration; the work phase executes a frozen
 contract. A lifecycle work-phase diff (slug worktree) that touches `docs/**` is
 **Critical** — out of jurisdiction regardless of the edit's quality or size. A
@@ -1043,7 +1043,9 @@ Applies to build reviews, commit reviews, and prepare-plan review anticipation.
 
 <!-- change:issue-128 -->
 
-Applies to the work driver's review before it stamps, and to commit reviews.
+Applies to independent lifecycle commit and final delivery review, main-commit
+review, and preparation review anticipation. The driver records the independent
+report when it stamps; it does not execute review in place of the reviewer.
 
 <!-- /planned-change:issue-128 -->
 

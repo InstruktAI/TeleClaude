@@ -1,5 +1,5 @@
 ---
-description: "Quality rules for an item's prepared spec, the intent it starts from, and the mechanism that delivers it. Shared by the author, the driver that judges the spec, the builder and the work driver."
+description: "Quality rules for an item's prepared spec, the intent it starts from, and the mechanism that delivers it. Shared by authors, builders, dedicated reviewers and coordinating drivers."
 visibility: 'public'
 ---
 
@@ -11,13 +11,12 @@ visibility: 'public'
 
 ## Rules
 
-These rules bind the author that writes an item's spec into its body
-(`sdlc/procedure/lifecycle/prepare/intake-v2`), the preparation driver that
-challenges and judges it (`sdlc/procedure/lifecycle/prepare/overview-v2`), the
-builder whose completed implementation delivers it
-(`sdlc/procedure/lifecycle/work/build-v2`), and the work driver that independently
-reviews that completed target
-(`sdlc/procedure/lifecycle/work/overview-v2`).
+These rules bind the author of the specification
+(`sdlc/procedure/lifecycle/prepare/intake-v2`), its dedicated reviewer
+(`sdlc/procedure/lifecycle/prepare/review-plan`), the builder
+(`sdlc/procedure/lifecycle/work/build-v2`) and its dedicated reviewer
+(`sdlc/procedure/lifecycle/work/review-build`). The preparation and work drivers
+coordinate these handoffs and record the independently supported outcomes.
 
 ### Domain-context loading
 
