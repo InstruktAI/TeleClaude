@@ -1,0 +1,1 @@
+Error: 409 — kickback is refused: b3-item is in ready. Door: the integrator's admission at {{b14:admitted8}}; the integrator delivers or parks it, and a parked item is then reachable by the ready or work row. The act that replaces it is kickback, performed by the holding driver.
