@@ -36,7 +36,7 @@ configured tmux server, and PID/create-time ancestry connecting this process to
 that pane. Current session, recorded role, work-binding and pane facts are reread at the
 decision boundary. Missing, closed, remote, detached, inaccessible, ambiguous
 or disagreeing evidence refuses the bound operation. A missing marker cannot
-turn a known managed invocation into native human pass-through; uncertain
+turn a known managed invocation into an unbound product call; uncertain
 execution remains a refusal (`sdlc/policy/ai-agent-security`).
 
 The observation distinguishes a genuinely absent stored role from a present
@@ -46,8 +46,10 @@ evidence; it authenticates no caller and supplies no GitHub authority. The
 GitHub-bound context factory still requires a canonical role before actor,
 target or credential admission. Admitted daemon context also requires its
 canonical role and uses the admitted caller, never native pane evidence.
-Positively corroborated human execution outside managed panes retains native
-behavior (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
+Positively corroborated human execution outside managed panes establishes
+scope only; it supplies no platform actor or credential and authorizes no
+provider effect. A person's own CLI or GitHub UI use remains outside this
+product boundary (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
 
 Actor assignment is durable session state; authentication of an invocation is
 re-observed at execution. Restart reads current session facts and live process
@@ -82,14 +84,13 @@ needs them receives them in its request, from authoritative workflow state.
 <!-- planned:issue-129 -->
 
 The internal session-creation carrier distinguishes a driver form, which has no
-workflow parent, from an admitted child form, which requires the owner-issued
-qualified workflow-parent address `(computer, session_id)` with both values
-nonempty, and its admission fact
-from the existing `item-acts` `ChildPlan`. The `ChildPlan`/`plan_child` path
-owns eligibility; generic initiator linkage, `initiator_session_id`, role or
-parent-like metadata supplies no parent authority. Its producer must carry the
-admitted fact internally to session creation. The current `ChildPlan` does not
-yet export it; this reflection changes no #128 eligibility rule.
+workflow parent, from a phase-child form, which requires a qualified workflow-
+parent address `(computer, session_id)` with both values nonempty and an
+admission fact. These are inputs to identity binding; this contract does not
+decide child eligibility or attribute the carriage to another owner. Generic
+initiator linkage, `initiator_session_id`, role or parent-like metadata supplies
+no parent authority. The child command's eligibility remains owned by
+`local/projects/teleclaude/spec/feature/workflow/item-acts` (The child command).
 
 When a child requires a workflow parent, a missing, foreign or unavailable
 qualified parent refuses before any local session-ID lookup or write. This
@@ -160,18 +161,24 @@ not an installation-token request to the human-account identity endpoint
 Public App, installation and account identifiers and protected secret references
 may be retained by their configuration/identity owners. Private keys remain in
 protected credential storage; JWTs and installation tokens remain in credential
-component memory. Tokens reach only the authorized child provider process's
-startup environment or protected credential transport. Native credential stores,
+component memory. The API credential is passed only to the in-process GitHubKit
+client after authenticated operation admission. Session navigation metadata is
+owned by `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`;
+it does not select a platform actor or credential. Git ref updates remain Git
+operations under the publication owner and use its protected Git credential
+channel. GitHubKit endpoint operations remain in-process; no provider API
+subprocess or `GH_TOKEN` child environment is used.
+Native credential stores,
 agent-visible parent environments, arguments, configuration documents,
 artifacts, prose and logs receive no token. Errors use the existing credential
 masking boundary and disclose only identifiers and missing prerequisites
 (`sdlc/policy/ai-agent-security`).
 
-Native GitHub execution receives process-local credentials after structural
-transport admission under
+The posting facade consumes these credentials only after its structural and
+caller admission under
 `local/projects/teleclaude/spec/feature/integration/github-posting`.
-Computer-wide native auth switching and token disclosure are refused before
-native execution. Credential selection never modifies shared login/keychain
+Computer-wide native auth switching and token disclosure are refused by that
+facade before credential lookup. Credential selection never modifies shared login/keychain
 selection, installs an App token in a human login store or borrows a person's
 native authentication (`sdlc/policy/ai-agent-security`).
 

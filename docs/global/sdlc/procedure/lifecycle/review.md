@@ -32,6 +32,72 @@ citation rules, severity schema, verdict arithmetic, and reviewer separation.
 
 ## Steps
 
+<!-- planned:issue-128 -->
+
+### Sequential review isolation
+
+The producer completes a coherent target before technical review begins. The
+reviewer establishes intent, governing policies, applicable language/tooling
+rules and relevant existing solutions independently, before reading the
+producer's rationale. A proposed contract or an earlier approval does not
+supply its own policy exception (`general/principle/grounding`,
+`general/policy/conflict-resolution`). Preparation review applies the policies
+of the proposed implementation as well as artifact-quality and readiness rules;
+waiting for code to exist would approve a design that its language forbids.
+
+The phase driver coordinates a producer child and a dedicated reviewer child.
+The reviewer has no delivery responsibility and has neither authored the target
+nor chosen, directed or negotiated its solution. The driver's stake in delivery
+does not qualify it as that reviewer. The review brief supplies the completed
+target, authorized intent, governing source pointers and factual evidence, not
+the producer's conversation or a preferred verdict. The reviewer grounds those
+sources independently before reconciling the producer's recorded rationale
+(`general/policy/leadership`, Adversarial peer invocation).
+
+Review follows each completed coherent commit and, separately, the completed
+whole delivery. A commit is one intelligible change with a stated purpose,
+boundaries and checks; it need not implement the whole feature. Review tests
+the obligations that apply at that step and preserves planned later work as
+later work. An enabled broken path or policy violation is a present defect;
+an explicitly deferred feature step is not one merely because it is unfinished.
+The machine knows source identity, not semantic completeness. The producer's
+handoff identifies the unit, and the reviewer judges whether it is reviewable.
+An incoherent unit returns for coherent completion, not speculative expansion.
+
+Authoring and review alternate. The producer hands off the exact revision and
+stops editing it; the driver dispatches or continues the reviewer through normal
+session messages, without a direct conversation link between producer and
+reviewer. The reviewer returns one complete report and verdict to the driver.
+Only then does the driver deliver that verdict to the producer for independent
+remediation or evidence-backed rejection. Findings are not streamed during
+review, and the next unit starts after the current unit's blocking findings are
+resolved and its verdict is recorded. The same reviewer continues subsequent
+units and final review while its independence holds. Final review covers the
+resulting whole delivery and cross-unit interactions; per-commit approvals do
+not replace it. The producer retains responsibility for the smallest compliant
+remedy, and a finding's closure condition conveys no implementation or scope authority
+(`sdlc/policy/preparation-artifact-quality`, Evidence does not reallocate ownership).
+
+The driver arbitrates continuation, scope and procedure: it can require a
+missing citation, distinguish an unmet obligation from a preference, and return
+an unsupported finding for correction. It records the independent report with
+its reviewer and target; it cannot change the verdict or waive a valid policy
+violation to advance delivery. A reply is not a resolution until the reviewer
+has evaluated it and recorded the resulting finding status.
+
+A genuine unresolved dispute about a finding's validity, applicability or scope
+is assessed by one isolated adjudicator who did not design the target or form
+the disputed finding. The invoking coordinator supplies the exact target,
+authoritative intent and sources; the adjudicator derives the governing
+obligations before examining both recorded positions. Its result determines
+which cited obligation and evidence hold, not a new implementation. The
+responsible reviewer incorporates that evidence and records the resulting
+finding status and arithmetic verdict. A missing contract decision returns to
+its owner. Scope, prior findings and review history survive; an adjudicator's
+presence supplies no approval and no permission to weaken a valid finding
+(`general/policy/leadership`, Uncertainty stays with its owner).
+<!-- /planned:issue-128 -->
+
 ### 0. Ground the target and reuse relevant assessment evidence
 
 Establish the invoking procedure's target, scope and applicable contracts

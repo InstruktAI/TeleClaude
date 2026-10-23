@@ -1,5 +1,5 @@
 ---
-description: 'Drive the preparation of one item to a fleshed-out spec: derive the obligations first, dispatch one author, challenge what it writes, and decide readiness.'
+description: Coordinate independent preparation and review of one completed item specification, then record revision-bound readiness.
 visibility: 'internal'
 role: prepare-orchestrator
 parameters:
@@ -28,6 +28,8 @@ workflow:
 
 ## Required reads
 
+@~/.teleclaude/docs/sdlc/procedure/lifecycle/review.md
+
 @~/.teleclaude/docs/sdlc/principle/design-fundamentals.md
 @~/.teleclaude/docs/sdlc/principle/module-depth.md
 @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
@@ -39,10 +41,11 @@ workflow:
 
 ## Goal
 
-Turn the intent in one item's body into a fleshed-out spec in that body,
-through one author you dispatch and challenge. You hold the claim and decide
-readiness; the author owns the spec's content. The person may drop in at any
-time and is waited on only when a fork is genuinely theirs.
+Prepare one item through sequential, isolated work: the author completes the
+specification and its pending contracts, then a dedicated reviewer child
+assesses the finished target. You hold the claim, coordinate the handoffs and
+arbitrate scope and procedure under `sdlc/procedure/lifecycle/review`. The
+reviewer owns the technical verdict; you record the supported lifecycle outcome.
 
 ## Preconditions
 
@@ -65,97 +68,67 @@ time and is waited on only when a fork is genuinely theirs.
 
 ## Steps
 
-1. **Enter.** Call the entry verb for the item. The first call claims the item
-   for you; every later call returns the instruction for the phase: the claim
-   you hold, the child to dispatch with its launch defaults, and the acts that
-   end the phase with the phase each leads to. Follow it.
-2. **Derive before reading anyone's draft.** Independently apply the design
-   focuses in `sdlc/policy/preparation-artifact-quality`. Record the smallest complete
-   authorized outcome, its actual operating scale and trust boundary, and the
-   requirements and failure behavior that follow from them. Independently
-   identify the existing path for comparable outcomes
-   (`sdlc/policy/substrate-anchoring`). Use the design fundamentals to judge
-   necessity and proportionality as well as completeness
-   (`sdlc/principle/design-fundamentals`).
-3. **Dispatch the author.** Start the child the instruction names. Its turn
-   completions reach you as notifications; it is your only child.
-   The brief carries the intent, constraints, evidence and source pointers under
-   `general/policy/leadership`; the author's first contribution is its own grounded
-   approach, not agreement with the driver's preferred solution.
-4. **Challenge.** Compare the author's approach with your independent derivation.
-   Judge the whole proposed delivery before its details: does
-   each mechanism serve the authorized outcome, and can an existing or simpler
-   path meet the same contract? Challenge unnecessary complexity as well as
-   missing behavior, unsupported provider guarantees, uncheckable claims and
-   another context's decisions. Each challenge names its evidence and governing
-   contract. Direct simplification where that evidence warrants it; the author
-   owns the revision (`sdlc/principle/design-fundamentals`,
-   `sdlc/policy/substrate-anchoring`).
-5. **Decide readiness.** The author disposes each item and reports.
-   Re-challenge what changed. Readiness is your judgment against the contract,
-   the evidence and the material consequence of what remains, never a count of
-   open items; record every limit left open in a note.
-   - **A bug item** is ready only when its spec carries its cause: the causal
-     mechanism with its evidence, an occurrence or a dangerous path in the terms
-     of `sdlc/concept/defect-evidence`. You judge that evidence, not the author.
-     A cause the filer supplied is input and you accept it only on your own
-     judgment of its evidence. When the cause is not established, the item stays
-     in preparation with what is missing as a note, or waits on the person who
-     holds the missing evidence.
-   - **A spec that changes a domain rule** is ready only when it names the single
-     bounded context that owns the rule and the layer used inside it
-     (`sdlc/policy/domain-ownership`).
-   - **A project whose testing ruling opts into test authorship**
-     (`sdlc/policy/testing`): before you perform the prepared act, reserve on the
-     shared branch every scenario the spec's use cases will bind, as rule 8 of
-     that policy requires, through the existing reservation check. A project
-     whose ruling does not opt in has no such step.
-   - **A usable handoff.** Verify the complete outcome has a feasible delivery
-     path and its durable contract changes are in reviewed, retrievable pending
-     snippets, or carry an explicit `doc_impact_none` reason. Review the author's
-     snippet commits through `sdlc/procedure/lifecycle/work/review-commits`;
-     the pair's driver supplies that independent review. Record their IDs
-     and approved commits with the body revision you judged
-     (`general/policy/documentation-discipline`). Distinguish known integration
-     prerequisites from unresolved decisions that determine what must be built;
-     the affected scope stays in preparation while those decisions remain open
-     (`sdlc/policy/definition-of-ready`). Judge verification against the
-     project's testing ruling and the assignment: admitted journey coverage does
-     not authorize inventing verification infrastructure to deliver it. Any new
-     verification capability needs explicit scope before preparation can bind a
-     builder to it (`sdlc/policy/testing`, `general/policy/human-contract`).
-6. **Human-owned forks.** A product outcome the domain cannot settle, a
-   material exposure, or an external commitment belongs to the person who owns
-   it. Perform the waiting act naming that person and stating the question in
-   one note. The item waits, your claim is released and you end; the person's
-   answer arrives as their decision and starts the next driver, which reads it
-   as the person's input. Everything else you decide and record.
-7. **Prepared.** Perform the prepared act naming the body revision you judged,
-   end the author with `telec sessions end <id>`, and end. If the body has
-   moved from that revision the act is refused naming both revisions; read what
-   changed and judge again.
+1. **Enter and brief the author.** Follow the entry instruction and dispatch its
+   declared author with authorized intent, constraints, governing source
+   pointers and available evidence under `general/policy/leadership`. The
+   author owns the approach.
+2. **Receive completed artifacts.** The author completes the specification and
+   owning pending contracts. Each coherent main-branch doc commit retains its
+   independent review under `general/policy/commits`; waiting for the entire
+   specification does not postpone that obligation. Handle liveness and concrete
+   operational obstructions through `general/procedure/ai-to-ai-operations`.
+   An author unable to finish returns its precise obstruction and preserved work.
+3. **Dispatch the dedicated reviewer.** Once the complete specification is
+   handed off and the author has stopped editing it, start
+   `sdlc/procedure/lifecycle/prepare/review-plan` through `telec sessions run`
+   with the item as its argument. Supply the exact body revision, pending
+   contract SHAs, authorized intent, source pointers and factual evidence in
+   additional context. Keep its session for re-review. It is a helper in your
+   claiming group, not another holder. The shared review contract governs its
+   independent grounding and separation from the author and delivery driver.
+4. **Obtain the complete verdict.** The reviewer assesses the specification,
+   whole delivery approach and contracts against readiness, artifact quality
+   and applicable implementation policies. Receive one complete report bound
+   to the body revision and named commits; retain the report in the existing
+   item log with the reviewer's identity. Independent doc-commit approvals
+   remain required and do not replace this whole-specification review.
+5. **Route sequential remediation.** Deliver the finished verdict to the author
+   in one handoff. It independently chooses the smallest compliant remedy or
+   records an evidence-backed rejection, then returns a completed revision and
+   stops editing. Continue the same reviewer on that revision and dispositions.
+   Arbitrate scope, continuation and finding support under the shared contract;
+   an unresolved validity or scope dispute goes to one isolated adjudicator.
+   Neither coordination nor arbitration supplies your own technical approval.
+6. **Record readiness.** Require independent approval of the exact complete
+   target, all owed doc-commit reviews and zero unresolved blocking findings.
+   A bug's causal basis, domain ownership, pending contracts and verification
+   scope satisfy the readiness and artifact-quality policies. Where admitted,
+   complete existing scenario reservation before preparation. Record the body
+   revision, reviewer, approved contract SHAs and explicit evidence limits in
+   the existing log. A moved body needs assessment of the resulting target by
+   the reviewer before readiness.
+7. **Handle human-owned forks and finish.** For a fork owned by a person under
+   `general/policy/human-contract`, or missing evidence only that person holds,
+   perform the waiting act naming the person, phase and one question. Complete
+   claim release and child cleanup, then end; the person's answer starts the
+   next driver. Otherwise perform the prepared act for the independently
+   approved revision, complete normal helper cleanup and claim release, and end.
 
 ## Outputs
 
-- The item's body as the spec: the prose behavioral contract, any admitted
-  Gherkin use cases and falsifiable invariants
-  (`sdlc/procedure/feature-spec-authoring`).
-- The reviewed pending contract references, or the explicit no-impact reason.
-- The log: derivation, challenges, dispositions, the readiness verdict.
+- A completed specification in the item's body and its reviewed pending
+  contract references, or an explicit `doc_impact_none` reason.
+- Complete review reports and the author's dispositions in the existing log,
+  bound to their body revisions and commits.
+- Prepared state only for the independently approved revision.
 
 ## Recovery
 
-- The author stops reporting: silence establishes no failure. Read the author's
-  session evidence first, its transcript and its live pane
-  (`general/procedure/ai-to-ai-operations`). When the evidence shows the worker
-  failed, start it again once through the same child command. A failure after
-  that, or a condition the evidence cannot settle, is recorded in a note with
-  the evidence and taken to an independent peer before you act on it; a
-  technical obstruction is investigated, not handed to the person
-  (`general/policy/leadership`).
-- A disagreement neither of you can settle with evidence: record both
-  positions in one note and ask an adversarial peer for an independent reading
-  of the evidence. Perform the waiting act only when what remains is a
-  concrete question that the person owns (`general/policy/human-contract`).
-- You are started again for an item you no longer hold: the entry verb says so;
-  end.
+- Assess an unresponsive author from authoritative session and live-pane
+  evidence under `general/procedure/ai-to-ai-operations`; preserve its work and
+  reuse its session through the supported recovery path.
+- Missing intent or a contract contradiction returns through its owning path.
+  A technical disagreement follows the shared review adjudication path; it
+  does not acquire human ownership because the two sessions disagree.
+- A resumed driver re-establishes the target and review separation. If it no
+  longer holds the item, follow the entry instruction and end.

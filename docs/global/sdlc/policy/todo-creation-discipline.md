@@ -266,8 +266,8 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
 
 - **Preparation decides.** The filer establishes that its evidence exists and
   does not classify the claim. Preparation judges it before spending further
-  work — the preparation driver's judgment of a bug's cause
-  (`sdlc/procedure/lifecycle/prepare/overview-v2`), the entry audit for any
+  work — the dedicated preparation reviewer's judgment of a bug's cause
+  (`sdlc/procedure/lifecycle/prepare/review-plan`), the entry audit for any
   other kind — by opening a cited occurrence's address
   and confirming it shows the claimed defect in real use, or by confirming each
   step of a cited dangerous path against current sources: the actor holds that

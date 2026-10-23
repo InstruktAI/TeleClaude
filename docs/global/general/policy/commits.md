@@ -158,10 +158,11 @@ All Committizen types are allowed.
   evidence-only rejection names its sources. For commit review, this exchange
   carries the disposition record, and the stamp records only the verdict. The
   author retains commit and review-routing responsibilities; the reviewer alone
-  determines the verdict. What cannot proceed — a genuine human-owned decision,
-  a safety gate, or a disagreement author and reviewer cannot resolve — is
-  held, and the session goes idle with it; nothing routes it to another party
-  (`general/principle/autonomy`).
+  determines the verdict. A genuine unresolved disagreement about a finding's
+  validity or scope follows the isolated adjudication path in
+  `sdlc/procedure/lifecycle/review`; it does not become collaborative redesign
+  or human responsibility. A human-owned decision or safety gate remains held
+  under `general/policy/human-contract` and `general/principle/autonomy`.
   The main-branch checkpoint's code-scoped review gate applies to every
   committed non-documentation path; runtime path classification does not infer
   a weaker review obligation from whether a file appears to be bookkeeping.

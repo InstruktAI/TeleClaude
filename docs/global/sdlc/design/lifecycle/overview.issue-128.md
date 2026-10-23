@@ -1,5 +1,5 @@
 ---
-description: 'Top-level software development lifecycle design: the item body as the spec, a judging driver and an authoring child per phase, the rigor model, and phase boundaries.'
+description: 'Top-level software development lifecycle design: the item body as the spec, a coordinating driver, producer child and dedicated reviewer per phase, the rigor model, and phase boundaries.'
 visibility: 'public'
 ---
 
@@ -17,7 +17,7 @@ This design is intentionally above machine implementation details. It defines:
 
 - the phase boundaries of the lifecycle
 - the authority of the item's spec and the contracts it references
-- the two roles that carry each phase: a driver that judges and a child that authors
+- the sequential roles in each phase: a producer child, an independent reviewer child and a coordinating driver
 - the split between automation and judgment
 
 The lifecycle is designed for autonomy without losing rigor.
@@ -41,9 +41,11 @@ The lifecycle is designed for autonomy without losing rigor.
 - The item's body is the spec. Preparation writes it; work builds against the
   body revision preparation judged ready, and a body that has moved since is
   not built.
-- Every phase pairs two sessions: a driver that holds the item and decides
-  readiness, and a child that authors — the intaker in preparation, the builder
-  in work. The driver judges what it did not write.
+- Each phase separates completed production from review. The author or builder
+  works independently, then a dedicated reviewer assesses the completed target.
+  The driver coordinates and arbitrates scope and procedure without substituting
+  its own technical approval; compromised reviewer independence requires
+  an unprimed reviewer (`sdlc/procedure/lifecycle/review`).
 - Durable contract changes are authored doc-first, in pending snippets that are
   independently reviewed before the work that depends on them is built.
 - Automation computes what can be computed so judgment can focus on
@@ -60,9 +62,10 @@ The lifecycle is designed for autonomy without losing rigor.
 ### Prepare
 
 Preparation turns the intent in an item's body into a fleshed-out spec in that
-body (`sdlc/design/lifecycle/prepare`). The preparation driver derives the
-obligations before reading any draft, dispatches one author, challenges what it
-writes, and records readiness by naming the body revision it judged.
+body (`sdlc/design/lifecycle/prepare`). The author completes the specification
+and pending contracts, preserving independent review of each coherent doc
+commit. A dedicated reviewer assesses the complete specification before the
+driver records readiness at the approved body revision.
 
 Rigor is preserved by:
 
@@ -75,14 +78,15 @@ Rigor is preserved by:
 ### Work
 
 Work realizes the prepared spec in code (`sdlc/design/lifecycle/work`). The
-work driver derives the invariants it will hold the build to, dispatches one
-builder, scrutinizes every published commit, and stamps the item ready at the
-integration head after executing the review lanes against the whole delta.
+builder completes each coherent commit before a dedicated reviewer assesses it.
+After all units, final review executes the lanes against the resulting whole
+delta. The driver records readiness at that reviewed integration head after
+sequential remediation closes valid findings.
 
 Rigor is preserved by:
 
 - building against the prepared spec at its revision
-- reviewing every commit as it lands, with findings bound to commits
+- reviewing each completed coherent commit and then the resulting whole delta
 - executing every applicable review lane before the stamp, with no blocking
   finding left unresolved
 - returning the item to preparation when the spec itself is wrong
@@ -104,7 +108,7 @@ Rigor is preserved by:
 The lifecycle preserves rigor by combining:
 
 - an explicit spec and explicit contract authority
-- a judge that did not author what it judges, in every phase
+- a dedicated judge with no delivery stake, authorship or co-design of its target
 - findings and readiness bound to exact revisions and commits
 - aggressive supporting automation that computes facts for judgment
 
@@ -125,7 +129,7 @@ These are continuous pressures across the lifecycle, not isolated later phases:
 ## Failure modes
 
 - The spec grows mechanisms the authorized outcome does not need because the
-  driver judged only the details, not the whole delivery.
+  reviewer judged only the details, not the whole delivery.
 - Work builds against a body that moved after it was judged ready.
 - Review checks only local correctness and ignores the spec or its contracts.
 - A contract change discovered during work is coded before it is authored and
