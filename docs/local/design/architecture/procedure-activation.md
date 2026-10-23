@@ -297,6 +297,15 @@ The inbox terminal result `not delivered` is returned by a completed activation 
 
 <!-- /planned:issue-129 -->
 
+<!-- planned:issue-129 -->
+
+Activation supplies the item pair only. A phase child's workflow-parent
+authority comes from the existing `item-acts` `ChildPlan`, not the activation's
+item pair, event origin, or generic initiator linkage. The identity owner
+consumes its qualified parent fact at the single session-creation write
+(`local/projects/teleclaude/spec/feature/identity/platform-github-identity`).
+<!-- /planned:issue-129 -->
+
 ### Company on a human-directed session
 
 A session created with `--company` operates for that company once
