@@ -17,17 +17,6 @@ visibility: internal
 
 ## Purpose
 
-<!-- planned-change:issue-130-github-item-identity -->
-
-Give workflow consumers one typed, backend-neutral operation surface. The
-project resolver selects the adapter once for the canonical shared-state root.
-Local remains the default and is the only implemented adapter in this slice;
-explicit `todos.store: github` fails with an unavailable-capability error.
-Consumers do not select a backend, open a connection, inspect tables, or carry
-storage paths.
-
-<!-- change:issue-130-github-item-identity -->
-
 Give workflow consumers one typed, backend-neutral operation surface. The
 project resolver selects the adapter once for the canonical shared-state root.
 Local remains the default and is the only adapter that serves the port.
@@ -36,8 +25,6 @@ unavailable-capability error; the GitHub adapter module serves only the
 identity reads and the native target projection below, none of which is a port
 operation. Consumers do not select a backend, open a connection, inspect
 tables, or carry storage paths.
-
-<!-- /planned-change:issue-130-github-item-identity -->
 
 ## Inputs/Outputs
 
@@ -87,8 +74,6 @@ and preserve their current ownership and interpretation.
   it, so the projection establishes repository, issue and work-item identity;
   that the address names the same item is the port's identity invariant.
 
-<!-- planned:issue-130-github-item-identity -->
-
 - **Repository identity.** The GitHub adapter module resolves a project's
   repository identity from the project's committed repository declaration
   (`local/projects/teleclaude/spec/teleclaude-config`) and from nothing else:
@@ -110,8 +95,6 @@ and preserve their current ownership and interpretation.
   (`local/projects/teleclaude/spec/feature/identity/platform-github-identity`).
   The read retains nothing: no cached pair, no local record, no local fallback.
   It is a module call with no API, command-line or relayed surface.
-
-<!-- /planned:issue-130-github-item-identity -->
 
 The seven operation parts are realized by the current state and artifact
 operations:
@@ -230,8 +213,6 @@ A compatibility upgrade preserves concurrent state changes and satisfies the sam
 - A transfer source is opaque. Exposing a local path would recreate the direct
   storage bypass this boundary owns.
 
-<!-- planned:issue-130-github-item-identity -->
-
 - A GitHub identity read refuses with its cause and creates nothing. A path
   outside a registered, present project; a selected backend other than
   `github`; an undeclared repository; a key that is not a canonical issue
@@ -240,8 +221,6 @@ A compatibility upgrade preserves concurrent state changes and satisfies the sam
   deleted; a pull request where an issue is required; and an unavailable or
   rate-limited provider each refuse distinctly. A refusal carries no provider
   response text and no credential.
-
-<!-- /planned:issue-130-github-item-identity -->
 
 ## See Also
 

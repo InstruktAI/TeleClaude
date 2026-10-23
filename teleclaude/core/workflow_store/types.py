@@ -86,6 +86,14 @@ class ArtifactRevisionMismatch(Exception):
         self.actual = actual
 
 
+@dataclass(frozen=True)
+class ItemIdentity:
+    """One adapter-owned work item identity and its matching opaque address."""
+
+    work_item_id: WorkItemId
+    store_address: StoreAddress
+
+
 class StorePresenceKind(StrEnum):
     ABSENT = "absent"
     PRESENT = "present"
