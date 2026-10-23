@@ -1,5 +1,5 @@
 ---
-description: Coordinate a complete independent build, then review the whole pinned delivery before recording readiness.
+description: Coordinate a builder and dedicated reviewer through coherent commit reviews and final delivery review, then record readiness.
 visibility: 'internal'
 role: work-orchestrator
 parameters:
@@ -49,16 +49,33 @@ workflow:
 
 ## Goal
 
-Deliver a prepared specification through a builder working independently,
-followed by an isolated review of its complete implementation. You hold the
-claim and route the work; you do not co-design the mechanism you later judge.
-Review eligibility, findings and adjudication follow
-`sdlc/procedure/lifecycle/review`.
+Deliver a prepared specification with a builder child and a separate reviewer
+child. You hold the claim, coordinate completed-artifact handoffs and arbitrate
+scope and procedure under `sdlc/procedure/lifecycle/review`. The reviewer owns
+the independent technical verdict; you record the lifecycle outcome it supports.
+
+<!-- planned:reviewed-pr-contributions -->
+
+### Contributor assignments
+
+For a contributor-proposal assignment, follow the project's contribution
+contract's review-before-publication route. Review the complete local subject
+from the builder's commit notices, invoke its recorded branch-publication
+operation for the exact reviewed commit, and then perform the ordinary
+readiness act. The ready-item handoff uses that project's proposal operation.
+The work driver's item authority and native readiness gates remain the
+ordinary lifecycle's (`sdlc/policy/process-change-authority`).
+
+For an imported proposal owned by prepared work, begin with the project's
+read-only admission assessment and its normal child waiting in your claiming
+group. Give ordinary repair findings to that same builder. A real return to
+preparation follows the lifecycle's separate closing contract.
+<!-- /planned:reviewed-pr-contributions -->
 
 ## Preconditions
 
 - The item is prepared and names the body revision that is the spec, or it is a
-  `ready` item you were started for under a stated reason (step 10).
+  `ready` item you were started for under a stated reason (step 8).
 - A bug item's spec carries its cause: the causal mechanism with its evidence,
   an occurrence or a dangerous path in the terms of `sdlc/concept/defect-evidence`.
 - The platform started you for the item you were given as your argument. The
@@ -73,59 +90,64 @@ Review eligibility, findings and adjudication follow
 
 ## Steps
 
-1. **Enter and brief.** Follow the entry instruction. For a ready item returned
-   under a reason, use step 8 only. Otherwise confirm the prepared body revision
-   and reviewed owner contracts, then dispatch the named builder with intent,
-   constraints, source pointers and the existing verification scope. Supply no
-   preferred mechanism. A missing or contradictory contract returns to its
-   existing preparation owner before affected implementation proceeds.
-2. **Let the builder complete the delivery.** Receive commit notices as progress
-   and source identity, not as per-commit review requests. The builder owns its
-   mechanism and self-checks against the policies. Monitor operational liveness
-   and concrete scope or safety obstructions through the existing session
-   procedure; do not exchange design proposals or findings while it is building.
-   Record the latest head without marking it reviewed. A completed blocker
-   assessment may return to preparation; it does not open collaborative design.
-3. **Establish the review independently.** Once the builder reports complete,
-   resolve the exact head and whole delivery delta. Derive the obligations from
-   the prepared intent, governing policies and current source before reading the
-   builder's reasoning. Load every applicable language policy and verify the
-   actual integration paths against it. A spec or previous approval cannot
-   waive a governing rule. If you contributed to the solution, use an unprimed
-   reviewer under `sdlc/procedure/lifecycle/review`; give it the finished target
-   and authoritative inputs, not the builder's conversation or a verdict hint.
-4. **Review the whole target.** Execute every applicable lane of
-   `sdlc/policy/definition-of-done-lanes` at the pinned integration head,
-   including the existing checks admitted by this project's testing ruling.
-   Cover the complete delivery rather than just its last commit. Return the
-   complete report and revision-bound findings in one handoff. The shared
-   review procedure owns evidence standards and the blocking arithmetic;
-   record only actually examined commits through the reviewed act.
-5. **Run sequential remediation.** The builder independently disposes the
-   finished findings and returns a complete revised target. Do not steer its
-   implementation or negotiate findings during that work. Re-review resolves
-   the findings and inspects the remediation delta under the shared convergence
-   rules. Keep source defects, evidence limitations and out-of-scope leads
-   distinct. Route a genuine unresolved scope or validity dispute to one
-   isolated adjudicator; preserve the ledger and target while it is assessed.
-6. **Stamp the approved head.** Require the complete independent report, all
-   applicable lanes and zero unresolved Requirement-Violation, Critical or
-   Important findings. The review must cover the exact integration head and
-   resulting whole delivery. Perform the stamp with that report, identifying
-   the reviewer when it was a separate session. The machine records the report
-   and runs its existing gates; it does not replace the independent judgment.
-   If the head or governing contract moves, resolve that change before stamping.
-   End completed helpers through the normal lifecycle and release the claim.
-7. **Return a wrong contract to its owner.** Evidence that the spec itself is
-   wrong or unbuildable goes through preparation recovery, preserving the branch
-   and findings. Human-owned decisions follow `general/policy/human-contract`;
-   technical uncertainty or disagreement alone never transfers ownership.
-8. **Judge a reason on a ready item.** Test the stated reasons against the
-   prepared revision and stamped delta under the same finding-validity rules.
-   If a valid reason shows the spec or delivery wrong, perform kickback and
-   preserve the branch. Otherwise record why the reason does not hold and
-   perform the release act with the instruction's key. A later reason requires
-   a new reading, never an inferred release.
+1. **Enter and brief the builder.** Follow the entry instruction. For a ready
+   item returned under a reason, use step 8. Otherwise confirm the prepared body
+   revision and reviewed owner contracts, then dispatch the declared builder
+   with intent, constraints, source pointers and existing verification scope.
+   A missing or contradictory contract returns to its preparation owner before
+   affected implementation proceeds.
+2. **Receive a finished unit.** The builder commits one coherent change and
+   hands off its exact SHA, purpose, boundaries, remaining planned work and
+   existing-check results, then stops editing. A head notice supplies source
+   identity and wakes you to obtain that handoff; it is neither approval nor a
+   machine judgment that the unit is complete. Monitor operational obstructions
+   under `general/procedure/ai-to-ai-operations`. Preserve the same builder.
+3. **Dispatch the dedicated reviewer.** Start
+   `sdlc/procedure/lifecycle/work/review-build` through `telec sessions run`,
+   with the item as its argument and the review target in additional context.
+   Identify this as a commit review, supplying its exact SHA and base, the full
+   prepared goal, owning contracts and the factual handoff. Keep the returned
+   reviewer session and use ordinary session messages for subsequent targets.
+   It is a helper in your claiming group, not a second holder. The shared review
+   procedure governs isolation, brief independence and review scope.
+4. **Route the complete verdict.** Wait for the reviewer's finished report.
+   Record it in the existing item log with reviewer identity and exact target;
+   record `reviewed` only for actually examined commits, and any findings
+   through the finding act. Deliver the complete report and resulting finding
+   keys together to the builder. The builder waits for this handoff even if
+   individual finding notices arrive first. Resolve blocking findings through
+   completed remediation and re-review by the same reviewer before the next
+   unit begins. Apply the shared bounded-arbitration and exceptional-adjudication
+   path to disputed validity or scope; preserve all positions and verdicts.
+5. **Obtain final whole-delivery review.** After the builder reports the whole
+   implementation complete, send the same reviewer the exact integration head,
+   delivery base, prepared body revision, prior reports and evidence limits.
+   This is a final review of the resulting whole delta and cross-unit behavior,
+   executing every applicable lane of `sdlc/policy/definition-of-done-lanes`.
+   Preserve valid prior evidence; review of the last commit alone is insufficient.
+   Route any final findings through the same sequential remediation path.
+6. **Stamp the independently approved head.** Require the final complete report
+   and zero unresolved Requirement-Violation, Critical or Important findings.
+   Bind the report to its reviewer, prepared revision and exact integration head.
+   Perform the stamp with that report, preserving its verdict and evidence
+   limits. The machine records the report and runs its existing gates; it does
+   not assess its substance. If the head or governing contract moves, obtain
+   the reviewer's assessment of the resulting target before stamping. Complete
+   normal helper cleanup and claim release, then end.
+7. **Route a contract or human-owned fork.** Evidence that the spec is wrong or
+   unbuildable returns through preparation recovery, preserving the branch and
+   findings. For a fork genuinely owned by a person under
+   `general/policy/human-contract`, perform the waiting act naming that person,
+   the phase and one question. Complete its claim release and child cleanup,
+   then end; the person's answer starts the next driver. Technical uncertainty
+   or disagreement alone does not transfer ownership.
+8. **Handle a reason on a ready item.** Have a dedicated reviewer assess the
+   stated reasons against the prepared revision and stamped delta under the
+   same finding-validity rules. You arbitrate scope and continuation, preserving
+   that independent assessment. If a valid reason shows the spec or delivery
+   wrong, perform kickback with the branch preserved. Otherwise record why the
+   reason does not hold and release with the instruction's key. A later reason
+   requires a new assessment, never an inferred release.
 
 ## Outputs
 
@@ -138,9 +160,8 @@ Review eligibility, findings and adjudication follow
 
 - Use `general/procedure/ai-to-ai-operations` for concrete session failures;
   silence and commit notices alone do not establish readiness or failure.
-- A resumed driver re-establishes source identity, existing findings and its
-  independence. A driver that helped shape the solution obtains an unprimed
-  review rather than certifying that contribution.
+- A resumed driver re-establishes source identity, existing findings and the
+  reviewer session and its independence under the shared review contract.
 - A missing prerequisite stays with its named owner. Preserve completed work
   and route only the contribution actually needed to proceed.
 - If the entry instruction says the item is no longer held, end.

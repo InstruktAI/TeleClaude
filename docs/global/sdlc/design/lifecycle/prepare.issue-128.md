@@ -16,7 +16,8 @@ Turn authorized intent into a complete specification and reviewed pending
 contracts through sequential authorship and independent review
 (`sdlc/procedure/lifecycle/prepare/overview-v2`,
 `sdlc/procedure/lifecycle/prepare/intake-v2`). The driver coordinates the item;
-the author owns its specification. The review relationship is governed by
+the author owns its specification and the dedicated reviewer owns its verdict.
+The review relationship is governed by
 `sdlc/procedure/lifecycle/review`.
 
 ## Inputs/Outputs
@@ -32,11 +33,13 @@ to the approved body revision. The existing item record carries these outputs.
 ## Invariants
 
 - The author completes the target before review begins. The driver supplies
-  intent and constraints, handles operational obstructions and does not
-  co-design the solution it judges (`sdlc/procedure/lifecycle/review`).
+  intent and constraints, handles operational obstructions and dispatches a
+  dedicated reviewer (`sdlc/procedure/lifecycle/review`). Each coherent doc
+  commit retains its normal independent commit review.
 - The reviewer derives obligations and checks applicable implementation policies
-  and prior art independently before reading the author's rationale. A driver
-  with design involvement uses an unprimed reviewer under the same contract.
+  and prior art independently before reading the author's rationale. The driver
+  coordinates and arbitrates scope and procedure, never substitutes its own
+  technical approval for the reviewer's verdict.
 - Readiness satisfies `sdlc/policy/definition-of-ready` and
   `sdlc/policy/preparation-artifact-quality`, with every valid blocking finding
   resolved. Review scope includes the complete delivery approach and owning
@@ -54,17 +57,21 @@ to the approved body revision. The existing item record carries these outputs.
 
 ```mermaid
 sequenceDiagram
-    participant D as Driver / isolated reviewer
+    participant D as Driver
     participant A as Author
+    participant R as Independent reviewer
     D->>A: Intent, constraints and source pointers
-    A->>A: Complete specification and pending contracts
-    A-->>D: Finished revision and evidence; stop editing
-    D->>D: Independent grounding and complete review
+    A->>A: Complete specification; obtain doc-commit reviews
+    A-->>D: Finished body revision and contracts; stop editing
+    D->>R: Exact target and authoritative inputs
+    R->>R: Independent complete-specification review
+    R-->>D: Complete report and verdict
     loop Only while valid findings remain
-        D-->>A: Complete revision-bound verdict
+        D-->>A: Complete verdict
         A->>A: Independent remediation or evidenced rejection
         A-->>D: Completed revision and dispositions
-        D->>D: Re-review findings and changed surface
+        D->>R: Revised target and dispositions
+        R-->>D: Complete re-review verdict
     end
     D->>D: Record approved revision; prepare and clean up
 ```

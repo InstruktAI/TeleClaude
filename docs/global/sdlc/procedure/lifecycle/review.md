@@ -45,26 +45,45 @@ supply its own policy exception (`general/principle/grounding`,
 of the proposed implementation as well as artifact-quality and readiness rules;
 waiting for code to exist would approve a design that its language forbids.
 
-Independence includes design participation, not only file authorship. A reviewer
-has neither authored the target nor chosen, directed or negotiated its solution,
-nor reviewed its in-progress technical drafts.
-The phase driver may review only while that separation holds. Operational
-coordination, the initial intent brief and necessary scope or safety stops do
-not confer design authority. A driver that has co-designed the target obtains
-an unprimed reviewer; that reviewer receives the completed target, authorized
-intent, governing source pointers and factual evidence, not the producer's
-conversation, a proposed verdict or a defense of the chosen mechanism
+The phase driver coordinates a producer child and a dedicated reviewer child.
+The reviewer has no delivery responsibility and has neither authored the target
+nor chosen, directed or negotiated its solution. The driver's stake in delivery
+does not qualify it as that reviewer. The review brief supplies the completed
+target, authorized intent, governing source pointers and factual evidence, not
+the producer's conversation or a preferred verdict. The reviewer grounds those
+sources independently before reconciling the producer's recorded rationale
 (`general/policy/leadership`, Adversarial peer invocation).
 
-Authoring and review occur in separate turns of work. Commit notifications and
-progress updates preserve continuity; they trigger no interim technical review.
-The reviewer returns a complete revision-bound report, then the producer
-independently completes its remediation or evidence-backed rejection. The
-reviewer evaluates that completed response under the convergence rules below;
-there is no live design negotiation between the two. The producer retains
-responsibility for the smallest compliant remedy, and a finding's closure
-condition conveys no implementation or scope authority
+Review follows each completed coherent commit and, separately, the completed
+whole delivery. A commit is one intelligible change with a stated purpose,
+boundaries and checks; it need not implement the whole feature. Review tests
+the obligations that apply at that step and preserves planned later work as
+later work. An enabled broken path or policy violation is a present defect;
+an explicitly deferred feature step is not one merely because it is unfinished.
+The machine knows source identity, not semantic completeness. The producer's
+handoff identifies the unit, and the reviewer judges whether it is reviewable.
+An incoherent unit returns for coherent completion, not speculative expansion.
+
+Authoring and review alternate. The producer hands off the exact revision and
+stops editing it; the driver dispatches or continues the reviewer through normal
+session messages, without a direct conversation link between producer and
+reviewer. The reviewer returns one complete report and verdict to the driver.
+Only then does the driver deliver that verdict to the producer for independent
+remediation or evidence-backed rejection. Findings are not streamed during
+review, and the next unit starts after the current unit's blocking findings are
+resolved and its verdict is recorded. The same reviewer continues subsequent
+units and final review while its independence holds. Final review covers the
+resulting whole delivery and cross-unit interactions; per-commit approvals do
+not replace it. The producer retains responsibility for the smallest compliant
+remedy, and a finding's closure condition conveys no implementation or scope authority
 (`sdlc/policy/preparation-artifact-quality`, Evidence does not reallocate ownership).
+
+The driver arbitrates continuation, scope and procedure: it can require a
+missing citation, distinguish an unmet obligation from a preference, and return
+an unsupported finding for correction. It records the independent report with
+its reviewer and target; it cannot change the verdict or waive a valid policy
+violation to advance delivery. A reply is not a resolution until the reviewer
+has evaluated it and recorded the resulting finding status.
 
 A genuine unresolved dispute about a finding's validity, applicability or scope
 is assessed by one isolated adjudicator who did not design the target or form

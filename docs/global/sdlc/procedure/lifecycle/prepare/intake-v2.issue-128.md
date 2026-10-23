@@ -25,7 +25,7 @@ dispatch:
 
 Independently turn the item's authorized intent into a complete specification
 and its owning pending contracts. Your preparing session coordinates the work;
-it reviews the finished artifact afterward under
+it routes the finished artifact to a dedicated reviewer under
 `sdlc/procedure/lifecycle/review`. You own the artifact and its remediation,
 not its approval.
 
@@ -56,21 +56,22 @@ not its approval.
 3. **Complete the owning contracts.** Author the converged durable changes in
    pending snippets on the shared branch under
    `general/procedure/doc-snippet-authoring`. Commit coherent complete content
-   through `general/policy/commits`. Self-check the whole artifact against the
-   applicable policies, ownership boundaries and readiness gates. Do not solicit
-   early draft approval or exchange design proposals with the future reviewer.
+   through `general/policy/commits`, including independent review of each
+   coherent doc commit before proceeding with dependent work. Self-check the whole artifact against the
+   applicable policies, ownership boundaries and readiness gates. Keep the draft
+   with its producer until the completed-target handoff.
 4. **Hand off and stop.** Return the completed body revision, exact pending
    snippet commits, scope references and available evidence. The preparing
    session initiates independent review. Continue no edits to that target while
    its verdict is being formed. A concrete operational obstruction is reported
-   separately; it does not authorize a live design conversation.
+   separately with the precise missing input and preserved work.
 5. **Dispose the complete findings independently.** After the finished verdict,
    record each finding as changed or rejected with its governing evidence.
    Implement the smallest compliant correction, carry any changed premise
    through the whole artifact, then return the new complete revision and stop.
    A finding cannot enlarge the assignment or prescribe its implementation.
    A genuine unresolved disagreement is recorded for the preparing session's
-   isolated adjudication path under `sdlc/procedure/lifecycle/review`.
+   bounded arbitration and, if unresolved, isolated adjudication under `sdlc/procedure/lifecycle/review`.
 
 ## Outputs
 
@@ -84,5 +85,5 @@ not its approval.
 - If authorized intent or necessary owner evidence is missing, return the
   precise obstruction and preserved artifact through the preparing session.
 - If a finding is disputed, retain the finding and its evidence-backed
-  disposition. Await the independent determination instead of negotiating
-  approval or implementing an unsupported demand.
+  disposition. Await the recorded independent determination before addressing
+  the affected finding.

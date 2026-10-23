@@ -1,5 +1,5 @@
 ---
-description: 'Work phase design: independent implementation followed by complete-target review and sequential remediation.'
+description: 'Work phase design: separate builder, reviewer and driver, with coherent commit reviews and final delivery review.'
 visibility: 'public'
 ---
 
@@ -12,7 +12,8 @@ visibility: 'public'
 ## Purpose
 
 Deliver a prepared specification through a builder that independently completes
-its implementation and a driver that reviews the completed target afterward
+coherent units and a dedicated reviewer that assesses each finished unit and
+the resulting whole delivery. The driver coordinates their handoffs
 (`sdlc/procedure/lifecycle/work/build-v2`,
 `sdlc/procedure/lifecycle/work/overview-v2`). Review isolation, findings and
 adjudication are owned by `sdlc/procedure/lifecycle/review`.
@@ -26,16 +27,17 @@ the independently approved integration head, or a grounded return to preparation
 
 ## Invariants
 
-- The builder owns the mechanism and self-checks the complete delivery. The
-  driver coordinates operational progress without early technical review or
-  co-design. A co-designer obtains an unprimed review instead of certifying its
-  contribution (`sdlc/procedure/lifecycle/review`).
-- Commit notices record source progress. Technical review starts after the
-  completed-target handoff and covers the whole delta, including commits whose
-  notices were missed; intermediate publication establishes no approval.
-- The reviewer derives the applicable obligations independently and executes
-  every applicable lane in `sdlc/policy/definition-of-done-lanes`. Proposed
-  contracts and earlier verdicts do not waive governing policies.
+- The builder owns implementation; the dedicated reviewer owns independent
+  technical assessment; the driver coordinates and arbitrates scope and
+  procedure under `sdlc/procedure/lifecycle/review`.
+- Each coherent commit is reviewed after completion, before the next unit.
+  Commit notices prompt the driver to obtain the factual handoff. The machine
+  does not judge whether a unit is semantically complete. Per-commit review
+  assesses current obligations without demanding the whole feature at each step.
+- Final review covers the resulting whole delivery, cross-unit interactions and
+  every applicable lane of `sdlc/policy/definition-of-done-lanes`, including
+  commits whose notices were missed. Earlier approvals cannot replace it or
+  waive governing policies.
 - Findings and implementation authority remain separate. The reviewer proves
   each violation and its bounded closure condition; the builder chooses the
   compliant remedy. Existing scope and verification policy remain binding.
@@ -52,30 +54,35 @@ the independently approved integration head, or a grounded return to preparation
 
 ```mermaid
 sequenceDiagram
-    participant D as Driver / isolated reviewer
+    participant D as Driver
     participant B as Builder
+    participant R as Independent reviewer
     participant I as Integrator
     D->>B: Prepared intent, constraints and source pointers
-    B->>B: Implement and self-check complete delivery
-    B-->>D: Completed head and evidence; stop editing
-    D->>D: Independent whole-delta review
-    loop Only while valid findings remain
-        D-->>B: Complete revision-bound verdict
-        B->>B: Independent remediation or evidenced rejection
-        B-->>D: Completed head and dispositions
-        D->>D: Re-review findings and changed surface
+    loop Each coherent unit, including remediation
+        B->>B: Implement, check and commit
+        B-->>D: Finished SHA, scope and evidence; stop editing
+        D->>R: Exact target and authoritative inputs
+        R->>R: Independent assessment
+        R-->>D: Complete report and verdict
+        D-->>B: Finished verdict and next authorized work
     end
-    D->>D: Stamp approved head with independent report
+    B-->>D: Whole delivery complete at H
+    D->>R: Final whole-delivery review at H
+    R-->>D: Complete lane report and verdict
+    D->>D: Stamp only independently approved H
     D-->>I: Candidate at that commit
 ```
 
 A ready item questioned before admission retains its source and review history.
-The driver assesses the stated reason under the same finding-validity rules and
-performs the existing release or kickback act.
+The driver obtains an independent assessment of the stated reason, arbitrates
+its scope and performs the supported release or kickback act.
 
 ## Failure modes
 
-- Per-commit coaching commits the reviewer to the mechanism before final review.
+- Live technical collaboration makes the later reviewer a co-designer.
+- Batch-only review lets policy violations accumulate across unreviewed units.
+- The driver overrides an independent verdict to advance delivery.
 - The last patch is reviewed while the complete delivery remains unexamined.
 - A lane is marked satisfied without source evidence for its actual obligations.
 - A reviewer prescribes extra machinery instead of establishing a scoped defect.

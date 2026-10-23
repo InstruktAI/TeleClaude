@@ -42,10 +42,10 @@ workflow:
 ## Goal
 
 Prepare one item through sequential, isolated work: the author completes the
-specification and its pending contracts, then you review that finished target.
-You hold the claim and coordinate the handoffs. Review eligibility and disputed
-findings follow `sdlc/procedure/lifecycle/review`; holding the claim does not
-establish independence.
+specification and its pending contracts, then a dedicated reviewer child
+assesses the finished target. You hold the claim, coordinate the handoffs and
+arbitrate scope and procedure under `sdlc/procedure/lifecycle/review`. The
+reviewer owns the technical verdict; you record the supported lifecycle outcome.
 
 ## Preconditions
 
@@ -68,56 +68,51 @@ establish independence.
 
 ## Steps
 
-1. **Enter and brief.** Follow the entry instruction and dispatch its author.
-   Supply the authorized intent, constraints, governing source pointers and
-   available evidence under `general/policy/leadership`. The author owns the
-   approach; the brief supplies no preferred mechanism or verdict.
-2. **Let the author finish.** Wait for the complete body revision and pending
-   contract commits. Commit notices and progress reports are operational signals,
-   not invitations to review drafts. Handle liveness, ownership and concrete
-   scope or safety obstructions through `general/procedure/ai-to-ai-operations`;
-   do not exchange design proposals, challenges or fixes during authorship.
-   An author unable to complete the assigned artifact returns its precise
-   obstruction and preserved work, rather than entering live co-design.
-3. **Establish an independent review basis.** After completion, derive the
-   obligations from intent, current substrate and governing policies before
-   reading the author's reasoning. Apply `sdlc/policy/definition-of-ready` and
-   `sdlc/policy/preparation-artifact-quality`, including applicable language and
-   tooling policies and primary evidence for proposed integrations. A supplied
-   spec, precedent or prior approval cannot exempt the design from those rules.
-   If you shaped the solution or participated in its technical convergence,
-   use an unprimed reviewer under `sdlc/procedure/lifecycle/review` instead of
-   reviewing your own contribution. Pass that reviewer the completed target and
-   authoritative inputs, not the author's transcript or a preferred conclusion.
-4. **Review the complete target.** Judge the complete specification and its
-   delivery approach through the applicable review lanes. Anticipate code,
-   ownership, reuse, security, performance, compatibility and verification
-   obligations at design time; do not pretend implementation already exists.
-   Review the exact pending snippet commits through the commit-review procedure.
-   Report one complete verdict bound to the body revision and named commits.
-   The shared review contract owns valid findings, evidence limits, severity and
-   verdict arithmetic. A governing-policy conflict stays open even when the
-   proposed spec is internally consistent.
-5. **Route a finished verdict.** Return the complete findings to the author in
-   one handoff. The author independently chooses the smallest compliant remedy
-   or records an evidence-backed rejection and returns a completed revision.
-   Do not negotiate the design while it is being revised. Re-review follows the
-   shared convergence rules: resolve the findings and inspect the changed
-   surface, preserving scope and the review history. A genuine unresolved
-   validity or scope dispute goes to one isolated adjudicator under that same
-   contract, not to a collaborative redesign or the human by default.
-6. **Record readiness.** Proceed only on an independent approval of the exact
-   complete target, with no unresolved blocking finding. A bug's causal basis,
-   domain ownership, reviewed pending contracts and verification scope must
-   satisfy the readiness and artifact-quality policies. For projects admitting
-   scenario-bound tests, complete the existing scenario reservation before the
-   prepared act; the project's testing ruling governs. Record the body revision,
-   approved contract commits and any explicit evidence limits in the existing
-   log. A moved body requires review of the resulting target before readiness.
-7. **Handle human-owned forks and finish.** Apply `general/policy/human-contract`
-   only to its closed-list decisions. Otherwise complete the agent-owned work.
-   Perform the prepared act for the reviewed revision, end the author and any
-   completed review helpers through the normal session lifecycle, then end.
+1. **Enter and brief the author.** Follow the entry instruction and dispatch its
+   declared author with authorized intent, constraints, governing source
+   pointers and available evidence under `general/policy/leadership`. The
+   author owns the approach.
+2. **Receive completed artifacts.** The author completes the specification and
+   owning pending contracts. Each coherent main-branch doc commit retains its
+   independent review under `general/policy/commits`; waiting for the entire
+   specification does not postpone that obligation. Handle liveness and concrete
+   operational obstructions through `general/procedure/ai-to-ai-operations`.
+   An author unable to finish returns its precise obstruction and preserved work.
+3. **Dispatch the dedicated reviewer.** Once the complete specification is
+   handed off and the author has stopped editing it, start
+   `sdlc/procedure/lifecycle/prepare/review-plan` through `telec sessions run`
+   with the item as its argument. Supply the exact body revision, pending
+   contract SHAs, authorized intent, source pointers and factual evidence in
+   additional context. Keep its session for re-review. It is a helper in your
+   claiming group, not another holder. The shared review contract governs its
+   independent grounding and separation from the author and delivery driver.
+4. **Obtain the complete verdict.** The reviewer assesses the specification,
+   whole delivery approach and contracts against readiness, artifact quality
+   and applicable implementation policies. Receive one complete report bound
+   to the body revision and named commits; retain the report in the existing
+   item log with the reviewer's identity. Independent doc-commit approvals
+   remain required and do not replace this whole-specification review.
+5. **Route sequential remediation.** Deliver the finished verdict to the author
+   in one handoff. It independently chooses the smallest compliant remedy or
+   records an evidence-backed rejection, then returns a completed revision and
+   stops editing. Continue the same reviewer on that revision and dispositions.
+   Arbitrate scope, continuation and finding support under the shared contract;
+   an unresolved validity or scope dispute goes to one isolated adjudicator.
+   Neither coordination nor arbitration supplies your own technical approval.
+6. **Record readiness.** Require independent approval of the exact complete
+   target, all owed doc-commit reviews and zero unresolved blocking findings.
+   A bug's causal basis, domain ownership, pending contracts and verification
+   scope satisfy the readiness and artifact-quality policies. Where admitted,
+   complete existing scenario reservation before preparation. Record the body
+   revision, reviewer, approved contract SHAs and explicit evidence limits in
+   the existing log. A moved body needs assessment of the resulting target by
+   the reviewer before readiness.
+7. **Handle human-owned forks and finish.** For a fork owned by a person under
+   `general/policy/human-contract`, or missing evidence only that person holds,
+   perform the waiting act naming the person, phase and one question. Complete
+   claim release and child cleanup, then end; the person's answer starts the
+   next driver. Otherwise perform the prepared act for the independently
+   approved revision, complete normal helper cleanup and claim release, and end.
 
 ## Outputs
 

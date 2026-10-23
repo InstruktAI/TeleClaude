@@ -1,5 +1,5 @@
 ---
-description: Independently finish the prepared implementation, then answer a complete review verdict with a coherent remediation.
+description: Build coherent commits independently, hand each to a dedicated reviewer through the driver, then complete whole-delivery review.
 visibility: 'internal'
 role: builder
 parameters:
@@ -24,9 +24,25 @@ dispatch:
 
 Implement the prepared specification independently in the assigned worktree.
 You own the mechanism, its policy conformance and the complete delivery. The
-work driver reviews only after you report a completed target; it does not
-co-design the implementation. Findings and remediation follow
+driver routes each finished commit and the complete delivery to a separate
+reviewer. Findings and
+remediation follow
 `sdlc/procedure/lifecycle/review`.
+
+<!-- planned:reviewed-pr-contributions -->
+
+### Contributor assignments
+
+For a contributor-proposal assignment, commit through the sealed surface and
+report the exact local commits to the work driver. Its contribution contract
+governs assembly and publication of the reviewed subject. The driver receives
+the local completion notices before public branch publication and retains
+review authority (`sdlc/policy/process-change-authority`).
+
+For an imported proposal, begin with the project's contribution waiting
+assignment under this work driver. Continue its repair findings in this same
+claiming group once its current assessment permits the assigned work.
+<!-- /planned:reviewed-pr-contributions -->
 
 ## Preconditions
 
@@ -47,30 +63,31 @@ co-design the implementation. Findings and remediation follow
    Use the assignment's existing checks and admitted journey coverage under
    the project's testing ruling. An evidence gap is reported as such; it does
    not authorize a new verification capability. Keep material design reasons
-   with the change description rather than submitting an early mechanism for
-   the future reviewer to approve.
-2. **Build the complete scoped outcome.** Implement and self-check against the
-   governing policies and prepared contract. Commit coherent steps through the
-   sealed worktree flow; publication records progress, not review approval.
-   Send operational status or a concrete obstruction when needed, without
-   soliciting interim technical review. On a bug, preserve the evidenced causal
-   scope under `sdlc/procedure/debugging`. A necessary contract revision returns
-   to its existing owner before the affected source proceeds.
-3. **Hand off the completed target.** Once the complete implementation and
-   existing checks are ready, report the exact head, whole delivery scope,
-   validation outcomes and explicit limits, then stop editing that target.
-   The driver starts independent review. A partially finished mechanism or one
-   coherent commit is not the complete-delivery handoff.
-4. **Dispose the finished verdict independently.** Record each finding as fixed
-   or rejected with evidence under the shared review procedure. Choose the
-   smallest compliant remedy yourself, recheck the affected invariant across
-   the change, and commit the coherent remediation. A reviewer supplies no
-   authority for scope expansion or new verification infrastructure.
-5. **Return the complete remediation and stop.** Name the new head, changed
-   findings and closure evidence. Await the reviewer verdict; do not negotiate
-   the implementation in parallel with review. An unresolved validity or scope
-   dispute goes to the driver's isolated adjudication path. Readiness is never
-   inferred from answering a finding.
+   with the change description delivered alongside the completed target.
+2. **Finish one coherent unit.** Implement one intelligible change within the
+   prepared outcome and self-check it against the governing policies. Keep
+   unrelated changes separate; do not package the entire feature into one
+   commit merely to obtain review. A unit may be a dependency of later work,
+   but must preserve the obligations of paths it enables now. On a bug, preserve
+   the evidenced causal scope under `sdlc/procedure/debugging`. A necessary
+   contract revision returns to its owner before affected source proceeds.
+3. **Commit, hand off and stop.** Use the sealed worktree flow. Report the exact
+   SHA, purpose, unit boundary, planned later work, existing-check outcomes and
+   explicit limits, then stop editing. Publication is not approval. The driver
+   routes that finished unit to the dedicated reviewer. Wait for its complete
+   report and the driver's handoff before acting on individual finding notices.
+4. **Dispose the complete verdict.** Record each finding as fixed or rejected
+   with evidence under the shared review contract. Choose the smallest compliant
+   remedy, recheck the affected invariant and commit the coherent correction.
+   Return its exact SHA and dispositions, then stop for re-review. Findings
+   confer no authority for new scope or verification infrastructure. An unresolved
+   validity or scope dispute belongs to the driver's arbitration path.
+5. **Continue after unit acceptance.** Once the reviewer has resolved blocking
+   findings and the driver has recorded its verdict, build the next unit. When
+   all scoped work is complete, hand off the integration head and whole delivery
+   scope for final review, with existing-check results and unexercised behavior.
+   Stop editing while that review runs. Resolve its complete verdict through
+   the same remediation path; per-commit approvals do not establish readiness.
 
 ## Outputs
 
@@ -84,5 +101,5 @@ co-design the implementation. Findings and remediation follow
 - A wrong or unbuildable spec returns with its concrete contradiction and
   preserved source to the work driver for preparation recovery.
 - Missing evidence or a disputed finding remains explicit. Continue only work
-  independent of that obstruction; obtain a completed owner disposition rather
-  than co-designing a workaround with the reviewer.
+  independent of that obstruction; obtain a completed owner disposition for
+  the affected work.

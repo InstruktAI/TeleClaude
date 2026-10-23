@@ -1,5 +1,5 @@
 ---
-description: How a builder's published commits wake the work driver, how the driver's findings reach the builder, and how a stamp bound to a commit makes an item ready for the integrator.
+description: How finished commits reach independent review through the work driver, findings return to the builder, and the final approved head becomes ready.
 delivered_by: [issue-128]
 ---
 
@@ -7,7 +7,15 @@ delivered_by: [issue-128]
 
 ## What it is
 
-In work, two agent sessions act sequentially on one item: the builder independently completes the implementation, then the work driver reviews that complete target under `sdlc/procedure/lifecycle/review`. The driver holds the claim and coordinates progress without co-designing the solution. This spec owns what connects them on the item's own record: the notice that a commit reached the integration head, the findings the driver places against commits, and the stamp that makes the item a candidate. The phases and acts are `local/projects/teleclaude/spec/feature/workflow/item-lifecycle`; the mechanism is `local/projects/teleclaude/design/architecture/workflow-machine`.
+In work, the driver holds the claim and coordinates a builder child and a
+separate reviewer child. Each coherent commit is completed before independent
+review; final review covers the resulting whole delivery. The driver records
+the reviewer's verdict and arbitrates scope and procedure under
+`sdlc/procedure/lifecycle/review`, without supplying its own technical approval.
+This spec owns the connections on the item's record: head notices, examined
+commits, findings and the readiness stamp. Phases and acts belong to
+`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`; the mechanism
+is `local/projects/teleclaude/design/architecture/workflow-machine`.
 
 Facing: all actors are agent sessions. The integrator's guarantees (singleton lease, FIFO by ready time, resumable checkpoints, both already-integrated guards, exclusive push of the shared branch, residual-marker gate, one recorded delivery) are `local/projects/teleclaude/spec/feature/workflow/integration-state-machine` and hold as stated there.
 
@@ -30,9 +38,25 @@ One notice is raised for each new integration-head commit, naming the item, bran
 - a successful publish by the sealed commit of a todo worktree, for the exact commit it published: the intent was reported, the compare-and-swap succeeded, and the completion says so. A failed publish raises nothing, and a later push that moves the ref past the published commit does not void the observation;
 - the platform's own reading of each work item's integration head, at daemon start, on every tick of the platform's schedule clock, and at each machine call on that item once the call is admitted (a call that is refused observes and writes nothing). It catches a push made outside the sealed commit and a publish whose notice a crash prevented. The commit it names is the one the ref carries when it reads. The tick is the cadence at which a reading pass starts; it is not by itself a bound on when an observation succeeds. The bound is the pass's own budget. A pass first reads the computer's project inventory (within 10 seconds). For each project it then lists the items and reads their stored phase locally (within 10 seconds), and reads the remote only for the n items that are in work. Those reads run eight at a time, each within 20 seconds (its read of the remote within 10 of them) and including the sending of that item's own head notice; a read that fails or runs out of its time holds its place for its full limit and observes nothing. A project's pass therefore takes at most 10 + ceil(n / 8) × 20 seconds, the projects are passed one after another, and a whole pass takes at most D = 10 + the sum of those over all projects. The passes run in a consumer of their own, apart from the reconciliation of pending effects and the release of launch reservations, and the head notice is sent apart from the item's other pending effects, so nothing but this inventory, this setup and these reads counts toward D. The clock ticks once a minute, each tick starts a pass that reads the current ref, and passes are handled one after another. A push made outside the sealed commit is observed by the first pass that starts after it and reads it successfully: at the latest after one tick (60 seconds), the rest of the pass that was already in progress, and that next pass, which is at most max(60, D) + D seconds in all. Ticks that queue while a pass overruns add no latency of their own beyond that. A reading that fails or runs out of its time is logged and attempted again at the next pass, and counts toward nothing: it is not an observation. A head notice that was recorded but not sent is sent again by the next pass.
 
-A publish whose outcome was not recorded, because the committing session ended between pushing and recording it, raises no notice of its own: a later head does not prove that the commit was ever the ref's tip. The current-head reading and the driver's review of the whole delta cover it.
+A publish whose outcome was not recorded, because the committing session ended between pushing and recording it, raises no notice of its own: a later head does not prove that the commit was ever the ref's tip. The current-head reading, branch-history reconciliation and independent review cover it.
 
-Delivery is at least once. Heads that landed while the platform was down, or whose publish outcome was not recorded, get no notice of their own. Notices record progress and the latest head; they do not trigger technical review before the builder reports the completed target. The subsequent review covers the whole delivery delta, including commits without a notice. A repeated notice for a commit already examined in that review adds nothing. Review and completed remediation alternate under `sdlc/procedure/lifecycle/review`.
+Delivery is at least once. A head notice wakes the driver to obtain the
+builder's completed-unit handoff: exact SHA, purpose, boundaries, remaining
+planned work and check results. The builder stops editing for review. The driver
+dispatches or continues the dedicated reviewer through existing session messages;
+there is no direct conversational link between builder and reviewer. The reviewer
+assesses the unit in the context of the full prepared goal, returns one complete
+report, and the driver records its reviewer and target in the existing log.
+`reviewed` records actual examination, not approval by itself. A repeated notice
+of an already examined commit starts no duplicate review.
+
+A commit not observed as a head has no notice of its own. The builder's handoff
+and the driver's reconciliation of branch history identify any unreviewed units
+for the reviewer; missed notices cannot silently remove the review obligation.
+After unit findings and remediation settle, the next unit proceeds. Final review
+covers the resulting whole delivery at the integration head, including cross-unit
+interactions. Per-commit approvals do not replace this assessment. The machine
+routes identity and events; reviewable completeness remains agent judgment.
 
 ### Findings
 
@@ -40,11 +64,19 @@ A finding is bound to the item and to a commit, not to a builder session. It is 
 
 Only the builder session inside the holder's claiming group is supplied. At a stop, the findings are carried in the same continuation as any other reason the stop already has, so one stop emits one response, and a finding is recorded as offered only after that response was written. Supplying fails open: an unreadable item or store never blocks a turn or a stop.
 
-The findings are item data written by the work driver, not instructions of the platform. The text the builder receives separates the platform's own instruction, which names the reply act, from the findings, which arrive encoded with each finding's key, its commit and its text, preceded by a statement that they are unvalidated item data. Text inside a finding cannot close that boundary or pass for platform text.
+The driver writes findings only after the independent reviewer has returned its
+complete report. It retains that report, then records the findings and sends the
+builder one completed handoff including their keys. The builder waits for this
+handoff even if individual finding notices arrive earlier. The next coherent
+unit waits for the reviewer's resolution of blocking findings and recorded
+verdict. Existing note/finding/reply surfaces carry this exchange; no new batch
+transaction, mailbox or review-state machine is introduced.
+
+The findings are item data recorded by the work driver from that report, not instructions of the platform. The text the builder receives separates the platform's own instruction, which names the reply act, from the findings, which arrive encoded with each finding's key, its commit and its text, preceded by a statement that they are unvalidated item data. Text inside a finding cannot close that boundary or pass for platform text.
 
 ### Stamp
 
-The stamp is bound to a commit H. It is accepted only from the work driver, only when H is the integration head, the item's worktree branch head is H and its worktree is clean, and only when the build gates pass at H: the worktree carries commits beyond the shared branch that change files, and the project's native test target passes. Those references are checked again after the gates ran. A refusal names the disagreeing refs or the failing gate. When the integration ref cannot be read, the refusal says so; it never reads that as the ref being absent. The stamp carries the complete independent report of the review lanes executed against the item's whole delta at H, identifying the reviewer if the driver required an unprimed review, and a stamp whose text is empty is refused naming the missing report; the machine checks that a report was recorded and grades none of it. The driver stamps only when no unresolved finding of the blocking tiers remains. A stamp makes the item `ready` at H, ends the builder and every other session of the driver's claiming group, and releases the claim. A stamp interrupted partway and run again completes the remaining steps and never writes a second stamp or notice for H.
+The stamp is bound to a commit H. It is accepted only from the work driver, only when H is the integration head, the item's worktree branch head is H and its worktree is clean, and only when the build gates pass at H: the worktree carries commits beyond the shared branch that change files, and the project's native test target passes. Those references are checked again after the gates ran. A refusal names the disagreeing refs or the failing gate. When the integration ref cannot be read, the refusal says so; it never reads that as the ref being absent. The stamp carries the complete independent report of the review lanes executed against the item's whole delta at H, identifying the dedicated reviewer and its exact approved target, and a stamp whose text is empty is refused naming the missing report; the machine checks that a report was recorded and grades none of it. The driver stamps only when no unresolved finding of the blocking tiers remains. A stamp makes the item `ready` at H, ends the builder and every other session of the driver's claiming group, and releases the claim. A stamp interrupted partway and run again completes the remaining steps and never writes a second stamp or notice for H.
 
 The stamp is submitted as a receipt-backed operation: the caller receives a receipt at once and the outcome is delivered to the calling session. The same request submitted again attaches to the same operation. At most one stamp's gates run on an item at a time: while one runs, a stamp that asks for something else is refused, and refusing it does not displace the running one. The phase and the holder are checked where the slot is taken, and a result is recorded only by the invocation that still owns the slot.
 
@@ -63,8 +95,8 @@ Given the builder publishes a commit that becomes the item's integration head
 When the platform observes that head
 Then exactly one notice names the item, branch and commit
 And the session holding the work claim receives it whatever the builder writes in its turn
-And the notice records progress without starting technical review before the completed-target handoff
-And the subsequent review covers the complete delivery delta
+And the driver obtains the completed-unit handoff and routes its exact commit to the dedicated reviewer
+And a repeated notice does not repeat an already recorded review
 ```
 
 #### UC-RC2: Only a confirmed head raises a notice
@@ -182,8 +214,8 @@ And the refusal names the group and what remains in it
 
 ## Known caveats
 
-- A commit that landed while the platform was down is covered by the driver's review of the whole delta, not by a notice of its own.
-- The completion a committing session reports for its publish is a client assertion inside the sealed wrapper's local trust contract; a session that bypasses the wrapper can state a swap that did not happen. The current-head reading and the driver's review bound its effect to a wrong or missing notice, never to a wrong delivery.
+- A commit that landed while the platform was down is covered by reconciliation of branch history and independent review, not by a notice of its own.
+- The completion a committing session reports for its publish is a client assertion inside the sealed wrapper's local trust contract; a session that bypasses the wrapper can state a swap that did not happen. The current-head reading and independent review bound its effect to a wrong or missing notice, never to a wrong delivery.
 - A publish assumes origin's push and fetch address the same repository, which Git itself requires; divergent push addresses are outside what this reporting can attribute.
 - A head that cannot be read, because the remote is unreachable or unauthenticated, yields no notice for that item until a later read succeeds; the failure is logged with the item and project.
 - A stamp's gate unit whose ownership cannot be shown holds the item's stamp until its processes end or the governing agent has ended the ones it can attribute. A process that starts a session of its own leaves the unit and is not seen by the machine, and a group that remains after its runner with no positively identified member cannot be told from an unrelated group that reused its number, so it is never signalled.

@@ -56,7 +56,7 @@ Before reading the item for context, discover what actually exists.
 
 Preparation determines the work's authorized horizon before enriching or
 constraining it. The horizon is inferred from the source intent and the
-situation, then stated in the spec the driver judges; it is not selected from a
+situation, then stated in the spec the reviewer judges; it is not selected from a
 hard kind lookup.
 
 Preparation uses six design focuses before selecting a mechanism:
@@ -126,7 +126,7 @@ new construction, assess established implementations and compositions for the
 same outcome as well as the comparable in-system path. Name what is reused and
 the concrete gap that remains; interface familiarity or a list of references is
 not an assessment of existing solutions (`general/principle/grounding`). This
-applies to designs carried by specs and mechanism notes as well as architecture
+applies to designs carried by specifications and completed implementation rationales as well as architecture
 artifacts. For unfamiliar infrastructure or a security boundary, the artifact
 names the reference implementations, current vendor documentation and a
 comparable production architecture behind its adopt-or-build judgment.
@@ -208,7 +208,7 @@ consuming it owns the HOW.
 - **Intents are never rejected for carrying HOW.** The lead is kept and tested,
   not gated away — the mechanism hint is signal even when it is wrong.
 
-A spec or mechanism note that adopts an upstream mechanism it never verified
+A specification or completed change description that adopts an upstream mechanism it never verified
 against the code is defective **even when the mechanism happens to be correct**:
 the defect is the unverified adoption, because the next wrong guess rides the
 same unchecked path.
@@ -293,7 +293,7 @@ derived from intent and situation, not from the todo kind alone:
   intelligence, provided every consequential addition explains why it belongs
   here and the inference record carries it for the driver's judgment.
 
-The spec carries the horizon into the driver's challenge. If shaping discovers a
+The spec carries the horizon into independent review. If shaping discovers a
 product outcome beyond the authority of the intent, that outcome is a question
 for the person who owns it; the spec never launders that expansion into
 implementation scope.
@@ -338,9 +338,8 @@ finding against the remediation, not a closure.
 
 The producer completes its own approach and self-checks it against these rules;
 the reviewer then evaluates the finished target independently under
-`sdlc/procedure/lifecycle/review`. The pair does not converge on a mechanism
-before judging it. This separation prevents shared commitment to the chosen
-solution from substituting for policy conformance. Readiness requires both a
+`sdlc/procedure/lifecycle/review`. The driver coordinates their completed-artifact handoffs and preserves the
+reviewer's independent verdict. Readiness requires both a
 coherent outcome and compliance with its governing rules; neither a polished
 rationale nor prior approval establishes the other.
 
@@ -396,6 +395,9 @@ does not admit a use case. Preparation creates no executable tests. Quality rule
 
 ## Rationale
 
+- Sequential, isolated judgment prevents shared commitment to a chosen solution
+  from substituting for policy conformance.
+
 - Domain intelligence adds value only when it can widen the candidate target
   before scope is chosen, while inspectable premises and an independent judge
   prevent a generic recital from acquiring intent authority.
@@ -438,15 +440,15 @@ does not admit a use case. Preparation creates no executable tests. Quality rule
 
 - Applies to an item's intent, its prepared spec and the pending contracts the
   spec references, and to the builder's completed implementation that delivers it.
-- Applies to the author and the preparation driver, and to the builder and the
-  work driver where the implementation meets the spec.
+- Applies to the author, builder, dedicated reviewers and coordinating drivers
+  wherever the specification or implementation is authored or assessed.
 
 ## Enforcement
 
 - The author self-checks against this policy before reporting the spec ready
   for challenge; the builder does the same for the complete implementation before handoff.
-- The preparation driver challenges the spec against it, and the work driver
-  reviews the completed implementation against it after authorship ends; each
+- Dedicated preparation and work reviewers assess finished targets against it;
+  drivers coordinate the handoffs and record the independent verdicts. Each
   finding meets `sdlc/procedure/lifecycle/review`, including isolation and its
   causal evidence and bounded-closure requirements.
 

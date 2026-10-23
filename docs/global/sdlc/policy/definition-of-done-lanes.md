@@ -28,8 +28,15 @@ the requirement contract). They are defined once here and consumed by:
 
 <!-- change:issue-128 -->
 
-- `sdlc/procedure/lifecycle/work/overview-v2` — the work driver, which executes the applicable lanes against the item's whole delta before it stamps, and records one line per lane in the stamp's text. It reviews only after the builder completes the target, and qualifies only under the design-and-authorship separation in `sdlc/procedure/lifecycle/review`; otherwise an unprimed reviewer executes the lanes and the driver records that exact report. It stamps only when no Requirement-Violation, Critical or Important finding is unresolved.
-- `sdlc/procedure/lifecycle/work/review-commits` — the commit reviewer, which executes the same lanes; that procedure resolves the scope lane's intent basis.
+- `sdlc/procedure/lifecycle/work/review-build` — the dedicated reviewer executes
+  applicable lanes on each completed coherent commit and, separately, on the
+  resulting whole delivery before readiness. The work driver records the
+  reviewer's complete report in its stamp and never substitutes its own verdict.
+- `sdlc/procedure/lifecycle/work/review-commits` — the independent main-commit
+  reviewer executes the same lanes with the intent basis that procedure resolves.
+- `sdlc/procedure/lifecycle/prepare/intake-v2` and `.../prepare/review-plan` —
+  the author and dedicated preparation reviewer anticipate those obligations in
+  the completed specification and delivery approach.
 
 <!-- /planned-change:issue-128 -->
 
@@ -152,11 +159,11 @@ checklist.
 
 <!-- change:issue-128 -->
 
-Lane coverage is a complete checklist, not a best-effort scan. The work driver,
-in the text of its stamp, and the commit reviewer each report **one line per
-lane in the catalog above** — marking it satisfied (naming how), unmet (a
+Lane coverage is a complete checklist, not a best-effort scan. The preparation,
+build and commit reviewers each report **one line per lane in the catalog above** — marking it satisfied (naming how), unmet (a
 finding), or `N/A` (with reason). A catalog lane with no line is itself a
-defect: silence is not coverage.
+defect: silence is not coverage. The driver records the final independent
+report unchanged in substance, naming its reviewer and exact target.
 
 Deliverable-producing lanes (tests, security, docs, config, browser/UI, ADR) are
 reported by naming the artifact and the commit or diff that delivers it. The
@@ -201,9 +208,12 @@ lifecycle review):
 
 <!-- change:issue-128 -->
 
-**Authority:** the intent basis the invoking procedure resolves. For the work
-driver's review before it stamps, it is the item's prepared spec at the body
-revision the prepared act named.
+**Authority:** the intent basis the invoking procedure resolves. For lifecycle
+work review it is the item's prepared spec at the body revision the prepared
+act named. Commit review judges the obligations applicable to its coherent unit;
+final review judges all criteria against the resulting whole delivery. Planned
+later work is not a missing requirement of an earlier unit, while a broken
+enabled path or policy violation is a present defect.
 
 The reviewed changes must satisfy the resolved authorized intent within the
 named review target — nothing more, nothing less.
@@ -948,7 +958,7 @@ mechanism with its evidence, established before the item was prepared
    else**. A delta that removes no part of the cause — guards against causes no
    evidence has established, extra validation layers, defensive defaults,
    fallbacks, adjacent refactors, new capability — is a **Critical** scope
-   finding, even when the builder's mechanism note contains it: for a bug, the
+   finding, even when the builder's completed change description contains it: for a bug, the
    spec's cause is the scope authority. A family-census site outside that
    boundary owes nothing in this delivery (`sdlc/concept/defect-evidence`,
    family site).

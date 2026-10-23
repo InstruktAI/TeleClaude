@@ -1,5 +1,5 @@
 ---
-description: 'Top-level software development lifecycle design: the item body as the spec, a judging driver and an authoring child per phase, the rigor model, and phase boundaries.'
+description: 'Top-level software development lifecycle design: the item body as the spec, a coordinating driver, producer child and dedicated reviewer per phase, the rigor model, and phase boundaries.'
 visibility: 'public'
 ---
 
@@ -17,7 +17,7 @@ This design is intentionally above machine implementation details. It defines:
 
 - the phase boundaries of the lifecycle
 - the authority of the item's spec and the contracts it references
-- the sequential roles in each phase: a child that produces and an isolated driver that reviews the completed target
+- the sequential roles in each phase: a producer child, an independent reviewer child and a coordinating driver
 - the split between automation and judgment
 
 The lifecycle is designed for autonomy without losing rigor.
@@ -42,8 +42,9 @@ The lifecycle is designed for autonomy without losing rigor.
   body revision preparation judged ready, and a body that has moved since is
   not built.
 - Each phase separates completed production from review. The author or builder
-  works independently, then the driver reviews the complete target. The driver
-  has neither authored nor co-designed it; compromised independence requires
+  works independently, then a dedicated reviewer assesses the completed target.
+  The driver coordinates and arbitrates scope and procedure without substituting
+  its own technical approval; compromised reviewer independence requires
   an unprimed reviewer (`sdlc/procedure/lifecycle/review`).
 - Durable contract changes are authored doc-first, in pending snippets that are
   independently reviewed before the work that depends on them is built.
@@ -62,8 +63,9 @@ The lifecycle is designed for autonomy without losing rigor.
 
 Preparation turns the intent in an item's body into a fleshed-out spec in that
 body (`sdlc/design/lifecycle/prepare`). The author completes the specification
-and pending contracts before the driver independently reviews them and records
-readiness at the approved body revision.
+and pending contracts, preserving independent review of each coherent doc
+commit. A dedicated reviewer assesses the complete specification before the
+driver records readiness at the approved body revision.
 
 Rigor is preserved by:
 
@@ -76,14 +78,15 @@ Rigor is preserved by:
 ### Work
 
 Work realizes the prepared spec in code (`sdlc/design/lifecycle/work`). The
-builder completes the implementation before the isolated reviewer executes the
-review lanes against its whole delta. The driver records readiness at that
-reviewed integration head after sequential remediation closes valid findings.
+builder completes each coherent commit before a dedicated reviewer assesses it.
+After all units, final review executes the lanes against the resulting whole
+delta. The driver records readiness at that reviewed integration head after
+sequential remediation closes valid findings.
 
 Rigor is preserved by:
 
 - building against the prepared spec at its revision
-- independently reviewing the completed whole delta, with findings bound to commits
+- reviewing each completed coherent commit and then the resulting whole delta
 - executing every applicable review lane before the stamp, with no blocking
   finding left unresolved
 - returning the item to preparation when the spec itself is wrong
@@ -105,7 +108,7 @@ Rigor is preserved by:
 The lifecycle preserves rigor by combining:
 
 - an explicit spec and explicit contract authority
-- a judge that neither authored nor co-designed its completed review target
+- a dedicated judge with no delivery stake, authorship or co-design of its target
 - findings and readiness bound to exact revisions and commits
 - aggressive supporting automation that computes facts for judgment
 
