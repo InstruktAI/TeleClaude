@@ -68,6 +68,8 @@ in session details. Display abbreviation does not change dispatch,
 continuation or matching identity.
 <!-- /planned-change:issue-128 -->
 
+<!-- planned-change:issue-129 -->
+
 A bound issue parameter identifies GitHub work when GitHub's issue lookup
 resolves it in the assignment's project. Session snapshots carry its verified
 number, URL, and bound work subject as an optional structured reference,
@@ -76,6 +78,32 @@ selection follows the GitHub CLI used by the assignment. The reference is
 independent of the session title and work-slug claim; an assignment without an
 identified GitHub issue carries none. An unavailable optional lookup leaves
 the session visible and eligible for a later lookup.
+<!-- change:issue-129 -->
+
+A bound issue parameter identifies GitHub work when the issue lookup resolves
+it within the repository declared by the registered project. The owning
+computer's session snapshot may carry the verified number, URL and bound work
+subject as optional display metadata, including for sessions started before the
+display opens. The stored invocation supplies the selector; the registered
+project's `todos.repository` declaration supplies repository identity, even
+when the selected todo backend is local. Cwd, command arguments, ambient Git
+remotes and the developer's native CLI do not select a repository or credential.
+
+The optional metadata read uses the existing role-to-App assignment owned by
+`local/projects/teleclaude/spec/feature/identity/platform-github-identity`
+and the GitHub adapter's existing `read_github_item_identity` issue-read path,
+which requests only `issues:read` through GitHubKit. Its in-memory target scopes
+that read; it is not persisted as the session's workflow target. The snapshot
+uses the verified issue number and declared repository to form the display URL.
+This is a display read only: it establishes no workflow binding or write
+authority. Missing repository declaration, missing role/App mapping, unavailable
+credential, an unreadable/non-issue selector, or provider failure leaves
+metadata absent while the session remains visible. The lookup remains eligible
+for later refresh under the existing bounded cache. A session without a
+verified issue reference carries none. The TUI consumes this optional
+structured reference under
+`local/projects/teleclaude/spec/feature/tui/todo-session-cross-navigation`.
+<!-- /planned-change:issue-129 -->
 
 ### Resolution
 

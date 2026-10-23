@@ -73,10 +73,22 @@ issue in the default browser. The slug retains its existing styling, click
 region, and navigation behavior. The issue link consumes only clicks inside
 the number's own span.
 
+<!-- planned-change:issue-129 -->
+
 Issue identity comes from the session's structured assignment, carried by its
 owning computer in the session snapshot. Digits in a title or slug do not
 establish a GitHub assignment. A session without a GitHub issue reference shows
 no issue-number link.
+<!-- change:issue-129 -->
+
+Issue identity comes from the verified optional reference carried by the
+owning computer in the session snapshot, under
+`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`.
+Digits in a title or slug do not establish a GitHub assignment. When the
+optional provider lookup is unavailable, the session remains visible and the
+issue-number link is absent until a later lookup supplies a verified reference.
+The display and click behavior is unchanged for every reference that resolves.
+<!-- /planned-change:issue-129 -->
 
 ### Use cases
 

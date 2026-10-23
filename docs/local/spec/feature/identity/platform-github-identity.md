@@ -163,9 +163,20 @@ Public App, installation and account identifiers and protected secret references
 may be retained by their configuration/identity owners. Private keys remain in
 protected credential storage; JWTs and installation tokens remain in credential
 component memory. The API credential is passed only to the in-process GitHubKit
-client after authenticated operation admission. Git ref updates use publication's
-existing protected credential transport. Tokens do not reach a provider
-subprocess.
+client after authenticated operation admission. For optional session issue
+metadata, the snapshot owner resolves the current session's canonical role
+through the existing role-to-App mapping, then uses the existing
+`read_github_item_identity` issue-read path with only `issues:read` for the
+registered project's declared repository. That path uses
+`issue_github_installation_credential` and GitHubKit. The metadata read is
+admitted from the current stored session assignment and repository declaration;
+it does not require or persist a GitHub session binding and grants no write
+authority. Its in-memory target is credential scope, not a workflow binding.
+Git ref updates remain Git operations under the publication owner;
+the current PR #137 head still uses a GitHub CLI credential helper and is not a
+conforming protected transport. Its replacement remains pending and must consume
+the SDK-issued credential without invoking that CLI. Tokens do not reach a
+GitHub API subprocess or a `GH_TOKEN` child environment.
 Native credential stores,
 agent-visible parent environments, arguments, configuration documents,
 artifacts, prose and logs receive no token. Errors use the existing credential

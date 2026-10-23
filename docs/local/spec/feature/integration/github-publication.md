@@ -25,16 +25,21 @@ semantics, and publication invokes no GitHub CLI binary or credential helper.
 
 ### Platform push
 
-The existing publication path consumes the session's fixed actor and a
+The intended publication path consumes the session's fixed actor and a
 repository-scoped credential from its credential component. It confines the
 effective transport to the intended canonical HTTPS repository and explicit
 ref/head, neutralizing inherited URL rewrites, credential helpers, Git config
 injection and SSH fallback without changing shared git configuration. Local
 repository configuration and hooks cannot select another credential or
-transport. The assigned scoped App credential reaches standard Git only through
-the existing protected Git credential transport, never a GitHub CLI helper.
-Execution uses an isolated temporary git directory referencing the worktree's
-objects, with controlled configuration and only the intended destination/refspec
+transport. No conforming Git credential transport is delivered yet. PR #137's
+current head `83b062f11f513fb84fc03fa471e1b8b41af4509f` installs and invokes
+`gh auth git-credential`; that source is a known divergence from the adopted
+in-process SDK boundary. Its pending correction must let standard Git consume
+the SDK-issued scoped App credential through the Git owner's protected
+transport, without invoking the GitHub CLI or exporting `GH_TOKEN`. Until that
+transport is implemented and reviewed, publication does not establish a
+verified platform push. Execution uses an isolated temporary git directory
+referencing the worktree's objects, with controlled configuration and only the intended destination/refspec
 (`sdlc/policy/security-awareness`).
 
 Before sending a ref update, publication observes the prior remote ref. Success
