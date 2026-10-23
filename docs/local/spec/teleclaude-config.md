@@ -196,7 +196,7 @@ no GitHub repository or credentials.
 <!-- change:issue-130-github-item-identity -->
 
 - `todos.store` selects the project workflow-store adapter. Omission defaults to `local`. What a `github` selection serves, and how it refuses the rest, is owned by `local/projects/teleclaude/design/architecture/workflow-store`. Local selection requires no GitHub account or repository.
-- `todos.repository` declares the GitHub repository a `github` workflow store is bound to, by its stable repository ID and canonical owner/name. It is the only source of the project's GitHub repository identity, which is never formed from a slug or origin metadata (`local/projects/teleclaude/spec/feature/identity/platform-github-identity`). A declaration beside any other selection fails config load; a `github` selection without one loads, and the workflow store's GitHub identity reads refuse it.
+- `todos.repository` declares the project's GitHub repository by its stable repository ID and canonical owner/name. It is the only source of the project's GitHub repository identity, which is never formed from a slug or origin metadata (`local/projects/teleclaude/spec/feature/identity/platform-github-identity`). The declaration is valid under either selection, so a project still on `local` can name its repository before it switches; declaring it selects nothing. Which reads require a `github` selection and a declaration is owned by `local/projects/teleclaude/design/architecture/workflow-store`.
 
 #### Workflow store selection
 
