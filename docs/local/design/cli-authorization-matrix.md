@@ -72,7 +72,15 @@ Each command keeps a person band of its own in the CLI surface schema, evaluated
 - **Member** — works on projects and manages sessions; no infrastructure acts such as reviving sessions, setting agent status, or reading and writing the machine environment.
 - **Customer** — reaches only the allow-list in invariant 6.
 
+<!-- planned-change:github-store-switch -->
+
 `todo sync` declares no command capability (invariant 2) and has the admin person band: an admin at a terminal, or a session an admin started without an agent role, is admitted, while every session carrying a role is refused. A caller with the platform principal and no resolved role is admitted by the roleless platform exception in `local/projects/teleclaude/spec/feature/identity/command-clearance`.
+
+<!-- change:github-store-switch -->
+
+`todo sync` and `todo switch-to-github` declare no command capability (invariant 2) and have the admin person band: an admin at a terminal, or a session an admin started without an agent role, is admitted, while every session carrying a role is refused. A caller with the platform principal and no resolved role is admitted by the roleless platform exception in `local/projects/teleclaude/spec/feature/identity/command-clearance`.
+
+<!-- /planned-change:github-store-switch -->
 
 ### Commands that do not depend on the caller
 
