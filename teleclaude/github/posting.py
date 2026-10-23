@@ -6,7 +6,7 @@ import asyncio
 import os
 import shlex
 import subprocess
-from collections.abc import AsyncIterator, Callable, Coroutine, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -26,6 +26,7 @@ from httpx import HTTPError
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import SQLAlchemyError
 
+import teleclaude
 from teleclaude.core.db import get_db
 from teleclaude.core.github_identity import (
     AdmittedGitHubInvocation,
@@ -36,7 +37,6 @@ from teleclaude.core.github_identity import (
     resolve_admitted_github_posting_context,
     resolve_native_github_posting_context,
 )
-from teleclaude.github import _native_gh
 from teleclaude.github._comment_results import (
     CommentResponse,
     GitHubPostingCancelled,
@@ -62,7 +62,9 @@ from teleclaude.github._conversation_scope import (
     resolve_native_comment,
     resolve_native_reply,
 )
+from teleclaude.github._native_gh import launch_environment
 from teleclaude.github._native_pr import prepare_native_pull_request
+from teleclaude.github._native_views import read_native_view
 from teleclaude.github.accounts import GitHubRateLimitFacts
 from teleclaude.github.client import create_github_client
 from teleclaude.github.credentials import (
@@ -76,8 +78,8 @@ from teleclaude.github.native import (
     NativeCommentRefused,
     prepare_native_comment_maintenance,
     prepare_native_issue_comment,
-    prepare_native_issue_view,
     prepare_native_review,
+    prepare_native_view,
 )
 from teleclaude.github.pull_requests import GitHubPullRequestCancelled, edit_native_pull_request
 from teleclaude.github.replies import observe_native_reply, post_native_review_reply
@@ -113,14 +115,6 @@ _POST_EVENT = "github_comment_post acceptance=%s failure=%s session_id=%s provid
 _CANCELLED_MESSAGE = "GitHub posting cancelled; available provider evidence is attached"
 _UTF8 = "utf-8"
 _EMPTY = ""
-_GH_TOKEN = "GH_TOKEN"
-_GH_CONFIG_DIR = "GH_CONFIG_DIR"
-_FIXED_ENVIRONMENT = {
-    "GH_HOST": "github.com",
-    "GH_PROMPT_DISABLED": "1",
-    "GH_NO_UPDATE_NOTIFIER": "1",
-    "GH_PAGER": "",
-}
 _CONFIG_PREFIX = "teleclaude-gh-"
 _REVIEW_COMMENT = "review_comment"
 _REPOSITORY_SEPARATOR = "/"
@@ -136,6 +130,28 @@ _PRODUCER_TARGET = "producer_target"
 _FAILURE = "failure"
 _HELP_FLAGS = frozenset({"--help", "-h"})
 _HELP_ARGUMENT = "--help"
+_VERSION_TEXT = "TeleClaude GitHub facade {version} (GitHubKit)"
+_HELP_TEXT = """TeleClaude GitHub facade: fixed SDK operations for a bound managed session.
+Reads (human-readable prose; --json is unsupported):
+  gh issue view <selector> [--repo <bound-repository>] [--comments|-c]
+  gh pr view <selector> [--repo <bound-repository>] [--comments|-c]
+  gh api GET /repos/{owner}/{repo}/pulls/{number}/comments
+Views accept -R as --repo. Comment lists use all SDK pages; incomplete traversal is explicitly marked.
+Writes:
+  gh issue comment <selector> --body <text>|--body-file <file>|--editor
+  gh pr comment <selector> --body <text>|--body-file <file>|--editor
+  gh pr review <selector> --comment --body <text>|--body-file <file>
+  gh pr edit <selector> --title <text> [--body <text>|--body-file <file>]
+  gh pr edit <selector> --body <text>|--body-file <file>
+  gh api repos/{owner}/{repo}/issues/comments/{id} -X PATCH -f body=<text>
+  gh api repos/{owner}/{repo}/issues/comments/{id} -X DELETE
+  gh api repos/{owner}/{repo}/pulls/comments/{id} -X PATCH -f body=<text>
+  gh api repos/{owner}/{repo}/pulls/comments/{id} -X DELETE
+  gh api repos/{owner}/{repo}/pulls/{number}/reviews/{id} -X PUT -f body=<text>
+  gh api repos/{owner}/{repo}/pulls/{number}/comments/{root-id}/replies -X POST -f body=<text>
+Conversation targets the bound issue or an associated PR. Edits/deletes require the recorded native creator; PR-description edits require the creating builder.
+Other commands, provider JSON, token/auth diagnostics, verdicts, readiness and merge are unsupported.
+Help/version are local; this facade never executes the provider CLI."""
 _HELP_COMMAND = "help"
 _VERSION_ARGUMENTS = frozenset({("--version",), ("version",)})
 _HELP_PATHS = frozenset(
@@ -166,17 +182,19 @@ _HELP_PATHS = frozenset(
     }
 )
 _ISSUE_VIEW = ("issue", "view")
+_PR_VIEW = ("pr", "view")
+_API_GET = ("api", "GET")
 _ISSUE_COMMENT = ("issue", "comment")
 _PR_COMMENT = ("pr", "comment")
 _PR_EDIT = ("pr", "edit")
 _PR_REVIEW = ("pr", "review")
-_ISSUE_READ_PERMISSIONS: AppPermissionsType = {"issues": "read"}
 _EDITOR_ENVIRONMENT = ("GH_EDITOR", "VISUAL", "EDITOR")
 _EDITOR_FILE = "comment.md"
 _NATIVE_REFUSAL = "gh: platform invocation refused: "
 _NATIVE_INCOMPLETE = "gh: platform operation incomplete: "
 _NATIVE_UNAVAILABLE = "native execution unavailable"
 _NATIVE_CONTEXT_CHANGED = "session scope changed"
+_NATIVE_BOUND_REQUIRED = "requires a GitHub-bound managed session"
 _COMMENT_WEB_URL = "https://github.com/{repository}/issues/{number}#issuecomment-{identifier}"
 _PR_COMMENT_WEB_URL = "https://github.com/{repository}/pull/{number}#issuecomment-{identifier}"
 _EXIT_REFUSED = 2
@@ -754,14 +772,6 @@ def _help_arguments(arguments: tuple[str, ...]) -> tuple[str, ...] | None:
     return None
 
 
-def _native_binary(environment: Mapping[str, str]) -> Path:
-    """Resolve a binary only for the remaining legacy read/help/pass-through callers."""
-    binary = _native_gh.gh_binary(environment)
-    if binary is None:
-        raise ValueError(_NATIVE_UNAVAILABLE)
-    return binary
-
-
 def _editor_body(directory: Path) -> str:
     """Collect opaque prose before issuance; editor selection never reaches a credential-bearing child."""
     selected = next(
@@ -781,9 +791,8 @@ def _editor_body(directory: Path) -> str:
         with TemporaryDirectory(prefix=_CONFIG_PREFIX) as temporary:
             body_path = Path(temporary) / _EDITOR_FILE
             body_path.touch(mode=0o600, exist_ok=False)
-            completed = subprocess.run(
-                (*command, str(body_path)), cwd=directory, env=_native_gh.launch_environment(), check=False
-            )
+            # The selected interactive editor has no Python API and runs before credential issuance.
+            completed = subprocess.run((*command, str(body_path)), cwd=directory, env=launch_environment(), check=False)
             if completed.returncode != 0:
                 raise NativeCommentRefused(NativeCommentRefusal.BODY_UNAVAILABLE)
             return body_path.read_bytes().decode(_UTF8)
@@ -825,31 +834,12 @@ def _native_maintenance_result(result: GitHubCommentMaintenanceResult, stdout: T
 
 
 async def _native_view(
-    context: GitHubPostingContext,
-    binary: Path,
-    arguments: tuple[str, ...],
-    stdout: TextIO,
-    stderr: TextIO,
+    context: GitHubPostingContext, arguments: tuple[str, ...], stdout: TextIO, stderr: TextIO
 ) -> int:
-    admitted = prepare_native_issue_view(arguments, context)
+    admitted = await prepare_native_view(arguments, context)
     if not await _current_context(context, context.target, native=True):
         return _native_failure(_NATIVE_CONTEXT_CHANGED, stderr)
-    try:
-        with TemporaryDirectory(prefix=_CONFIG_PREFIX) as directory:
-            credential = await issue_github_installation_credential(
-                context.binding.assignment, context.target, _ISSUE_READ_PERMISSIONS
-            )
-            if not await _current_context(context, context.target, native=True):
-                return _native_failure(_NATIVE_CONTEXT_CHANGED, stderr)
-            environment = {
-                **_native_gh.launch_environment(),
-                **_FIXED_ENVIRONMENT,
-                _GH_CONFIG_DIR: directory,
-                _GH_TOKEN: credential.token.get_secret_value(),
-            }
-            return await _native_gh.native_read_process(binary, admitted, directory, environment, stdout, stderr)
-    except GitHubCredentialRefused as error:
-        return _native_result(_credential_result(error), context, stdout, stderr)
+    return await read_native_view(context, admitted, stdout, stderr)
 
 
 async def execute_native_github(
@@ -860,28 +850,20 @@ async def execute_native_github(
     try:
         help_arguments = _help_arguments(arguments)
         if help_arguments is not None:
-            environment = _native_gh.launch_environment()
-            binary = _native_binary(environment)
-            with TemporaryDirectory(prefix=_CONFIG_PREFIX) as temporary:
-                return await _native_gh.native_read_process(
-                    binary,
-                    help_arguments,
-                    temporary,
-                    {**environment, **_FIXED_ENVIRONMENT, _GH_CONFIG_DIR: temporary},
-                    stdout,
-                    stderr,
-                )
+            print(
+                _VERSION_TEXT.format(version=teleclaude.__version__)
+                if help_arguments in _VERSION_ARGUMENTS
+                else _HELP_TEXT,
+                file=stdout,
+            )
+            return 0
         context = await resolve_native_github_posting_context()
         if isinstance(context, RefusedGitHubInvocation):
             return _native_failure(context.reason.value, stderr)
         if isinstance(context, (NativeHumanGitHubInvocation, LocalNativeGitHubInvocation)):
-            current = await resolve_native_github_posting_context()
-            if current != context:
-                return _native_failure(_NATIVE_CONTEXT_CHANGED, stderr)
-            binary = _native_binary(_native_gh.launch_environment())
-            original = dict(os.environ)  # guard: direct-env-read - preserve native pass-through startup environment
-            os.chdir(directory)
-            os.execve(str(binary), (str(binary), *arguments), original)
+            return _native_failure(_NATIVE_BOUND_REQUIRED, stderr)
+        if arguments[:2] in (_ISSUE_VIEW, _PR_VIEW, _API_GET):
+            return await _native_view(context, arguments, stdout, stderr)
         if arguments[:2] == _PR_EDIT:
             pr_request = prepare_native_pull_request(
                 arguments, context, directory=directory, stdin=stdin, editor=lambda: _editor_body(directory)
@@ -915,9 +897,6 @@ async def execute_native_github(
         if arguments[:2] == _PR_REVIEW:
             review = await prepare_native_review(arguments, context, directory=directory, stdin=stdin)
             return await _native_review(context, review, stdout, stderr)
-        if arguments[:2] == _ISSUE_VIEW:
-            binary = _native_binary(_native_gh.launch_environment())
-            return await _native_view(context, binary, arguments, stdout, stderr)
         if arguments[:2] not in (_ISSUE_COMMENT, _PR_COMMENT):
             return _native_failure(NativeCommentRefusal.UNSUPPORTED_OPERATION.value, stderr)
         try:

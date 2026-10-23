@@ -21,6 +21,7 @@ from teleclaude.github._conversation_scope import (
 from teleclaude.types.github_posting import (
     GitHubIssueCommentDeleteRequest,
     GitHubIssueCommentEditRequest,
+    GitHubObjectAssociation,
     GitHubObjectRef,
     GitHubReviewEditRequest,
     GitHubReviewReplyRequest,
@@ -37,16 +38,11 @@ _GITHUB_HOST = "github.com"
 _HOST_PREFIX = _GITHUB_HOST + _PATH_SEPARATOR
 _ISSUES_SEGMENT = "issues"
 _PULL_SEGMENT = "pull"
-_VIEW_PROGRAM = "gh issue view"
+_VIEW_PROGRAM = "gh view"
 _VIEW_COMMAND = "view"
 _COMMENTS_FLAG = "--comments"
 _COMMENTS_SHORT_FLAG = "-c"
-_JSON_FLAG = "--json"
-_JSON_FIELDS = "fields"
-_COMMA = ","
-_VIEW_FIELDS = frozenset(
-    {"id", "number", "url", "title", "body", "state", "comments", "author", "createdAt", "updatedAt"}
-)
+_GET_METHOD = "GET"
 _API_COMMAND = "api"
 _API_PROGRAM = "gh api comment maintenance"
 _METHOD_FLAG = "--method"
@@ -150,7 +146,6 @@ class _ViewArguments(argparse.Namespace):
     target: str
     repository: list[str] | None = None
     comments: int = 0
-    fields: list[str] | None = None
 
 
 class _MaintenanceArguments(argparse.Namespace):
@@ -308,49 +303,74 @@ class NativeIssueCommentRequest:
     source: NativeGitHubPostSource = field(default_factory=NativeGitHubPostSource, init=False)
 
 
-def prepare_native_issue_view(arguments: Sequence[str], context: GitHubPostingContext) -> tuple[str, ...]:
-    """Admit one bound read and reconstruct native arguments without executable formatting or diagnostics."""
-    if tuple(arguments[:2]) != (_Command.ISSUE, _VIEW_COMMAND):
-        raise NativeCommentRefused(NativeCommentRefusal.UNSUPPORTED_OPERATION)
-    parser = _Parser(prog=_VIEW_PROGRAM, add_help=False, allow_abbrev=False, exit_on_error=False)
-    parser.add_argument(_Argument.TARGET)
-    parser.add_argument(_Flag.REPOSITORY, _Flag.REPOSITORY_SHORT, dest=_Argument.REPOSITORY, action=_Action.APPEND)
-    parser.add_argument(_COMMENTS_FLAG, _COMMENTS_SHORT_FLAG, action=_Action.COUNT, default=0)
-    parser.add_argument(_JSON_FLAG, dest=_JSON_FIELDS, action=_Action.APPEND)
-    values = _ViewArguments()
-    try:
-        parser.parse_args(arguments[2:], namespace=values)
-    except argparse.ArgumentError:
-        raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS) from None
-    fields = values.fields
-    if (
-        values.comments > 1
-        or (values.repository is not None and len(values.repository) > 1)
-        or (fields is not None and len(fields) > 1)
-    ):
-        raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
-    target = context.target
-    repository = values.repository[0] if values.repository else target.repository
-    if (
-        repository.casefold().removeprefix(_HOST_PREFIX) != target.repository.casefold()
-        or _issue_number(values.target, target.repository) != target.issue_number
-    ):
-        raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
-    result: tuple[str, ...] = (
-        _Command.ISSUE,
-        _VIEW_COMMAND,
-        str(target.issue_number),
-        _Flag.REPOSITORY,
-        target.repository,
-    )
-    if values.comments:
-        result += (_COMMENTS_FLAG,)
-    if fields is not None:
-        selected = fields[0].split(_COMMA)
-        if not selected or any(name not in _VIEW_FIELDS for name in selected):
+class NativeReadKind(StrEnum):
+    """The three fixed conversational read shapes; no generic API read."""
+
+    ISSUE = "issue"
+    PR = "pr"
+    REVIEW_COMMENTS = "review_comments"
+
+
+@dataclass(frozen=True)
+class NativeViewRequest:
+    """One exact issue/associated PR read, with an optional complete conversation list."""
+
+    kind: NativeReadKind
+    number: int
+    comments: bool = False
+    scope: GitHubObjectAssociation | None = None
+
+
+async def prepare_native_view(arguments: Sequence[str], context: GitHubPostingContext) -> NativeViewRequest:
+    """Use the existing selectors and PR relationship owner before any read credential."""
+    path = tuple(arguments[:2])
+    if path == (_API_COMMAND, _GET_METHOD):
+        if len(arguments) != 3:
             raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
-        result += (_JSON_FLAG, fields[0])
-    return result
+        parts = arguments[2].split(_PATH_SEPARATOR)
+        if (
+            len(parts) != 7
+            or parts[0]
+            or parts[1] != _REPOS_SEGMENT
+            or _PATH_SEPARATOR.join(parts[2:4]).casefold() != context.target.repository.casefold()
+            or parts[4] != _PULLS_SEGMENT
+            or not parts[5].isascii()
+            or not parts[5].isdecimal()
+            or int(parts[5]) <= 0
+            or parts[6] != _COMMENTS_SEGMENT
+        ):
+            raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
+        number = int(parts[5])
+        kind = NativeReadKind.REVIEW_COMMENTS
+        comments = True
+    else:
+        if path not in ((_Command.ISSUE, _VIEW_COMMAND), (_Command.PR, _VIEW_COMMAND)):
+            raise NativeCommentRefused(NativeCommentRefusal.UNSUPPORTED_OPERATION)
+        parser = _Parser(prog=_VIEW_PROGRAM, add_help=False, allow_abbrev=False, exit_on_error=False)
+        parser.add_argument(_Argument.TARGET)
+        parser.add_argument(_Flag.REPOSITORY, _Flag.REPOSITORY_SHORT, dest=_Argument.REPOSITORY, action=_Action.APPEND)
+        parser.add_argument(_COMMENTS_FLAG, _COMMENTS_SHORT_FLAG, action=_Action.COUNT, default=0)
+        values = _ViewArguments()
+        try:
+            parser.parse_args(arguments[2:], namespace=values)
+        except argparse.ArgumentError:
+            raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS) from None
+        if values.comments > 1 or (values.repository is not None and len(values.repository) > 1):
+            raise NativeCommentRefused(NativeCommentRefusal.INVALID_ARGUMENTS)
+        repository = values.repository[0] if values.repository else context.target.repository
+        if repository.casefold().removeprefix(_HOST_PREFIX) != context.target.repository.casefold():
+            raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
+        kind = NativeReadKind.ISSUE if path[0] == _Command.ISSUE else NativeReadKind.PR
+        number = _issue_number(values.target, context.target.repository, pull_request=kind is NativeReadKind.PR)
+        comments = bool(values.comments)
+    if kind is NativeReadKind.ISSUE:
+        if number != context.target.issue_number:
+            raise NativeCommentRefused(NativeCommentRefusal.TARGET_MISMATCH)
+        return NativeViewRequest(kind, number, comments)
+    scope = await resolve_pr_scope(context, number)
+    if scope is None:
+        raise NativeCommentRefused(NativeCommentRefusal.PR_SCOPE_UNAVAILABLE)
+    return NativeViewRequest(kind, number, comments, scope)
 
 
 async def prepare_native_issue_comment(
