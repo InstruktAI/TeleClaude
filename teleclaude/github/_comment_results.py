@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
+from datetime import timedelta
 from hashlib import sha256
 
 from githubkit_schemas.v2026_03_10.models import IssueComment
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.github_identity import GitHubPostingContext
-from teleclaude.github import _native_gh
 from teleclaude.github.credentials import GitHubCredentialRefused
 from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
 from teleclaude.types.github_binding import GitHubWorkTarget
@@ -37,6 +38,16 @@ _CANCELLED_EVENT = (
 )
 _ASSOCIATION = "association"
 _FAILURE = "failure"
+
+
+@dataclass(frozen=True)
+class CommentResponse:
+    """Private received comment evidence; no request, credential or raw diagnostic escapes."""
+
+    status: int | None
+    body: bytes = b""
+    retry_after: timedelta | None = None
+    started: bool = True
 
 
 class GitHubPostingCancelled(asyncio.CancelledError):
@@ -81,7 +92,7 @@ def comment_actor(comment: IssueComment) -> GitHubAccount:
 
 
 def accepted(
-    response: _native_gh.Response, request: GitHubIssueCommentRequest, context: GitHubPostingContext, body: str
+    response: CommentResponse, request: GitHubIssueCommentRequest, context: GitHubPostingContext, body: str
 ) -> GitHubPostResult:
     """Verify actual object, scope, body and stable author independently of the envelope's assertions."""
     ref = None
@@ -138,11 +149,11 @@ def accepted(
 
 
 def provider_result(
-    response: _native_gh.Response, request: GitHubIssueCommentRequest, context: GitHubPostingContext, body: str
+    response: CommentResponse, request: GitHubIssueCommentRequest, context: GitHubPostingContext, body: str
 ) -> GitHubPostResult:
     """Classify the same received evidence for normal completion and cancellation."""
     if not response.started:
-        return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.BINARY_UNAVAILABLE)
+        return GitHubPostResult(acceptance=GitHubAcceptance.NO_EFFECT, failure=GitHubPostFailure.ADMISSION_REFUSED)
     if response.status in _DEFINITIVE_REJECTIONS:
         return GitHubPostResult(
             acceptance=GitHubAcceptance.NO_EFFECT,

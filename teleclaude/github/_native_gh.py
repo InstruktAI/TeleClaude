@@ -13,6 +13,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import TextIO
 
+from teleclaude.github._comment_results import CommentResponse
 from teleclaude.paths import BIN_DIR
 
 _GH = "gh"
@@ -53,13 +54,8 @@ class CommentMethod(StrEnum):
 
 
 @dataclass(frozen=True)
-class Response:
-    """Private provider evidence; raw bytes never enter a public failure result."""
-
-    status: int | None
-    body: bytes = _EMPTY_BYTES
-    retry_after: timedelta | None = None
-    started: bool = True
+class Response(CommentResponse):
+    """Legacy binary response shape retained for the remaining, separately corrected callers."""
 
 
 class SendCancelled(asyncio.CancelledError):

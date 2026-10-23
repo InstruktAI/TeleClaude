@@ -17,7 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from teleclaude.core.db import get_db
 from teleclaude.core.github_identity import GitHubPostingContext, resolve_native_github_posting_context
 from teleclaude.github import _native_gh
-from teleclaude.github._comment_results import cancelled, credential_result
+from teleclaude.github._comment_results import CommentResponse, cancelled, credential_result
 from teleclaude.github._conversation_scope import preflight_pr_scope, requested_pr_scope
 from teleclaude.github._pr_provider import prose_digest
 from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
@@ -137,7 +137,7 @@ def _observation(
 
 
 def observe_native_reply(
-    response: _native_gh.Response,
+    response: CommentResponse,
     context: GitHubPostingContext,
     creation: GitHubObjectAssociation,
     *,
