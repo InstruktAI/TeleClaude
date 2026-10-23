@@ -87,3 +87,6 @@ Scenario: An edit by someone else does not change the work
   change; work on one item from one computer at a time.
 - Writes take GitHub round trips, so workflow commands on a GitHub-backed
   project are slower than on the local backend.
+- A workflow command whose reply from GitHub is lost reports a failure even
+  when GitHub applied the change; the change appears once the store next
+  refreshes from GitHub.
