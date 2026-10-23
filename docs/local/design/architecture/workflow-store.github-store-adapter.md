@@ -141,9 +141,11 @@ working copy and the repository.
   repository; the adapter keeps it in process memory until shortly before its
   expiry and never persists it. No session actor, person account or ambient
   token is used.
-- **Repository layout.** Each item is one issue the platform App created; its
-  number is the item's `WorkItemId` and its node ID the item's
-  `StoreAddress`. The item's **record** is one platform-authored comment on
+- **Repository layout.** Each item is one issue the platform App created.
+  The item's `WorkItemId` and `StoreAddress` are those of its working-copy
+  row, exactly as on the local backend, so every port result names items in
+  one vocabulary; the issue is reached through the adapter's own bookkeeping
+  and never through a port identity. The item's **record** is one platform-authored comment on
   that issue, edited in place: the item's row facts, dependencies, workflow
   state, a revision counter and, for each artifact, a pointer to its current
   content. Artifact versions are platform-authored content comments appended
@@ -167,8 +169,8 @@ working copy and the repository.
   - Any other transaction first writes each changed record with its next
     revision held as **pending** under the transaction's identity, beside the
     record's committed revision, then commits by appending one **commit
-    entry** to the ledger that names the transaction and carries its
-    project-level records. A pending revision whose transaction has no commit
+    entry** to the ledger that names the transaction, lists the items and
+    revisions it commits, and carries its project-level records. A pending revision whose transaction has no commit
     entry is not part of the record, and the next write of that record
     replaces it.
 
@@ -178,10 +180,7 @@ working copy and the repository.
   that fails is logged and recorded as owed in the working copy; every
   refresh rewrites the owed reflections from the item's record until they
   are written, so a delivered item's issue closes without another change to
-  the item. Creating an item opens its
-  issue in the push that commits it; the creation operations return the
-  issue's number as the item's `WorkItemId`, and the working copy's row
-  address is unchanged.
+  the item. Creating an item opens its issue in the push that commits it.
 
 - **Conflict check.** Before writing a record, the adapter reads its current
   revision from GitHub. A revision newer than the one the working copy was
@@ -191,13 +190,17 @@ working copy and the repository.
   repository before first use: every issue the platform App created that
   carries a platform record, and the ledger. A record's pending revision is
   taken only when the ledger holds its transaction's commit entry. The daemon refreshes each
-  GitHub-backed project it serves at start and periodically, applying items
-  whose GitHub revision is newer than the working copy's and rewriting owed
-  reflections. Rebuild and refresh write the working copy without pushing
+  GitHub-backed project it serves at start and periodically: it applies
+  items whose effective GitHub revision is newer than the working copy's,
+  including every item a new commit entry lists whether or not its issue
+  changed since the last refresh, and rewrites owed reflections. Rebuild and refresh write the working copy without pushing
   records back.
-- **Trust.** Only comments the platform App authored are read as record,
-  content or ledger. A label, title, body, comment or edit by anyone else is
-  never read as state.
+- **Trust.** A comment is read as record, content or ledger only when the
+  platform App's bot authored it and no one else edited it: its last editor,
+  when it has one, is that bot. A label, title, body, comment or edit by
+  anyone else is never read as state. Refresh that finds a record whose last
+  editor is someone else keeps the working copy's revision and rewrites the
+  record from it.
 - **Selected-store helpers.** Presence, validation reads and integrity
   checks answer for the working copy. Transfer and database location refuse
   for a GitHub-backed project: each computer reaches the state from GitHub.
@@ -338,6 +341,14 @@ sequenceDiagram
   stay on GitHub, closed; rebuild skips purged records.
 - Rebuild or refresh that cannot read the repository refuses store resolution
   for a missing working copy and leaves an existing one as it is.
+- Rebuild that finds an item's record, content or a commit entry last edited
+  by someone other than the platform App refuses store resolution and names
+  the item: without a working copy there is no trusted revision to restore it
+  from. A computer that holds a working copy repairs the record on its next
+  refresh.
+- The native target projection reads an issue number from a `WorkItemId`;
+  the GitHub adapter's port identities are working-copy identities, so the
+  projection receives no store-produced key it accepts.
 
 ## See Also
 
