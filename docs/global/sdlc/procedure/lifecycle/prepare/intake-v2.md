@@ -1,5 +1,5 @@
 ---
-description: 'Write the fleshed-out spec of a GitHub issue into its body from the intent it carries, and dispose the challenges the preparing session raises.'
+description: 'Independently complete a GitHub issue specification and owning contracts, then remediate the dedicated reviewer’s finished verdict.'
 visibility: 'internal'
 role: intaker
 parameters:
@@ -23,8 +23,8 @@ dispatch:
 
 Author the spec for one GitHub issue in that issue's body: what the outcome is,
 any admitted user-goal use cases, and the invariants that must hold. The
-preparing session that dispatched you challenges what you write; you own the
-content and dispose every challenge with a change or with evidence.
+preparing session coordinates completed-artifact handoffs to a separate reviewer.
+You own the content and dispose the finished findings with a change or evidence.
 
 ## Preconditions
 
@@ -65,23 +65,28 @@ content and dispose every challenge with a change or with evidence.
    pending snippets on the shared branch, through
    `general/procedure/doc-snippet-authoring`. Use the existing commit and
    review path (`general/policy/commits`); give the preparing session the
-   snippet IDs and commits for its independent review before readiness.
+   snippet IDs and commits for independent review by a separate reviewer before readiness.
    The issue or item body carries the delivery scope and references those
    contracts (`general/policy/documentation-discipline`).
-5. **Report and stop.** End your turn with one line saying the body is ready for
-   challenge and naming its revision. The preparing session reads that.
-6. **Dispose challenges.** When a challenge comment arrives, answer each item in
-   one comment: changed, with the body edited accordingly, or rejected, with the
-   clause or evidence that rejects it. Then report and stop as in step 5.
+5. **Hand off and stop.** Return the complete body revision, exact pending
+   contract SHAs, scope and evidence limits to the preparing session. Stop editing
+   while the dedicated reviewer independently assesses the finished target.
+6. **Remediate the complete verdict.** After the preparing session delivers the
+   full report, independently address each finding or reject it with evidence.
+   Choose the smallest compliant remedy, carry changed premises through the
+   artifact, and return the completed revision and dispositions for re-review.
+   The shared review contract owns finding validity and disputed scope; a finding
+   grants no authority to add verification infrastructure or expand intent.
 
 ## Outputs
 
 - The issue body as the spec, with references to its owning contracts.
-- Pending snippet commits for the driver's independent review, or an explicit
+- Pending snippet commits for separate independent review, or an explicit
   `doc_impact_none` reason under `general/policy/documentation-discipline`.
 - Comments: the inference record and every disposition.
 
 ## Recovery
 
-- A challenge you cannot dispose with evidence or a change: say so in the
-  disposition and leave it open; the preparing session decides.
+- A finding you cannot resolve remains explicit with its evidence. The driver
+  coordinates bounded arbitration under `sdlc/procedure/lifecycle/review`; it
+  does not substitute its approval for the reviewer's.
