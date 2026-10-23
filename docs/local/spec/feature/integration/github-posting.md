@@ -52,7 +52,9 @@ installed provider CLI or use that CLI's native authentication. Unsupported
 commands receive a local refusal. Outside that bound path—including
 local-backend and unbound sessions—ordinary shell `gh` remains the separately
 installed developer CLI and TeleClaude does not intercept, refuse, proxy, or
-execute it.
+execute it. Session-specific command resolution is owned by
+`local/projects/teleclaude/spec/agent-shell-path`; this facade owns the bounded
+grammar and GitHubKit operation mapping.
 The bound facade requires a canonical role and both actor/target bindings; a
 missing or unreadable producer result refuses before provider effect. A
 genuinely absent role is distinguished from an unknown role by the identity

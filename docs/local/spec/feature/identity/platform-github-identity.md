@@ -84,15 +84,13 @@ needs them receives them in its request, from authoritative workflow state.
 <!-- planned:issue-129 -->
 
 The internal session-creation carrier distinguishes a driver form, which has no
-workflow parent, from an admitted child form, which requires the owner-issued
-qualified workflow-parent address `(computer, session_id)` with both values
-nonempty, and its admission fact
-from the existing `item-acts` `ChildPlan`. The `ChildPlan`/`plan_child` path
-owns eligibility; generic initiator linkage, `initiator_session_id`, role or
-parent-like metadata supplies no parent authority. Its producer carries the
-admitted fact internally to session creation under the existing
-`local/projects/teleclaude/spec/feature/workflow/item-acts` owner contract; this
-does not change that owner's eligibility rule.
+workflow parent, from a phase-child form, which requires a qualified workflow-
+parent address `(computer, session_id)` with both values nonempty and an
+admission fact. These are inputs to identity binding; this contract does not
+decide child eligibility or attribute the carriage to another owner. Generic
+initiator linkage, `initiator_session_id`, role or parent-like metadata supplies
+no parent authority. The child command's eligibility remains owned by
+`local/projects/teleclaude/spec/feature/workflow/item-acts` (The child command).
 
 When a child requires a workflow parent, a missing, foreign or unavailable
 qualified parent refuses before any local session-ID lookup or write. This

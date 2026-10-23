@@ -18,7 +18,8 @@ implementation remain the current appliance contract.
 
 - **Also owns:** the finite GitHub command facade and its GitHubKit-backed
   in-process endpoint transport. The `gh`-shaped interface resolves to a Python
-  entrypoint inside GitHub-bound managed sessions; elsewhere,
+  entrypoint inside GitHub-bound managed sessions through
+  `local/projects/teleclaude/spec/agent-shell-path`; elsewhere,
   ordinary developer use of the separately installed CLI remains outside the
   TeleClaude product boundary. TeleClaude never invokes the provider CLI. The
   facade owns canonical comment-envelope
