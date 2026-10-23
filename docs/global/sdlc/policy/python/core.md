@@ -33,6 +33,7 @@ visibility: 'public'
 - Python linter suppressions use the narrowest same-line `noqa` form, name the suppressed rule, and state why the rule cannot apply. Broad file-level suppression is not permitted.
 - Conform to existing naming and patterns.
 - Do not shell out (`subprocess.run`, `subprocess.Popen`, `subprocess.call`, `os.system`, `os.popen`) when a Python-native solution exists. Use `pathlib` and `shutil` for filesystem operations. Use the project's git helpers (e.g. `_run_git`, `_run_git_cmd`) for git operations. Only invoke subprocesses when no Python API or project helper exists for the operation. Any subprocess call requires a comment justifying why a native approach is not viable.
+- Reach a third-party service through an established Python client library for that service, in process. Its command-line program is never the integration path, directly or as a credential helper; a capability the library lacks is surfaced as a finding, not bridged by shelling out.
 - In uv-managed repositories, invoke Python project tools through `uv run <tool> ...`; see the Python tooling policy for command boundaries.
 
 ## Rationale

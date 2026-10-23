@@ -1,5 +1,5 @@
 ---
-description: Process evolution is agent-owned and doc-first, governed by existing independent review, with human authority determined only by the underlying consequence.
+description: Process changes are authored doc-first in the session the human directs, never delegated or carried by an unrelated delivery, governed by existing independent review, with human authority determined only by the underlying consequence.
 ---
 
 # Process Change Authority — Policy
@@ -18,13 +18,23 @@ Platform behavior does not become process merely because a lifecycle role
 observes it. When one change affects an owning context and one process
 instruction, classify and govern each consequence separately.
 
-### Process evolution is agent-owned
+### Process changes are authored where the human is
 
-Agents design, propose, file, prepare, author, and implement process changes.
-They ground the change in current contracts and verified substrate, record the
-material reason and before/after guarantee in the change description or RFC,
-author the process contract before implementation, and carry it through the
-ordinary independent review lifecycle.
+A process change is authored by the session the human directs it with, in that
+session. It is never handed to a dispatched worker, a peer, or another todo's
+preparation. That session designs the mechanism itself: it grounds the change in
+current contracts and verified substrate, records the material reason and
+before/after guarantee in the change description, authors the process contract
+before implementation, and carries it through the ordinary independent review
+lifecycle. Where the contract needs code, a todo whose stated purpose is that
+process change delivers it.
+
+A delivery whose stated purpose is anything else carries no process change.
+Neither its pending contracts nor its code alter a lifecycle state machine, a
+review lane, a lifecycle procedure, or todo and state semantics; a storage,
+transport or integration delivery adapts to the existing process. A reviewer
+raises such an alteration as significant unrequested behavior, whatever its
+quality.
 
 The process artifact creates no human decision. Apply
 `general/policy/human-contract` to the underlying consequence. Only a material
@@ -113,6 +123,11 @@ expansion and is rejected normally.
 - Agents hold the technical knowledge needed to evolve validation and delivery
   mechanics. Assigning that machinery to the human transfers responsibility to
   the participant least able or willing to evaluate it.
+- How work is run is the human's participation contract. A process change handed
+  to another session arrives without the conversation that made it correct, and
+  one carried inside an unrelated delivery is reviewed against that delivery's
+  own contract, so every review passes it and nobody compares it with the
+  process the human expects.
 - Independent review, complete lane coverage, reviewer separation, citations,
   and blocking verdict arithmetic already form the technical catch. Reusing
   them is stronger and simpler than human approval or a parallel review system.
