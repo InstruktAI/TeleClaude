@@ -248,8 +248,8 @@ FLAG_TODO_GROUP = Flag(
 FLAG_TODO_PLAN = Flag(
     "--plan",
     desc=(
-        "For --kind change, content seeds implementation-plan as a draft basis; for --kind "
-        "task, content is the pre-authorized task-plan."
+        "For --kind change, content is retained in implementation-plan as non-authoritative input for normal "
+        "preparation; for --kind task, content is the pre-authorized task-plan."
     ),
     arity=SWITCH,
 )

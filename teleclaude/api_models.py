@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 from teleclaude.agent_registry import AgentName
 from teleclaude.api_models_chiptunes import ChiptunesStatusDTO
 from teleclaude.api_models_identity import OwnershipSurfaceDTO, PersonChipDTO
+from teleclaude.api_models_session_start import PublicSessionStartRequest
 from teleclaude.api_session_attachment import SessionAttachmentDestinationDTO
 from teleclaude.api_session_readiness import SessionReadinessDTOFields
 from teleclaude.config.job_scope import JobScope
@@ -40,7 +41,7 @@ if TYPE_CHECKING:
     from teleclaude.core.models import SessionSnapshot
 
 
-class CreateSessionRequest(BaseModel):
+class CreateSessionRequest(PublicSessionStartRequest):
     """Request to create a new session."""
 
     model_config = ConfigDict(frozen=True)
@@ -959,7 +960,7 @@ class TuiBootstrapDTO(BaseModel):
         return not self.errors
 
 
-class RunSessionRequest(BaseModel):
+class RunSessionRequest(PublicSessionStartRequest):
     """Request to run an agent command in a new session (POST /sessions/run)."""
 
     model_config = ConfigDict(frozen=True)

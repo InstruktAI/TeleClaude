@@ -147,6 +147,7 @@ async def todo_child(
             RunSessionRequest(command=plan.procedure_id, args=plan.arguments, project=cwd, subfolder=plan.subfolder),
             identity,
             plan.declarations,
+            admission=plan.admission,
         )
     except (EntryRefused, HelperStartRefused) as refusal:
         raise HTTPException(status_code=_STATUS_REFUSED, detail=str(refusal)) from refusal

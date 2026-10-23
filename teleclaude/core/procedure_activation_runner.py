@@ -53,6 +53,7 @@ from teleclaude.core.procedure_event_delivery import (
 )
 from teleclaude.core.session_revival import revive_session, session_is_resumable
 from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.workflow_machine.admission import DriverAdmission
 from teleclaude.core.workflow_machine.publication import DriverInitialization, driver_initialization
 from teleclaude.core.workflow_machine.single_claim import (
     EventFacts,
@@ -229,6 +230,7 @@ async def _create_agent(
     own_row_only: bool = False,
     initialization: DriverInitialization | None = None,
     single_claim: bool = False,
+    admission: DriverAdmission | None = None,
 ) -> Session:
     """Start the procedure's agent in the home's folder and return its session.
 
@@ -236,6 +238,9 @@ async def _create_agent(
     parameters and is activated for a subject receives the subject's identity as its argument (a lifecycle driver is
     started for exactly the item the request names), and its session is titled by that identity; a procedure that
     declares none receives no argument.
+
+    ``admission`` carries the neutral pre-create result to this command-construction site; its translation belongs
+    to the session creation contract.
     """
     procedure_id = cmd.procedure_id
     session_id = str(uuid.uuid4())
@@ -404,8 +409,8 @@ async def _resolve_single_claim(
     item = await _item_for_home(folder, facts)
     open_session, _closed = await _find_bound_sessions(cmd.procedure_id, home, folder, subject)
     reason = judge(facts, item, open_session.session_id if open_session is not None else "")
-    if reason is not None:
-        return _NotDelivered(reason)
+    if reason is not None or item is None:
+        return _NotDelivered(reason or NotDeliveredReason.STALE_REQUEST)
     if not facts.is_request:
         if open_session is None:
             return _NotDelivered(NotDeliveredReason.NO_HOLDER)
@@ -413,13 +418,13 @@ async def _resolve_single_claim(
     entitled = open_session is not None and await entitled_to_request(
         open_session.session_id, facts.slug, facts.request_key
     )
-    if item is not None and item.launch_phase is Phase.PREPARED:
+    if item.launch_phase is Phase.PREPARED:
         # The entitlement lookup awaits. Reuse the existing judgment at the effect boundary for prepared starts.
         item = await _item_for_home(folder, facts)
         bound_session_id = open_session.session_id if open_session is not None else NO_BOUND_SESSION
         reason = judge(facts, item, bound_session_id)
-        if reason is not None:
-            return _NotDelivered(reason)
+        if reason is not None or item is None:
+            return _NotDelivered(reason or NotDeliveredReason.STALE_REQUEST)
     if open_session is not None and entitled:
         return _Resolution(open_session, ActivationOutcome.WOKEN, 1)
     created = await _create_agent(
@@ -432,6 +437,7 @@ async def _resolve_single_claim(
         own_row_only=True,
         initialization=initialization,
         single_claim=True,
+        admission=DriverAdmission(item=item.identity),
     )
     return _Resolution(created, ActivationOutcome.STARTED, 0)
 

@@ -94,6 +94,7 @@ from teleclaude.core.session_message_projection import (
     build_session_messages_dto,
 )
 from teleclaude.core.session_utils import split_project_path_and_subdir
+from teleclaude.core.workflow_machine.admission import ChildAdmission
 from teleclaude.entry_declarations import EntryDeclarations
 from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.project_manifest_runtime import load_registered_entries
@@ -543,11 +544,14 @@ async def _run_session(
     entry_point: SessionEntryPoint,
     pinned: EntryDeclarations | None = None,
     fixed_session_id: str | None = None,
+    admission: ChildAdmission | None = None,
 ) -> CreateSessionResponseDTO:
     """Run a published entry procedure on a new agent session.
 
     ``pinned`` is set only by a daemon-side caller that resolved it from the authenticated holder's own record.
     ``fixed_session_id`` is set only by the platform's own idempotent starts (``run_platform_session``), never by a request.
+    ``admission`` carries the holder-admitted child facts to this command-construction site; session creation owns
+    their translation.
     """
     request_id = str(uuid.uuid4())
     command_kind = request.command.lstrip(COMMAND_PREFIX) or None
@@ -766,10 +770,16 @@ async def run_platform_session(request: RunSessionRequest, *, session_id: str) -
 
 
 async def run_pinned_session(
-    request: RunSessionRequest, identity: CallerIdentity, pinned: EntryDeclarations
+    request: RunSessionRequest,
+    identity: CallerIdentity,
+    pinned: EntryDeclarations,
+    *,
+    admission: ChildAdmission | None = None,
 ) -> CreateSessionResponseDTO:
     """Run a published entry procedure with declarations a daemon-side caller resolved from the holder's record."""
-    return await _run_session(request, identity, entry_point=SessionEntryPoint.RUN_SESSION_API, pinned=pinned)
+    return await _run_session(
+        request, identity, entry_point=SessionEntryPoint.RUN_SESSION_API, pinned=pinned, admission=admission
+    )
 
 
 @router.post("/sessions/run", response_model_exclude_none=True)

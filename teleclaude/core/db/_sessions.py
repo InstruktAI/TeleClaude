@@ -17,6 +17,7 @@ from teleclaude.events.schemas.system import RuntimeSessionChange
 from teleclaude.slug import replace_slug_token
 
 from ...types.procedure_delivery import ProcedureSessionDeliveryInitialization
+from ...types.session_creation import WorkflowDriverCreation
 from .. import db_models
 from ..models import JsonDict, OriginRevivalContext, RelayStatus, Session, SessionField, SessionLaunchIntent
 from ..session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
@@ -28,6 +29,7 @@ from ._agent_status import (
     encode_open_tool_calls,
 )
 from ._control_delivery import initialize_procedure_delivery_in_transaction
+from ._github_creation import prepare_workflow_github_binding, validate_workflow_parent_in_transaction
 from ._pending_deletions import DbPendingDeletionsMixin
 from ._session_retention import not_archive_record
 
@@ -108,6 +110,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
         origin_metadata: JsonDict | None = None,
         startup_intent: SessionLaunchIntent | None = None,
         procedure_delivery: ProcedureSessionDeliveryInitialization | None = None,
+        workflow_creation: WorkflowDriverCreation | None = None,
         emit_session_started: bool = True,
     ) -> Session:
         """Create a new session.
@@ -140,6 +143,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
             native_log_file: Optional native transcript or log path
             origin_metadata: Optional root origin-metadata sections written with the row
             startup_intent: Optional launch intent recorded as the session's startup handover in the same write
+            workflow_creation: Internal owner-issued item/parent value, committed with its complete GitHub binding
             emit_session_started: If False, caller is responsible for emitting SESSION_STARTED.
 
         Returns:
@@ -224,8 +228,20 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
             native_session_id=session.native_session_id,
             native_log_file=session.native_log_file,
         )
+        prepared = prepare_workflow_github_binding(session, workflow_creation)
         async with self._session() as db_session:
+            await validate_workflow_parent_in_transaction(db_session, session, workflow_creation, prepared)
             db_session.add(db_row)
+            if prepared is not None:
+                binding, target = prepared
+                await db_session.flush()
+                db_session.add(
+                    db_models.GitHubSessionBindingRow(
+                        session_id=session.session_id,
+                        binding_json=binding.model_dump_json(),
+                        native_target_json=target.model_dump_json(),
+                    )
+                )
             if startup_intent is not None:
                 # The handover references the session row, so the parent insert is
                 # flushed first; both commit together or not at all.

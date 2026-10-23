@@ -17,9 +17,11 @@ from typing import Final
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.machine import config
 from teleclaude.constants import ARTIFACT_INPUT, WORKTREE_DIR
 from teleclaude.core.db import db
 from teleclaude.core.workflow_machine.activation import StoreNotActivated, require_activated
+from teleclaude.core.workflow_machine.admission import ChildAdmission, admitted_identity
 from teleclaude.core.workflow_machine.caller import child_sessions_of, load_caller
 from teleclaude.core.workflow_machine.dependencies import unmet_for_preparation, unmet_for_work
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
@@ -56,6 +58,7 @@ from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.procedure_delivery import BINDING_SECTION, BindingField
 from teleclaude.types.state_value import StateValue
+from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, LIFECYCLE_PHASE_STATE_KEY, HoldAuditState, TodoState
 from teleclaude.types.workflow_record import (
     Act,
@@ -93,6 +96,10 @@ class EntryRefusal(StrEnum):
     """The causes an entry verb refuses with; D11 of the item lifecycle names no others."""
 
     HELD = "{item} is held by session {session}"
+    LEGACY_HELD = (
+        "{item} is held by session {session} without a current claim recorded by this lifecycle; "
+        "end that session with `telec sessions end {session}` before continuing"
+    )
     WAITING = "{item} is waiting on {person}"
     DRIVEN_BY = "{item} is in {phase}, which {verb} drives"
     NOT_DRIVEN = "{item} is in {phase}, which no entry verb drives"
@@ -243,6 +250,18 @@ _REQUEST_EVENT: Final[Mapping[Phase, EmittedEvent]] = {
 
 def _refuse(refusal: EntryRefusal, **fields: str) -> EntryRefused:
     return EntryRefused(refusal.value.format(**fields))
+
+
+def _require_v2_claim(state: TodoState, item: str) -> None:
+    """Keep a holder without this machine's current claim out of its driver controls."""
+    holder = state.active_runner
+    if not holder or state.kind == TodoKind.TASK:
+        return
+    if not any(
+        entry.act is Act.CLAIM and entry.session_id == holder and entry.epoch == state.workflow.claim_epoch
+        for entry in state.workflow.ledger
+    ):
+        raise _refuse(EntryRefusal.LEGACY_HELD, item=item, session=holder)
 
 
 def _now() -> str:
@@ -729,6 +748,7 @@ async def enter(request: EntryRequest) -> EntryResult:
     if raw is None or item_id is None:
         raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
     state = TodoState.model_validate(raw)
+    _require_v2_claim(state, request.item)
     holder = state.active_runner or None
     request = replace(
         request,
@@ -794,6 +814,7 @@ class ChildPlan:
     arguments: str
     declarations: EntryDeclarations
     subfolder: str
+    admission: ChildAdmission
 
 
 async def plan_child(project_root: str, item: str, caller_session_id: str) -> ChildPlan:
@@ -806,6 +827,7 @@ async def plan_child(project_root: str, item: str, caller_session_id: str) -> Ch
     holder = state.active_runner or None
     if holder != caller_session_id:
         raise _refuse(EntryRefusal.HELD, item=item, session=holder or NO_SESSION)
+    _require_v2_claim(state, item)
     if state.workflow.closing:
         raise _refuse(EntryRefusal.CLOSING, item=item)
     phase = read_phase(state, await resolve_lane(store, project_root, item, raw, state)).phase
@@ -817,10 +839,18 @@ async def plan_child(project_root: str, item: str, caller_session_id: str) -> Ch
     child = publication.child_of(workflow, driven)
     if child is None:
         raise _refuse(EntryRefusal.NO_CHILD, item=item, phase=driven.value)
+    identity = await admitted_identity(store, item)
+    if identity is None:
+        raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=item)
     subfolder = f"{WORKTREE_DIR}/{item}" if phase in (Phase.PREPARED, Phase.WORK) else NO_SESSION
     return ChildPlan(
         procedure_id=child.procedure_id,
         arguments=item,
         declarations=child.declarations,
         subfolder=subfolder,
+        admission=ChildAdmission(
+            item=identity,
+            parent_computer=config.computer.name,
+            parent_session_id=caller_session_id,
+        ),
     )

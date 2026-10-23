@@ -26,7 +26,9 @@ from teleclaude.core.db import db
 from teleclaude.core.db_models import ProcedureEventDeliveryOutcome
 from teleclaude.core.models import Session
 from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.workflow_machine.admission import admitted_identity
 from teleclaude.core.workflow_store.store import get_workflow_store
+from teleclaude.core.workflow_store.types import ItemIdentity
 from teleclaude.entry_declarations import EntryDeclarations, SessionMode
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.events.references import TodoRef
@@ -81,6 +83,7 @@ def session_is_single_claim(session: Session) -> bool:
 class ItemFacts:
     """The holder/reservation and, for a prepared start, the recorded and currently observed input revisions."""
 
+    identity: ItemIdentity
     holder: str
     launch_key: str
     launch_phase: Phase | None = None
@@ -124,6 +127,9 @@ async def read_item_facts(folder: Path, slug: str) -> ItemFacts | None:
     raw = await store.read_state(slug)
     if raw is None:
         return None
+    identity = await admitted_identity(store, slug)
+    if identity is None:
+        return None
     record = workflow_record_of(raw)
     launch = record.launch
     prepared_revision = record.prepared.revision if record.prepared is not None else _EMPTY
@@ -135,6 +141,7 @@ async def read_item_facts(folder: Path, slug: str) -> ItemFacts | None:
             # An unreadable body cannot qualify a prepared start; preserve the failure in the native log.
             logger.warning(_INPUT_REVISION_UNREADABLE, slug=slug, project_path=str(folder), exc_info=True)
     return ItemFacts(
+        identity=identity,
         holder=str(raw.get(ACTIVE_RUNNER_FIELD) or _EMPTY),
         launch_key=launch.key if launch is not None else _EMPTY,
         launch_phase=launch.phase if launch is not None else None,

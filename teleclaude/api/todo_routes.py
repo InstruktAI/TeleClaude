@@ -637,9 +637,9 @@ async def todo_content_create(
     Kind selects the entry point (see TodoDumpRequest):
       - "feature" | "change": content is the "input" artifact; enters prepare
         (feature authors a PRD, change drafts a plan directly).
-      - "change" with ``--plan``: content seeds the "implementation-plan"
-        artifact, marked `seeded`, and enters `plan_drafting` — a full
-        plan-draft pass grounds and reviews it before `prepared`.
+      - "change" with ``--plan``: content is retained in "implementation-plan"
+        as non-authoritative input for normal preparation, with no prepared
+        revision or preparation bypass.
       - "bug": content is the "input" artifact; enters the diagnose-then-plan
         prepare flow.
       - "task": content is the "input" artifact; enters task-plan drafting unless --plan supplies

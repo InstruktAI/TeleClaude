@@ -656,8 +656,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "the prepare phase's hypothesis to verify, doc routing is not the input's "
                     "(general/policy/documentation-discipline), and an ADR is governed "
                     "by general/policy/adr-discipline (default none, never by process step). Any HOW or doc "
-                    "instruction left in content is an unverified hypothesis, not a directive. (--plan is the "
-                    "deliberate exception: its content is a complete implementation-plan, not an input.)",
+                    "instruction left in content is an unverified hypothesis, not a directive. For --kind change, "
+                    "--plan retains content in implementation-plan as non-authoritative input for normal "
+                    "preparation; it grants no prepared revision or preparation bypass.",
                     "Use --icebox for ideas and future work at any stage; an iced todo enters the lifecycle when "
                     "unfrozen, once valid. Hidden --hold is an exceptional brake for valid work awaiting an "
                     "external gate. "

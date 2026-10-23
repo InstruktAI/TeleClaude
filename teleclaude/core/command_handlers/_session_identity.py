@@ -34,9 +34,11 @@ from teleclaude.core.procedure_entry import EntryContext, EntryRefusal, resolve_
 from teleclaude.core.roles import is_standing_session
 from teleclaude.core.session_company import resolve_session_creation_company
 from teleclaude.core.session_utils import resolve_working_dir
+from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.paths import REPO_ROOT
 from teleclaude.types.commands import CreateSessionCommand
+from teleclaude.types.creation_record import Lineage
 
 logger = get_logger(__name__)
 
@@ -261,3 +263,18 @@ async def resolve_session_creation_identity(
         initiator_session_id=initiator_session_id,
         initiator_computer=initiator_computer,
     )
+
+
+async def read_todo_owner_principal(project_path: str, slug: str) -> str | None:
+    """Read a todo's persisted lineage root for the resolved project.
+
+    Returns the chain-root authority (``human:<email>`` or ``system:<id>``), or
+    ``None`` only when a successful read proves the todo has no recorded
+    lineage. Read failures are NOT swallowed: lineage is a required invariant
+    for a slug-bound runner session, so a failed lookup must surface and stop
+    session creation rather than silently degrade to the daemon identity.
+    The caller establishes the human root only from a proven owner; an
+    unreadable owner is an error, never a license to fall back.
+    """
+    todos_db = await get_workflow_store(project_path)
+    return Lineage.root_of(await todos_db.read_lineage(slug))
