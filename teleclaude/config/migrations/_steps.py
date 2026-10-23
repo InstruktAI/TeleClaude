@@ -29,6 +29,7 @@ from teleclaude.config.migrations import (
     v022_retire_telegram_alert_fields,
     v023_compatibility_series,
     v024_declare_github_identities,
+    v025_declare_todo_repository,
 )
 
 STEPS: Final = (
@@ -56,4 +57,5 @@ STEPS: Final = (
     v022_retire_telegram_alert_fields,
     v023_compatibility_series,
     v024_declare_github_identities,
+    v025_declare_todo_repository,
 )

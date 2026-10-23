@@ -12,7 +12,7 @@ from teleclaude.core.roles import RoleName
 from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
 
 _BOT_REQUIRED = "A platform GitHub assignment requires a Bot account"
-_REPOSITORY_PATTERN = r"^[^/\s]+/[^/\s]+$"
+REPOSITORY_PATTERN = r"^[^/\s]+/[^/\s]+$"
 _ABSOLUTE_PROJECT_REQUIRED = "A GitHub work target requires an absolute project path"
 
 
@@ -22,7 +22,7 @@ class GitHubWorkTarget(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     repository_id: int = Field(gt=0, strict=True)
-    repository: str = Field(pattern=_REPOSITORY_PATTERN)
+    repository: str = Field(pattern=REPOSITORY_PATTERN)
     issue_number: int = Field(gt=0, strict=True)
     work_item: str = Field(min_length=1)
     project_path: Path

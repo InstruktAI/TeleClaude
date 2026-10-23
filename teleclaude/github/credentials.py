@@ -10,9 +10,9 @@ from enum import StrEnum
 from urllib.parse import quote
 
 from githubkit.auth.app import AppAuthStrategy
+from githubkit.auth.token import TokenAuthStrategy
 from githubkit.cache.mem_cache import MemCacheStrategy
 from githubkit.exception import GitHubException, RateLimitExceeded
-from githubkit.github import GitHub
 from githubkit_schemas.v2026_03_10.models import AppPermissions, InstallationToken
 from githubkit_schemas.v2026_03_10.types import AppPermissionsType
 from instrukt_ai_logging import get_logger
@@ -21,12 +21,12 @@ from pydantic import SecretStr
 
 from teleclaude.config.loader import GitHubAppKeyFailure, GitHubAppKeyRefused, resolve_github_app_private_key
 from teleclaude.github.accounts import GitHubAccountDirectory, GitHubAccountLookupRefused, GitHubRateLimitFacts
+from teleclaude.github.client import create_github_client
 from teleclaude.types.github_binding import GitHubActorAssignment, GitHubWorkTarget
 
 logger = get_logger(__name__)
 _REFUSAL_LOG = "github_credential_refused reason=%s app_id=%s repository_id=%s"
 _ISSUED_LOG = "github_credential_issued app_id=%s installation_id=%s repository_id=%s"
-_TIMEOUT_SECONDS = 10.0
 _OPERATION_TIMEOUT_SECONDS = 60.0
 _MINIMUM_LIFETIME = timedelta(minutes=1)
 _BOT_LOGIN = "{slug}[bot]"
@@ -140,14 +140,9 @@ async def issue_github_installation_credential(
         private_key = await to_thread(resolve_github_app_private_key, assignment)
         async with (
             timeout(_OPERATION_TIMEOUT_SECONDS),
-            GitHub(
+            create_github_client(
                 AppAuthStrategy(app_id=assignment.app_id, private_key=private_key.get_secret_value()),
-                cache_strategy=cache,
-                auto_retry=False,
-                http_cache=False,
-                follow_redirects=False,
-                trust_env=False,
-                timeout=_TIMEOUT_SECONDS,
+                cache,
             ) as app_client,
         ):
             app_response = await app_client.rest.apps.async_get_authenticated()
@@ -179,15 +174,7 @@ async def issue_github_installation_credential(
             issued = response.parsed_data
             expiry = _verify_issued_scope(issued, target, requested_permissions)
             # Account metadata needs an installation token; /user is not App identity.
-            async with GitHub(
-                issued.token,
-                cache_strategy=cache,
-                auto_retry=False,
-                http_cache=False,
-                follow_redirects=False,
-                trust_env=False,
-                timeout=_TIMEOUT_SECONDS,
-            ) as token_client:
+            async with create_github_client(TokenAuthStrategy(issued.token), cache) as token_client:
                 account = await GitHubAccountDirectory(token_client).read(_BOT_LOGIN.format(slug=app.slug))
                 if not account.same_account(assignment.actor):
                     raise GitHubCredentialRefused(GitHubCredentialFailure.ACTOR_MISMATCH)
