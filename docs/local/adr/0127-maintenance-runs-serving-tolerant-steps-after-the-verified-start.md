@@ -56,9 +56,11 @@ actions that do not run while the daemon serves owe it.
 - An activation's restart obligation is held only while its actions that run
   inside a window remain recorded, so replaying a failed Blueprint or
   publication action never stops the daemon.
-- When a window's start does not verify, the actions that run while the daemon
-  serves stay recorded and a later drain performs them, in step with the
-  drain's existing halt on a failed window.
+- When a commit-boundary drain's window start does not verify, the actions that
+  run while the daemon serves stay recorded and a later drain performs them, in
+  step with the drain's existing halt on a failed window. An on-demand run keeps
+  no records and never lets a failure stop a later step, so it performs them
+  once its window has ended, whatever the start's outcome.
 - The declaration belongs to the platform base. A project-declared action runs
   inside the window, which is ADR-0124's guarantee for any step whose safety
   against a serving daemon has not been established.
