@@ -3989,10 +3989,50 @@ def _cold_entrypoint_scenario(
             diagnostics=module_result.diagnostics,
         )
     )
+    if module_result.exit_status != _PROCESS_SUCCESS or not module_result.stdout.strip() or module_result.diagnostics:
+        return ScenarioResult(
+            scenario_id=_SCENARIO_COLD,
+            status=ScenarioStatus.FAILED,
+            duration_seconds=time.monotonic() - scenario_started,
+            commands=tuple(evidence),
+            diagnostics=_SCENARIO_PUBLIC_RESULT,
+        )
+
+    import_argv = (
+        _PYTHON_EXECUTABLE,
+        "-P",
+        str(source_root / "tools" / "ci" / "import_package_modules.py"),
+    )
+    import_result = _run_bounded_process(
+        import_argv,
+        cwd=source_root,
+        environment=module_environment,
+        timeout_seconds=_COMMAND_TIMEOUT_SECONDS,
+    )
+    evidence.append(
+        CommandEvidence(
+            argv=import_argv,
+            exit_status=import_result.exit_status,
+            duration_seconds=import_result.duration_seconds,
+            stdout=_sanitize_report_text(
+                import_result.stdout,
+                source_root,
+                dependency_environment,
+                module_environment,
+            ),
+            stderr=_sanitize_report_text(
+                import_result.stderr,
+                source_root,
+                dependency_environment,
+                module_environment,
+            ),
+            diagnostics=import_result.diagnostics,
+        )
+    )
     passed = (
-        module_result.exit_status == _PROCESS_SUCCESS
-        and bool(module_result.stdout.strip())
-        and not module_result.diagnostics
+        import_result.exit_status == _PROCESS_SUCCESS
+        and bool(import_result.stdout.strip())
+        and not import_result.diagnostics
     )
     return ScenarioResult(
         scenario_id=_SCENARIO_COLD,
