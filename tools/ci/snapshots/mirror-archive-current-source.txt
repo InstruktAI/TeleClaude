@@ -1,7 +1,0 @@
-[2026-01-01T10:00:00.000Z] User: Please remember the runtimeacceptancearchive marker in this conversation.
-
-[2026-01-01T10:00:05.000Z] Assistant: The runtimeacceptancearchive marker is noted.
-
-[2026-01-01T10:00:10.000Z] User: The archive includes its final stored exchange before the live session starts.
-
-[2026-01-01T10:00:15.000Z] Assistant: This exchange belongs to the archive before the live session starts.

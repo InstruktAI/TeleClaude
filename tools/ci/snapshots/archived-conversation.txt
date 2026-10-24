@@ -1,3 +1,0 @@
-[2026-01-01T10:00:00.000Z] User: Please remember the runtimeacceptancearchive marker in this conversation.
-
-[2026-01-01T10:00:05.000Z] Assistant: The runtimeacceptancearchive marker is noted.
