@@ -72,7 +72,7 @@ from teleclaude.core.workflow_store.github_record import (
     split_content_comments,
     trusted_comment_body,
 )
-from teleclaude.core.workflow_store.github_reflection import INPUT_ARTIFACT_NAME, reflect_issue
+from teleclaude.core.workflow_store.github_reflection import INPUT_ARTIFACT_NAME, is_repository_work, reflect_issue
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 _REFLECTIONS_KEY = "github_store_reflections"
@@ -132,10 +132,19 @@ class GitHubWorkflowPush:
             if prepared is None:
                 continue
             snapshot, issue_number, node_id, base_revision, revision, old_record, record_comment_id = prepared
-            snapshots.append((snapshot, issue_number, node_id, base_revision, revision, old_record, record_comment_id))
-            reflection_rows.append((issue_number, item_id, snapshot))
+            if issue_number is not None:
+                reflection_rows.append((issue_number, item_id, snapshot))
+            if revision is not None and issue_number is not None and node_id is not None:
+                snapshots.append(
+                    (snapshot, issue_number, node_id, base_revision, revision, old_record, record_comment_id)
+                )
 
         changed_project_records = project_records(session, changes.project_records)
+        if not snapshots and not changed_project_records:
+            for _issue_number, item_id, _snapshot in reflection_rows:
+                mark_reflection_owed(session, item_id)
+            clear_pending_changes(session)
+            return
         ledger_commit_needed = len(snapshots) != 1 or bool(changed_project_records)
         transaction_id = str(uuid.uuid4()) if ledger_commit_needed else None
         record_ids: list[tuple[str, int, str, int | None, int]] = []
@@ -223,7 +232,18 @@ class GitHubWorkflowPush:
         session: Session,
         item_id: str,
         committed_transactions: set[str],
-    ) -> tuple[WorkingCopyItemSnapshot, int, str, int, ItemRevision, WorkflowRecord | None, int | None] | None:
+    ) -> (
+        tuple[
+            WorkingCopyItemSnapshot,
+            int | None,
+            str | None,
+            int,
+            ItemRevision | None,
+            WorkflowRecord | None,
+            int | None,
+        ]
+        | None
+    ):
         """Prepare one changed item's revision and reflection inputs before commit."""
         if item_unverifiable(session, item_id):
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
@@ -240,6 +260,22 @@ class GitHubWorkflowPush:
             session.info[_CONFLICT_REFRESH_KEY] = True
             session.info[_CONFLICT_DRIVER_KEY] = session.connection().connection
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
+        if snapshot is None and old_revision is not None and not is_repository_work(old_revision.state):
+            return None
+        if snapshot is not None and not is_repository_work(snapshot.state):
+            if issue_number is None:
+                return None
+            revision = None
+            if old_revision is not None and is_repository_work(old_revision.state):
+                revision = make_item_revision(
+                    item_id=item_id,
+                    revision=old_revision.revision + 1,
+                    todo=snapshot.todo,
+                    state=snapshot.state,
+                    dependencies=snapshot.dependencies,
+                    artifact_pointers=old_revision.artifacts,
+                )
+            return snapshot, issue_number, node_id, base_revision, revision, old_record, record_comment_id
         committed_pointers, old_record = self._compact_old_record(
             session, item_id, issue_number, old_record, committed_transactions
         )

@@ -10,11 +10,14 @@ from typing import cast
 
 from teleclaude.core.todos_db._working_copy import WorkingCopyItemSnapshot
 from teleclaude.core.workflow_store.github_record import WorkflowField, WorkflowTodoStatus
+from teleclaude.types.todo_kind import TodoKind
 
 _EMPTY = ""
 INPUT_ARTIFACT_NAME = "input"
 _PHASE_LABEL = "teleclaude:phase-{}"
 _CLAIMED_LABEL = "teleclaude:claimed"
+_KIND = "kind"
+_CREATIVE = "creative"
 
 
 class IssueState(StrEnum):
@@ -45,7 +48,7 @@ class IssueReflection:
 
 def reflect_issue(snapshot: WorkingCopyItemSnapshot) -> IssueReflection:
     """Map one item snapshot to its public issue fields."""
-    state = _state_mapping(snapshot)
+    state = _state_mapping(snapshot.state)
     phase = str(
         state.get(WorkflowField.LIFECYCLE_PHASE, snapshot.todo.get(WorkflowField.STATUS, WorkflowTodoStatus.ACTIVE))
     )
@@ -71,6 +74,13 @@ def reflect_issue(snapshot: WorkingCopyItemSnapshot) -> IssueReflection:
     )
 
 
+def is_repository_work(workflow_state: Mapping[str, object] | None) -> bool:
+    """Return whether the adapter publishes this item's kind and creative-track state."""
+    state = _state_mapping(workflow_state)
+    creative = state.get(_CREATIVE)
+    return state.get(_KIND) != TodoKind.TASK and not (isinstance(creative, Mapping) and bool(creative))
+
+
 def _input_content(snapshot: WorkingCopyItemSnapshot) -> str:
     for artifact in snapshot.artifacts:
         if artifact.get(WorkflowField.NAME) == INPUT_ARTIFACT_NAME:
@@ -79,10 +89,10 @@ def _input_content(snapshot: WorkingCopyItemSnapshot) -> str:
     return _EMPTY
 
 
-def _state_mapping(snapshot: WorkingCopyItemSnapshot) -> Mapping[str, object]:
-    if snapshot.state is None:
+def _state_mapping(workflow_state: Mapping[str, object] | None) -> Mapping[str, object]:
+    if workflow_state is None:
         return {}
-    value = snapshot.state.get(WorkflowField.STATE)
+    value = workflow_state.get(WorkflowField.STATE)
     if not isinstance(value, str):
         return {}
     try:

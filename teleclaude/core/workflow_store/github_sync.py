@@ -64,7 +64,7 @@ from teleclaude.core.workflow_store.github_record import (
     parse_record_comment,
     resolve_artifact_history,
 )
-from teleclaude.core.workflow_store.github_reflection import reflect_issue
+from teleclaude.core.workflow_store.github_reflection import is_repository_work, reflect_issue
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 _LEGACY_PROJECT_ID = "legacy-{}-{}"
@@ -365,6 +365,8 @@ class GitHubWorkflowSync:
             if record is None or record_comment is None:
                 continue
             revision = effective_revision(record, committed_transactions)
+            if not is_repository_work(revision.state):
+                continue
             trusted = _trusted_body(record_comment, self.assignment.actor.login)
             if trusted is not None and record_comment.body != trusted:
                 await self.io.async_update_comment(record_comment.database_id, trusted)
@@ -515,6 +517,8 @@ def _select_rebuild_records(
         if record is None or record_comment is None:
             continue
         revision = effective_revision(record, committed_ids)
+        if not is_repository_work(revision.state):
+            continue
         if revision.todo.get(WorkflowField.STATUS) == WorkflowTodoStatus.PURGED:
             continue
         updates.append((issue, record, record_comment, revision))
