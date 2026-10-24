@@ -1,5 +1,5 @@
 ---
-description: Installation eagerly provisions and retains a sibling development checkout for a release-channel installation, independently of the running release.
+description: Installation eagerly provisions and retains a sibling development checkout beside every installation, independently of the revision it runs.
 delivered_by:
   - release-development-checkouts
 ---
@@ -8,12 +8,13 @@ delivered_by:
 
 ## What it is
 
-A beta or stable installation has a persistent development clone beside its
-installed checkout. Installation establishes this working resource before
-reporting development readiness. The operator sees its location and its purpose:
-autonomous diagnosis, fixes, and contribution while the installed release keeps
-serving. Alpha retains development and immediate activation in its existing
-checkout.
+Every installation, on every release channel, has a persistent development
+clone beside its installed checkout. Installation establishes this working
+resource before reporting development readiness. The operator sees its location
+and its purpose: autonomous diagnosis, fixes, and contribution while the
+installed revision keeps serving. Development never runs in the installed
+checkout; that checkout changes only through its channel's convergence
+(`local/projects/teleclaude/design/architecture/deployment-pipeline`).
 
 The development clone is a sibling whose directory name appends `-dev` to the
 installed checkout's name. It has its own Git object store, upstream remote and
@@ -32,8 +33,9 @@ existing development work. An existing directory is reused only when its
 repository and recorded checkout association identify the expected companion.
 A conflicting directory is left untouched and reported.
 
-Repeating installation reuses the association and checkout. Release adoption,
-session closure and an empty work queue retain the clone and its worktrees.
+Repeating installation reuses the association and checkout. Activation of
+another installed revision, session closure and an empty work queue retain the
+clone and its worktrees.
 Changing channel preserves existing work and the association; it creates no
 second companion. Explicit retirement accounts for live worktrees, claims and
 unpublished work before releasing the resource. Project cleanup and backup
@@ -75,7 +77,7 @@ available.
 #### UC-DC1: Installation establishes the development workspace eagerly
 
 ```gherkin
-Given an operator installs a beta or stable installation
+Given an operator installs the platform on any release channel
 When full installation succeeds
 Then the operator is shown a usable sibling development checkout and its purpose
 And that checkout already exists before any bug-fixing session starts
@@ -86,7 +88,7 @@ And that checkout already exists before any bug-fixing session starts
 ```gherkin
 Given an operator's installation already has its development checkout
 And that checkout holds active worktrees and unpublished work
-When installation runs again or an admitted release is installed
+When installation runs again or the installation activates another revision
 Then the same development checkout and its existing work remain available
 And no additional companion checkout is created
 ```
@@ -125,6 +127,6 @@ And the installed platform's service configuration is unchanged
 - A retained path is not protection against deletion of its parent directory by
   an external operator. Recovery of unpublished work depends on the operator's
   retained-state backup, not on fetching the upstream repository again.
-- The platform's own release is still the workflow controller. Source checkout
+- The installed revision is still the workflow controller. Source checkout
   selection alone supplies no newer daemon command or capability; cross-version
   consumers follow `local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`.

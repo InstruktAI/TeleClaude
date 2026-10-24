@@ -181,8 +181,9 @@ And the event binding's actions are not performed
 A logical project's installation event binding selects its installed checkout,
 including when its registered development checkout is also present. A relayed
 upstream change does not select both physical locations as two installations.
-Development source refresh remains a source operation, independent of admitted
-release activation (`local/projects/teleclaude/design/architecture/command-scope`).
+Development source refresh remains a source operation, independent of the
+installed checkout's channel convergence
+(`local/projects/teleclaude/design/architecture/command-scope`).
 <!-- /planned:release-development-checkouts -->
 
 ## Known caveats

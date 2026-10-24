@@ -104,10 +104,11 @@ dependencies, services and machine-wide context activation. Development context
 is separately selected under
 `local/projects/teleclaude/spec/feature/context/checkout-context-selection`.
 
-On alpha, development main in the existing combined checkout remains the source
-of immediate runtime activation. Beta and stable retain their installed source
-until channel admission selects a published release. Their development clone
-tracks upstream main and holds pending docs and worktrees independently.
+On every channel the installed checkout changes only through the convergence
+above, which selects the target its channel admits. Development commits,
+worktrees and integration happen in the development clone, which tracks
+upstream main and holds pending docs independently. A checkout that both runs
+and develops becomes the installed checkout of its association.
 Migration preserves the original workflow records, live claims, worktree
 ownership and unpublished source before enabling the association. A transition
 that cannot preserve that work remains incomplete with its concrete recovery
