@@ -36,7 +36,7 @@ _CHECKPOINT_REQUIRED_SUBJECT_TEMPLATE = "{kind} {subject}: {recovery}"
 _BLOCKER_DETAIL_SEPARATOR = "; "
 _INTEGRATION_IDLE_PHASES = frozenset({"idle", "completed"})
 _PORCELAIN_SOURCE_ARGUMENTS = ("status", "--porcelain=v1", "--untracked-files=all")
-_UNPUBLISHED_COMMIT_ARGUMENTS = ("rev-list", "origin/main..refs/heads/main")
+_UNPUBLISHED_COMMIT_ARGUMENTS = ("origin/main..refs/heads/main",)
 _MISSING_BASELINE = "origin/main is unavailable"
 _CHECKPOINT_INVALID = "integration checkpoint is unreadable or invalid"
 
