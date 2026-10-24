@@ -79,6 +79,8 @@ Scenario: An edit by someone else does not change the work
 
 ## Known caveats
 
+<!-- planned-change:github-store-switch -->
+
 - Moving an existing local store's items to GitHub is not supported; a project
   that switches to the GitHub store starts from what its repository holds.
 - Removing an item past its retention window does not delete the issue: the
@@ -91,3 +93,22 @@ Scenario: An edit by someone else does not change the work
 - A workflow command whose reply from GitHub is lost reports a failure even
   when GitHub applied the change; the change appears once the store next
   refreshes from GitHub.
+
+<!-- change:github-store-switch -->
+
+- A project that selects the GitHub store by editing its declaration starts
+  from what its repository holds. Its local store's open work moves only
+  through the GitHub store switch
+  (`local/projects/teleclaude/spec/feature/workflow/github-store-switch`).
+- Removing an item past its retention window does not delete the issue: the
+  platform App cannot delete issues, so the issue and its history remain,
+  closed and marked purged.
+- Two computers changing the same item at the same moment can lose one
+  change; work on one item from one computer at a time.
+- Writes take GitHub round trips, so workflow commands on a GitHub-backed
+  project are slower than on the local backend.
+- A workflow command whose reply from GitHub is lost reports a failure even
+  when GitHub applied the change; the change appears once the store next
+  refreshes from GitHub.
+
+<!-- /planned-change:github-store-switch -->
