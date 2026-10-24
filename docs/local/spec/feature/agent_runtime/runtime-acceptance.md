@@ -209,6 +209,11 @@ And the journey starts no provider or externally effectful job
 ```
 
 <!-- change:minimal-ci-check -->
+
+#### UC-RA5: Project registration is visible through the public listing
+
+#### UC-RA6: Job discovery and status return coherent public results
+
 <!-- /planned-change:minimal-ci-check -->
 
 <!-- planned-change:minimal-ci-check -->
@@ -253,6 +258,9 @@ And an administrator reading the configuration afterwards observes the original 
 ```
 
 <!-- change:minimal-ci-check -->
+
+#### UC-RA8: A caller without administrator standing cannot change machine configuration
+
 <!-- /planned-change:minimal-ci-check -->
 
 #### UC-RA9: Every profile reports errors and cleans up its owned resources
@@ -352,6 +360,17 @@ And a fresh authorized memory listing reports no memory added by those attempts
 ```
 
 <!-- change:minimal-ci-check -->
+
+#### UC-RA11: Invalid configuration input is refused without changing state
+
+#### UC-RA12:
+
+#### UC-RA13:
+
+#### UC-RA14:
+
+#### UC-RA15:
+
 <!-- /planned-change:minimal-ci-check -->
 
 ## Known caveats
