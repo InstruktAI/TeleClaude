@@ -13,6 +13,8 @@ from pathlib import Path
 
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 
+_GITHUB_WORKING_COPY_FILENAME = "todos.github.db"
+
 
 def todos_db_path(project_root_or_cwd: str | Path) -> Path:
     """Canonical todos.db path at the resolved state root — the single source of truth.
@@ -22,3 +24,8 @@ def todos_db_path(project_root_or_cwd: str | Path) -> Path:
     ``resolve_project_root`` and can materialize a stray db inside a git worktree.
     """
     return resolve_project_root(project_root_or_cwd) / ".teleclaude" / "todos.db"
+
+
+def github_working_copy_path(project_root_or_cwd: str | Path) -> Path:
+    """Return the disposable SQLite working-copy path beside the local store."""
+    return todos_db_path(project_root_or_cwd).with_name(_GITHUB_WORKING_COPY_FILENAME)

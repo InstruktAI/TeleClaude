@@ -7,18 +7,25 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from teleclaude.config.project_models import TodoStoreBackend
 from teleclaude.constants import TodoStatus
-from teleclaude.core.todos_db_path import todos_db_path
+from teleclaude.core.todos_db_path import github_working_copy_path, todos_db_path
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import DependencyEntry
 
+from .github_store import (
+    close_github_workflow_stores,
+    get_github_workflow_store,
+    get_github_workflow_store_sync,
+    set_github_workflow_store_hook,
+)
 from .local_store import (
     close_local_workflow_stores,
     get_local_workflow_store,
     get_local_workflow_store_sync,
     set_local_workflow_store_hook,
 )
-from .selection import _require_local_adapter
+from .selection import selected_workflow_store_backend
 from .types import (
     ArtifactMetadata,
     ArtifactRemoval,
@@ -235,24 +242,31 @@ class WorkflowStore(Protocol):
 def set_workflow_store_mutation_hook(hook: Callable[[WorkflowStore, str], None] | None) -> None:
     """Attach the daemon's cache invalidation hook to newly resolved stores."""
     set_local_workflow_store_hook(hook)
+    set_github_workflow_store_hook(hook)
 
 
 async def get_workflow_store(project_root_or_cwd: str | Path) -> WorkflowStore:
     path = todos_db_path(project_root_or_cwd)
-    _require_local_adapter(path.parent.parent)
+    if selected_workflow_store_backend(path.parent.parent) is TodoStoreBackend.GITHUB:
+        return await get_github_workflow_store(project_root_or_cwd)
     return await get_local_workflow_store(project_root_or_cwd)
 
 
 def get_workflow_store_sync(project_root_or_cwd: str | Path) -> WorkflowStore:
     path = todos_db_path(project_root_or_cwd)
-    _require_local_adapter(path.parent.parent)
+    if selected_workflow_store_backend(path.parent.parent) is TodoStoreBackend.GITHUB:
+        return get_github_workflow_store_sync(project_root_or_cwd)
     return get_local_workflow_store_sync(project_root_or_cwd)
 
 
 def write_workflow_artifact_sync(project_root: str | Path, slug: str, name: str, content: str) -> None:
     """Write a local artifact through the selected store, preserving no-create refusal."""
-    path = todos_db_path(project_root)
-    _require_local_adapter(path.parent.parent)
+    root = todos_db_path(project_root).parent.parent
+    path = (
+        github_working_copy_path(root)
+        if selected_workflow_store_backend(root) is TodoStoreBackend.GITHUB
+        else todos_db_path(root)
+    )
     if not path.exists():
         raise FileNotFoundError(f"{_DATABASE_NOT_FOUND_PREFIX}{path}")
     get_workflow_store_sync(project_root).write_artifact_sync(slug, name, content)
@@ -260,3 +274,4 @@ def write_workflow_artifact_sync(project_root: str | Path, slug: str, name: str,
 
 async def close_workflow_stores() -> None:
     await close_local_workflow_stores()
+    await close_github_workflow_stores()

@@ -17,6 +17,7 @@ from redis.exceptions import RedisError
 from teleclaude.config.machine import config
 from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.core.workflow_store.selection import (
+    WorkflowStoreNotTransferable,
     check_workflow_store_integrity,
     get_workflow_transfer_source,
     workflow_store_database_location,
@@ -131,6 +132,7 @@ async def transfer_todo_state(project_slugs: list[str], computers: list[str]) ->
 
     catalog = get_project_catalog_service()
     local_databases: dict[str, tuple[TransferSource | None, str | None]] = {}
+    nontransferable_slugs: set[str] = set()
     for project_slug in project_slugs:
         node = catalog.get_by_slug(project_slug)
         if node is None:
@@ -138,6 +140,9 @@ async def transfer_todo_state(project_slugs: list[str], computers: list[str]) ->
             continue
         try:
             source = get_workflow_transfer_source(node.root)
+        except WorkflowStoreNotTransferable as error:
+            local_databases[project_slug] = (None, str(error))
+            nontransferable_slugs.add(project_slug)
         except FileNotFoundError as error:
             local_databases[project_slug] = (None, _exception_detail(error))
         else:
@@ -153,7 +158,7 @@ async def transfer_todo_state(project_slugs: list[str], computers: list[str]) ->
                     _outcome(
                         project_slug,
                         computer,
-                        TransferStatus.FAILED,
+                        TransferStatus.SKIPPED if project_slug in nontransferable_slugs else TransferStatus.FAILED,
                         missing_reason or _LOCAL_DATABASE_MISSING,
                     )
                 )
@@ -214,7 +219,7 @@ def locate_todo_database(project_slug: str) -> LocateResult:
         return LocateResult(LocateStatus.ABSENT, None, str(unregistered_referent(ReferentKind.PROJECT, project_slug)))
     try:
         database_path = workflow_store_database_location(node.root)
-    except FileNotFoundError as error:
+    except (FileNotFoundError, WorkflowStoreNotTransferable) as error:
         return LocateResult(LocateStatus.ABSENT, None, _exception_detail(error))
     if database_path is None:
         return LocateResult(LocateStatus.ABSENT, None, _LOCAL_DATABASE_MISSING)

@@ -546,6 +546,15 @@ def github_actor_for_role(role: RoleName) -> GitHubActorAssignment | None:
         )
 
 
+def github_actor_for_app_id(app_id: int) -> GitHubActorAssignment | None:
+    """Resolve a project-selected App from the locked global declaration."""
+    with file_transaction(GLOBAL_CONFIG_PATH) as transaction:
+        declaration = read_global_config_transaction(transaction)
+        return next(
+            (profile.assignment for profile in declaration.github.apps if profile.assignment.app_id == app_id), None
+        )
+
+
 class GitHubAppKeyFailure(StrEnum):
     """Value-free prerequisite failures from protected config resolution."""
 

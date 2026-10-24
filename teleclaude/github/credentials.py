@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from typing import Protocol
 from urllib.parse import quote
 
 from githubkit.auth.app import AppAuthStrategy
@@ -22,7 +23,7 @@ from pydantic import SecretStr
 from teleclaude.config.loader import GitHubAppKeyFailure, GitHubAppKeyRefused, resolve_github_app_private_key
 from teleclaude.github.accounts import GitHubAccountDirectory, GitHubAccountLookupRefused, GitHubRateLimitFacts
 from teleclaude.github.client import create_github_client
-from teleclaude.types.github_binding import GitHubActorAssignment, GitHubWorkTarget
+from teleclaude.types.github_binding import GitHubActorAssignment
 
 logger = get_logger(__name__)
 _REFUSAL_LOG = "github_credential_refused reason=%s app_id=%s repository_id=%s"
@@ -35,6 +36,16 @@ _READ_PERMISSION = "read"
 _REPOSITORY_SEPARATOR = "/"
 _SELECTED_REPOSITORIES = "selected"
 _EMPTY = ""
+
+
+class _GitHubRepositoryScope(Protocol):
+    """Repository identity needed to scope an installation credential."""
+
+    @property
+    def repository_id(self) -> int: ...
+
+    @property
+    def repository(self) -> str: ...
 
 
 class GitHubCredentialFailure(StrEnum):
@@ -74,7 +85,7 @@ class GitHubInstallationCredential:
     expires_at: datetime
     installation_id: int
     assignment: GitHubActorAssignment
-    target: GitHubWorkTarget
+    target: _GitHubRepositoryScope
 
 
 def _permission_values(permissions: AppPermissions) -> dict[str, str]:
@@ -90,7 +101,7 @@ def _permission_values(permissions: AppPermissions) -> dict[str, str]:
 
 def _verify_issued_scope(
     issued: InstallationToken,
-    target: GitHubWorkTarget,
+    target: _GitHubRepositoryScope,
     requested_permissions: dict[str, str],
 ) -> datetime:
     if (
@@ -122,7 +133,7 @@ def _verify_issued_scope(
 
 async def issue_github_installation_credential(
     assignment: GitHubActorAssignment,
-    target: GitHubWorkTarget,
+    target: _GitHubRepositoryScope,
     permissions: AppPermissionsType,
 ) -> GitHubInstallationCredential:
     """Consume owner-selected facts and the config-owned key before verified token export.

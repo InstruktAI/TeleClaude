@@ -6,12 +6,14 @@ import json
 import sqlite3
 import uuid
 from collections.abc import Callable, Mapping
+from enum import StrEnum
 from pathlib import Path
 from typing import NamedTuple, cast
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
 from sqlalchemy import Engine
+from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import Session as SqlSession
@@ -57,6 +59,14 @@ _COMMIT_REVIEW_INSERT_SQL = (
     "(sha, verdict, reviewer_session_id, producer_session_ids, stamped_at, reason, migration_source) "
     "VALUES (?, ?, ?, ?, ?, ?, ?)"
 )
+
+
+class StoreSessionEvent(StrEnum):
+    """Closed set of SQLAlchemy session events used by the store boundary."""
+
+    BEFORE_COMMIT = "before_commit"
+    AFTER_COMMIT = "after_commit"
+    AFTER_ROLLBACK = "after_rollback"
 
 
 class _LegacyCommitReviewInsert(NamedTuple):
@@ -773,9 +783,59 @@ class TodosDbBase:
         self._sync_engine: Engine | None = None
         self._sessionmaker: async_sessionmaker[SqlAsyncSession] | None = None
         self._sync_sessionmaker: sessionmaker[SqlSession] | None = None
+        self._before_commit_callback: Callable[[SqlSession], None] | None = None
+        self._after_commit_callback: Callable[[SqlSession], None] | None = None
+        self._after_rollback_callback: Callable[[SqlSession], None] | None = None
+        self._before_commit_listener: Callable[[SqlSession], None] | None = None
+        self._after_commit_listener: Callable[[SqlSession], None] | None = None
+        self._after_rollback_listener: Callable[[SqlSession], None] | None = None
+        self._session_class: type[SqlSession]
+        self._session_listeners_registered = False
         self._on_mutation: Callable[[str, Mapping[str, object] | None], None] = _default_on_mutation
         self._on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None] = _default_on_phase_transition
         self._on_delivered: Callable[[str, str | None, str], None] = _default_on_delivered
+
+        class StoreSession(SqlSession):
+            """Session class scoped to one store instance's commit seam."""
+
+        def before_commit(session: SqlSession) -> None:
+            if session.bind not in (self._sync_engine, self._engine.sync_engine if self._engine else None):
+                return
+            if self._before_commit_callback is not None:
+                session.flush()
+                self._before_commit_callback(session)
+
+        def after_commit(session: SqlSession) -> None:
+            if session.bind not in (self._sync_engine, self._engine.sync_engine if self._engine else None):
+                return
+            if self._after_commit_callback is not None:
+                self._after_commit_callback(session)
+
+        def after_rollback(session: SqlSession) -> None:
+            if session.bind not in (self._sync_engine, self._engine.sync_engine if self._engine else None):
+                return
+            if self._after_rollback_callback is not None:
+                self._after_rollback_callback(session)
+
+        sqlalchemy_event.listen(StoreSession, StoreSessionEvent.BEFORE_COMMIT, before_commit)
+        sqlalchemy_event.listen(StoreSession, StoreSessionEvent.AFTER_COMMIT, after_commit)
+        sqlalchemy_event.listen(StoreSession, StoreSessionEvent.AFTER_ROLLBACK, after_rollback)
+        self._session_class = StoreSession
+        self._before_commit_listener = before_commit
+        self._after_commit_listener = after_commit
+        self._after_rollback_listener = after_rollback
+        self._session_listeners_registered = True
+
+    def set_commit_callbacks(
+        self,
+        before_commit: Callable[[SqlSession], None] | None,
+        after_commit: Callable[[SqlSession], None] | None,
+        after_rollback: Callable[[SqlSession], None] | None = None,
+    ) -> None:
+        """Install the optional working-copy commit boundary for this store."""
+        self._before_commit_callback = before_commit
+        self._after_commit_callback = after_commit
+        self._after_rollback_callback = after_rollback
 
     def on_committed(self, event_hint: str = "todo_updated", event_data: Mapping[str, object] | None = None) -> None:
         """Signal that a caller-managed transaction has committed.
@@ -792,8 +852,10 @@ class TodosDbBase:
 
         self._engine = create_async_db_engine(self.db_path)
         self._sync_engine = create_sync_db_engine(self.db_path)
-        self._sessionmaker = async_sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)
-        self._sync_sessionmaker = sessionmaker(self._sync_engine, expire_on_commit=False, class_=SqlSession)
+        self._sessionmaker = async_sessionmaker(
+            self._engine, expire_on_commit=False, class_=SqlAsyncSession, sync_session_class=self._session_class
+        )
+        self._sync_sessionmaker = sessionmaker(self._sync_engine, expire_on_commit=False, class_=self._session_class)
 
         self.conn = await aiosqlite.connect(self.db_path)
         self.conn.row_factory = aiosqlite.Row
@@ -810,11 +872,13 @@ class TodosDbBase:
         """
         _bootstrap_todos_db(self.db_path)
         self._sync_engine = create_sync_db_engine(self.db_path)
-        self._sync_sessionmaker = sessionmaker(self._sync_engine, expire_on_commit=False, class_=SqlSession)
+        self._sync_sessionmaker = sessionmaker(self._sync_engine, expire_on_commit=False, class_=self._session_class)
         if self._engine is None:
             self._engine = create_async_db_engine(self.db_path)
         if self._sessionmaker is None:
-            self._sessionmaker = async_sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)
+            self._sessionmaker = async_sessionmaker(
+                self._engine, expire_on_commit=False, class_=SqlAsyncSession, sync_session_class=self._session_class
+            )
 
     def _session(self) -> SqlAsyncSession:
         """Create an async ORM session from the initialized session factory."""
@@ -831,7 +895,9 @@ class TodosDbBase:
             if self._sync_engine is None:
                 msg = "TodosDb sync engine not initialized"
                 raise RuntimeError(msg)
-            self._sync_sessionmaker = sessionmaker(self._sync_engine, expire_on_commit=False, class_=SqlSession)
+            self._sync_sessionmaker = sessionmaker(
+                self._sync_engine, expire_on_commit=False, class_=self._session_class
+            )
         return self._sync_sessionmaker()
 
     def _sync_conn(self) -> sqlite3.Connection:
@@ -857,3 +923,17 @@ class TodosDbBase:
             self._sync_engine = None
         self._sessionmaker = None
         self._sync_sessionmaker = None
+        if self._session_listeners_registered:
+            if self._before_commit_listener is not None:
+                sqlalchemy_event.remove(
+                    self._session_class, StoreSessionEvent.BEFORE_COMMIT, self._before_commit_listener
+                )
+            if self._after_commit_listener is not None:
+                sqlalchemy_event.remove(
+                    self._session_class, StoreSessionEvent.AFTER_COMMIT, self._after_commit_listener
+                )
+            if self._after_rollback_listener is not None:
+                sqlalchemy_event.remove(
+                    self._session_class, StoreSessionEvent.AFTER_ROLLBACK, self._after_rollback_listener
+                )
+            self._session_listeners_registered = False

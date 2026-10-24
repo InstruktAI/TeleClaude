@@ -33,3 +33,4 @@ class TodoStoreConfig(ClosedModel):
 
     store: TodoStoreBackend = TodoStoreBackend.LOCAL
     repository: GitHubRepositoryDeclaration | None = None
+    app: int | None = Field(default=None, gt=0, strict=True)

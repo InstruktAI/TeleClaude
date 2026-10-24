@@ -47,7 +47,7 @@ def prepare_workflow_github_binding(
 ) -> tuple[GitHubSessionBinding, GitHubWorkTarget] | None:
     """Select the public role assignment from actual session fields, never keys or caller-supplied actor facts."""
     validate_workflow_creation_address(creation, session.computer_name)
-    if creation is None and session.working_slug is None:
+    if creation is None:
         return None
     if creation is not None and creation.item_id != session.working_slug:
         raise ValueError(_INVALID_CREATION)

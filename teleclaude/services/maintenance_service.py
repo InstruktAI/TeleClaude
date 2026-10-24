@@ -9,12 +9,14 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from functools import partial
 from pathlib import Path
+from time import perf_counter
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.config.project_models import TodoStoreBackend
 from teleclaude.constants import REMOVED_TODO_RETENTION_WINDOW, RESTART_CONTINUATION_STIMULUS, TodoStatus
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
@@ -54,7 +56,10 @@ from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.shutdown_drain import ShutdownRefusal, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.core.workflow_store.github_store import refresh_github_workflow_store
+from teleclaude.core.workflow_store.selection import inspect_workflow_store_presence, selected_workflow_store_backend
 from teleclaude.core.workflow_store.store import get_workflow_store
+from teleclaude.core.workflow_store.types import StorePresenceKind
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.docs_reconcile import SnippetWriteResult, reconcile_snippets_for_purged_slugs
 from teleclaude.events import get_event_db
@@ -72,6 +77,9 @@ if TYPE_CHECKING:
     from teleclaude.core.workflow_store.types import PurgedItem as PurgedRemovedRow
 
 logger = get_logger(__name__)
+_GITHUB_STORE_REFRESH_COMPLETED = "github_store_refresh_completed"
+_GITHUB_STORE_REFRESH_FAILED = "github_store_refresh_failed"
+_INVALID_WORKFLOW_STORE_SWEEP = "Removed-todo retention sweep skipped invalid workflow store"
 
 _SOFT_DELETING_EXPIRED_EVENT = "maintenance.expired_session.soft_deleting"
 
@@ -469,6 +477,7 @@ class MaintenanceService:
 
                 await self._cleanup_worktree_trash()
                 await self._cleanup_inactive_sessions()
+                await self._refresh_github_workflow_stores()
                 await self._cleanup_removed_todos()
                 await session_cleanup.retry_recently_closed_session_cleanup(self._client)
                 await session_cleanup.cleanup_orphan_tmux_sessions()
@@ -623,9 +632,8 @@ class MaintenanceService:
     async def _cleanup_removed_todos(self) -> None:
         """Finalize soft-removed todos past the retention window across every project DB.
 
-        Discovers project todo stores through the project registry. Each
-        project's ``.teleclaude/todos.db`` is the canonical workflow store; the
-        daemon's operational DB knows nothing about these todos. For each
+        Discovers project todo stores through the selected adapter's read-only
+        presence contract. The daemon's operational DB knows nothing about these todos. For each
         expired removed row, reconcile snippet lifecycle frontmatter before
         hard-delete and commit the documentation change with verification.
         """
@@ -633,11 +641,18 @@ class MaintenanceService:
         for project_root in load_roots():
             if not project_root.exists():
                 continue
-            if not (project_root / ".teleclaude" / "todos.db").exists():
-                continue
             if not is_project_checkout(project_root):
                 continue
             try:
+                presence = inspect_workflow_store_presence(project_root)
+                if presence.kind is StorePresenceKind.ABSENT:
+                    continue
+                if presence.kind is StorePresenceKind.INVALID:
+                    logger.warning(
+                        _INVALID_WORKFLOW_STORE_SWEEP,
+                        project_root=str(project_root),
+                    )
+                    continue
                 todos_db = await get_workflow_store(str(project_root))
                 todo_status_map = build_todo_status_map(project_root)
                 rows = await todos_db.list_expired_removed(cutoff_iso)
@@ -662,6 +677,30 @@ class MaintenanceService:
                     exc_info=True,
                 )
                 continue
+
+    async def _refresh_github_workflow_stores(self) -> None:
+        """Refresh each registered GitHub-backed project during startup and periodic cleanup."""
+        for project_root in load_roots():
+            if not project_root.exists() or not is_project_checkout(project_root):
+                continue
+            try:
+                if selected_workflow_store_backend(project_root) is not TodoStoreBackend.GITHUB:
+                    continue
+                started = perf_counter()
+                refreshed_items = await refresh_github_workflow_store(project_root)
+                logger.info(
+                    _GITHUB_STORE_REFRESH_COMPLETED,
+                    project=project_root.name,
+                    item_count=refreshed_items,
+                    duration_ms=int((perf_counter() - started) * 1000),
+                )
+            except Exception as error:
+                logger.warning(
+                    _GITHUB_STORE_REFRESH_FAILED,
+                    project=project_root.name,
+                    reason=type(error).__name__,
+                    exc_info=True,
+                )
 
     async def _cleanup_adapter_resources(self) -> None:
         """Run cleanup on each registered UI adapter."""

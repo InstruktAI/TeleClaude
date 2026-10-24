@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import AbstractContextManager
 from typing import Protocol, cast
+
+from sqlmodel import Session
 
 _DOWNSTREAM_DEPENDENCIES_QUERY = "SELECT slug FROM todo_deps WHERE depends_on = ?"
 _DELETE_DEPENDENCY_REFERENCES_QUERY = "DELETE FROM todo_deps WHERE depends_on = ?"
@@ -11,6 +14,12 @@ _DELETE_DEPENDENCY_REFERENCES_QUERY = "DELETE FROM todo_deps WHERE depends_on = 
 
 class _SyncConnectionHost(Protocol):
     def _sync_conn(self) -> sqlite3.Connection: ...
+
+
+class _CommitCallbackHost(Protocol):
+    _before_commit_callback: object | None
+
+    def _sync_session(self) -> AbstractContextManager[Session]: ...
 
 
 class TodosDbIntegrationMixin:
@@ -34,6 +43,15 @@ class TodosDbIntegrationMixin:
         This intentionally retains the integrator's existing raw-connection
         commit boundary and does not emit another mutation notification.
         """
+        host = cast(_CommitCallbackHost, self)
+        if host._before_commit_callback is not None:
+            with host._sync_session() as session:
+                session.connection().exec_driver_sql(
+                    _DELETE_DEPENDENCY_REFERENCES_QUERY,  # guard: raw-sql
+                    (slug,),
+                )
+                session.commit()
+            return
         connection = cast(_SyncConnectionHost, self)._sync_conn()
         try:
             connection.execute(
