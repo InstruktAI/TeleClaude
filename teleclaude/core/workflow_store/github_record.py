@@ -1,4 +1,4 @@
-"""Closed record and append-only content formats for GitHub workflow issues."""
+"""Render and parse compact GitHub comment envelopes around closed workflow records."""
 
 from __future__ import annotations
 
@@ -25,18 +25,6 @@ _EMPTY = ""
 _LINE_BREAK = "\n"
 _WORK_ITEM = "work item"
 _ASCII = "ascii"
-_NONE = "none"
-_NO_DEPENDENCIES = "none"
-_NO_DELIVERY = "not delivered"
-_ITEM_TITLE = "### {}"
-_PHASE_LINE = "- Phase: `{}`"
-_CLAIMANT_LINE = "- Claimant: `{}`"
-_DEPENDENCIES_LINE = "- Dependencies: `{}`"
-_DELIVERED_LINE = "- Delivered commit: `{}`"
-_REVISION_LINE = "- Revision: `{}`"
-_LEDGER_TITLE = "### Store transaction `{}`"
-_ISSUE_LINE = "- Issue #{}: revision {}"
-_PROJECT_RECORD_LINE = "- Project record: `{}` row {}"
 _CONTENT_MARKER_INCOMPLETE = "Workflow content marker is incomplete"
 _CONTENT_MARKER_MISSING = "Workflow content marker is missing"
 _CONTENT_NO_PARTS = "Workflow content has no parts"
@@ -52,7 +40,20 @@ _JSON_AMP_ESCAPE = "\\u0026"
 _JSON_LT_ESCAPE = "\\u003c"
 _JSON_GT_ESCAPE = "\\u003e"
 _COMMENT_CLOSE = " -->"
-_COMMA_SPACE = ", "
+_ENVELOPE_OPEN = "["
+_ENVELOPE_CLOSE = "]"
+_ENVELOPE_SEPARATOR = " "
+_ENVELOPE_LINE_SEPARATOR = "\n"
+_ACTION_FIELD = "action"
+_PHASE_FIELD = "phase"
+_REV_FIELD = "rev"
+_SESSION_FIELD = "session"
+_HOLD_FIELD = "hold"
+_COMMIT_FIELD = "commit"
+_TX_FIELD = "tx"
+_PART_FIELD = "part"
+_RECORD_ACTION = "record"
+_LEDGER_ACTION = "ledger"
 _HISTORY_CHAIN_INCOMPLETE = "Artifact history chain is incomplete"
 _HISTORY_CHAIN_CYCLE = "Artifact history chain contains a cycle"
 _HISTORY_IDENTITY_MISMATCH = "Artifact history identity does not match its pointer"
@@ -272,22 +273,31 @@ def make_item_revision(
 
 
 def render_record_comment(record: WorkflowRecord, effective_state: Mapping[str, object] | None = None) -> str:
-    """Render a readable summary plus a bounded encoded machine record."""
+    """Render a concise issue envelope plus a bounded encoded machine record."""
     revision = record.pending.revision if record.pending is not None else record.committed
     todo = revision.todo
-    dependency_labels = _COMMA_SPACE.join(item.get(WorkflowField.DEPENDS_ON, _EMPTY) for item in revision.dependencies)
-    readable = [
-        _ITEM_TITLE.format(todo.get(WorkflowField.SLUG, _WORK_ITEM)),
-        _EMPTY,
-        _PHASE_LINE.format(_value_or_none(effective_state, WorkflowField.LIFECYCLE_PHASE)),
-        _CLAIMANT_LINE.format(_value_or_none(effective_state, WorkflowField.ACTIVE_RUNNER)),
-        _DEPENDENCIES_LINE.format(dependency_labels or _NO_DEPENDENCIES),
-        _DELIVERED_LINE.format(todo.get(WorkflowField.DELIVERED_COMMIT) or _NO_DELIVERY),
-        _REVISION_LINE.format(revision.revision),
-        _EMPTY,
-    ]
+    audit = effective_state.get("hold_audit") if effective_state is not None else None
+    hold_reason = audit.get("reason") if isinstance(audit, Mapping) else None
+    envelope = render_comment_envelope(
+        (
+            (_ACTION_FIELD, _RECORD_ACTION),
+            (_PHASE_FIELD, _value_or_none(effective_state, WorkflowField.LIFECYCLE_PHASE)),
+            (_REV_FIELD, revision.revision),
+            (_SESSION_FIELD, _value_or_none(effective_state, WorkflowField.ACTIVE_RUNNER)),
+            (_HOLD_FIELD, effective_state.get(_HOLD_FIELD) is True if effective_state is not None else False),
+            (_COMMIT_FIELD, todo.get(WorkflowField.DELIVERED_COMMIT)),
+        )
+    )
+    visible = [envelope]
+    if (
+        effective_state is not None
+        and effective_state.get(_HOLD_FIELD) is True
+        and isinstance(hold_reason, str)
+        and hold_reason
+    ):
+        visible.append(hold_reason)
     payload = _safe_json(record.model_dump_json())
-    return _LINE_BREAK.join(readable) + _RECORD_MARKER + payload + _COMMENT_SEPARATOR
+    return _LINE_BREAK.join(visible) + _LINE_BREAK + _RECORD_MARKER + payload + _COMMENT_SEPARATOR
 
 
 def parse_record_comment(body: str) -> WorkflowRecord:
@@ -296,15 +306,20 @@ def parse_record_comment(body: str) -> WorkflowRecord:
 
 
 def render_ledger_commit(commit: LedgerCommit) -> str:
-    """Render one project transaction with its item revisions and project records."""
-    lines = [_LEDGER_TITLE.format(commit.transaction_id), _EMPTY]
-    for item in commit.items:
-        lines.append(_ISSUE_LINE.format(item.issue_number, item.revision))
-    for row in commit.project_records:
-        lines.append(_PROJECT_RECORD_LINE.format(row.table, row.row_id))
-    lines.append(_EMPTY)
+    """Render one concise ledger envelope and its hidden machine transaction."""
     payload = _safe_json(commit.model_dump_json())
-    return _LINE_BREAK.join(lines) + _LEDGER_MARKER + payload + _COMMENT_SEPARATOR
+    envelope = render_comment_envelope(((_ACTION_FIELD, _LEDGER_ACTION), (_TX_FIELD, commit.transaction_id)))
+    return envelope + _LINE_BREAK + _LEDGER_MARKER + payload + _COMMENT_SEPARATOR
+
+
+def render_comment_envelope(fields: Sequence[tuple[str, Scalar]]) -> str:
+    """Render structured non-empty comment fields in their supplied order."""
+    rendered: list[str] = []
+    for key, value in fields:
+        if value is None or value is False or value == _EMPTY:
+            continue
+        rendered.append(key if value is True else f"{key}:{value}")
+    return _ENVELOPE_OPEN + _ENVELOPE_SEPARATOR.join(rendered) + _ENVELOPE_CLOSE
 
 
 def parse_ledger_commit(body: str) -> LedgerCommit:
@@ -542,7 +557,16 @@ def _content_groups(
     return groups
 
 
-def split_content_comments(item_id: str, name: str, version: str | int, digest: str, content: str) -> tuple[str, ...]:
+def split_content_comments(
+    item_id: str,
+    name: str,
+    version: str | int,
+    digest: str,
+    content: str,
+    *,
+    envelope_fields: Sequence[tuple[str, Scalar]] = (),
+    history_node: ArtifactHistoryNode | None = None,
+) -> tuple[str, ...]:
     """Split content into bounded comments whose parts join to the original bytes."""
     chunks = tuple(
         content[index : index + _CONTENT_CHUNK_SIZE] for index in range(0, len(content), _CONTENT_CHUNK_SIZE)
@@ -554,26 +578,47 @@ def split_content_comments(item_id: str, name: str, version: str | int, digest: 
     for index, chunk in enumerate(chunks, start=1):
         header = ContentHeader(item_id=item_id, name=name, version=version, digest=digest, part=index, parts=total)
         encoded = base64.urlsafe_b64encode(header.model_dump_json().encode(_ENCODING)).decode(_ASCII)
-        bodies.append(_CONTENT_MARKER + encoded + _COMMENT_SEPARATOR + chunk)
+        prefix: list[str] = []
+        if envelope_fields:
+            fields = (*envelope_fields, (_PART_FIELD, f"{index}/{total}")) if total > 1 else envelope_fields
+            prefix.append(render_comment_envelope(fields))
+        if index == total and history_node is not None:
+            prefix.append(render_artifact_history_node(history_node).rstrip("\n"))
+        prefix.append(_CONTENT_MARKER + encoded + _COMMENT_SEPARATOR + chunk)
+        bodies.append(_ENVELOPE_LINE_SEPARATOR.join(prefix))
     return tuple(bodies)
 
 
 def parse_content_comment(body: str) -> tuple[ContentHeader, str]:
     """Decode a content part without interpreting its free-text payload."""
-    marker_end = body.find(_COMMENT_SEPARATOR)
+    content_body = _strip_content_comment_envelope(body)
+    marker_end = content_body.find(_COMMENT_SEPARATOR)
     if marker_end < 0:
         raise ValueError(_CONTENT_MARKER_INCOMPLETE)
-    marker = body[:marker_end]
+    marker = content_body[:marker_end]
     if not marker.startswith(_CONTENT_MARKER):
         raise ValueError(_CONTENT_MARKER_MISSING)
     encoded = marker[len(_CONTENT_MARKER) :]
     payload = base64.urlsafe_b64decode(encoded.encode(_ASCII))
-    return ContentHeader.model_validate_json(payload), body[marker_end + len(_COMMENT_SEPARATOR) :]
+    return ContentHeader.model_validate_json(payload), content_body[marker_end + len(_COMMENT_SEPARATOR) :]
 
 
 def is_content_comment(body: str) -> bool:
     """Identify the platform content envelope before inspecting embedded text."""
-    return body.startswith(_CONTENT_MARKER)
+    return _strip_content_comment_envelope(body).startswith(_CONTENT_MARKER)
+
+
+def _strip_content_comment_envelope(body: str) -> str:
+    """Remove the optional readable envelope and history link before content data."""
+    lines = body.splitlines(keepends=True)
+    index = 0
+    while index < len(lines):
+        line = lines[index].rstrip("\r\n")
+        if (line.startswith(_ENVELOPE_OPEN) and line.endswith(_ENVELOPE_CLOSE)) or line.startswith(_HISTORY_MARKER):
+            index += 1
+            continue
+        break
+    return _EMPTY.join(lines[index:])
 
 
 def has_record_marker(body: str) -> bool:
@@ -648,6 +693,6 @@ def _scalar_row(row: Mapping[str, object] | None) -> Row:
     return result
 
 
-def _value_or_none(values: Mapping[str, object] | None, name: str) -> str:
+def _value_or_none(values: Mapping[str, object] | None, name: str) -> str | None:
     value = values.get(name) if values is not None else None
-    return str(value) if value is not None else _NONE
+    return str(value) if value is not None else None

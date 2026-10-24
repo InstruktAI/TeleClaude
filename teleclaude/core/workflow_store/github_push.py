@@ -374,6 +374,18 @@ class GitHubWorkflowPush:
         pointers: dict[str, list[ArtifactPointer]],
     ) -> list[tuple[int, str, ArtifactPointer]]:
         created: list[tuple[int, str, ArtifactPointer]] = []
+        complete_snapshot = item_snapshot(session, snapshot.item_id)
+        if complete_snapshot is None:
+            raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
+        ordinal_by_version: dict[int, int] = {}
+        ordinal_by_name: dict[str, int] = {}
+        for version in complete_snapshot.versions:
+            version_id = _int_or_none(version.get(WorkflowField.VERSION_ID))
+            name = _string_or_none(version.get(WorkflowField.NAME))
+            if version_id is None or name is None:
+                raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
+            ordinal_by_name[name] = ordinal_by_name.get(name, 0) + 1
+            ordinal_by_version[version_id] = ordinal_by_name[name]
         for version in snapshot.versions:
             version_id = _int_or_none(version.get(WorkflowField.VERSION_ID))
             name = _string_or_none(version.get(WorkflowField.NAME))
@@ -381,10 +393,10 @@ class GitHubWorkflowPush:
             content = version.get(WorkflowField.CONTENT)
             if version_id is None or name is None or digest is None or not isinstance(content, str):
                 raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
+            ordinal = ordinal_by_version.get(version_id)
+            if ordinal is None:
+                raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
             remote_version_id = artifact_remote_version_id(session, snapshot.item_id, version_id, digest)
-            bodies = split_content_comments(snapshot.item_id, name, remote_version_id, digest, content)
-            for body in bodies:
-                _io_call(session, self.io, GitHubOperation.CREATE_COMMENT, issue_number, body)
             previous = pointers.get(name, [])
             previous_comment_id = previous[-1].head_comment_id if previous else None
             if previous and previous_comment_id is None and previous[-1].comment_ids:
@@ -401,13 +413,18 @@ class GitHubWorkflowPush:
                 metadata=metadata,
                 previous_comment_id=previous_comment_id,
             )
-            history_comment = _io_call(
-                session,
-                self.io,
-                GitHubOperation.CREATE_COMMENT,
-                issue_number,
-                render_artifact_history_node(history_node),
+            bodies = split_content_comments(
+                snapshot.item_id,
+                name,
+                remote_version_id,
+                digest,
+                content,
+                envelope_fields=(("action", "artifact"), ("name", name), ("version", ordinal)),
+                history_node=history_node,
             )
+            content_comments = [
+                _io_call(session, self.io, GitHubOperation.CREATE_COMMENT, issue_number, body) for body in bodies
+            ]
             created.append(
                 (
                     version_id,
@@ -416,7 +433,7 @@ class GitHubWorkflowPush:
                         digest=digest,
                         version=version_id,
                         remote_version_id=remote_version_id,
-                        head_comment_id=history_comment.database_id,
+                        head_comment_id=content_comments[-1].database_id,
                         comment_ids=[],
                         metadata=metadata,
                     ),
@@ -583,7 +600,14 @@ class GitHubWorkflowPush:
         state_row: Mapping[str, object],
     ) -> ArtifactPointer:
         digest = hashlib.sha256(content.encode(_ENCODING)).hexdigest()
-        bodies = split_content_comments(item_id, _STATE_NAME, revision, digest, content)
+        bodies = split_content_comments(
+            item_id,
+            _STATE_NAME,
+            revision,
+            digest,
+            content,
+            envelope_fields=(("action", "record"), ("rev", revision)),
+        )
         comments = [_io_call(session, self.io, GitHubOperation.CREATE_COMMENT, issue_number, body) for body in bodies]
         return ArtifactPointer(
             digest=digest,
