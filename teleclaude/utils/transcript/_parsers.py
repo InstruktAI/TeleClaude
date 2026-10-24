@@ -16,6 +16,7 @@ _CLAUDE_ORIGIN_FIELD = "origin"
 _CLAUDE_ORIGIN_KIND_FIELD = "kind"
 _CLAUDE_PROMPT_FIELD = "prompt"
 _CLAUDE_QUEUED_COMMAND_TYPE = "queued_command"
+_CLAUDE_REQUEST_COPY_ENTRY_TYPE = "api-request-blob"
 _CLAUDE_TASK_NOTIFICATION_COMMAND_MODE = "task-notification"
 _CLAUDE_ATTACHMENT_TYPE_FIELD = "type"
 _CONTENT_BLOCK_TYPE_FIELD = "type"
@@ -286,7 +287,12 @@ def normalize_transcript_entry_message(
     - native ``message`` entries
     - ``response_item`` entries with ``payload.type == "message"``
     - Codex reasoning payloads mapped to assistant ``thinking`` blocks
+
+    A Claude Code request copy is not a conversation entry: it repeats content
+    the transcript already records as its own timestamped entries.
     """
+    if entry.get(_CLAUDE_ATTACHMENT_TYPE_FIELD) == _CLAUDE_REQUEST_COPY_ENTRY_TYPE:
+        return None
     message = entry.get("message")
     if isinstance(message, dict):
         return _clean_message_content(cast(dict[str, object], message))  # guard: loose-dict - External message
