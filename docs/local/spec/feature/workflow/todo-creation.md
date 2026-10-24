@@ -476,17 +476,17 @@ And a subsequent write or remove against "parent-slug" is refused with a 409, so
 
 <!-- planned:todo-creation-times-out-behind-main-lock -->
 
-#### UC-WTC35: A creation behind a busy git lock still returns its decided outcome
+#### UC-WTC35: Creation does not wait for another session's git work
 
 ```gherkin
 Given an acknowledged creation request has passed its validation and documentation evidence checks
-And another git writer holds the shared main-branch lock
-When the lock is released within creation's bounded admission wait
-Then the creation completes and the caller receives its success before the request's response deadline
-When the lock stays held past that wait instead
+And another session's commit or integration push holds the shared main-branch lock
+When the workflow service admits the creation
+Then the creation completes without waiting for that git work
+And the caller receives its success before the request's response deadline
+And the documentation evidence admitted is the evidence current when the creation commits
+When a commit changes that evidence before the creation commits
 Then creation is refused before any todo state, artifact or dispatch is produced
-And the refusal names the busy main-branch lock, states that nothing was created, and that running the same command again is safe
-And the CLI exits non-zero with that refusal rather than a request timeout
 ```
 
 <!-- /planned:todo-creation-times-out-behind-main-lock -->
