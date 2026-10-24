@@ -63,12 +63,14 @@ def resolve_current_tip_activation_range(project_root: Path, after_sha: str | No
 def derive_window_action(
     action_ids: tuple[str, ...], path_action_ids: tuple[str, ...], model: CheckpointModel
 ) -> tuple[str, ...]:
-    """Owe the replacement action when path-selected work other than publication is declared."""
+    """Owe the replacement action when selected path work is not serving-tolerant."""
     actions = tuple(action_id for action_id in action_ids if action_id != RESTART_MAINTENANCE_ACTION_ID)
     if RESTART_MAINTENANCE_ACTION_ID not in model.maintenance:
         return actions
     if any(
-        action_id != _SYNC_ACTION_ID and action_id != RESTART_MAINTENANCE_ACTION_ID for action_id in path_action_ids
+        action_id != RESTART_MAINTENANCE_ACTION_ID
+        and (action_id not in model.maintenance or not model.maintenance[action_id].runs_while_serving)
+        for action_id in path_action_ids
     ):
         return (*actions, RESTART_MAINTENANCE_ACTION_ID)
     return actions
