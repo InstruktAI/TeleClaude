@@ -17,7 +17,7 @@ from httpx import HTTPError
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.project_models import TodoStoreBackend
-from teleclaude.core.project_state import resolve_project_state_root
+from teleclaude.core.checkout_roots import resolve_checkout_roots
 from teleclaude.core.workflow_store.selection import selected_workflow_store_config
 from teleclaude.core.workflow_store.types import ItemIdentity, StoreAddress, WorkItemId
 from teleclaude.github.accounts import GitHubRateLimitFacts
@@ -89,7 +89,7 @@ class InvalidGitHubWorkItemId(ValueError):
 def resolve_github_repository_identity(project_root_or_cwd: str | Path) -> GitHubRepositoryIdentity:
     """Resolve declared repository identity for a present, registered GitHub project."""
     try:
-        project_root = resolve_project_state_root(project_root_or_cwd)
+        project_root = resolve_checkout_roots(project_root_or_cwd).workflow_state
     except FileNotFoundError:
         raise GitHubIdentityRefused(GitHubIdentityRefusal.UNREGISTERED_PROJECT) from None
 

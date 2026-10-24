@@ -29,6 +29,7 @@ from ._message import (
     notify_delivery_exhausted,
     process_message,
 )
+from ._project_listing import list_projects
 from ._restart import agent_restart
 from ._session import (
     close_session,
@@ -36,7 +37,6 @@ from ._session import (
     end_session,
     get_computer_info,
     get_session_data,
-    list_projects,
     list_projects_with_todos,
     list_sessions,
     list_todos,

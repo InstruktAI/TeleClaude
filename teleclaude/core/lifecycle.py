@@ -268,8 +268,11 @@ class DaemonLifecycle:
         for project in projects:
             if project.path:
                 project_root = Path(project.path)
-                await asyncio.to_thread(reconcile_worktree_homes, project_root, at_startup=True)
-                await asyncio.to_thread(remove_vanished_worktree_trust, project_root)
+                node = get_project_catalog_service().get_by_root(project_root)
+                locations = (project_root, node.development_checkout if node is not None else None)
+                for location in dict.fromkeys(root for root in locations if root is not None):
+                    await asyncio.to_thread(reconcile_worktree_homes, location, at_startup=True)
+                    await asyncio.to_thread(remove_vanished_worktree_trust, location)
 
     def _schedule_final_output_reconciliation(self) -> None:
         """Recover undelivered final output off the startup path, never inline.

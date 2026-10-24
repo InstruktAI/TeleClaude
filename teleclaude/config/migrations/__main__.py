@@ -15,6 +15,7 @@ from teleclaude.config.migrations._records import MigrationOutcome
 from teleclaude.config.migrations._runner import migrate_registered
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.logging_config import setup_logging
+from teleclaude.project_manifest_runtime import migrate_project_registry
 from teleclaude.runtime.daemon_shutdown_control import read_migration_reach
 
 _TRIGGERS = (MigrationTrigger.MAINTENANCE.value, MigrationTrigger.INSTALL.value)
@@ -43,7 +44,8 @@ def main() -> int:
     parser.add_argument("--trigger", choices=_TRIGGERS, default=MigrationTrigger.MAINTENANCE.value)
     arguments = parser.parse_args()
     setup_logging()
-    records = migrate_registered(MigrationTrigger(arguments.trigger), read_migration_reach(API_SOCKET_PATH))
+    trigger = MigrationTrigger(arguments.trigger)
+    records = migrate_registered(trigger, read_migration_reach(API_SOCKET_PATH))
     for record in records:
         if record["outcome"] is not MigrationOutcome.FAILED:
             continue
@@ -67,6 +69,8 @@ def main() -> int:
     if withheld:
         sys.stderr.write(_WITHHELD_MIGRATION_DIAGNOSTIC.format(count=len(withheld), reason=withheld[0]["diagnostic"]))
         return ExitStatus.WITHHELD
+    if trigger is MigrationTrigger.INSTALL:
+        migrate_project_registry()
     return ExitStatus.SUCCESS
 
 

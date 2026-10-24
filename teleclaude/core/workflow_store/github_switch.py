@@ -20,13 +20,13 @@ from teleclaude.config.loader import (
 from teleclaude.config.project_models import TodoStoreBackend, TodoStoreConfig
 from teleclaude.config.schema import ProjectConfig
 from teleclaude.constants import TodoStatus
+from teleclaude.core.checkout_roots import resolve_checkout_roots
 from teleclaude.core.db import Db
 from teleclaude.core.integration.state_machine import (
     IntegrationRecoveryRefused,
     hold_integration_for_todo_recovery,
 )
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
-from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.core.todos_db._adapter import TodosDb
 from teleclaude.core.todos_db._working_copy import (
     WorkingCopyItemSnapshot,
@@ -160,7 +160,7 @@ async def switch_project_to_github(
 ) -> SwitchReport:
     """Switch the selected project and continue copying its frozen local work."""
     started_at = perf_counter()
-    root = resolve_project_state_root(project_root)
+    root = resolve_checkout_roots(project_root).workflow_state
     readiness = await _check_readiness(root)
     if isinstance(readiness, SwitchReport):
         return _record_report(root, readiness, started_at)

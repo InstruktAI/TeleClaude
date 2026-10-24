@@ -196,6 +196,17 @@ deploy_service_definition() {
     local target_path="$2"
     local use_sudo="${3:-}"
 
+    local purpose_script="$PROJECT_ROOT/bin/development-checkout-purpose.sh"
+    local checkout_purpose
+    if [ ! -x "$purpose_script" ] || ! checkout_purpose="$("$purpose_script" --purpose "$PROJECT_ROOT")"; then
+        log_error "install_services.sh could not establish checkout purpose for $PROJECT_ROOT."
+        exit 1
+    fi
+    if [ "$checkout_purpose" = "development" ]; then
+        log_error "install_services.sh invoked against a registered development checkout ($PROJECT_ROOT); host services are owned by its installed checkout."
+        exit 1
+    fi
+
     # Host services may only be deployed from the main checkout — a
     # worktree-rooted deploy would bake trees/<slug> into a rendered
     # definition and point the fleet's real services at an ephemeral branch

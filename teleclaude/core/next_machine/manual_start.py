@@ -17,6 +17,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import DriverLaunchClass
+from teleclaude.core.checkout_roots import resolve_checkout_roots
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
 from teleclaude.core.next_machine.git_ops import get_ref_commit
@@ -425,7 +426,7 @@ async def manual_start_lifecycle_session(
             client=client,
             runtime_db=runtime_db,
             todos_db=todos_db,
-            project_path=str(project_root),
+            project_path=str(resolve_checkout_roots(project_root).authoring),
             intent=make_intent(slug, lane),
             origin=DispatchOrigin.MANUAL,
         )

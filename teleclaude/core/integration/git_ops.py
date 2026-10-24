@@ -18,6 +18,7 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ENV_ENABLE, INTEGRATOR_GITOP_ENV, WORKTREE_DIR
+from teleclaude.core.checkout_roots import resolve_checkout_roots
 from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo, no_autostash_env
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.paths import ConfigFileName
@@ -140,7 +141,7 @@ __all__ = [
 
 def _integration_worktree_path(cwd: str) -> Path:
     """Compute the persistent integration worktree path."""
-    return Path(cwd) / WORKTREE_DIR / "_integration"
+    return resolve_checkout_roots(cwd).authoring / WORKTREE_DIR / "_integration"
 
 
 def _integrator_gitop_env() -> dict[str, str]:
@@ -227,13 +228,14 @@ def _sync_result(
 
 def _synchronize_repo_root(*, cwd: str, session_id: str, stage: RepoRootSyncStage) -> RepoRootSyncResult:
     """Classify and safely fast-forward repo root against origin/main."""
+    source_root = resolve_checkout_roots(cwd).authoring
     sync_id = uuid4().hex
     logger.info(
         _REPO_ROOT_SYNC_STARTED_LOG,
         extra={"stage": stage.value, "sync_id": sync_id, "session_id": session_id},
     )
     env = _integrator_gitop_env()
-    fetch_rc, _, fetch_stderr = _run_git(list(_GIT_FETCH_ORIGIN_MAIN_ARGS), cwd=cwd, env=env)
+    fetch_rc, _, fetch_stderr = _run_git(list(_GIT_FETCH_ORIGIN_MAIN_ARGS), cwd=str(source_root), env=env)
     if fetch_rc != 0:
         return _sync_result(
             stage=stage,
@@ -244,7 +246,7 @@ def _synchronize_repo_root(*, cwd: str, session_id: str, stage: RepoRootSyncStag
             diagnostic=fetch_stderr,
         )
 
-    counts_rc, counts_stdout, counts_stderr = _run_git(list(_GIT_REV_LIST_COUNTS_ARGS), cwd=cwd)
+    counts_rc, counts_stdout, counts_stderr = _run_git(list(_GIT_REV_LIST_COUNTS_ARGS), cwd=str(source_root))
     try:
         ahead_count, behind_count = (int(value) for value in counts_stdout.split())
     except ValueError:
@@ -261,8 +263,8 @@ def _synchronize_repo_root(*, cwd: str, session_id: str, stage: RepoRootSyncStag
             diagnostic=counts_stderr,
         )
 
-    incoming_rc, incoming_stdout, incoming_stderr = _run_git(list(_GIT_INCOMING_PATHS_ARGS), cwd=cwd)
-    dirty_rc, dirty_stdout, dirty_stderr = _run_git(list(_GIT_DIRTY_PATHS_ARGS), cwd=cwd)
+    incoming_rc, incoming_stdout, incoming_stderr = _run_git(list(_GIT_INCOMING_PATHS_ARGS), cwd=str(source_root))
+    dirty_rc, dirty_stdout, dirty_stderr = _run_git(list(_GIT_DIRTY_PATHS_ARGS), cwd=str(source_root))
     if incoming_rc != 0:
         return _sync_result(
             stage=stage,
@@ -327,7 +329,7 @@ def _synchronize_repo_root(*, cwd: str, session_id: str, stage: RepoRootSyncStag
             dirty_overlap_paths=dirty_overlap_paths,
         )
 
-    fast_forward_rc, _, fast_forward_stderr = _run_git(list(_GIT_FAST_FORWARD_ARGS), cwd=cwd, env=env)
+    fast_forward_rc, _, fast_forward_stderr = _run_git(list(_GIT_FAST_FORWARD_ARGS), cwd=str(source_root), env=env)
     outcome = RepoRootSyncOutcome.FAST_FORWARDED if fast_forward_rc == 0 else RepoRootSyncOutcome.FAST_FORWARD_FAILED
     return _sync_result(
         stage=stage,
@@ -374,8 +376,9 @@ def _publish_repo_root_main(
     expected_source_head: str | None = None,
 ) -> RepoRootPublicationResult:
     """Push already-committed repo-root main under the canonical main lock."""
+    source_root = resolve_checkout_roots(cwd).authoring
     with main_branch_lock():
-        source_head = _get_head_sha(cwd)
+        source_head = _get_head_sha(str(source_root))
         if source_head is None:
             synchronization = _mark_repo_root_sync_failure(
                 synchronization,
@@ -396,7 +399,7 @@ def _publish_repo_root_main(
             )
             outcome = RepoRootPublicationOutcome.FAULTED
         else:
-            push_rc, _, push_stderr = _run_git(list(_GIT_PUSH_ORIGIN_MAIN_ARGS), cwd=cwd)
+            push_rc, _, push_stderr = _run_git(list(_GIT_PUSH_ORIGIN_MAIN_ARGS), cwd=str(source_root))
             if push_rc == 0:
                 outcome = RepoRootPublicationOutcome.PUBLISHED
             else:
@@ -432,12 +435,15 @@ def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:
     routes through awaiting-commit and does not call this function.
     """
     integration_wt = _integration_worktree_path(cwd)
+    source_root = resolve_checkout_roots(cwd).authoring
 
     if not integration_wt.exists():
-        rc, _, stderr = _run_git(["fetch", "origin", "main"], cwd=cwd)
+        rc, _, stderr = _run_git(["fetch", "origin", "main"], cwd=str(source_root))
         if rc != 0:
             return integration_wt, f"git fetch origin main failed:\n{stderr.strip()}"
-        rc, _, stderr = _run_git(["worktree", "add", str(integration_wt), "origin/main", "--detach"], cwd=cwd)
+        rc, _, stderr = _run_git(
+            ["worktree", "add", str(integration_wt), "origin/main", "--detach"], cwd=str(source_root)
+        )
         if rc != 0:
             return integration_wt, f"git worktree add (integration) failed:\n{stderr.strip()}"
 
@@ -449,7 +455,7 @@ def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:
     if rc != 0:
         return integration_wt, f"git reset to origin/main failed in integration worktree:\n{stderr.strip()}"
 
-    return integration_wt, _link_checkout_environment(Path(cwd), integration_wt)
+    return integration_wt, _link_checkout_environment(source_root, integration_wt)
 
 
 def _link_checkout_environment(checkout: Path, worktree: Path) -> str:

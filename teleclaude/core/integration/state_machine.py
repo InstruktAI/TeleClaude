@@ -19,7 +19,7 @@ from time import perf_counter
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.core.checkout_roots import resolve_checkout_roots, worktree_location
 from teleclaude.core.db import Db
 from teleclaude.core.integration.checkpoint import (
     CHECKPOINT_STATE_FILENAME,
@@ -82,6 +82,9 @@ from teleclaude.session_identity import get_session_id
 logger = get_logger(__name__)
 
 _LOOP_LIMIT = 50  # safety cap on internal state transitions per call
+_GIT_REV_PARSE = "rev-parse"
+_GIT_VERIFY = "--verify"
+_LOCAL_BRANCH_REF_TEMPLATE = "refs/heads/{branch}"
 _REPO_ROOT_SYNC_PROGRESS_PHASE = "repo_root_sync"
 _DELIVERED_MARKER_RECOVERY_FINISHED_EVENT = "integration.delivered_marker_recovery.finished"
 _DELIVERED_MARKER_RECOVERY_FINISHED_LOG = "Delivered-marker recovery finished"
@@ -146,10 +149,12 @@ def hold_integration_for_todo_recovery(cwd: str, owner_session_id: str) -> Gener
 def _candidate_belongs_to_project(checkpoint: IntegrationCheckpoint, *, cwd: str) -> bool:
     """True when the checkpoint's candidate has a branch or worktree in this project."""
     if checkpoint.candidate_branch:
-        rc, _, _ = _run_git(["rev-parse", "--verify", f"refs/heads/{checkpoint.candidate_branch}"], cwd=cwd)
+        authoring_root = str(resolve_checkout_roots(cwd).authoring)
+        local_ref = _LOCAL_BRANCH_REF_TEMPLATE.format(branch=checkpoint.candidate_branch)
+        rc, _, _ = _run_git([_GIT_REV_PARSE, _GIT_VERIFY, local_ref], cwd=authoring_root)
         if rc == 0:
             return True
-    return (Path(cwd) / WORKTREE_DIR / (checkpoint.candidate_slug or "")).exists()
+    return checkpoint.candidate_slug is not None and worktree_location(cwd, checkpoint.candidate_slug)[0].exists()
 
 
 def _emit_repo_root_sync_progress(sync_id: str, outcome: str, loop: asyncio.AbstractEventLoop | None) -> None:
@@ -242,7 +247,8 @@ def _recover_delivered_markers(
     keeps being handed over until the fold actually lands and stops the moment it
     does.
     """
-    recovery = recover_delivered_marker_divergence(Path(cwd), get_workflow_store_sync(cwd).delivered_slugs_sync())
+    authoring_root = resolve_checkout_roots(cwd).authoring
+    recovery = recover_delivered_marker_divergence(authoring_root, get_workflow_store_sync(cwd).delivered_slugs_sync())
     anomalies: list[str] = []
     for fault in recovery.faults:
         _log_delivered_marker_recovery_fault(fault, session_id=session_id, sync_id=sync_id)

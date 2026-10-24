@@ -9,6 +9,7 @@ from typing import cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR, CacheEvent
+from teleclaude.core.checkout_roots import worktree_location
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.delivery import (
     TodoSlugSurface,
@@ -151,10 +152,12 @@ async def execute_todo_rename(
 
     await _rewrite_daemon_refs(db, old_slug=old_slug, new_slug=new_slug, cwd=project_root_str)
     if any(move.surface is TodoSlugSurface.WORKTREE for move in moves):
+        old_worktree, worktree_owner = worktree_location(project_root, old_slug)
+        new_worktree = worktree_owner / WORKTREE_DIR / new_slug
         move_worktree_trust(
-            project_root,
-            project_root / WORKTREE_DIR / old_slug,
-            project_root / WORKTREE_DIR / new_slug,
+            worktree_owner,
+            old_worktree,
+            new_worktree,
         )
     if any(move.surface == "remote_branch" for move in moves):
         delete_old_remote_slug_ref(project_root_str, old_slug)

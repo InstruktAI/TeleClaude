@@ -24,9 +24,9 @@ from teleclaude.constants import (
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
-    WORKTREE_DIR,
     TodoStatus,
 )
+from teleclaude.core.checkout_roots import worktree_location
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL, upstream_keys_for
 from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS as ARTIFACT_UPSTREAMS  # re-export
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
@@ -694,7 +694,7 @@ def has_uncommitted_changes(cwd: str, slug: str) -> bool:
     Returns:
         True if there are non-orchestrator uncommitted changes (staged or unstaged)
     """
-    worktree_path = Path(cwd) / WORKTREE_DIR / slug
+    worktree_path = worktree_location(cwd, slug)[0]
     if not worktree_path.exists():
         return False
 

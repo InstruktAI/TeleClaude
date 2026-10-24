@@ -6,11 +6,11 @@ No imports from state_machine.py or step_functions.py (circular-import guard).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR, TodoStatus
+from teleclaude.core.checkout_roots import resolve_checkout_roots, worktree_location
 from teleclaude.core.integration.git_ops import _run_git
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.workflow_store.store import get_workflow_store_sync
@@ -103,8 +103,9 @@ def _scan_finalize_ready_candidates(
     todos_db = get_workflow_store_sync(cwd)
     excluded = _parked_candidate_closure(cwd, parked_slugs)
 
-    trees_dir = Path(cwd) / WORKTREE_DIR
-    if not trees_dir.is_dir():
+    roots = resolve_checkout_roots(cwd)
+    trees_dirs = tuple(dict.fromkeys(root / WORKTREE_DIR for root in (roots.installed, roots.authoring)))
+    if not any(trees_dir.is_dir() for trees_dir in trees_dirs):
         return []
     snapshot = todos_db.read_todo_projection_snapshot_sync(_WORKFLOW_STATUSES)
     candidates: list[ScannedCandidate] = []
@@ -113,7 +114,7 @@ def _scan_finalize_ready_candidates(
         slug = str(item.item_id)
         if slug.startswith(_RESERVED_TREE_PREFIX) or slug == exclude_slug or slug in excluded:
             continue
-        if not (trees_dir / slug).is_dir():
+        if not worktree_location(cwd, slug)[0].is_dir():
             continue
 
         try:
@@ -145,12 +146,12 @@ def _scan_finalize_ready_candidates(
             continue
 
         # Verify branch exists on origin
-        rc, _, _ = _run_git(["ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=cwd)
+        rc, _, _ = _run_git(["ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=str(roots.authoring))
         if rc != 0:
             continue
 
         # Verify SHA not already ancestor of main
-        rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
+        rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=str(roots.authoring))
         if rc == 0:
             continue
 
@@ -173,7 +174,7 @@ def _verify_slug_ready(cwd: str, slug: str, *, parked_slugs: set[str]) -> Scanne
     if slug in _parked_candidate_closure(cwd, parked_slugs):
         return None
 
-    worktree_dir = Path(cwd) / WORKTREE_DIR / slug
+    worktree_dir = worktree_location(cwd, slug)[0]
     if not worktree_dir.is_dir():
         return None
 
@@ -250,21 +251,21 @@ def _sweep_stale_artifacts(cwd: str) -> list[str]:
     if not delivered:
         return []
 
-    trees_dir = Path(cwd) / WORKTREE_DIR
-    if not trees_dir.is_dir():
-        return []
-
+    roots = resolve_checkout_roots(cwd)
     swept: list[str] = []
-    for entry in sorted(trees_dir.iterdir()):
-        if not entry.is_dir() or entry.name.startswith("_"):
+    for trees_dir in dict.fromkeys(root / WORKTREE_DIR for root in (roots.installed, roots.authoring)):
+        if not trees_dir.is_dir():
             continue
-        if entry.name in delivered:
-            logger.info("Sweeping stale artifact for delivered slug: %s", entry.name)
-            try:
-                cleanup_delivered_slug(cwd, entry.name)
-            except Exception:
-                logger.warning("Stale artifact sweep failed for %s", entry.name, exc_info=True)
-            swept.append(entry.name)
+        for entry in sorted(trees_dir.iterdir()):
+            if not entry.is_dir() or entry.name.startswith(_RESERVED_TREE_PREFIX):
+                continue
+            if entry.name in delivered and entry.name not in swept:
+                logger.info("Sweeping stale artifact for delivered slug: %s", entry.name)
+                try:
+                    cleanup_delivered_slug(cwd, entry.name)
+                except Exception:
+                    logger.warning("Stale artifact sweep failed for %s", entry.name, exc_info=True)
+                swept.append(entry.name)
 
     if swept:
         logger.info("Stale artifact sweep cleaned %d slug(s): %s", len(swept), swept)

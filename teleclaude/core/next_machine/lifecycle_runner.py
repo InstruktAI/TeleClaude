@@ -16,6 +16,7 @@ from teleclaude.config._models import WorkflowRunnerMode
 from teleclaude.config.machine import config
 from teleclaude.constants import TodoStatus
 from teleclaude.context_selector import resolve_snippet_meta
+from teleclaude.core.checkout_roots import resolve_checkout_roots
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.next_machine.git_ops import (
@@ -666,7 +667,7 @@ async def run_lifecycle_runner(
                 client=client,
                 runtime_db=runtime_db,
                 todos_db=todos_db,
-                project_path=str(project_root),
+                project_path=str(resolve_checkout_roots(project_root).authoring),
                 intent=intent,
                 origin=DispatchOrigin.RUNNER,
             )

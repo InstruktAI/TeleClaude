@@ -48,6 +48,7 @@ from teleclaude.cli.tui.messages import CreateSessionRequest, StateChanged, Todo
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
+    ProjectCollapseKey,
     _computer_order_key,
     _is_local_name,
     parse_collapsed_projects,
@@ -193,7 +194,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self._projects_with_todos: list[ProjectWithTodosDTO] = []
         self._expanded_todos: set[str] = set()
         self._collapsed_computers: set[str] = set()
-        self._collapsed_projects: set[tuple[str, str]] = set()
+        self._collapsed_projects: set[ProjectCollapseKey] = set()
         self._icebox_projects: set[str] = set()
         self._delivered_projects: set[str] = set()
         self._trashed_projects: set[str] = set()
@@ -653,6 +654,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     name=project.name,
                     path=project.path,
                     description=project.description,
+                    locations=project.locations,
                 )
                 proj_collapsed = project_collapse_key(project.computer, project.path) in self._collapsed_projects
                 header = ProjectHeader(project=proj_info, session_count=0, collapsed=proj_collapsed)

@@ -8,6 +8,7 @@ from typing import cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
+from teleclaude.config.checkout_association import CheckoutPurpose
 from teleclaude.core.agent_status_projection import (
     project_peer_agent_status,
     project_readiness_fields,
@@ -41,6 +42,9 @@ _CONFIG_SUBJECT_FIELD = "config_subject"
 _SUBJECT_OWNER_FIELD = "subject_owner"
 _PROJECT_SUBJECT_FIELD = "subject"
 _PROJECT_OWNER_FIELD = "owner"
+_PROJECT_LOCATIONS_FIELD = "locations"
+_PROJECT_LOCATION_PATH_FIELD = "path"
+_PROJECT_LOCATION_PURPOSE_FIELD = "purpose"
 _JSON_SERIALIZATION_MODE = "json"
 logger = get_logger(__name__)
 
@@ -445,6 +449,14 @@ class ComputerInfo:
 
 
 @dataclass
+class ProjectLocationInfo:
+    """Publicly selectable physical location and purpose for a logical project."""
+
+    path: str
+    purpose: CheckoutPurpose
+
+
+@dataclass
 class ProjectInfo:
     """Information about a project directory."""
 
@@ -455,6 +467,7 @@ class ProjectInfo:
     todos: list[TodoDTO] = field(default_factory=list)
     subject: str | None = None
     owner: str | None = None
+    locations: list[ProjectLocationInfo] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> "ProjectInfo":  # guard: loose-dict
@@ -463,6 +476,7 @@ class ProjectInfo:
         todo_list = list(raw_todos) if isinstance(raw_todos, list) else []
         raw_subject = data.get(_PROJECT_SUBJECT_FIELD)
         raw_owner = data.get(_PROJECT_OWNER_FIELD)
+        raw_locations = data.get(_PROJECT_LOCATIONS_FIELD)
         return cls(
             name=str(data.get("name", "")),
             path=str(data.get("path", "")),
@@ -470,6 +484,16 @@ class ProjectInfo:
             computer=cast(str | None, data.get("computer")),
             subject=raw_subject if isinstance(raw_subject, str) else None,
             owner=raw_owner if isinstance(raw_owner, str) else None,
+            locations=[
+                ProjectLocationInfo(
+                    path=str(location.get(_PROJECT_LOCATION_PATH_FIELD, "")),
+                    purpose=CheckoutPurpose(cast(str, location[_PROJECT_LOCATION_PURPOSE_FIELD])),
+                )
+                for location in raw_locations
+                if isinstance(location, dict) and isinstance(location.get(_PROJECT_LOCATION_PURPOSE_FIELD), str)
+            ]
+            if isinstance(raw_locations, list)
+            else [],
             todos=[
                 TodoDTO.model_validate(t) for t in todo_list if isinstance(t, dict)
             ],  # guard: loose-dict - JSON deserialization

@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from teleclaude.config.identity_schema import ProjectOwnerKind, project_owner_identity
-from teleclaude.project_manifest import load_roots
 from teleclaude.services.project_catalog.service import get_project_catalog_service
 
 
@@ -61,11 +60,11 @@ class ProjectOwnershipIndex:
 
 
 def load_project_ownership_index() -> ProjectOwnershipIndex:
-    """Snapshot every registered root with the ownership its catalog project declares."""
+    """Snapshot every logical project's physical locations with declared ownership."""
     catalog = get_project_catalog_service()
     ownership_by_root: list[tuple[Path, ProjectOwnership | None]] = []
-    for root in load_roots():
-        node = catalog.get_by_root(root)
-        ownership = None if node is None else ProjectOwnership(node.slug, node.config.company, node.config.person)
-        ownership_by_root.append((root.expanduser().resolve(), ownership))
+    for node in catalog.list_projects():
+        ownership = ProjectOwnership(node.slug, node.config.company, node.config.person)
+        roots = (node.root, node.development_checkout)
+        ownership_by_root.extend((root.expanduser().resolve(), ownership) for root in roots if root is not None)
     return ProjectOwnershipIndex(tuple(ownership_by_root))

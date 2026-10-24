@@ -18,8 +18,10 @@ from instrukt_ai_logging import get_logger
 from teleclaude.agent_artifacts import is_mother_project
 from teleclaude.artifact_ownership import retired_pointer_candidate, retract_retired_pointers
 from teleclaude.capabilities import PermissionSurface, resolve_capabilities, resolve_tier_permissions
+from teleclaude.config.checkout_association import CheckoutPurpose, checkout_association_for
 from teleclaude.config.schema import ConfigKind
 from teleclaude.config.tree_homes import TreeHome, group_paths_by_owning_home_tolerant, homes_at_or_beneath
+from teleclaude.core.worktree_layout import development_context_docs_for_checkout
 from teleclaude.deployment.release_checkout import selected_revision
 from teleclaude.docs_index import build_all_indexes, build_tier_index, reroot_index_document
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
@@ -42,7 +44,14 @@ from teleclaude.install.home_distribution import (
     inflate_home_entrypoint,
     inflate_home_entrypoints,
 )
-from teleclaude.paths import COMPANIES_ROOT, PEOPLE_DIR, TELECLAUDE_HOME, is_platform_home
+from teleclaude.paths import (
+    COMPANIES_ROOT,
+    PEOPLE_DIR,
+    PROJECTS_MANIFEST_PATH,
+    TELECLAUDE_HOME,
+    TELECLAUDE_SOURCE_HOME,
+    is_platform_home,
+)
 from teleclaude.project_manifest import project_registry_resolution
 from teleclaude.quality.gate import LintGateResult, run_home_guardrail_gate
 from teleclaude.snippet_validation import project_slug_resolution
@@ -281,10 +290,17 @@ def _publish_under_lease(
     source = TreeSource.recorded_commit(canonical_root, tip)
     tree_paths = list_tree_paths(source)
     all_homes = homes_at_or_beneath(_ROOT_RELATIVE_PATH, source)
+    association = checkout_association_for(canonical_root, TELECLAUDE_SOURCE_HOME / PROJECTS_MANIFEST_PATH.name)
+    development_target = association is not None and association.purpose is CheckoutPurpose.DEVELOPMENT
     if required_home is not None and required_home not in {home.root for home in all_homes}:
         error = _HOME_NOT_COMMITTED.format(home=required_home.as_posix())
         return _failed_run(mode, error, PublicationRunFailure.HOME_NOT_COMMITTED)
-    scoped_homes = _scoped_homes(source, tree_paths, directory, changed_paths)
+    scoped_homes = _scoped_homes(
+        source,
+        tree_paths,
+        _ROOT_RELATIVE_PATH if development_target else directory,
+        None if development_target else changed_paths,
+    )
     state = _load_home_generations(canonical_root)
     recovering = (
         is_platform_home(canonical_root)
@@ -307,7 +323,12 @@ def _publish_under_lease(
         if home.error is not None:
             skipped.append((home, _HOME_DECLARATION_FAILED.format(error=home.error)))
             continue
-        category = _home_category(home, global_home_exists)
+        if development_target:
+            if home.root != _ROOT_RELATIVE_PATH:
+                continue
+            category = _HomeCategory.PROJECT
+        else:
+            category = _home_category(home, global_home_exists)
         if category is None:
             kind = home.kind.value
             error = _UNSUPPORTED_HOME_POSITION.format(kind=kind, root=root_key)
@@ -349,6 +370,12 @@ def _publish_under_lease(
                 results,
             )
     return _finish_run(canonical_root, tip, mode, results, state, all_homes, tree_paths)
+
+
+def _is_development_target(root: Path) -> bool:
+    """Whether publication is running for the associated authoring checkout."""
+    association = checkout_association_for(root, TELECLAUDE_SOURCE_HOME / PROJECTS_MANIFEST_PATH.name)
+    return association is not None and association.purpose is CheckoutPurpose.DEVELOPMENT
 
 
 def _scoped_homes(
@@ -413,6 +440,11 @@ def _publish_project_home(
             canonical_root,
             agents_enabled=capabilities.agents,
             docs_enabled=capabilities.docs,
+            deploy_docs_root=(
+                development_context_docs_for_checkout(canonical_root)
+                if _is_development_target(canonical_root)
+                else None
+            ),
         )
         retired_outputs = (
             _retractable_outputs(snapshot_root, canonical_root, committed_retired_outputs(snapshot_root))

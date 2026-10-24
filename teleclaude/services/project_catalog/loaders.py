@@ -67,6 +67,7 @@ def load_catalog_entry(
             description=node.config.description,
             kind=ConfigKind.PROJECT,
             owner=_project_owner_token(node.config.company, node.config.person),
+            development_checkout=entry.development_checkout,
         )
 
     config_path = root / ConfigFileName.OVERLAY

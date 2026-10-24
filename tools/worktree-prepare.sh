@@ -6,7 +6,7 @@
 #   2. Generating config.yml (isolated worktree database)
 #   3. Symlinking .env from main repo
 #
-# Usage: tools/worktree-prepare.sh <slug>
+# Usage: tools/worktree-prepare.sh <slug> <environment-root> <worktree-path>
 #
 
 set -e
@@ -35,16 +35,15 @@ print_info() {
 }
 
 # Validate arguments
-if [ $# -ne 1 ]; then
-    print_error "Usage: $0 <slug>"
+if [ $# -ne 3 ]; then
+    print_error "Usage: $0 <slug> <environment-root> <worktree-path>"
     exit 1
 fi
 
 SLUG="$1"
+ENVIRONMENT_ROOT="$(cd "$2" && pwd)"
+WORKTREE_PATH="$3"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TOOL_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-TARGET_ROOT="$(pwd)"
-WORKTREE_DIR="$TARGET_ROOT/trees/$SLUG"
 
 # Verify we're in the main repo (not a worktree)
 if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
@@ -58,8 +57,8 @@ if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
 fi
 
 # Verify worktree exists
-if [ ! -d "$WORKTREE_DIR" ]; then
-    print_error "Worktree directory not found: $WORKTREE_DIR"
+if [ ! -d "$WORKTREE_PATH" ]; then
+    print_error "Worktree directory not found: $WORKTREE_PATH"
     exit 1
 fi
 
@@ -67,11 +66,11 @@ print_info "Preparing worktree: $SLUG"
 
 # Step 1: Link shared Python environment
 print_info "Linking shared Python environment..."
-cd "$WORKTREE_DIR"
+cd "$WORKTREE_PATH"
 
 # Require the root environment to exist; worktree prep does not provision Python.
-if [ ! -x "$TARGET_ROOT/.venv/bin/python" ]; then
-    print_error "Root Python environment missing: $TARGET_ROOT/.venv/bin/python"
+if [ ! -x "$ENVIRONMENT_ROOT/.venv/bin/python" ]; then
+    print_error "Environment Python missing: $ENVIRONMENT_ROOT/.venv/bin/python"
     print_error "Run make install (or uv sync --group dev) in the project root first."
     exit 1
 fi
@@ -80,20 +79,20 @@ fi
 if [ -e ".venv" ] || [ -L ".venv" ]; then
     rm -rf ".venv"
 fi
-ln -s "../../.venv" ".venv"
+ln -s "$ENVIRONMENT_ROOT/.venv" ".venv"
 
 print_success "Shared .venv linked"
 
 # Step 2: Create .env symlink
 print_info "Creating .env symlink..."
 
-if [ ! -f "$TARGET_ROOT/.env" ]; then
-    print_error "Main .env not found: $TARGET_ROOT/.env"
+if [ ! -f "$ENVIRONMENT_ROOT/.env" ]; then
+    print_error "Environment settings not found: $ENVIRONMENT_ROOT/.env"
     exit 1
 fi
 
-cd "$WORKTREE_DIR"
-ln -sf "../../.env" .env
+cd "$WORKTREE_PATH"
+ln -sf "$ENVIRONMENT_ROOT/.env" .env
 print_success ".env symlink created"
 
 print_success "Worktree preparation complete: $SLUG"

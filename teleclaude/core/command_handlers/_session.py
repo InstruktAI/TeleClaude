@@ -70,11 +70,9 @@ from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.session_utils import WorkingDirectoryUnavailableError, resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
 from teleclaude.core.workflow_store.store import get_workflow_store
-from teleclaude.events.envelope import EventHomeMarker
 from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.events.schemas.system import RuntimeSessionChange
 from teleclaude.project_root import is_project_checkout
-from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.services.project_catalog.ownership import load_project_ownership_index
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
@@ -82,6 +80,7 @@ from teleclaude.types.todo_kind import ALL_DUMP_KINDS
 from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import TRANSCRIPT_READERS, parse_session_transcript
 
+from ._project_listing import list_projects
 from ._session_identity import read_todo_owner_principal, resolve_session_creation_identity
 from ._utils import EndSessionHandlerResult, SessionDataPayload, with_session
 
@@ -555,32 +554,6 @@ async def list_sessions(*, selection: SessionListingSelection) -> list[SessionSn
         if not snapshot.status:
             snapshot.status = "active"
     return snapshots
-
-
-async def list_projects() -> list[ProjectInfo]:
-    """List every present session-placement entry in registry order.
-
-    Ephemeral request/response - no DB session required.
-
-    Returns:
-        List of project info objects.
-    """
-    catalog = get_project_catalog_service()
-    catalog.refresh()
-    return [
-        ProjectInfo(
-            name=entry.display_name,
-            description=entry.description,
-            path=str(entry.root),
-            subject=(
-                SubjectRef(ConfigSubjectKind(entry.kind.value), entry.identity).to_token()
-                if entry.identity is not None
-                else EventHomeMarker.UNKNOWN.value
-            ),
-            owner=entry.owner,
-        )
-        for entry in catalog.list_entries()
-    ]
 
 
 async def list_projects_with_todos() -> list[ProjectInfo]:

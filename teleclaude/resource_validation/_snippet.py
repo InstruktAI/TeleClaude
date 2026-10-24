@@ -14,7 +14,7 @@ from teleclaude.constants import (
 from teleclaude.core.workflow_store.selection import inspect_workflow_store_presence
 from teleclaude.core.workflow_store.types import StorePresenceKind
 from teleclaude.docs_publishers import DocsPublisherResolutionError, resolve_global_doc_source
-from teleclaude.paths import GLOBAL_DOCS_ROOTS
+from teleclaude.paths import GLOBAL_DOCS_DIR, GLOBAL_DOCS_ROOTS
 from teleclaude.required_reads import extract_required_reads
 from teleclaude.resource_validation._activation import (
     validate_activation_mode_exclusivity,
@@ -78,7 +78,13 @@ _INLINE_REF_DOMAIN_UNREGISTERED_FINDING = "snippet_inline_ref_domain_publisher_u
 # ---------------------------------------------------------------------------
 
 
-def resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path | None:
+def resolve_ref_path(
+    ref: str,
+    *,
+    root_path: Path,
+    current_path: Path,
+    global_docs_root: Path = GLOBAL_DOCS_DIR,
+) -> Path | None:
     """Resolve an ``@`` reference to an absolute path.
 
     Handles absolute paths, ``~/`` expansion, ``docs/`` relative paths with
@@ -104,9 +110,9 @@ def resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path |
     else:
         raw_candidate = candidate
         candidate = candidate.resolve()
-        mapped_candidate = resolve_global_doc_source(root_path, raw_candidate)
+        mapped_candidate = resolve_global_doc_source(root_path, raw_candidate, global_docs_root=global_docs_root)
         return mapped_candidate if mapped_candidate != raw_candidate else candidate
-    return resolve_global_doc_source(root_path, candidate)
+    return resolve_global_doc_source(root_path, candidate, global_docs_root=global_docs_root)
 
 
 # ---------------------------------------------------------------------------

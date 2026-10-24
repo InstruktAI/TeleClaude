@@ -7,6 +7,9 @@ from pathlib import Path
 WORKTREE_DIR = "trees"
 INTEGRATION_WORKTREE_NAME = "_integration"
 WORKTREE_HOMES_DIR = ".homes"
+DEVELOPMENT_HOME_NAME = "_development"
+DEVELOPMENT_CONTEXT_DIRECTORY = Path(".teleclaude") / "context"
+DEVELOPMENT_CONTEXT_DOCS_DIRECTORY = Path("docs")
 
 
 def is_integration_worktree(root: Path) -> bool:
@@ -24,3 +27,13 @@ def worktree_home_for_checkout(root: Path) -> Path | None:
     if not is_slug_worktree(root):
         return None
     return root.parent / WORKTREE_HOMES_DIR / root.name
+
+
+def development_home_for_checkout(root: Path) -> Path:
+    """Return the reserved home path for code loaded from a development checkout."""
+    return root / WORKTREE_DIR / WORKTREE_HOMES_DIR / DEVELOPMENT_HOME_NAME
+
+
+def development_context_docs_for_checkout(root: Path) -> Path:
+    """Return the isolated published documentation generation for a development checkout."""
+    return root / DEVELOPMENT_CONTEXT_DIRECTORY / DEVELOPMENT_CONTEXT_DOCS_DIRECTORY

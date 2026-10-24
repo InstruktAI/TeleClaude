@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from teleclaude.config.loader import load_global_config
+from teleclaude.config.schema import ConfigKind
 from teleclaude.paths import PROJECTS_MANIFEST_PATH
-from teleclaude.project_manifest import load_roots
 from teleclaude.project_manifest_runtime import load_registered_entries
 from teleclaude.services.project_catalog.loaders import load_catalog_entry, load_project_node
 from teleclaude.services.project_catalog.models import ProjectCatalogEntry, ProjectNode
@@ -29,16 +29,25 @@ class ProjectCatalogService:
     # -- Loading ----------------------------------------------------------
 
     def _load(self) -> list[ProjectNode]:
-        roots = load_roots(self._manifest_path)
         nodes: list[ProjectNode] = []
         seen_roots: set[Path] = set()
-        for root in roots:
+        for entry in load_registered_entries(self._manifest_path, include_in_transit=False):
+            root = entry.path
+            if not entry.is_present or entry.kind is not ConfigKind.PROJECT:
+                continue
             if root in seen_roots:
                 continue
             seen_roots.add(root)
             node = load_project_node(root)
             if node is None:
                 continue
+            if entry.development_checkout is not None:
+                node = ProjectNode(
+                    root=node.root,
+                    slug=node.slug,
+                    config=node.config,
+                    development_checkout=entry.development_checkout,
+                )
             nodes.append(node)
         return nodes
 
@@ -97,12 +106,22 @@ class ProjectCatalogService:
         return None
 
     def get_by_root(self, root: Path) -> ProjectNode | None:
-        """Return the project whose root matches ``root``, or ``None``."""
+        """Return the project whose primary or development root matches ``root``."""
         resolved = root.expanduser().resolve()
         for node in self.list_projects():
-            if node.root == resolved:
+            if node.root == resolved or node.development_checkout == resolved:
                 return node
         return None
+
+    def for_path(self, path: Path) -> tuple[ProjectNode, Path] | None:
+        """Resolve a path inside either registered checkout to its logical project and checkout root."""
+        resolved = path.expanduser().resolve()
+        matches: list[tuple[ProjectNode, Path]] = []
+        for node in self.list_projects():
+            for checkout_root in (node.root, node.development_checkout):
+                if checkout_root is not None and (resolved == checkout_root or checkout_root in resolved.parents):
+                    matches.append((node, checkout_root))
+        return max(matches, key=lambda match: len(match[1].parts)) if matches else None
 
 
 # -- Singleton factory -------------------------------------------------------

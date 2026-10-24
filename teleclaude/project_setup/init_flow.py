@@ -15,10 +15,11 @@ from ruamel.yaml.error import YAMLError
 
 from teleclaude.capabilities import Capabilities, CapabilityName, resolve_capabilities
 from teleclaude.config._yaml import round_trip_yaml
+from teleclaude.config.checkout_association import CheckoutPurpose, checkout_association_for
 from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.declaration import render_declared_config, write_declared_config
 from teleclaude.config.identity_schema import ProjectOwnerKind
-from teleclaude.config.loader import registered_person_slugs, validate_tier_candidate
+from teleclaude.config.loader import load_project_config, registered_person_slugs, validate_tier_candidate
 from teleclaude.config.migrations._carry import carry_pending
 from teleclaude.config.migrations._chain import Destination, MigrationTrigger, upcast
 from teleclaude.config.migrations._registry import registered_subject
@@ -26,12 +27,19 @@ from teleclaude.config.migrations._runner import migrate_document
 from teleclaude.config.project_home import HomeOwner, adoptable_home_owner, owning_home_owner
 from teleclaude.config.schema import ConfigKind
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.core.checkout_transition import checkout_transition_lock, source_transition_blockers
 from teleclaude.core.reconciliation.home_convergence import project_targets
 from teleclaude.core.reconciliation.template_installation import materialize_template_targets
 from teleclaude.docs_index import ensure_project_config, get_project_slug
 from teleclaude.file_transaction import file_transaction
-from teleclaude.paths import COMPANIES_ROOT, PEOPLE_DIR, ConfigFileName, is_platform_home
-from teleclaude.project_manifest_runtime import project_adoption_lock, register_root
+from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
+from teleclaude.paths import COMPANIES_ROOT, PEOPLE_DIR, PROJECTS_MANIFEST_PATH, ConfigFileName, is_platform_home
+from teleclaude.project_manifest_runtime import (
+    load_registered_entries,
+    project_adoption_lock,
+    register_root,
+    write_development_association,
+)
 from teleclaude.project_root import resolve_project_root
 from teleclaude.project_setup.git_repo import ensure_git_repo
 from teleclaude.project_setup.gitattributes import update_gitattributes
@@ -65,6 +73,15 @@ _GLOBAL_TIER_REFUSAL = "A global configuration cannot be adopted as a project."
 _IDENTITY_CONFLICT = "Project identity '{identity}' is already held by {holding_root}."
 _PROJECT_INITIALIZED_EVENT = "project_initialization_completed"
 _CREATE_CLEANUP_EVENT = "project_creation_cleanup_skipped"
+_ASSOCIATION_NOT_CHECKOUT = "development checkout is not a standalone clone"
+_ASSOCIATION_ROOT_NOT_REGISTERED = "installed checkout is not the registered primary project location"
+_ASSOCIATION_IDENTITY_MISMATCH = "development checkout declares a different project identity"
+_ASSOCIATION_ORIGIN_MISMATCH = "development checkout origin does not match the installed checkout origin"
+_ASSOCIATION_TRANSITION_BLOCKED = "development checkout association is blocked: {blockers}"
+_ASSOCIATION_BLOCKER_DETAIL = "{kind} {subject}: {recovery}"
+_ASSOCIATION_BLOCKER_SEPARATOR = "; "
+_INSTALLATION_REGISTRATION_NOT_PROJECT = "installed checkout does not declare a valid project"
+_ORIGIN_REMOTE = "origin"
 _NAME_TAKEN = "Project name '{identity}' is already taken by {holding_root}."
 _NO_IDENTITY = "Cannot derive a project identity for {path}: neither its project slug, its project name nor its folder name yields one."
 _DESTINATION_NOT_EMPTY = "Project destination is not empty: {path}"
@@ -97,6 +114,7 @@ class ProjectOperation(StrEnum):
 
     CREATE = "create"
     ADOPT = "adopt"
+    INSTALL = "install"
 
 
 @dataclass(frozen=True)
@@ -125,6 +143,10 @@ ProjectDestination = PersonHomeDestination | CompanyHomeDestination | PlatformPa
 
 class ProjectIdentityConflict(ValueError):
     """A different registered folder already owns the identity being adopted."""
+
+
+class ProjectAssociationRefusal(ValueError):
+    """A checkout pair did not satisfy the registered association contract."""
 
 
 def _ignore_migration_delivery(_destination: Destination) -> None:
@@ -268,7 +290,7 @@ def _identity_holder(identity: str, root: Path | None, *, include_in_transit: bo
     catalog = get_project_catalog_service()
     catalog.refresh()
     for entry in catalog.list_entries(include_in_transit=include_in_transit):
-        if entry.identity == identity and entry.root != root:
+        if entry.identity == identity and entry.root != root and entry.development_checkout != root:
             return entry.root
 
     return None
@@ -457,6 +479,111 @@ def _registered_project_result(registered_root: Path, already_registered: bool) 
     )
 
 
+def _ensure_primary_identity_available(
+    registered_root: Path,
+    identity: str,
+    trigger: ProjectInitializationTrigger,
+) -> None:
+    """Apply the shared identity admission for an established project root."""
+    holding_root = _identity_holder(
+        identity,
+        registered_root,
+        include_in_transit=trigger is not ProjectInitializationTrigger.FOLD,
+    )
+    if holding_root is not None:
+        raise ProjectIdentityConflict(_IDENTITY_CONFLICT.format(identity=identity, holding_root=holding_root))
+
+
+def _register_primary_project_root(registered_root: Path, identity: str, trigger: ProjectInitializationTrigger) -> bool:
+    """Apply the shared identity admission and registry write for an established project root."""
+    _ensure_primary_identity_available(registered_root, identity, trigger)
+    return not register_root(project_root=registered_root)
+
+
+def register_installed_project(project_root: Path) -> ProjectInitializationResult:
+    """Register an installed project's existing declaration without source convergence."""
+    with project_adoption_lock():
+        registered_root = project_root.expanduser().resolve()
+        config_path = registered_root / ConfigFileName.OVERLAY
+        if not config_path.is_file() or load_declared_config_kind(config_path) is not ConfigKind.PROJECT:
+            raise ProjectAssociationRefusal(_INSTALLATION_REGISTRATION_NOT_PROJECT)
+        require_own_checkout(registered_root)
+        load_project_config(config_path)
+        registered_root = resolve_project_root(registered_root)
+        identity = project_identity(registered_root)
+        already_registered = _register_primary_project_root(
+            registered_root,
+            identity,
+            ProjectInitializationTrigger.DAEMON,
+        )
+        get_project_catalog_service().refresh()
+        return _completed(
+            registered_root,
+            _registered_project_result(registered_root, already_registered),
+            ProjectOperation.INSTALL,
+            ProjectInitializationTrigger.DAEMON,
+        )
+
+
+def _origin_urls(project_root: Path) -> tuple[str, ...]:
+    """Return the origin fetch URLs from one standalone repository."""
+    try:
+        repository = Repo(str(project_root), search_parent_directories=False)
+        return tuple(repository.remote(_ORIGIN_REMOTE).urls)
+    except (InvalidGitRepositoryError, NoSuchPathError, ValueError) as exc:
+        raise ProjectAssociationRefusal(_ASSOCIATION_ORIGIN_MISMATCH) from exc
+
+
+def associate_development_checkout(installed_root: Path, development_root: Path) -> bool:
+    """Associate a verified standalone development clone with its installed project."""
+    installed = installed_root.expanduser().resolve()
+    development = development_root.expanduser().resolve()
+    if development == installed:
+        raise ProjectAssociationRefusal(_ASSOCIATION_NOT_CHECKOUT)
+    with project_adoption_lock():
+        entries = load_registered_entries(include_in_transit=False)
+        primary_entry = next((entry for entry in entries if entry.path == installed), None)
+        if primary_entry is None or primary_entry.kind is not ConfigKind.PROJECT:
+            raise ProjectAssociationRefusal(_ASSOCIATION_ROOT_NOT_REGISTERED)
+        git_entry = development / _GIT_ENTRY
+        if not git_entry.is_dir() or git_entry.is_symlink():
+            raise ProjectAssociationRefusal(_ASSOCIATION_NOT_CHECKOUT)
+        installed_config = installed / ConfigFileName.OVERLAY
+        development_config = development / ConfigFileName.OVERLAY
+        try:
+            load_project_config(installed_config)
+            load_project_config(development_config)
+        except (OSError, ValueError) as exc:
+            raise ProjectAssociationRefusal(_INSTALLATION_REGISTRATION_NOT_PROJECT) from exc
+        if project_identity(installed) != project_identity(development):
+            raise ProjectAssociationRefusal(_ASSOCIATION_IDENTITY_MISMATCH)
+        installed_origins = _origin_urls(installed)
+        development_origins = _origin_urls(development)
+        if not installed_origins or installed_origins != development_origins:
+            raise ProjectAssociationRefusal(_ASSOCIATION_ORIGIN_MISMATCH)
+        association = checkout_association_for(installed, PROJECTS_MANIFEST_PATH)
+        if association is not None and association.purpose is not CheckoutPurpose.INSTALLED:
+            raise ProjectAssociationRefusal(_ASSOCIATION_ROOT_NOT_REGISTERED)
+        with checkout_transition_lock(installed):
+            blockers = source_transition_blockers(installed)
+            if blockers:
+                details = _ASSOCIATION_BLOCKER_SEPARATOR.join(
+                    _ASSOCIATION_BLOCKER_DETAIL.format(
+                        kind=blocker.kind,
+                        subject=blocker.subject,
+                        recovery=blocker.recovery,
+                    )
+                    for blocker in blockers
+                )
+                raise ProjectAssociationRefusal(_ASSOCIATION_TRANSITION_BLOCKED.format(blockers=details))
+            changed = write_development_association(
+                project_root=installed,
+                development_checkout=development,
+            )
+        get_project_catalog_service().refresh()
+        return changed
+
+
 def adopt_project(
     project_root: Path,
     *,
@@ -490,6 +617,9 @@ def adopt_project(
 
 def _adopt_locked(project_root: Path, trigger: ProjectInitializationTrigger) -> ProjectInitializationResult:
     project_root = project_root.expanduser().resolve()
+    association = checkout_association_for(project_root, PROJECTS_MANIFEST_PATH)
+    if association is not None and association.purpose is CheckoutPurpose.DEVELOPMENT:
+        return _registered_project_result(association.project_root, already_registered=True)
     config_path = project_root / ConfigFileName.OVERLAY
     kind = load_declared_config_kind(config_path) if config_path.is_file() else ConfigKind.PROJECT
     if kind is ConfigKind.GLOBAL:
@@ -511,17 +641,11 @@ def _adopt_locked(project_root: Path, trigger: ProjectInitializationTrigger) -> 
         else project_root
     )
     identity = project_identity(registered_root)
-    holding_root = _identity_holder(
-        identity,
-        registered_root,
-        include_in_transit=trigger is not ProjectInitializationTrigger.FOLD,
-    )
-    if holding_root is not None:
-        raise ProjectIdentityConflict(_IDENTITY_CONFLICT.format(identity=identity, holding_root=holding_root))
+    _ensure_primary_identity_available(registered_root, identity, trigger)
 
     undeclared_capabilities = _establish_repository_and_declaration(project_root)
     registered_root = resolve_project_root(project_root)
-    already_registered = not register_root(project_root=registered_root)
+    already_registered = _register_primary_project_root(registered_root, identity, trigger)
     _record_home_owner(project_root, home)
     _converge_registered_project(project_root, registered_root, undeclared_capabilities)
     return _completed(

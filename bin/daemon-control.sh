@@ -18,6 +18,19 @@ if [ -n "${PROJECT_ROOT:-}" ]; then
 else
     PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 fi
+PURPOSE_QUERY="$PROJECT_ROOT/bin/development-checkout-purpose.sh"
+if [ ! -x "$PURPOSE_QUERY" ]; then
+    echo "[FATAL] Checkout purpose query is unavailable for $PROJECT_ROOT; host service operations are refused." >&2
+    exit 1
+fi
+if ! CHECKOUT_PURPOSE="$("$PURPOSE_QUERY" --purpose "$PROJECT_ROOT")"; then
+    echo "[FATAL] Checkout purpose could not be established for $PROJECT_ROOT; host service operations are refused." >&2
+    exit 1
+fi
+if [ "$CHECKOUT_PURPOSE" = "development" ]; then
+    echo "[FATAL] daemon-control.sh invoked against a registered development checkout ($PROJECT_ROOT). Host services are owned by its installed checkout." >&2
+    exit 1
+fi
 # Host services may only be controlled from the main checkout — only it carries
 # the runtime .env, and a worktree-rooted service would pin host lifecycle to an
 # ephemeral branch checkout. Linked worktrees live at <main>/trees/<name>:

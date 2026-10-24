@@ -37,6 +37,9 @@ export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 NON_INTERACTIVE=false
 CI_MODE=false
 DEPS_ONLY_MODE=false
+DEVELOPMENT_CHECKOUT_MODE=false
+DEVELOPMENT_CHECKOUT_FAILED=false
+DEVELOPMENT_CHECKOUT_READY=false
 
 is_git_worktree() {
     if command -v git > /dev/null 2>&1 && git -C "$INSTALL_DIR" rev-parse --git-dir > /dev/null 2>&1; then
@@ -75,15 +78,50 @@ parse_args() {
 }
 
 select_install_mode() {
-    if [ "$CI_MODE" = false ] && [ "$DEPS_ONLY_MODE" = false ]; then
+    if [ "$CI_MODE" = true ]; then
+        return 0
+    fi
+    if [ "$DEPS_ONLY_MODE" = false ]; then
         if is_git_worktree; then
             DEPS_ONLY_MODE=true
             NON_INTERACTIVE=true
         elif [ -n "${CI:-}" ]; then
             CI_MODE=true
             NON_INTERACTIVE=true
+            return 0
         elif [ ! -t 0 ]; then
             NON_INTERACTIVE=true
+        fi
+    fi
+
+    local purpose_query="$INSTALL_DIR/bin/development-checkout-purpose.sh"
+    if [ -x "$purpose_query" ]; then
+        local purpose
+        if ! purpose="$("$purpose_query" --purpose "$INSTALL_DIR")"; then
+            print_error "The installed controller could not establish checkout purpose; install mode is refused"
+            exit 1
+        fi
+        if [ "$purpose" = "development" ]; then
+            DEVELOPMENT_CHECKOUT_MODE=true
+            DEPS_ONLY_MODE=true
+            NON_INTERACTIVE=true
+            if ! TELECLAUDE_HOME="$("$purpose_query" --home "$INSTALL_DIR")"; then
+                print_error "The development checkout home could not be resolved; dependency installation is refused"
+                exit 1
+            fi
+            export TELECLAUDE_HOME
+        fi
+    elif [ -L "$HOME/.local/bin/telec" ]; then
+        local installed_target installed_root
+        installed_target="$(readlink "$HOME/.local/bin/telec")"
+        case "$installed_target" in
+            /*) ;;
+            *) installed_target="$HOME/.local/bin/$installed_target" ;;
+        esac
+        installed_root="$(cd "$(dirname "$installed_target")/.." && pwd)"
+        if [ "$installed_root" != "$(cd "$INSTALL_DIR" && pwd)" ]; then
+            print_error "The installed controller cannot establish checkout purpose; refusing a full or dependency install without the purpose guard"
+            exit 1
         fi
     fi
 }
@@ -1174,6 +1212,11 @@ converge_plumbing() {
     PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.project_setup.plumbing --plumbing-only "$INSTALL_DIR"
 }
 
+converge_development_plumbing() {
+    PYTHONPATH="$INSTALL_DIR" TELECLAUDE_HOME="$TELECLAUDE_HOME" \
+        "$INSTALL_DIR/.venv/bin/python" -P -m teleclaude.project_setup.plumbing --plumbing-only "$INSTALL_DIR"
+}
+
 # Exit statuses the convergence entrypoint publishes (EXIT_STATUSES in
 # teleclaude/entrypoints/docs_layout_convergence.py): 0 when every repository is
 # settled, DOCS_LAYOUT_EXIT_HELD when some are blocked for their owner or deferred
@@ -1207,6 +1250,15 @@ fail_install_on_convergence_failure() {
     fi
 }
 
+fail_install_on_development_checkout_failure() {
+    if [ "$DEVELOPMENT_CHECKOUT_FAILED" = true ]; then
+        print_header "Install Failed"
+        print_error "Development checkout provisioning failed at the reported step; resolve it and re-run make install"
+        log "Install failed: development checkout provisioning"
+        return 1
+    fi
+}
+
 publish_config_schemas() {
     PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.core.reconciliation.config_schemas
 }
@@ -1215,6 +1267,19 @@ publish_installed_commit() {
     if ! PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.entrypoints.install_publication; then
         print_error "Installed-checkout documentation publication failed — fix the reported cause and re-run make install"
         exit 1
+    fi
+}
+
+run_development_checkout() {
+    local status=0
+    PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -P -m teleclaude.entrypoints.development_checkout || status=$?
+    if [ "$status" -ne 0 ]; then
+        DEVELOPMENT_CHECKOUT_FAILED=true
+        print_warning "Development checkout provisioning failed; remaining installation stages will finish before the run reports failure"
+        return 0
+    fi
+    if [ -d "$INSTALL_DIR-dev" ]; then
+        DEVELOPMENT_CHECKOUT_READY=true
     fi
 }
 
@@ -1239,6 +1304,24 @@ install_voice_bridge() {
 
 install_deps_only() {
     print_header "Installing Project Dependencies"
+
+    if [ "$DEVELOPMENT_CHECKOUT_MODE" = true ]; then
+        print_info "Preparing the registered development checkout with its isolated home"
+        if ! command -v uv >/dev/null 2>&1; then
+            print_error "Required host tool uv is unavailable; install uv through the installed checkout and retry"
+            exit 1
+        fi
+        check_node
+        (cd "$INSTALL_DIR" && uv sync --group dev)
+        if [ -d "$INSTALL_DIR/teleclaude/adapters/discord/voice_bridge" ] && ! command -v corepack >/dev/null 2>&1; then
+            print_error "Required host tool corepack is unavailable; install it through the installed checkout and retry"
+            exit 1
+        fi
+        install_voice_bridge
+        converge_development_plumbing
+        print_success "Development checkout dependencies installed"
+        return 0
+    fi
 
     if ! command -v uv >/dev/null 2>&1; then
         curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -1697,6 +1780,7 @@ main() {
     if [ "$DEPS_ONLY_MODE" = true ]; then
         run_install_stage install_deps_only install_deps_only
         fail_install_on_convergence_failure
+        fail_install_on_development_checkout_failure
         print_header "Install Complete"
         print_success "Project dependencies installed"
         log "Deps-only install completed"
@@ -1753,6 +1837,7 @@ main() {
         run_install_stage configure_agent_cli configure_agent_cli
         run_install_stage activate_home_repository activate_home_repository
         run_install_stage publish_installed_commit publish_installed_commit
+        run_install_stage run_development_checkout run_development_checkout
         run_install_stage publish_config_schemas publish_config_schemas
     fi
     run_install_stage converge_plumbing converge_plumbing
@@ -1762,8 +1847,12 @@ main() {
     fi
 
     fail_install_on_convergence_failure
+    fail_install_on_development_checkout_failure
     print_header "Install Complete"
     print_success "Binaries, Python dependencies, and machine-global tooling installed"
+    if [ "$DEVELOPMENT_CHECKOUT_READY" = true ]; then
+        print_info "Development checkout: $INSTALL_DIR-dev (purpose: development)"
+    fi
 
     if [ "$CI_MODE" = false ]; then
         run_install_stage run_macos_permissions_probe run_macos_permissions_probe

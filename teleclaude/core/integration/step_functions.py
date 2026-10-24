@@ -20,6 +20,8 @@ from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_REQUIREMENTS,
 )
+from teleclaude.core.checkout_roots import resolve_checkout_roots
+from teleclaude.core.checkout_transition import checkout_transition_lock
 from teleclaude.core.integration.candidate_scan import (
     CandidateKey,
     CandidateStateReadError,
@@ -85,6 +87,13 @@ from teleclaude.runtime.agy_workspace_trust import remove_vanished_worktree_trus
 from teleclaude.runtime.environment import resolve_runtime_environment
 
 logger = get_logger(__name__)
+_FETCH_CANDIDATE_REF_TEMPLATE = "refs/heads/{branch}:refs/remotes/origin/{branch}"
+_ORIGIN_CANDIDATE_REF_TEMPLATE = "origin/{branch}"
+_GIT_FETCH = "fetch"
+_GIT_ORIGIN = "origin"
+_GIT_MERGE = "merge"
+_GIT_SQUASH = "--squash"
+_INTEGRATION_BRANCH_FETCH_FAILED = "INTEGRATION_BRANCH_FETCH_FAILED"
 
 _INTEGRATION_LEASE_KEY = "integration/main"
 _INTEGRATION_LEASE_TTL_SECONDS = 120
@@ -238,8 +247,9 @@ def _step_idle(
     checkpoint.candidate_sha = key.sha
     checkpoint.lease_token = lease_token
     checkpoint.started_at = now
-    _write_checkpoint(checkpoint_path, checkpoint)
-    _stamp_integration_started(cwd, key.slug)
+    with checkout_transition_lock(Path(cwd)):
+        _write_checkpoint(checkpoint_path, checkpoint)
+        _stamp_integration_started(cwd, key.slug)
 
     logger.info("%s slug=%s phase=CANDIDATE_DEQUEUED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
     _emit_lifecycle_event(
@@ -293,7 +303,13 @@ def _do_merge(
         _write_checkpoint(checkpoint_path, checkpoint)
         return True, ""
 
-    rc, _, merge_stderr = _run_git(["merge", "--squash", key.branch], cwd=wt)
+    fetch_ref = _FETCH_CANDIDATE_REF_TEMPLATE.format(branch=key.branch)
+    fetch_rc, _, fetch_stderr = _run_git([_GIT_FETCH, _GIT_ORIGIN, fetch_ref], cwd=wt)
+    if fetch_rc != 0:
+        return False, _format_error(_INTEGRATION_BRANCH_FETCH_FAILED, fetch_stderr.strip())
+
+    candidate_ref = _ORIGIN_CANDIDATE_REF_TEMPLATE.format(branch=key.branch)
+    rc, _, merge_stderr = _run_git([_GIT_MERGE, _GIT_SQUASH, candidate_ref], cwd=wt)
 
     # Guard: squash merge produced no content changes — candidate already integrated.
     # Catches squash merges where ancestry check (above) doesn't fire because
@@ -694,7 +710,7 @@ def _step_push_succeeded(
     delivered = todos_db.deliver_sync(
         key.slug,
         reconciliation_receipt=receipt,
-        reconciliation_root=Path(cwd),
+        reconciliation_root=resolve_checkout_roots(cwd).authoring,
         commit=final_sha,
     )
     if not delivered:
@@ -729,11 +745,12 @@ def _finalize_confirmed_candidate(
     candidate_sha: str,
 ) -> RootFinalizationResult:
     """Fold, validate, and publish the confirmed candidate from repository root."""
+    source_root = resolve_checkout_roots(cwd).authoring
     repo_root_sync = _synchronize_repo_root(cwd=cwd, session_id=session_id, stage=RepoRootSyncStage.POST_DELIVERY)
     if not repo_root_sync.is_ready:
         return RootFinalizationResult(None, None, _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd))
 
-    reconciliation_root = Path(cwd)
+    reconciliation_root = source_root
     _, receipt, reconciliation_error = reassert_delivered_fold(reconciliation_root, slug)
     if reconciliation_error is not None:
         return RootFinalizationResult(None, None, _format_root_finalization_blocker(slug, reconciliation_error))
@@ -741,7 +758,7 @@ def _finalize_confirmed_candidate(
     if residual_marker_error is not None:
         return RootFinalizationResult(None, None, _format_root_finalization_blocker(slug, residual_marker_error))
 
-    subject_sha = _get_head_sha(cwd)
+    subject_sha = _get_head_sha(str(source_root))
     if subject_sha is None:
         return RootFinalizationResult(
             None,
@@ -763,7 +780,7 @@ def _finalize_confirmed_candidate(
         )
 
     final_gate = _run_final_content_gate(
-        project_root=reconciliation_root,
+        project_root=source_root,
         execution_root=integration_wt,
         subject_sha=subject_sha,
         slug=slug,
@@ -771,7 +788,7 @@ def _finalize_confirmed_candidate(
     )
     if final_gate.outcome is FinalContentGateOutcome.FAILED:
         return RootFinalizationResult(None, None, _format_root_finalization_blocker(slug, final_gate.reason))
-    if _get_head_sha(cwd) != subject_sha:
+    if _get_head_sha(str(source_root)) != subject_sha:
         return RootFinalizationResult(
             None,
             None,

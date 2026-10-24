@@ -10,9 +10,19 @@ from enum import StrEnum
 from pathlib import Path
 from typing import NamedTuple
 
+from teleclaude.config.checkout_association import CheckoutPurpose, checkout_association_for
 from teleclaude.config.loader import load_declared_project_config
+from teleclaude.core.checkout_roots import resolve_checkout_roots
 from teleclaude.domains import publishes_for_root
-from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, GLOBAL_DOCS_ROOTS, PEOPLE_DIR, REPO_ROOT
+from teleclaude.paths import (
+    COMPANIES_ROOT,
+    GLOBAL_DOCS_DIR,
+    GLOBAL_DOCS_ROOTS,
+    PEOPLE_DIR,
+    PROJECTS_MANIFEST_PATH,
+    REPO_ROOT,
+    TELECLAUDE_SOURCE_HOME,
+)
 from teleclaude.project_manifest import load_roots
 from teleclaude.slug import derive_project_slug, normalize_slug
 from teleclaude.snippet_validation import is_generated_global_doc_artifact, tier_root_kind
@@ -107,7 +117,7 @@ def gather_publishers(project_root: Path, current_docs_global: Path) -> list[Pub
         if resolved in seen:
             continue
         seen.add(resolved)
-        docs_global = root / "docs" / "global"
+        docs_global = root / _TIER_PUBLISHED_DOCS
         if not docs_global.is_dir():
             continue
         slug = project_slug(root)
@@ -118,16 +128,16 @@ def gather_publishers(project_root: Path, current_docs_global: Path) -> list[Pub
 
 
 def mother_publisher(publishers: list[Publisher]) -> Publisher | None:
-    """Identify the publisher whose docs source belongs to Mother's canonical checkout.
-
-    Mother owns the ``snippets/`` support tree, identified by comparing git
-    canonical roots rather than exact ``docs_global`` paths. ``REPO_ROOT`` can
-    reflect a different linked worktree than a publisher's live source even when
-    both belong to Mother, so raw-path comparison would lose ownership.
-    """
+    """Identify Mother's source, selecting its associated authoring clone when it is the caller."""
     mother_root = git_common_root(REPO_ROOT).resolve()
+    mother_roots = {mother_root}
+    association = checkout_association_for(mother_root, TELECLAUDE_SOURCE_HOME / PROJECTS_MANIFEST_PATH.name)
+    if association is not None:
+        mother_roots.add(association.development_checkout)
+    mother_slugs = {project_slug(root) for root in mother_roots}
     for publisher in publishers:
-        if git_common_root(publisher.docs_global.parent.parent).resolve() == mother_root:
+        publisher_root = publisher.docs_global.parent.parent.resolve()
+        if publisher_root in mother_roots or publisher.slug in mother_slugs:
             return publisher
     return None
 
@@ -152,7 +162,7 @@ def publisher_resolution(
 ) -> Generator[PublisherRegistry, None, None]:
     """Cache publisher ownership for every global reference in one processing pass."""
     resolved_publishers = (
-        publishers if publishers is not None else gather_publishers(project_root, project_root / "docs" / "global")
+        publishers if publishers is not None else gather_publishers(project_root, project_root / _TIER_PUBLISHED_DOCS)
     )
     registry = PublisherRegistry(domain_owners(resolved_publishers), mother_publisher(resolved_publishers))
     token = _PUBLISHER_REGISTRY.set(registry)
@@ -177,7 +187,12 @@ def deployed_resolution() -> Generator[None, None, None]:
         _RESOLUTION_MODE.reset(token)
 
 
-def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
+def resolve_global_doc_source(
+    project_root: Path,
+    candidate: Path,
+    *,
+    global_docs_root: Path = GLOBAL_DOCS_DIR,
+) -> Path:
     """Map a deployed global-doc path to its registered publisher source.
 
     A generated documentation artifact — the merged index or a domain's
@@ -197,7 +212,8 @@ def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
     """
     expanded_candidate = candidate.expanduser()
     relative_path = None
-    for docs_root in GLOBAL_DOCS_ROOTS:
+    docs_roots = tuple(dict.fromkeys((global_docs_root.expanduser().resolve(), *GLOBAL_DOCS_ROOTS)))
+    for docs_root in docs_roots:
         try:
             relative_path = expanded_candidate.relative_to(docs_root)
             break
@@ -208,7 +224,7 @@ def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
     if not relative_path.parts:
         return candidate
     if is_generated_global_doc_artifact(relative_path):
-        return GLOBAL_DOCS_DIR / relative_path
+        return global_docs_root / relative_path
     root_name, *tail = relative_path.parts
     if root_name in (COMPANIES_ROOT.name, PEOPLE_DIR.name):
         if tier_root_kind(project_root) is not None and tail and tail[0] == project_root.name:
@@ -218,7 +234,12 @@ def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
         return candidate
     registry = _PUBLISHER_REGISTRY.get()
     if registry is None:
-        publishers = gather_publishers(project_root, project_root / "docs" / "global")
+        roots = resolve_checkout_roots(
+            project_root,
+            registry_path=TELECLAUDE_SOURCE_HOME / PROJECTS_MANIFEST_PATH.name,
+        )
+        source_root = roots.authoring if roots.purpose is CheckoutPurpose.DEVELOPMENT else project_root
+        publishers = gather_publishers(source_root, source_root / _TIER_PUBLISHED_DOCS)
         registry = PublisherRegistry(domain_owners(publishers), mother_publisher(publishers))
     if root_name == _SNIPPETS_DIR:
         if registry.mother is None:

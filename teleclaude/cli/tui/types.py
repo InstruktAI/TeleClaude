@@ -12,6 +12,7 @@ class NodeType(str, Enum):
 
     COMPUTER = "computer"
     PROJECT = "project"
+    PROJECT_LOCATION = "project_location"
     SESSION = "session"
     TODO = "todo"
     FILE = "file"

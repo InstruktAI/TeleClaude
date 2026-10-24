@@ -17,6 +17,7 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
+from teleclaude.core.checkout_roots import resolve_checkout_roots, worktree_location
 from teleclaude.core.next_machine.worktree_home import (
     WorktreeHomeCleanupError,
     move_worktree_home,
@@ -160,24 +161,25 @@ def _rollback_path(source: Path, destination: Path) -> None:
 
 def move_todo_slug_surfaces(cwd: str, old_slug: str, new_slug: str) -> list[TodoSlugSurfaceMove]:
     """Move physical todo surfaces from old slug to new slug, recording inverses."""
-    project_root = Path(cwd)
+    old_worktree, project_root = worktree_location(cwd, old_slug)
     moves: list[TodoSlugSurfaceMove] = []
 
     try:
-        if _project_has_git(project_root) and _local_branch_exists(cwd, old_slug):
-            rc, _, stderr = _run_git_cmd(["push", "origin", f"{old_slug}:{new_slug}"], cwd=cwd, timeout=10)
+        if _project_has_git(project_root) and _local_branch_exists(str(project_root), old_slug):
+            rc, _, stderr = _run_git_cmd(
+                ["push", "origin", f"{old_slug}:{new_slug}"], cwd=str(project_root), timeout=10
+            )
             if rc != 0:
                 msg = f"git push new rename ref failed for {old_slug!r}->{new_slug!r}: {stderr.strip()}"
                 raise RuntimeError(msg)
             moves.append(TodoSlugSurfaceMove(surface=TodoSlugSurface.REMOTE_BRANCH, old=old_slug, new=new_slug))
 
-        old_worktree = project_root / WORKTREE_DIR / old_slug
         new_worktree = project_root / WORKTREE_DIR / new_slug
         if _path_exists(old_worktree):
             _ensure_destination_absent(new_worktree)
             if _project_has_git(project_root):
                 rc, _, stderr = _run_git_cmd(
-                    ["worktree", "move", str(old_worktree), str(new_worktree)], cwd=cwd, timeout=10
+                    ["worktree", "move", str(old_worktree), str(new_worktree)], cwd=str(project_root), timeout=10
                 )
                 if rc != 0:
                     msg = f"git worktree move failed for {old_slug!r}->{new_slug!r}: {stderr.strip()}"
@@ -189,8 +191,8 @@ def move_todo_slug_surfaces(cwd: str, old_slug: str, new_slug: str) -> list[Todo
         if move_worktree_home(project_root, old_slug, new_slug):
             moves.append(TodoSlugSurfaceMove(surface=TodoSlugSurface.HOME, old=old_slug, new=new_slug))
 
-        if _project_has_git(project_root) and _local_branch_exists(cwd, old_slug):
-            rc, _, stderr = _run_git_cmd(["branch", "-m", old_slug, new_slug], cwd=cwd, timeout=10)
+        if _project_has_git(project_root) and _local_branch_exists(str(project_root), old_slug):
+            rc, _, stderr = _run_git_cmd(["branch", "-m", old_slug, new_slug], cwd=str(project_root), timeout=10)
             if rc != 0:
                 msg = f"git branch rename failed for {old_slug!r}->{new_slug!r}: {stderr.strip()}"
                 raise RuntimeError(msg)
@@ -210,7 +212,11 @@ def move_todo_slug_surfaces(cwd: str, old_slug: str, new_slug: str) -> list[Todo
 
 def rollback_todo_slug_surfaces(cwd: str, moves: list[TodoSlugSurfaceMove]) -> None:
     """Best-effort LIFO compensation for physical rename legs."""
-    project_root = Path(cwd)
+    target_slug = next(
+        (Path(move.new).name for move in moves if move.surface is TodoSlugSurface.WORKTREE),
+        "",
+    )
+    project_root = worktree_location(cwd, target_slug)[1] if target_slug else resolve_checkout_roots(cwd).authoring
     for move in reversed(moves):
         try:
             if move.surface is TodoSlugSurface.WORKSPACE:
@@ -218,7 +224,7 @@ def rollback_todo_slug_surfaces(cwd: str, moves: list[TodoSlugSurfaceMove]) -> N
             elif move.surface is TodoSlugSurface.WORKTREE:
                 if _project_has_git(project_root):
                     rc, _, stderr = _run_git_cmd(
-                        ["worktree", "move", str(move.new), str(move.old)], cwd=cwd, timeout=10
+                        ["worktree", "move", str(move.new), str(move.old)], cwd=str(project_root), timeout=10
                     )
                     if rc != 0:
                         msg = f"git worktree rollback failed for {move.new!s}->{move.old!s}: {stderr.strip()}"
@@ -228,16 +234,17 @@ def rollback_todo_slug_surfaces(cwd: str, moves: list[TodoSlugSurfaceMove]) -> N
             elif move.surface is TodoSlugSurface.HOME:
                 move_worktree_home(project_root, str(move.new), str(move.old))
             elif move.surface is TodoSlugSurface.LOCAL_BRANCH:
-                _run_git_cmd(["branch", "-m", str(move.new), str(move.old)], cwd=cwd, timeout=10)
+                _run_git_cmd(["branch", "-m", str(move.new), str(move.old)], cwd=str(project_root), timeout=10)
             elif move.surface is TodoSlugSurface.REMOTE_BRANCH:
-                _run_git_cmd(["push", "origin", "--delete", str(move.new)], cwd=cwd, timeout=5)
+                _run_git_cmd(["push", "origin", "--delete", str(move.new)], cwd=str(project_root), timeout=5)
         except Exception as exc:  # pragma: no cover - rollback logging is best effort
             logger.warning("rename rollback failed for %s: %s", move.surface, exc)
 
 
 def delete_old_remote_slug_ref(cwd: str, old_slug: str) -> None:
     """Best-effort post-commit cleanup of the old remote branch."""
-    rc, _, stderr = _run_git_cmd(["push", "origin", "--delete", old_slug], cwd=cwd, timeout=5)
+    authoring = resolve_checkout_roots(cwd).authoring
+    rc, _, stderr = _run_git_cmd(["push", "origin", "--delete", old_slug], cwd=str(authoring), timeout=5)
     if rc != 0:
         logger.warning("old remote branch cleanup failed for %s: %s", old_slug, stderr.strip())
 
@@ -274,25 +281,27 @@ def _archive_binary_artifacts(project_root: Path, slug: str) -> None:
 
 def reclaim_worktree_trash(cwd: str) -> None:
     """Reclaim detached worktrees while keeping the container available to writers."""
-    trash_dir = Path(cwd) / WORKTREE_DIR / _WORKTREE_TRASH_DIR
-    try:
-        entries = sorted(trash_dir.iterdir())
-    except FileNotFoundError:
-        return
-    except OSError as exc:
-        logger.warning(_WORKTREE_TRASH_RECLAIM_FAILED, trash_dir, exc)
-        return
-
-    for entry in entries:
+    roots = resolve_checkout_roots(cwd)
+    for checkout in dict.fromkeys((roots.installed, roots.authoring)):
+        trash_dir = checkout / WORKTREE_DIR / _WORKTREE_TRASH_DIR
         try:
-            if entry.is_symlink() or entry.is_file():
-                entry.unlink(missing_ok=True)
-            elif entry.is_dir():
-                shutil.rmtree(entry)
+            entries = sorted(trash_dir.iterdir())
         except FileNotFoundError:
             continue
         except OSError as exc:
-            logger.warning(_WORKTREE_TRASH_RECLAIM_FAILED, entry, exc)
+            logger.warning(_WORKTREE_TRASH_RECLAIM_FAILED, trash_dir, exc)
+            continue
+
+        for entry in entries:
+            try:
+                if entry.is_symlink() or entry.is_file():
+                    entry.unlink(missing_ok=True)
+                elif entry.is_dir():
+                    shutil.rmtree(entry)
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                logger.warning(_WORKTREE_TRASH_RECLAIM_FAILED, entry, exc)
 
 
 def cleanup_delivered_slug(
@@ -307,16 +316,15 @@ def cleanup_delivered_slug(
     Each step is a no-op if the artifact is already gone.
     """
     branch = branch or slug
-    project_root = Path(cwd)
+    worktree_path, worktree_owner = worktree_location(cwd, slug)
 
     # 0. Archive binary artifacts (art/, html/) from workspace/ before cleanup
-    _archive_binary_artifacts(project_root, slug)
+    _archive_binary_artifacts(worktree_owner, slug)
 
     # 1. Detach the worktree for background reclamation, then prune its bookkeeping.
-    worktree_path = project_root / WORKTREE_DIR / slug
     if worktree_path.exists():
-        _run_git_cmd(["worktree", "unlock", str(worktree_path)], cwd=cwd, timeout=None)
-        trash_dir = project_root / WORKTREE_DIR / _WORKTREE_TRASH_DIR
+        _run_git_cmd(["worktree", "unlock", str(worktree_path)], cwd=str(worktree_owner), timeout=None)
+        trash_dir = worktree_owner / WORKTREE_DIR / _WORKTREE_TRASH_DIR
         trash_path = trash_dir / _WORKTREE_TRASH_ENTRY_TEMPLATE.format(slug=slug, nonce=uuid4().hex)
         try:
             trash_dir.mkdir(parents=True, exist_ok=True)
@@ -325,24 +333,24 @@ def cleanup_delivered_slug(
             pass
         except OSError as exc:
             logger.warning(_WORKTREE_DETACH_FAILED, slug, exc)
-        _run_git_cmd(["worktree", "prune", "--expire=now"], cwd=cwd, timeout=None)
+        _run_git_cmd(["worktree", "prune", "--expire=now"], cwd=str(worktree_owner), timeout=None)
 
     remove_worktree_trust(worktree_path)
 
     try:
-        release_worktree_home(project_root, slug)
+        release_worktree_home(worktree_owner, slug)
     except WorktreeHomeCleanupError as exc:
         logger.warning(_WORKTREE_HOME_RELEASE_FAILED, slug, exc, exc_info=True)
 
     # 2. Delete local branch
-    _run_git_cmd(["branch", "-D", branch], cwd=cwd)
+    _run_git_cmd(["branch", "-D", branch], cwd=str(worktree_owner))
 
     # 3. Delete remote branch (non-fatal, tight timeout)
     if remove_remote_branch:
-        _run_git_cmd(["push", "origin", "--delete", branch], cwd=cwd, timeout=5)
+        _run_git_cmd(["push", "origin", "--delete", branch], cwd=str(worktree_owner), timeout=5)
 
     # 4. Clean up workspace/{slug}/ directory
-    workspace_dir = project_root / "workspace" / slug
+    workspace_dir = worktree_owner / "workspace" / slug
     if workspace_dir.is_symlink():
         workspace_dir.unlink()
     elif workspace_dir.exists():
