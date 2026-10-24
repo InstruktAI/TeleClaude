@@ -114,23 +114,9 @@ class GitHubWorkflowSync:
             for issue in issues
             if issue.creator == self.assignment.actor.login
         }
-        ledger_issue, ledger_entries = _find_ledger(
-            comments_by_issue, {issue.number: issue for issue in issues}, self.assignment.actor.login
+        ledger_issue, ledger_entries, updates = _select_rebuild_records(
+            issues, comments_by_issue, self.assignment.actor.login
         )
-        committed_ids = {entry.transaction_id for entry, _comment in ledger_entries}
-        updates: list[tuple[GitHubIssue, WorkflowRecord, GitHubComment, ItemRevision]] = []
-        for issue in issues:
-            if issue.creator != self.assignment.actor.login:
-                continue
-            record, record_comment = _find_record(
-                comments_by_issue.get(issue.number, ()), self.assignment.actor.login, issue.number
-            )
-            if record is None or record_comment is None:
-                continue
-            revision = effective_revision(record, committed_ids)
-            if revision.todo.get(WorkflowField.STATUS) == WorkflowTodoStatus.PURGED:
-                continue
-            updates.append((issue, record, record_comment, revision))
 
         resolved: list[tuple[GitHubIssue, GitHubComment, WorkingCopyItemSnapshot, ItemRevision]] = []
         for issue, _record, record_comment, revision in updates:
@@ -185,22 +171,11 @@ class GitHubWorkflowSync:
             for issue in issues
             if issue.creator == self.assignment.actor.login
         }
-        ledger_issue, ledger_entries = _find_ledger(
-            comments_by_issue, {issue.number: issue for issue in issues}, self.assignment.actor.login
+        ledger_issue, ledger_entries, updates = _select_rebuild_records(
+            issues, comments_by_issue, self.assignment.actor.login
         )
-        committed_ids = {entry.transaction_id for entry, _comment in ledger_entries}
         resolved: list[tuple[GitHubIssue, GitHubComment, WorkingCopyItemSnapshot, ItemRevision]] = []
-        for issue in issues:
-            if issue.creator != self.assignment.actor.login:
-                continue
-            record, record_comment = _find_record(
-                comments_by_issue.get(issue.number, ()), self.assignment.actor.login, issue.number
-            )
-            if record is None or record_comment is None:
-                continue
-            revision = effective_revision(record, committed_ids)
-            if revision.todo.get(WorkflowField.STATUS) == WorkflowTodoStatus.PURGED:
-                continue
+        for issue, _record, record_comment, revision in updates:
             snapshot = self._snapshot_from_revision_sync(issue.number, revision, comments_by_issue[issue.number])
             resolved.append((issue, record_comment, snapshot, revision))
         ledger_comment_id = max((comment.database_id for _entry, comment in ledger_entries), default=None)
@@ -518,6 +493,32 @@ def _find_ledger(
         return find_ledger(comments_by_issue, issues_by_number, bot_login)
     except GitHubLedgerRefused as error:
         raise GitHubWorkflowSyncRefused(str(error)) from error
+
+
+def _select_rebuild_records(
+    issues: Sequence[GitHubIssue],
+    comments_by_issue: Mapping[int, Sequence[GitHubComment]],
+    bot_login: str,
+) -> tuple[
+    GitHubIssue | None,
+    list[tuple[LedgerCommit, GitHubComment]],
+    list[tuple[GitHubIssue, WorkflowRecord, GitHubComment, ItemRevision]],
+]:
+    """Select the committed issue revisions shared by both rebuild entry points."""
+    ledger_issue, ledger_entries = _find_ledger(comments_by_issue, {issue.number: issue for issue in issues}, bot_login)
+    committed_ids = {entry.transaction_id for entry, _comment in ledger_entries}
+    updates: list[tuple[GitHubIssue, WorkflowRecord, GitHubComment, ItemRevision]] = []
+    for issue in issues:
+        if issue.creator != bot_login:
+            continue
+        record, record_comment = _find_record(comments_by_issue.get(issue.number, ()), bot_login, issue.number)
+        if record is None or record_comment is None:
+            continue
+        revision = effective_revision(record, committed_ids)
+        if revision.todo.get(WorkflowField.STATUS) == WorkflowTodoStatus.PURGED:
+            continue
+        updates.append((issue, record, record_comment, revision))
+    return ledger_issue, ledger_entries, updates
 
 
 def _parse_ledger_comment(comment: GitHubComment, bot_login: str, issue_number: int) -> LedgerCommit | None:
