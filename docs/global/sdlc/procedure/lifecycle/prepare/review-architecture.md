@@ -1,7 +1,7 @@
 ---
 description: 'Architecture review phase. Validate the architecture artifact against the approved PRD, project architecture, codebase reality, and platform defaults.'
 visibility: 'public'
-role: reviewer
+role: architecture-reviewer
 parameters:
   - name: slug
     required: true
@@ -36,10 +36,7 @@ unsupported invention and status-quo absorption.
 
 ## Steps
 
-When this procedure is your session’s launch assignment, retrieve its focused tool
-help with `telec -h --expand-role` before starting the assigned work. When reading
-it inline, retain your current session’s tool context. Use `telec <command> -h`
-for individual commands.
+<!-- @include: docs/snippets/step-role-read.md -->
 
 First read the sdlc principles as listed in the sdlc baseline that apply to this work with `telec docs get`.
 

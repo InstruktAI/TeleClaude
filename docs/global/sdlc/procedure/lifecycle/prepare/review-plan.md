@@ -1,7 +1,7 @@
 ---
 description: 'Plan review phase. Validate implementation-plan against PRD, optional architecture, feature-spec scenarios, policies, DoD gates, and review lane expectations.'
 visibility: 'public'
-role: reviewer
+role: plan-reviewer
 parameters:
   - name: slug
     required: true

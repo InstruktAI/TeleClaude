@@ -78,6 +78,11 @@ class RoleName(StrEnum):
 
     BUILDER = "builder"
     REVIEWER = "reviewer"
+    PRD_REVIEWER = "prd-reviewer"
+    ARCHITECTURE_REVIEWER = "architecture-reviewer"
+    PLAN_REVIEWER = "plan-reviewer"
+    BUILD_REVIEWER = "build-reviewer"
+    COMMIT_REVIEWER = "commit-reviewer"
     FINALIZER = "finalizer"
     DIAGNOSER = "diagnoser"
     DRIFT_ANALYZER = "drift-analyzer"
@@ -98,8 +103,16 @@ class RoleName(StrEnum):
     INSTALLATION_INSPECTOR = "installation-inspector"
     MEMORY_CURATOR = "memory-curator"
     DESK_MEMORY_CURATOR = "desk-memory-curator"
+    COMPANY_DESK_CURATOR = "company-desk-curator"
+    PROJECT_DESK_CURATOR = "project-desk-curator"
     HELPER = "helper"
+    COMPANY_ANALYST = "company-analyst"
+    KNOWLEDGE_AUTHOR = "knowledge-author"
+    PROJECT_ANALYST = "project-analyst"
+    THIRD_PARTY_RESEARCHER = "third-party-researcher"
     ONBOARDER = "onboarder"
+    CONFIG_ASSESSOR = "config-assessor"
+    PROJECT_ONBOARDER = "project-onboarder"
     MAIL_TRIAGER = "mail-triager"
 
 
@@ -573,6 +586,40 @@ _CATALOG: dict[RoleName, Role] = dict(
         ),
     ]
 )
+
+# Each procedure declares its own role. Procedures that need the same reach take it from one
+# composite role, so each session still names its own assignment
+# (``local/projects/teleclaude/spec/feature/identity/agent-roles``).
+_COMPOSED_ROLES: dict[RoleName, tuple[RoleName, ...]] = {
+    RoleName.REVIEWER: (
+        RoleName.PRD_REVIEWER,
+        RoleName.ARCHITECTURE_REVIEWER,
+        RoleName.PLAN_REVIEWER,
+        RoleName.BUILD_REVIEWER,
+        RoleName.COMMIT_REVIEWER,
+    ),
+    RoleName.HELPER: (
+        RoleName.COMPANY_ANALYST,
+        RoleName.KNOWLEDGE_AUTHOR,
+        RoleName.PROJECT_ANALYST,
+        RoleName.THIRD_PARTY_RESEARCHER,
+    ),
+    RoleName.ONBOARDER: (RoleName.CONFIG_ASSESSOR, RoleName.PROJECT_ONBOARDER),
+    RoleName.DESK_MEMORY_CURATOR: (RoleName.COMPANY_DESK_CURATOR, RoleName.PROJECT_DESK_CURATOR),
+}
+_CATALOG.update(
+    _entry(member, base.role_class, base.full_reach, base.capabilities, base.label)
+    for composite, members in _COMPOSED_ROLES.items()
+    for base in (_CATALOG[composite],)
+    for member in members
+)
+
+REVIEWER_ROLES: frozenset[RoleName] = frozenset({RoleName.REVIEWER, *_COMPOSED_ROLES[RoleName.REVIEWER]})
+
+
+def composite_role(name: RoleName) -> RoleName:
+    """The composite a procedure's own role takes its reach from, or the role itself."""
+    return next((composite for composite, members in _COMPOSED_ROLES.items() if name in members), name)
 
 
 def resolve_role(name: str | None) -> Role | UnknownRole | None:

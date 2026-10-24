@@ -1,6 +1,6 @@
 ---
 description: Review a lifecycle build by slug against its prepared intent, plan, implementation, and shared review contract.
-role: reviewer
+role: build-reviewer
 parameters:
   - name: slug
     required: true
@@ -35,10 +35,7 @@ shared review procedure supplies the review judgment.
 
 ## Steps
 
-When this procedure is your session’s launch assignment, retrieve its focused tool
-help with `telec -h --expand-role` before starting the assigned work. When reading
-it inline, retain your current session’s tool context. Use `telec <command> -h`
-for individual commands.
+<!-- @include: docs/snippets/step-role-read.md -->
 
 ### 1. Establish the slug's review context
 

@@ -5,7 +5,7 @@ activation_trigger: Use when entering unfamiliar third-party territory, or about
 description: 'Research third-party docs: search authoritative sources, fetch, summarize,
   and index findings.'
 visibility: public
-role: helper
+role: third-party-researcher
 parameters:
   - name: brief
     required: true
@@ -57,10 +57,7 @@ than a standalone snippet; publish a reusable snippet only when the research ear
 
 ## Steps
 
-When this procedure is your session’s launch assignment, retrieve its focused tool
-help with `telec -h --expand-role` before starting the assigned work. When reading
-it inline, retain your current session’s tool context. Use `telec <command> -h`
-for individual commands.
+<!-- @include: docs/snippets/step-role-read.md -->
 
 - Identify sources (web or Context7) and record them.
 - Draft an internal snippet that captures only validated facts.

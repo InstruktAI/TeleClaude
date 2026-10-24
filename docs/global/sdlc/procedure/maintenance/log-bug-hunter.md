@@ -36,10 +36,7 @@ whose records support a failure in the scanned project's own handling through
 
 ## Steps
 
-When this procedure is your session’s launch assignment, retrieve its focused tool
-help with `telec -h --expand-role` before starting the assigned work. When reading
-it inline, retain your current session’s tool context. Use `telec <command> -h`
-for individual commands.
+<!-- @include: docs/snippets/step-role-read.md -->
 
 1. Establish the scan window for this project.
    - Read the saved envelope's `state` object using the schema under Outputs. A missing file or absent checkpoint uses the first-run defaults. A present checkpoint that cannot be read or does not match this procedure's schema follows Recovery.

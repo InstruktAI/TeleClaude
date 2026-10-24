@@ -119,6 +119,7 @@ Document structure:
 - Additional structure inside valid sections is allowed. Use subordinate headings such as `###` when they improve clarity; schema validation constrains the required H2 section names, not the internal organization within them.
 - `## Sources` — third-party docs may include web links or Context7 snippet IDs when authoritative references are available.
 - `## See Also` — optional soft references (not inlined at build time).
+- `<!-- @include: docs/snippets/<name>.md -->` — inlines a shared fragment's body exactly where the directive sits, in every rendering of the snippet: `telec docs get`, a session's assignment brief and generated bundles. It carries text several snippets state word for word, so it is written once. A fragment is authored under `docs/global/snippets/` and published as `docs/snippets/`; it has no frontmatter, is not a snippet and is never retrieved by ID. A fragment that cannot be found leaves its directive visible in the rendering.
 
 ### Required H2 sections per taxonomy
 

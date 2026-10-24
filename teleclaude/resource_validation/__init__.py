@@ -1,5 +1,6 @@
 """Published resource-validation contracts."""
 
+from teleclaude.doc_body import INCLUDE_DIRECTIVE_RE
 from teleclaude.resource_validation._artifacts import (
     _ARTIFACT_REF_ORDER,
     _as_str_list,
@@ -12,7 +13,6 @@ from teleclaude.resource_validation._artifacts import (
 from teleclaude.resource_validation._jobs import validate_jobs_config
 from teleclaude.resource_validation._models import REPO_ROOT, _load_schema, clear_errors, get_errors
 from teleclaude.resource_validation._snippet import (
-    INCLUDE_DIRECTIVE_RE,
     _extract_markdown_link_url,
     _extract_sources_section,
     _is_context7_id,

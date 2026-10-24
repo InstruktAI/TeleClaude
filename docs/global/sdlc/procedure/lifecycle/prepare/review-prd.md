@@ -3,7 +3,7 @@ description: Independently review a drafted PRD's horizon, enrichment, scope rea
   assumptions, and observable outcomes before human approval.
 activation_trigger: The prepare state machine routes a feature from PRD drafting to
   PRD review.
-role: reviewer
+role: prd-reviewer
 parameters:
   - name: slug
     required: true
@@ -35,10 +35,7 @@ not review architecture, implementation mechanism, or concrete proof.
 
 ## Steps
 
-When this procedure is your session’s launch assignment, retrieve its focused tool
-help with `telec -h --expand-role` before starting the assigned work. When reading
-it inline, retain your current session’s tool context. Use `telec <command> -h`
-for individual commands.
+<!-- @include: docs/snippets/step-role-read.md -->
 
 1. Discover the todo's artifacts, then read the `input`, the drafted `prd`, and
    any `log` or deferral material that bears on product intent. Load the relevant

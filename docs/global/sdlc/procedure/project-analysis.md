@@ -1,7 +1,7 @@
 ---
 description: 'AI-driven project analysis procedure run by a sdlc/procedure/project-analysis session started with telec sessions run. Guides the analysis session through codebase discovery, convention inference, and snippet generation.'
 visibility: 'public'
-role: helper
+role: project-analyst
 dispatch:
   agent: [claude, codex, gemini, deepseek]
   thinking_mode: med
@@ -41,10 +41,7 @@ reflect concrete findings from the analyzed repository, not generic templates.
 
 ## Steps
 
-When this procedure is your session’s launch assignment, retrieve its focused tool
-help with `telec -h --expand-role` before starting the assigned work. When reading
-it inline, retain your current session’s tool context. Use `telec <command> -h`
-for individual commands.
+<!-- @include: docs/snippets/step-role-read.md -->
 
 ### 1. Orientation
 

@@ -1,7 +1,7 @@
 ---
 description: 'AI-driven project onboarding — adopt the project with telec config project adopt, then explicitly start the quality-config assessment and doc-snippet analysis sessions.'
 visibility: 'public'
-role: onboarder
+role: project-onboarder
 dispatch:
   agent: [claude, codex, gemini, deepseek]
   thinking_mode: med
@@ -33,10 +33,7 @@ surface that starts agents.
 
 ## Steps
 
-When this procedure is your session’s launch assignment, retrieve its focused tool
-help with `telec -h --expand-role` before starting the assigned work. When reading
-it inline, retain your current session’s tool context. Use `telec <command> -h`
-for individual commands.
+<!-- @include: docs/snippets/step-role-read.md -->
 
 1. **Adopt.** From the project root, run `telec config project adopt`. It
    registers the project where it is: it gives the folder its own repository when

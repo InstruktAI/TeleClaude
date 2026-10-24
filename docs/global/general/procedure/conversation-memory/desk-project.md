@@ -6,7 +6,7 @@ subscription_home: project
 subscription_identity: subject
 event_delivery: sequential
 interruptible: false
-role: desk-memory-curator
+role: project-desk-curator
 dispatch:
   agent: [claude, codex, gemini, deepseek]
   thinking_mode: med
@@ -33,10 +33,7 @@ The visitor identity and desk remain this worker's scope across source sessions.
 
 ## Steps
 
-When this procedure is your session’s launch assignment, retrieve its focused tool
-help with `telec -h --expand-role` before starting the assigned work. When reading
-it inline, retain your current session’s tool context. Use `telec <command> -h`
-for individual commands.
+<!-- @include: docs/snippets/step-role-read.md -->
 
 1. Read `telec memories extraction read <id>`. Use its bounded conversation
    evidence and progress. An already completed extraction needs no further work.

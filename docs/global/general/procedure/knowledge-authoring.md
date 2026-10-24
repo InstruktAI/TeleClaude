@@ -2,7 +2,7 @@
 description: Capture and organize knowledge a human expresses into a doc snippet batch,
   conversationally, authoring only after every active participant agrees and the human
   releases it.
-role: helper
+role: knowledge-author
 parameters:
   - name: topic
     rest: true
@@ -36,10 +36,7 @@ express.
 
 ## Steps
 
-When this procedure is your session’s launch assignment, retrieve its focused tool
-help with `telec -h --expand-role` before starting the assigned work. When reading
-it inline, retain your current session’s tool context. Use `telec <command> -h`
-for individual commands.
+<!-- @include: docs/snippets/step-role-read.md -->
 
 1. If a topic was given as the argument, start there; otherwise ask the human
    what area to document.

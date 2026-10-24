@@ -24,6 +24,7 @@ from teleclaude.doc_body import (
     INLINE_REF_RE,
     apply_planned_change_sections,
     apply_planned_sections,
+    expand_include_directives,
     resolve_inline_refs,
     split_frontmatter,
 )
@@ -1108,6 +1109,7 @@ def _read_selected_snippet_body(
         root_path = (
             global_root if global_snippets_root in snippet.path.parents else (snippet.project_root or project_root)
         )
+        raw = expand_include_directives(raw, snippet_path=source_path, root_path=root_path)
         content = resolve_inline_refs(raw, snippet_path=source_path, root_path=root_path)
         _, body = split_frontmatter(content)
         body = apply_planned_change_sections(body, target_slug)

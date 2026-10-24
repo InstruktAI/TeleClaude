@@ -26,6 +26,7 @@ __all__ = [
 ]
 
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
+INCLUDE_DIRECTIVE_RE = re.compile(r"<!--\s*@include:\s*(.+?\.md)\s*-->")
 
 PLANNED_BLOCK_RE = re.compile(
     r"[ \t]*<!--[ \t]*planned:(?P<slug>[a-z0-9-]+)[ \t]*-->[ \t]*\n"
@@ -79,6 +80,32 @@ def resolve_inline_refs(content: str, *, snippet_path: Path, root_path: Path) ->
         return f"@{candidate}"
 
     return f"{head}{INLINE_REF_RE.sub(_expand, body)}"
+
+
+def expand_include_directives(content: str, *, snippet_path: Path, root_path: Path) -> str:
+    """Inline each ``<!-- @include: path.md -->`` fragment's body where the directive sits.
+
+    A ``docs/`` path resolves under ``root_path``, falling back to the global half of a source checkout,
+    where the published ``docs/snippets`` fragments are authored. A fragment that cannot be found leaves its
+    directive in place, so the reader sees what is missing.
+    """
+
+    def _render(match: re.Match[str]) -> str:
+        ref = match.group(1)
+        candidate = Path(ref).expanduser()
+        if candidate.is_absolute():
+            candidates = [candidate]
+        elif ref.startswith("docs/"):
+            candidates = [root_path / ref, root_path / "docs" / "global" / Path(ref).relative_to("docs")]
+        else:
+            candidates = [snippet_path.parent / ref]
+        found = next((path for path in candidates if path.is_file()), None)
+        if found is None:
+            return match.group(0)
+        _, fragment = split_frontmatter(found.read_text(encoding="utf-8"))
+        return fragment.strip()
+
+    return INCLUDE_DIRECTIVE_RE.sub(_render, content)
 
 
 def apply_planned_sections(body: str, target_slug: str | None) -> str:

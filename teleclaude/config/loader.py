@@ -65,7 +65,7 @@ from teleclaude.config.schema import (
     TierDocument,
 )
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.core.roles import RoleName
+from teleclaude.core.roles import RoleName, composite_role
 from teleclaude.file_transaction import FileTransaction, file_transaction
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 from teleclaude.slug import validate_slug
@@ -541,7 +541,7 @@ def github_actor_for_role(role: RoleName) -> GitHubActorAssignment | None:
     """Answer a configured declaration for the actual role; confer no caller authority."""
     with file_transaction(GLOBAL_CONFIG_PATH) as transaction:
         declaration = read_global_config_transaction(transaction)
-        app_id = declaration.github.roles.get(role)
+        app_id = declaration.github.roles.get(role, declaration.github.roles.get(composite_role(role)))
         return next(
             (profile.assignment for profile in declaration.github.apps if profile.assignment.app_id == app_id), None
         )

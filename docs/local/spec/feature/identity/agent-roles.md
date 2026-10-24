@@ -121,8 +121,19 @@ starts another session. A worker's reach is focus, not integrity
 (`general/principle/trust-and-guardrails`): the todo's claim and the object
 owners still decide what it may change.
 
-Outside the worker class, sharing a role class grants no shared command set.
-Procedures share a role only where its focused surface fits their assignments;
+Each procedure declares a role of its own, so a session's role names exactly
+the assignment it runs and two procedures never appear under one name.
+Procedures whose assignments need the same reach take it from a **composite
+role** the catalog declares: each procedure's role carries the composite's
+class, reach, capabilities and label, and adds nothing until the catalog gives
+it a set of its own. The composites are `reviewer` (the PRD, architecture,
+plan, build and commit reviewers), `helper` (the company analyst, knowledge
+author, project analyst and third-party researcher), `onboarder` (the config
+assessor and project onboarder) and `desk-memory-curator` (the company and
+project desk curators). A consumer that keys on the kind of session — the
+reviewer launch class, the GitHub App a role posts as — reads the composite;
+everything else reads the procedure's own role.
+Outside the worker class, sharing a role class grants no shared command set;
 a shared label alone supplies no command membership. The catalog owns the sets,
 and command declarations own capability membership, under
 `local/projects/teleclaude/design/cli-authorization-matrix`.

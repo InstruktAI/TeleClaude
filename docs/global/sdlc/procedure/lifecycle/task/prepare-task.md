@@ -34,10 +34,7 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 
 ## Steps
 
-When this procedure is your session’s launch assignment, retrieve its focused tool
-help with `telec -h --expand-role` before starting the assigned work. When reading
-it inline, retain your current session’s tool context. Use `telec <command> -h`
-for individual commands.
+<!-- @include: docs/snippets/step-role-read.md -->
 
 0. **Audit the handoff.** Read `telec todo show {slug}` and the `input`.
    Establish the requested action boundary, result, recipient, and timing from

@@ -10,7 +10,7 @@ from enum import StrEnum
 
 from teleclaude.constants import DriverLaunchClass
 from teleclaude.core.next_machine.runner_types import RunnerLane
-from teleclaude.core.roles import RoleName
+from teleclaude.core.roles import REVIEWER_ROLES, RoleName
 
 
 class LifecycleProcedure(StrEnum):
@@ -98,6 +98,6 @@ def classify_driver_launch(role: str | None) -> DriverLaunchClass:
         return DriverLaunchClass.TASK_LANE
     if role in DRIVER_ROLES:
         return DriverLaunchClass.ORCHESTRATOR
-    if role == RoleName.REVIEWER.value:
+    if role in REVIEWER_ROLES:
         return DriverLaunchClass.REVIEWER
     return DriverLaunchClass.WORKER_CHILD
