@@ -89,9 +89,11 @@ bus, not a public endpoint.
   subscribe TeleClaude's repository webhook to its push, release and workflow
   run events. Workflow runs carry its CI results
   (`local/projects/teleclaude/spec/feature/integration/ci-run-outcomes`).
-- For a project that declares CI checks, grant the App its configuration names
-  read access to the repository's Actions and contents, so the platform can
-  name a failed run's jobs and steps and the commits since the last green run.
+- For a project that declares its repository and App (`todos.repository`,
+  `todos.app`), grant that App read access to the repository's Actions and
+  contents. The platform publishes that project's CI run outcomes, and needs the
+  access to name a failed run's jobs and steps and the commits since the last
+  green run.
 
 <!-- /planned-change:ci-results-as-events -->
 
