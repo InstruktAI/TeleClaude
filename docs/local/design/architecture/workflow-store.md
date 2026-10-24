@@ -1,6 +1,6 @@
 ---
-description: Backend-neutral port and local adapter boundary for workflow records,
-  operations, and integration.
+description: Backend-neutral port, local adapter and GitHub adapter boundary for
+  workflow records, operations, and integration.
 visibility: internal
 ---
 
@@ -13,18 +13,20 @@ visibility: internal
 - @docs/local/spec/feature/workflow/todo-removal.md
 - @docs/local/spec/feature/workflow/todo-state-transfer.md
 - @docs/local/spec/integration-orchestrator.md
+- @docs/local/spec/feature/workflow/github-work-record.md
 - @~/.teleclaude/docs/sdlc/principle/design-fundamentals.md
 
 ## Purpose
 
 Give workflow consumers one typed, backend-neutral operation surface. The
 project resolver selects the adapter once for the canonical shared-state root.
-Local remains the default and is the only adapter that serves the port.
-Explicit `todos.store: github` refuses every port operation with an
-unavailable-capability error; the GitHub adapter module serves only the
-identity reads and the native target projection below, none of which is a port
-operation. Consumers do not select a backend, open a connection, inspect
-tables, or carry storage paths.
+Local is the default. `todos.store: github` selects the GitHub adapter, which
+serves the whole port with the project's repository as its system of record;
+what a reader of that repository sees is owned by
+`local/projects/teleclaude/spec/feature/workflow/github-work-record`. The
+GitHub adapter module also serves the identity reads and the native target
+projection below, none of which is a port operation. Consumers do not select a
+backend, open a connection, inspect tables, or carry storage paths.
 
 ## Inputs/Outputs
 
@@ -119,9 +121,91 @@ operations:
 - **Delivery:** the typed projection and dependency reads feed existing ready
   candidate selection; `deliver` / `deliver_sync` record the confirmed root
   SHA, and downstream dependency cleanup remains a separate operation.
-- **Capabilities:** `WorkflowStore.capabilities` reports the local adapter's
-  supported operations; selecting unavailable GitHub refuses before local
-  storage access.
+- **Capabilities:** `WorkflowStore.capabilities` reports the selected
+  adapter's supported operations. Both adapters support every operation.
+
+### GitHub adapter
+
+The GitHub adapter serves the port through the local implementation opened on
+a **working copy**: a store file in the project's shared-state directory,
+distinct from the local backend's database, that the GitHub-backed project
+never treats as its record. Every rule the local implementation decides is
+decided there once; the GitHub adapter owns only the mapping between the
+working copy and the repository.
+
+- **Platform identity.** Every GitHub read and write is made as the App the
+  project's store declaration names, using that App profile from the
+  machine's App inventory (`local/projects/teleclaude/spec/teleclaude-config`).
+  The identity owner's credential component issues a repository-scoped
+  installation credential with issue write access for the declared
+  repository; the adapter keeps it in process memory until shortly before its
+  expiry and never persists it. No session actor, person account or ambient
+  token is used.
+- **Repository layout.** Each item is one issue the platform App created.
+  The item's `WorkItemId` and `StoreAddress` are those of its working-copy
+  row, exactly as on the local backend, so every port result names items in
+  one vocabulary; the issue is reached through the adapter's own bookkeeping
+  and never through a port identity. The item's **record** is one platform-authored comment on
+  that issue, edited in place: the item's row facts, dependencies, workflow
+  state, a revision counter and, for each artifact, a pointer to its current
+  content. Artifact versions are platform-authored content comments appended
+  to the issue and never edited, so every version stays readable; content
+  larger than one comment is split across consecutive parts, and workflow
+  state that does not fit in the record is stored the same way. Content
+  digests are computed from the stored content exactly as the local
+  implementation computes them. One platform-created **ledger** issue per
+  repository holds the project-level records, commit reviews and
+  documentation transfers, as appended entries. The issue's title, body,
+  open or closed state and labels are reflections the adapter writes from the
+  record and never reads.
+- **Write path.** Every transaction on the working copy records which items
+  and project-level records it changes. Before the local commit completes,
+  the adapter writes those changes to GitHub, and exactly one GitHub write is
+  the transaction's **commit point**: what GitHub holds after a refused
+  operation is what it held before. New content comments are appended first;
+  they are unreferenced until a record points at them.
+  - A transaction that changes one item and no project-level record commits
+    by editing that item's record to its next revision.
+  - Any other transaction first writes each changed record with its next
+    revision held as **pending** under the transaction's identity, beside the
+    record's committed revision, then commits by appending one **commit
+    entry** to the ledger that names the transaction, lists the items and
+    revisions it commits, and carries its project-level records. A pending revision whose transaction has no commit
+    entry is not part of the record, and the next write of that record
+    replaces it.
+
+  A GitHub write before the commit point that fails aborts the local commit
+  and surfaces as the operation's failure. The reflections are written after
+  the local commit and never decide an operation's outcome. A reflection
+  that fails is logged and recorded as owed in the working copy; every
+  refresh rewrites the owed reflections from the item's record until they
+  are written, so a delivered item's issue closes without another change to
+  the item. Creating an item opens its issue in the push that commits it.
+
+- **Conflict check.** Before writing a record, the adapter reads its current
+  revision from GitHub. A revision newer than the one the working copy was
+  derived from means the item changed on another computer: the write is
+  refused, the item is refreshed from GitHub, and the caller may retry.
+- **Rebuild and refresh.** A working copy that is absent is rebuilt from the
+  repository before first use: every issue the platform App created that
+  carries a platform record, and the ledger. A record's pending revision is
+  taken only when the ledger holds its transaction's commit entry. The daemon refreshes each
+  GitHub-backed project it serves at start and periodically: it applies
+  items whose effective GitHub revision is newer than the working copy's,
+  including every item a new commit entry lists whether or not its issue
+  changed since the last refresh, and rewrites owed reflections. Rebuild and refresh write the working copy without pushing
+  records back.
+- **Trust.** A comment is read as record, content or ledger only when the
+  platform App's bot authored it, and only in the last version that bot
+  wrote. When its last editor is someone else, that version is recovered from
+  the comment's edit history, and refresh restores it on GitHub. The restored
+  version is never older than the record's latest committed revision. A comment with no recoverable bot
+  version is **unverifiable**: refresh leaves the working copy as it is, and
+  every write to that item refuses with that cause. A label, title, body,
+  comment or edit by anyone else is never read as state.
+- **Selected-store helpers.** Presence, validation reads and integrity
+  checks answer for the working copy. Transfer and database location refuse
+  for a GitHub-backed project: each computer reaches the state from GitHub.
 
 ## Invariants
 
@@ -137,7 +221,7 @@ operations:
 - A phase mutation persists before its existing transition notification. Failed
   persistence emits no successful transition. Hook registration occurs once
   per cached adapter.
-- Local slug identity, row UUID addressing, live claims, structural group
+- Local slug identity, row addressing, live claims, structural group
   holders, transitive claiming-group authorization and role checks remain
   separate facts. SHA/digest-bound stamps, audit, attribution and timestamps
   retain their existing meaning.
@@ -159,6 +243,18 @@ operations:
   address. A consumer that carries the pair relies on either value naming the
   item the other names, without decoding the address.
 
+- On a GitHub-backed project, no change reaches the working copy's commit
+  without first reaching GitHub, so the repository holds every committed
+  change and a lost working copy loses nothing. Every write channel of the
+  working copy, including raw connections, commits through the push.
+- Processes on one computer stay serialized by the working copy's
+  transactions, exactly as on the local backend. GitHub I/O runs on an
+  adapter-owned I/O thread: a sync caller blocks on it without starting an
+  event loop of its own, and an async caller awaits it without blocking the
+  daemon's loop.
+- The working copy's reads never reach GitHub; only writes, rebuild and
+  refresh do.
+
 ## Primary flows
 
 1. Resolve project context to the canonical state root, read its project config,
@@ -175,12 +271,41 @@ operations:
 
 ### Store activation
 
+A project activates the GitHub store by declaring `todos.store: github`
+together with its repository and platform App
+(`local/projects/teleclaude/spec/teleclaude-config`), with that App installed
+on the repository. The first store resolution on a computer rebuilds the
+working copy from the repository; an empty repository yields an empty store.
+Moving an existing local store's items to GitHub is not part of activation.
+
+```mermaid
+sequenceDiagram
+    participant C as Consumer
+    participant W as Working copy (local implementation)
+    participant G as GitHub adapter
+    participant R as Repository
+    C->>W: port operation
+    W->>W: apply change in transaction
+    W->>G: commit requested (changed items)
+    G->>R: read record revision
+    G->>R: append content, edit record, set reflections
+    alt all GitHub writes succeed
+        G-->>W: commit proceeds
+        W-->>C: result
+    else a write before the commit point fails or revision is newer
+        G-->>W: abort
+        W-->>C: refusal
+    end
+```
+
 ## Failure modes
 
 - A missing store is a distinct read result from a malformed database or state
   record. Validation cannot create storage to make its read succeed.
-- Adapter selection fails before local bootstrap when the selected adapter is
-  unavailable; it does not silently fall back to local.
+- Adapter selection fails before any storage access when the selected adapter
+  cannot be configured: a GitHub store without a declared repository or
+  platform App, or an App the machine's inventory does not hold, refuses; it
+  never falls back to local.
 - A failed mutation retains the existing commit boundary and refusal. The
   adapter does not synthesize defaults, retry a failed write as success, or
   collapse distinct current commits.
@@ -196,7 +321,40 @@ operations:
   rate-limited provider each refuse distinctly. A refusal carries no provider
   response text and no credential.
 
+- A GitHub write before the commit point that fails, is refused by a rate
+  limit, or meets a newer record revision aborts the local commit and refuses
+  the operation with that cause, and leaves no change on GitHub that any
+  reader takes as part of the record.
+- A commit-point write whose response is lost may have taken effect while the
+  operation reports a refusal. The working copy then lags the repository
+  until refresh, which adopts the committed revision; the repository stays
+  the record. GitHub supports no conditional writes, so the revision check and the
+  record write are separate requests: two computers writing the same item
+  inside that interval can lose one write. Within one computer this cannot
+  occur.
+- A content comment or a newly opened issue whose transaction then aborts
+  stays on GitHub unreferenced. Rebuild ignores it because no record points at
+  it; an issue without a platform record is not an item.
+- A crash after the GitHub write and before the local commit leaves the
+  working copy behind the repository until refresh applies the newer
+  revision; the repository is never behind.
+- Retention purge removes an item from the working copy and marks its record
+  purged. The platform App cannot delete issues, so the issue and its history
+  stay on GitHub, closed; rebuild skips purged records.
+- Rebuild or refresh that cannot read the repository refuses store resolution
+  for a missing working copy and leaves an existing one as it is.
+- A comment that someone else edited, and whose edit history no longer holds
+  the bot's last version, makes its item unverifiable. Writes to the item
+  refuse, and rebuild refuses store resolution naming the item. No working
+  copy is ever published in its place.
+- The native target projection reads an issue number from a `WorkItemId`;
+  the GitHub adapter's port identities are working-copy identities, so the
+  projection receives no store-produced key it accepts.
+
 ## See Also
+
+- docs/local/adr/0125-github-store-keeps-the-local-implementation-as-its-working-copy.md
+- https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api
 
 - docs/local/spec/domain/workflow.md
 - docs/local/spec/feature/workflow/todo-state-transfer.md

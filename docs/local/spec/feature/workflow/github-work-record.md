@@ -1,7 +1,8 @@
 ---
-description: A project that selects the GitHub workflow store keeps its work items as issues in its own repository, where anyone can follow each item from intent to delivered commit without TeleClaude, and where only the platform App's own writes count as the record.
-delivered_by:
-  - github-store-adapter
+description: A project that selects the GitHub workflow store keeps its work items
+  as issues in its own repository, where anyone can follow each item from intent to
+  delivered commit without TeleClaude, and where only the platform App's own writes
+  count as the record.
 ---
 
 # GitHub Work Record — Spec
