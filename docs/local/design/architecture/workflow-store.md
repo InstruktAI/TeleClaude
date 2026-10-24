@@ -189,7 +189,9 @@ working copy and the repository.
   machine's App inventory (`local/projects/teleclaude/spec/teleclaude-config`),
   except that an item's pull request is opened and closed as the App the
   inventory's role mapping names for the `builder` role, and its reviews are
-  posted as the App it names for the `reviewer` role. The identity owner's
+  posted as the App it names for the `reviewer` role. A role the mapping
+  does not name resolves through its composite role, so every review role
+  posts as the `reviewer` App. The identity owner's
   credential component issues each App a repository-scoped installation
   credential with only the access its writes need for the declared
   repository; the adapter keeps each in process memory until shortly before

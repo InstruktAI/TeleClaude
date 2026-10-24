@@ -72,10 +72,11 @@ including for sessions started before the display was opened. An issue URL
 names its own repository; a bare number is looked up in the project's
 declared GitHub repository (`local/projects/teleclaude/spec/teleclaude-config`),
 or, without a declaration, in the repository of the checkout's `origin`
-remote on GitHub. The lookup authenticates as the App the project declares
-when it declares one, and otherwise reads without credentials, so an issue in
-a private repository is identified only for a project whose declared App can
-read it. The reference is independent of the session title and work-slug
+remote on GitHub. The lookup authenticates as the App the project declares,
+otherwise as an App of the machine's App inventory
+(`local/projects/teleclaude/spec/teleclaude-config`) installed on that
+repository, and otherwise reads without credentials, so an issue in a private
+repository is identified when one of the platform's Apps can read it. The reference is independent of the session title and work-slug
 claim; an assignment without an identified GitHub issue carries none. An
 unavailable optional lookup leaves the session visible and eligible for a
 later lookup.
