@@ -63,13 +63,17 @@ The invocation resolver returns the active working checkout, logical project's
 workflow-state root, authoring checkout and installed checkout as distinct
 answers. Config supplies the registered association; workflow owns the resolution
 of its shared state and worktree owners. Consumers request the answer their
-operation acts on, following `sdlc/principle/domain-driven-design`.
+operation acts on, following `sdlc/principle/domain-driven-design`. Every member
+of an association except the installed checkout's own working tree is a
+development location, including a worktree that the installed checkout held
+before its association. Their environment ownership follows
+`local/projects/teleclaude/spec/feature/workflow/worktree-prep-lifecycle`.
 
 The existing root table is qualified by this association: todo records, claims,
 artifacts and project-wide job/bug state remain at the primary workflow-state
 root. Source preparation, pending-doc authoring, Blueprint source and integration
 operate against the development checkout. Code-file operations remain in the
-active worktree. Installation configuration, release activation and runtime
+active worktree. Installation configuration, revision activation and runtime
 assessment operate against the installed checkout. Physical maintenance records
 belong to the checkout activation they describe; sharing a logical project does
 not merge installation and development maintenance.

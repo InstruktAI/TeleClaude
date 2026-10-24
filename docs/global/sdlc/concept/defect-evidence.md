@@ -17,7 +17,11 @@ review — uses them.
   transcript, a person's account of what they experienced. Diagnosis calls this
   the organic trigger. Input or state that an agent's test, probe, smoke run, or
   reproduction produced is synthetic, whatever that agent intended; it can
-  reproduce an occurrence but is never one.
+  reproduce an occurrence but is never one. A required CI check that fails on
+  main or on a dependency update is an occurrence of that revision failing the
+  check: the pipeline runs for its own purpose of admitting revisions, and the
+  run is the address. It shows that the check failed on that revision, not
+  which change or component is at fault.
 - **Dangerous path** — a concrete path to a defect that has not occurred. It
   names who acts, through which surface, holding what access, doing what, and it
   ends in a consequence that meets the safety gate's bar in

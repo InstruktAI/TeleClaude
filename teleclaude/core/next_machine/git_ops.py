@@ -178,7 +178,8 @@ def get_remote_branch_head(cwd: str, branch: str) -> str:
     """Return origin/<branch> HEAD commit, or empty string when unavailable."""
     try:
         repo = Repo(cwd)
-        output = repo.git.ls_remote("origin", f"refs/heads/{branch}").strip()
+        # GitPython types every command result as any output mode; default invocation returns text.
+        output = cast(str, repo.git.ls_remote("origin", f"refs/heads/{branch}"))
     except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError) as exc:
         logger.warning("remote_branch_head_missing", cwd=cwd, branch=branch, reason=str(exc))
         return ""

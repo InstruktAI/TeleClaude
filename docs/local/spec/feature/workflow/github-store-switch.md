@@ -78,6 +78,14 @@ Every commit review and documentation transfer the local store holds moves to
 the repository's project records, because the workflow reads them as evidence
 for the commits and documentation it checks.
 
+<!-- planned:github-issue-projection -->
+
+A task, and an item on the creative track, is not repository work
+(`local/projects/teleclaude/spec/feature/workflow/github-work-record`): the run
+carries it into the GitHub store as work kept on this computer, with the same
+identity, state and history, and publishes nothing of it to the repository.
+<!-- /planned:github-issue-projection -->
+
 ### Order and atomicity
 
 Each item reaches GitHub whole or not at all, after every holder it is grouped
@@ -105,12 +113,23 @@ there.
 
 ### Outcome report
 
+<!-- planned-change:github-issue-projection -->
+
 The command returns a receipt for the run, and the run's outcome is read from
 that operation. The report lists the items moved, already present, moved
 without a finished group, and not moved with their reasons; the project
 records moved; the cause of a refusal or stop; and whether the move is
 complete. The operation fails when the run refused, stopped, or left an item
 unmoved, and completes otherwise.
+<!-- change:github-issue-projection -->
+
+The command returns a receipt for the run, and the run's outcome is read from
+that operation. The report lists the items moved, already present, moved
+without a finished group, kept on this computer, and not moved with their
+reasons; the project records moved; the cause of a refusal or stop; and
+whether the move is complete. The operation fails when the run refused,
+stopped, or left an item unmoved, and completes otherwise.
+<!-- /planned-change:github-issue-projection -->
 
 ### Use cases
 

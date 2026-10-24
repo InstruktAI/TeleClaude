@@ -25,6 +25,7 @@ from pydantic import SecretStr
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
 from teleclaude.github.client import create_github_client
 from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
+from teleclaude.types.github_account import GitHubAccountKind, github_app_bot_login
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 _EMPTY = ""
@@ -43,8 +44,7 @@ _HTTP_REFUSAL_WITH_MESSAGE = "{}: {}"
 _REFUSAL_WITH_DETAIL = "{}: {}"
 
 
-class _GraphActor(TypedDict, total=False):
-    login: str
+_GraphActor = TypedDict("_GraphActor", {"login": str, "__typename": str}, total=False)
 
 
 class _GraphEdit(TypedDict, total=False):
@@ -92,7 +92,7 @@ _EDIT_HISTORY_QUERY = """query($owner:String!, $repo:String!, $number:Int!, $cur
   repository(owner:$owner, name:$repo) {
     issue(number:$number) {
       comments(first:100, after:$cursor) {
-        nodes { id databaseId body author { login } editor { login } lastEditedAt
+        nodes { id databaseId body author { __typename login } editor { __typename login } lastEditedAt
         }
         pageInfo { hasNextPage endCursor }
       }
@@ -100,10 +100,10 @@ _EDIT_HISTORY_QUERY = """query($owner:String!, $repo:String!, $number:Int!, $cur
   }
 }"""
 _COMMENT_EDIT_QUERY = """query($id:ID!, $before:String) { node(id:$id) { ... on IssueComment {
-  userContentEdits(last:100, before:$before) { nodes { editor { login } editedAt diff deletedAt }
+  userContentEdits(last:100, before:$before) { nodes { editor { __typename login } editedAt diff deletedAt }
     pageInfo { hasPreviousPage startCursor } } } } }"""
 _COMMENT_QUERY = """query($id:ID!) { node(id:$id) { ... on IssueComment { id databaseId body
-  author { login } editor { login } lastEditedAt } } }"""
+  author { __typename login } editor { __typename login } lastEditedAt } } }"""
 
 
 class GitHubIOFailure(StrEnum):
@@ -143,6 +143,7 @@ class GitHubField(StrEnum):
     PULL_REQUEST = "pull_request"
     ID = "id"
     DATABASE_ID = "databaseId"
+    TYPENAME = "__typename"
     AUTHOR = "author"
     EDITOR = "editor"
     LOGIN = "login"
@@ -621,11 +622,23 @@ def _comment_from_graph(node: _GraphIssueComment) -> GitHubComment:
         node_id=str(node.get(GitHubField.ID, _EMPTY)),
         database_id=database_id if isinstance(database_id, int) else 0,
         body=str(node.get(GitHubField.BODY) or _EMPTY),
-        author=author.get(GitHubField.LOGIN) if isinstance(author, dict) else None,
-        editor=editor.get(GitHubField.LOGIN) if isinstance(editor, dict) else None,
+        author=_account_login(author),
+        editor=_account_login(editor),
         edit_history=(),
         history_complete=True,
     )
+
+
+def _account_login(actor: object) -> str | None:
+    """Normalize a GraphQL actor login to GitHub's REST account presentation."""
+    if not isinstance(actor, dict):
+        return None
+    login = actor.get(GitHubField.LOGIN)
+    if not isinstance(login, str):
+        return None
+    if actor.get(GitHubField.TYPENAME) == GitHubAccountKind.BOT:
+        return github_app_bot_login(login)
+    return login
 
 
 async def _complete_bot_history(client: Any, comment: GitHubComment, bot_login: str) -> GitHubComment:
@@ -674,9 +687,20 @@ async def _read_edit_page(
             return None
         connection = cast(_GraphEditConnection, node.get(GitHubField.USER_CONTENT_EDITS, {}))
         info = cast(_GraphPageInfo, connection.get(GitHubField.PAGE_INFO, {}))
-        edits = tuple(reversed(cast(list[_GraphEdit], connection.get(GitHubField.NODES, []))))
+        provider_edits = cast(list[_GraphEdit], connection.get(GitHubField.NODES, []))
+        edits: list[_GraphEdit] = []
+        for provider_edit in reversed(provider_edits):
+            editor_login = _account_login(provider_edit.get(GitHubField.EDITOR))
+            edit = cast(
+                _GraphEdit,
+                {
+                    **provider_edit,
+                    GitHubField.EDITOR: {GitHubField.LOGIN: editor_login} if editor_login is not None else None,
+                },
+            )
+            edits.append(edit)
         cursor = info.get(GitHubField.START_CURSOR)
-        return edits, cursor if isinstance(cursor, str) else None, bool(info.get(GitHubField.HAS_PREVIOUS_PAGE))
+        return tuple(edits), cursor if isinstance(cursor, str) else None, bool(info.get(GitHubField.HAS_PREVIOUS_PAGE))
     except (GitHubException, HTTPError, TimeoutError, OSError):
         return None
 

@@ -7,6 +7,11 @@ description: A maintenance run that replaces the daemon stops it first, performs
 
 # Maintenance Replaces the Daemon Inside a Stopped Window — ADR
 
+## Status
+
+Superseded in part by ADR-0127: actions the maintenance registry declares to
+run while the daemon serves run after the window's verified start.
+
 ## Context
 
 Commit-boundary and release maintenance ran while the daemon process kept

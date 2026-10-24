@@ -141,6 +141,9 @@ working copy and the repository.
   repository; the adapter keeps it in process memory until shortly before its
   expiry and never persists it. No session actor, person account or ambient
   token is used.
+
+<!-- planned-change:github-issue-projection -->
+
 - **Repository layout.** Each item is one issue the platform App created.
   The item's `WorkItemId` and `StoreAddress` are those of its working-copy
   row, exactly as on the local backend, so every port result names items in
@@ -158,6 +161,46 @@ working copy and the repository.
   documentation transfers, as appended entries. The issue's title, body,
   open or closed state and labels are reflections the adapter writes from the
   record and never reads.
+
+<!-- change:github-issue-projection -->
+
+- **Repository work.** Only repository work is published: an item whose
+  kind is `task`, or whose workflow state carries a creative-track section,
+  is not, and every other item, group holders included, is
+  (`local/projects/teleclaude/spec/feature/workflow/github-work-record`).
+  An item that is not repository work lives in the working copy as the
+  local backend keeps it: the push writes nothing of it to GitHub, except
+  that an item which stops being repository work gets one last record
+  revision that says so, and an issue it has is reflected closed as not
+  planned. An item that becomes repository work opens its issue in the next
+  push and publishes every version the repository lacks
+  (`local/projects/teleclaude/adr/0126-non-repository-work-stays-in-the-github-store-working-copy`).
+- **Repository layout.** Each repository work item is one issue the platform
+  App created. The item's `WorkItemId` and `StoreAddress` are those of its
+  working-copy row, exactly as on the local backend, so every port result
+  names items in one vocabulary; the issue is reached through the adapter's
+  own bookkeeping and never through a port identity. The item's **record** is
+  one platform-authored comment on that issue, edited in place: the item's
+  row facts, dependencies, workflow state, a revision counter and, for each
+  artifact, a pointer to its current content. Artifact versions are
+  platform-authored content comments appended to the issue and never edited
+  in content, so every version stays readable; content larger than one
+  comment is split across consecutive parts, the version's history link sits
+  hidden in its last part, and workflow state that does not fit in the record
+  is stored the same way. A history link in a comment of its own, as earlier
+  versions carry it, is read the same way. Content digests are computed from
+  the stored content exactly as the local implementation computes them. One
+  platform-created **ledger** issue per repository holds the project-level
+  records, commit reviews and documentation transfers, as appended entries.
+  Every platform comment opens with the envelope line the work record
+  specifies; the machine data follows it hidden, and every reader accepts a
+  comment with or without the envelope. The issue's title, body, open or
+  closed state, labels, issue type, sub-issues, blocked-by relations and
+  assignees are reflections the adapter writes from the record and its own
+  bookkeeping and never reads.
+
+<!-- /planned-change:github-issue-projection -->
+
 - **Write path.** Every transaction on the working copy records which items
   and project-level records it changes. Before the local commit completes,
   the adapter writes those changes to GitHub, and exactly one GitHub write is
@@ -174,18 +217,51 @@ working copy and the repository.
     entry is not part of the record, and the next write of that record
     replaces it.
 
-  A GitHub write before the commit point that fails aborts the local commit
-  and surfaces as the operation's failure. The reflections are written after
-  the local commit and never decide an operation's outcome. A reflection
-  that fails is logged and recorded as owed in the working copy; every
-  refresh rewrites the owed reflections from the item's record until they
-  are written, so a delivered item's issue closes without another change to
-  the item. Creating an item opens its issue in the push that commits it.
+<!-- planned-change:github-issue-projection -->
+
+A GitHub write before the commit point that fails aborts the local commit
+and surfaces as the operation's failure. The reflections are written after
+the local commit and never decide an operation's outcome. A reflection
+that fails is logged and recorded as owed in the working copy; every
+refresh rewrites the owed reflections from the item's record until they
+are written, so a delivered item's issue closes without another change to
+the item. Creating an item opens its issue in the push that commits it.
+<!-- change:github-issue-projection -->
+
+A GitHub write before the commit point that fails aborts the local commit
+and surfaces as the operation's failure. The reflections are written after
+the local commit and never decide an operation's outcome. A reflection
+writes only the parts whose projected value changed since the item's last
+written reflection, and sets the repository's labels to the colours and
+descriptions the work record specifies before using them. A reflection
+that fails is logged and recorded as owed in the working copy; every
+refresh rewrites the owed reflections from the item's record until they
+are written, so a delivered item's issue closes without another change to
+the item. Creating an item opens its issue in the push that commits it.
+
+**Waiting for a person.** The person-addressed messaging path hands the
+adapter a message an agent session sent while working on a repository work
+item (`local/projects/teleclaude/spec/messaging`). The adapter appends it to
+the item's issue as a question comment and records, in its own
+bookkeeping, that the item waits for those recipients since that moment in
+that phase; the record and the workflow state are unchanged. Each
+reflection assigns the issue to the people the item waits for: the
+recipients of an open question, and, while the item is in human PRD
+approval, the people its lineage principal resolves to by the messaging
+recipient rule. A question closes when the item's phase changes, or when
+the asking session holds human input newer than the question, which
+refresh observes through the session conversation seam. A failure to post
+the question is logged and changes neither the message's delivery nor the
+workflow.
+<!-- /planned-change:github-issue-projection -->
 
 - **Conflict check.** Before writing a record, the adapter reads its current
   revision from GitHub. A revision newer than the one the working copy was
   derived from means the item changed on another computer: the write is
   refused, the item is refreshed from GitHub, and the caller may retry.
+
+<!-- planned-change:github-issue-projection -->
+
 - **Rebuild and refresh.** A working copy that is absent is rebuilt from the
   repository before first use: every issue the platform App created that
   carries a platform record, and the ledger. A record's pending revision is
@@ -195,6 +271,33 @@ working copy and the repository.
   including every item a new commit entry lists whether or not its issue
   changed since the last refresh, and rewrites owed reflections. Rebuild and refresh write the working copy without pushing
   records back.
+
+<!-- change:github-issue-projection -->
+
+- **Rebuild and refresh.** A working copy that is absent is rebuilt from the
+  repository before first use: every issue the platform App created that
+  carries a platform record of repository work, and the ledger. A record's
+  pending revision is taken only when the ledger holds its transaction's
+  commit entry. The daemon refreshes each GitHub-backed project it serves at
+  start and periodically: it applies items whose effective GitHub revision
+  is newer than the working copy's, including every item a new commit entry
+  lists whether or not its issue changed since the last refresh, closes the
+  questions their asking sessions have answered, and rewrites owed
+  reflections. Neither adopts a record whose item is not repository work.
+  Rebuild and refresh write the working copy without pushing records back.
+- **Projection repair.** The working copy records which projection its
+  repository was last brought to. A refresh that finds an older one owes a
+  reflection for every item it holds, sets the repository's platform labels
+  and removes the platform's retired labels, and brings every platform
+  comment to the current presentation: record and ledger comments are
+  rendered again from their own machine data, and every other comment gains
+  its envelope line. It edits only the bot's own comments and never changes
+  artifact content or machine data. The repair spaces its writes
+  within GitHub's limits, continues on the next refresh after an
+  interruption, and records the current projection only once complete.
+
+<!-- /planned-change:github-issue-projection -->
+
 - **Trust.** A comment is read as record, content or ledger only when the
   platform App's bot authored it, and only in the last version that bot
   wrote. When its last editor is someone else, that version is recovered from
@@ -243,10 +346,23 @@ working copy and the repository.
   address. A consumer that carries the pair relies on either value naming the
   item the other names, without decoding the address.
 
+<!-- planned-change:github-issue-projection -->
+
 - On a GitHub-backed project, no change reaches the working copy's commit
   without first reaching GitHub, so the repository holds every committed
   change and a lost working copy loses nothing. Every write channel of the
   working copy, including raw connections, commits through the push.
+
+<!-- change:github-issue-projection -->
+
+- On a GitHub-backed project, no change to repository work reaches the
+  working copy's commit without first reaching GitHub, so the repository
+  holds every committed change to it and a lost working copy loses none of
+  it. Every write channel of the working copy, including raw connections,
+  commits through the push.
+
+<!-- /planned-change:github-issue-projection -->
+
 - Processes on one computer stay serialized by the working copy's
   transactions, exactly as on the local backend. GitHub I/O runs on an
   adapter-owned I/O thread: a sync caller blocks on it without starting an
@@ -355,9 +471,34 @@ sequenceDiagram
   the GitHub adapter's port identities are working-copy identities, so the
   projection receives no store-produced key it accepts.
 
+<!-- planned:github-issue-projection -->
+
+- Work that is not repository work exists only in the working copy of the
+  computer that holds it; a lost working copy loses it, as a lost local
+  database loses the local backend's work.
+- An item that stops being repository work on one computer keeps its last
+  published revision on GitHub; another computer that already holds the
+  item keeps its own copy, and a rebuild there no longer includes it.
+- A person without a declared GitHub account is not assigned; the question
+  comment is still posted.
+- A computer whose store predates the comment envelope reads an enveloped
+  content comment as no content, so the items holding one become
+  unverifiable there. The current store reads both forms; every computer that
+  serves a GitHub-backed project runs it before that project selects the
+  store.
+
+<!-- /planned:github-issue-projection -->
+
 ## See Also
 
 - docs/local/adr/0125-github-store-keeps-the-local-implementation-as-its-working-copy.md
+
+<!-- planned:github-issue-projection -->
+
+- docs/local/adr/0126-non-repository-work-stays-in-the-github-store-working-copy.md
+
+<!-- /planned:github-issue-projection -->
+
 - https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api
 
 - docs/local/spec/domain/workflow.md
