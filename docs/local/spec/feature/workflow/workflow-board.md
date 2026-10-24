@@ -61,7 +61,6 @@ back as workflow state.
 - **Repair:** a repair command rebuilds every item, lane and marker on the
   board from the project's GitHub store. A missed update or a hand edit on the
   board is corrected by it, never adopted.
-- **Visibility:** whoever can read the repository's issues can open the board.
 
 ### Use cases
 
@@ -71,7 +70,7 @@ back as workflow state.
 Scenario: The board shows each open item in its lane
   Given a GitHub-backed project in an organization's repository
   And the project has iceboxed items, items in preparation and items being built
-  When a person who can read the repository opens the project's board
+  When the person running the project opens its board
   Then every iceboxed item is in the Icebox lane
   And every item still being prepared is in the Prepare lane
   And every prepared or building item is in the Work lane
