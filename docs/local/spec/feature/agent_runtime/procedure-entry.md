@@ -65,17 +65,20 @@ identified GitHub issue carries none. An unavailable optional lookup leaves
 the session visible and eligible for a later lookup.
 <!-- change:github-pr-collaboration -->
 
-A bound issue parameter identifies GitHub work when the GitHub store's item
-identity read (`local/projects/teleclaude/design/architecture/workflow-store`)
-resolves it as an issue of the assignment's project repository. Session
-snapshots carry its verified number, URL, and bound work subject as an
-optional structured reference, including for sessions started before the
-display was opened. The parameter is an issue number or that issue's URL in
-the project's declared repository; a project that does not keep its work on
-GitHub identifies no GitHub issue. The reference is independent of the
-session title and work-slug claim; an assignment without an identified GitHub
-issue carries none. An unavailable optional lookup leaves the session visible
-and eligible for a later lookup.
+A bound issue parameter identifies GitHub work when GitHub's issue lookup
+resolves it in the assignment's project. Session snapshots carry its verified
+number, URL, and bound work subject as an optional structured reference,
+including for sessions started before the display was opened. An issue URL
+names its own repository; a bare number is looked up in the project's
+declared GitHub repository (`local/projects/teleclaude/spec/teleclaude-config`),
+or, without a declaration, in the repository of the checkout's `origin`
+remote on GitHub. The lookup authenticates as the App the project declares
+when it declares one, and otherwise reads without credentials, so an issue in
+a private repository is identified only for a project whose declared App can
+read it. The reference is independent of the session title and work-slug
+claim; an assignment without an identified GitHub issue carries none. An
+unavailable optional lookup leaves the session visible and eligible for a
+later lookup.
 <!-- /planned-change:github-pr-collaboration -->
 
 ### Resolution

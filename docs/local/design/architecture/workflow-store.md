@@ -206,16 +206,24 @@ working copy and the repository.
     the item is delivered or removed. When that write fails, or the branch is
     not yet on GitHub, the pull request is owed and opened by the next refresh
     that can, as every reflection is.
-  - Each build review verdict in the record is posted once as a review on the
-    commit the verdict is bound to, with the verdict as approval or requested
-    changes and, as its body under its envelope line, the review findings
-    (`review-findings`) the verdict is bound to. A verdict whose commit is not
-    on GitHub stays owed.
+  - Each build review verdict is posted once as a review on the commit the
+    verdict is bound to, with the verdict as approval or requested changes
+    and, as its body under its envelope line, the review findings
+    (`review-findings`) the verdict is bound to. The push that commits a new
+    verdict captures it as a **review occurrence** — round, commit, verdict,
+    findings digest and reviewer session — in the item's record, beside the
+    workflow state and never in it, and the occurrence stays there until its
+    review is on GitHub. A later stamp, a fix cycle that clears the verdict, or
+    a rebuilt working copy therefore loses no review. An occurrence whose
+    commit is not on GitHub stays owed.
   - Delivery closes the pull request with a comment naming the delivered
     commit; removal closes it without one. Nothing merges it on GitHub.
-  - The pull request and its reviews are found again from GitHub by their
-    App author, branch and envelope, so a rebuilt working copy neither opens a
-    second pull request nor posts a review twice.
+  - The pull request's body opens with an envelope line naming the item's
+    issue. The pull request is found again from GitHub by its App author, its
+    branch and that envelope, and a review by its App author and envelope
+    round, so a rebuilt working copy neither opens a second pull request nor
+    posts a review twice, and an item that reuses a delivered or removed
+    item's slug never adopts that item's pull request.
 
 <!-- /planned-change:github-pr-collaboration -->
 
