@@ -94,9 +94,19 @@ live-pane observations are separate evidence:
 - After every tail, update the marker to the latest message timestamp from the response.
 - Each `telec sessions tail` response includes `last_input_at`, `last_activity`, `last_agent_stop_at`, and computed `agent_status`.
 
+Every tail also reads what the worker did against its brief, whatever its
+status. A worker that acts outside it — messaging or dispatching another
+session, taking up work it was not given, writing outside its lane — is stopped
+in your next message to it: name the boundary its brief sets and what it does
+instead, then record the departure in the todo `log`, where the phase's review
+reads it. An act its brief or your own instruction directs is inside it. An
+`active` status never makes an act acceptable, and the worker's own
+justification never widens its brief (`general/concept/orchestrator`,
+`sdlc/policy/peer-invocation`).
+
 Respond by `agent_status`:
 
-- `active` or `unknown`: keep waiting for the next event.
+- `active` or `unknown`: once the brief check finds nothing outside the brief, keep waiting for the next event.
 - `idle`: the turn ended; continue the loop.
 - `blocked`: handle it under When Worker Needs Help; the same turn continues once the wait is resolved.
 - `stalled`: handle it under Agent Degradation Handling; the turn does not continue on its own.
@@ -124,7 +134,7 @@ below. This does not change the watch's cadence or the recovery owner's powers.
 1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the reminder was set, its intent is stale — discard the encoded instructions and re-evaluate from the current state. Do not blindly resume the orchestration loop.
 2. Tail the session (first time: default latest-turn window; subsequent tails: `--since <marker>`).
 3. Update the marker to the latest message timestamp when new messages appear.
-4. If `agent_status` is `active`, keep `orchestration-watch` live and continue waiting.
+4. If `agent_status` is `active`, apply the brief check under Tailing Discipline, then keep `orchestration-watch` live and continue waiting.
 5. If `agent_status` is `idle`, invoke the state machine again and execute its returned script verbatim.
 6. If `agent_status` is `unknown`, continue waiting for the next event. A session that does not start within its startup window becomes `stalled` and notifies you.
 7. If `agent_status` is `blocked` or `stalled`, handle it under When Worker Needs Help or Agent Degradation Handling.
