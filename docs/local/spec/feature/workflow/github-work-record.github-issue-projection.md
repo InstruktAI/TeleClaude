@@ -99,8 +99,9 @@ How the store maps onto the repository is owned by
   `[key:value ...]` that names only fields carrying information; the platform
   App as author is not repeated, and the machine data stays hidden below it.
   - The item's record: `[action:record phase:<phase> rev:<n>]`, adding
-    `session:<id>` while a session holds the item's claim and `hold` while it
-    is held, with the hold reason as one sentence under the envelope.
+    `session:<id>` while a session holds the item's claim, `hold` while it
+    is held, and `commit:<sha>` once it is delivered, with the hold reason as
+    one sentence under the envelope.
   - An artifact version: `[action:artifact name:<artifact> version:<n>]`,
     where `<n>` counts that artifact's versions on the item, followed by its
     content. Every version of every artifact (input, plan, findings, review

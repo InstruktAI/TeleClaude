@@ -288,9 +288,11 @@ workflow.
 - **Projection repair.** The working copy records which projection its
   repository was last brought to. A refresh that finds an older one owes a
   reflection for every item it holds, sets the repository's platform labels
-  and removes the platform's retired labels, and adds the envelope line to
-  every platform comment that lacks one, editing only the bot's own comments
-  and never their content or machine data. The repair spaces its writes
+  and removes the platform's retired labels, and brings every platform
+  comment to the current presentation: record and ledger comments are
+  rendered again from their own machine data, and every other comment gains
+  its envelope line. It edits only the bot's own comments and never changes
+  artifact content or machine data. The repair spaces its writes
   within GitHub's limits, continues on the next refresh after an
   interruption, and records the current projection only once complete.
 
@@ -479,6 +481,11 @@ sequenceDiagram
   item keeps its own copy, and a rebuild there no longer includes it.
 - A person without a declared GitHub account is not assigned; the question
   comment is still posted.
+- A computer whose store predates the comment envelope reads an enveloped
+  content comment as no content, so the items holding one become
+  unverifiable there. The current store reads both forms; every computer that
+  serves a GitHub-backed project runs it before that project selects the
+  store.
 
 <!-- /planned:github-issue-projection -->
 
