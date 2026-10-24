@@ -14,13 +14,9 @@ _PACKAGE_PARENT = Path(__file__).resolve().parents[3]
 if str(_PACKAGE_PARENT) not in sys.path:
     sys.path.append(str(_PACKAGE_PARENT))
 
-from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.hooks.receiver_args import build_receiver_arg_parser
-
-# Resolve the main repo root (worktree-safe), then re-exec under the project venv when
-# needed. PATH may resolve python3 to system Python, which lacks the project deps.
-_REPO_ROOT = resolve_project_root(_PACKAGE_PARENT)
-_VENV_DIR = _REPO_ROOT / ".venv"
+# Each checkout owns its environment, including the prepared links in worktrees.
+# Select it before importing project modules: PATH may name a dependency-free Python.
+_VENV_DIR = _PACKAGE_PARENT / ".venv"
 _VENV_PYTHON = _VENV_DIR / "bin" / "python3"
 if _VENV_PYTHON.is_file() and Path(sys.prefix).resolve() != _VENV_DIR.resolve():
     os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
@@ -30,6 +26,10 @@ def _print_help_and_exit_if_requested() -> None:
     """Serve CLI help without importing the config-dependent receiver package."""
     if not any(arg in {"-h", "--help"} for arg in sys.argv[1:]):
         return
+
+    from teleclaude.hooks.receiver_args import (  # noqa: PLC0415 - entry seam: select the checkout interpreter before importing project dependencies
+        build_receiver_arg_parser,
+    )
 
     build_receiver_arg_parser().print_help()
     raise SystemExit(0)
