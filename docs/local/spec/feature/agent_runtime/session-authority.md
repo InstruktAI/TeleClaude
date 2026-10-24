@@ -34,9 +34,24 @@ chain, because the act would reach past its own mandate into the one that
 dispatched it. Upward reporting needs no act — a completed turn already wakes
 the session above.
 
+<!-- planned-change:review-fix-loop-through-artifacts -->
+
 Peers are unaffected: a reviewer and a builder, and a driver and the peer it
 dispatched, all keep talking. So does a session with
 nothing above it, reaching anywhere in the fleet.
+
+<!-- change:review-fix-loop-through-artifacts -->
+
+A worker — a session whose role is of class `worker`
+(`local/projects/teleclaude/spec/feature/identity/agent-roles`) — acts on no
+other session: it neither messages, links to nor tails one, and its requests to
+do so are refused. It reports through its own completed turn and its artifacts,
+and the session that dispatched it reads them and routes whatever must reach
+anyone else, so two workers never form a conversation of their own.
+Orchestrating and standing sessions keep acting downward and sideways, and so
+does a session with nothing above it, reaching anywhere in the fleet.
+
+<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 Standing sessions have no dispatch parent or human-origin identity; they resolve
 to the platform principal. Adopting a live session into a standing role clears
@@ -88,6 +103,20 @@ Then the restart request proceeds
 And a rootless agent can reach any session in the fleet
 And targeting itself is not treated as an upward act
 ```
+
+<!-- planned:review-fix-loop-through-artifacts -->
+
+#### UC-SA5: A worker reaches no other session
+
+```gherkin
+Given a reviewer dispatched to judge a todo's artifact is uncertain about part of its judgment
+When it tries to message, link to or tail another session about it
+Then the request is refused and names its own output and artifacts as the reporting path
+And the session that dispatched it reads that output and routes what must reach anyone else
+And a builder and a reviewer of the same todo exchange findings and dispositions only through the review-findings artifact
+```
+
+<!-- /planned:review-fix-loop-through-artifacts -->
 
 ### Known caveats
 
