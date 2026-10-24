@@ -23,6 +23,7 @@ from pydantic import SecretStr
 from teleclaude.config.loader import GitHubAppKeyFailure, GitHubAppKeyRefused, resolve_github_app_private_key
 from teleclaude.github.accounts import GitHubAccountDirectory, GitHubAccountLookupRefused, GitHubRateLimitFacts
 from teleclaude.github.client import create_github_client
+from teleclaude.types.github_account import github_app_bot_login
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 logger = get_logger(__name__)
@@ -30,7 +31,6 @@ _REFUSAL_LOG = "github_credential_refused reason=%s app_id=%s repository_id=%s"
 _ISSUED_LOG = "github_credential_issued app_id=%s installation_id=%s repository_id=%s"
 _OPERATION_TIMEOUT_SECONDS = 60.0
 _MINIMUM_LIFETIME = timedelta(minutes=1)
-_BOT_LOGIN = "{slug}[bot]"
 _METADATA_PERMISSION = "metadata"
 _READ_PERMISSION = "read"
 _REPOSITORY_SEPARATOR = "/"
@@ -186,7 +186,7 @@ async def issue_github_installation_credential(
             expiry = _verify_issued_scope(issued, target, requested_permissions)
             # Account metadata needs an installation token; /user is not App identity.
             async with create_github_client(TokenAuthStrategy(issued.token), cache) as token_client:
-                account = await GitHubAccountDirectory(token_client).read(_BOT_LOGIN.format(slug=app.slug))
+                account = await GitHubAccountDirectory(token_client).read(github_app_bot_login(app.slug))
                 if not account.same_account(assignment.actor):
                     raise GitHubCredentialRefused(GitHubCredentialFailure.ACTOR_MISMATCH)
             # Metadata reads consume time too; do not export a credential about to expire.

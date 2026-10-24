@@ -8,6 +8,13 @@ from pydantic import ConfigDict, Field
 
 from teleclaude.closed_model import ClosedModel
 
+_APP_BOT_LOGIN_FORMAT = "{slug}[bot]"
+
+
+def github_app_bot_login(app_slug: str) -> str:
+    """Return the REST login GitHub assigns to an App bot account."""
+    return _APP_BOT_LOGIN_FORMAT.format(slug=app_slug)
+
 
 class GitHubAccountKind(StrEnum):
     """Provider account types carried by REST author/account facts."""

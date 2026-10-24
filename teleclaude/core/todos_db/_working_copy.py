@@ -516,7 +516,8 @@ def restore_item_snapshot(
             digest = local_version.get(WorkingCopyField.DIGEST)
             if not isinstance(digest, str):
                 raise ValueError(_ARTIFACT_DIGEST_REQUIRED)
-            save_artifact_comment_ids(session, item_id, local_version_id, (), remote_id, digest)
+            if not capture_changes:
+                save_artifact_comment_ids(session, item_id, local_version_id, (), remote_id, digest)
 
 
 def purge_item_snapshot(session: Session, item_id: str, slug: str) -> None:
@@ -661,7 +662,7 @@ def save_ledger_issue(session: Session, issue_number: int, node_id: str) -> None
     """Remember the platform-opened project ledger issue."""
     session.execute(
         text(WorkingCopySql.SAVE_LEDGER_ISSUE),
-        {WorkingCopyField.NUMBER: issue_number, WorkingCopyField.LEDGER_NODE_ID: node_id},
+        {WorkingCopyField.NUMBER: issue_number, WorkingCopyField.NODE_ID: node_id},
     )
 
 
