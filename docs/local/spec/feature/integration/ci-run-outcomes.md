@@ -36,8 +36,9 @@ Nobody has to watch GitHub.
 
 ### Run outcome
 
-For a project that declares `ci`, each completed run on its repository is
-published once as an outcome of the project, whatever its workflow or branch. It states:
+For a project that declares its GitHub repository and App, each completed run
+on its repository is published once as an outcome of the project, whatever its
+workflow or branch. It states:
 
 | Fact           | Meaning                                                     |
 | -------------- | ----------------------------------------------------------- |
@@ -68,8 +69,8 @@ older revision. Its cancellation says nothing about that revision.
 - Only required checks decide a revision's green. A workflow that does not check
   the revision to be activated, such as an image build or a scheduled run, is not
   named.
-- A project whose `ci` declaration names no required checks still publishes
-  run outcomes, and announces no revision green.
+- A project that names no required checks, or declares no `ci` block at all,
+  still publishes run outcomes, and announces no revision green.
 
 ### Revision green
 
@@ -112,11 +113,11 @@ But a revision on which either check failed, or has not yet passed, is not annou
   completed before it are not published.
 - A computer that is not running when an outcome is published misses it, as for
   every relayed event. It learns the newer outcomes that follow.
-- A project's run completions become outcomes only once it declares `ci`. The
-  declaration requires the repository and App through which the platform reads
-  what a delivery lacks, so every outcome carries its failures and commit range.
-  A project that relays run completions without declaring `ci` publishes no
-  outcomes.
+- A project's run completions become outcomes once it declares its repository
+  and the App through which the platform reads what a delivery lacks, so every
+  outcome carries its failures and commit range. A project that relays run
+  completions without declaring both publishes no outcomes, because a failed
+  run's jobs and steps cannot be read for it.
 
 ## See Also
 

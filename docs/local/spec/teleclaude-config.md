@@ -186,7 +186,7 @@ Valid in both project and global configs.
 
 - `ci.required_checks` names the project's required CI checks by workflow file, its path in the repository. Only a named workflow decides a main revision's green or files a bug for its failure (`local/projects/teleclaude/spec/feature/integration/ci-run-outcomes`, `local/projects/teleclaude/spec/feature/workflow/failed-check-bugs`).
 - `ci.dependency_update_branches` names the branch prefixes the project's dependency-update tools open pull requests from. A run on a branch with one of these prefixes is a dependency update.
-- A `ci` block requires `todos.repository`, `todos.app` and a `hooks.inbound.github` source. Its run outcomes name the repository `todos.repository` declares, and the platform reads that repository's runs as the App `todos.app` names. Validation refuses a `ci` block without them, naming the missing key. A project without a `ci` block publishes no CI run outcomes.
+- A `ci` block requires `todos.repository`, `todos.app` and a `hooks.inbound.github` source. Its run outcomes name the repository `todos.repository` declares, and the platform reads that repository's runs as the App `todos.app` names. Validation refuses a `ci` block without them, naming the missing key. A project without a `ci` block still publishes CI run outcomes when it declares `todos.repository` and `todos.app`; it files no bugs and announces no green revision.
 
 <!-- /planned:ci-results-as-events -->
 
