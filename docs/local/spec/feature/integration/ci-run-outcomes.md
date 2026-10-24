@@ -112,6 +112,10 @@ But a revision on which either check failed, or has not yet passed, is not annou
   completed before it are not published.
 - A computer that is not running when an outcome is published misses it, as for
   every relayed event. It learns the newer outcomes that follow.
+- Facts the delivery lacks are read from GitHub as the App the project declares,
+  on the repository it declares. A project that relays run completions but
+  declares no repository and App publishes outcomes whose failures and commit
+  range are stated as unread. A `ci` declaration requires both.
 
 ## See Also
 
