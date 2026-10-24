@@ -9,9 +9,8 @@ description: A maintenance run that replaces the daemon performs Blueprint maint
 
 ## Status
 
-Superseded in part by ADR-0128: the declaration is made per action in the
-platform base or a project overlay, and actions that run while the daemon
-serves run only after a verified start.
+Superseded in part by ADR-0129: the declaration is made per action in the
+platform base or a project overlay.
 
 ## Context
 

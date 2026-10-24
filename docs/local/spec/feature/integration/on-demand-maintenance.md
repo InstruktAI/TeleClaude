@@ -325,6 +325,5 @@ And no step runs and no maintenance record is written
 <!-- planned:maintenance-prepares-before-swap -->
 
 - docs/local/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start.md — why the steps that run while the daemon serves follow the window.
-- docs/local/adr/0128-maintenance-actions-declare-serving-tolerance-per-action.md — why a run whose start does not verify leaves those steps unperformed.
 
 <!-- /planned:maintenance-prepares-before-swap -->

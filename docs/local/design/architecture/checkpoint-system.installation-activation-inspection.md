@@ -440,6 +440,6 @@ sequenceDiagram
 <!-- planned:maintenance-prepares-before-swap -->
 
 - docs/local/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start.md — why maintenance actions that replace nothing the daemon runs on run after the window's verified start.
-- docs/local/adr/0128-maintenance-actions-declare-serving-tolerance-per-action.md — why a project overlay can declare that a maintenance action runs while the daemon serves.
+- docs/local/adr/0129-overlays-can-declare-maintenance-actions-that-run-while-the-daemon-serves.md — why a project overlay can declare that a maintenance action runs while the daemon serves.
 
 <!-- /planned:maintenance-prepares-before-swap -->

@@ -7,6 +7,11 @@ description: Whether a maintenance action runs while the daemon serves is declar
 
 # Maintenance Actions Declare Serving Tolerance Per Action — ADR
 
+## Status
+
+Superseded by ADR-0129, which records the per-action declaration alone.
+Running these actions only after a verified start is ADR-0127's decision.
+
 ## Context
 
 ADR-0127 moved Blueprint maintenance and publication out of the stopped
