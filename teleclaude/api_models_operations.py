@@ -4,6 +4,8 @@ from typing import Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict
 
+from teleclaude.core.operations._kinds import OperationFailedEvent, OperationSucceededEvent
+
 
 class OperationStatusBlockingSnippetPayload(BaseModel):
     """Machine-readable snippet blocker payload exposed by operation DTOs."""
@@ -79,47 +81,21 @@ class OperationStatusPayload(TypedDict):
 
 
 class OperationSucceededEventDTO(BaseModel):
-    """WebSocket event for a successful operation outcome."""
+    """WebSocket event carrying a success outcome declared by the operation owner."""
 
     model_config = ConfigDict(frozen=True)
 
-    event: Literal[
-        "operation.todo_work.completed",
-        "operation.task_run.completed",
-        "operation.todo_integrate.completed",
-        "operation.todo_create.completed",
-        "operation.todo_prepare.completed",
-        "operation.todo_remove.completed",
-        "operation.todo_rename.completed",
-        "session.close.completed",
-        "agent.restart.completed",
-        "agent_runtime.handoff.completed",
-        "agent_runtime.procedure_activation.completed",
-        "operation.job_run.completed",
-    ]
+    event: OperationSucceededEvent
     operation_id: str
     work_feedback: str | None = None
 
 
 class OperationFailedEventDTO(BaseModel):
-    """WebSocket event for a failed operation outcome."""
+    """WebSocket event carrying a failure outcome declared by the operation owner."""
 
     model_config = ConfigDict(frozen=True)
 
-    event: Literal[
-        "operation.todo_work.failed",
-        "operation.task_run.failed",
-        "operation.todo_integrate.failed",
-        "operation.todo_create.failed",
-        "operation.todo_prepare.failed",
-        "operation.todo_remove.failed",
-        "operation.todo_rename.failed",
-        "session.close.failed",
-        "agent.restart.failed",
-        "agent_runtime.handoff.failed",
-        "agent_runtime.procedure_activation.failed",
-        "operation.job_run.failed",
-    ]
+    event: OperationFailedEvent
     operation_id: str
     error: str
     work_feedback: str | None = None
