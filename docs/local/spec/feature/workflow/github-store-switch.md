@@ -155,7 +155,9 @@ And no item exists twice in the repository
 - A workflow write already under way when the switch takes effect can still
   land in the frozen local store. A later run moves an item created that way,
   but not a later change to an item it already moved.
-- GitHub limits how quickly content may be created, so moving a large store
-  takes several runs spread over hours.
+- GitHub limits how quickly content may be created. The move spaces its writes
+  to stay within those limits, so moving a large store takes hours, and while
+  it runs, workflow writes to the project's repository from the same computer
+  are spaced the same way.
 - Moved items, with every artifact version, become readable to everyone who
   can read the repository.
