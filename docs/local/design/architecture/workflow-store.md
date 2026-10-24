@@ -212,13 +212,13 @@ working copy and the repository.
   - Each build review verdict is posted once as a review on the commit the
     verdict is bound to, with the verdict as approval or requested changes
     and, as its body under its envelope line, the review findings
-    (`review-findings`) the verdict is bound to. The push that commits a new
-    verdict captures it as a **review occurrence** — round, commit, verdict,
-    findings digest and reviewer session — in the item's record, beside the
-    workflow state and never in it, and every later revision of the record
-    keeps it. A later stamp, a fix cycle that clears the verdict, or a rebuilt
-    working copy therefore loses no review. An occurrence whose review is not
-    yet on GitHub, including one whose commit is not yet there, stays owed.
+    (`review-findings`) the verdict is bound to. The reviews are derived from
+    the item's build review events
+    (`local/projects/teleclaude/design/architecture/work-state-machine`,
+    Review history), which its workflow state carries in the record, so a
+    later stamp, a fix cycle that clears the verdict, or a rebuilt working
+    copy loses no review. A review not yet on GitHub, including one whose
+    commit is not yet there, stays owed.
   - Delivery closes the pull request with a comment naming the delivered
     commit; removal closes it without one. Nothing merges it on GitHub.
   - The pull request's body opens with an envelope line naming the item's
@@ -508,10 +508,6 @@ sequenceDiagram
 - A pull request someone merges on GitHub, or a review someone else posts,
   changes nothing in the record: the item is still delivered only by the
   integrator, and only the reviewer's stamped verdict counts.
-- A computer whose store predates review occurrences cannot read a record
-  that carries one, so the item is unverifiable there. Every computer that
-  serves a GitHub-backed project runs the current store before an item of
-  that project starts its build.
 
 <!-- /planned-change:github-pr-collaboration -->
 

@@ -86,6 +86,12 @@ build_review:
 - **Ground-shift follow-up**: if `origin/main` is merged while review is in flight and the newly landed files overlap the current review surface, the state machine sends a targeted follow-up to the same reviewer instead of widening scope or spawning a new reviewer.
 - **Explicit build completion**: commits and passing gates are evidence only. Review does not reopen until the builder stamps `build_complete`.
 
+<!-- planned:github-pr-collaboration -->
+
+- **Review history**: every `build_review` verdict stamp also appends a `build_review_stamp` event to the item's state events, in the same write, naming the review round, the reviewed commit, the verdict, the review report digest and the reviewer session. A fix cycle clears the verdict and never the event, so the item keeps one event per build review it received.
+
+<!-- /planned:github-pr-collaboration -->
+
 - **Review threshold**: at the configured threshold the machine reports the admitted-pass count once and points at the shared convergence contract; it refuses no pass, summons no session, and keeps looping.
 - **Finalize ownership**: `telec todo stamp --finalize-ready` records `finalize.status=ready` on the finalize sub-state; the Work machine performs the triple-ref-gated advance from `review_approved` to terminal `lifecycle_phase=finalize_ready` and ends the worker's child sessions and own session inside the same step. There is no separate `handed_off` follow-up phase.
 
