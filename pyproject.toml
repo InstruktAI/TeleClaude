@@ -37,7 +37,7 @@
     "pyresidfp>=0.17.0",
     "python-dotenv>=1.2.1",
     "python-frontmatter>=1.1.0",
-    "python-telegram-bot[rate-limiter]>=22.5",
+    "python-telegram-bot[rate-limiter]>=22.7",
     "pyyaml>=6.0.3",
     "redis>=5.0.0",
     "ruamel.yaml>=0.18.0",
