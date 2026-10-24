@@ -89,8 +89,10 @@ _LIVE_OPERATIONS = "{} has running operations: {}"
 _LIVE_INTEGRATION = "{} is ready for or being integrated"
 _SOURCE_DISAPPEARED = "source snapshot disappeared"
 _SLUG_CONFLICT = "slug belongs to item {}"
+_STORE_PREPARE_REFUSED = "store refused while preparing the GitHub store: {}"
 _ITEM_RESTORE_REFUSED = "store refused while restoring {}: {}"
 _PROJECT_RESTORE_REFUSED = "store refused while restoring project records: {}"
+_ITEM_NOT_REACHED = "not reached: the run stopped"
 _PROJECT_RECORD_ID_REQUIRED = "project record is missing its persisted row id"
 _SWITCH_ITEM = "switch"
 _TODOS_FIELD = "todos"
@@ -320,7 +322,10 @@ async def _move_local_source(store: TodosDb, target: GitHubWorkflowStore) -> Swi
                 await target.restore_migration_item(_prepare_snapshot(snapshot, selected, moved_slugs))
             except _EXPECTED_REFUSALS as error:
                 reason = _failure_reason(error)
-                counts.not_moved.extend(await _unreached_items(store, selected.item_ids[index:], reason))
+                counts.not_moved.append((slug, reason))
+                counts.not_moved.extend(
+                    await _unreached_items(store, selected.item_ids[index + 1 :], _ITEM_NOT_REACHED)
+                )
                 counts.stop_cause = _ITEM_RESTORE_REFUSED.format(slug, reason)
                 break
             target_ids = target_ids | {item_id}
@@ -352,8 +357,8 @@ async def _unreached_items(store: TodosDb, item_ids: tuple[str, ...], reason: st
 
 async def _stopped_before_move(store: TodosDb | None, selected: WorkingCopyMoveSet, error: Exception) -> SwitchReport:
     reason = _failure_reason(error)
-    items = await _unreached_items(store, selected.item_ids, reason) if store is not None else []
-    return SwitchReport(not_moved=tuple(items), stop_cause=reason)
+    items = await _unreached_items(store, selected.item_ids, _ITEM_NOT_REACHED) if store is not None else []
+    return SwitchReport(not_moved=tuple(items), stop_cause=_STORE_PREPARE_REFUSED.format(reason))
 
 
 async def _move_project_records(
@@ -414,7 +419,9 @@ _SWITCH_RECORD_FORMAT = "github-store-switch:{}:{}"
 
 
 def _failure_reason(error: Exception) -> str:
-    if isinstance(error, (GitHubIORefused, GitHubCredentialRefused, GitHubIdentityRefused)):
+    if isinstance(error, GitHubIORefused):
+        return str(error)
+    if isinstance(error, (GitHubCredentialRefused, GitHubIdentityRefused)):
         return error.reason.value
     if isinstance(error, GitHubWorkflowSyncRefused):
         return str(error)

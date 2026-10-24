@@ -17,6 +17,7 @@ from urllib.parse import quote
 from githubkit.auth.token import TokenAuthStrategy
 from githubkit.cache.mem_cache import MemCacheStrategy
 from githubkit.exception import GitHubException, RateLimitExceeded, RequestFailed
+from githubkit.utils import UNSET
 from githubkit_schemas.v2026_03_10.types import AppPermissionsType
 from httpx import HTTPError
 from pydantic import SecretStr
@@ -36,6 +37,10 @@ _REPOSITORY_SEPARATOR = "/"
 _Result = TypeVar("_Result")
 _PACED_WRITE_INTERVAL_S = 1.0
 _INTER_ITEM_WRITE_INTERVAL_S = 10.0
+_GITHUB_MESSAGE_LIMIT = 256
+_HTTP_REFUSAL_DETAIL = "{} returned HTTP {}"
+_HTTP_REFUSAL_WITH_MESSAGE = "{}: {}"
+_REFUSAL_WITH_DETAIL = "{}: {}"
 
 
 class _GraphActor(TypedDict, total=False):
@@ -159,13 +164,15 @@ class GitHubField(StrEnum):
     NUMBER = "number"
     CURSOR = "cursor"
     BEFORE = "before"
+    MESSAGE = "message"
 
 
 class GitHubIORefused(RuntimeError):
     """A bounded reason why one store operation could not reach GitHub."""
 
-    def __init__(self, reason: GitHubIOFailure) -> None:
-        super().__init__(reason.value)
+    def __init__(self, reason: GitHubIOFailure, *, detail: str | None = None) -> None:
+        message = reason.value if detail is None else _REFUSAL_WITH_DETAIL.format(reason.value, detail)
+        super().__init__(message)
         self.reason = reason
 
 
@@ -367,21 +374,22 @@ class GitHubWorkflowIO:
         self._expires_at = credential.expires_at
         return credential.token
 
-    async def _with_client(self, operation: Callable[[Any], Awaitable[_Result]]) -> _Result:
+    async def _with_client(self, operation: GitHubOperation, request: Callable[[Any], Awaitable[_Result]]) -> _Result:
         try:
             token = await self._credential_token()
             async with create_github_client(TokenAuthStrategy(token.get_secret_value()), MemCacheStrategy()) as client:
-                return await operation(client)
+                return await request(client)
         except GitHubIORefused:
             raise
         except RateLimitExceeded:
             raise GitHubIORefused(GitHubIOFailure.RATE_LIMITED) from None
         except RequestFailed as error:
+            detail = _request_refusal_detail(operation, error)
             if error.response.status_code == 404:
-                raise GitHubIORefused(GitHubIOFailure.NOT_FOUND) from None
+                raise GitHubIORefused(GitHubIOFailure.NOT_FOUND, detail=detail) from None
             if error.response.status_code in (400, 401, 403, 422):
-                raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED) from None
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE) from None
+                raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED, detail=detail) from None
+            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=detail) from None
         except (GitHubException, HTTPError, TimeoutError, OSError, ValueError, TypeError, AttributeError):
             raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE) from None
 
@@ -396,7 +404,7 @@ class GitHubWorkflowIO:
             issue = response.parsed_data
             return GitHubIssue(issue.number, issue.node_id, issue.user.login, issue.updated_at)
 
-        return await self._with_client(request)
+        return await self._with_client(GitHubOperation.OPEN_ISSUE, request)
 
     async def _update_issue(
         self, number: int, title: str, body: str, state: str, reason: str, labels: list[str]
@@ -418,7 +426,7 @@ class GitHubWorkflowIO:
                 },
             )
 
-        await self._with_client(request)
+        await self._with_client(GitHubOperation.UPDATE_ISSUE, request)
 
     async def _ensure_label(self, name: str, color: str) -> None:
         owner, repo = _split_repository(self.repository.repository)
@@ -435,7 +443,7 @@ class GitHubWorkflowIO:
                 owner, repo, data={GitHubField.NAME: name, GitHubField.COLOR: color}
             )
 
-        await self._with_client(request)
+        await self._with_client(GitHubOperation.ENSURE_LABEL, request)
 
     async def _list_issues(self, since: datetime | None) -> tuple[GitHubIssue, ...]:
         owner, repo = _split_repository(self.repository.repository)
@@ -449,7 +457,7 @@ class GitHubWorkflowIO:
                     repo,
                     creator=self.assignment.actor.login,
                     state=GitHubField.ALL_STATES,
-                    since=since,
+                    since=since if since is not None else UNSET,
                     per_page=_PAGE_SIZE,
                     page=page,
                 )
@@ -463,7 +471,7 @@ class GitHubWorkflowIO:
                     return tuple(found)
                 page += 1
 
-        return await self._with_client(request)
+        return await self._with_client(GitHubOperation.LIST_ISSUES, request)
 
     async def _read_comments(self, number: int) -> tuple[GitHubComment, ...]:
         owner, repo = _split_repository(self.repository.repository)
@@ -499,7 +507,7 @@ class GitHubWorkflowIO:
                     raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
                 cursor = next_cursor
 
-        return await self._with_client(request)
+        return await self._with_client(GitHubOperation.READ_COMMENTS, request)
 
     async def _create_comment(self, number: int, body: str) -> GitHubComment:
         owner, repo = _split_repository(self.repository.repository)
@@ -510,7 +518,7 @@ class GitHubWorkflowIO:
             comment = response.parsed_data
             return await _read_one_comment(client, comment.node_id)
 
-        return await self._with_client(request)
+        return await self._with_client(GitHubOperation.CREATE_COMMENT, request)
 
     async def _update_comment(self, comment_id: int, body: str) -> GitHubComment:
         owner, repo = _split_repository(self.repository.repository)
@@ -522,7 +530,7 @@ class GitHubWorkflowIO:
             )
             return await _read_one_comment(client, response.parsed_data.node_id)
 
-        return await self._with_client(request)
+        return await self._with_client(GitHubOperation.UPDATE_COMMENT, request)
 
     async def _pace_mutation_start(self) -> None:
         window = self._pacing_window
@@ -534,6 +542,19 @@ class GitHubWorkflowIO:
             await asyncio.sleep(delay)
         window.last_start = monotonic()
         window.count += 1
+
+
+def _request_refusal_detail(operation: GitHubOperation, error: RequestFailed) -> str:
+    detail = _HTTP_REFUSAL_DETAIL.format(operation.value, error.response.status_code)
+    try:
+        payload: object = error.response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict):
+        message = payload.get(GitHubField.MESSAGE)
+        if isinstance(message, str):
+            return _HTTP_REFUSAL_WITH_MESSAGE.format(detail, message[:_GITHUB_MESSAGE_LIMIT])
+    return detail
 
 
 async def _dispatch_open_issue(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
