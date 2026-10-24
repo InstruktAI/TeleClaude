@@ -159,5 +159,8 @@ And no item exists twice in the repository
   to stay within those limits, so moving a large store takes hours, and while
   it runs, workflow writes to the project's repository from the same computer
   are spaced the same way.
+- While the move publishes an item, which takes seconds for most items and
+  up to a few minutes for the largest, a workflow write on the project can
+  fail as busy. It changes nothing and succeeds when repeated.
 - Moved items, with every artifact version, become readable to everyone who
   can read the repository.
