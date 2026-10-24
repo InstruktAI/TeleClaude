@@ -30,7 +30,8 @@ second project from a cloned declaration
   resolution use the same selected context. An unavailable selected generation
   reports the missing context; it is not silently substituted with the other
   checkout's view (`sdlc/principle/design-fundamentals`).
-- A todo worktree uses its owning development checkout's doc layer. Its code
+- A todo worktree, including one the installed checkout held before its
+  association, uses the development checkout's doc layer. Its code
   and grading still use the worktree's own source contract
   (`local/projects/teleclaude/spec/feature/agent_runtime/checkout-code-selection`).
 - Other projects' activated contributions retain their existing publication

@@ -63,7 +63,11 @@ The invocation resolver returns the active working checkout, logical project's
 workflow-state root, authoring checkout and installed checkout as distinct
 answers. Config supplies the registered association; workflow owns the resolution
 of its shared state and worktree owners. Consumers request the answer their
-operation acts on, following `sdlc/principle/domain-driven-design`.
+operation acts on, following `sdlc/principle/domain-driven-design`. Every member
+of an association except the installed checkout's own working tree is a
+development location, including a worktree that the installed checkout held
+before its association; the development checkout owns the environment of every
+such worktree.
 
 The existing root table is qualified by this association: todo records, claims,
 artifacts and project-wide job/bug state remain at the primary workflow-state
