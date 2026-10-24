@@ -128,90 +128,10 @@ class GitHubWorkflowPush:
         reflection_rows: list[tuple[int, str, WorkingCopyItemSnapshot]] = []
 
         for item_id in changes.item_ids:
-            if item_unverifiable(session, item_id):
-                raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-            prune_deleted_artifact_versions(session, item_id)
-            snapshot = item_snapshot(session, item_id, unpushed_only=True)
-            bookkeeping = item_bookkeeping(session, item_id)
-            issue_number = _int_or_none(bookkeeping.get(WorkflowField.ISSUE_NUMBER)) if bookkeeping else None
-            node_id = _string_or_none(bookkeeping.get(WorkflowField.NODE_ID)) if bookkeeping else None
-            record_comment_id = _int_or_none(bookkeeping.get(WorkflowField.RECORD_COMMENT_ID)) if bookkeeping else None
-            base_revision = (_int_or_none(bookkeeping.get(WorkflowField.BASE_REVISION)) or 0) if bookkeeping else 0
-            old_record = self._item_record(session, issue_number, record_comment_id, committed_transactions)
-            old_revision = effective_revision(old_record, committed_transactions) if old_record else None
-            if old_revision is not None and old_revision.revision > base_revision:
-                session.info[_CONFLICT_REFRESH_KEY] = True
-                session.info[_CONFLICT_DRIVER_KEY] = session.connection().connection
-                raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-            committed_pointers, old_record = self._compact_old_record(
-                session, item_id, issue_number, old_record, committed_transactions
-            )
-            pointers = {name: list(versions) for name, versions in committed_pointers.items()}
-            if snapshot is None:
-                if old_revision is None or issue_number is None or node_id is None:
-                    continue
-                input_content = self._read_item_content(session, issue_number, old_revision, INPUT_ARTIFACT_NAME)
-                todo_row = {**old_revision.todo, WorkflowField.STATUS: WorkflowTodoStatus.PURGED}
-                revision = old_revision.model_copy(
-                    update={
-                        WorkflowField.REVISION: old_revision.revision + 1,
-                        WorkflowField.TODO: todo_row,
-                        WorkflowField.ARTIFACTS: committed_pointers,
-                    }
-                )
-                snapshot = WorkingCopyItemSnapshot(
-                    item_id=item_id,
-                    todo=todo_row,
-                    state=old_revision.state,
-                    dependencies=tuple(old_revision.dependencies),
-                    artifacts=({WorkflowField.NAME: INPUT_ARTIFACT_NAME, WorkflowField.CONTENT: input_content},),
-                    versions=(),
-                )
-                snapshots.append(
-                    (snapshot, issue_number, node_id, base_revision, revision, old_record, record_comment_id)
-                )
-                reflection_rows.append((issue_number, item_id, snapshot))
+            prepared = self._prepare_item_revision(session, item_id, committed_transactions)
+            if prepared is None:
                 continue
-            if issue_number is None or node_id is None:
-                issue = _io_call(
-                    session,
-                    self.io,
-                    GitHubOperation.OPEN_ISSUE,
-                    str(snapshot.todo[WorkflowField.SLUG]),
-                    reflect_issue(snapshot).body,
-                )
-                issue_number, node_id = issue.number, issue.node_id
-            next_revision = (old_revision.revision if old_revision is not None else 0) + 1
-            pointers = self._mark_removed_artifacts(session, item_id, issue_number, snapshot, pointers)
-            created_versions = self._append_unpushed_versions(session, snapshot, issue_number, pointers)
-            for version_id, name, pointer in created_versions:
-                pointers[name] = [pointer]
-                save_artifact_comment_ids(
-                    session,
-                    item_id,
-                    version_id,
-                    pointer.comment_ids,
-                    pointer.remote_version_id or _EMPTY,
-                    pointer.digest,
-                )
-            state = snapshot.state
-            state_pointer = None
-            if state is not None:
-                state_text = state.get(WorkflowField.STATE)
-                if isinstance(state_text, str) and len(state_text) > _MAX_INLINE_STATE:
-                    state_pointer = self._append_state_content(
-                        session, item_id, next_revision, state_text, issue_number, state
-                    )
-                    state = {**state, WorkflowField.STATE: None}
-            revision = make_item_revision(
-                item_id,
-                next_revision,
-                snapshot.todo,
-                state,
-                snapshot.dependencies,
-                pointers,
-                state_content_pointer=state_pointer,
-            )
+            snapshot, issue_number, node_id, base_revision, revision, old_record, record_comment_id = prepared
             snapshots.append((snapshot, issue_number, node_id, base_revision, revision, old_record, record_comment_id))
             reflection_rows.append((issue_number, item_id, snapshot))
 
@@ -297,6 +217,95 @@ class GitHubWorkflowPush:
         for _issue_number, item_id, _snapshot in reflection_rows:
             mark_reflection_owed(session, item_id)
         clear_pending_changes(session)
+
+    def _prepare_item_revision(
+        self,
+        session: Session,
+        item_id: str,
+        committed_transactions: set[str],
+    ) -> tuple[WorkingCopyItemSnapshot, int, str, int, ItemRevision, WorkflowRecord | None, int | None] | None:
+        """Prepare one changed item's revision and reflection inputs before commit."""
+        if item_unverifiable(session, item_id):
+            raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
+        prune_deleted_artifact_versions(session, item_id)
+        snapshot = item_snapshot(session, item_id, unpushed_only=True)
+        bookkeeping = item_bookkeeping(session, item_id)
+        issue_number = _int_or_none(bookkeeping.get(WorkflowField.ISSUE_NUMBER)) if bookkeeping else None
+        node_id = _string_or_none(bookkeeping.get(WorkflowField.NODE_ID)) if bookkeeping else None
+        record_comment_id = _int_or_none(bookkeeping.get(WorkflowField.RECORD_COMMENT_ID)) if bookkeeping else None
+        base_revision = (_int_or_none(bookkeeping.get(WorkflowField.BASE_REVISION)) or 0) if bookkeeping else 0
+        old_record = self._item_record(session, issue_number, record_comment_id, committed_transactions)
+        old_revision = effective_revision(old_record, committed_transactions) if old_record else None
+        if old_revision is not None and old_revision.revision > base_revision:
+            session.info[_CONFLICT_REFRESH_KEY] = True
+            session.info[_CONFLICT_DRIVER_KEY] = session.connection().connection
+            raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
+        committed_pointers, old_record = self._compact_old_record(
+            session, item_id, issue_number, old_record, committed_transactions
+        )
+        pointers = {name: list(versions) for name, versions in committed_pointers.items()}
+        if snapshot is None:
+            if old_revision is None or issue_number is None or node_id is None:
+                return None
+            input_content = self._read_item_content(session, issue_number, old_revision, INPUT_ARTIFACT_NAME)
+            todo_row = {**old_revision.todo, WorkflowField.STATUS: WorkflowTodoStatus.PURGED}
+            revision = old_revision.model_copy(
+                update={
+                    WorkflowField.REVISION: old_revision.revision + 1,
+                    WorkflowField.TODO: todo_row,
+                    WorkflowField.ARTIFACTS: committed_pointers,
+                }
+            )
+            snapshot = WorkingCopyItemSnapshot(
+                item_id=item_id,
+                todo=todo_row,
+                state=old_revision.state,
+                dependencies=tuple(old_revision.dependencies),
+                artifacts=({WorkflowField.NAME: INPUT_ARTIFACT_NAME, WorkflowField.CONTENT: input_content},),
+                versions=(),
+            )
+            return snapshot, issue_number, node_id, base_revision, revision, old_record, record_comment_id
+        if issue_number is None or node_id is None:
+            issue = _io_call(
+                session,
+                self.io,
+                GitHubOperation.OPEN_ISSUE,
+                str(snapshot.todo[WorkflowField.SLUG]),
+                reflect_issue(snapshot).body,
+            )
+            issue_number, node_id = issue.number, issue.node_id
+        next_revision = (old_revision.revision if old_revision is not None else 0) + 1
+        pointers = self._mark_removed_artifacts(session, item_id, issue_number, snapshot, pointers)
+        created_versions = self._append_unpushed_versions(session, snapshot, issue_number, pointers)
+        for version_id, name, pointer in created_versions:
+            pointers[name] = [pointer]
+            save_artifact_comment_ids(
+                session,
+                item_id,
+                version_id,
+                pointer.comment_ids,
+                pointer.remote_version_id or _EMPTY,
+                pointer.digest,
+            )
+        state = snapshot.state
+        state_pointer = None
+        if state is not None:
+            state_text = state.get(WorkflowField.STATE)
+            if isinstance(state_text, str) and len(state_text) > _MAX_INLINE_STATE:
+                state_pointer = self._append_state_content(
+                    session, item_id, next_revision, state_text, issue_number, state
+                )
+                state = {**state, WorkflowField.STATE: None}
+        revision = make_item_revision(
+            item_id,
+            next_revision,
+            snapshot.todo,
+            state,
+            snapshot.dependencies,
+            pointers,
+            state_content_pointer=state_pointer,
+        )
+        return snapshot, issue_number, node_id, base_revision, revision, old_record, record_comment_id
 
     def after_commit(self, session: Session) -> None:
         """Queue issue reflections after local commit and retain failed reflections for refresh."""
