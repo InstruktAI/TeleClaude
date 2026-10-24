@@ -14,12 +14,18 @@ _PACKAGE_PARENT = Path(__file__).resolve().parents[3]
 if str(_PACKAGE_PARENT) not in sys.path:
     sys.path.append(str(_PACKAGE_PARENT))
 
-# Each checkout owns its environment, including the prepared links in worktrees.
-# Select it before importing project modules: PATH may name a dependency-free Python.
-_VENV_DIR = _PACKAGE_PARENT / ".venv"
-_VENV_PYTHON = _VENV_DIR / "bin" / "python3"
-if _VENV_PYTHON.is_file() and Path(sys.prefix).resolve() != _VENV_DIR.resolve():
-    os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
+_VENV_DIR_NAME = ".venv"
+_VENV_PYTHON_RELATIVE = Path("bin") / "python3"
+
+
+def _reexec_under_project_venv() -> None:
+    """Re-execute direct entry under the project interpreter when needed."""
+    # Each checkout owns its environment, including the prepared links in worktrees.
+    # Select it before project imports: PATH may name a dependency-free Python.
+    venv_dir = _PACKAGE_PARENT / _VENV_DIR_NAME
+    venv_python = venv_dir / _VENV_PYTHON_RELATIVE
+    if venv_python.is_file() and Path(sys.prefix).resolve() != venv_dir.resolve():
+        os.execv(str(venv_python), [str(venv_python), *sys.argv])
 
 
 def _print_help_and_exit_if_requested() -> None:
@@ -46,4 +52,5 @@ def _run_receiver_main() -> None:
 
 
 if __name__ == "__main__":
+    _reexec_under_project_venv()
     _run_receiver_main()
