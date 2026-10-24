@@ -1,6 +1,5 @@
 # yaml-language-server: $schema=.teleclaude/schemas/teleclaude-project.schema.json
 description: AI-powered multi-agent orchestration platform
-kind: project
 project_name: TeleClaude
 project_slug: teleclaude
 company: instrukt-ai
@@ -258,4 +257,10 @@ hooks:
   inbound:
     github:
       secret: ${GITHUB_WEBHOOK_SECRET}
-schema_version: 24
+todos:
+  repository:
+    id: 1086643517
+    full_name: InstruktAI/TeleClaude
+  app: 5453276
+kind: project
+schema_version: 25
