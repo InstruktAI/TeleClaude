@@ -176,6 +176,18 @@ Work artifacts (`review-findings`, `deferrals`, `quality-checklist`) carry no
 prepare-author role gate. Like every other writable kind, they are gated by the
 claim.
 
+<!-- planned:ci-results-as-events -->
+
+The `check-failures` artifact is platform-written. The API and CLI write and
+remove boundaries refuse it as platform-owned read-only for every caller, before
+any state mutation, and the CLI's writable kind list excludes it. Only the
+workflow's failed-check filer writes it, through the workflow store in its own
+process and under no session, so the claim gate never applies to it. Reads are
+not gated. What it records is
+`local/projects/teleclaude/spec/feature/workflow/failed-check-bugs`.
+
+<!-- /planned:ci-results-as-events -->
+
 #### UC-WAV9: Worker write to a prepare artifact is refused by role
 
 ```gherkin
