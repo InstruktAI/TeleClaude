@@ -180,7 +180,7 @@ Valid in both project and global configs.
 - `hooks.inbound` declares this project's own inbound sources, as below.
 
 - `todos.store` selects the project workflow-store adapter. Omission defaults to `local`. What a `github` selection serves, and how it refuses the rest, is owned by `local/projects/teleclaude/design/architecture/workflow-store`. Local selection requires no GitHub account or repository.
-- `todos.repository` declares the project's GitHub repository by its stable repository ID and canonical owner/name. It is the only source of the project's GitHub repository identity, which is never formed from a slug or origin metadata (`local/projects/teleclaude/spec/feature/identity/platform-github-identity`). The declaration is valid under either selection, so a project still on `local` can name its repository before it switches; declaring it selects nothing. Which reads require a `github` selection and a declaration is owned by `local/projects/teleclaude/design/architecture/workflow-store`.
+- `todos.repository` declares the project's GitHub repository by its stable repository ID and canonical owner/name. It is the only source of the project's GitHub repository identity, which is never formed from a slug or origin metadata. The declaration is valid under either selection, so a project still on `local` can name its repository before it switches; declaring it selects nothing. Which reads require a `github` selection and a declaration is owned by `local/projects/teleclaude/design/architecture/workflow-store`.
 
 #### Workflow store selection
 
@@ -310,30 +310,20 @@ interests: list[string]
 jobs: list[JobScheduleConfig] # the registry of published jobs with their default settings; a project runs one only by subscribing to it, inside that project
 ```
 
-<!-- planned:issue-129 -->
-
 The global overlay declares the platform GitHub App inventory and the mapping from
-the existing canonical session role name to an App profile:
+the canonical session role name to an App profile:
 
 | Global field   | Shape and meaning                                                                                                                                                                                                     |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `github.apps`  | Optional list of closed App profiles, default empty. Each profile carries a `GitHubActorAssignment` containing its App identity and `private_key_base64_env`, a sensitive bare key name in the global sibling `.env`. |
-| `github.roles` | Optional mapping from the existing `RoleName` vocabulary to a configured App ID, default empty.                                                                                                                       |
+| `github.roles` | Optional mapping from the `RoleName` vocabulary to a configured App ID, default empty.                                                                                                                                |
 
 App IDs and stable Bot identities are unambiguous across profiles; every role
-reference names a configured profile. Multiple roles may map to one App only
-where the existing parent/child actor rule allows it; session creation refuses
-a parent/child collision rather than selecting a fallback. These declarations
-do not carry installation IDs, repository grants or secret values. The project
-tier's `github.enabled` mirror switch remains separate and does not select an
-App credential. This snippet owns the global declaration shape. The config
-domain owns reference validation and protected key resolution; file custody
-and temporary-write behavior belong to
-`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`; session
-actor assignment and credential invocation belong to
-`local/projects/teleclaude/spec/feature/identity/platform-github-identity`.
-<!-- /planned:issue-129 -->
-
+reference names a configured profile. These declarations carry no installation
+IDs, repository grants or secret values. This snippet owns the global
+declaration shape. The config domain owns reference validation and protected
+key resolution; file custody and temporary-write behavior belong to
+`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`.
 There is no `company_profile` key on the global overlay. Company configuration is
 its own folder-discovered tier (`~/.teleclaude/companies/<slug>/teleclaude.yml`;
 the value-object contract lives in `local/projects/teleclaude/spec/domain/config`), not a field of

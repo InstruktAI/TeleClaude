@@ -62,8 +62,7 @@ and preserve their current ownership and interpretation.
 
 - **Native target projection.** The GitHub adapter module supplies a pure
   projection from the project's repository identity and an item's
-  (`WorkItemId`, `StoreAddress`) pair to a session's native GitHub target
-  (`local/projects/teleclaude/spec/feature/identity/platform-github-identity`).
+  (`WorkItemId`, `StoreAddress`) pair to a session's native GitHub target.
   It makes no provider call and reads no workflow state outside the selected
   store. The projected target names no branch or base. The projection is not a
   port operation: the seven-part port gains no operation and carries no GitHub
@@ -93,8 +92,7 @@ and preserve their current ownership and interpretation.
   returns the `WorkItemId` with that issue's node ID as its `StoreAddress`, both
   taken from the one provider read. It authenticates through the identity
   owner's credential component with read-only issue access, as the actor
-  assignment its caller supplies; the store selects no actor
-  (`local/projects/teleclaude/spec/feature/identity/platform-github-identity`).
+  assignment its caller supplies; the store selects no actor.
   The read retains nothing: no cached pair, no local record, no local fallback.
   It is a module call with no API, command-line or relayed surface.
 

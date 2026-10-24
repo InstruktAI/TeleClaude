@@ -105,28 +105,6 @@ External shape evolution preserves independent consumers
   elsewhere is persisted, executed, and emitted by the computer that runs the work. The
   receipt names that computer so the caller reads the record there.
 
-<!-- planned:issue-129 -->
-
-### Remote posting caller continuity
-
-Receipt-backed GitHub work stores the admitted caller principal as nullable
-`caller_principal` in the operation row beside its caller computer and session,
-sourced from request-scoped identity context before the task is scheduled.
-`caller_provenance_json` remains attribution projection and is not authority.
-Existing rows migrate with an absent principal;
-an absent legacy principal supplies no remote GitHub authority, while unrelated
-operation reads and behavior remain unchanged.
-
-Client-request deduplication, nonterminal reattachment, and a uniqueness-race
-reread each require the admitted principal, origin computer, and origin session
-to match the recorded row before returning its receipt or scheduling work.
-Missing or conflicting facts refuse; reattachment never replaces the original
-caller. The runner restores and resets the principal with the existing session
-and locality tokens in `operation_caller_identity`. Existing stale-on-restart and no-automatic-replay semantics
-remain. An immediate act remains `IMMEDIATE` with no row; its source invocation
-identity comes from the act owner, never from an invented operation ID.
-<!-- /planned:issue-129 -->
-
 ## Primary flows
 
 1. A route receives a RECEIPT command and calls `OperationsService.submit(command)` with

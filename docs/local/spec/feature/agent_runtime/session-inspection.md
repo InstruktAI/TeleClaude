@@ -114,26 +114,6 @@ And to listing for the roster and the session's children
 
 ## Known caveats
 
-<!-- planned:issue-129 -->
-
-- **Reached GitHub posting binding.** The existing internal `RelayRead.SESSION_RECORD` read may
-  include the reached session owner's optional public `GitHubSessionBinding` and
-  `GitHubWorkTarget` as separate related data. The hosting owner resolves these from that
-  exact session's persisted binding and target and offers usable posting facts only when
-  the session is open and its existing identity owner resolves a principal equal to the
-  admitted principal. Resolution follows `caller_identity.resolve_session_principal` /
-  `identity_for_session`: explicit `principal`, then `human_email`, then the system
-  principal from the stored role. An unresolved identity refuses posting. Its catalog
-  role, fixed actor, and work/project binding must also be consistent. No private key,
-  protected key reference, JWT, or token is
-  returned. This related result is not inferred from diagnostic session columns and does
-  not change grouped or full inspection. Diagnostics can still inspect retained closed
-  sessions; a posting consumer must refuse a closed or deleted session even if its stored
-  binding remains visible. The owner read is observed evidence, not cross-computer atomicity
-  or a remembered authentication verdict.
-
-<!-- /planned:issue-129 -->
-
 - **No children.** Inspection shows a session's own parent link and does not
   enumerate the sessions it started; listing answers that.
 - **Reach refusals are explicit.** An out-of-reach session is refused as such

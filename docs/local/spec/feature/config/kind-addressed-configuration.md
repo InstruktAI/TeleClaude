@@ -211,15 +211,6 @@ editing its effective value changes the referenced value. Both execute through
 the same daemon-owned configuration commands. This contract supplies the shared
 capability to web clients; it does not define a web-console screen.
 
-<!-- planned:issue-129 -->
-
-A global field edit that names a GitHub App key still uses this editor's field
-identity, subject revision and explicit keep/replace/clear intent. It delegates
-protected classification and persistence to the config owner; the file-level
-write contract remains
-`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`.
-<!-- /planned:issue-129 -->
-
 ### Read paths
 
 Dotted paths passed to `get` address the selected configuration document. The

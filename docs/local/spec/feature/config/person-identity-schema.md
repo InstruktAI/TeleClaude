@@ -37,28 +37,6 @@ kebab-case. Once set, the slug never changes.
 
 ## Canonical fields
 
-<!-- planned:issue-129 -->
-
-### Person-owned GitHub declaration
-
-The person overlay declares the human's GitHub handle separately from the
-registry's Telegram-style username. The typed declaration is owned by
-`teleclaude/config/github_schema.py` and participates in the person schema,
-published editor metadata and kind-addressed person get/patch operations.
-Replacement and explicit clearing use the existing configuration writer's
-clearance, revision, candidate-validation and file-transaction boundary;
-unrelated registry and overlay fields retain their stored values
-(`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`).
-
-An absent declaration is valid and establishes no GitHub/person association.
-Declaring a handle is separate from validating its provider account, which is
-identity-owned under
-`local/projects/teleclaude/spec/feature/identity/person-context-binding`.
-The declaration contains no credential and is never a platform actor or a
-credential-selection fallback
-(`general/policy/human-contract`, `sdlc/policy/security-awareness`).
-<!-- /planned:issue-129 -->
-
 ### Use cases
 
 #### UC-CFG-PERSON-1: An operator registers a person for identity resolution
