@@ -93,6 +93,7 @@ class GatewayHandlersMixin:
     - _tree: object | None
     - _infrastructure_provisioned: bool
     - _ready_event: asyncio.Event
+    - _forum_routing_ready: asyncio.Event
     - _project_forum_map: dict[str, int]
     - _all_sessions_channel_id: int | None
     - _team_channel_map: dict[int, str]
@@ -139,6 +140,7 @@ class GatewayHandlersMixin:
         _tree: object | None
         _infrastructure_provisioned: bool
         _ready_event: asyncio.Event
+        _forum_routing_ready: asyncio.Event
         _voice_room: VoiceRoom | None
 
         def _parse_optional_int(self, value: object) -> int | None: ...
@@ -366,6 +368,9 @@ class GatewayHandlersMixin:
             )
         except Exception as exc:
             logger.warning("Discord infrastructure provisioning failed: %s", exc, exc_info=True)
+        # Forum routing reads the project forum map provisioning just built; a session
+        # routed before this point would land in the catch-all forum for good.
+        self._forum_routing_ready.set()
 
         await self._reconcile_team_channels()
 

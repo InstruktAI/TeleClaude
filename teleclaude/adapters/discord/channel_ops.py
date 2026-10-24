@@ -154,6 +154,7 @@ class ChannelOperationsMixin:
 
     _all_sessions_channel_id: int | None
     _project_forum_map: dict[str, int]
+    _forum_routing_ready: asyncio.Event
     _desk_forums: dict[str, DeskForums]
     _team_channel_map: dict[int, str]
     _guild_id: int | None
@@ -197,6 +198,7 @@ class ChannelOperationsMixin:
         if discord_meta.channel_id is not None and discord_meta.channel_id in self._team_channel_map:
             return session
 
+        await self._forum_routing_ready.wait()
         target_forum_id = self._resolve_target_forum(session)
         if target_forum_id is None:
             return session
@@ -347,6 +349,7 @@ class ChannelOperationsMixin:
         if discord_meta.channel_id is not None and discord_meta.guild_id is None:
             return str(discord_meta.channel_id)
 
+        await self._forum_routing_ready.wait()
         target_forum_id = self._resolve_target_forum(session)
         if target_forum_id is not None:
             forum = await self._get_channel(target_forum_id)

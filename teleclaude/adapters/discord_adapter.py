@@ -167,6 +167,7 @@ class DiscordAdapter(
         self._gateway_task: asyncio.Task[object] | None = None
         self._gateway_liveness: SupervisedTask | None = None
         self._ready_event = asyncio.Event()
+        self._forum_routing_ready = asyncio.Event()
         self._client: DiscordClientLike | None = None
         self._voice_room: VoiceRoom | None = None
         self._projects_changed_handler: Callable[[str, object], None] | None = None
