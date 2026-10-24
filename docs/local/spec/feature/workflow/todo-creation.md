@@ -474,6 +474,23 @@ And every artifact "parent-slug" carried survives unchanged, with its full versi
 And a subsequent write or remove against "parent-slug" is refused with a 409, so the preserved evidence is read-only
 ```
 
+<!-- planned:todo-creation-times-out-behind-main-lock -->
+
+#### UC-WTC35: A creation behind a busy git lock still returns its decided outcome
+
+```gherkin
+Given an acknowledged creation request has passed its validation and documentation evidence checks
+And another git writer holds the shared main-branch lock
+When the lock is released within creation's bounded admission wait
+Then the creation completes and the caller receives its success before the request's response deadline
+When the lock stays held past that wait instead
+Then creation is refused before any todo state, artifact or dispatch is produced
+And the refusal names the busy main-branch lock, states that nothing was created, and that running the same command again is safe
+And the CLI exits non-zero with that refusal rather than a request timeout
+```
+
+<!-- /planned:todo-creation-times-out-behind-main-lock -->
+
 ### Dependency gate at create-time
 
 Create-time dispatch is dependency-gated by the lane selected from the creation event. The executable scenarios are `UC-WTC2` and `UC-WTC3`.
