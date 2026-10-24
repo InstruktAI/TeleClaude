@@ -152,6 +152,7 @@ class DaemonCache:
 
         # Todo cache: key = f"{computer}:{project_path}"
         self._todos: dict[str, CachedItem[list[TodoDTO]]] = {}
+        self._local_todo_refresh_locks: dict[str, asyncio.Lock] = {}
 
         # Snapshot fingerprints + versions (per computer)
         self._projects_digest: dict[str, str] = {}
@@ -622,8 +623,12 @@ class DaemonCache:
             project_path: Project path
             event_hint: Granular event name (todo_created/todo_updated/todo_removed)
         """
-        todos = await command_handlers.list_todos(project_path)
-        self.set_todos(computer, project_path, todos, event_name=event_hint, event_data=event_data)
+        # The worker reads may finish out of order; serialize each project's read and
+        # publication so an older refresh cannot replace a newer snapshot.
+        refresh_lock = self._local_todo_refresh_locks.setdefault(project_path, asyncio.Lock())
+        async with refresh_lock:
+            todos = await command_handlers.list_todos(project_path)
+            self.set_todos(computer, project_path, todos, event_name=event_hint, event_data=event_data)
 
     def apply_sessions_snapshot(
         self,
