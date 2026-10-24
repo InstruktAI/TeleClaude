@@ -1,12 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    ":dependencyDashboard",
-    ":semanticCommits",
-    "schedule:weekly",
-    ":automergeAll"
-  ],
+  "extends": ["config:recommended", ":dependencyDashboard", ":semanticCommits", "schedule:weekly", ":automergeAll"],
   "timezone": "Europe/Amsterdam",
   "schedule": ["before 5am every weekday"],
   "automerge": true,
@@ -31,9 +25,14 @@
       "groupSlug": "python-minor-patch"
     },
     {
-      "description": "Each major bump gets its own PR — easier to revert if CI red",
+      "description": "Each major bump gets its own PR \u2014 easier to revert if CI red",
       "matchUpdateTypes": ["major"],
       "groupName": null
+    },
+    {
+      "description": "The Python runtime range is a deliberate project decision, never a dependency update",
+      "matchDepNames": ["python"],
+      "enabled": false
     }
   ],
   "vulnerabilityAlerts": {
