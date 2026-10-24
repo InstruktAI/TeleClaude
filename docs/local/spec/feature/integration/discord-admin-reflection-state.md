@@ -87,18 +87,6 @@ stable identity when one exists and applies that artifact's convergence rule
 before recording a survivor or replacement. An inconclusive provider lookup
 never creates, deletes, or clears state.
 
-<!-- planned:discord-inbound-dropped-before-provisioning -->
-
-Routing that a run's startup reconciliation has not yet established is unknown,
-not absent, just as an inconclusive lookup is. Until the run's first
-reconciliation attempt completes, no guild post is classified as falling
-outside the managed forums and Team channels. A post received earlier is held
-and classified once that attempt completes. A post in a project forum's thread
-or in a Team channel therefore reaches its session exactly as one arriving
-afterwards does.
-
-<!-- /planned:discord-inbound-dropped-before-provisioning -->
-
 Session-launcher buttons are part of this reflection state. Their forum
 thread/message IDs live in the database, and the running bot process reattaches
 the persistent button view to the stored message after restart. Reattachment is
@@ -364,15 +352,6 @@ And the bot neither answers nor routes the message anywhere
   may clear or replace a database reflection record.
 - A launcher view reattachment is process-local runtime wiring. The durable
   artifact remains the Discord message plus the database reflection record.
-
-<!-- planned:discord-inbound-dropped-before-provisioning -->
-
-- A post held until startup reconciliation completes lives only in the running
-  process. A daemon stop before that attempt completes discards it. A post made
-  while the daemon is not running is outside the hold. After an attempt that
-  fails, posts are classified against whatever routing it established.
-
-<!-- /planned:discord-inbound-dropped-before-provisioning -->
 
 - Discord shows every channel to the guild owner and to holders of the
   Administrator permission, and lets them post there, whatever a desk's
