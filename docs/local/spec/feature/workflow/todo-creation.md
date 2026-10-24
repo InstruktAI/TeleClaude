@@ -476,17 +476,16 @@ And a subsequent write or remove against "parent-slug" is refused with a 409, so
 
 <!-- planned:todo-creation-times-out-behind-main-lock -->
 
-#### UC-WTC35: Creation does not wait for another session's git work
+#### UC-WTC35: A filing made while other sessions commit reports its own outcome
 
 ```gherkin
-Given an acknowledged creation request has passed its validation and documentation evidence checks
-And another session's commit or integration push holds the shared main-branch lock
-When the workflow service admits the creation
-Then the creation completes without waiting for that git work
-And the caller receives its success before the request's response deadline
-And the documentation evidence admitted is the evidence current when the creation commits
-When a commit changes that evidence before the creation commits
-Then creation is refused before any todo state, artifact or dispatch is produced
+Given an agent files acknowledged work through `telec todo create` or `telec bugs report`
+And another session is committing or publishing to main at the same time
+When the agent submits the filing
+Then the agent sees the todo created before the command's response deadline
+And a filing that created its todo is never reported to the agent as a timeout
+When a commit changes the filing's documentation evidence before its todo is created
+Then the agent sees the filing refused, with no todo state, artifact or dispatch produced
 ```
 
 <!-- /planned:todo-creation-times-out-behind-main-lock -->
