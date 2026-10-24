@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy import text
@@ -13,14 +14,19 @@ from sqlalchemy.orm import Session
 
 from teleclaude.core.todos_db._adapter import TodosDb
 from teleclaude.core.todos_db._working_copy import (
+    WorkingCopyField,
     WorkingCopyItemSnapshot,
     acquire_repository_writer,
     artifact_local_version_id,
     clear_item_unverifiable,
     clear_pending_changes,
     clear_reflection_owed,
+    complete_projection_repair,
+    issue_relations,
     item_bookkeeping,
     item_snapshot,
+    items_without_issue_id,
+    mark_all_issue_reflections_owed,
     mark_item_unverifiable,
     mark_project_record_pushed,
     mark_repository_initialized,
@@ -30,13 +36,18 @@ from teleclaude.core.todos_db._working_copy import (
     restore_item_snapshot,
     restore_project_record,
     save_artifact_comment_ids,
+    save_issue_projection_digest,
     save_item_bookkeeping,
+    save_item_issue_id,
     save_ledger_issue,
+    save_projection_repair_progress,
     set_refresh_watermarks,
 )
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
 from teleclaude.core.workflow_store.github_io import (
     GitHubComment,
+    GitHubIOFailure,
+    GitHubIORefused,
     GitHubIssue,
     GitHubWorkflowIO,
 )
@@ -46,25 +57,45 @@ from teleclaude.core.workflow_store.github_ledger import (
     parse_ledger_comment,
     trusted_body,
 )
+from teleclaude.core.workflow_store.github_question_projection import close_resolved_questions, waiting_person_handles
 from teleclaude.core.workflow_store.github_record import (
     ArtifactHistoryAction,
     ArtifactPointer,
+    CommentEnvelopeAction,
+    CommentEnvelopeField,
     ContentHeader,
     ItemRevision,
     LedgerCommit,
+    Scalar,
     WorkflowField,
     WorkflowRecord,
     WorkflowTodoStatus,
+    artifact_history_payload_line,
     effective_revision,
+    has_artifact_history_marker,
+    has_ledger_marker,
     has_record_marker,
     is_content_comment,
     join_content_comments,
     latest_artifact_pointer,
+    parse_artifact_history_node,
     parse_content_comment,
+    parse_ledger_commit,
     parse_record_comment,
+    reenvelope_artifact_history_comment,
+    reenvelope_ledger_comment,
+    reenvelope_record_comment,
+    render_enveloped_content_comment,
     resolve_artifact_history,
 )
-from teleclaude.core.workflow_store.github_reflection import reflect_issue
+from teleclaude.core.workflow_store.github_reflection import (
+    changed_projection_parts,
+    is_repository_work,
+    parse_projection_digests,
+    platform_issue_labels,
+    reflect_issue,
+    serialize_projection_digests,
+)
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 _LEGACY_PROJECT_ID = "legacy-{}-{}"
@@ -82,6 +113,8 @@ _ITEM_CONTENT_INVALID = "workflow item issue #{} content is invalid"
 _ITEM_CONTENT_DISAGREES = "workflow item issue #{} content pointer disagrees"
 _ITEM_ID_SQL = "SELECT item_id FROM github_item WHERE issue_number = :issue_number"
 _BASE_REVISION_SQL = "SELECT base_revision FROM github_item WHERE issue_number = :issue_number"
+_ISSUE_PROJECTION_VERSION = 1
+_PROJECTION_REPAIRED_ISSUE = "github_store_projection_repaired_issue"
 _EMPTY = ""
 logger = get_logger(__name__)
 
@@ -114,23 +147,9 @@ class GitHubWorkflowSync:
             for issue in issues
             if issue.creator == self.assignment.actor.login
         }
-        ledger_issue, ledger_entries = _find_ledger(
-            comments_by_issue, {issue.number: issue for issue in issues}, self.assignment.actor.login
+        ledger_issue, ledger_entries, updates = _select_rebuild_records(
+            issues, comments_by_issue, self.assignment.actor.login
         )
-        committed_ids = {entry.transaction_id for entry, _comment in ledger_entries}
-        updates: list[tuple[GitHubIssue, WorkflowRecord, GitHubComment, ItemRevision]] = []
-        for issue in issues:
-            if issue.creator != self.assignment.actor.login:
-                continue
-            record, record_comment = _find_record(
-                comments_by_issue.get(issue.number, ()), self.assignment.actor.login, issue.number
-            )
-            if record is None or record_comment is None:
-                continue
-            revision = effective_revision(record, committed_ids)
-            if revision.todo.get(WorkflowField.STATUS) == WorkflowTodoStatus.PURGED:
-                continue
-            updates.append((issue, record, record_comment, revision))
 
         resolved: list[tuple[GitHubIssue, GitHubComment, WorkingCopyItemSnapshot, ItemRevision]] = []
         for issue, _record, record_comment, revision in updates:
@@ -147,6 +166,7 @@ class GitHubWorkflowSync:
                     session,
                     snapshot.item_id,
                     issue_number=issue.number,
+                    issue_id=issue.issue_id,
                     node_id=issue.node_id,
                     record_comment_id=record_comment.database_id,
                     revision=revision.revision,
@@ -185,22 +205,11 @@ class GitHubWorkflowSync:
             for issue in issues
             if issue.creator == self.assignment.actor.login
         }
-        ledger_issue, ledger_entries = _find_ledger(
-            comments_by_issue, {issue.number: issue for issue in issues}, self.assignment.actor.login
+        ledger_issue, ledger_entries, updates = _select_rebuild_records(
+            issues, comments_by_issue, self.assignment.actor.login
         )
-        committed_ids = {entry.transaction_id for entry, _comment in ledger_entries}
         resolved: list[tuple[GitHubIssue, GitHubComment, WorkingCopyItemSnapshot, ItemRevision]] = []
-        for issue in issues:
-            if issue.creator != self.assignment.actor.login:
-                continue
-            record, record_comment = _find_record(
-                comments_by_issue.get(issue.number, ()), self.assignment.actor.login, issue.number
-            )
-            if record is None or record_comment is None:
-                continue
-            revision = effective_revision(record, committed_ids)
-            if revision.todo.get(WorkflowField.STATUS) == WorkflowTodoStatus.PURGED:
-                continue
+        for issue, _record, record_comment, revision in updates:
             snapshot = self._snapshot_from_revision_sync(issue.number, revision, comments_by_issue[issue.number])
             resolved.append((issue, record_comment, snapshot, revision))
         ledger_comment_id = max((comment.database_id for _entry, comment in ledger_entries), default=None)
@@ -213,6 +222,7 @@ class GitHubWorkflowSync:
                         session,
                         snapshot.item_id,
                         issue_number=issue.number,
+                        issue_id=issue.issue_id,
                         node_id=issue.node_id,
                         record_comment_id=record_comment.database_id,
                         revision=revision.revision,
@@ -245,29 +255,13 @@ class GitHubWorkflowSync:
         """Adopt newer committed revisions, repair trusted record edits and drain reflections."""
         async with self.store._session() as read_session:
             repository_state = await read_session.run_sync(lambda session: read_repository_bookkeeping(session))
+        projection_repair_active = await self._repair_repository_projection_if_needed(repository_state)
         previous_issue_watermark = _str_or_none(repository_state.get(WorkflowField.ISSUE_WATERMARK))
         previous_ledger_watermark = _int_or_none(repository_state.get(WorkflowField.LEDGER_WATERMARK))
         since = _parse_timestamp(previous_issue_watermark)
-        issues = await self.io.async_list_issues(since)
+        issues: Sequence[GitHubIssue] = await self.io.async_list_issues(since)
         ledger_issue_number = _int_or_none(repository_state.get(WorkflowField.LEDGER_ISSUE_NUMBER))
-        ledger_issue = _issue_by_number(issues, ledger_issue_number)
-        discovered_entries: list[tuple[LedgerCommit, GitHubComment]] = []
-        if ledger_issue is None and ledger_issue_number is not None:
-            issues = await self.io.async_list_issues()
-            ledger_issue = _issue_by_number(issues, ledger_issue_number)
-        if ledger_issue is None:
-            issues = await self.io.async_list_issues()
-            bot_issues = [issue for issue in issues if issue.creator == self.assignment.actor.login]
-            comments_by_issue = {issue.number: await self.io.async_read_comments(issue.number) for issue in bot_issues}
-            ledger_issue, discovered_entries = _find_ledger(
-                comments_by_issue, {issue.number: issue for issue in bot_issues}, self.assignment.actor.login
-            )
-        all_ledger: list[tuple[LedgerCommit, GitHubComment]] = list(discovered_entries)
-        if ledger_issue is not None and not all_ledger:
-            for comment in await self.io.async_read_comments(ledger_issue.number):
-                commit = _parse_ledger_comment(comment, self.assignment.actor.login, ledger_issue.number)
-                if commit is not None:
-                    all_ledger.append((commit, comment))
+        issues, ledger_issue, all_ledger = await self._read_ledger_for_refresh(issues, ledger_issue_number)
         for _entry, comment in all_ledger:
             trusted = _trusted_body(comment, self.assignment.actor.login)
             if trusted is not None and comment.body != trusted:
@@ -278,6 +272,7 @@ class GitHubWorkflowSync:
             if previous_ledger_watermark is None or comment.database_id > previous_ledger_watermark
         ]
         committed_ids = {entry.transaction_id for entry, _comment in all_ledger}
+        restored_issue_ids = await self._restore_missing_issue_ids()
         remote_updates, unverifiable, reflection_overrides = await self._collect_remote_updates(
             issues, new_ledger, committed_ids
         )
@@ -290,6 +285,8 @@ class GitHubWorkflowSync:
         applied_purges: set[str] = set()
 
         def apply(session: Session) -> None:
+            for item_id, issue_id in restored_issue_ids:
+                save_item_issue_id(session, item_id, issue_id)
             for item_id, reason in unverifiable:
                 mark_item_unverifiable(session, item_id, reason)
             for issue, record_comment, revision, snapshot, collected_base_revision in remote_updates:
@@ -308,6 +305,7 @@ class GitHubWorkflowSync:
                         session,
                         snapshot.item_id,
                         issue_number=issue.number,
+                        issue_id=issue.issue_id,
                         node_id=issue.node_id,
                         record_comment_id=record_comment.database_id,
                         revision=revision.revision,
@@ -321,6 +319,7 @@ class GitHubWorkflowSync:
                     session,
                     snapshot.item_id,
                     issue_number=issue.number,
+                    issue_id=issue.issue_id,
                     node_id=issue.node_id,
                     record_comment_id=record_comment.database_id,
                     revision=revision.revision,
@@ -341,6 +340,7 @@ class GitHubWorkflowSync:
             set_refresh_watermarks(session, latest_issue_watermark, latest_ledger_watermark)
 
         await self._run_async_transaction(apply)
+        await close_resolved_questions(self.store)
         owed_overrides = {
             item_id: reflection_overrides[item_id] for item_id in applied_purges if item_id in reflection_overrides
         }
@@ -350,11 +350,162 @@ class GitHubWorkflowSync:
         if repaired_reflections:
 
             def clear_reflections(session: Session) -> None:
-                for item_id in repaired_reflections:
+                for item_id, projection_digest in repaired_reflections.items():
+                    save_issue_projection_digest(session, item_id, projection_digest)
                     clear_reflection_owed(session, item_id)
 
             await self._run_async_transaction(clear_reflections)
+        if projection_repair_active:
+            await self._complete_projection_repair_if_ready()
         return len(applied_items)
+
+    async def _read_ledger_for_refresh(
+        self, issues: Sequence[GitHubIssue], ledger_issue_number: int | None
+    ) -> tuple[Sequence[GitHubIssue], GitHubIssue | None, list[tuple[LedgerCommit, GitHubComment]]]:
+        ledger_issue = _issue_by_number(issues, ledger_issue_number)
+        discovered: list[tuple[LedgerCommit, GitHubComment]] = []
+        if ledger_issue is None and ledger_issue_number is not None:
+            issues = await self.io.async_list_issues()
+            ledger_issue = _issue_by_number(issues, ledger_issue_number)
+        if ledger_issue is None:
+            issues = await self.io.async_list_issues()
+            bot_issues = [issue for issue in issues if issue.creator == self.assignment.actor.login]
+            comments_by_issue = {issue.number: await self.io.async_read_comments(issue.number) for issue in bot_issues}
+            ledger_issue, discovered = _find_ledger(
+                comments_by_issue, {issue.number: issue for issue in bot_issues}, self.assignment.actor.login
+            )
+        entries = list(discovered)
+        if ledger_issue is not None and not entries:
+            for comment in await self.io.async_read_comments(ledger_issue.number):
+                commit = _parse_ledger_comment(comment, self.assignment.actor.login, ledger_issue.number)
+                if commit is not None:
+                    entries.append((commit, comment))
+        return issues, ledger_issue, entries
+
+    async def _repair_repository_projection_if_needed(self, repository_state: Mapping[str, object]) -> bool:
+        version = _int_or_none(repository_state.get(WorkingCopyField.PROJECTION_VERSION)) or 0
+        if version >= _ISSUE_PROJECTION_VERSION:
+            return False
+        cursor = _int_or_none(repository_state.get(WorkingCopyField.PROJECTION_REPAIR_AFTER_ISSUE)) or 0
+
+        def mark_owed(session: Session) -> None:
+            mark_all_issue_reflections_owed(session)
+
+        await self._run_async_transaction(mark_owed)
+        issues = sorted(
+            (issue for issue in await self.io.async_list_issues() if issue.creator == self.assignment.actor.login),
+            key=lambda issue: issue.number,
+        )
+        async with self.io.paced_mutations() as pacing:
+            labels = await self.io.async_list_repository_labels()
+            for label_name in labels:
+                if label_name.startswith("teleclaude:"):
+                    await self.io.async_delete_label(label_name)
+            for label_definition in platform_issue_labels():
+                await self.io.async_ensure_label(
+                    label_definition.name, label_definition.color, label_definition.description
+                )
+            for issue in issues:
+                if issue.number <= cursor:
+                    continue
+                comments = await self.io.async_read_comments(issue.number)
+                await self._backfill_issue_comments(issue, comments)
+                await pacing.wait_between_items()
+
+                def mark_complete(session: Session, number: int = issue.number) -> None:
+                    save_projection_repair_progress(session, number)
+
+                await self._run_async_transaction(mark_complete)
+                logger.debug(
+                    _PROJECTION_REPAIRED_ISSUE,
+                    issue_number=issue.number,
+                    comment_count=len(comments),
+                )
+        return True
+
+    async def _backfill_issue_comments(self, issue: GitHubIssue, comments: Sequence[GitHubComment]) -> None:
+        bot_login = self.assignment.actor.login
+        record: WorkflowRecord | None = None
+        if any(
+            (trusted := _trusted_body(comment, bot_login)) is not None and has_record_marker(trusted)
+            for comment in comments
+        ):
+            record, _record_comment = _find_record(comments, bot_login, issue.number)
+        artifact_ordinals: Mapping[tuple[str, str], int] = {}
+        if record is not None:
+            revision = record.pending.revision if record.pending is not None else record.committed
+            artifact_ordinals = _artifact_version_ordinals(revision, comments, bot_login)
+        for comment in comments:
+            if comment.author != bot_login:
+                continue
+            trusted = _trusted_body(comment, bot_login)
+            if trusted is None:
+                continue
+            replacement = trusted
+            if has_record_marker(trusted):
+                record = parse_record_comment(trusted)
+                revision = record.pending.revision if record.pending is not None else record.committed
+                snapshot = _snapshot_from_revision(revision, comments, bot_login, issue.number)
+                replacement = reenvelope_record_comment(trusted, record, _effective_state_mapping(snapshot))
+            elif has_ledger_marker(trusted):
+                replacement = reenvelope_ledger_comment(trusted, parse_ledger_commit(trusted))
+            elif is_content_comment(trusted):
+                header, content = parse_content_comment(trusted)
+                fields: tuple[tuple[CommentEnvelopeField, Scalar], ...]
+                if header.name == WorkflowField.STATE:
+                    fields = (
+                        (CommentEnvelopeField.ACTION, CommentEnvelopeAction.RECORD),
+                        (CommentEnvelopeField.REVISION, header.version),
+                    )
+                else:
+                    ordinal = artifact_ordinals.get((header.name, str(header.version)))
+                    if ordinal is None:
+                        raise GitHubWorkflowSyncRefused(_ITEM_CONTENT_INCOMPLETE.format(issue.number))
+                    fields = (
+                        (CommentEnvelopeField.ACTION, CommentEnvelopeAction.ARTIFACT),
+                        (CommentEnvelopeField.NAME, header.name),
+                        (CommentEnvelopeField.VERSION, ordinal),
+                    )
+                history_payload = (
+                    artifact_history_payload_line(trusted) if has_artifact_history_marker(trusted) else None
+                )
+                replacement = render_enveloped_content_comment(
+                    header, content, fields, history_payload_line=history_payload
+                )
+            elif has_artifact_history_marker(trusted):
+                node = parse_artifact_history_node(trusted)
+                if node.action is ArtifactHistoryAction.REMOVED:
+                    fields = (
+                        (CommentEnvelopeField.ACTION, CommentEnvelopeAction.ARTIFACT_REMOVED),
+                        (CommentEnvelopeField.NAME, node.name),
+                    )
+                else:
+                    ordinal = artifact_ordinals.get(
+                        (node.name, str(node.remote_version_id or node.metadata.get(WorkflowField.VERSION_ID)))
+                    )
+                    if ordinal is None:
+                        raise GitHubWorkflowSyncRefused(_ITEM_CONTENT_INCOMPLETE.format(issue.number))
+                    fields = (
+                        (CommentEnvelopeField.ACTION, CommentEnvelopeAction.ARTIFACT),
+                        (CommentEnvelopeField.NAME, node.name),
+                        (CommentEnvelopeField.VERSION, ordinal),
+                    )
+                replacement = reenvelope_artifact_history_comment(trusted, fields)
+            if replacement != comment.body:
+                await self.io.async_update_comment(comment.database_id, replacement)
+
+    async def _complete_projection_repair_if_ready(self) -> None:
+        def complete_if_ready(session: Session) -> None:
+            owed = owed_reflections(session)
+            outstanding_issue_reflections = any(
+                (bookkeeping := item_bookkeeping(session, item_id)) is not None
+                and bookkeeping.get(WorkflowField.ISSUE_NUMBER) is not None
+                for item_id in owed
+            )
+            if not outstanding_issue_reflections:
+                complete_projection_repair(session, _ISSUE_PROJECTION_VERSION)
+
+        await self._run_async_transaction(complete_if_ready)
 
     async def _collect_remote_updates(
         self,
@@ -390,6 +541,8 @@ class GitHubWorkflowSync:
             if record is None or record_comment is None:
                 continue
             revision = effective_revision(record, committed_transactions)
+            if not is_repository_work(revision.state):
+                continue
             trusted = _trusted_body(record_comment, self.assignment.actor.login)
             if trusted is not None and record_comment.body != trusted:
                 await self.io.async_update_comment(record_comment.database_id, trusted)
@@ -406,6 +559,21 @@ class GitHubWorkflowSync:
                 continue
             updates.append((issue, record_comment, revision, snapshot, base_revision))
         return updates, unverifiable, reflection_overrides
+
+    async def _restore_missing_issue_ids(self) -> list[tuple[str, int]]:
+        """Backfill REST issue IDs on working-copy rows written before relation projection."""
+        async with self.store._session() as session:
+            missing = await session.run_sync(items_without_issue_id)
+        restored: list[tuple[str, int]] = []
+        for item_id, issue_number in missing:
+            try:
+                issue = await self.io.async_get_issue(issue_number)
+            except GitHubIORefused as error:
+                if error.reason is GitHubIOFailure.NOT_FOUND:
+                    continue
+                raise
+            restored.append((item_id, issue.issue_id))
+        return restored
 
     async def _repair_history_bodies(self, revision: ItemRevision, comments: Sequence[GitHubComment]) -> None:
         by_id = {comment.database_id: comment for comment in comments}
@@ -433,16 +601,23 @@ class GitHubWorkflowSync:
         self,
         overrides: Mapping[str, tuple[int, WorkingCopyItemSnapshot]],
         blocked_items: set[str],
-    ) -> list[str]:
+    ) -> dict[str, str]:
         async with self.store._session() as read_session:
             owed = await read_session.run_sync(lambda session: owed_reflections(session))
-            completed: list[str] = []
+            completed: dict[str, str] = {}
             for item_id in owed:
                 if item_id in blocked_items:
                     continue
                 override = overrides.get(item_id)
                 if override is not None:
                     issue_number, snapshot = override
+
+                    def read_override_bookkeeping(
+                        session: Session, target: str = item_id
+                    ) -> Mapping[str, object] | None:
+                        return item_bookkeeping(session, target)
+
+                    bookkeeping = await read_session.run_sync(read_override_bookkeeping)
                 else:
 
                     def read_snapshot(session: Session, target: str = item_id) -> WorkingCopyItemSnapshot | None:
@@ -458,18 +633,24 @@ class GitHubWorkflowSync:
                     issue_number = _int_or_none(bookkeeping.get(WorkflowField.ISSUE_NUMBER))
                     if issue_number is None:
                         continue
-                reflection = reflect_issue(snapshot)
-                for label in reflection.labels:
-                    await self.io.async_ensure_label(label)
-                await self.io.async_update_issue(
-                    issue_number,
-                    title=reflection.title,
-                    body=reflection.body,
-                    state=reflection.state,
-                    state_reason=reflection.state_reason,
-                    labels=list(reflection.labels),
+                if bookkeeping is None:
+                    continue
+                issue_id = _int_or_none(bookkeeping.get(WorkingCopyField.ISSUE_ID))
+                if issue_id is None:
+                    continue
+                relations = await read_session.run_sync(issue_relations, snapshot, {})
+
+                reflection = reflect_issue(
+                    snapshot,
+                    parent_issue_number=relations.parent_issue_number,
+                    parent_issue_id=relations.parent_issue_id,
+                    blocked_by_issue_ids=relations.blocked_by_issue_ids,
+                    waiting_assignees=await read_session.run_sync(waiting_person_handles, item_id, snapshot),
                 )
-                completed.append(item_id)
+                previous = parse_projection_digests(bookkeeping.get(WorkingCopyField.PROJECTION_DIGEST))
+                changed = changed_projection_parts(reflection, previous)
+                await self.io.async_reflect_issue(issue_number, issue_id, reflection, changed)
+                completed[item_id] = serialize_projection_digests(reflection.projection_digests)
         return completed
 
     async def _item_id_for_issue(self, issue_number: int) -> str | None:
@@ -518,6 +699,34 @@ def _find_ledger(
         return find_ledger(comments_by_issue, issues_by_number, bot_login)
     except GitHubLedgerRefused as error:
         raise GitHubWorkflowSyncRefused(str(error)) from error
+
+
+def _select_rebuild_records(
+    issues: Sequence[GitHubIssue],
+    comments_by_issue: Mapping[int, Sequence[GitHubComment]],
+    bot_login: str,
+) -> tuple[
+    GitHubIssue | None,
+    list[tuple[LedgerCommit, GitHubComment]],
+    list[tuple[GitHubIssue, WorkflowRecord, GitHubComment, ItemRevision]],
+]:
+    """Select the committed issue revisions shared by both rebuild entry points."""
+    ledger_issue, ledger_entries = _find_ledger(comments_by_issue, {issue.number: issue for issue in issues}, bot_login)
+    committed_ids = {entry.transaction_id for entry, _comment in ledger_entries}
+    updates: list[tuple[GitHubIssue, WorkflowRecord, GitHubComment, ItemRevision]] = []
+    for issue in issues:
+        if issue.creator != bot_login:
+            continue
+        record, record_comment = _find_record(comments_by_issue.get(issue.number, ()), bot_login, issue.number)
+        if record is None or record_comment is None:
+            continue
+        revision = effective_revision(record, committed_ids)
+        if not is_repository_work(revision.state):
+            continue
+        if revision.todo.get(WorkflowField.STATUS) == WorkflowTodoStatus.PURGED:
+            continue
+        updates.append((issue, record, record_comment, revision))
+    return ledger_issue, ledger_entries, updates
 
 
 def _parse_ledger_comment(comment: GitHubComment, bot_login: str, issue_number: int) -> LedgerCommit | None:
@@ -683,6 +892,48 @@ def _content_from_pointer(
         return join_content_comments(parts)
     except ValueError:
         raise GitHubWorkflowSyncRefused(_ITEM_CONTENT_INCOMPLETE.format(issue_number)) from None
+
+
+def _effective_state_mapping(snapshot: WorkingCopyItemSnapshot) -> Mapping[str, object]:
+    if snapshot.state is None:
+        return {}
+    value = snapshot.state.get(WorkflowField.STATE)
+    if not isinstance(value, str):
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return cast(Mapping[str, object], parsed) if isinstance(parsed, dict) else {}
+
+
+def _artifact_version_ordinals(
+    revision: ItemRevision,
+    comments: Sequence[GitHubComment],
+    bot_login: str,
+) -> Mapping[tuple[str, str], int]:
+    ordinals: dict[tuple[str, str], int] = {}
+    for name, pointers in revision.artifacts.items():
+        if not pointers:
+            continue
+        history = resolve_artifact_history(
+            latest_artifact_pointer(pointers), revision.item_id, name, comments, bot_login
+        )
+        seen: set[str] = set()
+        ordinal = 0
+        for version in reversed(history):
+            if version.action is not ArtifactHistoryAction.VERSION:
+                continue
+            pointer = version.pointer
+            identity = pointer.remote_version_id or str(pointer.version)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            ordinal += 1
+            for value in (pointer.remote_version_id, pointer.version, pointer.metadata.get(WorkflowField.VERSION_ID)):
+                if value is not None:
+                    ordinals[(name, str(value))] = ordinal
+    return ordinals
 
 
 def _save_artifact_pointers(session: Session, item_id: str, revision: ItemRevision) -> None:

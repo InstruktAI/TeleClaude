@@ -30,7 +30,7 @@ from pydantic import ValidationError
 from redis.exceptions import RedisError
 
 from teleclaude.api_models import PERSON_MESSAGE_PATH, PersonMessageRequest, PersonMessageResponse
-from teleclaude.caller_identity import PersonCliCaller, SystemCliCaller, caller_from_principal, cleared_command_path
+from teleclaude.caller_identity import cleared_command_path
 from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import load_global_config, load_person_config_for_entry
 from teleclaude.config.machine import config
@@ -43,8 +43,14 @@ from teleclaude.core.integration.session_address import (
     SessionAddressMissed,
     resolve_session_conversation_url,
 )
-from teleclaude.core.organization import platform_admin_roster
+from teleclaude.core.person_message_recipients import (
+    RecipientUnresolvableError as RecipientUnresolvableError,
+)
+from teleclaude.core.person_message_recipients import (
+    resolve_person_message_recipients,
+)
 from teleclaude.core.relay_carrier import carry_request
+from teleclaude.core.workflow_store.github_store import surface_github_question
 from teleclaude.paths import PEOPLE_DIR
 from teleclaude.services.discord import (
     DISCORD_MAX_MESSAGE_LENGTH,
@@ -62,14 +68,7 @@ DEFAULT_EMAIL_SUBJECT = "TeleClaude message"
 DISCORD_BACKLINK_MISS_LOG = "discord session backlink unavailable"
 DISCORD_BACKLINK_BUILT_LOG = "discord session backlink built"
 DISCORD_MESSAGE_TRUNCATED_LOG = "discord message truncated"
-_NO_CALLER_PRINCIPAL = "The caller has no principal; name a recipient with --recipient <slug>."
-_HUMAN_PRINCIPAL_UNRESOLVABLE = (
-    "The caller's human principal {email} does not resolve to an addressable roster person; "
-    "name a recipient with --recipient <slug>."
-)
-_NO_PLATFORM_ADMINS = (
-    "The system principal has no platform admins on the people roster; name a recipient with --recipient <slug>."
-)
+_GITHUB_QUESTION_SURFACE_FAILED = "github workflow question surface failed"
 _ADMIN_MISSING_SLUG = "The platform admin has no addressable slug."
 _ADMINS_UNREACHED = "No platform admin received the message: {failures}"
 _CHANNEL_NOT_ENABLED = "The {channel} channel is not enabled on the master; it cannot carry this message."
@@ -106,10 +105,6 @@ class ChannelCredentialError(ValueError):
 
 class ChannelCapabilityError(ValueError):
     """The resolved channel cannot carry the requested delivery (e.g. a file)."""
-
-
-class RecipientUnresolvableError(ValueError):
-    """The caller's authority does not resolve to an addressable recipient."""
 
 
 class PersonMessageOwnerUnavailable(RuntimeError):
@@ -195,27 +190,6 @@ class ResolvedPersonChannel:
 
     channel: MessagingChannel
     target: str
-
-
-def resolve_person_message_recipients(
-    recipient: str | None,
-    principal: str | None,
-) -> tuple[str | PersonEntry, ...]:
-    """Resolve an explicit recipient or the addressable people under a principal."""
-    if recipient is not None:
-        return (recipient,)
-
-    caller = caller_from_principal(principal)
-    if isinstance(caller, PersonCliCaller):
-        if caller.person_slug is not None:
-            return (caller.person_slug,)
-        raise RecipientUnresolvableError(_HUMAN_PRINCIPAL_UNRESOLVABLE.format(email=caller.email or principal))
-    if isinstance(caller, SystemCliCaller):
-        admins = tuple(platform_admin_roster())
-        if admins:
-            return admins
-        raise RecipientUnresolvableError(_NO_PLATFORM_ADMINS)
-    raise RecipientUnresolvableError(_NO_CALLER_PRINCIPAL)
 
 
 @dataclass(frozen=True)
@@ -400,7 +374,7 @@ async def send_person_message_to_caller(
                 backlink_url=carried.backlink_url,
             )
     if owner is not None:
-        return await _carried_request(
+        result = await _carried_request(
             owner,
             recipient=recipient,
             principal=principal,
@@ -411,7 +385,15 @@ async def send_person_message_to_caller(
             origin_session_id=origin_session_id,
             cleared_command=cleared_command,
         )
-    return await _deliver_to_recipients(
+        await _surface_origin_question(
+            result,
+            recipient=recipient,
+            principal=principal,
+            text=text,
+            origin_session_id=origin_session_id,
+        )
+        return result
+    result = await _deliver_to_recipients(
         recipient,
         principal,
         text,
@@ -421,6 +403,49 @@ async def send_person_message_to_caller(
         origin_session_id=origin_session_id,
         backlink_url=None,
     )
+    await _surface_origin_question(
+        result,
+        recipient=recipient,
+        principal=principal,
+        text=text,
+        origin_session_id=origin_session_id,
+    )
+    return result
+
+
+async def _surface_origin_question(
+    result: PersonMessageDeliveryResult,
+    *,
+    recipient: str | None,
+    principal: str | None,
+    text: str,
+    origin_session_id: str | None,
+) -> None:
+    """Project a delivered message to the origin item's GitHub issue when it is selected there."""
+    if not origin_session_id or not result.deliveries:
+        return
+    try:
+        origin = await db.get_session(origin_session_id)
+        if origin is None or origin.project_path is None or origin.working_slug is None:
+            return
+        recipients = resolve_person_message_recipients(recipient, principal)
+        session_link = await _origin_backlink_url(origin_session_id)
+        await surface_github_question(
+            origin.project_path,
+            origin.working_slug,
+            origin_session_id,
+            origin.role,
+            text,
+            session_link,
+            recipients,
+        )
+    except Exception as error:
+        logger.warning(
+            _GITHUB_QUESTION_SURFACE_FAILED,
+            session_id=origin_session_id,
+            reason=type(error).__name__,
+            exc_info=True,
+        )
 
 
 async def _deliver_to_recipients(

@@ -43,6 +43,7 @@ from teleclaude.core.workflow_store.github_record import (
     Row,
     render_ledger_commit,
 )
+from teleclaude.core.workflow_store.github_reflection import is_repository_work
 from teleclaude.core.workflow_store.github_store import GitHubWorkflowStore, get_github_workflow_store
 from teleclaude.core.workflow_store.github_sync import GitHubWorkflowSyncRefused
 from teleclaude.core.workflow_store.local_store import get_local_workflow_store
@@ -70,6 +71,7 @@ _REPORT_LINES = "\n"
 _REPORT_MOVED = "moved: {}"
 _REPORT_PRESENT = "already present: {}"
 _REPORT_DETACHED = "moved without finished group: {}"
+_REPORT_KEPT = "kept on this computer: {}"
 _REPORT_NOT_MOVED = "not moved: {}"
 _REPORT_PROJECT_RECORDS = "project records moved: {}"
 _REPORT_STOP_CAUSE = "stop cause: {}"
@@ -113,6 +115,7 @@ class SwitchReport:
     moved: tuple[str, ...] = ()
     already_present: tuple[str, ...] = ()
     detached: tuple[str, ...] = ()
+    kept_on_computer: tuple[str, ...] = ()
     not_moved: tuple[tuple[str, str], ...] = ()
     project_records_moved: int = 0
     stop_cause: str | None = None
@@ -124,6 +127,7 @@ class SwitchReport:
             _REPORT_MOVED.format(_REPORT_JOIN.join(self.moved) or _EMPTY),
             _REPORT_PRESENT.format(_REPORT_JOIN.join(self.already_present) or _EMPTY),
             _REPORT_DETACHED.format(_REPORT_JOIN.join(self.detached) or _EMPTY),
+            _REPORT_KEPT.format(_REPORT_JOIN.join(self.kept_on_computer) or _EMPTY),
             _REPORT_NOT_MOVED.format(
                 _REPORT_JOIN.join(_REPORT_ITEM_REASON.format(slug, reason) for slug, reason in self.not_moved) or _EMPTY
             ),
@@ -139,6 +143,7 @@ class _MoveCounts:
     moved: list[str] = field(default_factory=list)
     already_present: list[str] = field(default_factory=list)
     detached: list[str] = field(default_factory=list)
+    kept_on_computer: list[str] = field(default_factory=list)
     not_moved: list[tuple[str, str]] = field(default_factory=list)
     project_records_moved: int = 0
     stop_cause: str | None = None
@@ -310,8 +315,12 @@ async def _move_local_source(store: TodosDb, target: GitHubWorkflowStore) -> Swi
                 counts.not_moved.append((item_id, _SOURCE_DISAPPEARED))
                 continue
             slug = str(snapshot.todo[_SLUG])
+            repository_work = is_repository_work(snapshot.state)
             if item_id in target_ids:
-                counts.already_present.append(slug)
+                if repository_work:
+                    counts.already_present.append(slug)
+                else:
+                    counts.kept_on_computer.append(slug)
                 continue
             conflict = target_by_slug.get(slug)
             if conflict is not None:
@@ -329,8 +338,11 @@ async def _move_local_source(store: TodosDb, target: GitHubWorkflowStore) -> Swi
                 counts.stop_cause = _ITEM_RESTORE_REFUSED.format(slug, reason)
                 break
             target_ids = target_ids | {item_id}
-            counts.moved.append(slug)
-            if item_id in selected.detached_item_ids:
+            if repository_work:
+                counts.moved.append(slug)
+            else:
+                counts.kept_on_computer.append(slug)
+            if repository_work and item_id in selected.detached_item_ids:
                 counts.detached.append(slug)
             await pacing.wait_between_items()
         if counts.stop_cause is None:
@@ -339,6 +351,7 @@ async def _move_local_source(store: TodosDb, target: GitHubWorkflowStore) -> Swi
         moved=tuple(counts.moved),
         already_present=tuple(counts.already_present),
         detached=tuple(counts.detached),
+        kept_on_computer=tuple(counts.kept_on_computer),
         not_moved=tuple(counts.not_moved),
         project_records_moved=counts.project_records_moved,
         stop_cause=counts.stop_cause,

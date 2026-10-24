@@ -14,9 +14,12 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from teleclaude.core.todos_db._github_questions import initialize_question_bookkeeping
+
 _BOOKKEEPING_DDL = (
     "CREATE TABLE IF NOT EXISTS github_item (item_id TEXT PRIMARY KEY, issue_number INTEGER, node_id TEXT, "
-    "record_comment_id TEXT, revision INTEGER NOT NULL DEFAULT 0, base_revision INTEGER NOT NULL DEFAULT 0)",
+    "issue_id INTEGER, record_comment_id TEXT, revision INTEGER NOT NULL DEFAULT 0, base_revision INTEGER NOT NULL DEFAULT 0, "
+    "projection_digest TEXT)",
     "CREATE TABLE IF NOT EXISTS github_artifact_content (item_id TEXT NOT NULL, version_id INTEGER NOT NULL, "
     "remote_version_id TEXT, digest TEXT, comment_ids TEXT NOT NULL, PRIMARY KEY(item_id, version_id), "
     "UNIQUE(item_id, remote_version_id))",
@@ -28,7 +31,8 @@ _BOOKKEEPING_DDL = (
     "CREATE TABLE IF NOT EXISTS github_refresh_watermark (name TEXT PRIMARY KEY, value TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS github_repository (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), "
     "ledger_issue_number INTEGER, ledger_node_id TEXT, issue_watermark TEXT, ledger_watermark TEXT, "
-    "initialized INTEGER NOT NULL DEFAULT 0)",
+    "initialized INTEGER NOT NULL DEFAULT 0, projection_version INTEGER NOT NULL DEFAULT 0, "
+    "projection_repair_after_issue INTEGER NOT NULL DEFAULT 0)",
     "INSERT OR IGNORE INTO github_repository(singleton) VALUES (1)",
     "CREATE TABLE IF NOT EXISTS working_copy_pending_item (item_id TEXT PRIMARY KEY)",
     "CREATE TABLE IF NOT EXISTS working_copy_pending_project (table_name TEXT NOT NULL, row_id INTEGER NOT NULL, "
@@ -39,7 +43,7 @@ _BOOKKEEPING_DDL = (
 )
 _REPOSITORY_COLUMNS_SQL = "PRAGMA table_info(github_repository)"
 _TABLE_INFO_SQL = "PRAGMA table_info({})"
-_ADD_COLUMN_SQL = "ALTER TABLE {} ADD COLUMN {} TEXT"
+_ADD_COLUMN_SQL = "ALTER TABLE {} ADD COLUMN {} {}"
 _EMPTY = ""
 _ARTIFACT_DIGEST_REQUIRED = "Restored artifact version is missing its digest"
 _INITIALIZED_COLUMN_DDL = "ALTER TABLE github_repository ADD COLUMN initialized INTEGER NOT NULL DEFAULT 0"
@@ -82,10 +86,12 @@ class WorkingCopyField(StrEnum):
     ID = "id"
     ITEM_ID = "item_id"
     ISSUE_NUMBER = "issue_number"
+    ISSUE_ID = "issue_id"
     NODE_ID = "node_id"
     RECORD_COMMENT_ID = "record_comment_id"
     REVISION = "revision"
     BASE_REVISION = "base_revision"
+    PROJECTION_DIGEST = "projection_digest"
     TABLE_NAME = "table_name"
     ROW_ID = "row_id"
     REMOTE_VERSION_ID = "remote_version_id"
@@ -96,6 +102,8 @@ class WorkingCopyField(StrEnum):
     VERSION_ID = "version_id"
     DIGEST = "digest"
     SLUG = "slug"
+    STATUS = "status"
+    GROUP_ID = "group_id"
     DEPENDS_ON = "depends_on"
     NAME = "name"
     CONTENT = "content"
@@ -109,6 +117,8 @@ class WorkingCopyField(StrEnum):
     LEDGER_NODE_ID = "ledger_node_id"
     ISSUE_WATERMARK = "issue_watermark"
     LEDGER_WATERMARK = "ledger_watermark"
+    PROJECTION_VERSION = "projection_version"
+    PROJECTION_REPAIR_AFTER_ISSUE = "projection_repair_after_issue"
     SUPPRESSED = "suppressed"
     SINGLETON = "singleton"
 
@@ -132,6 +142,12 @@ class WorkingCopySql(StrEnum):
     HELD_ITEM_IDS = "SELECT CAST(id AS TEXT) FROM todo ORDER BY id"
     PROJECT_IDS = "SELECT id FROM {} ORDER BY id"
     TODO_BY_ID = "SELECT * FROM todo WHERE id = :item_id"
+    TODO_BY_SLUG = "SELECT id, status FROM todo WHERE slug = :slug"
+    DEPENDENTS_BY_SLUG = (
+        "SELECT DISTINCT CAST(t.id AS TEXT) FROM todo_deps AS d JOIN todo AS t ON t.slug = d.slug "
+        "WHERE d.depends_on = :slug"
+    )
+    GROUP_MEMBERS_BY_ID = "SELECT CAST(id AS TEXT) FROM todo WHERE group_id = :group_id"
     STATE_BY_ID = "SELECT * FROM todo_state WHERE id = :item_id"
     DEPENDENCIES_BY_ITEM = (
         "SELECT d.slug, d.depends_on FROM todo_deps AS d JOIN todo AS t ON t.slug = d.slug WHERE t.id = :item_id"
@@ -161,12 +177,20 @@ class WorkingCopySql(StrEnum):
     CLEAR_PENDING_PROJECTS = "DELETE FROM working_copy_pending_project"
     CLEAR_ARTIFACT_MAPS = "DELETE FROM github_artifact_content WHERE item_id = :item_id"
     ITEM_BOOKKEEPING = "SELECT * FROM github_item WHERE item_id = :item_id"
+    ITEMS_WITHOUT_ISSUE_ID = (
+        "SELECT item_id, issue_number FROM github_item WHERE issue_number IS NOT NULL AND issue_id IS NULL"
+    )
+    SAVE_PROJECTION_DIGEST = "UPDATE github_item SET projection_digest = :projection_digest WHERE item_id = :item_id"
+    SAVE_ISSUE_ID = "UPDATE github_item SET issue_id = :issue_id WHERE item_id = :item_id"
     SAVE_ITEM_BOOKKEEPING = (
-        "INSERT INTO github_item(item_id, issue_number, node_id, record_comment_id, revision, base_revision) "
-        "VALUES (:item_id, :issue_number, :node_id, :record_comment_id, :revision, :base_revision) "
-        "ON CONFLICT(item_id) DO UPDATE SET issue_number = excluded.issue_number, node_id = excluded.node_id, "
+        "INSERT INTO github_item(item_id, issue_number, issue_id, node_id, record_comment_id, revision, base_revision, "
+        "projection_digest) VALUES (:item_id, :issue_number, :issue_id, :node_id, :record_comment_id, :revision, "
+        ":base_revision, :projection_digest) ON CONFLICT(item_id) DO UPDATE SET "
+        "issue_number = excluded.issue_number, issue_id = COALESCE(excluded.issue_id, github_item.issue_id), "
+        "node_id = excluded.node_id, "
         "record_comment_id = excluded.record_comment_id, revision = excluded.revision, "
-        "base_revision = excluded.base_revision"
+        "base_revision = excluded.base_revision, "
+        "projection_digest = COALESCE(excluded.projection_digest, github_item.projection_digest)"
     )
     PRUNE_ARTIFACT_MAPS = (
         "DELETE FROM github_artifact_content WHERE item_id = :item_id AND NOT EXISTS ("
@@ -189,6 +213,17 @@ class WorkingCopySql(StrEnum):
     REPOSITORY_BOOKKEEPING = "SELECT * FROM github_repository WHERE singleton = 1"
     REPOSITORY_INITIALIZED = "SELECT initialized FROM github_repository WHERE singleton = 1"
     MARK_REPOSITORY_INITIALIZED = "UPDATE github_repository SET initialized = 1 WHERE singleton = 1"
+    MARK_ALL_ISSUE_REFLECTIONS_OWED = (
+        "INSERT OR IGNORE INTO github_owed_reflection(item_id) "
+        "SELECT item_id FROM github_item WHERE issue_number IS NOT NULL"
+    )
+    SAVE_PROJECTION_REPAIR_PROGRESS = (
+        "UPDATE github_repository SET projection_repair_after_issue = :number WHERE singleton = 1"
+    )
+    COMPLETE_PROJECTION_REPAIR = (
+        "UPDATE github_repository SET projection_version = :projection_version, projection_repair_after_issue = 0 "
+        "WHERE singleton = 1"
+    )
     SAVE_LEDGER_ISSUE = (
         "UPDATE github_repository SET ledger_issue_number = :number, ledger_node_id = :node_id WHERE singleton = 1"
     )
@@ -248,9 +283,17 @@ class WorkingCopyTable(StrEnum):
 
 
 _WORKING_COPY_COLUMN_MIGRATIONS = (
-    (WorkingCopyTable.GITHUB_ARTIFACT_CONTENT, WorkingCopyField.REMOTE_VERSION_ID),
-    (WorkingCopyTable.GITHUB_ARTIFACT_CONTENT, WorkingCopyField.DIGEST),
-    (WorkingCopyTable.GITHUB_PROJECT_RECORD, WorkingCopyField.REMOTE_RECORD_ID),
+    (WorkingCopyTable.GITHUB_ARTIFACT_CONTENT, WorkingCopyField.REMOTE_VERSION_ID, "TEXT"),
+    (WorkingCopyTable.GITHUB_ARTIFACT_CONTENT, WorkingCopyField.DIGEST, "TEXT"),
+    (WorkingCopyTable.GITHUB_PROJECT_RECORD, WorkingCopyField.REMOTE_RECORD_ID, "TEXT"),
+    (WorkingCopyTable.GITHUB_ITEM, WorkingCopyField.ISSUE_ID, "INTEGER"),
+    (WorkingCopyTable.GITHUB_ITEM, WorkingCopyField.PROJECTION_DIGEST, "TEXT"),
+    (WorkingCopyTable.GITHUB_REPOSITORY, WorkingCopyField.PROJECTION_VERSION, "INTEGER NOT NULL DEFAULT 0"),
+    (
+        WorkingCopyTable.GITHUB_REPOSITORY,
+        WorkingCopyField.PROJECTION_REPAIR_AFTER_ISSUE,
+        "INTEGER NOT NULL DEFAULT 0",
+    ),
 )
 
 
@@ -366,19 +409,29 @@ class WorkingCopyItemSnapshot:
     versions: tuple[Mapping[str, object], ...]
 
 
+@dataclass(frozen=True)
+class WorkingCopyIssueRelations:
+    """Resolved GitHub identities for one item's parent and open dependencies."""
+
+    parent_issue_number: int | None
+    parent_issue_id: int | None
+    blocked_by_issue_ids: tuple[int, ...]
+
+
 def initialize_working_copy(path: str | Path) -> None:
     """Install working-copy bookkeeping and change capture after every schema bootstrap."""
     connection = sqlite3.connect(path)
     try:
         for statement in _BOOKKEEPING_DDL:
             connection.execute(statement)
+        initialize_question_bookkeeping(connection)
         repository_columns = {str(row[1]) for row in connection.execute(_REPOSITORY_COLUMNS_SQL)}
         if WorkingCopyField.INITIALIZED not in repository_columns:
             connection.execute(_INITIALIZED_COLUMN_DDL)
-        for table_name, column in _WORKING_COPY_COLUMN_MIGRATIONS:
+        for table_name, column, column_type in _WORKING_COPY_COLUMN_MIGRATIONS:
             columns = {str(row[1]) for row in connection.execute(_TABLE_INFO_SQL.format(table_name))}
             if column not in columns:
-                connection.execute(_ADD_COLUMN_SQL.format(table_name, column))
+                connection.execute(_ADD_COLUMN_SQL.format(table_name, column, column_type))
         for table, item_id in _ITEM_TRIGGERS:
             for operation in TriggerOperation:
                 row = TriggerRow.OLD if operation is TriggerOperation.DELETE else TriggerRow.NEW
@@ -426,6 +479,73 @@ def item_snapshot(session: Session, item_id: str, *, unpushed_only: bool = False
     version_query += WorkingCopySql.VERSION_ORDER.value
     versions = _all(session, version_query, {WorkingCopyField.ITEM_ID: item_id})
     return WorkingCopyItemSnapshot(item_id, todo, state, dependencies, artifacts, versions)
+
+
+def issue_relations(
+    session: Session,
+    snapshot: WorkingCopyItemSnapshot,
+    newly_opened: Mapping[str, tuple[int, int]],
+) -> WorkingCopyIssueRelations:
+    """Resolve current group and dependency targets, including issues opened in this transaction."""
+    parent_issue_number: int | None = None
+    parent_issue_id: int | None = None
+    group_id = snapshot.todo.get(WorkingCopyField.GROUP_ID)
+    if group_id is not None:
+        parent_item_id = str(group_id)
+        parent_row = _one(session, WorkingCopySql.TODO_BY_ID, {WorkingCopyField.ITEM_ID: parent_item_id})
+        if parent_row is not None and parent_row.get(WorkingCopyField.STATUS) == "holder":
+            parent_identity = newly_opened.get(parent_item_id)
+            parent_bookkeeping = item_bookkeeping(session, parent_item_id)
+            if parent_identity is not None:
+                parent_issue_number, parent_issue_id = parent_identity
+            elif parent_bookkeeping is not None:
+                parent_issue_number = _int_or_none(parent_bookkeeping.get(WorkingCopyField.ISSUE_NUMBER))
+                parent_issue_id = _int_or_none(parent_bookkeeping.get(WorkingCopyField.ISSUE_ID))
+
+    blocked_by: set[int] = set()
+    for dependency in snapshot.dependencies:
+        slug = dependency.get(WorkingCopyField.DEPENDS_ON)
+        if not isinstance(slug, str):
+            continue
+        dependency_row = _one(session, WorkingCopySql.TODO_BY_SLUG, {WorkingCopyField.SLUG: slug})
+        if dependency_row is None or dependency_row.get(WorkingCopyField.STATUS) not in {
+            "active",
+            "icebox",
+            "holder",
+        }:
+            continue
+        dependency_item_id = str(dependency_row[WorkingCopyField.ID])
+        dependency_identity = newly_opened.get(dependency_item_id)
+        dependency_bookkeeping = item_bookkeeping(session, dependency_item_id)
+        issue_id = (
+            dependency_identity[1]
+            if dependency_identity is not None
+            else _int_or_none(dependency_bookkeeping.get(WorkingCopyField.ISSUE_ID))
+            if dependency_bookkeeping is not None
+            else None
+        )
+        if issue_id is not None:
+            blocked_by.add(issue_id)
+    return WorkingCopyIssueRelations(parent_issue_number, parent_issue_id, tuple(sorted(blocked_by)))
+
+
+def issue_relation_dependents(session: Session, item_id: str) -> frozenset[str]:
+    """Find existing issue rows whose desired relation depends on this newly issued item."""
+    todo = _one(session, WorkingCopySql.TODO_BY_ID, {WorkingCopyField.ITEM_ID: item_id})
+    if todo is None:
+        return frozenset()
+    slug = todo.get(WorkingCopyField.SLUG)
+    if not isinstance(slug, str):
+        return frozenset()
+    dependent_ids = {
+        str(row[0])
+        for row in session.execute(text(WorkingCopySql.DEPENDENTS_BY_SLUG), {WorkingCopyField.SLUG: slug}).all()
+    }
+    member_ids = {
+        str(row[0])
+        for row in session.execute(text(WorkingCopySql.GROUP_MEMBERS_BY_ID), {WorkingCopyField.GROUP_ID: item_id}).all()
+    }
+    return frozenset(dependent_ids | member_ids)
 
 
 def move_set(session: Session) -> WorkingCopyMoveSet:
@@ -553,15 +673,39 @@ def item_bookkeeping(session: Session, item_id: str) -> Mapping[str, object] | N
     return _one(session, WorkingCopySql.ITEM_BOOKKEEPING, {WorkingCopyField.ITEM_ID: item_id})
 
 
+def items_without_issue_id(session: Session) -> tuple[tuple[str, int], ...]:
+    """List working-copy rows that predate the GitHub REST issue identity column."""
+    rows = session.execute(text(WorkingCopySql.ITEMS_WITHOUT_ISSUE_ID)).all()
+    return tuple((str(row[0]), int(row[1])) for row in rows)
+
+
+def save_issue_projection_digest(session: Session, item_id: str, projection_digest: str) -> None:
+    """Persist the last complete projection only after GitHub accepted its writes."""
+    session.execute(
+        text(WorkingCopySql.SAVE_PROJECTION_DIGEST),
+        {WorkingCopyField.ITEM_ID: item_id, WorkingCopyField.PROJECTION_DIGEST: projection_digest},
+    )
+
+
+def save_item_issue_id(session: Session, item_id: str, issue_id: int) -> None:
+    """Persist the provider's REST issue ID used by relation endpoints."""
+    session.execute(
+        text(WorkingCopySql.SAVE_ISSUE_ID),
+        {WorkingCopyField.ITEM_ID: item_id, WorkingCopyField.ISSUE_ID: issue_id},
+    )
+
+
 def save_item_bookkeeping(
     session: Session,
     item_id: str,
     *,
     issue_number: int,
+    issue_id: int | None = None,
     node_id: str,
     record_comment_id: int | None,
     revision: int,
     base_revision: int,
+    projection_digest: str | None = None,
 ) -> None:
     """Persist the remote identity and revision after its commit point succeeds."""
     session.execute(
@@ -569,10 +713,12 @@ def save_item_bookkeeping(
         {
             WorkingCopyField.ITEM_ID: item_id,
             WorkingCopyField.ISSUE_NUMBER: issue_number,
+            WorkingCopyField.ISSUE_ID: issue_id,
             WorkingCopyField.NODE_ID: node_id,
             WorkingCopyField.RECORD_COMMENT_ID: str(record_comment_id) if record_comment_id is not None else None,
             WorkingCopyField.REVISION: revision,
             WorkingCopyField.BASE_REVISION: base_revision,
+            WorkingCopyField.PROJECTION_DIGEST: projection_digest,
         },
     )
 
@@ -656,6 +802,27 @@ def repository_initialized(path: str | Path) -> bool:
 def mark_repository_initialized(session: Session) -> None:
     """Mark the working copy serveable after a complete reconstruction transaction."""
     session.execute(text(WorkingCopySql.MARK_REPOSITORY_INITIALIZED))
+
+
+def mark_all_issue_reflections_owed(session: Session) -> None:
+    """Queue projection repair for every item that already has a repository issue."""
+    session.execute(text(WorkingCopySql.MARK_ALL_ISSUE_REFLECTIONS_OWED))
+
+
+def save_projection_repair_progress(session: Session, issue_number: int) -> None:
+    """Record the last fully backfilled issue for an interrupted projection upgrade."""
+    session.execute(
+        text(WorkingCopySql.SAVE_PROJECTION_REPAIR_PROGRESS),
+        {WorkingCopyField.NUMBER: issue_number},
+    )
+
+
+def complete_projection_repair(session: Session, projection_version: int) -> None:
+    """Publish a projection version only after all issues and reflections are repaired."""
+    session.execute(
+        text(WorkingCopySql.COMPLETE_PROJECTION_REPAIR),
+        {WorkingCopyField.PROJECTION_VERSION: projection_version},
+    )
 
 
 def save_ledger_issue(session: Session, issue_number: int, node_id: str) -> None:
@@ -804,6 +971,14 @@ def _one(session: Session, statement: str, parameters: Mapping[str, object]) -> 
 
 def _all(session: Session, statement: str, parameters: Mapping[str, object]) -> tuple[Mapping[str, object], ...]:
     return tuple(dict(row) for row in session.execute(text(statement), dict(parameters)).mappings().all())
+
+
+def _int_or_none(value: object) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.isdecimal():
+        return int(value)
+    return None
 
 
 def _upsert(session: Session, table: str, values: Mapping[str, object]) -> None:

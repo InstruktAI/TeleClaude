@@ -3,20 +3,30 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from sqlalchemy import text
+from sqlalchemy.orm import Session as SyncSession
+
+from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import github_actor_for_app_id
-from teleclaude.config.project_models import TodoStoreConfig
+from teleclaude.config.project_models import TodoStoreBackend, TodoStoreConfig
 from teleclaude.core.todos_db._adapter import TodosDb
+from teleclaude.core.todos_db._github_questions import insert_awaiting_question
 from teleclaude.core.todos_db._working_copy import (
     WorkingCopyField,
     WorkingCopyItemSnapshot,
     acquire_repository_writer,
     initialize_working_copy,
+    item_bookkeeping,
+    item_snapshot,
+    mark_reflection_owed,
     repository_initialized,
     restore_item_snapshot,
     restore_project_record,
@@ -25,6 +35,13 @@ from teleclaude.core.todos_db_path import github_working_copy_path
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity, resolve_github_repository_identity
 from teleclaude.core.workflow_store.github_io import GitHubMutationPacing, GitHubWorkflowIO
 from teleclaude.core.workflow_store.github_push import GitHubWorkflowPush
+from teleclaude.core.workflow_store.github_record import (
+    CommentEnvelopeAction,
+    CommentEnvelopeField,
+    WorkflowField,
+    render_comment_envelope,
+)
+from teleclaude.core.workflow_store.github_reflection import is_repository_work
 from teleclaude.core.workflow_store.github_sync import GitHubWorkflowSync
 from teleclaude.core.workflow_store.selection import selected_workflow_store_config
 from teleclaude.core.workflow_store.types import StoreCapabilities
@@ -35,7 +52,10 @@ if TYPE_CHECKING:
 
 _MISSING_APP = "GitHub workflow store requires todos.app to name a configured platform App"
 _UNKNOWN_APP = "GitHub workflow store todos.app does not match a configured platform App"
+_EMPTY = ""
+_QUESTION_LINE_BREAK = "\n"
 _MIGRATION_RECORD_ID = "github-store-switch:{}:{}"
+_ITEM_ID_BY_SLUG = "SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug"
 _instances: dict[str, GitHubWorkflowStore] = {}
 _locks: dict[str, threading.Lock] = {}
 _guard = threading.Lock()
@@ -131,6 +151,91 @@ class GitHubWorkflowStore(TodosDb):
         """Adopt committed changes made by another computer and repair owed reflections."""
         return await self._sync.refresh()
 
+    async def surface_question(
+        self,
+        slug: str,
+        session_id: str,
+        role: str | None,
+        message: str,
+        session_link: str | None,
+        recipients: tuple[str | PersonEntry, ...],
+    ) -> None:
+        """Append a delivered person message as an issue question and track its assignment."""
+        async with self._session() as session:
+            async with session.begin():
+                await session.run_sync(acquire_repository_writer)
+
+                def read_item(
+                    sync_session: SyncSession,
+                ) -> tuple[str, WorkingCopyItemSnapshot | None, Mapping[str, object] | None] | None:
+                    item_id = sync_session.execute(text(_ITEM_ID_BY_SLUG), {"slug": slug}).scalar_one_or_none()
+                    if item_id is None:
+                        return None
+                    normalized_id = str(item_id)
+                    return (
+                        normalized_id,
+                        item_snapshot(sync_session, normalized_id),
+                        item_bookkeeping(sync_session, normalized_id),
+                    )
+
+                found = await session.run_sync(read_item)
+                if found is None:
+                    return
+                item_id, snapshot_value, bookkeeping_value = found
+                if snapshot_value is None or bookkeeping_value is None:
+                    return
+                snapshot = snapshot_value
+                bookkeeping = bookkeeping_value
+                if not is_repository_work(snapshot.state):
+                    return
+                issue_number_value = bookkeeping.get(WorkflowField.ISSUE_NUMBER)
+                if not isinstance(issue_number_value, int):
+                    return
+                state_value = snapshot.state.get(WorkflowField.STATE) if snapshot.state is not None else None
+                try:
+                    state = json.loads(state_value) if isinstance(state_value, str) else {}
+                except json.JSONDecodeError:
+                    state = {}
+                phase = state.get(WorkflowField.LIFECYCLE_PHASE) if isinstance(state, dict) else None
+                if not isinstance(phase, str):
+                    return
+                recipient_slug_list: list[str] = []
+                for recipient in recipients:
+                    if isinstance(recipient, str):
+                        recipient_slug_list.append(recipient)
+                    elif recipient.slug:
+                        recipient_slug_list.append(recipient.slug)
+                recipient_slugs = tuple(dict.fromkeys(recipient_slug_list))
+                asked_at = datetime.now(UTC).isoformat()
+                envelope = render_comment_envelope(
+                    (
+                        (CommentEnvelopeField.SESSION, session_id),
+                        (CommentEnvelopeField.ROLE, role),
+                        (CommentEnvelopeField.ACTION, CommentEnvelopeAction.QUESTION),
+                    )
+                )
+                body = (
+                    envelope
+                    + _QUESTION_LINE_BREAK
+                    + message
+                    + (_QUESTION_LINE_BREAK + session_link if session_link else _EMPTY)
+                )
+
+                def record_question(sync_session: SyncSession) -> None:
+                    insert_awaiting_question(
+                        sync_session,
+                        item_id=item_id,
+                        session_id=session_id,
+                        asked_at=asked_at,
+                        phase=phase,
+                        recipient_slugs=recipient_slugs,
+                    )
+                    mark_reflection_owed(sync_session, item_id)
+
+                await session.run_sync(record_question)
+                await self._io.async_create_comment(issue_number_value, body)
+        await self.refresh_working_copy()
+
     def rebuild_sync(self) -> None:
         self._sync.rebuild_sync()
 
@@ -203,6 +308,23 @@ async def refresh_github_workflow_store(project_root_or_cwd: str | Path) -> int:
     """Refresh the selected project's shared GitHub working copy."""
     store = await get_github_workflow_store(project_root_or_cwd)
     return await cast(GitHubWorkflowStore, store).refresh_working_copy()
+
+
+async def surface_github_question(
+    project_root: str | Path,
+    slug: str,
+    session_id: str,
+    role: str | None,
+    message: str,
+    session_link: str | None,
+    recipients: tuple[str | PersonEntry, ...],
+) -> None:
+    """Hand one delivered person message to the selected GitHub issue projection."""
+    root = Path(project_root)
+    if selected_workflow_store_config(root).store is not TodoStoreBackend.GITHUB:
+        return
+    store = cast(GitHubWorkflowStore, await get_github_workflow_store(root))
+    await store.surface_question(slug, session_id, role, message, session_link, recipients)
 
 
 def _resolve_selection(

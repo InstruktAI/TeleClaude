@@ -69,7 +69,7 @@ async def resolve_human_involvement(
         raise HumanInvolvementReasonInvalid("human involvement requires a non-empty reason")
 
     session = await session_store.get_session(session_id)
-    latest_human_input = _latest_human_input_at(session) if session is not None else None
+    latest_human_input = latest_human_input_at(session) if session is not None else None
     if latest_human_input is None:
         _record_discard(session_id=session_id, surface=surface, age_seconds=None)
         return HumanInvolvementResolution(involved=False)
@@ -93,7 +93,7 @@ def _record_discard(*, session_id: str, surface: HumanInvolvementSurface, age_se
     )
 
 
-def _latest_human_input_at(session: Session) -> datetime | None:
+def latest_human_input_at(session: Session) -> datetime | None:
     """Read the newest human-authored block through the canonical projection seam."""
     chain = build_message_chain(session.transcript_files, session.native_log_file)
     if not chain:

@@ -1,4 +1,4 @@
-"""Closed record and append-only content formats for GitHub workflow issues."""
+"""Render and parse compact GitHub comment envelopes around closed workflow records."""
 
 from __future__ import annotations
 
@@ -23,20 +23,11 @@ _CONTENT_CHUNK_SIZE = 50_000
 _ENCODING = "utf-8"
 _EMPTY = ""
 _LINE_BREAK = "\n"
+_LINE_ENDINGS = "\r\n"
+_ENVELOPE_KEY_VALUE_SEPARATOR = ":"
+_PART_INDEX_SEPARATOR = "/"
 _WORK_ITEM = "work item"
 _ASCII = "ascii"
-_NONE = "none"
-_NO_DEPENDENCIES = "none"
-_NO_DELIVERY = "not delivered"
-_ITEM_TITLE = "### {}"
-_PHASE_LINE = "- Phase: `{}`"
-_CLAIMANT_LINE = "- Claimant: `{}`"
-_DEPENDENCIES_LINE = "- Dependencies: `{}`"
-_DELIVERED_LINE = "- Delivered commit: `{}`"
-_REVISION_LINE = "- Revision: `{}`"
-_LEDGER_TITLE = "### Store transaction `{}`"
-_ISSUE_LINE = "- Issue #{}: revision {}"
-_PROJECT_RECORD_LINE = "- Project record: `{}` row {}"
 _CONTENT_MARKER_INCOMPLETE = "Workflow content marker is incomplete"
 _CONTENT_MARKER_MISSING = "Workflow content marker is missing"
 _CONTENT_NO_PARTS = "Workflow content has no parts"
@@ -52,7 +43,51 @@ _JSON_AMP_ESCAPE = "\\u0026"
 _JSON_LT_ESCAPE = "\\u003c"
 _JSON_GT_ESCAPE = "\\u003e"
 _COMMENT_CLOSE = " -->"
-_COMMA_SPACE = ", "
+_ENVELOPE_OPEN = "["
+_ENVELOPE_CLOSE = "]"
+_ENVELOPE_SEPARATOR = " "
+_ENVELOPE_LINE_SEPARATOR = "\n"
+
+
+class CommentEnvelopeField(StrEnum):
+    """Closed set of visible fields allowed in a workflow comment envelope."""
+
+    ACTION = "action"
+    PHASE = "phase"
+    REVISION = "rev"
+    SESSION = "session"
+    ROLE = "role"
+    HOLD = "hold"
+    COMMIT = "commit"
+    TRANSACTION = "tx"
+    PART = "part"
+    NAME = "name"
+    VERSION = "version"
+
+
+class CommentEnvelopeAction(StrEnum):
+    """Closed set of event kinds exposed in a workflow comment envelope."""
+
+    RECORD = "record"
+    LEDGER = "ledger"
+    ARTIFACT = "artifact"
+    ARTIFACT_REMOVED = "artifact-removed"
+    QUESTION = "question"
+
+
+_ACTION_FIELD = CommentEnvelopeField.ACTION
+_PHASE_FIELD = CommentEnvelopeField.PHASE
+_REV_FIELD = CommentEnvelopeField.REVISION
+_SESSION_FIELD = CommentEnvelopeField.SESSION
+_ROLE_FIELD = CommentEnvelopeField.ROLE
+_HOLD_FIELD = CommentEnvelopeField.HOLD
+_COMMIT_FIELD = CommentEnvelopeField.COMMIT
+_TX_FIELD = CommentEnvelopeField.TRANSACTION
+_PART_FIELD = CommentEnvelopeField.PART
+_NAME_FIELD = CommentEnvelopeField.NAME
+_VERSION_FIELD = CommentEnvelopeField.VERSION
+_RECORD_ACTION = CommentEnvelopeAction.RECORD
+_LEDGER_ACTION = CommentEnvelopeAction.LEDGER
 _HISTORY_CHAIN_INCOMPLETE = "Artifact history chain is incomplete"
 _HISTORY_CHAIN_CYCLE = "Artifact history chain contains a cycle"
 _HISTORY_IDENTITY_MISMATCH = "Artifact history identity does not match its pointer"
@@ -62,6 +97,7 @@ class WorkflowField(StrEnum):
     """Closed set of serialized workflow field names read by this module."""
 
     SLUG = "slug"
+    LINEAGE = "lineage"
     DEPENDS_ON = "depends_on"
     LIFECYCLE_PHASE = "lifecycle_phase"
     ACTIVE_RUNNER = "active_runner"
@@ -73,6 +109,8 @@ class WorkflowField(StrEnum):
     DIFF = "diff"
     STATUS = "status"
     STATE = "state"
+    HOLD_AUDIT = "hold_audit"
+    REASON = "reason"
     ID = "id"
     NAME = "name"
     VERSION_ID = "version_id"
@@ -272,22 +310,47 @@ def make_item_revision(
 
 
 def render_record_comment(record: WorkflowRecord, effective_state: Mapping[str, object] | None = None) -> str:
-    """Render a readable summary plus a bounded encoded machine record."""
+    """Render a concise issue envelope plus a bounded encoded machine record."""
+    payload_line = _RECORD_MARKER + _safe_json(record.model_dump_json()) + _COMMENT_CLOSE
+    return _render_record_comment(record, effective_state, payload_line)
+
+
+def _render_record_comment(
+    record: WorkflowRecord,
+    effective_state: Mapping[str, object] | None,
+    payload_line: str,
+) -> str:
     revision = record.pending.revision if record.pending is not None else record.committed
     todo = revision.todo
-    dependency_labels = _COMMA_SPACE.join(item.get(WorkflowField.DEPENDS_ON, _EMPTY) for item in revision.dependencies)
-    readable = [
-        _ITEM_TITLE.format(todo.get(WorkflowField.SLUG, _WORK_ITEM)),
-        _EMPTY,
-        _PHASE_LINE.format(_value_or_none(effective_state, WorkflowField.LIFECYCLE_PHASE)),
-        _CLAIMANT_LINE.format(_value_or_none(effective_state, WorkflowField.ACTIVE_RUNNER)),
-        _DEPENDENCIES_LINE.format(dependency_labels or _NO_DEPENDENCIES),
-        _DELIVERED_LINE.format(todo.get(WorkflowField.DELIVERED_COMMIT) or _NO_DELIVERY),
-        _REVISION_LINE.format(revision.revision),
-        _EMPTY,
-    ]
-    payload = _safe_json(record.model_dump_json())
-    return _LINE_BREAK.join(readable) + _RECORD_MARKER + payload + _COMMENT_SEPARATOR
+    audit = effective_state.get(WorkflowField.HOLD_AUDIT) if effective_state is not None else None
+    hold_reason = audit.get(WorkflowField.REASON) if isinstance(audit, Mapping) else None
+    envelope = render_comment_envelope(
+        (
+            (_ACTION_FIELD, _RECORD_ACTION),
+            (_PHASE_FIELD, _value_or_none(effective_state, WorkflowField.LIFECYCLE_PHASE)),
+            (_REV_FIELD, revision.revision),
+            (_SESSION_FIELD, _value_or_none(effective_state, WorkflowField.ACTIVE_RUNNER)),
+            (_HOLD_FIELD, effective_state.get(_HOLD_FIELD) is True if effective_state is not None else False),
+            (_COMMIT_FIELD, todo.get(WorkflowField.DELIVERED_COMMIT)),
+        )
+    )
+    visible = [envelope]
+    if (
+        effective_state is not None
+        and effective_state.get(_HOLD_FIELD) is True
+        and isinstance(hold_reason, str)
+        and hold_reason
+    ):
+        visible.append(hold_reason)
+    return _LINE_BREAK.join(visible) + _LINE_BREAK + payload_line + _LINE_BREAK
+
+
+def reenvelope_record_comment(
+    body: str, record: WorkflowRecord, effective_state: Mapping[str, object] | None = None
+) -> str:
+    """Replace only a record comment's readable prefix, preserving its exact machine payload."""
+    payload_line = _RECORD_MARKER + _marker_payload(body, _RECORD_MARKER) + _COMMENT_CLOSE
+    return _render_record_comment(record, effective_state, payload_line)
 
 
 def parse_record_comment(body: str) -> WorkflowRecord:
@@ -296,15 +359,49 @@ def parse_record_comment(body: str) -> WorkflowRecord:
 
 
 def render_ledger_commit(commit: LedgerCommit) -> str:
-    """Render one project transaction with its item revisions and project records."""
-    lines = [_LEDGER_TITLE.format(commit.transaction_id), _EMPTY]
-    for item in commit.items:
-        lines.append(_ISSUE_LINE.format(item.issue_number, item.revision))
-    for row in commit.project_records:
-        lines.append(_PROJECT_RECORD_LINE.format(row.table, row.row_id))
-    lines.append(_EMPTY)
+    """Render one concise ledger envelope and its hidden machine transaction."""
     payload = _safe_json(commit.model_dump_json())
-    return _LINE_BREAK.join(lines) + _LEDGER_MARKER + payload + _COMMENT_SEPARATOR
+    envelope = render_comment_envelope(((_ACTION_FIELD, _LEDGER_ACTION), (_TX_FIELD, commit.transaction_id)))
+    return envelope + _LINE_BREAK + _LEDGER_MARKER + payload + _COMMENT_SEPARATOR
+
+
+def reenvelope_ledger_comment(body: str, commit: LedgerCommit) -> str:
+    """Replace only a ledger comment's readable prefix, preserving its exact machine payload."""
+    payload_line = _LEDGER_MARKER + _marker_payload(body, _LEDGER_MARKER) + _COMMENT_CLOSE
+    envelope = render_comment_envelope(((_ACTION_FIELD, _LEDGER_ACTION), (_TX_FIELD, commit.transaction_id)))
+    return envelope + _LINE_BREAK + payload_line + _LINE_BREAK
+
+
+def reenvelope_artifact_history_comment(
+    body: str, envelope_fields: Sequence[tuple[CommentEnvelopeField, Scalar]]
+) -> str:
+    """Add a readable envelope while preserving an artifact history payload byte-for-byte."""
+    payload_line = _HISTORY_MARKER + _marker_payload(body, _HISTORY_MARKER) + _COMMENT_CLOSE
+    return render_comment_envelope(envelope_fields) + _LINE_BREAK + payload_line + _LINE_BREAK
+
+
+def render_comment_envelope(fields: Sequence[tuple[CommentEnvelopeField, Scalar]]) -> str:
+    """Render structured non-empty comment fields in their supplied order."""
+    rendered: list[str] = []
+    for key, value in fields:
+        if value is None or value is False or value == _EMPTY:
+            continue
+        rendered.append(key if value is True else f"{key}{_ENVELOPE_KEY_VALUE_SEPARATOR}{value}")
+    return _ENVELOPE_OPEN + _ENVELOPE_SEPARATOR.join(rendered) + _ENVELOPE_CLOSE
+
+
+def artifact_version_envelope_fields(name: str, ordinal: int) -> tuple[tuple[CommentEnvelopeField, Scalar], ...]:
+    """Return the closed envelope fields for one artifact version."""
+    return (
+        (_ACTION_FIELD, CommentEnvelopeAction.ARTIFACT),
+        (_NAME_FIELD, name),
+        (_VERSION_FIELD, ordinal),
+    )
+
+
+def state_version_envelope_fields(revision: int) -> tuple[tuple[CommentEnvelopeField, Scalar], ...]:
+    """Return the closed envelope fields for one workflow state version."""
+    return ((_ACTION_FIELD, _RECORD_ACTION), (_REV_FIELD, revision))
 
 
 def parse_ledger_commit(body: str) -> LedgerCommit:
@@ -312,9 +409,32 @@ def parse_ledger_commit(body: str) -> LedgerCommit:
     return LedgerCommit.model_validate_json(_marker_payload(body, _LEDGER_MARKER))
 
 
-def render_artifact_history_node(node: ArtifactHistoryNode) -> str:
-    """Render one bounded history link for an immutable artifact version."""
-    return _HISTORY_MARKER + _safe_json(node.model_dump_json()) + _COMMENT_SEPARATOR
+def render_artifact_history_node(
+    node: ArtifactHistoryNode,
+    *,
+    envelope_fields: Sequence[tuple[CommentEnvelopeField, Scalar]] | None = None,
+) -> str:
+    """Render one bounded history link, optionally as a standalone enveloped comment."""
+    payload = _HISTORY_MARKER + _safe_json(node.model_dump_json()) + _COMMENT_CLOSE
+    if envelope_fields is None:
+        return payload + _LINE_BREAK
+    return render_comment_envelope(envelope_fields) + _LINE_BREAK + payload + _LINE_BREAK
+
+
+def render_standalone_artifact_history_comment(node: ArtifactHistoryNode, version_ordinal: int | None = None) -> str:
+    """Render an artifact history event with its readable standalone-comment envelope."""
+    fields: tuple[tuple[CommentEnvelopeField, Scalar], ...]
+    if node.action is ArtifactHistoryAction.REMOVED:
+        fields = ((_ACTION_FIELD, CommentEnvelopeAction.ARTIFACT_REMOVED), (_NAME_FIELD, node.name))
+    else:
+        if version_ordinal is None:
+            raise ValueError(_HISTORY_IDENTITY_MISMATCH)
+        fields = (
+            (_ACTION_FIELD, CommentEnvelopeAction.ARTIFACT),
+            (_NAME_FIELD, node.name),
+            (_VERSION_FIELD, version_ordinal),
+        )
+    return render_artifact_history_node(node, envelope_fields=fields)
 
 
 def parse_artifact_history_node(body: str) -> ArtifactHistoryNode:
@@ -542,7 +662,16 @@ def _content_groups(
     return groups
 
 
-def split_content_comments(item_id: str, name: str, version: str | int, digest: str, content: str) -> tuple[str, ...]:
+def split_content_comments(
+    item_id: str,
+    name: str,
+    version: str | int,
+    digest: str,
+    content: str,
+    *,
+    envelope_fields: Sequence[tuple[CommentEnvelopeField, Scalar]] = (),
+    history_node: ArtifactHistoryNode | None = None,
+) -> tuple[str, ...]:
     """Split content into bounded comments whose parts join to the original bytes."""
     chunks = tuple(
         content[index : index + _CONTENT_CHUNK_SIZE] for index in range(0, len(content), _CONTENT_CHUNK_SIZE)
@@ -554,26 +683,118 @@ def split_content_comments(item_id: str, name: str, version: str | int, digest: 
     for index, chunk in enumerate(chunks, start=1):
         header = ContentHeader(item_id=item_id, name=name, version=version, digest=digest, part=index, parts=total)
         encoded = base64.urlsafe_b64encode(header.model_dump_json().encode(_ENCODING)).decode(_ASCII)
-        bodies.append(_CONTENT_MARKER + encoded + _COMMENT_SEPARATOR + chunk)
+        prefix: list[str] = []
+        if envelope_fields:
+            fields = (
+                (*envelope_fields, (_PART_FIELD, f"{index}{_PART_INDEX_SEPARATOR}{total}"))
+                if total > 1
+                else envelope_fields
+            )
+            prefix.append(render_comment_envelope(fields))
+        if index == total and history_node is not None:
+            prefix.append(render_artifact_history_node(history_node).rstrip(_LINE_BREAK))
+        prefix.append(_CONTENT_MARKER + encoded + _COMMENT_SEPARATOR + chunk)
+        bodies.append(_ENVELOPE_LINE_SEPARATOR.join(prefix))
     return tuple(bodies)
+
+
+def split_artifact_version_comments(
+    item_id: str,
+    name: str,
+    version: str | int,
+    digest: str,
+    content: str,
+    ordinal: int,
+    history_node: ArtifactHistoryNode,
+) -> tuple[str, ...]:
+    """Render one artifact version with its visible envelope and hidden history link."""
+    return split_content_comments(
+        item_id,
+        name,
+        version,
+        digest,
+        content,
+        envelope_fields=artifact_version_envelope_fields(name, ordinal),
+        history_node=history_node,
+    )
+
+
+def split_state_version_comments(
+    item_id: str,
+    name: str,
+    revision: int,
+    digest: str,
+    content: str,
+) -> tuple[str, ...]:
+    """Render one workflow state version with its visible record envelope."""
+    return split_content_comments(
+        item_id,
+        name,
+        revision,
+        digest,
+        content,
+        envelope_fields=state_version_envelope_fields(revision),
+    )
+
+
+def render_enveloped_content_comment(
+    header: ContentHeader,
+    content: str,
+    envelope_fields: Sequence[tuple[CommentEnvelopeField, Scalar]],
+    history_node: ArtifactHistoryNode | None = None,
+    history_payload_line: str | None = None,
+) -> str:
+    """Backfill one existing content part without changing its identity or payload bytes."""
+    fields = (
+        (*envelope_fields, (_PART_FIELD, f"{header.part}{_PART_INDEX_SEPARATOR}{header.parts}"))
+        if header.parts > 1
+        else envelope_fields
+    )
+    encoded = base64.urlsafe_b64encode(header.model_dump_json().encode(_ENCODING)).decode(_ASCII)
+    prefix = [render_comment_envelope(fields)]
+    if history_payload_line is not None:
+        prefix.append(history_payload_line)
+    elif history_node is not None:
+        prefix.append(render_artifact_history_node(history_node).rstrip(_LINE_BREAK))
+    prefix.append(_CONTENT_MARKER + encoded + _COMMENT_SEPARATOR + content)
+    return _ENVELOPE_LINE_SEPARATOR.join(prefix)
+
+
+def artifact_history_payload_line(body: str) -> str:
+    """Return the trusted history marker line without changing its serialized payload."""
+    return _HISTORY_MARKER + _marker_payload(body, _HISTORY_MARKER) + _COMMENT_CLOSE
 
 
 def parse_content_comment(body: str) -> tuple[ContentHeader, str]:
     """Decode a content part without interpreting its free-text payload."""
-    marker_end = body.find(_COMMENT_SEPARATOR)
+    content_body = _strip_content_comment_envelope(body)
+    marker_end = content_body.find(_COMMENT_SEPARATOR)
     if marker_end < 0:
         raise ValueError(_CONTENT_MARKER_INCOMPLETE)
-    marker = body[:marker_end]
+    marker = content_body[:marker_end]
     if not marker.startswith(_CONTENT_MARKER):
         raise ValueError(_CONTENT_MARKER_MISSING)
     encoded = marker[len(_CONTENT_MARKER) :]
     payload = base64.urlsafe_b64decode(encoded.encode(_ASCII))
-    return ContentHeader.model_validate_json(payload), body[marker_end + len(_COMMENT_SEPARATOR) :]
+    return ContentHeader.model_validate_json(payload), content_body[marker_end + len(_COMMENT_SEPARATOR) :]
 
 
 def is_content_comment(body: str) -> bool:
     """Identify the platform content envelope before inspecting embedded text."""
-    return body.startswith(_CONTENT_MARKER)
+    return _strip_content_comment_envelope(body).startswith(_CONTENT_MARKER)
+
+
+def _strip_content_comment_envelope(body: str) -> str:
+    """Remove the optional readable envelope and history link before content data."""
+    lines = body.splitlines(keepends=True)
+    index = 0
+    while index < len(lines):
+        line = lines[index].rstrip(_LINE_ENDINGS)
+        if (line.startswith(_ENVELOPE_OPEN) and line.endswith(_ENVELOPE_CLOSE)) or line.startswith(_HISTORY_MARKER):
+            index += 1
+            continue
+        break
+    return _EMPTY.join(lines[index:])
 
 
 def has_record_marker(body: str) -> bool:
@@ -648,6 +869,6 @@ def _scalar_row(row: Mapping[str, object] | None) -> Row:
     return result
 
 
-def _value_or_none(values: Mapping[str, object] | None, name: str) -> str:
+def _value_or_none(values: Mapping[str, object] | None, name: str) -> str | None:
     value = values.get(name) if values is not None else None
-    return str(value) if value is not None else _NONE
+    return str(value) if value is not None else None

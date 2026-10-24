@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from concurrent.futures import Future
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from time import monotonic
@@ -23,6 +21,9 @@ from httpx import HTTPError
 from pydantic import SecretStr
 
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
+from teleclaude.core.workflow_store.github_io_models import GitHubComment, GitHubIssue, GitHubRepositoryScope
+from teleclaude.core.workflow_store.github_io_runtime import GitHubMutationPacing, shared_github_io_loop
+from teleclaude.core.workflow_store.github_reflection import ISSUE_FIELD_PARTS, IssueReflection, ProjectionPart
 from teleclaude.github.client import create_github_client
 from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
 from teleclaude.types.github_account import GitHubAccountKind, github_app_bot_login
@@ -33,11 +34,10 @@ _PAGE_SIZE = 100
 _TOKEN_REFRESH_MARGIN = timedelta(minutes=2)
 _WRITE_PERMISSIONS: AppPermissionsType = {"issues": "write"}
 _ISSUE_COLOR = "ededed"
-_THREAD_NAME = "teleclaude-github-io"
+_LABEL_COLOR_PREFIX = "#"
 _REPOSITORY_SEPARATOR = "/"
 _Result = TypeVar("_Result")
 _PACED_WRITE_INTERVAL_S = 1.0
-_INTER_ITEM_WRITE_INTERVAL_S = 10.0
 _GITHUB_MESSAGE_LIMIT = 256
 _HTTP_REFUSAL_DETAIL = "{} returned HTTP {}"
 _HTTP_REFUSAL_WITH_MESSAGE = "{}: {}"
@@ -45,6 +45,17 @@ _REFUSAL_WITH_DETAIL = "{}: {}"
 
 
 _GraphActor = TypedDict("_GraphActor", {"login": str, "__typename": str}, total=False)
+
+__all__ = [
+    "GitHubComment",
+    "GitHubIOFailure",
+    "GitHubIORefused",
+    "GitHubIssue",
+    "GitHubMutationPacing",
+    "GitHubOperation",
+    "GitHubRepositoryScope",
+    "GitHubWorkflowIO",
+]
 
 
 class _GraphEdit(TypedDict, total=False):
@@ -122,7 +133,17 @@ class GitHubOperation(StrEnum):
     OPEN_ISSUE = "open_issue"
     UPDATE_ISSUE = "update_issue"
     ENSURE_LABEL = "ensure_label"
+    DELETE_LABEL = "delete_label"
     LIST_ISSUES = "list_issues"
+    LIST_LABELS = "list_labels"
+    GET_ISSUE = "get_issue"
+    LIST_SUB_ISSUES = "list_sub_issues"
+    ADD_SUB_ISSUE = "add_sub_issue"
+    REMOVE_SUB_ISSUE = "remove_sub_issue"
+    GET_PARENT = "get_parent"
+    LIST_BLOCKED_BY = "list_blocked_by"
+    ADD_BLOCKED_BY = "add_blocked_by"
+    REMOVE_BLOCKED_BY = "remove_blocked_by"
     READ_COMMENTS = "read_comments"
     CREATE_COMMENT = "create_comment"
     UPDATE_COMMENT = "update_comment"
@@ -138,8 +159,14 @@ class GitHubField(StrEnum):
     STATE = "state"
     STATE_REASON = "state_reason"
     LABELS = "labels"
+    ASSIGNEES = "assignees"
+    TYPE = "type"
     NAME = "name"
     COLOR = "color"
+    DESCRIPTION = "description"
+    SUB_ISSUE_ID = "sub_issue_id"
+    REPLACE_PARENT = "replace_parent"
+    ISSUE_ID = "issue_id"
     PULL_REQUEST = "pull_request"
     ID = "id"
     DATABASE_ID = "databaseId"
@@ -168,6 +195,9 @@ class GitHubField(StrEnum):
     MESSAGE = "message"
 
 
+_IssueUpdate = dict[GitHubField, str | list[str] | None]
+
+
 class GitHubIORefused(RuntimeError):
     """A bounded reason why one store operation could not reach GitHub."""
 
@@ -175,92 +205,6 @@ class GitHubIORefused(RuntimeError):
         message = reason.value if detail is None else _REFUSAL_WITH_DETAIL.format(reason.value, detail)
         super().__init__(message)
         self.reason = reason
-
-
-@dataclass(frozen=True)
-class GitHubRepositoryScope:
-    """Repository-only scope used before a workflow item exists."""
-
-    repository_id: int
-    repository: str
-
-
-@dataclass(frozen=True)
-class GitHubComment:
-    """Comment body and editor history needed to establish platform authorship."""
-
-    node_id: str
-    database_id: int
-    body: str
-    author: str | None
-    editor: str | None
-    edit_history: tuple[_GraphEdit, ...]
-    history_complete: bool
-
-
-@dataclass(frozen=True)
-class GitHubIssue:
-    """Issue facts required by store rebuild and reflection."""
-
-    number: int
-    node_id: str
-    creator: str
-    updated_at: datetime | None
-
-
-@dataclass
-class GitHubMutationPacing:
-    """Count mutative requests and pace between committed migration batches."""
-
-    count: int = 0
-    last_start: float = 0.0
-    last_wait_ended: float = 0.0
-    count_at_wait: int = 0
-
-    async def wait_between_items(self) -> None:
-        while True:
-            current_count = self.count
-            required = (current_count - self.count_at_wait) * _INTER_ITEM_WRITE_INTERVAL_S
-            elapsed = monotonic() - self.last_wait_ended
-            remaining = required - elapsed
-            if remaining <= 0:
-                break
-            await asyncio.sleep(remaining)
-        self.count_at_wait = current_count
-        self.last_wait_ended = monotonic()
-
-
-class _GitHubIOLoop:
-    """Own the single process loop used by every project's synchronous and async caller."""
-
-    def __init__(self) -> None:
-        self.loop = asyncio.new_event_loop()
-        self.request_lock: asyncio.Lock | None = None
-        self.ready = threading.Event()
-        self.thread = threading.Thread(target=self._run, name=_THREAD_NAME, daemon=True)
-        self.thread.start()
-        self.ready.wait()
-
-    def submit(self, coroutine: Any) -> Future[Any]:
-        return asyncio.run_coroutine_threadsafe(coroutine, self.loop)
-
-    def _run(self) -> None:
-        asyncio.set_event_loop(self.loop)
-        self.request_lock = asyncio.Lock()
-        self.ready.set()
-        self.loop.run_forever()
-
-
-_io_loop: _GitHubIOLoop | None = None
-_io_loop_lock = threading.Lock()
-
-
-def _shared_loop() -> _GitHubIOLoop:
-    global _io_loop
-    with _io_loop_lock:
-        if _io_loop is None:
-            _io_loop = _GitHubIOLoop()
-        return _io_loop
 
 
 class GitHubWorkflowIO:
@@ -291,39 +235,140 @@ class GitHubWorkflowIO:
         return cast(GitHubIssue, self._sync(GitHubOperation.OPEN_ISSUE, title, body))
 
     async def async_update_issue(
-        self, number: int, *, title: str, body: str, state: str, state_reason: str, labels: list[str]
+        self,
+        number: int,
+        *,
+        title: str,
+        body: str,
+        state: str,
+        state_reason: str,
+        labels: list[str],
+        issue_type: str | None,
+        assignees: list[str],
     ) -> None:
-        await self._call(GitHubOperation.UPDATE_ISSUE, number, title, body, state, state_reason, labels)
+        await self._call(
+            GitHubOperation.UPDATE_ISSUE, number, title, body, state, state_reason, labels, issue_type, assignees
+        )
 
     def update_issue(
-        self, number: int, *, title: str, body: str, state: str, state_reason: str, labels: list[str]
+        self,
+        number: int,
+        *,
+        title: str,
+        body: str,
+        state: str,
+        state_reason: str,
+        labels: list[str],
+        issue_type: str | None,
+        assignees: list[str],
     ) -> None:
-        self._sync(GitHubOperation.UPDATE_ISSUE, number, title, body, state, state_reason, labels)
+        self._sync(
+            GitHubOperation.UPDATE_ISSUE, number, title, body, state, state_reason, labels, issue_type, assignees
+        )
 
     def queue_reflection(
-        self, number: int, *, title: str, body: str, state: str, state_reason: str, labels: list[str]
+        self,
+        number: int,
+        issue_id: int,
+        reflection: IssueReflection,
+        changed_parts: frozenset[ProjectionPart],
     ) -> Future[Any]:
         """Queue issue reflection without blocking the daemon's committing loop."""
+        return shared_github_io_loop().submit(self._serialized_reflection(number, issue_id, reflection, changed_parts))
 
-        async def reflect() -> None:
-            io_loop = _shared_loop()
-            if io_loop.request_lock is None:
-                raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
-            async with io_loop.request_lock:
-                for label in labels:
-                    await self._ensure_label(label, _ISSUE_COLOR)
-                await self._update_issue(number, title, body, state, state_reason, labels)
+    async def async_reflect_issue(
+        self,
+        number: int,
+        issue_id: int,
+        reflection: IssueReflection,
+        changed_parts: frozenset[ProjectionPart],
+    ) -> None:
+        future = shared_github_io_loop().submit(
+            self._serialized_reflection(number, issue_id, reflection, changed_parts)
+        )
+        await asyncio.wrap_future(future)
 
-        return _shared_loop().submit(reflect())
+    async def _serialized_reflection(
+        self,
+        number: int,
+        issue_id: int,
+        reflection: IssueReflection,
+        changed_parts: frozenset[ProjectionPart],
+    ) -> None:
+        io_loop = shared_github_io_loop()
+        if io_loop.request_lock is None:
+            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
+        async with io_loop.request_lock:
+            if ProjectionPart.LABELS in changed_parts:
+                for label in reflection.labels:
+                    await self._ensure_label(label.name, label.color, label.description)
+            if changed_parts.intersection(ISSUE_FIELD_PARTS):
+                await self._update_issue(
+                    number,
+                    reflection.title,
+                    reflection.body,
+                    str(reflection.state),
+                    str(reflection.state_reason),
+                    [label.name for label in reflection.labels],
+                    reflection.issue_type,
+                    list(reflection.assignees),
+                    changed_parts,
+                )
+            if ProjectionPart.PARENT in changed_parts:
+                current_parent = await self._get_parent(number)
+                if current_parent is not None and current_parent[1] != reflection.parent_issue_id:
+                    await self._remove_sub_issue(current_parent[0], issue_id)
+                if reflection.parent_issue_id is not None and (
+                    current_parent is None or current_parent[1] != reflection.parent_issue_id
+                ):
+                    if reflection.parent_issue_number is None:
+                        raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
+                    current_children = set(await self._list_sub_issues(reflection.parent_issue_number))
+                    if issue_id not in current_children:
+                        await self._add_sub_issue(reflection.parent_issue_number, issue_id, True)
+            if ProjectionPart.BLOCKED_BY in changed_parts:
+                current_dependencies = set(await self._list_dependencies_blocked_by(number))
+                desired_dependencies = set(reflection.blocked_by_issue_ids)
+                for issue_id_to_remove in sorted(current_dependencies - desired_dependencies):
+                    await self._remove_dependency_blocked_by(number, issue_id_to_remove)
+                for issue_id_to_add in sorted(desired_dependencies - current_dependencies):
+                    await self._add_blocked_by_dependency(number, issue_id_to_add)
 
-    async def async_ensure_label(self, name: str, color: str = _ISSUE_COLOR) -> None:
-        await self._call(GitHubOperation.ENSURE_LABEL, name, color)
+    async def async_ensure_label(self, name: str, color: str = _ISSUE_COLOR, description: str = _EMPTY) -> None:
+        await self._call(GitHubOperation.ENSURE_LABEL, name, color, description)
 
-    def ensure_label(self, name: str, color: str = _ISSUE_COLOR) -> None:
-        self._sync(GitHubOperation.ENSURE_LABEL, name, color)
+    def ensure_label(self, name: str, color: str = _ISSUE_COLOR, description: str = _EMPTY) -> None:
+        self._sync(GitHubOperation.ENSURE_LABEL, name, color, description)
+
+    async def async_delete_label(self, name: str) -> None:
+        await self._call(GitHubOperation.DELETE_LABEL, name)
+
+    async def async_list_repository_labels(self) -> tuple[str, ...]:
+        return cast(tuple[str, ...], await self._call(GitHubOperation.LIST_LABELS))
+
+    async def async_list_sub_issues(self, number: int) -> tuple[int, ...]:
+        return cast(tuple[int, ...], await self._call(GitHubOperation.LIST_SUB_ISSUES, number))
+
+    async def async_add_sub_issue(self, number: int, sub_issue_id: int, *, replace_parent: bool) -> None:
+        await self._call(GitHubOperation.ADD_SUB_ISSUE, number, sub_issue_id, replace_parent)
+
+    async def async_remove_sub_issue(self, number: int, sub_issue_id: int) -> None:
+        await self._call(GitHubOperation.REMOVE_SUB_ISSUE, number, sub_issue_id)
+
+    async def async_list_dependencies_blocked_by(self, number: int) -> tuple[int, ...]:
+        return cast(tuple[int, ...], await self._call(GitHubOperation.LIST_BLOCKED_BY, number))
+
+    async def async_add_blocked_by_dependency(self, number: int, issue_id: int) -> None:
+        await self._call(GitHubOperation.ADD_BLOCKED_BY, number, issue_id)
+
+    async def async_remove_dependency_blocked_by(self, number: int, issue_id: int) -> None:
+        await self._call(GitHubOperation.REMOVE_BLOCKED_BY, number, issue_id)
 
     async def async_list_issues(self, since: datetime | None = None) -> tuple[GitHubIssue, ...]:
         return cast(tuple[GitHubIssue, ...], await self._call(GitHubOperation.LIST_ISSUES, since))
+
+    async def async_get_issue(self, number: int) -> GitHubIssue:
+        return cast(GitHubIssue, await self._call(GitHubOperation.GET_ISSUE, number))
 
     def list_issues(self, since: datetime | None = None) -> tuple[GitHubIssue, ...]:
         return cast(tuple[GitHubIssue, ...], self._sync(GitHubOperation.LIST_ISSUES, since))
@@ -347,14 +392,14 @@ class GitHubWorkflowIO:
         return cast(GitHubComment, self._sync(GitHubOperation.UPDATE_COMMENT, comment_id, body))
 
     async def _call(self, operation: GitHubOperation, *arguments: object) -> Any:
-        future = _shared_loop().submit(self._serialized_dispatch(operation, *arguments))
+        future = shared_github_io_loop().submit(self._serialized_dispatch(operation, *arguments))
         return await asyncio.wrap_future(future)
 
     def _sync(self, operation: GitHubOperation, *arguments: object) -> Any:
-        return _shared_loop().submit(self._serialized_dispatch(operation, *arguments)).result()
+        return shared_github_io_loop().submit(self._serialized_dispatch(operation, *arguments)).result()
 
     async def _serialized_dispatch(self, operation: GitHubOperation, *arguments: object) -> Any:
-        io_loop = _shared_loop()
+        io_loop = shared_github_io_loop()
         if io_loop.request_lock is None:
             raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
         async with io_loop.request_lock:
@@ -403,48 +448,99 @@ class GitHubWorkflowIO:
                 owner, repo, data={GitHubField.TITLE: title, GitHubField.BODY: body}
             )
             issue = response.parsed_data
-            return GitHubIssue(issue.number, issue.node_id, issue.user.login, issue.updated_at)
+            return GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
 
         return await self._with_client(GitHubOperation.OPEN_ISSUE, request)
 
     async def _update_issue(
-        self, number: int, title: str, body: str, state: str, reason: str, labels: list[str]
+        self,
+        number: int,
+        title: str,
+        body: str,
+        state: str,
+        reason: str,
+        labels: list[str],
+        issue_type: str | None,
+        assignees: list[str],
+        changed_parts: frozenset[ProjectionPart],
     ) -> None:
         owner, repo = _split_repository(self.repository.repository)
 
         async def request(client: Any) -> None:
             await self._pace_mutation_start()
+            data: _IssueUpdate = {}
+            if ProjectionPart.TITLE in changed_parts:
+                data[GitHubField.TITLE] = title
+            if ProjectionPart.BODY in changed_parts:
+                data[GitHubField.BODY] = body
+            if ProjectionPart.STATE in changed_parts:
+                data[GitHubField.STATE] = state
+                data[GitHubField.STATE_REASON] = reason
+            if ProjectionPart.LABELS in changed_parts:
+                data[GitHubField.LABELS] = labels
+            if ProjectionPart.ISSUE_TYPE in changed_parts:
+                data[GitHubField.TYPE] = issue_type
+            if ProjectionPart.ASSIGNEES in changed_parts:
+                data[GitHubField.ASSIGNEES] = assignees
+            provider_data: dict[str, str | list[str] | None] = {field.value: value for field, value in data.items()}
             await client.rest.issues.async_update(
                 owner,
                 repo,
                 number,
-                data={
-                    GitHubField.TITLE: title,
-                    GitHubField.BODY: body,
-                    GitHubField.STATE: state,
-                    GitHubField.STATE_REASON: reason,
-                    GitHubField.LABELS: labels,
-                },
+                data=provider_data,
             )
 
         await self._with_client(GitHubOperation.UPDATE_ISSUE, request)
 
-    async def _ensure_label(self, name: str, color: str) -> None:
+    async def _ensure_label(self, name: str, color: str, description: str) -> None:
         owner, repo = _split_repository(self.repository.repository)
 
         async def request(client: Any) -> None:
             try:
-                await client.rest.issues.async_get_label(owner, repo, name)
-                return
+                response = await client.rest.issues.async_get_label(owner, repo, name)
             except RequestFailed as error:
                 if error.response.status_code != 404:
                     raise
+                response = None
+            provider_color = color.removeprefix(_LABEL_COLOR_PREFIX)
+            if response is not None:
+                label = response.parsed_data
+                if label.color == provider_color and label.description == description:
+                    return
+                await self._pace_mutation_start()
+                await client.rest.issues.async_update_label(
+                    owner,
+                    repo,
+                    name,
+                    data={GitHubField.COLOR: provider_color, GitHubField.DESCRIPTION: description},
+                )
+                return
             await self._pace_mutation_start()
             await client.rest.issues.async_create_label(
-                owner, repo, data={GitHubField.NAME: name, GitHubField.COLOR: color}
+                owner,
+                repo,
+                data={
+                    GitHubField.NAME: name,
+                    GitHubField.COLOR: provider_color,
+                    GitHubField.DESCRIPTION: description,
+                },
             )
 
         await self._with_client(GitHubOperation.ENSURE_LABEL, request)
+
+    async def _delete_label(self, name: str) -> None:
+        owner, repo = _split_repository(self.repository.repository)
+
+        async def request(client: Any) -> None:
+            try:
+                await self._pace_mutation_start()
+                await client.rest.issues.async_delete_label(owner, repo, name)
+            except RequestFailed as error:
+                if error.response.status_code == 404:
+                    return
+                raise
+
+        await self._with_client(GitHubOperation.DELETE_LABEL, request)
 
     async def _list_issues(self, since: datetime | None) -> tuple[GitHubIssue, ...]:
         owner, repo = _split_repository(self.repository.repository)
@@ -464,7 +560,7 @@ class GitHubWorkflowIO:
                 )
                 issues = response.parsed_data
                 found.extend(
-                    GitHubIssue(issue.number, issue.node_id, issue.user.login, issue.updated_at)
+                    GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
                     for issue in issues
                     if getattr(issue, GitHubField.PULL_REQUEST, None) is None
                 )
@@ -473,6 +569,123 @@ class GitHubWorkflowIO:
                 page += 1
 
         return await self._with_client(GitHubOperation.LIST_ISSUES, request)
+
+    async def _get_issue(self, number: int) -> GitHubIssue:
+        owner, repo = _split_repository(self.repository.repository)
+
+        async def request(client: Any) -> GitHubIssue:
+            response = await client.rest.issues.async_get(owner, repo, number)
+            issue = response.parsed_data
+            return GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
+
+        return await self._with_client(GitHubOperation.GET_ISSUE, request)
+
+    async def _list_repository_labels(self) -> tuple[str, ...]:
+        owner, repo = _split_repository(self.repository.repository)
+
+        async def request(client: Any) -> tuple[str, ...]:
+            names: list[str] = []
+            page = 1
+            while True:
+                response = await client.rest.issues.async_list_labels_for_repo(
+                    owner, repo, per_page=_PAGE_SIZE, page=page
+                )
+                labels = response.parsed_data
+                names.extend(label.name for label in labels)
+                if len(labels) < _PAGE_SIZE:
+                    return tuple(names)
+                page += 1
+
+        return await self._with_client(GitHubOperation.LIST_LABELS, request)
+
+    async def _list_sub_issues(self, number: int) -> tuple[int, ...]:
+        owner, repo = _split_repository(self.repository.repository)
+
+        async def request(client: Any) -> tuple[int, ...]:
+            issue_ids: list[int] = []
+            page = 1
+            while True:
+                response = await client.rest.issues.async_list_sub_issues(
+                    owner, repo, number, per_page=_PAGE_SIZE, page=page
+                )
+                issues = response.parsed_data
+                issue_ids.extend(int(issue.id) for issue in issues)
+                if len(issues) < _PAGE_SIZE:
+                    return tuple(issue_ids)
+                page += 1
+
+        return await self._with_client(GitHubOperation.LIST_SUB_ISSUES, request)
+
+    async def _get_parent(self, number: int) -> tuple[int, int] | None:
+        owner, repo = _split_repository(self.repository.repository)
+
+        async def request(client: Any) -> tuple[int, int]:
+            response = await client.rest.issues.async_get_parent(owner, repo, number)
+            parent = response.parsed_data
+            return parent.number, parent.id
+
+        try:
+            return await self._with_client(GitHubOperation.GET_PARENT, request)
+        except GitHubIORefused as error:
+            if error.reason is GitHubIOFailure.NOT_FOUND:
+                return None
+            raise
+
+    async def _add_sub_issue(self, number: int, sub_issue_id: int, replace_parent: bool) -> None:
+        owner, repo = _split_repository(self.repository.repository)
+
+        async def request(client: Any) -> None:
+            await self._pace_mutation_start()
+            await client.rest.issues.async_add_sub_issue(
+                owner, repo, number, sub_issue_id=sub_issue_id, replace_parent=replace_parent
+            )
+
+        await self._with_client(GitHubOperation.ADD_SUB_ISSUE, request)
+
+    async def _remove_sub_issue(self, number: int, sub_issue_id: int) -> None:
+        owner, repo = _split_repository(self.repository.repository)
+
+        async def request(client: Any) -> None:
+            await self._pace_mutation_start()
+            await client.rest.issues.async_remove_sub_issue(owner, repo, number, sub_issue_id=sub_issue_id)
+
+        await self._with_client(GitHubOperation.REMOVE_SUB_ISSUE, request)
+
+    async def _list_dependencies_blocked_by(self, number: int) -> tuple[int, ...]:
+        owner, repo = _split_repository(self.repository.repository)
+
+        async def request(client: Any) -> tuple[int, ...]:
+            issue_ids: list[int] = []
+            page = 1
+            while True:
+                response = await client.rest.issues.async_list_dependencies_blocked_by(
+                    owner, repo, number, per_page=_PAGE_SIZE, page=page
+                )
+                issues = response.parsed_data
+                issue_ids.extend(int(issue.id) for issue in issues)
+                if len(issues) < _PAGE_SIZE:
+                    return tuple(issue_ids)
+                page += 1
+
+        return await self._with_client(GitHubOperation.LIST_BLOCKED_BY, request)
+
+    async def _add_blocked_by_dependency(self, number: int, issue_id: int) -> None:
+        owner, repo = _split_repository(self.repository.repository)
+
+        async def request(client: Any) -> None:
+            await self._pace_mutation_start()
+            await client.rest.issues.async_add_blocked_by_dependency(owner, repo, number, issue_id=issue_id)
+
+        await self._with_client(GitHubOperation.ADD_BLOCKED_BY, request)
+
+    async def _remove_dependency_blocked_by(self, number: int, issue_id: int) -> None:
+        owner, repo = _split_repository(self.repository.repository)
+
+        async def request(client: Any) -> None:
+            await self._pace_mutation_start()
+            await client.rest.issues.async_remove_dependency_blocked_by(owner, repo, number, issue_id=issue_id)
+
+        await self._with_client(GitHubOperation.REMOVE_BLOCKED_BY, request)
 
     async def _read_comments(self, number: int) -> tuple[GitHubComment, ...]:
         owner, repo = _split_repository(self.repository.repository)
@@ -564,18 +777,74 @@ async def _dispatch_open_issue(io: GitHubWorkflowIO, args: tuple[object, ...]) -
 
 async def _dispatch_update_issue(io: GitHubWorkflowIO, args: tuple[object, ...]) -> None:
     labels = args[5]
-    if not isinstance(labels, list) or any(not isinstance(label, str) for label in labels):
+    assignees = args[7]
+    issue_type = args[6]
+    if (
+        not isinstance(labels, list)
+        or any(not isinstance(label, str) for label in labels)
+        or not isinstance(assignees, list)
+        or any(not isinstance(assignee, str) for assignee in assignees)
+        or (issue_type is not None and not isinstance(issue_type, str))
+    ):
         raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-    await io._update_issue(_int_argument(args[0]), str(args[1]), str(args[2]), str(args[3]), str(args[4]), labels)
+    await io._update_issue(
+        _int_argument(args[0]),
+        str(args[1]),
+        str(args[2]),
+        str(args[3]),
+        str(args[4]),
+        labels,
+        issue_type,
+        assignees,
+        ISSUE_FIELD_PARTS,
+    )
 
 
 async def _dispatch_ensure_label(io: GitHubWorkflowIO, args: tuple[object, ...]) -> None:
-    await io._ensure_label(str(args[0]), str(args[1]))
+    await io._ensure_label(str(args[0]), str(args[1]), str(args[2]))
+
+
+async def _dispatch_delete_label(io: GitHubWorkflowIO, args: tuple[object, ...]) -> None:
+    await io._delete_label(str(args[0]))
+
+
+async def _dispatch_list_sub_issues(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
+    return await io._list_sub_issues(_int_argument(args[0]))
+
+
+async def _dispatch_add_sub_issue(io: GitHubWorkflowIO, args: tuple[object, ...]) -> None:
+    if not isinstance(args[2], bool):
+        raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
+    await io._add_sub_issue(_int_argument(args[0]), _int_argument(args[1]), args[2])
+
+
+async def _dispatch_remove_sub_issue(io: GitHubWorkflowIO, args: tuple[object, ...]) -> None:
+    await io._remove_sub_issue(_int_argument(args[0]), _int_argument(args[1]))
+
+
+async def _dispatch_list_blocked_by(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
+    return await io._list_dependencies_blocked_by(_int_argument(args[0]))
+
+
+async def _dispatch_add_blocked_by(io: GitHubWorkflowIO, args: tuple[object, ...]) -> None:
+    await io._add_blocked_by_dependency(_int_argument(args[0]), _int_argument(args[1]))
+
+
+async def _dispatch_remove_blocked_by(io: GitHubWorkflowIO, args: tuple[object, ...]) -> None:
+    await io._remove_dependency_blocked_by(_int_argument(args[0]), _int_argument(args[1]))
 
 
 async def _dispatch_list_issues(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
     since = args[0] if isinstance(args[0], datetime) else None
     return await io._list_issues(since)
+
+
+async def _dispatch_list_labels(io: GitHubWorkflowIO, _args: tuple[object, ...]) -> Any:
+    return await io._list_repository_labels()
+
+
+async def _dispatch_get_issue(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
+    return await io._get_issue(_int_argument(args[0]))
 
 
 async def _dispatch_read_comments(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
@@ -594,7 +863,16 @@ _OPERATION_HANDLERS: dict[GitHubOperation, Callable[[GitHubWorkflowIO, tuple[obj
     GitHubOperation.OPEN_ISSUE: _dispatch_open_issue,
     GitHubOperation.UPDATE_ISSUE: _dispatch_update_issue,
     GitHubOperation.ENSURE_LABEL: _dispatch_ensure_label,
+    GitHubOperation.DELETE_LABEL: _dispatch_delete_label,
     GitHubOperation.LIST_ISSUES: _dispatch_list_issues,
+    GitHubOperation.LIST_LABELS: _dispatch_list_labels,
+    GitHubOperation.GET_ISSUE: _dispatch_get_issue,
+    GitHubOperation.LIST_SUB_ISSUES: _dispatch_list_sub_issues,
+    GitHubOperation.ADD_SUB_ISSUE: _dispatch_add_sub_issue,
+    GitHubOperation.REMOVE_SUB_ISSUE: _dispatch_remove_sub_issue,
+    GitHubOperation.LIST_BLOCKED_BY: _dispatch_list_blocked_by,
+    GitHubOperation.ADD_BLOCKED_BY: _dispatch_add_blocked_by,
+    GitHubOperation.REMOVE_BLOCKED_BY: _dispatch_remove_blocked_by,
     GitHubOperation.READ_COMMENTS: _dispatch_read_comments,
     GitHubOperation.CREATE_COMMENT: _dispatch_create_comment,
     GitHubOperation.UPDATE_COMMENT: _dispatch_update_comment,
