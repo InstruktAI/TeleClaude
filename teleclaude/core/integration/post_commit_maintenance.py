@@ -503,26 +503,32 @@ def _drain_locked(project_root: Path) -> bool:
     logger.info(_MAINTENANCE_DRAIN_STARTED_EVENT, project_root=str(root))
     repository = Repo(str(root))
     window_open = False
+    preferred_activation: MaintenanceActivation | None = None
     window_activations: list[MaintenanceActivation] = []
     while True:
         activation: MaintenanceActivation | None = None
         activation_records: tuple[MaintenanceActionRecord, ...] = ()
         records: tuple[MaintenanceActionRecord, ...] = ()
-        model: CheckpointModel | None = None
+        model: CheckpointModel
         known_records: dict[str, MaintenanceActionRecord] = {}
         close_boundary = False
         with maintenance_activation_registration_lock(root):
             records = read_records(root)
-            actionable = tuple(
+            all_actionable = tuple(
                 record
                 for record in records
                 if record.state in (MaintenanceRecordState.PENDING, MaintenanceRecordState.RUNNING)
             )
+            model = maintenance_model(root)
+            actionable = (
+                tuple(record for record in all_actionable if _is_window_action(record.action_id, model.maintenance))
+                if window_open
+                else all_actionable
+            )
             if actionable:
-                activation = _next_activation(repository, actionable)
+                activation = _next_activation(repository, actionable, preferred_activation=preferred_activation)
+                preferred_activation = None
                 activation_records = tuple(record for record in actionable if record.activation == activation)
-                # The model is resolved as each activation is reached: an earlier action may have advanced the checkout.
-                model = maintenance_model(root)
                 known_records = {
                     record.action_id: record for record in activation_records if record.action_id in model.maintenance
                 }
@@ -536,21 +542,24 @@ def _drain_locked(project_root: Path) -> bool:
                 break
 
         if close_boundary:
+            is_window_action = _window_action_predicate(model.maintenance)
             boundary = close_drain_window(
                 root,
                 repository,
                 window_activations,
                 lambda after_sha: _register_tip_for_window_close(root, after_sha),
                 _settle_window_records,
+                is_window_action,
             )
             window_open = boundary.window_open
+            preferred_activation = boundary.preferred_activation
             if boundary.decision is WindowBoundaryDecision.COMPLETE:
-                break
+                continue
             if boundary.decision is WindowBoundaryDecision.REFUSED:
                 return False
             continue
 
-        if activation is None or model is None:
+        if activation is None:
             continue
 
         all_activation_records = tuple(record for record in records if record.activation == activation)
@@ -558,7 +567,13 @@ def _drain_locked(project_root: Path) -> bool:
             (record for record in all_activation_records if record.action_id == RESTART_MAINTENANCE_ACTION_ID),
             None,
         )
-        if window_record is not None:
+        has_actionable_window_action = any(
+            record.action_id != RESTART_MAINTENANCE_ACTION_ID and _is_window_action(record.action_id, model.maintenance)
+            for record in activation_records
+        )
+        if window_record is not None and (
+            window_record.state is MaintenanceRecordState.PENDING or has_actionable_window_action
+        ):
             if not window_open:
                 result = open_window(root, activation)
                 if not result.opened:
@@ -576,14 +591,20 @@ def _drain_locked(project_root: Path) -> bool:
                 )
             if activation not in window_activations:
                 window_activations.append(activation)
-            _hold_window_record(root, window_record)
+            if window_record.state is MaintenanceRecordState.PENDING:
+                _hold_window_record(root, window_record)
         if window_open and activation not in window_activations:
             window_activations.append(activation)
             logger.info(
                 _MAINTENANCE_WINDOW_ACTIVATION_COVERED_EVENT,
                 **_activation_log_fields(activation),
             )
-        action_ids = tuple(action_id for action_id in known_records if action_id != RESTART_MAINTENANCE_ACTION_ID)
+        action_ids = tuple(
+            action_id
+            for action_id in known_records
+            if action_id != RESTART_MAINTENANCE_ACTION_ID
+            and (not window_open or _is_window_action(action_id, model.maintenance))
+        )
         if action_ids:
             _run_activation(
                 root,
@@ -627,6 +648,7 @@ def _settle_window_records(
     root: Path,
     activations: list[MaintenanceActivation],
     result: WindowCloseResult,
+    is_window_action: Callable[[MaintenanceActionRecord], bool],
 ) -> None:
     """Retire verified window obligations after their steps, or retain a failed start for replay."""
     for activation in activations:
@@ -638,7 +660,9 @@ def _settle_window_records(
             other_records = tuple(
                 current
                 for current in read_records(root)
-                if current.activation == activation and current.action_id != RESTART_MAINTENANCE_ACTION_ID
+                if current.activation == activation
+                and current.action_id != RESTART_MAINTENANCE_ACTION_ID
+                and is_window_action(current)
             )
             if not other_records:
                 remove_record(path)
@@ -662,6 +686,22 @@ def _settle_window_records(
                 output_tail=output_tail,
             ),
         )
+
+
+def _is_window_action(action_id: str, maintenance: Mapping[str, MaintenanceAction]) -> bool:
+    """Whether an action must run with the daemon stopped; unknown actions default to the window."""
+    return (
+        action_id == RESTART_MAINTENANCE_ACTION_ID
+        or action_id not in maintenance
+        or not maintenance[action_id].runs_while_serving
+    )
+
+
+def _window_action_predicate(
+    maintenance: Mapping[str, MaintenanceAction],
+) -> Callable[[MaintenanceActionRecord], bool]:
+    """Bind the current registry declaration to the drain window's record predicate."""
+    return lambda record: _is_window_action(record.action_id, maintenance)
 
 
 def _run_activation(
@@ -750,13 +790,20 @@ def run_maintenance_waves(
     return tuple(completed)
 
 
-def _next_activation(repository: Repo, actionable: tuple[MaintenanceActionRecord, ...]) -> MaintenanceActivation:
+def _next_activation(
+    repository: Repo,
+    actionable: tuple[MaintenanceActionRecord, ...],
+    *,
+    preferred_activation: MaintenanceActivation | None = None,
+) -> MaintenanceActivation:
     """Pick the activation to run next from the records still owed.
 
     Commit activations keep their ancestry order among themselves and event activations are
-    taken in the order they were recorded; the next activation is the earlier-queued of those
-    two candidates.
+    taken in the order they were recorded. A preferred activation wins only when a boundary
+    observed an overtaken restart; every other selection keeps the ordinary ordering.
     """
+    if preferred_activation is not None and any(record.activation == preferred_activation for record in actionable):
+        return preferred_activation
     commit_queue = [
         (record.activation, record.queued_at) for record in actionable if isinstance(record.activation, ActivationRange)
     ]

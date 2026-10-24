@@ -35,7 +35,7 @@ from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import RESERVED_HOME_IDENTITY_PREFIXES
 
-CURRENT_SCHEMA_VERSION = 25
+CURRENT_SCHEMA_VERSION = 26
 _PROBE_REQUIRES_DEFER_ERROR = "owed_probe belongs only to an action whose on_demand is defer"
 _EVENT_BINDING_SCOPE_ERROR = "a binding names one trigger kind: events or scope, never both"
 _EVENT_BINDING_EMPTY_ERROR = "a binding that names events must name at least one event type pattern"
@@ -497,6 +497,7 @@ class CheckpointMaintenanceConfig(ClosedModel):
     precedence: int = 0
     on_demand: OnDemandDisposition = OnDemandDisposition.RUN
     owed_probe: list[str] | None = Field(default=None, min_length=1)
+    runs_while_serving: bool = False
 
     @model_validator(mode="after")
     def validate_probe_belongs_to_deferred_action(self) -> CheckpointMaintenanceConfig:

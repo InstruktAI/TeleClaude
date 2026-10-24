@@ -30,6 +30,7 @@ from teleclaude.config.migrations import (
     v023_compatibility_series,
     v024_declare_github_identities,
     v025_declare_todo_repository,
+    v026_declare_maintenance_runs_while_serving,
 )
 
 STEPS: Final = (
@@ -58,4 +59,5 @@ STEPS: Final = (
     v023_compatibility_series,
     v024_declare_github_identities,
     v025_declare_todo_repository,
+    v026_declare_maintenance_runs_while_serving,
 )

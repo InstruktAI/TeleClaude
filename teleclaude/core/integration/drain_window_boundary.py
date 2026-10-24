@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.checkpoint_model import ActivationRange
 from teleclaude.constants import RESTART_MAINTENANCE_ACTION_ID
 from teleclaude.core.integration._maintenance_records import (
+    MaintenanceActionRecord,
     MaintenanceActivation,
     MaintenanceRecordState,
     maintenance_activation_registration_lock,
@@ -34,7 +35,8 @@ _WINDOW_START_OVERTAKEN_EVENT = "post_commit_maintenance_window_start_overtaken"
 _WINDOW_TIP_REGISTRATION_REFUSED_EVENT = "post_commit_maintenance_window_tip_registration_refused"
 
 type RegisterTip = Callable[[str], tuple[ActivationRange, tuple[str, ...] | None, str | None]]
-type SettleWindow = Callable[[Path, list[MaintenanceActivation], WindowCloseResult], None]
+type IsWindowAction = Callable[[MaintenanceActionRecord], bool]
+type SettleWindow = Callable[[Path, list[MaintenanceActivation], WindowCloseResult, IsWindowAction], None]
 
 
 class WindowBoundaryDecision(StrEnum):
@@ -51,6 +53,7 @@ class WindowBoundaryResult:
 
     decision: WindowBoundaryDecision
     window_open: bool
+    preferred_activation: MaintenanceActivation | None = None
 
 
 def close_drain_window(
@@ -59,6 +62,7 @@ def close_drain_window(
     activations: list[MaintenanceActivation],
     register_tip: RegisterTip,
     settle_window: SettleWindow,
+    is_window_action: IsWindowAction,
 ) -> WindowBoundaryResult:
     """Drain newly actionable work, register an unrecorded tip, and close under registration exclusion."""
     while True:
@@ -66,7 +70,9 @@ def close_drain_window(
         with maintenance_activation_registration_lock(root):
             records = read_records(root)
             if any(
-                record.state in (MaintenanceRecordState.PENDING, MaintenanceRecordState.RUNNING) for record in records
+                record.state in (MaintenanceRecordState.PENDING, MaintenanceRecordState.RUNNING)
+                and is_window_action(record)
+                for record in records
             ):
                 return WindowBoundaryResult(WindowBoundaryDecision.CONTINUE, True)
 
@@ -84,7 +90,7 @@ def close_drain_window(
                 )
                 tip_after_close = repository.head.commit.hexsha
                 if not close_result.verified:
-                    settle_window(root, activations, close_result)
+                    settle_window(root, activations, close_result, is_window_action)
                     logger.info(
                         _WINDOW_CLOSED_EVENT,
                         activations=tuple(_activation_fields(item) for item in activations),
@@ -93,7 +99,7 @@ def close_drain_window(
                     )
                     return WindowBoundaryResult(WindowBoundaryDecision.REFUSED, False)
                 if tip_after_close == start_commit:
-                    settle_window(root, activations, close_result)
+                    settle_window(root, activations, close_result, is_window_action)
                     logger.info(
                         _WINDOW_CLOSED_EVENT,
                         activations=tuple(_activation_fields(item) for item in activations),
@@ -108,7 +114,7 @@ def close_drain_window(
                 continue
             activation_range, action_ids, refusal = register_tip(unregistered_tip)
             if refusal is not None:
-                _refuse_tip_registration(root, activation_range, refusal, activations, settle_window)
+                _refuse_tip_registration(root, activation_range, refusal, activations, settle_window, is_window_action)
                 return WindowBoundaryResult(WindowBoundaryDecision.REFUSED, True)
             logger.info(
                 _WINDOW_TIP_REGISTERED_EVENT,
@@ -136,6 +142,7 @@ def close_drain_window(
                         root,
                         activations,
                         WindowCloseResult(verified=False, reason=refusal),
+                        is_window_action,
                     )
             logger.error(
                 _WINDOW_TIP_REGISTRATION_REFUSED_EVENT,
@@ -146,9 +153,13 @@ def close_drain_window(
             return WindowBoundaryResult(WindowBoundaryDecision.REFUSED, reopened.opened)
 
         if RESTART_MAINTENANCE_ACTION_ID in (action_ids or ()):
-            return WindowBoundaryResult(WindowBoundaryDecision.CONTINUE, False)
+            return WindowBoundaryResult(
+                WindowBoundaryDecision.CONTINUE,
+                False,
+                preferred_activation=activation_range,
+            )
         with maintenance_activation_registration_lock(root):
-            settle_window(root, activations, close_result)
+            settle_window(root, activations, close_result, is_window_action)
         activations.clear()
         return WindowBoundaryResult(WindowBoundaryDecision.CONTINUE, False)
 
@@ -159,11 +170,12 @@ def refuse_unregistered_tip(
     reason: str,
     activations: list[MaintenanceActivation],
     settle_window: SettleWindow,
+    is_window_action: IsWindowAction,
 ) -> None:
     """Keep a refused pre-start registration stopped and fail every covered replacement record."""
     record_window_failure(root, reason)
     with maintenance_activation_registration_lock(root):
-        settle_window(root, activations, WindowCloseResult(verified=False, reason=reason))
+        settle_window(root, activations, WindowCloseResult(verified=False, reason=reason), is_window_action)
     logger.error(
         _WINDOW_TIP_REGISTRATION_REFUSED_EVENT,
         **_activation_fields(activation_range),
@@ -179,9 +191,10 @@ def _refuse_tip_registration(
     reason: str,
     activations: list[MaintenanceActivation],
     settle_window: SettleWindow,
+    is_window_action: IsWindowAction,
 ) -> None:
     """Record a refusal while the daemon is already stopped at the pre-start boundary."""
-    refuse_unregistered_tip(root, activation_range, reason, activations, settle_window)
+    refuse_unregistered_tip(root, activation_range, reason, activations, settle_window, is_window_action)
 
 
 def _activation_fields(activation: MaintenanceActivation) -> dict[str, str | None]:
