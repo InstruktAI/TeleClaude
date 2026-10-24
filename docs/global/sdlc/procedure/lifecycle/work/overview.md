@@ -7,7 +7,7 @@ parameters:
   - name: slug
     required: true
 dispatch:
-  agent: [codex, claude, gemini, deepseek]
+  agent: [claude, codex, gemini, deepseek]
   thinking_mode: slow
 ---
 
