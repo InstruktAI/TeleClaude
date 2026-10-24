@@ -31,7 +31,6 @@ from teleclaude.core.next_machine._types import (
 from teleclaude.core.next_machine.state_io import _file_sha256
 from teleclaude.core.next_machine.worktree_home import ensure_worktree_home
 from teleclaude.core.reconciliation.config_schemas import converge_project_schema_link
-from teleclaude.core.worktree_layout import development_home_for_checkout
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, Repo
 from teleclaude.runtime.agy_workspace_trust import add_worktree_trust
 
@@ -47,7 +46,6 @@ _PREP_INPUTS_DIGEST_FIELD = "inputs_digest"
 _PREPARED_AT_FIELD = "prepared_at"
 _INSTALL_SCRIPT_PATH = Path("bin") / "install.sh"
 _DEPENDENCY_ONLY_OPTION = "--deps-only"
-_TELECLAUDE_HOME_ENVIRONMENT_VARIABLE = "TELECLAUDE_HOME"
 _WORKTREE_PREPARE_SCRIPT_PATH = Path("tools") / "worktree-prepare.sh"
 _ORIGIN = "origin"
 _MAIN_BRANCH = "main"
@@ -180,12 +178,10 @@ def ensure_development_dependencies(project_root: Path) -> bool:
     ):
         return False
 
-    development_home = development_home_for_checkout(root)
     script = root / _INSTALL_SCRIPT_PATH
-    environment = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
-    environment[_TELECLAUDE_HOME_ENVIRONMENT_VARIABLE] = str(development_home)
     # The installer coordinates external dependency managers with no equivalent Python API.
-    subprocess.run([str(script), _DEPENDENCY_ONLY_OPTION], cwd=str(root), env=environment, check=True)
+    # It selects the isolated home after its installed-controller purpose query.
+    subprocess.run([str(script), _DEPENDENCY_ONLY_OPTION], cwd=str(root), check=True)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         _PREP_VERSION_FIELD: _PREP_STATE_VERSION,
