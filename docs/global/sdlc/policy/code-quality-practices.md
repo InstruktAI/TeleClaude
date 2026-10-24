@@ -57,6 +57,7 @@ visibility: 'public'
 - Preserve deterministic outcomes under concurrency.
 - Aggregate parallel work explicitly and keep ordering intentional.
 - Protect shared state with explicit ownership or isolation.
+- Hold a shared resource only around the work that needs it, and bound every wait for one. A caller with a deadline receives its outcome, done or refused, within that deadline.
 
 ### Observability
 
@@ -89,6 +90,8 @@ visibility: 'public'
 Apply the code-quality policy and design principles consistently in daily work. Named principles provide shared vocabulary for structural reasoning; these rules translate them into concrete habits.
 
 A loop that serves independent callers shares its fate across all of them: whatever ends it denies service to every later caller while the process still looks alive. A closed list of failure types reflects only the types that existed when it was written, so a loop guarded by one stays available only as long as no code it runs ever gains a new failure type. A task that has died inside a live process is invisible to the service manager that would otherwise restart it.
+
+A lock, transaction or queue shared with unrelated work makes its holders' durations part of every waiter's latency. Taken on a path many sessions call, it charges each caller the longest concurrent holder — a commit's quality gate, an integration push — and an unbounded wait stretches that past the caller's deadline, so work that succeeds is reported as failed. Protection is visible in the code that takes the resource; its cost is visible only in who else holds it, which is why the bound and the deadline are stated alongside the protection.
 
 ## Scope
 
