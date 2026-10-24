@@ -1,7 +1,7 @@
 ---
-description: An admin switches a project from its local todo store to the GitHub store with one command that also moves the project's open work into its repository, and can be run again until the move is complete.
-delivered_by:
-  - github-store-switch
+description: An admin switches a project from its local todo store to the GitHub store
+  with one command that also moves the project's open work into its repository, and
+  can be run again until the move is complete.
 ---
 
 # GitHub Store Switch — Spec

@@ -271,17 +271,6 @@ working copy and the repository.
 
 ### Store activation
 
-<!-- planned-change:github-store-switch -->
-
-A project activates the GitHub store by declaring `todos.store: github`
-together with its repository and platform App
-(`local/projects/teleclaude/spec/teleclaude-config`), with that App installed
-on the repository. The first store resolution on a computer rebuilds the
-working copy from the repository; an empty repository yields an empty store.
-Moving an existing local store's items to GitHub is not part of activation.
-
-<!-- change:github-store-switch -->
-
 A project activates the GitHub store by declaring `todos.store: github`
 together with its repository and platform App
 (`local/projects/teleclaude/spec/teleclaude-config`), with that App installed
@@ -292,8 +281,6 @@ The GitHub store switch
 (`local/projects/teleclaude/spec/feature/workflow/github-store-switch`) moves
 them by restoring each item, with every artifact version, into the working copy
 as an ordinary change, so the write path below publishes it.
-
-<!-- /planned-change:github-store-switch -->
 
 ```mermaid
 sequenceDiagram
