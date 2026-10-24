@@ -13,10 +13,21 @@ dominate iteration speed.
 
 ## Preconditions
 
+<!-- planned-change:telec-repo-command-family -->
+
 - Portfolio classification: systems/daemon. The boundary is sharp — Rust
   never creeps into websites (TypeScript owns the web) or one-off automation
   (Python owns glue).
 - `rust` declared in `teleclaude.yml` so `telec code` drives Cargo natively.
+
+<!-- change:telec-repo-command-family -->
+
+- Portfolio classification: systems/daemon. The boundary is sharp — Rust
+  never creeps into websites (TypeScript owns the web) or one-off automation
+  (Python owns glue).
+- `rust` declared in `teleclaude.yml` so `telec repo` drives Cargo natively.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 ## Steps
 

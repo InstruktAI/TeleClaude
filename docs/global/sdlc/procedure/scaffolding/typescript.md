@@ -20,6 +20,8 @@ the files.
 
 ## Steps
 
+<!-- planned-change:telec-repo-command-family -->
+
 1. **Scaffold with the framework's own generator, always** — the current
    `npm create` / `create-next-app` incantation for the chosen flavor, aimed at
    the project folder `telec config project create` made (target `.`) rather
@@ -46,6 +48,37 @@ the files.
    and shared CI (see the CI pipeline conventions policy).
 5. **Quality gates are wired before feature work**, per the applicable
    production baseline.
+
+<!-- change:telec-repo-command-family -->
+
+1. **Scaffold with the framework's own generator, always** — the current
+   `npm create` / `create-next-app` incantation for the chosen flavor, aimed at
+   the project folder `telec config project create` made (target `.`) rather
+   than a new directory. A generator that refuses a folder already holding
+   files it doesn't recognise runs in a temporary sibling folder with its own
+   git setup turned off; its output, dot files included, then moves into the
+   project folder, which keeps its repository and `teleclaude.yml`.
+   `create-next-app` is one such generator: it accepts only a fixed list of
+   pre-existing files, and `teleclaude.yml` is not on it (see See Also). Never deploy scaffold files from a blessed
+   folder — a baked scaffold is a stale cache of the generator.
+
+2. **Package manager ruling**: pnpm blessed for greenfield; in any existing
+   repo the lockfile is law; never mix. The button contract is
+   manager-agnostic, so this choice never leaks into scripts or CI.
+3. **Lint/format ruling**: where the framework has a first-class lint
+   ecosystem (Astro, Next.js), keep it (ESLint + Prettier). Where the repo is
+   framework-neutral (Hono services, Vite tools, CLIs), use Biome as the
+   single lint+format tool. The qualities are non-negotiable either way: one
+   formatter, strict TypeScript (`strict`, `noUncheckedIndexedAccess`), types
+   checked in CI.
+4. **Standard scripts exist regardless of flavor**: `dev`, `build`, `lint`,
+   `format`, `typecheck`, `test` — plus the flavor's additions. A thin
+   Makefile shim maps `lint`/`format`/`test`/`e2e` onto them for `telec repo`
+   and shared CI (see the CI pipeline conventions policy).
+5. **Quality gates are wired before feature work**, per the applicable
+   production baseline.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 ## Outputs
 

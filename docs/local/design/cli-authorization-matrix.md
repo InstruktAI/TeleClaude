@@ -30,6 +30,8 @@ Capabilities keep an agent inside its brief; they are focus, not integrity (`gen
 
 ### Command capability membership
 
+<!-- planned-change:telec-repo-command-family -->
+
 | Capability             | Commands                                                                                                                                                                                                |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `docs-read`            | `docs index`, `docs get`                                                                                                                                                                                |
@@ -62,6 +64,42 @@ Capabilities keep an agent inside its brief; they are focus, not integrity (`gen
 | `memories-read`        | `memories list`, `memories search`, `memories timeline`, `memories delete`                                                                                                                              |
 | `memories-save`        | `memories save`                                                                                                                                                                                         |
 
+<!-- change:telec-repo-command-family -->
+
+| Capability             | Commands                                                                                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs-read`            | `docs index`, `docs get`                                                                                                                                                                                |
+| `todo-read`            | `todo list`, `todo show`, `bugs list`, `bugs suppressions`                                                                                                                                              |
+| `todo-write`           | `todo create`, `todo freeze`, `todo unfreeze`, `todo remove`, `todo reactivate`, `todo deliver`, `todo update`, `bugs report`, `bugs suppress`, `bugs unsuppress`, `content dump`                       |
+| `artifact-read`        | `todo artifacts list`, `todo artifacts read`, `todo artifacts diff`                                                                                                                                     |
+| `artifact-write`       | `todo artifacts write`, `todo artifacts remove`                                                                                                                                                         |
+| `stamp`                | `todo stamp`, `repo stamp`                                                                                                                                                                              |
+| `todo-orchestration`   | `todo prepare`, `todo work`, `todo design`                                                                                                                                                              |
+| `integration`          | `todo integrate`, `repo owners`                                                                                                                                                                         |
+| `maintenance-recovery` | `repo maintenance status`, `repo maintenance drain`, `repo maintenance retry`                                                                                                                           |
+| `memory-curation`      | `memories scope`, `memories add`, `memories update`, `memories retire`, `memories prospect`, `memories extraction read`, `memories extraction complete`, `memories extraction fail`, `memories advance` |
+| `session-observe`      | `sessions list`, `sessions show`, `history search`, `computers list`, `projects list`, `agents availability`, `sessions coordinate`                                                                     |
+| `transcript-read`      | `history show`                                                                                                                                                                                          |
+| `operation-read`       | `operations get`                                                                                                                                                                                        |
+| `session-act`          | `sessions start`, `sessions run`, `sessions run-pa`, `sessions revive`, `sessions restart`, `sessions end`, `agents status`                                                                             |
+| `peer-talk`            | `sessions send`, `sessions tail`                                                                                                                                                                        |
+| `self-acts`            | `sessions result`, `sessions file`, `sessions escalate`, `sessions unsubscribe`, and a session's own end and restart through the self-acts in `command-clearance`                                       |
+| `messaging`            | `message`                                                                                                                                                                                               |
+| `audio`                | `audio stt`                                                                                                                                                                                             |
+| `jobs`                 | `jobs enable`, `jobs disable`, `jobs run`                                                                                                                                                               |
+| `jobs-read`            | `jobs list`, `jobs status`                                                                                                                                                                              |
+| `job-report`           | `jobs report`                                                                                                                                                                                           |
+| `config`               | every `config` command except `config wizard` and the `config-read` commands                                                                                                                            |
+| `config-read`          | `config computer list`, `config computer get`, `config global list`, `config global get`, `config project list`, `config project get`, `config validate`                                                |
+| `reminders`            | `reminders set`, `reminders list`, `reminders cancel`                                                                                                                                                   |
+| `code-check`           | `repo blueprint affected`, `repo lint`, `repo test`                                                                                                                                                     |
+| `code`                 | `repo format`, `repo add`, `repo commit`, `sync`                                                                                                                                                        |
+| `mcp`                  | `mcp list-tools`, `mcp call`                                                                                                                                                                            |
+| `memories-read`        | `memories list`, `memories search`, `memories timeline`, `memories delete`                                                                                                                              |
+| `memories-save`        | `memories save`                                                                                                                                                                                         |
+
+<!-- /planned-change:telec-repo-command-family -->
+
 The schema's declaration is the authority for every command's exact capability; this table is its grouped reading and is corrected to the schema, never the reverse.
 
 ### Person role bands
@@ -76,7 +114,15 @@ Each command keeps a person band of its own in the CLI surface schema, evaluated
 
 ### Commands that do not depend on the caller
 
+<!-- planned-change:telec-repo-command-family -->
+
 `version`, `auth login`, `auth whoami`, `auth logout`, `events list`, `events schema`, `signals status`, `mcp list`, the local code-tooling commands `code lint`, `code test`, `code format`, `code add` and `code blueprint affected`, the hidden git-hook commands `code pre-commit`, `code post-commit` and `code post-merge`, and the hidden todo-state-transfer helper `todo sync-replica` admit a caller with no identity. Each either reads nothing that belongs to a caller or acts on an object already guarded by its own state (`general/principle/trust-and-guardrails`) — the code-tooling commands change only the invoking checkout and, when a session invokes them, that session's own path declarations, and those that narrow their scope to a session read the session marker, never the caller, and hook maintenance acts only on a canonical-main range and runs only main-only actions. The transfer helper runs on a receiving computer inside a non-interactive SSH session, which carries no login or session identity; it only reports where that computer keeps a project's todo state and whether that state is intact, facts any account able to run it can already read from disk, and it changes nothing.
+
+<!-- change:telec-repo-command-family -->
+
+`version`, `auth login`, `auth whoami`, `auth logout`, `events list`, `events schema`, `signals status`, `mcp list`, the local repository commands `repo lint`, `repo test`, `repo format`, `repo add` and `repo blueprint affected`, the hidden git-hook commands `repo pre-commit`, `repo post-commit` and `repo post-merge`, and the hidden todo-state-transfer helper `todo sync-replica` admit a caller with no identity. Each either reads nothing that belongs to a caller or acts on an object already guarded by its own state (`general/principle/trust-and-guardrails`) — the code-tooling commands change only the invoking checkout and, when a session invokes them, that session's own path declarations, and those that narrow their scope to a session read the session marker, never the caller, and hook maintenance acts only on a canonical-main range and runs only main-only actions. The transfer helper runs on a receiving computer inside a non-interactive SSH session, which carries no login or session identity; it only reports where that computer keeps a project's todo state and whether that state is intact, facts any account able to run it can already read from disk, and it changes nothing.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 ## Failure modes
 

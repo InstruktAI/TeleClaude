@@ -24,9 +24,19 @@ dependents. The shared baseline and freshness guarantee belong to
 
 ## Steps
 
+<!-- planned-change:telec-repo-command-family -->
+
 1. Run `telec code blueprint affected <changed-files>` for every file the
    change touches. It resolves the files' symbols and checks the baseline's
    freshness for you.
+
+<!-- change:telec-repo-command-family -->
+
+1. Run `telec repo blueprint affected <changed-files>` for every file the
+   change touches. It resolves the files' symbols and checks the baseline's
+   freshness for you.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 <!-- planned:code-uc-blueprint-traceability -->
 

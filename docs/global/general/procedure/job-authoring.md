@@ -123,6 +123,8 @@ publication there validates nothing.
 
 ## Recovery
 
+<!-- planned-change:telec-repo-command-family -->
+
 - If the commit gate reports findings, fix the reported issue and rerun `telec code commit`.
 - If validation reports the `job:` pointer as unknown, the procedure is missing
   from its publisher source tree: confirm the file exists at the taxonomy path
@@ -130,3 +132,15 @@ publication there validates nothing.
   `delivered_by`.
 - If unsure about execution mode, default to agent — it can always be
   simplified to script later.
+
+<!-- change:telec-repo-command-family -->
+
+- If the commit gate reports findings, fix the reported issue and rerun `telec repo commit`.
+- If validation reports the `job:` pointer as unknown, the procedure is missing
+  from its publisher source tree: confirm the file exists at the taxonomy path
+  the pointer names, that its snippet type is `procedure`, and that it carries no
+  `delivered_by`.
+- If unsure about execution mode, default to agent — it can always be
+  simplified to script later.
+
+<!-- /planned-change:telec-repo-command-family -->

@@ -75,6 +75,8 @@ publication.
 
 ## Canonical fields
 
+<!-- planned-change:telec-repo-command-family -->
+
 - **Hooks.** A project receives the TeleClaude-owned hook set when any enabled
   capability or declared binding can resolve an executable action. A hook the
   project authored itself is preserved rather than overwritten. A project with
@@ -146,6 +148,82 @@ publication.
   commit-boundary trigger invokes, and it is invocable on its own. A root that
   already matches is left untouched, an unavailable root is reported rather
   than failing the run, and roots on other machines are outside its reach.
+
+<!-- change:telec-repo-command-family -->
+
+- **Hooks.** A project receives the TeleClaude-owned hook set when any enabled
+  capability or declared binding can resolve an executable action. A hook the
+  project authored itself is preserved rather than overwritten. A project with
+  no executable binding receives no TeleClaude-owned hook. A project-authored
+  hook may itself invoke `telec repo <hook-name>` as one of its own steps, so
+  TeleClaude's dispatch and logic the platform cannot express run from the same
+  file; it still carries no sentinel and is still preserved exactly as any
+  project-authored hook is — it does not converge when the platform's template
+  next changes, so leaving it in place is recorded rather than treated as
+  ordinary, silent preservation.
+- **Filter driver.** The driver is present exactly when the project subscribes
+  `docs`. Convergence is two-directional: the driver is installed when `docs` is
+  subscribed and removed when it is not, so the act runs regardless of the
+  declaration's value.
+- **Repair.** Tracked files a checkout left unexpanded, and files still carrying
+  a prior filter pattern's residue, are re-checked out so the smudge filter
+  applies to them. A locally modified file is left untouched. Repair resolves a
+  file's filter attribute, so it runs after the filter attributes are written.
+- **Schema link.** Every adopted project carries the link, whatever it
+  subscribes. Before the link exists, the repository's local exclude list names
+  its path, so the link is never offered for commit whatever the project's own
+  ignore rules say; the exclude list is untracked repository state shared by the
+  checkout and its worktrees. An absent link is created, a link pointing
+  elsewhere is repointed, and a correct link is left untouched. A directory or
+  file already occupying the link path is reported and left untouched.
+- **Local state exclusion.** Every adopted project's local exclude list names
+  TeleClaude's machine-local state in that project — its `.teleclaude/`
+  directory and the configuration writer's lock files — whatever the project
+  subscribes and whatever its own ignore rules say. A missing name is added and
+  a present one is left as it is.
+- **Stray schema copies.** A per-project schema copy left at the project root is
+  removed when the project does not track it and it holds nothing but
+  TeleClaude's generated schema files. A tracked copy,
+  or one holding anything else, is reported and left untouched: removing it is
+  a commit in that project, which convergence never makes.
+- **Reporting.** A retained stray copy and an occupied link path are reported
+  for the root without failing its convergence. Neither affects the hooks or
+  the filter driver.
+- **Help desk.** A project whose declaration enables a help desk has its
+  `help-desk/` folder seeded from the project help-desk template on every
+  convergence: an absent master is written and an existing one is left as it
+  is, whatever its content; the desk's ignore file converges to its template.
+  A project whose declaration does not enable one has nothing seeded, and a
+  desk folder left from an earlier enabling stays in place, no longer hosted.
+
+- **Platform home masters.** The platform home's convergence seeds each
+  declared person and company home's master and each enabled company desk the
+  same way. The home's root master has no template and is never
+  written. It converges no plumbing of the home, which machine
+  installation owns. A person or company home is declared when its folder
+  holds its tier declaration.
+
+- **No existing master is written.** Convergence writes untracked machine state,
+  a desk's ignore file, and masters that are absent. A master that exists is
+  never rewritten, so a recorded master never leaves its home's working tree
+  dirty. The one other project-tracked file TeleClaude ever writes is the
+  `.gitattributes` docs-filter line, written additively at adoption by its own
+  step and never touched by a later convergence.
+- **Installation converges machine plumbing only.** Machine installation's
+  convergence of the TeleClaude checkout and of the platform home performs the
+  hooks, filter driver and schema link fields above and seeds no help desk and
+  no master.
+- **Fleet convergence is one operation.** A single operation converges every
+  registered project root on the machine and the platform home: it enumerates
+  the project entries of the project registry — a person or company home on it
+  is part of the platform home — compares each root's installed plumbing and
+  seeded masters against the current templates and its declaration, and
+  performs only the actions that close a gap. It is what TeleClaude's
+  commit-boundary trigger invokes, and it is invocable on its own. A root that
+  already matches is left untouched, an unavailable root is reported rather
+  than failing the run, and roots on other machines are outside its reach.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 ### Use cases
 

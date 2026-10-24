@@ -22,6 +22,8 @@ each decision point until the queue is drained.
 
 ## Preconditions
 
+<!-- planned-change:telec-repo-command-family -->
+
 - Candidate branches exist in the FIFO queue.
 - No other integrator session holds the lease.
 - The integrator operates in a persistent worktree at `trees/_integration/` (detached HEAD
@@ -58,6 +60,47 @@ each decision point until the queue is drained.
   they wrote an undeclared path, and commits the path as-is once it is quiet and
   unclaimed (see **REPO ROOT SYNC REQUIRED** below). The state machine emits this
   guidance when it observes the divergence.
+
+<!-- change:telec-repo-command-family -->
+
+- Candidate branches exist in the FIFO queue.
+- No other integrator session holds the lease.
+- The integrator operates in a persistent worktree at `trees/_integration/` (detached HEAD
+  from `origin/main`), created on first run and reused across subsequent runs. Reset to
+  `origin/main` before each merge. Repo root cleanliness is irrelevant — dirty files, hot
+  patches, and operational edits on `main` do not affect integration.
+- Worker worktrees branch from `origin/main` (not local HEAD), and `origin/main` is the
+  only baseline a slug worktree references: an agent inside `trees/<slug>` does not name
+  the local `main` branch in any git invocation — `main`, `heads/main`, `refs/heads/main`,
+  or a range with one of those as an endpoint — for any subcommand, read-only ones
+  included. The rule keeps a candidate's ancestry and working tree free of work that sits
+  on local `main` but not yet on `origin/main`.
+- The git wrapper refuses a local-`main` reference inside a slug worktree with no
+  override; the wrapper matrix in `docs/local/design/code-commit.md` carries the rule.
+- **The agent's cwd is the integration worktree.** All git and make commands run from
+  there without `-C` prefixes. Commands targeting project root (repo sync) are emitted
+  by the engine with explicit `-C <project_root>` paths. **The worktree's index and
+  working tree belong to the state machine.** Only `telec todo integrate` and the
+  `telec repo commit` instructions it emits write to them. Read-only git commands —
+  `status`, `log`, `show`, `diff <ref>..<ref>`, `rev-parse` — are fine. Mutating
+  commands inside the worktree are gated per the wrapper matrix (see
+  `docs/local/design/code-commit.md`): `stash` is absolutely blocked everywhere
+  (no role carve-out — stash is too coarse for a multi-agent repo); `checkout <ref>
+-- <path>`, `restore <path>`, and `restore --source <ref> <path>` require the
+  `--confirmed` flag after reading the printed inspection checklist; pathspec
+  `reset HEAD <path>` / `restore --staged <path>` are index-only and allowed
+  without ceremony. The `--confirmed` friction is the integrator's deliberate
+  ratification that the working-tree mutation has been inspected and will not
+  silently overwrite intentional state before the next bookkeeping commit.
+- **When repo-root sync is blocked by dirty files**, the integrator never stashes,
+  overwrites, or rebases across them, and discards one only by an evidenced revert.
+  It waits on `integrator-main-clearance` and resolves each dirty path on its own:
+  it routes a declared path to its owner, asks only the sessions whose history shows
+  they wrote an undeclared path, and commits the path as-is once it is quiet and
+  unclaimed (see **REPO ROOT SYNC REQUIRED** below). The state machine emits this
+  guidance when it observes the divergence.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 <!-- planned:installation-activation-inspection -->
 
@@ -218,6 +261,8 @@ The state machine returns one of the following instruction blocks at each step.
 
 The branch has been squash-merged; staged changes are ready.
 
+<!-- planned-change:telec-repo-command-family -->
+
 1. Read the context: diff stats, branch commit history, `prd`, optional
    `architecture` when present, and `implementation-plan`.
 2. Compose a commit message capturing the full delivery intent:
@@ -228,6 +273,21 @@ The branch has been squash-merged; staged changes are ready.
      canonical source and this procedure does not restate it.
 3. Run `telec code commit --approved '<message>'`, then call `telec todo integrate`.
 4. When the state machine reaches push, `telec code lint --all` and `telec code test --all` must already be green.
+
+<!-- change:telec-repo-command-family -->
+
+1. Read the context: diff stats, branch commit history, `prd`, optional
+   `architecture` when present, and `implementation-plan`.
+2. Compose a commit message capturing the full delivery intent:
+   - Subject: imperative, scoped — e.g. `feat(my-feature): deliver my-feature`
+   - Body: summarize what changed, key decisions, scope
+   - Footer: none. Attribution and provenance are stamped by the sealed commit
+     surface, not composed here; `general/policy/commits` is the
+     canonical source and this procedure does not restate it.
+3. Run `telec repo commit --approved '<message>'`, then call `telec todo integrate`.
+4. When the state machine reaches push, `telec repo lint --all` and `telec repo test --all` must already be green.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 ### Held clean candidate recovery
 
@@ -257,6 +317,8 @@ contributions — this is the #1 cause of silent regression in multi-agent workf
 
 **Resolution procedure:**
 
+<!-- planned-change:telec-repo-command-family -->
+
 1. Read each conflicted file; understand the **intent** on both sides.
    - What feature, fix, or architectural change does each side introduce?
    - Are the changes orthogonal (touching different concerns in the same file) or
@@ -285,6 +347,39 @@ commit` directly.
 9. If conflicts are genuinely unresolvable, call `telec todo integrate` without
    committing — the state machine will detect this and re-prompt.
 10. Before any push, `telec code lint --all` and `telec code test --all` must pass.
+
+<!-- change:telec-repo-command-family -->
+
+1. Read each conflicted file; understand the **intent** on both sides.
+   - What feature, fix, or architectural change does each side introduce?
+   - Are the changes orthogonal (touching different concerns in the same file) or
+     genuinely contradictory (mutually exclusive designs for the same concern)?
+2. For **orthogonal changes** (the common case): merge both. If side A adds a new method
+   and side B refactors an existing one, the resolved file contains both the new method
+   and the refactored code.
+3. For **architectural conflicts** (rare): identify which design is more evolved, then
+   carry forward the features and fixes from the other side into that design. Example:
+   if side A introduced subprocess isolation and side B added playlist controls, the
+   resolution uses the subprocess architecture with the playlist features integrated.
+4. **Never resolve by choosing one side entirely.** Picking "ours" or "theirs" wholesale for a file is almost certainly wrong — the merge must integrate both sides' meaningful changes. The only exception is when one side made no meaningful changes to the file (e.g., a whitespace-only diff).
+5. After resolving, verify the merged file is functionally complete:
+   - Does it preserve all public API surface from both sides?
+   - Does it preserve all behavioral features (not just code) from both sides?
+   - Are tests from both sides still valid against the merged implementation?
+6. Declare resolved files via `telec repo add <files>`. The sealed equivalent
+   of `git add` for unmerged-index recovery — `git add` itself is blocked for
+   agents per the wrapper matrix. NEW (untracked) resolution files (e.g. a
+   file added on one side that the other side deleted) also go through this
+   command; modified-tracked resolutions ride the pathspec via `telec repo
+commit` directly.
+7. Compose a commit message (same quality standard as squash commit). In the body,
+   note which conflicts were resolved and how both sides' contributions were preserved.
+8. Run `telec repo commit --approved '<message>'`, then call `telec todo integrate`.
+9. If conflicts are genuinely unresolvable, call `telec todo integrate` without
+   committing — the state machine will detect this and re-prompt.
+10. Before any push, `telec repo lint --all` and `telec repo test --all` must pass.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 ### PUSH REJECTION RECOVERY
 
@@ -340,6 +435,8 @@ to own; the state machine never performs it. Divergence has two instruction shap
 
 #### Resolving a dirty path
 
+<!-- planned-change:telec-repo-command-family -->
+
 On each `integrator-main-clearance` beat, run `telec code owners` once, then take
 each blocking path on its own. Each path keeps its own history of what was sent and
 claimed; a set of paths is never treated as one unit.
@@ -380,6 +477,51 @@ claimed; a set of paths is never treated as one unit.
    untouched, and hold as its blocker beacon. `integrator-queue-watch` beats keep
    re-entering the state machine, and the drain resumes on the first beat after the
    path is committed.
+
+<!-- change:telec-repo-command-family -->
+
+On each `integrator-main-clearance` beat, run `telec repo owners` once, then take
+each blocking path on its own. Each path keeps its own history of what was sent and
+claimed; a set of paths is never treated as one unit.
+
+1. **Declared.** A path with a live declaring session belongs to that session. Send
+   each owner one message listing all of its blocking paths, using step 4's message,
+   and never send it the same path again. Wait for its commit.
+2. **Recently written.** An undeclared path last modified within the current reminder
+   interval is being worked on. Leave it for a later beat: its writer's own
+   checkpoint may yet turn it into a declaration.
+3. **Named by a pending-doc marker.** When an undeclared path's uncommitted diff adds
+   a pending marker naming a todo slug — a `planned:<slug>` or
+   `planned-change:<slug>` block, a `<stem>.<slug>.md` companion, or a
+   `delivered_by` entry — that todo's prepare orchestrator wrote it. Find that
+   session from the todo's state (`telec todo show <slug>`). If it is live, send it
+   the path under step 4's message. If it is gone, read its transcript
+   (`telec history show <session-id>`) together with the todo's state and resolve
+   the path from that evidence under step 6.
+4. **Ask the writer.** For every other quiet undeclared path, find the sessions whose
+   history touched it with `telec history search <path> --project <project>`. Send
+   each live session found, once, one message listing its paths:
+   `These paths are dirty on main and block integration: <paths>. If you were in the middle of work, arm halt-to-respond first. Then: for each path that is yours, commit it now if it is ready and released for commit, otherwise reply that you are still working on it; if none are yours, end your turn with NOOP.`
+   No other session is asked. When the search finds no live session, the path goes
+   to step 6.
+5. **Claimed.** A session that replies that a path is its own and still in progress
+   owns that path. Keep waiting for its commit.
+6. **Quiet and unclaimed on a later beat.** A path still dirty, not recently written,
+   and claimed by no one — whether the sessions asked stayed silent or none was
+   found — is committed as-is with a pathspec-scoped
+   `telec repo commit --approved --only <path>` under a message that names it as
+   stranded work. Revert it instead only when session history clearly shows the work
+   was abandoned, such as a path whose pending-doc markers name a todo that is removed
+   or delivered while its prepare orchestrator's transcript shows the work was
+   dropped. When that history cannot be read, commit and never revert.
+7. **Escalate** to the human, once per path, only when an owner or claimant leaves its
+   path uncommitted for three consecutive beats after it was messaged or claimed, or
+   when a path's diff is unintelligible. Report each escalated path once, leave it
+   untouched, and hold as its blocker beacon. `integrator-queue-watch` beats keep
+   re-entering the state machine, and the drain resumes on the first beat after the
+   path is committed.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 #### Reminder: integrator-main-clearance
 

@@ -40,6 +40,8 @@ again without undoing a defensible project choice.
 
 <!-- @include: docs/snippets/step-role-read.md -->
 
+<!-- planned-change:telec-repo-command-family -->
+
 1. Bring the project's Makefile onto the install, lint, test, and format
    interface. The targets delegate to tools the project declares and provisions;
    lint and format honor the platform's workspace scope. A configured suite is
@@ -68,6 +70,39 @@ again without undoing a defensible project choice.
    green, then route the required independent review. If a human-owned
    consequence blocks completion, finish independent work and report the
    assessment as incomplete with the blocked consequence named.
+
+<!-- change:telec-repo-command-family -->
+
+1. Bring the project's Makefile onto the install, lint, test, and format
+   interface. The targets delegate to tools the project declares and provisions;
+   lint and format honor the platform's workspace scope. A configured suite is
+   run by test. Do not create an empty check or invent a suite to satisfy an
+   interface.
+2. Apply blessed quality defaults where the project is silent or weaker by
+   omission. Preserve a deliberate, evidenced project choice. Resolve existing
+   quality debt by fixing the code and configuration, not by disabling checks or
+   adding suppressions to obtain a green result. A proposed relaxation of
+   quality-defining configuration follows its independent review gate.
+3. Leave no inert protection or configuration: each retained setting and check
+   works, each displaced hook or file has its intended effect through the
+   active toolchain, and secrets and generated output cannot be accidentally
+   picked up by git.
+4. Align the capability declaration and checkpoint bindings with the project's
+   actual source, configured tests, and runtime obligations. Reconcile the
+   installed plumbing and preserve project-owned behavior that the platform
+   cannot express.
+5. Prove the resulting contract from a clean project environment: make install
+   succeeds; unscoped telec repo lint, including guardrails, succeeds; and
+   telec repo test succeeds when a suite is configured and the effective
+   checkpoint owes test. Establish that the expected project-declared tools
+   actually ran from the project's environment. Reinstall when changed
+   declarations require it; the dependency order determines when install runs.
+6. Commit a complete, coherent assessment only after its applicable proof is
+   green, then route the required independent review. If a human-owned
+   consequence blocks completion, finish independent work and report the
+   assessment as incomplete with the blocked consequence named.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 ## Outputs
 

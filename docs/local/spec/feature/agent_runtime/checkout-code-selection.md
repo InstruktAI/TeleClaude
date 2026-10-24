@@ -27,6 +27,8 @@ repository clone the worktree was provisioned with
 whoever invokes it, and refuses when that home is missing. The wrapper creates no home of
 its own.
 
+<!-- planned-change:telec-repo-command-family -->
+
 Grading stays self-referential: `telec code lint` and `telec code commit` called from a
 worktree hand their lint gate to that worktree's own code, run against that worktree's
 home, so a change is judged by the rules it carries with the complete tracked
@@ -38,6 +40,22 @@ clearance governs the grading act. Within the grading act's isolated home, a
 selected native leg runs the worktree's own project-native lint, and a selected
 guardrail lane runs through one installation-supplied process entry that
 confirms it loaded the worktree's code before running exactly that lane.
+
+<!-- change:telec-repo-command-family -->
+
+Grading stays self-referential: `telec repo lint` and `telec repo commit` called from a
+worktree hand their lint gate to that worktree's own code, run against that worktree's
+home, so a change is judged by the rules it carries with the complete tracked
+configuration.
+
+The installed `telec repo lint` and `telec repo commit` commands grade such a
+worktree without invoking a second `telec` command; the outer command's caller
+clearance governs the grading act. Within the grading act's isolated home, a
+selected native leg runs the worktree's own project-native lint, and a selected
+guardrail lane runs through one installation-supplied process entry that
+confirms it loaded the worktree's code before running exactly that lane.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 The path this behavior sits on is described in
 `local/projects/teleclaude/design/architecture/cli-invocation-boundary`.
@@ -86,6 +104,8 @@ And the grading leaves the live home unchanged
 
 #### UC-CCS6
 
+<!-- planned-change:telec-repo-command-family -->
+
 #### UC-CCS7: A worktree's telec code commands answer to the worktree's own declaration
 
 ```gherkin
@@ -94,6 +114,19 @@ When an agent runs a telec code command from the worktree
 Then whether the command runs, and which checks its quality gate runs, follow the worktree's own declaration
 And the owning checkout's declaration is not consulted for that decision
 ```
+
+<!-- change:telec-repo-command-family -->
+
+#### UC-CCS7: A worktree's telec repo commands answer to the worktree's own declaration
+
+```gherkin
+Given a slug worktree whose own declaration sets its code, docs, or agents subscriptions differently from its owning checkout
+When an agent runs a telec repo command from the worktree
+Then whether the command runs, and which checks its quality gate runs, follow the worktree's own declaration
+And the owning checkout's declaration is not consulted for that decision
+```
+
+<!-- /planned-change:telec-repo-command-family -->
 
 #### UC-CCS8: The version report describes one checkout
 

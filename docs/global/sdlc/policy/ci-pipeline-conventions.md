@@ -8,6 +8,8 @@ description: 'The two-tier Makefile button contract (fast agent loop vs heavy e2
 
 ### The two-tier button contract
 
+<!-- planned-change:telec-repo-command-family -->
+
 - Every repo's Makefile exposes the **agent loop**: `lint`, `format`, `test`,
   `install` — fast by design, safe to run on every change. `telec code`
   drives these.
@@ -28,6 +30,31 @@ description: 'The two-tier Makefile button contract (fast agent loop vs heavy e2
   a local instrument (platform-keyed baselines) and never a CI tier. Repos
   may add private targets (`test-agents`, `coverage`, …) freely — the
   contract mandates the two shared buttons, it does not forbid more.
+
+<!-- change:telec-repo-command-family -->
+
+- Every repo's Makefile exposes the **agent loop**: `lint`, `format`, `test`,
+  `install` — fast by design, safe to run on every change. `telec repo`
+  drives these.
+- Every repo with heavy verification adds the mandatory **delivery lane**:
+  `make e2e` — the suites too slow for the agent loop (browser/visual suites
+  for sites, integration harnesses for services, release-grade test runs).
+  CI is its only routine caller.
+- CI composition is therefore universal and repo-blind: fast job runs
+  `make lint test`, gate job runs `make e2e`, deploy runs after both.
+- Frontend repos implement the Makefile as a thin shim delegating to their
+  `package.json` scripts (see the frontend production baseline's button set);
+  the Makefile stays the single cross-language interface.
+- **Tier semantics.** `test` is the in-process functional suite — the agent
+  loop, run on every change; a separate `test-functional` target must not
+  exist, because `test` already means functional. `e2e` exercises the built
+  or deployed shape through real interfaces and gates delivery. For sites,
+  the smoke suite is the `e2e` implementation; the visual snapshot suite is
+  a local instrument (platform-keyed baselines) and never a CI tier. Repos
+  may add private targets (`test-agents`, `coverage`, …) freely — the
+  contract mandates the two shared buttons, it does not forbid more.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 ### Reusable workflows
 

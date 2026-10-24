@@ -1,5 +1,5 @@
 ---
-description: 'Sealed commit interface for agent sessions inside the host pane. The git wrapper blocks raw `git add` / `git commit` and redirects to `telec code commit`, which constructs a pathspec-scoped commit from the resolved workspace scope plus declared `--include` paths. New untracked files, unmerged-index files, and partial-staged tracked files are explicitly accepted by `telec code add`. A path enters scope by being read as well as written, so a session that reads a file another session is concurrently editing can carry that session’s uncommitted work.'
+description: 'Sealed commit interface for agent sessions inside the host pane. The git wrapper blocks raw `git add` / `git commit` and redirects to the sealed commit command, which constructs a pathspec-scoped commit from the resolved workspace scope plus declared `--include` paths. New untracked files, unmerged-index files, and partial-staged tracked files are explicitly accepted by its add command. A path enters scope by being read as well as written, so a session that reads a file another session is concurrently editing can carry that session’s uncommitted work.'
 visibility: 'public'
 ---
 
@@ -12,13 +12,29 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:telec-repo-command-family -->
+
 The **sealed commit contract** is the agent-facing channel for landing changes in git. Inside an agent_runtime host pane, agents do not run `git add` or `git commit` directly: the git wrapper intercepts both and redirects to `telec code commit` (and to `telec code add` for the rare cases git's data model genuinely requires staging). The wrapper enforces the seal at the shell level; `telec code commit` enforces the contract internally; the final commit runs with an explicit pathspec so foreign work in the index cannot be swept in.
+
+<!-- change:telec-repo-command-family -->
+
+The **sealed commit contract** is the agent-facing channel for landing changes in git. Inside an agent_runtime host pane, agents do not run `git add` or `git commit` directly: the git wrapper intercepts both and redirects to `telec repo commit` (and to `telec repo add` for the rare cases git's data model genuinely requires staging). The wrapper enforces the seal at the shell level; `telec repo commit` enforces the contract internally; the final commit runs with an explicit pathspec so foreign work in the index cannot be swept in.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 Ordinary raw `git add` and `git commit` invocations in a sealed repository are refused, exit non-zero, and do not stage or commit; read-only inspection such as `git diff`, `git status`, and `git log` remains available. A trusted external tool may set `TELECLAUDE_TRUSTED_TOOL=1` to step aside the wrapper entirely and execute real Git, bypassing all wrapper gates; the bypass is logged. The DeepSeek gate uses this path in its isolated home.
 
 Within a slug worktree, an ordinary agent may not use a local `main` reference for any Git command, including read-only inspection; the wrapper refuses with a nonzero result before invoking Git and identifies `origin/main` as the baseline. The restriction applies to ref arguments before `--`, so a pathspec named `main` after `--` is unaffected. This agent rule remains distinct from the trusted external-tool path above, which bypasses the wrapper.
 
+<!-- planned-change:telec-repo-command-family -->
+
 On the repo-root `main` branch, a push to `origin/main` is admitted only when the caller's session record resolves to the integrator role. A merge, rebase, or cherry-pick that creates a commit on `main` is blocked for non-integrator roles unless the caller uses the explicit one-shot `TELECLAUDE_OVERRIDE_APPROVED=1` replay path; that override does not apply to pushes or to `telec code commit`.
+
+<!-- change:telec-repo-command-family -->
+
+On the repo-root `main` branch, a push to `origin/main` is admitted only when the caller's session record resolves to the integrator role. A merge, rebase, or cherry-pick that creates a commit on `main` is blocked for non-integrator roles unless the caller uses the explicit one-shot `TELECLAUDE_OVERRIDE_APPROVED=1` replay path; that override does not apply to pushes or to `telec repo commit`.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 An ordinary slug-worktree commit that includes `docs/**` or `agents/**` is refused and names each offending path and its source class, without formatting, linting, or creating a commit. The doc refusal directs the worker to the `telec todo stamp <slug> --kickback --reason <why>` route; the artifact refusal directs authorship to the main session where intent was decided. Before a pre-merge sync integrates `origin/main` into a slug worktree, dirty `agents/**` paths are refused before staging; the refusal names each path as an agent-artifact source and directs authorship to that main session, and no pre-merge sync commit is created. Repo-root `main` and the integration worktree may carry owner-authored docs and artifacts subject to the other commit gates.
 
@@ -26,12 +42,25 @@ The seal is scoped to invocation context roots, and which of them it covers is r
 
 The contract resolves four classes of file state at commit time:
 
+<!-- planned-change:telec-repo-command-family -->
+
 1. **Modified-tracked** files in scope ride the pathspec straight from the working tree — the commit records the working-tree version, no staging needed.
 2. **NEW (untracked)** files in scope are **dropped** from the pathspec unless declared via `telec code add <path>` or `--include <path>`. This is the safety net against incidental temp/scratch artifacts the agent's tool calls may have created.
 3. **Partial-staged tracked** files (staged hunks + later working-tree delta) in the pathspec are **blocked** by the partial-staging guard. The diagnostic directs the agent at `telec code add <path>` as the recovery: it fully restages the file so the staged version matches the working tree, removing the ambiguity, after which the commit proceeds cleanly.
 4. **Unmerged-index** files (post-conflict, pre-resolution-stage) in the pathspec are staged internally so the integrator's conflict-resolution flow runs through the same sealed path.
 
 On a shared branch the scope itself is strictly `(live session declarations) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. In a linked worktree the declaration term does not apply and the scope is drawn from the worktree's dirty paths within the acting context root. Two acts declare a path: a successful `telec code add <path>...` writes each accepted path, with the instant it was declared, to the declaring session's own declaration record, and a successful edit-tool call whose input names the file it writes is declared the same way when the runtime reports that call (`sdlc/design/workspace-scoping`). The entry stays live until the commit that carries it lands. A path named only by shell-command text contributes no evidence, and no transcript is read to establish a declaration.
+
+<!-- change:telec-repo-command-family -->
+
+1. **Modified-tracked** files in scope ride the pathspec straight from the working tree — the commit records the working-tree version, no staging needed.
+2. **NEW (untracked)** files in scope are **dropped** from the pathspec unless declared via `telec repo add <path>` or `--include <path>`. This is the safety net against incidental temp/scratch artifacts the agent's tool calls may have created.
+3. **Partial-staged tracked** files (staged hunks + later working-tree delta) in the pathspec are **blocked** by the partial-staging guard. The diagnostic directs the agent at `telec repo add <path>` as the recovery: it fully restages the file so the staged version matches the working tree, removing the ambiguity, after which the commit proceeds cleanly.
+4. **Unmerged-index** files (post-conflict, pre-resolution-stage) in the pathspec are staged internally so the integrator's conflict-resolution flow runs through the same sealed path.
+
+On a shared branch the scope itself is strictly `(live session declarations) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. In a linked worktree the declaration term does not apply and the scope is drawn from the worktree's dirty paths within the acting context root. Two acts declare a path: a successful `telec repo add <path>...` writes each accepted path, with the instant it was declared, to the declaring session's own declaration record, and a successful edit-tool call whose input names the file it writes is declared the same way when the runtime reports that call (`sdlc/design/workspace-scoping`). The entry stays live until the commit that carries it lands. A path named only by shell-command text contributes no evidence, and no transcript is read to establish a declaration.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 A context root's **own material** is what lies under it minus what belongs to another owner. Ownership is the test, not whether TeleClaude resolves a nested root as a context: a nested root belongs to another owner when it declares a different tier, when it anchors a context of its own, or when it holds a repository of its own, and any one of those is enough. So a person's material and a company's material are both foreign to the global context that encloses them, a person-owned project is foreign to the person context that encloses it, and an unrelated checkout nested anywhere is foreign to every context above it — including the cases that anchor no context at all.
 
@@ -43,7 +72,15 @@ Containment bounds every path that reaches inspection, staging, or commit — no
 
 Within a single context root, and outside any nested root, the scope remains transcript-derived and a path is still touched by being read, so two sessions working the same path there are not separated by this contract; that case belongs to dirty-path ownership attribution, not to scoping.
 
+<!-- planned-change:telec-repo-command-family -->
+
 On the repo-root `main` branch, a non-integrator agent invoking `telec code commit` without `--approved` surfaces the **commit-first and review-routing gate** and does not commit. A bare invocation (no message) is discovery and **exits 0** — serving the gate is the successful outcome; an invocation that carries a message but omits `--approved` means the gate was forgotten and **exits non-zero**. `--approved` is the agent-owned sealed-gate acknowledgment that lets the commit proceed; it is not human approval. On a worktree or integrator role, `--approved` is still required but the gate surfacing is bypassed.
+
+<!-- change:telec-repo-command-family -->
+
+On the repo-root `main` branch, a non-integrator agent invoking `telec repo commit` without `--approved` surfaces the **commit-first and review-routing gate** and does not commit. A bare invocation (no message) is discovery and **exits 0** — serving the gate is the successful outcome; an invocation that carries a message but omits `--approved` means the gate was forgotten and **exits non-zero**. `--approved` is the agent-owned sealed-gate acknowledgment that lets the commit proceed; it is not human approval. On a worktree or integrator role, `--approved` is still required but the gate surfacing is bypassed.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 A caller whose identity cannot be resolved to an agent session or verified
 terminal person receives an identity-resolution diagnostic and no commit is
@@ -95,6 +132,8 @@ contracts.
 
 #### UC-CGIP-41 — A developer learns the commit and review path on main
 
+<!-- planned-change:telec-repo-command-family -->
+
 ```gherkin
 Scenario: Discover commit guidance
   Given a developer needs the commit and review route on repo-root main
@@ -105,6 +144,21 @@ Scenario: Discover commit guidance
 ```
 
 #### UC-CGIP-35 — telec code add declares a modified tracked file without staging it
+
+<!-- change:telec-repo-command-family -->
+
+```gherkin
+Scenario: Discover commit guidance
+  Given a developer needs the commit and review route on repo-root main
+  And their agent has a non-integrator role
+  When the agent invokes telec repo commit without a message or flags
+  Then the command provides commit-first review, scope, and next-step guidance
+  And exits successfully without creating a commit
+```
+
+#### UC-CGIP-35 — telec repo add declares a modified tracked file without staging it
+
+<!-- /planned-change:telec-repo-command-family -->
 
 #### UC-CGIP-33 — A declaration is one session's path evidence across every scope consumer
 
@@ -170,6 +224,8 @@ Scenario: Refuse a merge with unresolved conflicts
 
 #### UC-CGIP-17 — A person the platform resolves at a terminal degrades honestly to the human as author
 
+<!-- planned-change:telec-repo-command-family -->
+
 ```
 Given a telec code commit invocation from outside any agent session
 And the platform resolves the invoking caller as a registered person from their terminal login
@@ -177,6 +233,18 @@ When the commit lands
 Then git's own ambient identity resolves the author
 And the message carries no Session: trailer
 ```
+
+<!-- change:telec-repo-command-family -->
+
+```
+Given a telec repo commit invocation from outside any agent session
+And the platform resolves the invoking caller as a registered person from their terminal login
+When the commit lands
+Then git's own ambient identity resolves the author
+And the message carries no Session: trailer
+```
+
+<!-- /planned-change:telec-repo-command-family -->
 
 #### UC-CGIP-18 — A caller the platform cannot identify fails the commit loudly
 
@@ -256,7 +324,15 @@ Scenario: Preview the exact payload from a nested context
 
 #### UC-TH-3 — Thin hook fails closed on git status probe failure
 
+<!-- planned-change:telec-repo-command-family -->
+
 #### UC-TH-4 — A raw git commit and telec code commit get the same verdict
+
+<!-- change:telec-repo-command-family -->
+
+#### UC-TH-4 — A raw git commit and telec repo commit get the same verdict
+
+<!-- /planned-change:telec-repo-command-family -->
 
 #### UC-TH-5 — Another session's uncommitted file does not decide a commit
 

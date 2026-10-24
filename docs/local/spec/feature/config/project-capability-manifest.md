@@ -23,6 +23,8 @@ independent on/off flag for the engine itself.
 
 Three toggles, each gating a set of mechanisms:
 
+<!-- planned-change:telec-repo-command-family -->
+
 - `code: { enabled }` — the project holds code under the TeleClaude lifecycle.
   Owns `telec code test` / `format` / `install`, the code checks of
   `telec code lint` and the commit gate (the project's native `make lint` and
@@ -40,6 +42,27 @@ Three toggles, each gating a set of mechanisms:
   artifact transpilation and deployment, and artifact validation within
   `telec code lint` and the commit gate.
 
+<!-- change:telec-repo-command-family -->
+
+- `code: { enabled }` — the project holds code under the TeleClaude lifecycle.
+  Owns `telec repo test` / `format` / `install`, the code checks of
+  `telec repo lint` and the commit gate (the project's native `make lint` and
+  TeleClaude's code rules), git hooks, worktree rules, and the checkpoint
+  toolchain and log-check bindings. `test`, `format`, and `install` refuse
+  cleanly ("not a code project") when disabled. `telec repo lint`, the
+  sealed-commit surface (`telec repo commit` / `add`), and the git wrapper's
+  commit interception are not owned by `code` alone — they follow `code ∨ docs`
+  (see the derivation rules).
+- `docs: { enabled }` — the snippet pipeline: the `docs/**` publication base
+  binding, the `.gitattributes` docs filters, and snippet validation, indexing,
+  and publication. Snippet validation is the documentation check of
+  `telec repo lint` and the commit gate.
+- `agents: { enabled }` — agent artifacts: the `agents/**`-family base binding,
+  artifact transpilation and deployment, and artifact validation within
+  `telec repo lint` and the commit gate.
+
+<!-- /planned-change:telec-repo-command-family -->
+
 An unsubscribed capability means the project has no TeleClaude-supported
 structure of that kind, so none of the functionality around it activates for that
 project — not the checkpoint binding, not the derived plumbing, and not the
@@ -52,6 +75,8 @@ exactly this capability, and a code project needs todos for its lifecycle, so
 no repo can meaningfully disable it.
 
 Derivation rules:
+
+<!-- planned-change:telec-repo-command-family -->
 
 - The checkpoint engine evaluates a turn iff `code ∨ docs ∨ agents` is enabled
   or the project declares at least one custom path binding; an event binding
@@ -161,6 +186,118 @@ Derivation rules:
   same holds for its linked worktrees' copies. A declaration the registries do
   not name gains no subscription from that migration.
 
+<!-- change:telec-repo-command-family -->
+
+- The checkpoint engine evaluates a turn iff `code ∨ docs ∨ agents` is enabled
+  or the project declares at least one custom path binding; an event binding
+  alone does not activate it. Otherwise `agent_stop` passes through with no
+  timeline extraction and no evidence scanning.
+
+- The commit obligation is active iff `code ∨ docs` is enabled.
+- `telec repo lint` and the commit gate run iff `code ∨ docs` is enabled at a
+  file's owning home, over that home's changed files: staged files at the
+  commit gate, declared or named files for a scoped lint, and every file of the
+  home that git does not ignore for a full run. Each capability contributes only its own
+  checks — `code` the native toolchain and TeleClaude's code rules, `docs`
+  snippet validation, `agents` artifact validation — so a home without `code`
+  never runs a code check. A full run widens the files, never the checks.
+- A global, person, or company home declares no capability blocks. For these
+  checks it counts as `docs` and `agents` by its kind
+  (`local/projects/teleclaude/spec/feature/config/tier-permissions`), and never as
+  `code`.
+- Every staged `teleclaude.yml` is validated at the commit gate as that one
+  file, through the same pipeline that loads it: migrated, its references
+  resolved from the environment file beside it on this computer, and its
+  schema and declared field relationships judged. Whether this computer holds
+  the values its role needs is its readiness, which the commit gate does not
+  judge (`local/projects/teleclaude/spec/feature/config/yaml-env-var-expansion`).
+  This holds in every home whose commit-gate hooks are installed, whatever that
+  home subscribes. No other configuration file is validated. In a home that enables neither `code` nor
+  `docs`, declaration validation is the gate's only check, and that home still
+  raises no commit obligation. A declaration that fails validation refuses the
+  commit, so committed state, which every consumer derives from, never holds an
+  invalid declaration (ADR-0108).
+- The sealed-commit surface (`telec repo commit` / `add`) and the git wrapper's
+  commit interception follow `code ∨ docs` — the same condition as the commit
+  obligation — because `telec repo commit` is what records and evidences that
+  obligation. A project subscribing either `code` or `docs` commits through the
+  sealed surface; a project subscribing neither commits with ordinary git and
+  the wrapper passes through. The quality toolchain verbs remain gated by `code`
+  alone. (The wrapper enforces this inside the tmux agent panes where it runs
+  today; extending it to non-tmux agent sessions is separate work and does not
+  change this contract.)
+
+- The declaration is the only home of capability state. The installed plumbing —
+  the git hooks and the git wrapper — resolves the toggles through the runtime's
+  own reading of the repository root's own declaration: brought to its current
+  shape by the configuration migration list
+  (`local/projects/teleclaude/spec/feature/config/document-migration`); and its tier and each
+  capability block read the way the runtime's loader reads them — environment
+  references resolved from the declaration's sibling `.env` — and validated with
+  the runtime's own models. The two readers therefore
+  answer alike for every tier and every capability block of the same
+  declaration, and a declaration that loads in the runtime never blocks git. The plumbing reads only what it decides
+  on: the declaration's tier and, for a project declaration, the capability
+  blocks. A block the runtime cannot read as a capability block is refused: the
+  git invocation aborts with a message naming `teleclaude.yml` and the block, and
+  no capability state is substituted for it — the direction the runtime takes for
+  a declaration it cannot read (UC-CFG-CAP-3). The plumbing never falls open and
+  never falls closed on such a block, and it claims nothing about the rest of the
+  file: overlay validation belongs to the runtime. The plumbing keeps the answer
+  for a declaration it has resolved, together with every file that answer was
+  read from, and serves repeated reads from it without starting an interpreter.
+  The kept answer is a cache of the runtime's answer, never a source: a change to
+  any of those files, or an advance of the installation's code, discards it, so
+  it never answers for an input state or an installation it was not resolved
+  from. A global or person declaration carries no capability
+  blocks; what the plumbing decides at such a repository root is the seal, per
+  `local/projects/teleclaude/design/code-commit`. Because the declaration is a file the project
+  tracks, a clone carries the project's real capability state before any
+  TeleClaude command has run against it.
+
+- A capability toggle never edits, removes from, or truncates a file the project
+  tracks. The only capability plumbing in the project's tracked tree is the
+  `.gitattributes` docs-filter line, written once — additively, at onboard, with
+  the human in the loop — and never touched again. Enabling or disabling `docs`
+  toggles the filter driver in `.git/config` (TeleClaude's own, untracked); with
+  the driver absent the `.gitattributes` line is inert, because git treats a
+  filter attribute whose driver is undefined as a no-op. Converging the installed
+  driver and hooks to this declaration is reconciliation's act, contracted in
+  `local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`; this
+  declaration is what that act reads. The safety guarantee — TeleClaude never
+  rewrites a project-owned file on a toggle — holds by construction, not by a
+  runtime guard.
+- Onboard is the one-time additive install: it writes the `.gitattributes` line,
+  then converges the project's plumbing to the declaration it has just written.
+  After onboard, a toggle takes effect on the plumbing's next invocation because
+  the plumbing reads the declaration itself; what that convergence installs,
+  withdraws, or refreshes is contracted in
+  `local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`. Neither path
+  ever rewrites a project-tracked file.
+
+- A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
+  non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
+  or reads anything for it, and it is left byte-for-byte untouched. The sole
+  exception is explicit adoption: `telec config project adopt` creates
+  the `teleclaude.yml` and its inferred declaration — that is the sanctioned act
+  that turns a plain repository into a target. Carrying no manifest and carrying
+  a broken one are different states: the first is simply not a target, while the
+  second is an adopted project whose declaration cannot be read, and that surfaces
+  as a failure rather than resolving to any capability state.
+- The project's `teleclaude.yml`, `.env`, and equivalent native files are
+  project-owned and are never removed, superseded, or displaced.
+- A capability block that is absent, or present without an `enabled` value,
+  resolves to unsubscribed: only an explicit value claims a capability.
+  Registration declares every capability the document leaves undeclared, with
+  the value inferred from repo shape, and assessment refines the declarations. A
+  registered project whose declaration was written while an omitted block still
+  meant subscribed keeps those subscriptions: the configuration migration list
+  brings its declaration forward with each of them written explicitly, and the
+  same holds for its linked worktrees' copies. A declaration the registries do
+  not name gains no subscription from that migration.
+
+<!-- /planned-change:telec-repo-command-family -->
+
 ### Use cases
 
 #### UC-CFG-CAP-1: An operator can leave a project without capability automation
@@ -207,11 +344,23 @@ Scenario: An unreadable capability block refuses a git invocation
 
 #### UC-CFG-CAP-9: An operator can lint docs in a docs-only project
 
+<!-- planned-change:telec-repo-command-family -->
+
 ```
 Given a project subscribes to docs but not code
 When an operator runs `telec code lint` for a changed docs file
 Then the documentation is validated without running code-toolchain checks
 ```
+
+<!-- change:telec-repo-command-family -->
+
+```
+Given a project subscribes to docs but not code
+When an operator runs `telec repo lint` for a changed docs file
+Then the documentation is validated without running code-toolchain checks
+```
+
+<!-- /planned-change:telec-repo-command-family -->
 
 #### UC-CFG-CAP-10:
 

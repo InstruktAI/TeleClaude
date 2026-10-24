@@ -187,6 +187,8 @@ using it.
 
 ## Recovery
 
+<!-- planned-change:telec-repo-command-family -->
+
 - **The server is already running.** Inspect its scene before deciding whether
   it belongs to this activity. Export foreign work before clearing anything;
   prefer a separate server instance when ownership is ambiguous.
@@ -201,3 +203,22 @@ using it.
   publicly.
 - **Durable promotion fails validation.** Leave the exported source in the
   scratch workspace, correct the documentation shape, and rerun `telec code commit`.
+
+<!-- change:telec-repo-command-family -->
+
+- **The server is already running.** Inspect its scene before deciding whether
+  it belongs to this activity. Export foreign work before clearing anything;
+  prefer a separate server instance when ownership is ambiguous.
+- **The server exits or the browser disconnects.** Restart through the upstream
+  lifecycle CLI, reopen its URL, and import the latest scratch export. Do not
+  reconstruct the scene from screenshots.
+- **Semantic tools are unavailable but the UI renders.** Stop substantive
+  agent edits and repair the MCP connection. Screenshot-only collaboration does
+  not satisfy this procedure.
+- **Remote-device access is unavailable.** Continue locally or establish an
+  authenticated private route. Do not expose an unauthenticated canvas service
+  publicly.
+- **Durable promotion fails validation.** Leave the exported source in the
+  scratch workspace, correct the documentation shape, and rerun `telec repo commit`.
+
+<!-- /planned-change:telec-repo-command-family -->

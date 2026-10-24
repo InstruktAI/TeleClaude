@@ -45,6 +45,8 @@ the root from the same resolution. No command derives a worktree or project root
 the raw invocation directory, from the repository root of the code that happens to run,
 or from the daemon's own working directory.
 
+<!-- planned-change:telec-repo-command-family -->
+
 ```mermaid
 flowchart LR
     Dir[invocation directory] --> R[scope resolution]
@@ -54,6 +56,20 @@ flowchart LR
     P --> Pc[todo, docs, bugs, jobs report,<br/>content dump, mcp project overlay,<br/>config project adopt, code maintenance]
     S[daemon and live home] --> Sc[sessions, reminders, agents, computers,<br/>operations, message, auth,<br/>events, signals, history, memories,<br/>projects list, config by kind and slug]
 ```
+
+<!-- change:telec-repo-command-family -->
+
+```mermaid
+flowchart LR
+    Dir[invocation directory] --> R[scope resolution]
+    R --> W[worktree root<br/>the change]
+    R --> P[project root<br/>the invocation's project, exists once]
+    W --> Wc[repo lint / format / test / add<br/>repo commit: commit and gate<br/>repo pre-commit<br/>telec repo capability switches]
+    P --> Pc[todo, docs, bugs, jobs report,<br/>content dump, mcp project overlay,<br/>config project adopt, repo maintenance]
+    S[daemon and live home] --> Sc[sessions, reminders, agents, computers,<br/>operations, message, auth,<br/>events, signals, history, memories,<br/>projects list, config by kind and slug]
+```
+
+<!-- /planned-change:telec-repo-command-family -->
 
 <!-- planned:reviewed-pr-contributions -->
 
@@ -68,6 +84,8 @@ the upstream-mainline publication path.
 <!-- /planned:reviewed-pr-contributions -->
 
 ## Invariants
+
+<!-- planned-change:telec-repo-command-family -->
 
 1. **The change acts on the worktree.** A command whose subject is the change — its
    files, its git index and history, its quality rules, its own declaration — acts on
@@ -106,9 +124,52 @@ the upstream-mainline publication path.
    or on another branch, it refuses before any step and names the canonical
    checkout.
 
+<!-- change:telec-repo-command-family -->
+
+1. **The change acts on the worktree.** A command whose subject is the change — its
+   files, its git index and history, its quality rules, its own declaration — acts on
+   the worktree root.
+2. **Anything that exists once acts on the shared side.** A command that reads or
+   writes state other agents or the daemon read and write concurrently acts on the
+   project root, or on daemon and live-home state that no invocation root selects. A
+   worktree copy of that state is a second truth another agent acts on, which
+   restoring a file cannot undo (`general/principle/trust-and-guardrails`,
+   interference).
+3. **The `telec repo` capability switches are the worktree's own.** The `code`, `docs`
+   and `agents` switches, and the tier they are declared under, that decide which
+   checks a worktree's commit runs are read from the worktree's own declaration: they
+   describe the change. A gate the daemon evaluates for the live project is not a
+   command and follows `local/projects/teleclaude/design/architecture/config-tier-resolution`.
+4. **A split is stated.** A command that acts on both roots names which part acts on
+   which.
+5. **One resolution.** Every command obtains its root from the one scope resolution;
+   no command carries its own root logic.
+6. **Given locations are data, not roots.** A location a command receives as part of
+   its request — the directory a new or revived session starts in — is the caller's
+   choice and defaults to the invocation directory. It selects no root the command
+   acts on.
+7. **Installation commands act on the running installation.** A command that
+   describes or configures the TeleClaude installation itself acts on the
+   installation whose code runs, which `checkout-code-selection` decides. That is not
+   a root of the invocation and is reported as one checkout.
+
+8. **On-demand maintenance acts on the invocation directory's own home, from the
+   canonical checkout.** `telec sync` performs the maintenance of the repository
+   that owns the home whose `teleclaude.yml` sits in the invocation directory
+   itself, and its publication step acts on that home and the homes nested beneath
+   it in the committed tree. It takes no home from a parent directory: where the
+   invocation directory holds no declaration it refuses, naming the directory. It
+   acts only from the canonical checkout on its main branch: in a slug worktree,
+   or on another branch, it refuses before any step and names the canonical
+   checkout.
+
+<!-- /planned-change:telec-repo-command-family -->
+
 ## Primary flows
 
 ### Commands that act on the worktree root
+
+<!-- planned-change:telec-repo-command-family -->
 
 | Command                                               | Acts on                                               |
 | ----------------------------------------------------- | ----------------------------------------------------- |
@@ -117,7 +178,20 @@ the upstream-mainline publication path.
 | `telec code pre-commit`                               | The worktree's own index                              |
 | The `telec code` capability switches                  | The worktree's own declaration                        |
 
+<!-- change:telec-repo-command-family -->
+
+| Command                                               | Acts on                                               |
+| ----------------------------------------------------- | ----------------------------------------------------- |
+| `telec repo lint`, `format`, `test`, `add`            | The change's files, under the worktree's own rules    |
+| `telec repo commit` — the commit and its quality gate | The worktree's branch, graded by the worktree's rules |
+| `telec repo pre-commit`                               | The worktree's own index                              |
+| The `telec repo` capability switches                  | The worktree's own declaration                        |
+
+<!-- /planned-change:telec-repo-command-family -->
+
 ### Commands that act on the project root
+
+<!-- planned-change:telec-repo-command-family -->
 
 | Command                                                                                 | Shared state it acts on                                                                 |
 | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
@@ -130,6 +204,22 @@ the upstream-mainline publication path.
 | `telec config project adopt`                                                            | The checkout it adopts: registration and plumbing are done once, at the owning checkout |
 | `telec code maintenance …`                                                              | The project's maintenance records; a worktree invocation drains nothing                 |
 | `telec` (the TUI) creating a todo or bug where nothing under the cursor names a project | The project it was started from, forwarded to the daemon                                |
+
+<!-- change:telec-repo-command-family -->
+
+| Command                                                                                 | Shared state it acts on                                                                 |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `telec todo …`, including artifacts and stamps                                          | The one todo store; a worktree is a todo's sandbox and holds no copy                    |
+| `telec docs …` in a project context                                                     | The doc layer and its generated index, authored and built only on the project root      |
+| `telec bugs …`, including the suppression ledger                                        | The project's bug lane and the ledger the log bug hunter reads                          |
+| `telec jobs report`                                                                     | The project's job records                                                               |
+| `telec content dump`                                                                    | The project's publications inbox                                                        |
+| `telec mcp …`                                                                           | The project's registry overlay, on top of the machine-wide registry                     |
+| `telec config project adopt`                                                            | The checkout it adopts: registration and plumbing are done once, at the owning checkout |
+| `telec repo maintenance …`                                                              | The project's maintenance records; a worktree invocation drains nothing                 |
+| `telec` (the TUI) creating a todo or bug where nothing under the cursor names a project | The project it was started from, forwarded to the daemon                                |
+
+<!-- /planned-change:telec-repo-command-family -->
 
 ### Commands that act on daemon and live-home state
 
@@ -148,11 +238,23 @@ the upstream-mainline publication path.
 
 ### Commands that act on both
 
+<!-- planned-change:telec-repo-command-family -->
+
 | Command                                     | Worktree part                                          | Project part                                                                      |
 | ------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | `telec code commit`                         | The commit and its quality gate                        | Checkpoint markers and maintenance records                                        |
 | `telec code blueprint affected`             | The changed files it is asked about                    | The dependency graph, built on the project root                                   |
 | `telec code post-commit`, `code post-merge` | The checkout whose commit or merge activated the range | The maintenance drain on the project root, or on the platform home when run there |
+
+<!-- change:telec-repo-command-family -->
+
+| Command                                     | Worktree part                                          | Project part                                                                      |
+| ------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `telec repo commit`                         | The commit and its quality gate                        | Checkpoint markers and maintenance records                                        |
+| `telec repo blueprint affected`             | The changed files it is asked about                    | The dependency graph, built on the project root                                   |
+| `telec repo post-commit`, `repo post-merge` | The checkout whose commit or merge activated the range | The maintenance drain on the project root, or on the platform home when run there |
+
+<!-- /planned-change:telec-repo-command-family -->
 
 The platform home is a commit-boundary root without being a project. Its installed
 hooks drain maintenance on the home itself

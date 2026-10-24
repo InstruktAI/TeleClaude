@@ -32,6 +32,8 @@ receiver ingress identifier, TeleClaude session identifier, selected native
 session identifier, selected transcript path, and `address_source` (`hook` or
 `session_row`).
 
+<!-- planned-change:telec-repo-command-family -->
+
 The engine is gated by flag markers, session-scoped unless stated otherwise:
 a turn-scoped **clear flag** skips checkpoints for the current turn and clears
 the per-turn recheck latch so later re-enablement can work. The clear flag and
@@ -44,6 +46,23 @@ the sealed `telec code commit` path and triggers only the post-commit
 review gate. The review gate defers while the working tree still carries an
 uncommitted change owing a commit, so the marker persists across those turns
 rather than being consumed; it surfaces once on a turn with no pending commit
+
+<!-- change:telec-repo-command-family -->
+
+The engine is gated by flag markers, session-scoped unless stated otherwise:
+a turn-scoped **clear flag** skips checkpoints for the current turn and clears
+the per-turn recheck latch so later re-enablement can work. The clear flag and
+recheck latch are consumed at the next non-system user-prompt-submit; turn
+scoping prevents ordinary file-change checkpoints from re-firing after a
+checkpoint has been delivered;
+a fixed-name **authored main commit
+marker** is recorded when this session commits **code** on `main` through
+the sealed `telec repo commit` path and triggers only the post-commit
+review gate. The review gate defers while the working tree still carries an
+uncommitted change owing a commit, so the marker persists across those turns
+rather than being consumed; it surfaces once on a turn with no pending commit
+
+<!-- /planned-change:telec-repo-command-family -->
 
 and is consumed then, or is consumed when the review is dispatched or when a
 commit-review stamp covers this session's commits. A force-fire that has
@@ -132,6 +151,8 @@ checkpoint and records no checkpoint-seen entry.
 
 #### UC-CP5A: Main-branch post-commit review action follows code authorship
 
+<!-- planned-change:telec-repo-command-family -->
+
 ```gherkin
 Given the current branch is main
 And this session authored a main commit through the sealed `telec code commit` path
@@ -189,6 +210,68 @@ And when no changed files, required actions, observations, or commit action rema
 So the main-commit force-fire does not re-surface the review gate on a commit whose review was already dispatched
 And a command that merely mentions the commit-review command without dispatching it (a different `--command`), or a `telec sessions send` addressed to any other session, does not discharge the gate
 ```
+
+<!-- change:telec-repo-command-family -->
+
+```gherkin
+Given the current branch is main
+And this session authored a main commit through the sealed `telec repo commit` path
+And the committed pathspec included code (not a doc-only commit)
+And the session-scoped authored-main-commit marker is present
+When the heuristic engine evaluates the turn window
+Then the result includes the post-commit review-gate surfacing action
+And that action names the commit(s) as review candidates and states that the authoring session decides whether each owes independent review by what the commit set out to do
+And directs a commit through which the session wrote new or changed code or documentation content to an independent reviewer the session dispatches automatically, waiting for its verdict before reporting completion
+And directs a commit through which the session wrote neither — a removal, a merge of already-reviewed work, a validation or other mechanical repair — to the author's discard, `telec repo stamp <sha> --verdict approve --reason <text>`
+And routes a REQUEST CHANGES verdict through the author-owned remediation contract in `general/policy/commits`
+And the authored-main-commit marker is consumed
+(The authored-main-commit marker triggers only the review gate; owed maintenance is recorded and started at the commit boundary — see `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`.)
+
+Given the current branch is main
+And this session authored a main commit through the sealed `telec repo commit` path
+And the committed pathspec contained only documentation (docs/**, *.md, *.txt, *.rst) with no code
+When the commit gate runs
+Then the authored-main-commit marker is NOT armed
+And the next agent-stop produces no post-commit review-gate surfacing action for that commit
+(Under doc-first, documentation is reviewed in the lifecycle, not at the post-commit review gate.)
+
+Given the current branch is main
+And HEAD moved because of a peer commit, `git pull --rebase`, merge, or other commit not authored by this session through the sealed path
+And the session-scoped authored-main-commit marker is absent
+And there are no turn-local dirty files
+When the heuristic engine evaluates the turn window
+Then it produces no checkpoint
+And does not emit the post-commit review-gate surfacing action
+
+Given the current branch is main
+And the session-scoped authored-main-commit marker is present
+And there are turn-local dirty files owing a commit action
+When the heuristic engine evaluates the turn window
+Then ordinary checkpoint classification still runs for those files
+And the commit action is surfaced so the pending change is committed first
+And the post-commit review-gate surfacing action is NOT emitted while a commit action is pending
+And the authored-main-commit marker is NOT consumed, so the review gate surfaces on a later turn once the working tree owes no commit
+And no system role, including integrator, is exempt from this code-authorship rule
+
+Given the current branch is main
+And the session-scoped authored-main-commit marker is present
+And there are no turn-local dirty files owing a commit action
+When the heuristic engine evaluates the turn window
+Then the post-commit review-gate surfacing action is emitted once
+And the authored-main-commit marker is consumed
+
+Given the current branch is main
+And the session-scoped authored-main-commit marker is present
+And this turn's tool timeline contains a review dispatch for the commit(s) — a `telec sessions run` run whose `--command` value names the commit-review command, or a `telec sessions send` addressed to a live commit-review session this session started, whatever its message
+When the heuristic engine evaluates the turn window
+Then the post-commit review-gate surfacing action is NOT emitted
+And the authored-main-commit marker is consumed
+And when no changed files, required actions, observations, or commit action remain, no checkpoint is produced rather than an empty "No code changes detected this turn." block
+So the main-commit force-fire does not re-surface the review gate on a commit whose review was already dispatched
+And a command that merely mentions the commit-review command without dispatching it (a different `--command`), or a `telec sessions send` addressed to any other session, does not discharge the gate
+```
+
+<!-- /planned-change:telec-repo-command-family -->
 
 #### UC-CP6: Per-adapter checkpoint response payloads
 
@@ -328,6 +411,8 @@ checkpoint's.)
 
 #### UC-CP14: Daemon-code categorization covers top-level and daemon-imported modules
 
+<!-- planned-change:telec-repo-command-family -->
+
 ```gherkin
 Given a session commits a top-level daemon module directly under `teleclaude/` (e.g. `teleclaude/constants.py`, `teleclaude/daemon.py`) through the sealed `telec code commit` path
 When the merged model resolves what that path owes
@@ -347,6 +432,30 @@ Then the file is not categorized as daemon code
 And the restart maintenance action is not among the actions it owes
 (The boundary is daemon-import membership, not directory: only CLI modules the daemon holds at runtime require a restart.)
 ```
+
+<!-- change:telec-repo-command-family -->
+
+```gherkin
+Given a session commits a top-level daemon module directly under `teleclaude/` (e.g. `teleclaude/constants.py`, `teleclaude/daemon.py`) through the sealed `telec repo commit` path
+When the merged model resolves what that path owes
+Then the file is categorized as daemon code
+And the restart maintenance action is among the actions it owes
+(Daemon-code categorization covers every daemon Python module at any depth under `teleclaude/`, top-level files included — not only nested ones.)
+
+Given a session commits a CLI module the daemon imports at load (e.g. `teleclaude/cli/telec/surface.py`, held by `teleclaude/core/tool_access.py`)
+When the merged model resolves what that path owes
+Then the file is categorized as daemon code
+And the restart maintenance action is among the actions it owes
+(A CLI module the daemon imports at startup changes daemon runtime behavior, so the daemon-code category includes it despite the general CLI-subprocess exclusion.)
+
+Given a session commits a CLI module that runs only as a per-invocation subprocess and is not imported by the daemon
+When the merged model resolves what that path owes
+Then the file is not categorized as daemon code
+And the restart maintenance action is not among the actions it owes
+(The boundary is daemon-import membership, not directory: only CLI modules the daemon holds at runtime require a restart.)
+```
+
+<!-- /planned-change:telec-repo-command-family -->
 
 #### UC-CP18: A clean working tree raises no commit action
 

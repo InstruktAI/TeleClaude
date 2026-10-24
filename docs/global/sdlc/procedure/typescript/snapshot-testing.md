@@ -21,12 +21,25 @@ Implement the generic snapshot-testing contract in TypeScript with Vitest snapsh
 
 ## Steps
 
+<!-- planned-change:telec-repo-command-family -->
+
 1. Snapshot complete emitted values with `toMatchInlineSnapshot()` by default. Use a file snapshot when inline output would make the test difficult to scan.
 2. Normalize unstable object properties through Vitest asymmetric matchers such as `expect.any(...)` or `expect.stringMatching(...)`, scoped only to the unstable fields.
 3. For a non-empty boundary guard, use a typed helper that checks presence without grading wording.
 4. Represent protocol identifiers and closed vocabularies with a production-owned `as const` object or literal-union owner. Import the member for identity comparison and snapshot the owner separately when its serialized values are contractual.
 5. Replace equality, containment, prefix, suffix, and regular-expression assertions over emitted text with a snapshot. Assert thrown failures by error type rather than message text.
 6. Run the declared package test script through `telec code test`, read every snapshot diff, and only then run `telec code test --update-snapshots` when the delta matches intent.
+
+<!-- change:telec-repo-command-family -->
+
+1. Snapshot complete emitted values with `toMatchInlineSnapshot()` by default. Use a file snapshot when inline output would make the test difficult to scan.
+2. Normalize unstable object properties through Vitest asymmetric matchers such as `expect.any(...)` or `expect.stringMatching(...)`, scoped only to the unstable fields.
+3. For a non-empty boundary guard, use a typed helper that checks presence without grading wording.
+4. Represent protocol identifiers and closed vocabularies with a production-owned `as const` object or literal-union owner. Import the member for identity comparison and snapshot the owner separately when its serialized values are contractual.
+5. Replace equality, containment, prefix, suffix, and regular-expression assertions over emitted text with a snapshot. Assert thrown failures by error type rather than message text.
+6. Run the declared package test script through `telec repo test`, read every snapshot diff, and only then run `telec repo test --update-snapshots` when the delta matches intent.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 ## Outputs
 
