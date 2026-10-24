@@ -67,8 +67,11 @@ explicitly approve that relaxation on its merits. The session whose work is
 blocked by the control never approves moving it. Strengthening a control follows
 ordinary independent review.
 
-This rule adds no review lane and changes no verdict arithmetic. It defines the
-authority existing reviewers apply when the reviewed delta is a relaxation.
+This rule adds no review lane and changes no verdict arithmetic. The reviewer
+of the commit that carries the relaxation into its contract applies it, and
+that verdict is the only one on the relaxation's merits. Plan review checks only
+that the todo may carry the process change and that its contract holds that
+approval.
 Maintenance framing, convenience, a spent review count, or perceived alignment
 with intent supplies no justification.
 

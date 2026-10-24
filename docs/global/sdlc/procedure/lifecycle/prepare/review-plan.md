@@ -397,9 +397,10 @@ to pre-satisfy:
   behavior the task implements and records the material reason and before/after
   guarantee. A task that exceeds that contract is a Requirement-Violation
   (blocking) and returns to prepare-time contract authoring. If the delta
-  relaxes a validation or delivery control, confirm this reviewer has no stake
-  in the work the relaxation would unblock and explicitly verdict the
-  relaxation on its merits. Classify any human-owned consequence under
+  relaxes a validation or delivery control, verify that this todo may carry
+  that process change at all and that the commit carrying the relaxation into
+  its contract holds an independent approval; the relaxation's merits are that
+  commit reviewer's verdict, not this gate's. Classify any human-owned consequence under
   `general/policy/human-contract`; never ask the human to approve process
   mechanics. Descriptive edits and restoring code to the current contract do
   not trigger this gate.
