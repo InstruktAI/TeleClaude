@@ -11,7 +11,7 @@ visibility: internal
 
 A required check that fails on main or on a dependency update files its own
 bug. The platform files it from the check's outcome
-(`local/projects/teleclaude/spec/feature/integration/required-check-outcomes`),
+(`local/projects/teleclaude/spec/feature/integration/ci-run-outcomes`),
 under the filing rule in `sdlc/policy/todo-creation-discipline` and the evidence
 classification in `sdlc/concept/defect-evidence`. No agent observes, triages or
 files it. The bug enters the project's work as an ordinary bug, and the bug lane
@@ -27,11 +27,13 @@ piling up.
 ### What files
 
 - A `red` outcome of a required check on main, or on a dependency-update pull
-  request, files. Outcomes on other branches, and `green` or `none` outcomes, file
-  nothing.
+  request, files. Outcomes of other workflows or on other branches, and `green` or
+  `none` outcomes, file nothing.
 - Each failed job with its failed step is one failure, identified by its
-  fingerprint: the check, the job and the step. The branch is not part of the
-  fingerprint, so the same failure on main and on a dependency update is one bug.
+  fingerprint: the check, the job and the step, as the filing rule fingerprints
+  them. The branch is not part of the fingerprint, so the same failure on main and
+  on a dependency update is one bug. Several failures in one run file or update
+  one bug each.
 
 ### The filed bug
 
@@ -56,8 +58,8 @@ earlier bug was delivered or removed files a new bug.
   a failure is recorded on that bug as the branch's recovery, with the run's
   address and revision. Recording a recovery leaves the bug open. Whether it is
   fixed, flaky or obsolete is decided in the bug lane.
-- One run's outcome is filed, added or recorded once, however often it is
-  received.
+- Each failure of one run completion is filed or added once, and each recovery
+  is recorded once, however often the outcome is received.
 
 ### Use cases
 
@@ -91,11 +93,10 @@ And the bug remains open for the bug lane to settle
 
 ## Known caveats
 
-- A run in which several jobs fail files or updates one bug per failed job.
 - Commits since the last `green` run cover every delivery in a batched push. The
   filing names them all and attributes the failure to none.
 
 ## See Also
 
-- docs/local/spec/feature/integration/required-check-outcomes.md — the outcomes this filing reacts to.
+- docs/local/spec/feature/integration/ci-run-outcomes.md — the outcomes this filing reacts to.
 - docs/local/spec/feature/workflow/todo-creation.md — the work's creation contract.
