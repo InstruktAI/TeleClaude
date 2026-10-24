@@ -568,8 +568,8 @@ def _drain_locked(project_root: Path) -> bool:
             record.action_id != RESTART_MAINTENANCE_ACTION_ID and _is_window_action(record.action_id, model.maintenance)
             for record in activation_records
         )
-        if (window_record is not None and window_record.state is MaintenanceRecordState.PENDING) or (
-            has_actionable_window_action
+        if window_record is not None and (
+            window_record.state is MaintenanceRecordState.PENDING or has_actionable_window_action
         ):
             if not window_open:
                 result = open_window(root, activation)
@@ -588,7 +588,7 @@ def _drain_locked(project_root: Path) -> bool:
                 )
             if activation not in window_activations:
                 window_activations.append(activation)
-            if window_record is not None and window_record.state is MaintenanceRecordState.PENDING:
+            if window_record.state is MaintenanceRecordState.PENDING:
                 _hold_window_record(root, window_record)
         if window_open and activation not in window_activations:
             window_activations.append(activation)
