@@ -14,7 +14,7 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.addressing import addressed_computer, project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
-from teleclaude.cli.telec.surface import TODO_CREATE, TODO_DELIVER, TODO_REACTIVATE, TODO_REMOVE
+from teleclaude.cli.telec.surface import TODO_COMMAND, TODO_CREATE, TODO_DELIVER, TODO_REACTIVATE, TODO_REMOVE
 from teleclaude.constants import (
     ARTIFACT_INPUT,
     ARTIFACT_NAMES,
@@ -54,6 +54,10 @@ _UNKNOWN_TODO_SUBCOMMAND_TEMPLATE = "Unknown todo subcommand: {subcommand}"
 _TODO_CREATE_KIND_REQUIRED_TEMPLATE = "Error: --kind is required. Valid values: {valid_kinds}"
 _TODO_CREATE_KIND_INVALID_TEMPLATE = "Error: invalid --kind '{kind}'. Valid values: {valid_kinds}"
 _TODO_CREATED_KIND_TEMPLATE = "Created todo: {slug} (kind={kind})"
+_TODO_STORE_SWITCH_PATH = "/todos/switch-to-github"
+_TODO_SWITCH_CWD_FIELD = "cwd"
+_TODO_SWITCH_REQUEST_FIELD = "client_request_id"
+_TODO_SWITCH_ARGUMENT_ERROR = "This command takes no arguments."
 
 
 @dataclass(frozen=True)
@@ -87,6 +91,7 @@ class _TodoSubcommand(StrEnum):
     REACTIVATE = "reactivate"
     RETURN_TO_WORK = "return-to-work"
     REMOVE = "remove"
+    SWITCH_TO_GITHUB = "switch-to-github"
     SHOW = "show"
     STAMP = "stamp"
     SYNC = "sync"
@@ -107,6 +112,7 @@ __all__ = [
     "_handle_todo_remove",
     "_handle_todo_show",
     "_handle_todo_stamp",
+    "_handle_todo_switch_to_github",
     "_handle_todo_sync",
     "_handle_todo_sync_replica",
     "_handle_todo_unfreeze",
@@ -525,6 +531,24 @@ def _handle_todo_remove(args: list[str]) -> None:
     render_receipt(tool_api_call("POST", "/todos/remove", json_body=body))
 
 
+def _handle_todo_switch_to_github(args: list[str]) -> None:
+    """Submit the project store switch once and render its durable receipt."""
+    from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - command boundary: daemon API client.
+    from teleclaude.cli.tool_commands._receipt import (  # noqa: PLC0415 - command boundary: receipt rendering.
+        render_receipt,
+    )
+
+    if args:
+        print(_TODO_SWITCH_ARGUMENT_ERROR)
+        print(_usage(TODO_COMMAND, _TodoSubcommand.SWITCH_TO_GITHUB))
+        raise SystemExit(1)
+    body = {
+        _TODO_SWITCH_CWD_FIELD: project_reference(),
+        _TODO_SWITCH_REQUEST_FIELD: str(uuid.uuid4()),
+    }
+    render_receipt(tool_api_call(HTTPMethod.POST, _TODO_STORE_SWITCH_PATH, json_body=body))
+
+
 def _normalize_after_values(raw_values: list[str]) -> list[str]:
     """Normalize raw --after CLI values into a validated slug list.
 
@@ -912,6 +936,7 @@ _TODO_SUBCOMMAND_HANDLERS: dict[_TodoSubcommand, Callable[[list[str]], None]] = 
     _TodoSubcommand.REACTIVATE: _handle_todo_reactivate,
     _TodoSubcommand.RETURN_TO_WORK: _handle_todo_return_to_work,
     _TodoSubcommand.REMOVE: _handle_todo_remove,
+    _TodoSubcommand.SWITCH_TO_GITHUB: _handle_todo_switch_to_github,
     _TodoSubcommand.SHOW: _handle_todo_show,
     _TodoSubcommand.STAMP: _handle_todo_stamp,
     _TodoSubcommand.SYNC: _handle_todo_sync,

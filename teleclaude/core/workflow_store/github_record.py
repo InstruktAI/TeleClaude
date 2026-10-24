@@ -18,6 +18,7 @@ _LEDGER_MARKER = "<!-- teleclaude:workflow-ledger:v1:"
 _CONTENT_MARKER = "<!-- teleclaude:workflow-content:v1:"
 _HISTORY_MARKER = "<!-- teleclaude:workflow-artifact-history:v1:"
 _COMMENT_SEPARATOR = " -->\n"
+WORKFLOW_COMMENT_BODY_LIMIT = 50_000
 _CONTENT_CHUNK_SIZE = 50_000
 _ENCODING = "utf-8"
 _EMPTY = ""

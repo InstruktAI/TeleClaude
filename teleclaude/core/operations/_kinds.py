@@ -17,6 +17,7 @@ class OperationKind(StrEnum):
     TODO_PREPARE = "todo_prepare"
     TODO_RENAME = "todo_rename"
     TODO_REMOVE = "todo_remove"
+    TODO_STORE_SWITCH = "todo_store_switch"
     SESSION_CLOSE = "session_close"
     AGENT_RESTART = "agent_restart"
     AGENT_HANDOFF = "agent_handoff"
@@ -32,6 +33,10 @@ _OUTCOME_EVENTS: dict[OperationKind, tuple[str, str]] = {
     OperationKind.TODO_PREPARE: ("operation.todo_prepare.completed", "operation.todo_prepare.failed"),
     OperationKind.TODO_RENAME: ("operation.todo_rename.completed", "operation.todo_rename.failed"),
     OperationKind.TODO_REMOVE: ("operation.todo_remove.completed", "operation.todo_remove.failed"),
+    OperationKind.TODO_STORE_SWITCH: (
+        "operation.todo_store_switch.completed",
+        "operation.todo_store_switch.failed",
+    ),
     OperationKind.SESSION_CLOSE: ("session.close.completed", "session.close.failed"),
     OperationKind.AGENT_RESTART: ("agent.restart.completed", "agent.restart.failed"),
     OperationKind.AGENT_HANDOFF: ("agent_runtime.handoff.completed", "agent_runtime.handoff.failed"),

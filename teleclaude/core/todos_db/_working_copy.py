@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -118,6 +118,19 @@ class WorkingCopySql(StrEnum):
 
     PENDING_ITEMS = "SELECT item_id FROM working_copy_pending_item ORDER BY item_id"
     PENDING_PROJECTS = "SELECT table_name, row_id FROM working_copy_pending_project ORDER BY table_name, row_id"
+    MOVE_SET = (
+        "WITH RECURSIVE move_rows(id, group_id, status, depth) AS ("
+        " SELECT id, group_id, status, 0 FROM todo WHERE status IN ('active', 'icebox')"
+        " UNION ALL"
+        " SELECT parent.id, parent.group_id, parent.status, child.depth + 1"
+        " FROM todo AS parent JOIN move_rows AS child ON parent.id = child.group_id"
+        " WHERE parent.status = 'holder'"
+        ")"
+        " SELECT DISTINCT id, group_id, status, depth FROM move_rows"
+        " ORDER BY depth DESC, id"
+    )
+    HELD_ITEM_IDS = "SELECT CAST(id AS TEXT) FROM todo ORDER BY id"
+    PROJECT_IDS = "SELECT id FROM {} ORDER BY id"
     TODO_BY_ID = "SELECT * FROM todo WHERE id = :item_id"
     STATE_BY_ID = "SELECT * FROM todo_state WHERE id = :item_id"
     DEPENDENCIES_BY_ITEM = (
@@ -334,6 +347,14 @@ class WorkingCopyChanges:
 
 
 @dataclass(frozen=True)
+class WorkingCopyMoveSet:
+    """Open item identities in holder-first order and members detached from finished parents."""
+
+    item_ids: tuple[str, ...]
+    detached_item_ids: frozenset[str]
+
+
+@dataclass(frozen=True)
 class WorkingCopyItemSnapshot:
     """Complete persisted state for one work item, independent of SQLAlchemy models."""
 
@@ -407,6 +428,30 @@ def item_snapshot(session: Session, item_id: str, *, unpushed_only: bool = False
     return WorkingCopyItemSnapshot(item_id, todo, state, dependencies, artifacts, versions)
 
 
+def move_set(session: Session) -> WorkingCopyMoveSet:
+    """Read active work plus its open holder ancestry, ordered parent first."""
+    rows = session.execute(text(WorkingCopySql.MOVE_SET)).all()
+    item_ids = tuple(dict.fromkeys(str(row[0]) for row in rows))
+    included = set(item_ids)
+    detached = frozenset(str(row[0]) for row in rows if row[1] is not None and str(row[1]) not in included)
+    return WorkingCopyMoveSet(item_ids, detached)
+
+
+def held_item_ids(session: Session) -> frozenset[str]:
+    """Read every durable item identity, regardless of lifecycle status."""
+    return frozenset(str(row[0]) for row in session.execute(text(WorkingCopySql.HELD_ITEM_IDS)).all())
+
+
+def all_project_records(session: Session) -> tuple[tuple[str, Mapping[str, object]], ...]:
+    """Read every local commit-review and documentation-transfer record."""
+    changes = tuple(
+        (str(table), int(row[0]))
+        for table in _PROJECT_TABLES
+        for row in session.execute(text(WorkingCopySql.PROJECT_IDS.value.format(table))).all()
+    )
+    return project_records(session, changes)
+
+
 def project_records(
     session: Session, changes: Sequence[tuple[str, int]]
 ) -> tuple[tuple[str, Mapping[str, object]], ...]:
@@ -436,9 +481,12 @@ def capture_suppressed(session: Session) -> Iterator[None]:
         session.execute(text(WorkingCopySql.RELEASE_CAPTURE))
 
 
-def restore_item_snapshot(session: Session, snapshot: WorkingCopyItemSnapshot) -> None:
+def restore_item_snapshot(
+    session: Session, snapshot: WorkingCopyItemSnapshot, *, capture_changes: bool = False
+) -> None:
     """Restore a full item snapshot while preserving row ids, digests and timestamps."""
-    with capture_suppressed(session):
+    capture = nullcontext() if capture_changes else capture_suppressed(session)
+    with capture:
         item_id = snapshot.item_id
         slug = str(snapshot.todo[WorkingCopyField.SLUG])
         for table in _ITEM_RESTORE_TABLES:
@@ -657,7 +705,14 @@ def mark_project_record_pushed(
     )
 
 
-def restore_project_record(session: Session, table: str, row: Mapping[str, object], remote_id: str) -> int:
+def restore_project_record(
+    session: Session,
+    table: str,
+    row: Mapping[str, object],
+    remote_id: str,
+    *,
+    capture_changes: bool = False,
+) -> int:
     """Restore a project-level record carried by a trusted ledger commit."""
     table_key = WorkingCopyTable(table)
     if table_key not in _PROJECT_UPSERT_COLUMNS:
@@ -675,7 +730,8 @@ def restore_project_record(session: Session, table: str, row: Mapping[str, objec
     local_row_id = mapped_id if isinstance(mapped_id, int) else None
     values = {column: row.get(column) for column in columns}
     values[WorkingCopyField.ID] = local_row_id
-    with capture_suppressed(session):
+    capture = nullcontext() if capture_changes else capture_suppressed(session)
+    with capture:
         session.execute(
             text(WorkingCopySql.RESTORE_PROJECT_ROW.value.format(table_key, names, parameters, updates)),
             values,

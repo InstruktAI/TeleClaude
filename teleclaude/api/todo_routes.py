@@ -847,6 +847,21 @@ async def todo_remove(  # pyright: ignore
     )
 
 
+@router.post("/switch-to-github", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
+async def todo_switch_to_github(
+    cwd: Annotated[str | None, Body()] = None,
+    client_request_id: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(carried_caller),
+) -> SerializedOperation:
+    """Submit the current project's one-way local-to-GitHub store migration."""
+    operations = get_operations_service()
+    return await operations.submit_todo_store_switch(
+        cwd=cwd or _default_cwd(),
+        caller_session_id=identity.session_id,
+        client_request_id=client_request_id,
+    )
+
+
 @router.post("/{slug}/reactivate")
 async def todo_reactivate(
     slug: str,

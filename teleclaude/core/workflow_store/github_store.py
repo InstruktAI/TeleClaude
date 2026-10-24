@@ -4,17 +4,26 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from teleclaude.config.loader import github_actor_for_app_id
 from teleclaude.config.project_models import TodoStoreConfig
 from teleclaude.core.todos_db._adapter import TodosDb
-from teleclaude.core.todos_db._working_copy import initialize_working_copy, repository_initialized
+from teleclaude.core.todos_db._working_copy import (
+    WorkingCopyField,
+    WorkingCopyItemSnapshot,
+    acquire_repository_writer,
+    initialize_working_copy,
+    repository_initialized,
+    restore_item_snapshot,
+    restore_project_record,
+)
 from teleclaude.core.todos_db_path import github_working_copy_path
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity, resolve_github_repository_identity
-from teleclaude.core.workflow_store.github_io import GitHubWorkflowIO
+from teleclaude.core.workflow_store.github_io import GitHubMutationPacing, GitHubWorkflowIO
 from teleclaude.core.workflow_store.github_push import GitHubWorkflowPush
 from teleclaude.core.workflow_store.github_sync import GitHubWorkflowSync
 from teleclaude.core.workflow_store.selection import selected_workflow_store_config
@@ -26,6 +35,7 @@ if TYPE_CHECKING:
 
 _MISSING_APP = "GitHub workflow store requires todos.app to name a configured platform App"
 _UNKNOWN_APP = "GitHub workflow store todos.app does not match a configured platform App"
+_MIGRATION_RECORD_ID = "github-store-switch:{}:{}"
 _instances: dict[str, GitHubWorkflowStore] = {}
 _locks: dict[str, threading.Lock] = {}
 _guard = threading.Lock()
@@ -44,6 +54,7 @@ class GitHubWorkflowStore(TodosDb):
         super().__init__(str(path))
         self._repository = repository
         self._assignment = assignment
+        self._migration_lock = asyncio.Lock()
         self._io = GitHubWorkflowIO(repository, assignment)
         self._push = GitHubWorkflowPush(path, repository, assignment, self._io)
         self._sync = GitHubWorkflowSync(self, repository, assignment, self._io)
@@ -53,6 +64,40 @@ class GitHubWorkflowStore(TodosDb):
             self._push.after_commit,
             after_rollback=self._push.refresh_after_conflict,
         )
+
+    async def restore_migration_item(self, snapshot: WorkingCopyItemSnapshot) -> None:
+        """Publish one restored item through an async working-copy transaction."""
+        async with self._session() as session:
+            async with session.begin():
+                await session.run_sync(acquire_repository_writer)
+                await session.run_sync(
+                    lambda sync_session: restore_item_snapshot(sync_session, snapshot, capture_changes=True)
+                )
+
+    @asynccontextmanager
+    async def paced_mutations(self) -> AsyncIterator[GitHubMutationPacing]:
+        """Expose the adapter's scoped mutation pacing to the migration owner."""
+        async with self._migration_lock:
+            async with self._io.paced_mutations() as pacing:
+                yield pacing
+
+    async def restore_migration_project_records(self, records: tuple[tuple[str, Mapping[str, object]], ...]) -> None:
+        """Publish one bounded project-record batch through the existing ledger path."""
+        async with self._session() as session:
+            async with session.begin():
+                await session.run_sync(acquire_repository_writer)
+                await session.run_sync(
+                    lambda sync_session: [
+                        restore_project_record(
+                            sync_session,
+                            table,
+                            row,
+                            _MIGRATION_RECORD_ID.format(table, row[WorkingCopyField.ID]),
+                            capture_changes=True,
+                        )
+                        for table, row in records
+                    ]
+                )
 
     @property
     def capabilities(self) -> StoreCapabilities:

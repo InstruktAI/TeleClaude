@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from concurrent.futures import Future
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from time import monotonic
 from typing import Any, TypedDict, TypeVar, cast
 from urllib.parse import quote
 
@@ -32,6 +34,8 @@ _ISSUE_COLOR = "ededed"
 _THREAD_NAME = "teleclaude-github-io"
 _REPOSITORY_SEPARATOR = "/"
 _Result = TypeVar("_Result")
+_PACED_WRITE_INTERVAL_S = 1.0
+_INTER_ITEM_WRITE_INTERVAL_S = 10.0
 
 
 class _GraphActor(TypedDict, total=False):
@@ -196,6 +200,28 @@ class GitHubIssue:
     updated_at: datetime | None
 
 
+@dataclass
+class GitHubMutationPacing:
+    """Count mutative requests and pace between committed migration batches."""
+
+    count: int = 0
+    last_start: float = 0.0
+    last_wait_ended: float = 0.0
+    count_at_wait: int = 0
+
+    async def wait_between_items(self) -> None:
+        while True:
+            current_count = self.count
+            required = (current_count - self.count_at_wait) * _INTER_ITEM_WRITE_INTERVAL_S
+            elapsed = monotonic() - self.last_wait_ended
+            remaining = required - elapsed
+            if remaining <= 0:
+                break
+            await asyncio.sleep(remaining)
+        self.count_at_wait = current_count
+        self.last_wait_ended = monotonic()
+
+
 class _GitHubIOLoop:
     """Own the single process loop used by every project's synchronous and async caller."""
 
@@ -238,6 +264,17 @@ class GitHubWorkflowIO:
         self.scope = GitHubRepositoryScope(repository.repository_id, repository.repository)
         self._credential: SecretStr | None = None
         self._expires_at: datetime | None = None
+        self._pacing_window: GitHubMutationPacing | None = None
+
+    @asynccontextmanager
+    async def paced_mutations(self) -> AsyncIterator[GitHubMutationPacing]:
+        """Pace mutative requests during one migration without changing ordinary traffic."""
+        window = GitHubMutationPacing(last_wait_ended=monotonic())
+        self._pacing_window = window
+        try:
+            yield window
+        finally:
+            self._pacing_window = None
 
     async def async_open_issue(self, title: str, body: str) -> GitHubIssue:
         return cast(GitHubIssue, await self._call(GitHubOperation.OPEN_ISSUE, title, body))
@@ -352,6 +389,7 @@ class GitHubWorkflowIO:
         owner, repo = _split_repository(self.repository.repository)
 
         async def request(client: Any) -> GitHubIssue:
+            await self._pace_mutation_start()
             response = await client.rest.issues.async_create(
                 owner, repo, data={GitHubField.TITLE: title, GitHubField.BODY: body}
             )
@@ -366,6 +404,7 @@ class GitHubWorkflowIO:
         owner, repo = _split_repository(self.repository.repository)
 
         async def request(client: Any) -> None:
+            await self._pace_mutation_start()
             await client.rest.issues.async_update(
                 owner,
                 repo,
@@ -391,6 +430,7 @@ class GitHubWorkflowIO:
             except RequestFailed as error:
                 if error.response.status_code != 404:
                     raise
+            await self._pace_mutation_start()
             await client.rest.issues.async_create_label(
                 owner, repo, data={GitHubField.NAME: name, GitHubField.COLOR: color}
             )
@@ -465,6 +505,7 @@ class GitHubWorkflowIO:
         owner, repo = _split_repository(self.repository.repository)
 
         async def request(client: Any) -> GitHubComment:
+            await self._pace_mutation_start()
             response = await client.rest.issues.async_create_comment(owner, repo, number, data={GitHubField.BODY: body})
             comment = response.parsed_data
             return await _read_one_comment(client, comment.node_id)
@@ -475,12 +516,24 @@ class GitHubWorkflowIO:
         owner, repo = _split_repository(self.repository.repository)
 
         async def request(client: Any) -> GitHubComment:
+            await self._pace_mutation_start()
             response = await client.rest.issues.async_update_comment(
                 owner, repo, comment_id, data={GitHubField.BODY: body}
             )
             return await _read_one_comment(client, response.parsed_data.node_id)
 
         return await self._with_client(request)
+
+    async def _pace_mutation_start(self) -> None:
+        window = self._pacing_window
+        if window is None:
+            return
+        now = monotonic()
+        delay = _PACED_WRITE_INTERVAL_S - (now - window.last_start) if window.last_start else 0.0
+        if delay > 0:
+            await asyncio.sleep(delay)
+        window.last_start = monotonic()
+        window.count += 1
 
 
 async def _dispatch_open_issue(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:

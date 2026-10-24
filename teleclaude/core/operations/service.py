@@ -78,6 +78,8 @@ from teleclaude.core.operations.todo_identity import (
     todo_operation_submission,
 )
 from teleclaude.core.operations.todo_removal import run_todo_remove_operation
+from teleclaude.core.operations.todo_store_switch import run_todo_store_switch_operation
+from teleclaude.core.operations.todo_store_switch import submit_todo_store_switch as _submit_todo_store_switch
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.shutdown_drain import OwnedUnit, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
@@ -146,6 +148,8 @@ def get_operations_service() -> OperationsService:
 
 class OperationsService:
     """Submit, track, and inspect durable background operations."""
+
+    submit_todo_store_switch = _submit_todo_store_switch
 
     def __init__(
         self,
@@ -491,16 +495,10 @@ class OperationsService:
         existing_match_ok: Callable[[Operation], bool] | None = None,
         on_existing: Callable[[Operation], None] | None = None,
     ) -> SerializedOperation:
-        """Shared submit body for every operation kind: lock, reattach, or create.
+        """Lock, reattach, or create one operation.
 
-        ``existing_match_ok`` narrows nonterminal reattachment beyond
-        kind/caller/cwd/slug (todo-integrate's abandon flag); ``on_existing``
-        validates every existing row this call returns, new-lookup or
-        re-read, against the current request (todo-rename's target-slug check).
-        A command-backed submission (``cwd is None``) skips nonterminal
-        reattachment: kind/caller/cwd/slug alone cannot disambiguate one
-        command-backed operation's real target (its command's own session id)
-        from another's.
+        ``existing_match_ok`` narrows reuse and ``on_existing`` validates returned rows.
+        Addressless submissions skip reattachment because kind/caller/cwd/slug cannot identify the target.
         """
         # A caller session on the computer whose request was carried here has its outcome delivered there.
         caller_computer = caller_computer or relayed_caller_computer(caller_session_id)
@@ -639,6 +637,7 @@ class OperationsService:
             OperationKind.TODO_PREPARE: self._run_todo_prepare,
             OperationKind.TODO_RENAME: self._run_todo_rename,
             OperationKind.TODO_REMOVE: lambda op: run_todo_remove_operation(self._db, op),
+            OperationKind.TODO_STORE_SWITCH: lambda op: run_todo_store_switch_operation(self._db, op),
             OperationKind.SESSION_CLOSE: self._run_command_backed_operation,
             OperationKind.AGENT_RESTART: self._run_command_backed_operation,
             OperationKind.AGENT_HANDOFF: self._run_command_backed_operation,

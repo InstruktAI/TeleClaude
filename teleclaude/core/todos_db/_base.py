@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import asynccontextmanager
 from enum import StrEnum
 from pathlib import Path
 from typing import NamedTuple, cast
@@ -34,6 +35,14 @@ from ._docs_local_rename import (
 from ._legacy_import import maybe_auto_import_legacy_markdown_todos
 from ._models import TODOS_DB_TABLES
 from ._sdlc_rename import migrate_sdlc_rename
+from ._working_copy import (
+    WorkingCopyItemSnapshot,
+    WorkingCopyMoveSet,
+    all_project_records,
+    held_item_ids,
+    item_snapshot,
+    move_set,
+)
 
 logger = get_logger(__name__)
 _TODO_STATE_TABLE = "todo_state"
@@ -59,6 +68,8 @@ _COMMIT_REVIEW_INSERT_SQL = (
     "(sha, verdict, reviewer_session_id, producer_session_ids, stamped_at, reason, migration_source) "
     "VALUES (?, ?, ?, ?, ?, ?, ?)"
 )
+_SQLITE_BUSY_TIMEOUT_S = 5.0
+_BEGIN_IMMEDIATE_SQL = "BEGIN IMMEDIATE"
 
 
 class StoreSessionEvent(StrEnum):
@@ -887,6 +898,26 @@ class TodosDbBase:
             raise RuntimeError(msg)
         return self._sessionmaker()
 
+    async def migration_move_set(self) -> WorkingCopyMoveSet:
+        """Read typed open-work identities through the store-owned session boundary."""
+        async with self._session() as session:
+            return await session.run_sync(move_set)
+
+    async def migration_item_snapshot(self, item_id: str) -> WorkingCopyItemSnapshot | None:
+        """Read a complete source snapshot, including every artifact version."""
+        async with self._session() as session:
+            return await session.run_sync(lambda sync_session: item_snapshot(sync_session, item_id))
+
+    async def migration_project_records(self) -> tuple[tuple[str, Mapping[str, object]], ...]:
+        """Read the complete typed project-level evidence set."""
+        async with self._session() as session:
+            return await session.run_sync(all_project_records)
+
+    async def migration_held_item_ids(self) -> frozenset[str]:
+        """Read item identities held by this store in any lifecycle status."""
+        async with self._session() as session:
+            return await session.run_sync(held_item_ids)
+
     def _sync_session(self) -> SqlSession:
         """Create a sync ORM session from the initialized session factory."""
         if self._sync_sessionmaker is None:
@@ -909,6 +940,17 @@ class TodosDbBase:
             raise RuntimeError(msg)
         raw_connection = self._sync_engine.raw_connection()
         return cast(sqlite3.Connection, raw_connection)
+
+    @asynccontextmanager
+    async def hold_write_window(self) -> AsyncIterator[None]:
+        """Hold SQLite's writer reservation without committing changes."""
+        connection = await aiosqlite.connect(self.db_path, timeout=_SQLITE_BUSY_TIMEOUT_S)
+        try:
+            await connection.execute(_BEGIN_IMMEDIATE_SQL)
+            yield
+        finally:
+            await connection.rollback()
+            await connection.close()
 
     async def close(self) -> None:
         """Close open runtime resources."""

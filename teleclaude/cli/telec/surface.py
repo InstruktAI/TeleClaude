@@ -108,6 +108,7 @@ _RECEIPT_OUTCOME_DELIVERY = (
 )
 _RECEIPT_RETURN_NOTE = f"Returns an operation receipt {_RECEIPT_OUTCOME_DELIVERY}"
 _RECEIPT_RETURN_SLUG_FORM_NOTE = f"The --slug form returns an operation receipt {_RECEIPT_OUTCOME_DELIVERY}"
+TODO_COMMAND = "todo"
 
 CLI_SURFACE: dict[str, CommandDef] = {
     "sessions": CommandDef(
@@ -600,7 +601,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "Example phase 2: telec docs get sdlc/policy/testing local/projects/teleclaude/spec/command-surface",
         ],
     ),
-    "todo": CommandDef(
+    TODO_COMMAND: CommandDef(
         desc="Manage work items",
         subcommands={
             "sync": CommandDef(
@@ -621,6 +622,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[F.FLAG_HELP],
                 hidden=True,
                 auth=CommandAuth(human=frozenset(), caller_independent=True),
+            ),
+            "switch-to-github": CommandDef(
+                desc="Switch this project to the GitHub workflow store and move its open work",
+                flags=[F.FLAG_HELP],
+                notes=[
+                    "The switch is one-way; another run continues an interrupted move.",
+                    "Read the outcome with `telec operations get <operation-id>`.",
+                    "Commit the project declaration change as you would any declaration edit.",
+                ],
+                auth=CommandAuth(human=_HR_ADMIN, scope=CommandScope.PLATFORM),
             ),
             "create": CommandDef(
                 desc="Create a todo with substantive content",
