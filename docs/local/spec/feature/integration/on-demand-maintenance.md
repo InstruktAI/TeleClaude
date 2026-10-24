@@ -104,8 +104,10 @@ Publication is one of those steps and keeps its own contract
   inside the stopped-daemon window that commit-boundary maintenance uses
   (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`),
   except the steps the registry declares to run while the daemon serves, which
-  are performed once the window has ended, whether its start verified, did not
-  verify, or was left to the drain.
+  are performed after the window's start has verified. When the start does not
+  verify, or the run leaves the daemon stopped for the drain, those steps are
+  not performed: the run names each as not performed, and running it again is
+  their recovery.
   The run reports the window's opening, or why it did not open, and the start's
   verification, or why it did not verify; a run whose window did not open or
   whose start did not verify exits non-zero. A commit activation owing the
@@ -155,7 +157,8 @@ Publication is one of those steps and keeps its own contract
 - **Report order.** Uncommitted edits come first, then the daemon's stop when
   the run replaces it, then the outcomes of the steps inside the window, then
   the daemon's start and its verification, then the outcomes of the steps that
-  run while the daemon serves, then earlier failures, and owed disruptive steps
+  run while the daemon serves, or that they were not performed, then earlier
+  failures, and owed disruptive steps
   last. A run that does not replace the daemon reports its step outcomes in
   declared order in place of both step groups.
 - **Listing.** `telec sync --list` prints, in order, every step the root's
@@ -180,6 +183,8 @@ The on-demand run preserves the release checkout's selected source and its
 ordinary disruptive-step deferral contract.
 
 ### Use cases
+
+<!-- planned-change:maintenance-prepares-before-swap -->
 
 #### UC-ODM1: An operator runs the root’s maintenance on demand
 
@@ -226,6 +231,57 @@ Scenario: Refuse a run from an ineligible checkout
   Then it refuses before any step runs
   And names an eligible maintenance checkout
 ```
+
+<!-- change:maintenance-prepares-before-swap -->
+
+#### UC-ODM1: An operator runs the root’s maintenance on demand
+
+```gherkin
+Scenario: Apply the root's declared maintenance
+  Given an operator wants to run maintenance from an eligible canonical checkout
+  When their agent runs `telec sync`
+  Then every maintenance step declared by that root is attempted in order
+  And the operator sees each step's result as it completes
+
+Scenario: Continue maintenance after a step fails
+  Given the root's maintenance has later steps still owed
+  When one step fails during the run
+  Then every later step is still attempted
+  And the run reports the failure and exits unsuccessfully
+
+Scenario: Run maintenance in the platform's checkout
+  Given the platform root declares daemon replacement
+  When an operator runs `telec sync` there
+  Then the daemon is stopped before the steps that run inside the window begin
+  And it is started and verified after the last of them
+  And the steps that run while the daemon serves begin only after that verification
+
+Scenario: Keep uncommitted changes out of publication
+  Given the root's working tree has uncommitted edits
+  When an operator runs `telec sync`
+  Then the changed paths and known holders are reported before the first step
+  And publication uses committed source and does not publish the uncommitted edits
+
+Scenario: Leave other running services alone
+  Given installation would deploy a changed definition for another running service
+  When an operator runs `telec sync` outside the daemon-replacement window
+  Then the service remains running and its changed definition is reported as owed
+  And the report names the command that deploys it
+
+Scenario: See the recovery route for an earlier failure
+  Given an earlier commit-boundary maintenance run recorded a step as failed
+  When an operator runs `telec sync` in that root
+  Then the report names the failed step and its replay command
+  And the failed record remains and its owning integrator is named
+
+Scenario: Refuse a run from an ineligible checkout
+  Given an operator runs `telec sync` outside canonical main or the installed release checkout
+  When the command begins
+  Then it refuses before any step runs
+  And names an eligible maintenance checkout
+```
+
+<!-- /planned-change:maintenance-prepares-before-swap -->
 
 #### UC-ODM2: A failed step does not stop the rest
 

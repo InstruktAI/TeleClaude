@@ -2,7 +2,7 @@
 visibility: internal
 number: 0127
 date: 2026-10-24
-description: A maintenance run that replaces the daemon performs Blueprint maintenance and publication after the window's verified start instead of inside the stopped window, because both already run against a serving daemon whenever no replacement is owed.
+description: A maintenance run that replaces the daemon performs the steps that replace nothing the daemon runs on — Blueprint maintenance, publication and configuration-schema publication — after the window's verified start instead of inside the stopped window.
 ---
 
 # Maintenance Runs Serving-Tolerant Steps After the Verified Start — ADR
@@ -26,6 +26,16 @@ or service definitions the daemon runs on: Blueprint maintenance converges a
 graph that command-line queries read, and publication writes the
 documentation and agent artifacts that agents read.
 
+Configuration-schema publication took half a second. It writes the JSON
+schemas editors use to check configuration files; the daemon reads none of
+them and only links a worktree's schema directory to the published one. The
+remaining steps owed in every window each change something the started daemon
+depends on: the release posture settles the checked-out source it starts from,
+installation migrations write installation state, and the declaration-view
+discard invalidates the cached declaration answers it reads. Dependency
+synchronization, installation and configuration migration are the writers
+ADR-0124 was made for.
+
 The fork was where those steps run when a window is owed: inside it, as
 ADR-0124 decided; before the stop, against the old daemon; or after the
 verified start, against the new one. A further option was staging the
@@ -34,9 +44,10 @@ could also leave the window.
 
 ## Decision
 
-The maintenance registry declares which actions run while the daemon serves,
-and the platform base declares it for Blueprint maintenance and publication.
-In a run that replaces the daemon, those actions run after the window's
+The maintenance registry declares, per action, whether it runs while the
+daemon serves. The platform base declares it for Blueprint maintenance and
+publication, and this repository's overlay for configuration-schema
+publication. In a run that replaces the daemon, those actions run after the window's
 verified start, in their precedence waves; every other owed action still runs
 inside the stopped window. The window opens, holds the daemon stopped and
 closes on the actions that run inside it alone. Whether a run owes the
@@ -56,14 +67,17 @@ actions that do not run while the daemon serves owe it.
 - An activation's restart obligation is held only while its actions that run
   inside a window remain recorded, so replaying a failed Blueprint or
   publication action never stops the daemon.
-- When a commit-boundary drain's window start does not verify, the actions that
-  run while the daemon serves stay recorded and a later drain performs them, in
-  step with the drain's existing halt on a failed window. An on-demand run keeps
-  no records and never lets a failure stop a later step, so it performs them
-  once its window has ended, whatever the start's outcome.
-- The declaration belongs to the platform base. A project-declared action runs
-  inside the window, which is ADR-0124's guarantee for any step whose safety
-  against a serving daemon has not been established.
+- These actions run only after a verified start. When a commit-boundary
+  drain's start does not verify, they stay recorded and a later drain performs
+  them, in step with the drain's existing halt on a failed window. An on-demand
+  run keeps no records, so it names them as not performed and its rerun is
+  their recovery.
+- An action that does not declare it runs inside the window, which is
+  ADR-0124's guarantee for any step whose safety against a serving daemon has
+  not been established. A step leaves the window only once that safety is
+  shown for it.
+- A project overlay can declare it, so the project configuration gains an
+  optional key and a version step marking where it became valid.
 
 ## Alternatives Considered
 
@@ -75,7 +89,7 @@ actions that do not run while the daemon serves owe it.
   windows recorded, while it rewrites the environment the running daemon
   imports from. A staging and swap mechanism would add a second environment
   to keep consistent for a few seconds of downtime.
-- **Move every sub-second step whose safety can be argued.** Configuration
-  schema generation and the declaration-view discard each take under a second.
-  Declaring them would extend the project configuration schema, with its
-  version migration, for no measurable gain.
+- **Declare it in the platform base only.** No project configuration change
+  would be needed, but configuration-schema publication, a project overlay
+  action that replaces nothing the daemon runs on, would keep holding the
+  daemon down.

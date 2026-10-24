@@ -15,7 +15,7 @@ visibility: 'public'
 
 <!-- change:maintenance-prepares-before-swap -->
 
-- A maintenance run that replaces the daemon is a controlled restart. The daemon is down for every step of that run except those the maintenance registry declares to run while it serves, Blueprint maintenance and publication: it settles its accepted work and stops before the first of the other steps, none of them runs while it serves, and it starts again after the last of them (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). Blueprint maintenance and publication run after the verified start, while it serves. The run succeeds only once the started daemon is verified recovered. A run that cannot establish the daemon stopped leaves it as it is and runs no step, and a run whose start does not verify leaves the daemon with that reason recorded; `make status` reports either reason.
+- A maintenance run that replaces the daemon is a controlled restart. The daemon is down for every step of that run except those the maintenance registry declares to run while it serves — Blueprint maintenance, publication and configuration-schema publication: it settles its accepted work and stops before the first of the other steps, none of them runs while it serves, and it starts again after the last of them (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). Those run after the verified start, while it serves. The run succeeds only once the started daemon is verified recovered. A run that cannot establish the daemon stopped leaves it as it is and runs no step, and a run whose start does not verify leaves the daemon with that reason recorded; `make status` reports either reason.
 
 <!-- /planned-change:maintenance-prepares-before-swap -->
 
@@ -89,6 +89,6 @@ visibility: 'public'
 
 <!-- planned:maintenance-prepares-before-swap -->
 
-- docs/local/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start.md — why Blueprint maintenance and publication run after the verified start.
+- docs/local/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start.md — why the steps that replace nothing the daemon runs on run after the verified start.
 
 <!-- /planned:maintenance-prepares-before-swap -->

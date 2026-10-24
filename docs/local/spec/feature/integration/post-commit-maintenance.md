@@ -65,8 +65,9 @@ contract governs only what happens when maintenance runs.
   actions whose effects it needs and after nothing else; a failure does not
   cancel later waves. An owed restart action is not a wave: it is the
   stopped-daemon window the other owed actions run inside, except the actions
-  the registry declares to run while the daemon serves — Blueprint maintenance
-  and publication — which run after the window's verified start.
+  the registry declares to run while the daemon serves — Blueprint maintenance,
+  publication and configuration-schema publication — which run after the
+  window's verified start.
 
 <!-- /planned-change:maintenance-prepares-before-swap -->
 
@@ -260,7 +261,8 @@ contract governs only what happens when maintenance runs.
 - **Actions after the start.** The registry declares which actions run while
   the daemon serves
   (`local/projects/teleclaude/design/architecture/checkpoint-system`), and the
-  platform base declares Blueprint maintenance and publication so. Such an
+  platform base declares Blueprint maintenance and publication so, and this
+  repository's overlay configuration-schema publication. Such an
   action never runs inside a window and never holds the daemon stopped. When a
   window covers its activation, it runs after that window's start has
   verified, in its precedence waves, while the started daemon serves; when the
@@ -657,6 +659,8 @@ And an agent reading the structured records observes the window opening, each of
 
 <!-- /planned-change:maintenance-prepares-before-swap -->
 
+<!-- planned-change:maintenance-prepares-before-swap -->
+
 #### UC-PCM21: Unsettled work keeps the window waiting, not the steps running
 
 ```gherkin
@@ -668,6 +672,23 @@ And no owed step runs while the daemon is draining
 And the owed steps run once the daemon has stopped
 ```
 
+<!-- change:maintenance-prepares-before-swap -->
+
+#### UC-PCM21: Unsettled work keeps the window waiting, not the steps running
+
+```gherkin
+Given a canonical-main advancement owes a daemon restart
+And the daemon holds accepted work that does not settle within its preparation observation window
+When the stopped-daemon window opens
+Then each expired observation window is reported in the structured records
+And no owed step runs while the daemon is draining
+And the owed steps that run inside a window run once the daemon has stopped
+```
+
+<!-- /planned-change:maintenance-prepares-before-swap -->
+
+<!-- planned-change:maintenance-prepares-before-swap -->
+
 #### UC-PCM22: A failed step still ends with the daemon started and verified
 
 ```gherkin
@@ -677,6 +698,20 @@ Then the remaining owed steps still run
 And the daemon is started and verified after the last of them
 And the failed step remains recorded as failed with its replay
 ```
+
+<!-- change:maintenance-prepares-before-swap -->
+
+#### UC-PCM22: A failed step still ends with the daemon started and verified
+
+```gherkin
+Given a canonical-main advancement owes a daemon restart and another step
+When that other step fails inside the stopped-daemon window
+Then the remaining owed steps that run inside a window still run
+And the daemon is started and verified after the last of them
+And the failed step remains recorded as failed with its replay
+```
+
+<!-- /planned-change:maintenance-prepares-before-swap -->
 
 #### UC-PCM23: A start that does not verify leaves its reason where an agent looks first
 
@@ -731,6 +766,8 @@ Then the daemon keeps serving throughout
 And the publication step runs
 ```
 
+<!-- planned-change:maintenance-prepares-before-swap -->
+
 #### UC-PCM27: Advancements recorded during a window share it
 
 ```gherkin
@@ -739,6 +776,19 @@ When another advancement records its own owed actions before the window closes
 Then the later advancement's actions run inside the same window
 And the daemon is started once, after both advancements' actions have terminal outcomes
 ```
+
+<!-- change:maintenance-prepares-before-swap -->
+
+#### UC-PCM27: Advancements recorded during a window share it
+
+```gherkin
+Given a stopped-daemon window is open for one canonical-main advancement
+When another advancement records its own owed actions before the window closes
+Then the later advancement's actions that run inside a window run inside the same window
+And the daemon is started once, after those actions of both advancements have terminal outcomes
+```
+
+<!-- /planned-change:maintenance-prepares-before-swap -->
 
 #### UC-PCM28: A stop that does not establish a stopped daemon leaves it untouched with its reason
 
@@ -778,6 +828,8 @@ Then the window opens and the owed steps run
 And an agent reading the structured records observes the cleanup failure
 ```
 
+<!-- planned-change:maintenance-prepares-before-swap -->
+
 #### UC-PCM32: An advancement still registering when the window's last step ends shares the window
 
 ```gherkin
@@ -787,6 +839,22 @@ When the window reaches its final check
 Then that commit's owed actions are recorded once and run inside the same window
 And the daemon is started once, from that commit, after they have terminal outcomes
 ```
+
+<!-- change:maintenance-prepares-before-swap -->
+
+#### UC-PCM32: An advancement still registering when the window's last step ends shares the window
+
+```gherkin
+Given a stopped-daemon window is open for one canonical-main advancement
+And another canonical-main commit has advanced the checkout but its owed actions are not yet recorded when the window's last owed step ends
+When the window reaches its final check
+Then that commit's owed actions are recorded once, and those that run inside a window run inside the same window
+And the daemon is started once, from that commit, after they have terminal outcomes
+```
+
+<!-- /planned-change:maintenance-prepares-before-swap -->
+
+<!-- planned-change:maintenance-prepares-before-swap -->
 
 #### UC-PCM33: A start overtaken by a further advancement is stopped again before that advancement runs
 
@@ -799,6 +867,23 @@ And they run inside the same window
 And the daemon is started and verified from that commit after they have terminal outcomes
 ```
 
+<!-- change:maintenance-prepares-before-swap -->
+
+#### UC-PCM33: A start overtaken by a further advancement is stopped again before that advancement runs
+
+```gherkin
+Given a stopped-daemon window has started the daemon after its last owed step
+And another canonical-main commit that owes a daemon restart advanced the checkout while that start was in progress
+When the window checks the start it made
+Then the daemon is stopped again before any of that commit's owed actions runs
+And its actions that run inside a window run inside the same window
+And the daemon is started and verified from that commit after they have terminal outcomes
+```
+
+<!-- /planned-change:maintenance-prepares-before-swap -->
+
+<!-- planned-change:maintenance-prepares-before-swap -->
+
 #### UC-PCM34: A tip whose owed actions cannot be recorded leaves the daemon stopped with its reason
 
 ```gherkin
@@ -810,6 +895,22 @@ And each restart action the window covered ends failed with the refusal's reason
 And an agent running make status sees that reason and when it was recorded
 And replaying a restart action after the cause is resolved records the tip's owed actions, runs them and starts the daemon from the tip
 ```
+
+<!-- change:maintenance-prepares-before-swap -->
+
+#### UC-PCM34: A tip whose owed actions cannot be recorded leaves the daemon stopped with its reason
+
+```gherkin
+Given a stopped-daemon window has run its last owed step
+And the checkout's tip is a commit whose owed actions cannot be recorded
+When the window tries to record them
+Then the daemon stays stopped
+And each restart action the window covered ends failed with the refusal's reason
+And an agent running make status sees that reason and when it was recorded
+And replaying a restart action after the cause is resolved records the tip's owed actions, runs those that run inside a window and starts the daemon from the tip
+```
+
+<!-- /planned-change:maintenance-prepares-before-swap -->
 
 <!-- planned:maintenance-prepares-before-swap -->
 
@@ -846,7 +947,7 @@ And replaying either of them after a failure leaves the daemon serving
 
 <!-- planned:maintenance-prepares-before-swap -->
 
-- docs/local/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start.md — why Blueprint maintenance and publication run after the window's verified start.
+- docs/local/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start.md — why the steps that replace nothing the daemon runs on run after the window's verified start.
 
 <!-- /planned:maintenance-prepares-before-swap -->
 
