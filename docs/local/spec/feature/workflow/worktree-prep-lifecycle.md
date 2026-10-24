@@ -250,8 +250,6 @@ And reclamation runs off the daemon's event loop
 - `reconciliation` — owns the configuration-schema link; ensuring a worktree invokes its published link operation for the worktree root (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
 - `agent_runtime` — owns agent runtimes' workspace trust for slug worktrees; ensuring a worktree, renaming its todo, and delivered-slug cleanup invoke its published add, move, and remove operations for the worktree path, and none of them fails the worktree step (`local/projects/teleclaude/spec/feature/agent_runtime/worktree-workspace-trust`).
 
-<!-- planned:release-development-checkouts -->
-
 ### Associated development ownership
 
 For an installation/development pair, source worktrees and their environment
@@ -262,7 +260,6 @@ worktree owner, as resolved by
 within the development tree never aliases the installed runtime environment.
 Existing worktree claims and unpublished work are preserved during association
 migration under `sdlc/policy/version-control-safety`.
-<!-- /planned:release-development-checkouts -->
 
 <!-- planned:reviewed-pr-contributions -->
 

@@ -277,8 +277,6 @@ And the agent or person reads that the agent settings were not stored, with the 
 
 <!-- /planned:installer-writes-machine-config-ahead-of-daemon-reach-gate -->
 
-<!-- planned:release-development-checkouts -->
-
 ### Development readiness
 
 Full installation composes the durable companion provisioning operation under
@@ -286,7 +284,6 @@ Full installation composes the durable companion provisioning operation under
 Dependency-only preparation in a registered development checkout stays in that
 checkout's environment. Full installation reports the companion's result along with runtime readiness;
 it claims completion only when the required provisioning operations succeeded.
-<!-- /planned:release-development-checkouts -->
 
 ## Known caveats
 

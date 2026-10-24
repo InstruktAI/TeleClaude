@@ -112,8 +112,6 @@ Then the selected checks execute using the worktree's own rules
 And grading reports their outcome without an unidentified-caller refusal from its isolated execution
 ```
 
-<!-- planned:release-development-checkouts -->
-
 ### Associated source and installation checkouts
 
 The global command retains the installed controller identity when called from
@@ -125,7 +123,6 @@ an independent Git clone supplies no permission to use the live home. A missing
 development execution context refuses with its owning preparation reference.
 Checkout-specific context selection is owned by
 `local/projects/teleclaude/spec/feature/context/checkout-context-selection`.
-<!-- /planned:release-development-checkouts -->
 
 ## Known caveats
 

@@ -55,8 +55,6 @@ flowchart LR
     S[daemon and live home] --> Sc[sessions, reminders, agents, computers,<br/>operations, message, auth,<br/>events, signals, history, memories,<br/>projects list, config by kind and slug]
 ```
 
-<!-- planned:release-development-checkouts -->
-
 ### Associated checkout roots
 
 The invocation resolver returns the active working checkout, logical project's
@@ -103,7 +101,6 @@ Project addresses name the logical identity; checkout selection is explicit and
 never inferred from a `-dev` suffix. Source delivery at this boundary retains the
 existing upstream-mainline contract; provisioning a companion alone provides no
 public contribution handler.
-<!-- /planned:release-development-checkouts -->
 
 <!-- planned:reviewed-pr-contributions -->
 

@@ -276,8 +276,6 @@ contract governs only what happens when maintenance runs.
   recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
 
-<!-- planned:release-development-checkouts -->
-
 ### Associated checkout activation
 
 For a project with an installation/development association, maintenance selection
@@ -310,7 +308,6 @@ acquiring another installed-root drain.
 The complete association, root resolution and effect selection become available
 together before eager companion provisioning is reported ready. This preserves
 state ownership under `sdlc/policy/code-quality-practices`.
-<!-- /planned:release-development-checkouts -->
 
 <!-- planned:installation-activation-inspection -->
 

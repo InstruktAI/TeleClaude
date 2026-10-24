@@ -174,8 +174,6 @@ Then only the path binding's actions are owed
 And the event binding's actions are not performed
 ```
 
-<!-- planned:release-development-checkouts -->
-
 ### Checkout-associated event targets
 
 A logical project's installation event binding selects its installed checkout,
@@ -184,7 +182,6 @@ upstream change does not select both physical locations as two installations.
 Development source refresh remains a source operation, independent of the
 installed checkout's channel convergence
 (`local/projects/teleclaude/design/architecture/command-scope`).
-<!-- /planned:release-development-checkouts -->
 
 ## Known caveats
 

@@ -89,8 +89,6 @@ standalone `reconciliation` control loop is the target owner of that reaction.
 Channel configuration is the machine configuration's `deployment` block
 (`docs/local/spec/teleclaude-config.md`).
 
-<!-- planned:release-development-checkouts -->
-
 ### Installed and development checkout relationship
 
 Config associates one logical project with installed and development checkout
@@ -119,7 +117,6 @@ Installed revision selection consumes the release-checkout contract
 
 The source/deployment separation follows `sdlc/principle/design-fundamentals`
 and preserves existing source work under `sdlc/policy/version-control-safety`.
-<!-- /planned:release-development-checkouts -->
 
 ### Immutable installed source
 

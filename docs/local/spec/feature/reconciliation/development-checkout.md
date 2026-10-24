@@ -1,7 +1,6 @@
 ---
-description: Installation eagerly provisions and retains a sibling development checkout beside every installation, independently of the revision it runs.
-delivered_by:
-  - release-development-checkouts
+description: Installation eagerly provisions and retains a sibling development checkout
+  beside every installation, independently of the revision it runs.
 ---
 
 # Development Checkout — Spec

@@ -1,7 +1,7 @@
 ---
-description: Development sessions receive their authoring checkout's contract view while operational sessions and installed agent outputs remain aligned to the installed revision.
-delivered_by:
-  - release-development-checkouts
+description: Development sessions receive their authoring checkout's contract view
+  while operational sessions and installed agent outputs remain aligned to the installed
+  revision.
 ---
 
 # Checkout Context Selection — Spec

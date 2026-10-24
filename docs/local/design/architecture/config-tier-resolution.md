@@ -104,8 +104,6 @@ and how existing installations reach the declared state.
   question about what a root is, and it keeps its own resolver and its own
   worktree-local answer.
 
-<!-- planned:release-development-checkouts -->
-
 ### Associated clones
 
 Config additionally supplies the registered checkout association defined by
@@ -120,7 +118,6 @@ through its declared relationship. A suffix supplies no relationship.
 Consumers receive those answers through the same owning resolvers under
 `local/projects/teleclaude/design/architecture/command-scope`; none implements
 another ancestor walk to connect the two repositories.
-<!-- /planned:release-development-checkouts -->
 
 ## Primary flows
 
