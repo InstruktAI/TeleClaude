@@ -551,7 +551,7 @@ def _drain_locked(project_root: Path) -> bool:
             )
             window_open = boundary.window_open
             if boundary.decision is WindowBoundaryDecision.COMPLETE:
-                break
+                continue
             if boundary.decision is WindowBoundaryDecision.REFUSED:
                 return False
             continue
