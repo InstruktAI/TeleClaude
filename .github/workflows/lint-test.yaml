@@ -41,7 +41,7 @@ jobs:
   runtime-acceptance:
     name: Full CLI runtime acceptance
     runs-on: macos-latest
-    timeout-minutes: 75
+    timeout-minutes: 15
     permissions:
       contents: read
 
@@ -59,7 +59,7 @@ jobs:
           version: '0.13.4'
 
       - name: Run full disposable CLI runtime profile
-        timeout-minutes: 65
+        timeout-minutes: 10
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: uv run --no-project --python 3.12 python -P tools/ci/ci_runtime_acceptance.py --root "$GITHUB_WORKSPACE" --report "$RUNNER_TEMP/runtime-acceptance/report.json"
