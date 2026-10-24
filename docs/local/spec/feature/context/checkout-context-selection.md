@@ -1,5 +1,5 @@
 ---
-description: Development sessions receive their authoring checkout's contract view while operational sessions and installed agent outputs remain aligned to the installed release.
+description: Development sessions receive their authoring checkout's contract view while operational sessions and installed agent outputs remain aligned to the installed revision.
 delivered_by:
   - release-development-checkouts
 ---
@@ -17,7 +17,7 @@ second project from a cloned declaration
 
 ## Canonical fields
 
-- An operational session receives the installed release's documentation and
+- An operational session receives the installed revision's documentation and
   agent artifacts. A development session receives its authoring checkout's
   documentation and applicable agent instructions, including targeted pending
   contracts under `general/policy/context-retrieval`.
@@ -42,16 +42,16 @@ second project from a cloned declaration
 #### UC-CCX1: Development and operation read their selected contracts
 
 ```gherkin
-Given a development checkout describes behavior newer than its installed release
+Given a development checkout describes behavior newer than its installed revision
 When a development agent and an operational agent retrieve that project's contracts
 Then the development agent receives the authoring checkout's view
-And the operational agent receives the installed release's view
+And the operational agent receives the installed revision's view
 ```
 
 #### UC-CCX2: Development publication preserves installed instructions
 
 ```gherkin
-Given an operational agent uses the installed release's instruction generation
+Given an operational agent uses the installed revision's instruction generation
 When development maintenance builds a newer documentation and instruction generation
 Then that newer generation is available to development sessions
 And the installed instruction generation remains unchanged
@@ -63,7 +63,7 @@ And the installed instruction generation remains unchanged
 Given a development agent's selected contract generation is unavailable
 When the agent retrieves its required context
 Then it receives the unavailable-generation diagnostic
-And no installed-release view is presented as the requested development contract
+And no installed-revision view is presented as the requested development contract
 ```
 
 ## Known caveats
