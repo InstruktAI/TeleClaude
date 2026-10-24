@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import shlex
 import subprocess
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,7 @@ from teleclaude.checkpoint_model import (
     ActivationRange,
     event_only_action_ids,
     fill_on_demand,
+    load_committed_checkpoint_model,
 )
 from teleclaude.constants import RESTART_MAINTENANCE_ACTION_ID, MaintenanceAction, OnDemandDisposition
 from teleclaude.core.dirty_path_owners import DirtyPathOwner, resolve_dirty_path_owners
@@ -36,7 +38,6 @@ from teleclaude.core.integration._maintenance_records import (
 )
 from teleclaude.core.integration.activation_registration import resolve_current_tip_activation_range
 from teleclaude.core.integration.daemon_window import WindowCloseResult, WindowOpenResult, close_window, open_window
-from teleclaude.core.integration.development_maintenance_contract import on_demand_maintenance_model
 from teleclaude.core.integration.maintenance_trigger import (
     DRAIN_HELD_ENV,
     DRAIN_HELD_VALUE,
@@ -46,9 +47,6 @@ from teleclaude.core.integration.maintenance_trigger import (
 from teleclaude.core.integration.post_commit_maintenance import (
     ActivationRefused,
     eligible_maintenance_root,
-    maintenance_cwd,
-    maintenance_environment,
-    maintenance_interpreter,
     record_activation,
     replay_command,
     run_maintenance_waves,
@@ -274,9 +272,9 @@ def run_on_demand(invocation_directory: Path, emit: Callable[[str], None]) -> On
         deferred_count=len(deferred),
         dirty_path_count=dirty_count,
     )
-    interpreter = maintenance_interpreter(root)
+    interpreter = sys.executable
     child_env = {
-        **maintenance_environment(root, hook_free_environment(root)),
+        **hook_free_environment(root),
         ON_DEMAND_TRIGGER_ENV: MaintenanceTrigger.ON_DEMAND.value,
         DRAIN_HELD_ENV: DRAIN_HELD_VALUE,
     }
@@ -363,7 +361,6 @@ def _perform_on_demand_steps(context: _RunContext) -> tuple[str | None, str | No
             context.start_step,
             context.finish_step,
             capture_output=False,
-            cwd=maintenance_cwd(root),
         )
         if window_open:
             boundary = _close_on_demand_window(root, target.tip, baseline_activation_shas, activation)
@@ -387,7 +384,6 @@ def _perform_on_demand_steps(context: _RunContext) -> tuple[str | None, str | No
                     context.start_step,
                     context.finish_step,
                     capture_output=False,
-                    cwd=maintenance_cwd(root),
                 )
                 serving_steps_ran = True
     if context.window_required and not serving_steps_ran:
@@ -592,7 +588,7 @@ def _resolve_target(invocation_directory: Path) -> _Target:
         tip = Repo(str(root)).head.commit.hexsha
     except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError, ValueError) as exc:
         raise _Refused(_NO_PROJECT.format(directory=directory, error=exc)) from exc
-    model = on_demand_maintenance_model(root, tip)
+    model = load_committed_checkpoint_model(root, tip)
     event_only = event_only_action_ids(model)
     return _Target(
         root=root,

@@ -89,35 +89,6 @@ standalone `reconciliation` control loop is the target owner of that reaction.
 Channel configuration is the machine configuration's `deployment` block
 (`docs/local/spec/teleclaude-config.md`).
 
-### Installed and development checkout relationship
-
-Config associates one logical project with installed and development checkout
-purposes; workflow resolves their shared-state and source roots. Full installation
-provisions the persistent sibling defined by
-`local/projects/teleclaude/spec/feature/reconciliation/development-checkout`.
-The registered relationship, rather than the clone's directory spelling, governs
-every consumer. Development installation, indexing and source work operate in
-that environment. The installed revision alone owns live configuration,
-dependencies, services and machine-wide context activation. Development context
-is separately selected under
-`local/projects/teleclaude/spec/feature/context/checkout-context-selection`.
-
-On every channel the installed checkout changes only through the convergence
-above, which selects the target its channel admits. Development commits,
-worktrees and integration happen in the development clone, which tracks
-upstream main and holds pending docs independently. A checkout that both runs
-and develops becomes the installed checkout of its association.
-Migration preserves the original workflow records, live claims, worktree
-ownership and unpublished source before enabling the association. A transition
-that cannot preserve that work remains incomplete with its concrete recovery
-condition; it does not overwrite the mixed-use checkout.
-
-Installed revision selection consumes the release-checkout contract
-(`local/projects/teleclaude/spec/feature/reconciliation/release-checkout`).
-
-The source/deployment separation follows `sdlc/principle/design-fundamentals`
-and preserves existing source work under `sdlc/policy/version-control-safety`.
-
 ### Immutable installed source
 
 The deployment action pins the admitted immutable target for its convergence

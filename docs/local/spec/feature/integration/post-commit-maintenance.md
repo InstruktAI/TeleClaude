@@ -276,39 +276,6 @@ contract governs only what happens when maintenance runs.
   recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
 
-### Associated checkout activation
-
-For a project with an installation/development association, maintenance selection
-also consumes the checkout purpose published by
-`local/projects/teleclaude/design/architecture/command-scope`. The canonical-main
-location predicate above is qualified by that purpose. Development activations
-owe development environment, indexing and authoring-context work. Installed
-activations alone owe live configuration migrations, machine-wide context
-publication and service effects. On every channel an installed checkout's main
-advances only through its channel's convergence
-(`local/projects/teleclaude/design/architecture/deployment-pipeline`), while
-development commits occur in its development checkout. An explicit development
-preparation performs its own environment work without provisioning a host
-runtime.
-
-Action records and drain serialization remain checkout-scoped; a shared todo
-store does not combine their owed effects. Dependency environments follow that
-same boundary. The installed revision's maintenance executor can act on a
-development target only through its supported development operation; unsupported
-source requirements are reported rather than widening execution into live state.
-
-Purpose selection precedes action selection and restart-window derivation. A
-development activation owes only development preparation and publication; it
-opens no installed-daemon window. Installed activations retain the
-stopped-daemon window, advancement registration and verified-start contracts
-above. An installation run inside that window can establish development
-readiness through the development operation without opening a nested window or
-acquiring another installed-root drain.
-
-The complete association, root resolution and effect selection become available
-together before eager companion provisioning is reported ready. This preserves
-state ownership under `sdlc/policy/code-quality-practices`.
-
 <!-- planned:installation-activation-inspection -->
 
 ### Installation assessment handoff

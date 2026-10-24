@@ -17,7 +17,7 @@ from teleclaude.api.auth import (
     require_clearance_at_caller_person,
 )
 from teleclaude.api.work_feedback import DeclaredWorkRefusal
-from teleclaude.api_models import AddProjectRequest, ProjectDTO, ProjectLocationDTO, TodoDTO
+from teleclaude.api_models import AddProjectRequest, ProjectDTO, TodoDTO
 from teleclaude.config.machine import config
 from teleclaude.config.project_subject_init import adopt_project_subject
 from teleclaude.config_subjects import ConfigSubjectKind
@@ -76,7 +76,6 @@ def _dto_from_project(project: ProjectInfo, computer_name: str) -> ProjectDTO:
         description=project.description,
         subject=project.subject,
         owner=project.owner,
-        locations=[ProjectLocationDTO(path=location.path, purpose=location.purpose) for location in project.locations],
     )
 
 
@@ -255,15 +254,9 @@ async def add_project(
     entry = next((candidate for candidate in catalog.list_entries() if candidate.root == project_root), None)
     if entry is None:
         raise HTTPException(status_code=500, detail=_PROJECT_ENTRY_MISSING)
-    project_node = catalog.get_by_root(entry.root)
     return ProjectDTO(
         computer=config.computer.name,
         name=entry.display_name,
         path=str(entry.root),
         description=entry.description,
-        locations=[
-            ProjectLocationDTO(path=str(location.path), purpose=location.purpose) for location in project_node.locations
-        ]
-        if project_node is not None
-        else [],
     )

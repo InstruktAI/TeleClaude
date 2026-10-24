@@ -9,6 +9,7 @@ core.py (circular-import guard).
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
@@ -26,8 +27,8 @@ from teleclaude.constants import (
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
     STATE_KEY_TASK_PLAN,
+    WORKTREE_DIR,
 )
-from teleclaude.core.checkout_roots import worktree_location
 from teleclaude.core.next_machine._types import StateValue, default_state
 from teleclaude.core.next_machine.file_io import file_sha256 as _file_sha256
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
@@ -196,7 +197,7 @@ def stamp_finalize_ready(cwd: str, slug: str, caller_session_id: str = "") -> di
         )
 
     project_root = str(resolve_project_root(cwd))
-    worktree_path = worktree_location(project_root, slug)[0]
+    worktree_path = Path(project_root) / WORKTREE_DIR / slug
     head_sha = get_head_commit(str(worktree_path)) if worktree_path.exists() else ""
 
     db = get_workflow_store_sync(cwd)

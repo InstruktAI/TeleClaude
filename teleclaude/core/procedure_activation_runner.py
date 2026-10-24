@@ -41,7 +41,6 @@ from teleclaude.core.models import (
     SessionLaunchKind,
 )
 from teleclaude.core.models._adapter import session_is_unattended
-from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.operations._kinds import OperationKind
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.procedure_entry import EntryRefusal, activation_entry, resolve_entry
@@ -61,7 +60,6 @@ from teleclaude.docs_subscriptions import (
 )
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.paths import REPO_ROOT
-from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.commands import ActivateProcedureCommand, CreateSessionCommand
 from teleclaude.types.procedure_delivery import (
@@ -85,13 +83,12 @@ _CREATED_SESSION_MISSING_ERROR = "procedure activation session row missing: {ses
 _REVIVAL_FAILED_ERROR = "procedure activation could not revive session {session_id} bound to {subject}"
 _INITIAL_INPUT_TEMPLATE = "{procedure_id} {home}"
 _NO_SESSION_ERROR = "procedure activation could not resolve a session: {procedure_id} / {home}"
-_LIFECYCLE_PROCEDURES = frozenset(procedure.value for procedure in LifecycleProcedure)
 
 _activation_locks: dict[tuple[str, str], asyncio.Lock] = {}
 _activation_locks_guard = asyncio.Lock()
 
 
-def _home_folder(home: ActivationHome, procedure_id: str) -> Path:
+def _home_folder(home: ActivationHome) -> Path:
     """The folder a standing agent for the home works in on this computer; raises when the home is absent here."""
     if home.kind is SubscriptionHomeKind.PLATFORM:
         return REPO_ROOT
@@ -101,10 +98,6 @@ def _home_folder(home: ActivationHome, procedure_id: str) -> Path:
             ProcedureActivationFailureReason.HOME_UNAVAILABLE,
             str(unregistered_referent(ReferentKind(home.kind.value), home.slug)),
         )
-    if home.kind is SubscriptionHomeKind.PROJECT and procedure_id in _LIFECYCLE_PROCEDURES:
-        project = get_project_catalog_service().get_by_slug(home.slug)
-        if project is not None and project.development_checkout is not None:
-            return project.development_checkout
     return folder
 
 
@@ -122,27 +115,8 @@ def _serves_home(session: Session, procedure_id: str, home: ActivationHome, fold
     return (
         session.company is None
         and session.project_path is not None
-        and (
-            Path(session.project_path).resolve() == folder.resolve()
-            or (
-                home.kind is SubscriptionHomeKind.PROJECT
-                and procedure_id in _LIFECYCLE_PROCEDURES
-                and _project_home_aliases(home, session.project_path)
-            )
-        )
+        and Path(session.project_path).resolve() == folder.resolve()
     )
-
-
-def _project_home_aliases(home: ActivationHome, session_project_path: str) -> bool:
-    """Recognize a project's other registered checkout as the same lifecycle home."""
-    node = get_project_catalog_service().get_by_slug(home.slug)
-    if node is None:
-        return False
-    session_path = Path(session_project_path).resolve()
-    return session_path in {
-        node.root.resolve(),
-        node.development_checkout.resolve() if node.development_checkout else None,
-    }
 
 
 async def _get_activation_lock(procedure_id: str, home: ActivationHome) -> asyncio.Lock:
@@ -404,7 +378,7 @@ async def activate(cmd: ActivateProcedureCommand) -> ProcedureActivationResult:
     async with lock:
         activation = await accept_procedure_activation(cmd)
         try:
-            folder = _home_folder(home, procedure_id)
+            folder = _home_folder(home)
             if cmd.identity is SubscriptionIdentity.SUBJECT:
                 resolution = await _resolve_subject_agent(cmd, activation, home, folder)
             else:

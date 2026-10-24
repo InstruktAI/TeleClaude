@@ -214,7 +214,6 @@ class DistributionRequest:
     agents_enabled: bool | None = None
     docs_enabled: bool | None = None
     preserve_previous_documentation: bool = False
-    deploy_docs_root: Path | None = None
 
 
 @dataclass
@@ -333,7 +332,6 @@ def distribute_committed(
     *,
     agents_enabled: bool,
     docs_enabled: bool,
-    deploy_docs_root: Path | None = None,
 ) -> DistributionBuild:
     """Build committed-source artifacts and return an undoable, not-yet-deployed result."""
     original_directory = Path.cwd()
@@ -344,7 +342,6 @@ def distribute_committed(
         agents_enabled=agents_enabled,
         docs_enabled=docs_enabled,
         preserve_previous_documentation=True,
-        deploy_docs_root=deploy_docs_root,
     )
     state = DistributionBuildState()
     try:
@@ -1046,7 +1043,6 @@ def expand_inline_refs(
     current_path: Path,
     warn_only: bool = False,
     observation: DistributionObservation | None = None,
-    global_docs_root: Path = GLOBAL_DOCS_DIR,
 ) -> str:
     """Inline @path.md references into the content (Codex speedup).
 
@@ -1071,9 +1067,7 @@ def expand_inline_refs(
         required_refs = normalize_required_refs(required_refs)
         required_sections: list[str] = []
         for ref in required_refs:
-            resolved = resolve_ref_path(
-                ref, root_path=project_root, current_path=current_path, global_docs_root=global_docs_root
-            )
+            resolved = resolve_ref_path(ref, root_path=project_root, current_path=current_path)
             if not resolved or not resolved.exists():
                 if warn_only:
                     print(f"WARNING: {_REQUIRED_READ_NOT_FOUND.format(ref=ref)}")
@@ -1103,9 +1097,7 @@ def expand_inline_refs(
 
         def _replace(match: re.Match[str]) -> str:
             ref = match.group(1)
-            resolved = resolve_ref_path(
-                ref, root_path=project_root, current_path=current_path, global_docs_root=global_docs_root
-            )
+            resolved = resolve_ref_path(ref, root_path=project_root, current_path=current_path)
             if not resolved or not resolved.exists():
                 return match.group(0)
             if resolved in seen:
@@ -1403,11 +1395,7 @@ def write_merged_index(publishers: list[Publisher], deploy_docs_root: Path) -> N
             seen_ids.add(snippet_id)
             merged.append(cast("dict[str, object]", item))  # guard: loose-dict - opaque external index entry
     merged.sort(key=lambda entry: str(entry.get("id", "")))
-    out = {
-        "project_root": str(deploy_docs_root.parent),
-        "snippets_root": str(deploy_docs_root),
-        "snippets": merged,
-    }
+    out = {"project_root": "~/.teleclaude", "snippets_root": "~/.teleclaude/docs", "snippets": merged}
     (deploy_docs_root / "index.yaml").write_text(
         yaml.safe_dump(out, sort_keys=False, width=1000, allow_unicode=True), encoding="utf-8"
     )
@@ -1490,14 +1478,14 @@ def _resolve_domain_triggers(project_root: Path) -> dict[str, str]:
     return triggers
 
 
-def _resolve_deployed_domain_triggers(docs_root: Path = GLOBAL_DOCS_DIR) -> dict[str, str]:
+def _resolve_deployed_domain_triggers() -> dict[str, str]:
     """Read each domain's trigger from its publisher record in the activated generation.
 
     The record travels with the domain's published bodies, so the trigger is
     the one its publisher declared in the published revision — never a live
     declaration and never a snippet's own ``activation_trigger``.
     """
-    return {domain: record.trigger for domain, record in _read_domain_publisher_records(docs_root).items()}
+    return {domain: record.trigger for domain, record in _read_domain_publisher_records(GLOBAL_DOCS_DIR).items()}
 
 
 def _inlined_bundle_domains(master_text: str, *, domains: set[str]) -> set[str]:
@@ -1583,7 +1571,6 @@ def deploy_documentation(
                         current,
                         owner_by_domain,
                         staged_root,
-                        GLOBAL_DOCS_DIR,
                         target,
                         project_root,
                         observation,
@@ -1616,8 +1603,7 @@ def _materialize_committed_owner(
     current: Publisher,
     owner_by_domain: dict[str, Publisher],
     staged_root: Path,
-    source_generation: Path,
-    target_generation: Path,
+    deployed_root: Path,
     project_root: Path,
     observation: DistributionObservation | None,
     *,
@@ -1631,9 +1617,9 @@ def _materialize_committed_owner(
     it still owns is re-copied from the snapshot beside a fresh record carrying
     the trigger the snapshot declares.
     """
-    if source_generation.is_dir():
-        shutil.copytree(source_generation, staged_root, dirs_exist_ok=True, symlinks=False)
-    deployed_index = source_generation / INDEX_FILE_NAME
+    if deployed_root.is_dir():
+        shutil.copytree(deployed_root, staged_root, dirs_exist_ok=True, symlinks=False)
+    deployed_index = deployed_root / INDEX_FILE_NAME
     existing_payload = yaml.safe_load(deployed_index.read_text(encoding=UTF8)) if deployed_index.is_file() else {}
     existing_entries = existing_payload.get(INDEX_SNIPPETS_KEY, []) if isinstance(existing_payload, dict) else []
     if not isinstance(existing_entries, list):
@@ -1700,8 +1686,8 @@ def _materialize_committed_owner(
     (staged_root / INDEX_FILE_NAME).write_text(
         yaml.safe_dump(
             {
-                INDEX_PROJECT_ROOT_KEY: str(target_generation.parent),
-                INDEX_SNIPPETS_ROOT_KEY: str(target_generation),
+                INDEX_PROJECT_ROOT_KEY: INDEX_SCOPE_ROOT,
+                INDEX_SNIPPETS_ROOT_KEY: INDEX_DEPLOY_ROOT,
                 INDEX_SNIPPETS_KEY: merged_entries,
             },
             sort_keys=False,
@@ -1913,7 +1899,6 @@ def inflate_master(
     warn_only: bool,
     observation: DistributionObservation | None,
     resolution: DocsResolutionMode = DocsResolutionMode.SOURCE,
-    global_docs_root: Path = GLOBAL_DOCS_DIR,
 ) -> str:
     """Compile one ``AGENTS.master.md`` into the fully inlined text of its ``AGENTS.md``.
 
@@ -1934,7 +1919,6 @@ def inflate_master(
             current_path=master_path,
             warn_only=warn_only,
             observation=observation,
-            global_docs_root=global_docs_root,
         )
         if root_extras:
             sections = _progressive_sibling_sections(
@@ -1961,7 +1945,6 @@ def _inflate_project_master(
     project_root: Path,
     warn_only: bool,
     observation: DistributionObservation | None,
-    global_docs_root: Path,
 ) -> str:
     """Compile one project master; only the project's root master gains the root extras."""
     return inflate_master(
@@ -1970,7 +1953,6 @@ def _inflate_project_master(
         root_extras=master_path == project_root / PROJECT_MASTER_FILENAME,
         warn_only=warn_only,
         observation=observation,
-        global_docs_root=global_docs_root,
     )
 
 
@@ -1980,7 +1962,6 @@ def _write_project_agents(
     project_root: Path,
     warn_only: bool,
     observation: DistributionObservation | None,
-    global_docs_root: Path,
 ) -> Path:
     """Generate the ``AGENTS.md`` next to a project ``AGENTS.master.md``, the only file written there."""
     inflated = _inflate_project_master(
@@ -1988,7 +1969,6 @@ def _write_project_agents(
         project_root=project_root,
         warn_only=warn_only,
         observation=observation,
-        global_docs_root=global_docs_root,
     )
     agents_path = master_path.parent / GENERATED_ENTRYPOINT_FILENAME
     agents_path.write_text(inflated, encoding=UTF8)
@@ -2101,15 +2081,12 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
         previous_root = deploy_documentation(
             project_root_path,
             Path(docs_source_dir),
-            deploy_docs_root=request.deploy_docs_root if request is not None else None,
             observation=observation,
             committed_owner=request is not None,
             preserve_previous=publication_build,
         )
         if build_state is not None:
-            build_state.documentation_target = (
-                request.deploy_docs_root if request is not None and request.deploy_docs_root else GLOBAL_DOCS_DIR
-            )
+            build_state.documentation_target = GLOBAL_DOCS_DIR
             build_state.documentation_published = Path(docs_source_dir).is_dir()
             build_state.previous_documentation_root = previous_root
 
@@ -2118,9 +2095,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
     if not agents_enabled:
         domain_triggers = {}
     elif request is not None:
-        domain_triggers = _resolve_deployed_domain_triggers(
-            request.deploy_docs_root if request.deploy_docs_root else GLOBAL_DOCS_DIR
-        )
+        domain_triggers = _resolve_deployed_domain_triggers()
     else:
         domain_triggers = _resolve_domain_triggers(project_root_path)
 
@@ -2132,11 +2107,6 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                     project_root=project_root_path,
                     warn_only=args.warn_only,
                     observation=observation,
-                    global_docs_root=(
-                        request.deploy_docs_root
-                        if request is not None and request.deploy_docs_root
-                        else GLOBAL_DOCS_DIR
-                    ),
                 )
             )
             retired_pointers.append(retired_pointer_candidate(master_path.parent))
@@ -2358,12 +2328,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                         "\n\n".join(content for content in processed_contents if content),
                         domains=load_domains(Path(project_root)),
                     )
-                    docs_root = (
-                        request.deploy_docs_root
-                        if request is not None and request.deploy_docs_root
-                        else GLOBAL_DOCS_DIR
-                    )
-                    awareness = _render_domain_awareness(docs_root, triggers=domain_triggers, inlined=inlined)
+                    awareness = _render_domain_awareness(GLOBAL_DOCS_DIR, triggers=domain_triggers, inlined=inlined)
                     if awareness:
                         combined_agents_content = f"{combined_agents_content.rstrip()}\n\n---\n\n{awareness}\n"
                 combined_agents_content = _strip_lock_sentinels(combined_agents_content)

@@ -17,7 +17,6 @@ from typing import Final
 from teleclaude.caller_identity import SystemCliCaller
 from teleclaude.context_selector import (
     ActivationClosureError,
-    DocsSelectionError,
     EntryGap,
     SnippetMeta,
     build_context_output,
@@ -62,7 +61,6 @@ _DISPATCH_PRIVILEGE_TEMPLATE: Final = (
     "role '{caller}' cannot dispatch {procedure} (requires dispatch privilege for '{target}')"
 )
 _BAD_REQUEST_STATUS: Final = 400
-_CONTEXT_UNAVAILABLE_STATUS: Final = 503
 _FORBIDDEN_STATUS: Final = 403
 
 
@@ -290,12 +288,6 @@ def _published_entry(procedure_id: str, project_root: Path) -> PublishedEntry:
     except ActivationClosureError as exc:
         raise EntryRefusal(
             status_code=_BAD_REQUEST_STATUS, detail=str(exc), reason=AgentDispatchReason.COMMAND_INVALID
-        ) from exc
-    except DocsSelectionError as exc:
-        raise EntryRefusal(
-            status_code=_CONTEXT_UNAVAILABLE_STATUS,
-            detail=str(exc),
-            reason=AgentDispatchReason.AVAILABILITY_READ_FAILED,
         ) from exc
     if not declared:
         raise _gap_refusal(procedure_id, EntryGap.UNKNOWN)

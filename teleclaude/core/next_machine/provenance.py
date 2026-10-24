@@ -26,7 +26,6 @@ from teleclaude.constants import (
     STATE_KEY_REQUIREMENTS,
     STATE_KEY_TASK_PLAN,
 )
-from teleclaude.context_view import select_context_view
 from teleclaude.core.next_machine._types import upstream_keys_for
 from teleclaude.core.next_machine.git_ops import (
     DependencyArtifactSnapshots,
@@ -36,7 +35,7 @@ from teleclaude.core.next_machine.git_ops import (
     get_origin_main_sha,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.paths import DEFAULT_TELECLAUDE_HOME
+from teleclaude.paths import DEFAULT_TELECLAUDE_HOME, GLOBAL_DOCS_DIR
 from teleclaude.snippet_validation import (
     derive_snippet_classification,
     load_domains,
@@ -67,8 +66,6 @@ _ARTIFACT_REVIEW_FIELDS: dict[str, str] = {
 _INLINE_REF_RE = re.compile(r"@(?:docs/[^\s)]+\.md|/[^\s)]+/\.teleclaude/docs/[^\s)]+\.md)")
 _PROJECT_DOCS_REF_PREFIX = "@docs/"
 _PROJECT_DOCS_DIRECTORY = "docs"
-_LOCAL_DOCS_DIRECTORY = "local"
-_INDEX_FILE_NAME = "index.yaml"
 
 
 async def sync_artifact_provenance(
@@ -244,7 +241,7 @@ def extract_snippet_refs(artifact_body: str, project_root: str) -> list[str]:
             if classification is not None:
                 refs.add(classification.id)
             continue
-        snippet_id = _global_ref_to_id(ref, project_root=root)
+        snippet_id = _global_ref_to_id(ref)
         if snippet_id:
             refs.add(snippet_id)
     return sorted(refs)
@@ -278,11 +275,10 @@ def _clear_rewrite_drift_state(writer: StateWriter, artifact_name: str) -> None:
         writer.state.artifacts.implementation_plan.seeded = False
 
 
-def _global_ref_to_id(ref: str, *, project_root: Path) -> str:
+def _global_ref_to_id(ref: str) -> str:
     raw = ref.removeprefix("@")
     path = Path(raw).expanduser()
-    view = select_context_view(project_root)
-    roots = (view.global_docs_root, DEFAULT_TELECLAUDE_HOME / _PROJECT_DOCS_DIRECTORY)
+    roots = (GLOBAL_DOCS_DIR, DEFAULT_TELECLAUDE_HOME / "docs")
     for root in roots:
         expanded_root = root.expanduser()
         for candidate_path, candidate_root in ((path, expanded_root), (path.resolve(), expanded_root.resolve())):
@@ -297,13 +293,8 @@ def _global_ref_to_id(ref: str, *, project_root: Path) -> str:
 
 
 def _snippet_ids_delivered_by(slug: str, *, repo_root: str) -> list[str]:
-    view = select_context_view(Path(repo_root))
-    local_root = view.authoring_root if view.uses_authoring_view else Path(repo_root)
     ids: set[str] = set()
-    for index_path in (
-        local_root / _PROJECT_DOCS_DIRECTORY / _LOCAL_DOCS_DIRECTORY / _INDEX_FILE_NAME,
-        view.global_docs_root / _INDEX_FILE_NAME,
-    ):
+    for index_path in (Path(repo_root) / "docs" / "local" / "index.yaml", GLOBAL_DOCS_DIR / "index.yaml"):
         ids.update(_snippet_ids_delivered_by_from_index(index_path, slug))
     return sorted(ids)
 

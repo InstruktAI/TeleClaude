@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import shlex
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -86,14 +85,6 @@ from teleclaude.core.next_machine.review_runtime import ReviewDispatchContext, r
 logger = get_logger(__name__)
 _FINALIZE_CLAIM_RELEASE_MESSAGE = "todo finalize handoff claim release"
 _EMPTY_SESSION_ID = ""
-
-
-def _worktree_dispatch_address(worktree_cwd: str) -> tuple[str, str]:
-    """Address the selected physical worktree by its owning checkout and relative path."""
-    worktree = Path(worktree_cwd).expanduser().resolve()
-    project_root = worktree.parent.parent
-    return str(project_root), worktree.relative_to(project_root).as_posix()
-
 
 PREPARED_ARTIFACT_CONTRACT = (
     "Prepared artifact contract for {slug}: PRD is the canonical intent and "
@@ -311,13 +302,12 @@ async def _work_step_build_started(
         old_plan_digest=old_plan_digest,
         current_plan_digest=current_plan_digest,
     )
-    dispatch_project, dispatch_subfolder = _worktree_dispatch_address(worktree_cwd)
     return False, format_tool_call(
         ToolCallRequest(
             command=command,
             args=slug,
-            project=dispatch_project,
-            subfolder=dispatch_subfolder,
+            project=_derive_project_root(cwd, slug),
+            subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
                 f"{_artifact_contract_note(slug, model.kind)} Start implementation now. "
                 f"When the build is committed and ready for review, "
@@ -518,12 +508,11 @@ async def _work_step_build_complete(
         )
         return False, f"{report}\n\n{redispatch_script}" if report else redispatch_script
 
-    dispatch_project, dispatch_subfolder = _worktree_dispatch_address(worktree_cwd)
     request = ToolCallRequest(
         command=LifecycleProcedure.REVIEW_BUILD,
         args=slug,
-        project=dispatch_project,
-        subfolder=dispatch_subfolder,
+        project=_derive_project_root(cwd, slug),
+        subfolder=f"{WORKTREE_DIR}/{slug}",
         next_call=f"telec todo work {slug}",
         note=f"{_artifact_contract_note(slug, kind)} {REVIEW_DIFF_NOTE} Admitted {format_admission_count(admission)}.",
         post_block=_reviewer_idle_post_block(slug),
@@ -747,13 +736,12 @@ async def _work_step_review_approved(
         return False, format_uncommitted_changes(slug)
 
     if await todos_db.has_pending_deferrals(slug):
-        dispatch_project, dispatch_subfolder = _worktree_dispatch_address(worktree_cwd)
         return False, format_tool_call(
             ToolCallRequest(
                 command=LifecycleProcedure.DEFERRALS,
                 args=slug,
-                project=dispatch_project,
-                subfolder=dispatch_subfolder,
+                project=_derive_project_root(cwd, slug),
+                subfolder=f"{WORKTREE_DIR}/{slug}",
                 next_call=f"telec todo work {slug}",
                 post_block=(
                     f"WHEN WORKER IDLES:\nCall telec todo work {slug}. The state machine emits the next action."
@@ -779,13 +767,12 @@ async def _work_step_review_approved(
 
     is_bug = await todos_db.is_bug_todo(slug)
     note = "BUG FIX: Skip delivery bookkeeping. Delete todo directory after merge." if is_bug else ""
-    dispatch_project, dispatch_subfolder = _worktree_dispatch_address(worktree_cwd)
     return False, format_tool_call(
         ToolCallRequest(
             command=LifecycleProcedure.FINALIZE,
             args=slug,
-            project=dispatch_project,
-            subfolder=dispatch_subfolder,
+            project=_derive_project_root(cwd, slug),
+            subfolder=f"{WORKTREE_DIR}/{slug}",
             next_call=f"telec todo work {slug}",
             note=note,
             post_block=(

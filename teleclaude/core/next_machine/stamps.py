@@ -38,8 +38,8 @@ from teleclaude.constants import (
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
     STATE_KEY_TASK_PLAN,
+    WORKTREE_DIR,
 )
-from teleclaude.core.checkout_roots import worktree_location
 from teleclaude.core.dates import is_recurring_schedule
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.db import get_session_field_sync
@@ -424,7 +424,7 @@ async def _apply_verdict_stamp(
     binding = REVIEW_EVIDENCE_ARTIFACTS[phase]
     external_target_digest = ""
     if binding.target_artifact_key is None:
-        worktree = worktree_location(cwd, slug)[0]
+        worktree = Path(cwd) / WORKTREE_DIR / slug
         external_target_digest = await asyncio.to_thread(get_head_commit, str(worktree))
     artifact_names = [binding.report_artifact_name]
     target_artifact = None
@@ -752,7 +752,7 @@ async def _apply_build_complete_stamp(
             "expected build_started or review_changes_requested"
         )
 
-    worktree_cwd = str(worktree_location(cwd, slug)[0])
+    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
     if not has_build_commits_beyond_main(worktree_cwd):
         raise StateMutationError(f"build_complete: missing commits beyond main in {worktree_cwd}")
 

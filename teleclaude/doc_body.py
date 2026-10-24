@@ -11,10 +11,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from teleclaude.paths import DEFAULT_TELECLAUDE_HOME
-
-_DEFAULT_DOCS_DIRECTORY = "docs"
-
 __all__ = [
     "INLINE_REF_RE",
     "PLANNED_BLOCK_RE",
@@ -65,13 +61,7 @@ def split_frontmatter(content: str) -> tuple[str, str]:
     return "", content
 
 
-def resolve_inline_refs(
-    content: str,
-    *,
-    snippet_path: Path,
-    root_path: Path,
-    global_docs_root: Path | None = None,
-) -> str:
+def resolve_inline_refs(content: str, *, snippet_path: Path, root_path: Path) -> str:
     """Expand @<path>.md references to absolute paths for tool consumption."""
     head, body = split_frontmatter(content)
 
@@ -87,13 +77,6 @@ def resolve_inline_refs(
                 candidate = (snippet_path.parent / candidate).resolve()
         else:
             candidate = candidate.resolve()
-            if global_docs_root is not None:
-                try:
-                    relative = candidate.relative_to(DEFAULT_TELECLAUDE_HOME / _DEFAULT_DOCS_DIRECTORY)
-                except ValueError:
-                    pass
-                else:
-                    candidate = global_docs_root / relative
         return f"@{candidate}"
 
     return f"{head}{INLINE_REF_RE.sub(_expand, body)}"

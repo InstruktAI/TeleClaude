@@ -104,21 +104,6 @@ and how existing installations reach the declared state.
   question about what a root is, and it keeps its own resolver and its own
   worktree-local answer.
 
-### Associated clones
-
-Config additionally supplies the registered checkout association defined by
-`local/projects/teleclaude/spec/feature/config/project-registry`. Tier declaration
-still comes from the nearest declared home. Workflow uses the association when
-resolving shared project state: an associated development clone and its linked
-worktrees retain the original logical project's state owner, while their source
-and worktree ownership remain in that clone. Thus the primary-checkout rule
-above applies directly to unassociated projects; an associated clone resolves
-through its declared relationship. A suffix supplies no relationship.
-
-Consumers receive those answers through the same owning resolvers under
-`local/projects/teleclaude/design/architecture/command-scope`; none implements
-another ancestor walk to connect the two repositories.
-
 ## Primary flows
 
 **Context resolution.**

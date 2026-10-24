@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import re
 import subprocess
 import sys
@@ -18,10 +17,11 @@ from teleclaude.checkpoint_model import (
     ActivationRange,
     fill_activation_range,
     fill_event_activation,
+    load_checkpoint_model,
+    load_committed_checkpoint_model,
     main_only_maintenance_action_ids_for_model,
     triggered_action_ids,
 )
-from teleclaude.config.checkout_association import CheckoutPurpose, checkout_association_for
 from teleclaude.config.errors import ConfigLoadError, describe_load_error
 from teleclaude.constants import (
     RESTART_MAINTENANCE_ACTION_ID,
@@ -60,28 +60,6 @@ from teleclaude.core.integration.daemon_window import (
     WindowCloseResult,
     open_window,
 )
-from teleclaude.core.integration.development_maintenance_contract import (
-    DEVELOPMENT_MAINTENANCE_ROOT_OPTION,
-    DEVELOPMENT_MODULE_EXECUTION_FLAG,
-    POST_COMMIT_MAINTENANCE_MODULE,
-    development_drain_execution,
-    is_development_checkout,
-)
-from teleclaude.core.integration.development_maintenance_contract import (
-    eligible_maintenance_posture as _holds_eligible_posture,
-)
-from teleclaude.core.integration.development_maintenance_contract import (
-    maintenance_cwd as maintenance_cwd,
-)
-from teleclaude.core.integration.development_maintenance_contract import (
-    maintenance_environment as maintenance_environment,
-)
-from teleclaude.core.integration.development_maintenance_contract import (
-    maintenance_interpreter as maintenance_interpreter,
-)
-from teleclaude.core.integration.development_maintenance_contract import (
-    maintenance_model as maintenance_model,
-)
 from teleclaude.core.integration.drain_window_boundary import (
     WindowBoundaryDecision,
     close_drain_window,
@@ -89,7 +67,7 @@ from teleclaude.core.integration.drain_window_boundary import (
 from teleclaude.core.integration.maintenance_output import secret_output_masker
 from teleclaude.core.integration.maintenance_trigger import DRAIN_HELD_ENV, DRAIN_HELD_VALUE, MaintenanceTrigger
 from teleclaude.core.project_state import resolve_project_state_root
-from teleclaude.deployment.release_checkout import selected_revision
+from teleclaude.deployment.release_checkout import is_release_installation, selected_revision
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, hook_free_environment
 from teleclaude.hooks.integrator_judgment_marker import (
@@ -98,7 +76,6 @@ from teleclaude.hooks.integrator_judgment_marker import (
     read_integrator_judgment_marker,
 )
 from teleclaude.logging_config import setup_logging
-from teleclaude.paths import PROJECTS_MANIFEST_PATH, TELECLAUDE_SOURCE_HOME
 from teleclaude.project_root import resolve_project_root
 from teleclaude.runtime.command_runner import CommandResult, run_process_group_commands
 
@@ -107,8 +84,10 @@ logger = get_logger(__name__)
 _GIT_NAME_ONLY_ARGUMENT = "--name-only"
 _GIT_DIFF_TREE_ARGUMENTS = ("--root", "--no-commit-id", _GIT_NAME_ONLY_ARGUMENT, "-r")
 _FULL_COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
+_MAIN_BRANCH_NAME = "main"
 _CANONICAL_MAIN_REFERENCE = "refs/heads/main"
 _GIT_COUNT_FLAG = "--count"
+_PUBLISHER_MODULE = "teleclaude.core.integration.post_commit_maintenance"
 _MAINTENANCE_RECORDED_EVENT = "post_commit_maintenance_recorded"
 _MAINTENANCE_CONTENDER_STARTED_EVENT = "post_commit_maintenance_contender_started"
 _MAINTENANCE_CONTENDER_FAILED_EVENT = "post_commit_maintenance_contender_spawn_failed"
@@ -213,6 +192,27 @@ def selected_maintenance_revision(project_root: Path) -> str:
     return selected_revision(root) or Repo(str(root)).commit(_CANONICAL_MAIN_REFERENCE).hexsha
 
 
+def maintenance_model(project_root: Path) -> CheckpointModel:
+    """The declaration a root's maintenance answers to.
+
+    A release installation answers to the declaration committed at the commit it runs, so an
+    uncommitted edit or another local branch cannot supply it a different action set; every other
+    checkout answers to its working-tree declaration.
+    """
+    root = project_root.resolve()
+    revision = selected_revision(root)
+    if revision is None:
+        return load_checkpoint_model(str(root))
+    return load_committed_checkpoint_model(root, revision)
+
+
+def _holds_eligible_posture(root: Path, repository: Repo) -> bool:
+    """Whether the checkout may carry canonical-main maintenance: the installed release, or main itself."""
+    if is_release_installation(root):
+        return True
+    return not repository.head.is_detached and repository.active_branch.name == _MAIN_BRANCH_NAME
+
+
 def activation_range_action_paths(
     project_root: Path,
     activation_range: ActivationRange,
@@ -297,8 +297,7 @@ def record_activation(project_root: Path, activation_range: ActivationRange) -> 
             if registration is not None:
                 return _registration_outcome(registration)
             if action_ids:
-                judgment_paths = () if is_development_checkout(root) else changed_files
-                write_owed_records(root, activation_range, action_ids, judgment_paths)
+                write_owed_records(root, activation_range, action_ids, changed_files)
             write_activation_registration(root, activation_range.after_sha, action_ids)
     except (OSError, ValueError) as exc:
         return _refuse(activation_range, root, ActivationRefusal.RECORD_FAILED, str(exc))
@@ -346,8 +345,6 @@ def record_event_activation(project_root: Path, event: ReceivedEvent, action_ids
     an activation whose records already exist is not recorded again. A location that is not the
     canonical checkout on main records nothing and returns ``False``.
     """
-    if is_development_checkout(project_root):
-        return False
     root = eligible_maintenance_root(project_root)
     if root is None:
         return False
@@ -374,18 +371,13 @@ def record_event_activation(project_root: Path, event: ReceivedEvent, action_ids
 def start_drain_contender(project_root: Path) -> bool:
     """Start one detached drain contender without making Git wait for its work."""
     root = project_root.resolve()
-    association = checkout_association_for(root, TELECLAUDE_SOURCE_HOME / PROJECTS_MANIFEST_PATH.name)
-    if association is not None and association.purpose is CheckoutPurpose.DEVELOPMENT:
-        command, cwd = development_drain_execution(root)
-    else:
-        command = [sys.executable, DEVELOPMENT_MODULE_EXECUTION_FLAG, POST_COMMIT_MAINTENANCE_MODULE]
-        cwd = root
+    command = [sys.executable, "-m", _PUBLISHER_MODULE]
     try:
         # A detached child is required because this work outlives the Git hook process.
         subprocess.Popen(
             command,
-            cwd=str(cwd),
-            env=maintenance_environment(root, hook_free_environment(root)),
+            cwd=str(root),
+            env=hook_free_environment(root),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
@@ -412,12 +404,9 @@ def drain_maintenance(project_root: Path) -> bool:
 
 
 def main() -> int:
-    """Drain maintenance for the current checkout or an explicit development target."""
+    """Drain maintenance for the current canonical checkout."""
     setup_logging()
-    parser = argparse.ArgumentParser()
-    parser.add_argument(DEVELOPMENT_MAINTENANCE_ROOT_OPTION, type=Path, default=Path.cwd())
-    args = parser.parse_args()
-    return 0 if drain_maintenance(args.root) else 1
+    return 0 if drain_maintenance(Path.cwd()) else 1
 
 
 def retry_failed_action(project_root: Path, key: str, action_id: str) -> bool:
@@ -748,14 +737,10 @@ def _run_activation(
         tuple(known_records),
         actions,
         fill,
-        {
-            **maintenance_environment(root, hook_free_environment(root)),
-            DRAIN_HELD_ENV: DRAIN_HELD_VALUE,
-        },
+        {**hook_free_environment(root), DRAIN_HELD_ENV: DRAIN_HELD_VALUE},
         start_record,
         settle_record,
         capture_output=True,
-        cwd=maintenance_cwd(root),
     )
 
 
@@ -771,7 +756,6 @@ def run_maintenance_waves(
     on_finished: Callable[[str, CommandResult, str], None],
     *,
     capture_output: bool,
-    cwd: Path | None = None,
 ) -> tuple[tuple[str, CommandResult], ...]:
     """Run the actions in precedence waves and return each action's result in completion order.
 
@@ -801,11 +785,7 @@ def run_maintenance_waves(
             completed.append((action_id, result))
 
         run_process_group_commands(
-            commands,
-            cwd or root,
-            child_env,
-            report,
-            capture_output=secret_output_masker(root) if capture_output else None,
+            commands, root, child_env, report, capture_output=secret_output_masker(root) if capture_output else None
         )
     return tuple(completed)
 
@@ -863,16 +843,15 @@ def _activation_log_fields(activation: MaintenanceActivation) -> dict[str, str |
 
 def _fill_for_activation(root: Path, activation: MaintenanceActivation, command: tuple[str, ...]) -> tuple[str, ...]:
     """Fill a declared command with the identity of the activation it runs for."""
-    interpreter = maintenance_interpreter(root)
     if isinstance(activation, EventActivation):
         return fill_event_activation(
             command,
             event_file=str(event_file_path(root, activation.event_id)),
             event_type=activation.event_type,
             event_id=activation.event_id,
-            interpreter=interpreter,
+            interpreter=sys.executable,
         )
-    return fill_activation_range(command, activation, interpreter=interpreter)
+    return fill_activation_range(command, activation, interpreter=sys.executable)
 
 
 def _settle_record(

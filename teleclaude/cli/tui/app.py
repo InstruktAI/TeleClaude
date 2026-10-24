@@ -1010,7 +1010,6 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
                     name=project.name,
                     path=project.path,
                     description=project.description,
-                    locations=project.locations,
                     todos=[],
                 )
                 for project in getattr(sessions_view, "_projects", [])

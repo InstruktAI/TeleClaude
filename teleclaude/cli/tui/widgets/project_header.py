@@ -12,10 +12,6 @@ from teleclaude.api_models import ProjectDTO
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, get_neutral_color
 from teleclaude.cli.tui.utils.formatters import shorten_path
-from teleclaude.config.checkout_association import CheckoutPurpose
-
-_PURPOSE_LABEL = " [{purpose}]"
-_NESTED_INDENT = "  "
 
 
 class ProjectHeader(TelecMixin, Widget):
@@ -42,8 +38,6 @@ class ProjectHeader(TelecMixin, Widget):
         session_count: int = 0,
         show_connector: bool = True,
         collapsed: bool = False,
-        purpose: CheckoutPurpose | None = None,
-        depth: int = 1,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -51,16 +45,12 @@ class ProjectHeader(TelecMixin, Widget):
         self.session_count = session_count
         self.show_connector = show_connector
         self.collapsed = collapsed
-        self.purpose = purpose
-        self.depth = depth
 
     # Connector column — matches SessionRow._connector_col for depth=2
     CONNECTOR_COL = 2
 
     def render(self) -> Text:
         line = Text(no_wrap=True)
-        if self.depth > 1:
-            line.append(_NESTED_INDENT * (self.depth - 1))
         path = shorten_path(self.project.path)
         suffix = f"({self.session_count})" if self.session_count else ""
         is_selected = self.has_class("selected")
@@ -79,8 +69,6 @@ class ProjectHeader(TelecMixin, Widget):
             line.append(f"\U0001f4c1 {name} - {path}", style=base_style)
         else:
             line.append(f"\U0001f4c1 {path}", style=base_style)
-        if self.purpose is not None:
-            line.append(_PURPOSE_LABEL.format(purpose=self.purpose.value), style=base_style)
         if suffix:
             line.append(f" {suffix}", style=base_style)
         line.append("\n")

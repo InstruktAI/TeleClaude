@@ -16,7 +16,7 @@ from teleclaude.cli.tui.messages import (
     StickyChanged,
 )
 from teleclaude.cli.tui.session_attachability import is_attachable_session
-from teleclaude.cli.tui.tree import ProjectCollapseKey, project_collapse_key, project_location_collapse_key
+from teleclaude.cli.tui.tree import project_collapse_key
 from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
 from teleclaude.cli.tui.views._project_actions import start_new_project_save
 from teleclaude.cli.tui.views.interaction import TreeInteractionAction
@@ -49,7 +49,7 @@ class SessionsViewActionsMixin:
         _projects: list[Any]
         _sessions: list[Any]
         _collapsed_computers: set[str]
-        _collapsed_projects: set[ProjectCollapseKey]
+        _collapsed_projects: set[tuple[str, str]]
 
     def action_cursor_up(self) -> None:
         """Move the cursor to the previous sessions tree item."""
@@ -189,11 +189,7 @@ class SessionsViewActionsMixin:
                 self._notify_state_changed()  # type: ignore[attr-defined]
             return
         if isinstance(item, ProjectHeader):
-            key = (
-                project_location_collapse_key(item.project.computer, item.project.path)
-                if item.purpose is not None
-                else project_collapse_key(item.project.computer, item.project.path)
-            )
+            key = project_collapse_key(item.project.computer, item.project.path)
             if key not in self._collapsed_projects:  # type: ignore[attr-defined]
                 self._collapsed_projects.add(key)  # type: ignore[attr-defined]
                 self._rebuild_tree()  # type: ignore[attr-defined]
@@ -216,11 +212,7 @@ class SessionsViewActionsMixin:
                 self._notify_state_changed()  # type: ignore[attr-defined]
             return
         if isinstance(item, ProjectHeader):
-            key = (
-                project_location_collapse_key(item.project.computer, item.project.path)
-                if item.purpose is not None
-                else project_collapse_key(item.project.computer, item.project.path)
-            )
+            key = project_collapse_key(item.project.computer, item.project.path)
             if key in self._collapsed_projects:  # type: ignore[attr-defined]
                 self._collapsed_projects.discard(key)  # type: ignore[attr-defined]
                 self._rebuild_tree()  # type: ignore[attr-defined]

@@ -16,8 +16,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.agent_artifacts import AGENT_ARTIFACT_ROOT_DIRNAME
 from teleclaude.cli.telec.handlers._code_git_state import working_tree_snapshot
-from teleclaude.config.checkout_association import CheckoutPurpose, checkout_association_for
-from teleclaude.deployment.release_checkout import is_installed_checkout
 from teleclaude.git import (
     BadName,
     GitCommandError,
@@ -27,7 +25,7 @@ from teleclaude.git import (
     hook_free_environment,
 )
 from teleclaude.git_tree import TreeSource, list_tree_paths, materialize_tree
-from teleclaude.paths import REPO_ROOT, TELECLAUDE_SOURCE_HOME, ConfigFileName, is_platform_home
+from teleclaude.paths import REPO_ROOT, ConfigFileName, is_platform_home
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.gate import (
     LintGateResult,
@@ -69,10 +67,6 @@ _PRE_COMMIT_GATE_EVENT = "commit_quality_gate"
 _PRE_COMMIT_HOOK_NAME = "pre-commit"
 _ROOT_CONFIG_PATH = ConfigFileName.OVERLAY.value
 _ROOT_DECLARATION_MISSING = "The repository root has no readable declaration in the candidate tree or on disk."
-_INSTALLED_CHECKOUT_COMMIT_REFUSED = (
-    "Source commits are refused in the installed checkout after development association. "
-    "Make the change in its development checkout: {development_checkout}"
-)
 _STAGED_PATH_RECORD_MALFORMED = "Git returned a malformed staged path status record."
 _STAGED_PATH_STATUS_INVALID = "Git returned an unsupported staged path status: {status}"
 _STAGED_MARKDOWN_SUFFIX = ".md"
@@ -166,18 +160,6 @@ def handle_code_pre_commit(args: list[str]) -> None:
 
 def _run_commit_gate(project_root: Path, decision: GateDecision) -> int:
     """Read the index once, validate staged declarations, and grade participating homes."""
-    association = checkout_association_for(project_root, TELECLAUDE_SOURCE_HOME / "projects.yaml")
-    if (
-        association is not None
-        and association.purpose is CheckoutPurpose.INSTALLED
-        and is_installed_checkout(project_root)
-    ):
-        print(
-            _INSTALLED_CHECKOUT_COMMIT_REFUSED.format(development_checkout=association.development_checkout),
-            file=sys.stderr,
-        )
-        return 1
-
     repo = Repo(str(project_root))
     tree_source = TreeSource.active_index(project_root)
     tree_paths = list_tree_paths(tree_source)

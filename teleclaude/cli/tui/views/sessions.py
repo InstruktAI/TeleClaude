@@ -19,16 +19,13 @@ from teleclaude.cli.tui.messages import FocusPaneRequest, PreviewChanged, Revive
 from teleclaude.cli.tui.session_attachability import is_attachable_session, is_headless_session
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
-    ProjectCollapseKey,
     SessionDisplayInfo,
     build_tree,
     is_computer_node,
-    is_project_location_node,
     is_project_node,
     is_session_node,
     parse_collapsed_projects,
     project_collapse_key,
-    project_location_collapse_key,
 )
 from teleclaude.cli.tui.types import ArtifactPreviewIntent, DocPreviewState, PreviewIntent, SessionPreviewIntent
 from teleclaude.cli.tui.views.interaction import TreeInteractionState
@@ -57,13 +54,6 @@ class _PendingSelect(NamedTuple):
 
     session_id: str
     request_focus: bool
-
-
-def _count_sessions(node: TreeNode) -> int:
-    """Count every session nested beneath one logical project header."""
-    if is_session_node(node):
-        return 1
-    return sum(_count_sessions(child) for child in node.children)
 
 
 def _keep_only[VT](mapping: dict[str, VT], live_ids: set[str]) -> None:
@@ -146,7 +136,7 @@ class SessionsView(
         self._session_state_pruned = False
         self._collapsed_sessions: set[str] = set()
         self._collapsed_computers: set[str] = set()
-        self._collapsed_projects: set[ProjectCollapseKey] = set()
+        self._collapsed_projects: set[tuple[str, str]] = set()
         self._optimistically_hidden_session_ids: set[str] = set()
         # TreeInteractionState for Space double-press detection
         self._interaction = TreeInteractionState()
@@ -542,7 +532,7 @@ class SessionsView(
                     self._mount_node(container, child)
 
         elif is_project_node(node):
-            session_count = _count_sessions(node)
+            session_count = len([c for c in node.children if is_session_node(c)])
             collapsed = project_collapse_key(node.data.computer, node.data.path) in self._collapsed_projects
             widget = ProjectHeader(project=node.data, session_count=session_count, collapsed=collapsed)
             container.mount(widget)
@@ -553,29 +543,6 @@ class SessionsView(
                 # Closing separator after the last session in the group.
                 # The last SessionRow skips its own bottom connector (└---) to
                 # avoid a double line with the GroupSeparator.
-                if session_count > 0 and not any(is_project_location_node(child) for child in node.children):
-                    last_session_row = self._find_last_session_row_in_group(node)
-                    container.mount(
-                        GroupSeparator(
-                            connector_col=self._project_group_separator_col(last_session_row),
-                        )
-                    )
-
-        elif is_project_location_node(node):
-            session_count = len([child for child in node.children if is_session_node(child)])
-            collapsed = project_location_collapse_key(node.data.computer, node.data.path) in self._collapsed_projects
-            widget = ProjectHeader(
-                project=node.data,
-                session_count=session_count,
-                collapsed=collapsed,
-                purpose=node.purpose,
-                depth=node.depth,
-            )
-            container.mount(widget)
-            self._nav_items.append(widget)
-            if not collapsed:
-                for child in node.children:
-                    self._mount_node(container, child)
                 if session_count > 0:
                     last_session_row = self._find_last_session_row_in_group(node)
                     container.mount(

@@ -12,16 +12,11 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from teleclaude.config.checkout_association import CheckoutPurpose, checkout_association_for
-from teleclaude.core.worktree_layout import development_home_for_checkout, worktree_home_for_checkout
+from teleclaude.core.worktree_layout import worktree_home_for_checkout
 
 _DEFAULT_HOME = Path("~/.teleclaude").expanduser()
 _WORKTREE_HOME_MISSING_MESSAGE = "Slug worktree home is missing: {home}"
 _FOREIGN_REPOSITORY_WRITE_MESSAGE = "Slug worktree at {worktree} cannot write repository {target}"
-_DEVELOPMENT_HOME_MISSING_MESSAGE = (
-    "Development checkout home is missing: {home}; rerun installation from {installed_root} to provision it"
-)
-_PROJECTS_MANIFEST_FILENAME = "projects.yaml"
 
 
 class WorktreeHomeMissingError(RuntimeError):
@@ -36,33 +31,20 @@ class ForeignRepositoryWriteRefusedError(RuntimeError):
 class RuntimeConfig:
     home: Path = _DEFAULT_HOME
     worktree_checkout: Path | None = None
-    source_home: Path = _DEFAULT_HOME
 
 
 def _init_default() -> RuntimeConfig:
     checkout = Path(__file__).resolve().parents[2]
-    raw_home = os.getenv("TELECLAUDE_HOME")
-    source_home = Path(raw_home).expanduser() if raw_home else _DEFAULT_HOME
     worktree_home = worktree_home_for_checkout(checkout)
     if worktree_home is not None:
         if not worktree_home.is_dir():
             raise WorktreeHomeMissingError(_WORKTREE_HOME_MISSING_MESSAGE.format(home=worktree_home))
-        return RuntimeConfig(home=worktree_home, worktree_checkout=checkout, source_home=source_home)
+        return RuntimeConfig(home=worktree_home, worktree_checkout=checkout)
 
-    home = source_home
-    association = checkout_association_for(checkout, home / _PROJECTS_MANIFEST_FILENAME)
-    if association is not None and association.purpose is CheckoutPurpose.DEVELOPMENT:
-        development_home = development_home_for_checkout(association.development_checkout)
-        if not development_home.is_dir():
-            raise WorktreeHomeMissingError(
-                _DEVELOPMENT_HOME_MISSING_MESSAGE.format(
-                    home=development_home,
-                    installed_root=association.project_root,
-                )
-            )
-        return RuntimeConfig(home=development_home, worktree_checkout=checkout, source_home=source_home)
+    raw_home = os.getenv("TELECLAUDE_HOME")
+    home = Path(raw_home).expanduser() if raw_home else _DEFAULT_HOME
 
-    return RuntimeConfig(home=home, source_home=source_home)
+    return RuntimeConfig(home=home)
 
 
 _instance: RuntimeConfig = _init_default()

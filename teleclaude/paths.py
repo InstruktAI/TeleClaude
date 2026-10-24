@@ -36,7 +36,6 @@ def invocation_cwd() -> Path:
 
 
 TELECLAUDE_HOME = get_runtime_config().home
-TELECLAUDE_SOURCE_HOME = get_runtime_config().source_home
 
 
 def is_platform_home(path: Path) -> bool:

@@ -15,7 +15,6 @@ import yaml
 
 from teleclaude.config.loader import load_declared_project_config
 from teleclaude.constants import TAXONOMY_TYPES
-from teleclaude.context_view import select_context_view
 from teleclaude.domains import publishes_for_root, valid_domains
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, PEOPLE_DIR
 from teleclaude.slug import SLUG_PATTERN, normalize_slug
@@ -37,8 +36,6 @@ _GENERATED_DOMAIN_ARTIFACT_NAMES: frozenset[str] = frozenset(
 )
 _MARKDOWN_SUFFIX = ".md"
 _BASELINE_INDEX_FILENAME = "index.md"
-_INDEX_FILE_NAME = "index.yaml"
-_UTF8_ENCODING = "utf-8"
 _BASELINE_FILE_PREFIX = "baseline"
 _COMPANION_NAME_SEPARATOR = "."
 
@@ -589,34 +586,26 @@ def _global_ref_prefixes() -> tuple[str, ...]:
 
 def snippet_body_digest_for(repo_root: str) -> Callable[[str], str]:
     """Return a digest seam bound to the project whose snippets it resolves."""
-    root = Path(repo_root).expanduser().resolve()
-    view = select_context_view(root)
-    local_root = view.authoring_root if view.uses_authoring_view else root
-    project_index = local_root / _DOCS_DIRNAME / _LOCAL_HALF / _INDEX_FILE_NAME
-    global_index = view.global_docs_root / _INDEX_FILE_NAME
+    project_index = Path(repo_root) / _DOCS_DIRNAME / _LOCAL_HALF / "index.yaml"
 
     def snippet_body_digest(snippet_id: str) -> str:
         """Return SHA256 of snippet content, excluding delivered_by frontmatter churn."""
-        snippet_path = _resolve_snippet_path(snippet_id, project_index=project_index, global_index=global_index)
+        snippet_path = _resolve_snippet_path(snippet_id, project_index=project_index)
         if snippet_path is None:
             return ""
         try:
-            content = snippet_path.read_text(encoding=_UTF8_ENCODING)
+            content = snippet_path.read_text(encoding="utf-8")
         except OSError:
             return ""
         filtered = _strip_delivered_by_frontmatter(content)
-        return hashlib.sha256(filtered.encode(_UTF8_ENCODING)).hexdigest()
+        return hashlib.sha256(filtered.encode("utf-8")).hexdigest()
 
     return snippet_body_digest
 
 
-def _resolve_snippet_path(
-    snippet_id: str,
-    *,
-    project_index: Path,
-    global_index: Path = GLOBAL_DOCS_DIR / _INDEX_FILE_NAME,
-) -> Path | None:
+def _resolve_snippet_path(snippet_id: str, *, project_index: Path) -> Path | None:
     """Resolve a canonical snippet ID through project then global snippet indexes."""
+    global_index = GLOBAL_DOCS_DIR / "index.yaml"
     for index_path in (project_index, global_index):
         resolved = _resolve_snippet_path_from_index(snippet_id, index_path)
         if resolved is not None:

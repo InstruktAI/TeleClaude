@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.core.checkout_roots import resolve_checkout_roots
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 
 _GITHUB_WORKING_COPY_FILENAME = "todos.github.db"
 
@@ -21,10 +21,9 @@ def todos_db_path(project_root_or_cwd: str | Path) -> Path:
 
     Every todos.db access (getters, raw-sqlite readers, existence checks) routes
     through here. Constructing the path inline from a raw project root bypasses
-    the checkout-root resolver and can materialize a stray db inside a git worktree.
+    ``resolve_project_root`` and can materialize a stray db inside a git worktree.
     """
-    roots = resolve_checkout_roots(project_root_or_cwd)
-    return roots.workflow_state / ".teleclaude" / "todos.db"
+    return resolve_project_root(project_root_or_cwd) / ".teleclaude" / "todos.db"
 
 
 def github_working_copy_path(project_root_or_cwd: str | Path) -> Path:

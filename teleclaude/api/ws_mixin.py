@@ -314,7 +314,6 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                         description=proj.description,
                         subject=proj.subject,
                         owner=proj.owner,
-                        locations=proj.locations,
                         has_todo=False,
                         todos=with_person_chips_on_todos(
                             t.model_copy(
@@ -336,7 +335,6 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                         description=proj.description,
                         subject=proj.subject,
                         owner=proj.owner,
-                        locations=proj.locations,
                     )
                 )
 

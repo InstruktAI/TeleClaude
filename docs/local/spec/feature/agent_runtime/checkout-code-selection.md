@@ -112,18 +112,6 @@ Then the selected checks execute using the worktree's own rules
 And grading reports their outcome without an unidentified-caller refusal from its isolated execution
 ```
 
-### Associated source and installation checkouts
-
-The global command retains the installed controller identity when called from
-the sibling development checkout. Purpose-specific targets resolve under
-`local/projects/teleclaude/design/architecture/command-scope`. A development
-checkout's own wrapper and source-grading entry use development state and
-environment isolation equivalent to the existing slug-worktree contract; being
-an independent Git clone supplies no permission to use the live home. A missing
-development execution context refuses with its owning preparation reference.
-Checkout-specific context selection is owned by
-`local/projects/teleclaude/spec/feature/context/checkout-context-selection`.
-
 ## Known caveats
 
 - A worktree or named home moves only the state rooted in the home. A checkout's todo store and

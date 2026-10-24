@@ -17,7 +17,6 @@ from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.schema import AppConfig, ConfigKind
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
-from teleclaude.context_view import ContextViewUnavailableError, SelectedContextView, select_context_view
 from teleclaude.core.endpoints import tenant_desk_for_folder
 from teleclaude.core.models import HelpDeskKind
 from teleclaude.core.organization import OrganizationalMembership, company_project_slugs, resolve_organization
@@ -95,15 +94,6 @@ _INDEX_FILENAME = "index.yaml"
 _DOMAIN_IDENTITY_MIN_SEGMENTS = 3
 _UNKNOWN_IDS_OUTPUT_SEPARATOR = "\n"
 _ID_SEGMENT_SEPARATOR = "/"
-
-
-def _selected_global_reference(path: Path, global_docs_root: Path) -> Path:
-    """Map the stable installed docs address to this invocation's selected generation."""
-    try:
-        relative = path.resolve().relative_to(GLOBAL_DOCS_DIR.resolve())
-    except (ValueError, OSError):
-        return path
-    return global_docs_root / relative
 
 
 class DocsSelectionEvent(StrEnum):
@@ -293,10 +283,7 @@ def entry_declaration_state(procedure_id: str, *, project_root: Path) -> EntryDe
     """
     requested = procedure_id.strip()
     try:
-        view = select_context_view(project_root)
-        path = _entry_source_path(requested, project_root, view)
-    except ContextViewUnavailableError as exc:
-        return EntryDeclarationState(unreadable=str(exc))
+        path = _entry_source_path(requested, project_root)
     except DocsPublisherResolutionError as exc:
         return EntryDeclarationState(unreadable=ENTRY_PUBLISHERS_UNREADABLE.format(reason=exc))
     except (OSError, ValueError, yaml.YAMLError) as exc:
@@ -306,26 +293,17 @@ def entry_declaration_state(procedure_id: str, *, project_root: Path) -> EntryDe
     return _entry_declaration_state_at(path)
 
 
-def _entry_source_path(requested: str, project_root: Path, view: SelectedContextView) -> Path | None:
+def _entry_source_path(requested: str, project_root: Path) -> Path | None:
     """The document the checkout's publishers resolve a procedure identity to; publisher failures raise."""
     if not requested:
         return None
     if parse_home_snippet_id(requested) is not None:
-        home_resolver = HomeResolver(
-            current_project_slug=get_project_slug(project_root),
-            authoring_root=view.authoring_root if view.uses_authoring_view else None,
-        )
-        meta = resolve_snippet_meta(
-            requested,
-            project_root=project_root,
-            home_resolver=home_resolver,
-            global_docs_root=view.global_docs_root,
-        )
+        meta = resolve_snippet_meta(requested, project_root=project_root)
         return meta.path if meta is not None else None
     parts = _global_identity_parts(requested)
     if parts is None:
         return None
-    return _global_source_path(*parts, project_root=project_root, global_docs_root=view.global_docs_root)
+    return _global_source_path(*parts, project_root=project_root)
 
 
 def _entry_declaration_state_at(path: Path) -> EntryDeclarationState:
@@ -450,7 +428,6 @@ def _load_baseline_ids(
     *,
     project_root: Path,
     required: bool = False,
-    global_docs_root: Path = GLOBAL_DOCS_DIR,
 ) -> set[str]:
     """Load baseline manifest and return referenced snippet IDs.
 
@@ -484,7 +461,6 @@ def _load_baseline_ids(
     for match in INLINE_REF_RE.finditer(content):
         ref = match.group(1)
         candidate = Path(ref).expanduser()
-        candidate = _selected_global_reference(candidate, global_docs_root)
         if not candidate.is_absolute():
             candidate = (project_root / candidate).resolve()
         else:
@@ -504,10 +480,10 @@ class ResolvedRequires:
     bundles: list[Path]
 
 
-def _entry_generated_bundle(ref: Path, global_docs_root: Path) -> Path | None:
+def _entry_generated_bundle(ref: Path) -> Path | None:
     """The deployed generated domain bundle a required-read ref names, if it exists."""
     try:
-        relative = ref.relative_to(global_docs_root)
+        relative = ref.relative_to(GLOBAL_DOCS_DIR)
     except ValueError:
         return None
     return ref if is_generated_global_doc_artifact(relative) and ref.is_file() else None
@@ -519,7 +495,6 @@ def _admit_entry_required_read(
     required: SnippetMeta | None,
     current: SnippetMeta,
     bundles: list[Path],
-    global_docs_root: Path,
 ) -> None:
     """Admit one required read of an entry closure or refuse the entry.
 
@@ -527,7 +502,7 @@ def _admit_entry_required_read(
     generated domain bundle (collected into ``bundles``); anything else refuses.
     """
     if required is None:
-        bundle = _entry_generated_bundle(ref_resolved, global_docs_root)
+        bundle = _entry_generated_bundle(ref_resolved)
         if bundle is None:
             raise ActivationClosureError(ENTRY_CLOSURE_UNRESOLVED_ERROR.format(ref))
         if bundle not in bundles:
@@ -545,7 +520,6 @@ def _resolve_requires(
     *,
     activation_closure: bool = False,
     entry_closure: bool = False,
-    global_docs_root: Path = GLOBAL_DOCS_DIR,
 ) -> ResolvedRequires:
     """Resolve the transitive required reads of the selected snippets.
 
@@ -588,17 +562,16 @@ def _resolve_requires(
             continue
         ref_paths = extract_required_reads(content)
         for ref in ref_paths:
-            ref_path = _selected_global_reference(Path(ref).expanduser(), global_docs_root)
-            ref_resolved = ref_path.resolve()
+            ref_resolved = Path(ref).expanduser().resolve()
             req_snippet = snippets_by_path.get(str(ref_resolved))
             if not req_snippet and not Path(ref).is_absolute():
                 req_snippet = snippets_by_path.get(str((current.path.parent / ref).resolve()))
             if strict_entry_closure:
-                _admit_entry_required_read(ref, ref_resolved, req_snippet, current, bundles, global_docs_root)
+                _admit_entry_required_read(ref, ref_resolved, req_snippet, current, bundles)
                 if req_snippet is None:
                     continue
             elif activation_closure and req_snippet is None:
-                bundle = _entry_generated_bundle(ref_resolved, global_docs_root)
+                bundle = _entry_generated_bundle(ref_resolved)
                 if bundle is not None and bundle not in bundles:
                     bundles.append(bundle)
             if not req_snippet or str(req_snippet.path) in seen:
@@ -683,30 +656,16 @@ class HomeResolver:
     or not it is registered.
     """
 
-    def __init__(
-        self,
-        platform_home: Path = TELECLAUDE_HOME,
-        *,
-        landed: HomeCatalog | None = None,
-        current_project_slug: str | None = None,
-        authoring_root: Path | None = None,
-    ) -> None:
+    def __init__(self, platform_home: Path = TELECLAUDE_HOME, *, landed: HomeCatalog | None = None) -> None:
         self._platform_home = platform_home
         self._landed = landed
-        self._current_project_slug = current_project_slug
-        self._authoring_root = authoring_root
         self._homes: dict[TierKey, HomeCatalog] | None = None
 
     def _load(self) -> dict[TierKey, HomeCatalog]:
         homes: dict[TierKey, HomeCatalog] = {}
         for node in get_project_catalog_service().list_projects():
             key = TierKey(SnippetScope.PROJECT, node.slug)
-            root = (
-                self._authoring_root
-                if self._authoring_root is not None and node.slug == self._current_project_slug
-                else node.root
-            )
-            homes[key] = HomeCatalog(key, root.expanduser().resolve())
+            homes[key] = HomeCatalog(key, node.root.expanduser().resolve())
         for root, kind in iter_tier_snippet_roots(self._platform_home):
             scope = SnippetScope.COMPANY if kind is ConfigKind.COMPANY else SnippetScope.PERSON
             key = TierKey(scope, root.name)
@@ -981,7 +940,6 @@ def _apply_baseline_filter(
     *,
     baseline_only: bool,
     global_root: Path,
-    global_docs_root: Path,
     snippets_by_path: dict[str, SnippetMeta],
     project_roots: set[Path],
 ) -> list[SnippetMeta]:
@@ -993,17 +951,11 @@ def _apply_baseline_filter(
     # without a manifest contributes nothing; an existing manifest that cannot
     # be read fails the selection.
     for domain in sorted(valid_domains()):
-        domain_manifest = global_docs_root / domain / _BASELINE_MANIFEST_FILENAME
+        domain_manifest = GLOBAL_DOCS_DIR / domain / _BASELINE_MANIFEST_FILENAME
         if not domain_manifest.exists():
             continue
         baseline_ids.update(
-            _load_baseline_ids(
-                domain_manifest,
-                snippets_by_path,
-                project_root=global_root,
-                required=True,
-                global_docs_root=global_docs_root,
-            )
+            _load_baseline_ids(domain_manifest, snippets_by_path, project_root=global_root, required=True)
         )
     for project_root in project_roots:
         baseline_ids.update(
@@ -1011,7 +963,6 @@ def _apply_baseline_filter(
                 project_root / _DOCS_DIRNAME / _LOCAL_HALF / _BASELINE_MANIFEST_FILENAME,
                 snippets_by_path,
                 project_root=project_root,
-                global_docs_root=global_docs_root,
             )
         )
     return [snippet for snippet in snippets if snippet.snippet_id in baseline_ids]
@@ -1159,12 +1110,7 @@ def _read_selected_snippet_body(
             global_root if global_snippets_root in snippet.path.parents else (snippet.project_root or project_root)
         )
         raw = expand_include_directives(raw, snippet_path=source_path, root_path=root_path)
-        content = resolve_inline_refs(
-            raw,
-            snippet_path=source_path,
-            root_path=root_path,
-            global_docs_root=global_snippets_root,
-        )
+        content = resolve_inline_refs(raw, snippet_path=source_path, root_path=root_path)
         _, body = split_frontmatter(content)
         body = apply_planned_change_sections(body, target_slug)
         body = apply_planned_sections(body, target_slug)
@@ -1294,17 +1240,10 @@ def _global_identity_parts(requested: str) -> tuple[str, str, str] | None:
     return scope_segment, taxonomy, _ID_SEGMENT_SEPARATOR.join(rest_parts)
 
 
-def _global_source_path(
-    scope_segment: str,
-    taxonomy: str,
-    rest: str,
-    *,
-    project_root: Path,
-    global_docs_root: Path = GLOBAL_DOCS_DIR,
-) -> Path | None:
+def _global_source_path(scope_segment: str, taxonomy: str, rest: str, *, project_root: Path) -> Path | None:
     """The publisher source file a domain identity resolves to; an unresolvable registry raises."""
-    candidate = global_docs_root / scope_segment / taxonomy / f"{rest}.md"
-    resolved = resolve_global_doc_source(project_root, candidate, global_docs_root=global_docs_root)
+    candidate = GLOBAL_DOCS_DIR / scope_segment / taxonomy / f"{rest}.md"
+    resolved = resolve_global_doc_source(project_root, candidate)
     if resolved == candidate or not resolved.is_file():
         return None
     return resolved
@@ -1317,13 +1256,10 @@ def _resolve_global_scope_meta(
     rest: str,
     *,
     project_root: Path,
-    global_docs_root: Path = GLOBAL_DOCS_DIR,
 ) -> SnippetMeta | None:
     relative_tail = Path(scope_segment) / taxonomy / f"{rest}.md"
     try:
-        resolved = _global_source_path(
-            scope_segment, taxonomy, rest, project_root=project_root, global_docs_root=global_docs_root
-        )
+        resolved = _global_source_path(scope_segment, taxonomy, rest, project_root=project_root)
     except DocsPublisherResolutionError:
         return None
     if resolved is None:
@@ -1344,11 +1280,7 @@ def _resolve_global_scope_meta(
 
 
 def resolve_snippet_meta(
-    snippet_id: str,
-    *,
-    project_root: Path,
-    home_resolver: HomeResolver | None = None,
-    global_docs_root: Path = GLOBAL_DOCS_DIR,
+    snippet_id: str, *, project_root: Path, home_resolver: HomeResolver | None = None
 ) -> SnippetMeta | None:
     """Resolve one taxonomy snippet ID from its publisher or home source tree.
 
@@ -1372,7 +1304,7 @@ def resolve_snippet_meta(
     parts = _global_identity_parts(requested)
     if parts is None:
         return None
-    return _resolve_global_scope_meta(requested, *parts, project_root=project_root, global_docs_root=global_docs_root)
+    return _resolve_global_scope_meta(requested, *parts, project_root=project_root)
 
 
 def _generated_bundle_id(bundle: Path) -> str:
@@ -1452,7 +1384,6 @@ class AssembledCandidates:
     project_roots: set[Path]
     source_reason: DocsSelectionSource
     global_root: Path
-    global_docs_root: Path
     named: bool
 
 
@@ -1599,7 +1530,6 @@ def _load_reached_snippets(
     named: bool,
     resolver: HomeResolver,
     global_root: Path,
-    global_docs_root: Path,
 ) -> tuple[list[SnippetMeta], set[Path]]:
     """Load the selected halves of each reached home and return reached project roots.
 
@@ -1616,7 +1546,7 @@ def _load_reached_snippets(
                 owned_domains |= publishes_for_root(home.root)
 
     snippets: list[SnippetMeta] = []
-    global_index = global_docs_root / _INDEX_FILENAME
+    global_index = GLOBAL_DOCS_DIR / _INDEX_FILENAME
     for snippet in _load_index(global_index, source_project=GLOBAL_SOURCE_PROJECT, project_root=global_root):
         if snippet.scope == SnippetScope.PROJECT.value:
             # The published tree carries no project's local identity.
@@ -1641,7 +1571,7 @@ def _load_reached_snippets(
     return snippets, project_roots
 
 
-def _load_third_party_entries(project_root: Path, *, mother_root: Path = REPO_ROOT) -> list[ThirdPartyMeta]:
+def _load_third_party_entries(project_root: Path) -> list[ThirdPartyMeta]:
     """Load the mother's and the landed project's third-party indexes (outside the taxonomy).
 
     Global third-party docs live in the mother repo's source tree
@@ -1649,7 +1579,7 @@ def _load_third_party_entries(project_root: Path, *, mother_root: Path = REPO_RO
     mother repo both indexes are the same file, so it is loaded once.
     """
     project_third_party_index = project_root / "docs" / "third-party" / _INDEX_FILENAME
-    global_third_party_index = mother_root / "docs" / "third-party" / _INDEX_FILENAME
+    global_third_party_index = REPO_ROOT / "docs" / "third-party" / _INDEX_FILENAME
     entries = list(load_third_party_index(global_third_party_index))
     if project_third_party_index.resolve() != global_third_party_index.resolve():
         entries.extend(load_third_party_index(project_third_party_index))
@@ -1676,24 +1606,10 @@ def _assemble_candidate_snippets(
     snippet_ids: list[str] | None,
     include_third_party: bool,
     local: bool,
-    view: SelectedContextView,
 ) -> AssembledCandidates:
     """Load global material and selected home halves into one candidate list."""
-    global_docs_root = view.global_docs_root
-    global_root = global_docs_root.parent
-    landed = landing.catalog()
-    if (
-        view.uses_authoring_view
-        and landed is not None
-        and landed.tier.scope is SnippetScope.PROJECT
-        and landed.tier.owner == landing.project_slug
-    ):
-        landed = HomeCatalog(landed.tier, view.authoring_root)
-    resolver = HomeResolver(
-        landed=landed,
-        current_project_slug=landing.project_slug,
-        authoring_root=view.authoring_root if view.uses_authoring_view else None,
-    )
+    global_root = GLOBAL_DOCS_DIR.parent.parent
+    resolver = HomeResolver(landed=landing.catalog())
     reach, halves = _resolve_reach(
         landing=landing,
         named_homes=named_homes,
@@ -1704,12 +1620,7 @@ def _assemble_candidate_snippets(
         local=local,
     )
     snippets, project_roots = _load_reached_snippets(
-        reach=reach,
-        halves=halves,
-        named=named_homes is not None,
-        resolver=resolver,
-        global_root=global_root,
-        global_docs_root=global_docs_root,
+        reach=reach, halves=halves, named=named_homes is not None, resolver=resolver, global_root=global_root
     )
 
     if landing.project_company and named_homes is None and not (COMPANIES_ROOT / landing.project_company).exists():
@@ -1720,18 +1631,7 @@ def _assemble_candidate_snippets(
 
     if snippet_ids and any(sid.startswith("third-party/") for sid in snippet_ids):
         include_third_party = True
-    third_party_entries = (
-        _load_third_party_entries(
-            view.authoring_root if view.uses_authoring_view else project_root,
-            mother_root=(
-                view.authoring_root
-                if view.uses_authoring_view and view.installed_root == REPO_ROOT.resolve()
-                else REPO_ROOT
-            ),
-        )
-        if include_third_party
-        else []
-    )
+    third_party_entries = _load_third_party_entries(project_root) if include_third_party else []
 
     return AssembledCandidates(
         snippets=snippets,
@@ -1744,7 +1644,6 @@ def _assemble_candidate_snippets(
         project_roots=project_roots,
         source_reason=_selection_source(landing, named_homes),
         global_root=global_root,
-        global_docs_root=global_docs_root,
         named=named_homes is not None,
     )
 
@@ -1836,11 +1735,7 @@ def build_context_output(  # TODO: refactor to reduce complexity
             target_slug=target_slug,
         )
 
-    try:
-        selected_view = select_context_view(project_root)
-    except ContextViewUnavailableError as exc:
-        raise DocsSelectionError(str(exc)) from exc
-    global_snippets_root = selected_view.global_docs_root
+    global_snippets_root = GLOBAL_DOCS_DIR
 
     identity_reach = resolve_reach(caller)
     landing = resolve_landing(project_root, landing_kind=landing_kind, config=config)
@@ -1853,7 +1748,6 @@ def build_context_output(  # TODO: refactor to reduce complexity
         snippet_ids=snippet_ids,
         include_third_party=include_third_party,
         local=local,
-        view=selected_view,
     )
     snippets = assembled.snippets
     snippets_by_path = assembled.snippets_by_path
@@ -1873,7 +1767,6 @@ def build_context_output(  # TODO: refactor to reduce complexity
         snippets,
         baseline_only=baseline_only,
         global_root=global_root,
-        global_docs_root=selected_view.global_docs_root,
         snippets_by_path=snippets_by_path,
         project_roots=assembled.project_roots,
     )
@@ -1973,13 +1866,7 @@ def build_context_output(  # TODO: refactor to reduce complexity
             [f"ERROR: Unknown snippet IDs: {', '.join(unknown_ids)}", *_unregistered_domain_refusals(unknown_ids)]
         )
 
-    required = _resolve_requires(
-        taxonomy_ids,
-        snippets,
-        activation_closure=closure,
-        entry_closure=entry_closure,
-        global_docs_root=selected_view.global_docs_root,
-    )
+    required = _resolve_requires(taxonomy_ids, snippets, activation_closure=closure, entry_closure=entry_closure)
     resolved = required.snippets
     _write_test_output(
         phase="phase2",

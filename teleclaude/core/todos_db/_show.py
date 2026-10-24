@@ -6,8 +6,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, cast
 
-from teleclaude.constants import TodoStatus
-from teleclaude.core.checkout_roots import worktree_location
+from teleclaude.constants import WORKTREE_DIR, TodoStatus
 from teleclaude.core.next_machine._types import ItemPhase, StateValue
 from teleclaude.core.next_machine.artifacts import artifact_name_to_state_key
 from teleclaude.core.next_machine.commit_review_stamps import (
@@ -146,7 +145,7 @@ def _project_root_from_db(todos_db: WorkflowStore) -> Path:
 
 def _worktree_cwd_for(project_root: Path, slug: str) -> str:
     """Return the worktree directory for ``slug`` under the project root."""
-    return str(worktree_location(project_root, slug)[0])
+    return str(project_root / WORKTREE_DIR / slug)
 
 
 async def _derive_phase_value(

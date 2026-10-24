@@ -18,8 +18,6 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.checkout_roots import resolve_checkout_roots, worktree_location
-from teleclaude.core.checkout_transition import checkout_transition_lock
 from teleclaude.core.next_machine._types import (
     _PREP_INPUT_FILES,
     _PREP_ROOT_INPUT_FILES,
@@ -35,18 +33,8 @@ from teleclaude.git import GitCommandError, InvalidGitRepositoryError, Repo
 from teleclaude.runtime.agy_workspace_trust import add_worktree_trust
 
 logger = get_logger(__name__)
-_UTF8_ENCODING = "utf-8"
 _WORKTREE_SCHEMA_LINK_EVENT = "worktree_config_schema_link"
 _WORKTREE_SCHEMA_LINK_FAILED_EVENT = "worktree_config_schema_link_failed"
-_DEVELOPMENT_PREP_STATE_REL = ".teleclaude/development-prep-state.json"
-_ROOT_INPUT_LABEL_TEMPLATE = "root:{relative}"
-_WORKTREE_INPUT_LABEL_TEMPLATE = "worktree:{relative}"
-_PREP_VERSION_FIELD = "version"
-_PREP_INPUTS_DIGEST_FIELD = "inputs_digest"
-_PREPARED_AT_FIELD = "prepared_at"
-_INSTALL_SCRIPT_PATH = Path("bin") / "install.sh"
-_DEPENDENCY_ONLY_OPTION = "--deps-only"
-_WORKTREE_PREPARE_SCRIPT_PATH = Path("tools") / "worktree-prepare.sh"
 _ORIGIN = "origin"
 _MAIN_BRANCH = "main"
 _ORIGIN_MAIN_REF = "origin/main"
@@ -121,36 +109,23 @@ class WorktreeOpeningCommitIdentityError(Exception):
 
 def _worktree_prep_state_path(cwd: str, slug: str) -> Path:
     """Get prep-state marker path inside worktree."""
-    worktree_path, _ = worktree_location(cwd, slug)
-    return worktree_path / _WORKTREE_PREP_STATE_REL
+    return Path(cwd) / WORKTREE_DIR / slug / _WORKTREE_PREP_STATE_REL
 
 
 def _compute_prep_inputs_digest(cwd: str, slug: str) -> str:
     """Compute hash of dependency-installation inputs that impact prep."""
-    roots = resolve_checkout_roots(cwd)
-    project_root = roots.authoring
-    worktree_root, _ = worktree_location(cwd, slug)
+    project_root = Path(cwd)
+    worktree_root = project_root / WORKTREE_DIR / slug
+    digest = hashlib.sha256()
+
     candidates: list[tuple[str, Path]] = []
     for rel in _PREP_ROOT_INPUT_FILES:
         candidates.append((f"root:{rel}", project_root / rel))
     for rel in _PREP_INPUT_FILES:
         candidates.append((f"worktree:{rel}", worktree_root / rel))
 
-    return _digest_prep_inputs(candidates)
-
-
-def development_prep_inputs_digest(project_root: Path) -> str:
-    """Hash the same dependency inputs for the development checkout itself."""
-    candidates = [
-        (_ROOT_INPUT_LABEL_TEMPLATE.format(relative=rel), project_root / rel) for rel in _PREP_ROOT_INPUT_FILES
-    ] + [(_WORKTREE_INPUT_LABEL_TEMPLATE.format(relative=rel), project_root / rel) for rel in _PREP_INPUT_FILES]
-    return _digest_prep_inputs(candidates)
-
-
-def _digest_prep_inputs(candidates: list[tuple[str, Path]]) -> str:
-    digest = hashlib.sha256()
     for label, path in sorted(candidates, key=lambda item: item[0]):
-        digest.update(label.encode(_UTF8_ENCODING))
+        digest.update(label.encode("utf-8"))
         exists = path.exists()
         digest.update(b"1" if exists else b"0")
         if not exists:
@@ -158,38 +133,8 @@ def _digest_prep_inputs(candidates: list[tuple[str, Path]]) -> str:
         is_executable = os.access(path, os.X_OK)
         digest.update(b"1" if is_executable else b"0")
         if path.is_file():
-            digest.update(_file_sha256(path).encode(_UTF8_ENCODING))
+            digest.update(_file_sha256(path).encode("utf-8"))
     return digest.hexdigest()
-
-
-def ensure_development_dependencies(project_root: Path) -> bool:
-    """Run the development checkout's dependency-only install when its prep inputs changed."""
-    root = project_root.resolve()
-    state_path = root / _DEVELOPMENT_PREP_STATE_REL
-    inputs_digest = development_prep_inputs_digest(root)
-    try:
-        state = json.loads(state_path.read_text(encoding=_UTF8_ENCODING))
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        state = None
-    if (
-        isinstance(state, dict)
-        and state.get(_PREP_VERSION_FIELD) == _PREP_STATE_VERSION
-        and state.get(_PREP_INPUTS_DIGEST_FIELD) == inputs_digest
-    ):
-        return False
-
-    script = root / _INSTALL_SCRIPT_PATH
-    # The installer coordinates external dependency managers with no equivalent Python API.
-    # It selects the isolated home after its installed-controller purpose query.
-    subprocess.run([str(script), _DEPENDENCY_ONLY_OPTION], cwd=str(root), check=True)
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        _PREP_VERSION_FIELD: _PREP_STATE_VERSION,
-        _PREP_INPUTS_DIGEST_FIELD: inputs_digest,
-        _PREPARED_AT_FIELD: datetime.now(UTC).isoformat(),
-    }
-    state_path.write_text(json.dumps(payload, indent=2), encoding=_UTF8_ENCODING)
-    return True
 
 
 def _read_worktree_prep_state(cwd: str, slug: str) -> dict[str, str] | None:
@@ -198,19 +143,19 @@ def _read_worktree_prep_state(cwd: str, slug: str) -> dict[str, str] | None:
     if not state_path.exists():
         return None
     try:
-        raw = json.loads(state_path.read_text(encoding=_UTF8_ENCODING))
+        raw = json.loads(state_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning("Corrupt worktree prep state at %s: %s — treating as missing, will re-prepare.", state_path, exc)
         return None
     if not isinstance(raw, dict):
         return None
-    version = raw.get(_PREP_VERSION_FIELD)
-    digest = raw.get(_PREP_INPUTS_DIGEST_FIELD)
+    version = raw.get("version")
+    digest = raw.get("inputs_digest")
     if not isinstance(version, int) or version != _PREP_STATE_VERSION:
         return None
     if not isinstance(digest, str) or not digest:
         return None
-    return {_PREP_INPUTS_DIGEST_FIELD: digest}
+    return {"inputs_digest": digest}
 
 
 def _write_worktree_prep_state(cwd: str, slug: str, inputs_digest: str) -> None:
@@ -218,11 +163,11 @@ def _write_worktree_prep_state(cwd: str, slug: str, inputs_digest: str) -> None:
     state_path = _worktree_prep_state_path(cwd, slug)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        _PREP_VERSION_FIELD: _PREP_STATE_VERSION,
-        _PREP_INPUTS_DIGEST_FIELD: inputs_digest,
-        _PREPARED_AT_FIELD: datetime.now(UTC).isoformat(),
+        "version": _PREP_STATE_VERSION,
+        "inputs_digest": inputs_digest,
+        "prepared_at": datetime.now(UTC).isoformat(),
     }
-    state_path.write_text(json.dumps(payload, indent=2), encoding=_UTF8_ENCODING)
+    state_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _decide_worktree_prep(cwd: str, slug: str, created: bool) -> WorktreePrepDecision:
@@ -233,24 +178,24 @@ def _decide_worktree_prep(cwd: str, slug: str, created: bool) -> WorktreePrepDec
     state = _read_worktree_prep_state(cwd, slug)
     if state is None:
         return WorktreePrepDecision(should_prepare=True, reason="prep_state_missing", inputs_digest=inputs_digest)
-    if state.get(_PREP_INPUTS_DIGEST_FIELD) != inputs_digest:
+    if state.get("inputs_digest") != inputs_digest:
         return WorktreePrepDecision(should_prepare=True, reason="prep_inputs_changed", inputs_digest=inputs_digest)
     return WorktreePrepDecision(should_prepare=False, reason="unchanged_known_good", inputs_digest=inputs_digest)
 
 
 def _create_or_attach_worktree(cwd: str, slug: str, *, build_start_sha: str) -> bool:
     """Ensure the slug worktree exists, resuming only a remote branch proven to belong to its todo."""
-    worktree_path, source_root = worktree_location(cwd, slug)
+    worktree_path = Path(cwd) / WORKTREE_DIR / slug
     if worktree_path.exists():
         return False
 
     try:
-        repo = Repo(str(source_root))
+        repo = Repo(cwd)
     except InvalidGitRepositoryError:
         logger.error("Cannot create worktree: %s is not a git repository", cwd)
         raise
 
-    trees_dir = source_root / WORKTREE_DIR
+    trees_dir = Path(cwd) / WORKTREE_DIR
     trees_dir.mkdir(exist_ok=True)
 
     try:
@@ -260,7 +205,7 @@ def _create_or_attach_worktree(cwd: str, slug: str, *, build_start_sha: str) -> 
         else:
             _create_new_todo_worktree(repo, worktree_path, slug)
     except Exception:
-        logger.exception(_WORKTREE_CREATE_FAILED_LOG, slug, source_root, worktree_path)
+        logger.exception(_WORKTREE_CREATE_FAILED_LOG, slug, cwd, worktree_path)
         raise
 
     logger.info(_WORKTREE_OPENED_EVENT, slug=slug, path=str(worktree_path), head_sha=_resolve_head_sha(worktree_path))
@@ -398,11 +343,9 @@ def _is_ancestor(repo: Repo, ancestor: str, descendant: str) -> bool:
 
 def ensure_worktree_with_policy(cwd: str, slug: str, *, build_start_sha: str = _EMPTY_SHA) -> EnsureWorktreeResult:
     """Ensure worktree exists and run prep only when policy says it's stale."""
-    roots = resolve_checkout_roots(cwd)
-    with checkout_transition_lock(roots.installed):
-        created = _create_or_attach_worktree(cwd, slug, build_start_sha=build_start_sha)
-    worktree_root, owner_root = worktree_location(cwd, slug)
-    add_worktree_trust(owner_root, worktree_root)
+    created = _create_or_attach_worktree(cwd, slug, build_start_sha=build_start_sha)
+    worktree_root = Path(cwd) / WORKTREE_DIR / slug
+    add_worktree_trust(Path(cwd), worktree_root)
     try:
         schema_link = converge_project_schema_link(worktree_root)
     except (GitCommandError, OSError):
@@ -420,7 +363,7 @@ def ensure_worktree_with_policy(cwd: str, slug: str, *, build_start_sha: str = _
             disposition=schema_link.disposition,
             resolved_target=str(schema_link.resolved_target) if schema_link.resolved_target is not None else None,
         )
-    ensure_worktree_home(owner_root, slug)
+    ensure_worktree_home(Path(cwd), slug)
     prep_decision = _decide_worktree_prep(cwd, slug, created=created)
     if prep_decision.should_prepare:
         _prepare_worktree(cwd, slug)
@@ -446,9 +389,8 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
     - Else if package.json exists, run `pnpm install` if available, otherwise `npm install`.
     - If neither applies, do nothing.
     """
-    worktree_path, _ = worktree_location(cwd, slug)
-    environment_owner = resolve_checkout_roots(cwd).authoring
-    worktree_prepare_script = environment_owner / _WORKTREE_PREPARE_SCRIPT_PATH
+    worktree_path = Path(cwd) / WORKTREE_DIR / slug
+    worktree_prepare_script = Path(cwd) / "tools" / "worktree-prepare.sh"
     makefile = worktree_path / "Makefile"
     package_json = worktree_path / "package.json"
 
@@ -460,12 +402,12 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
         return re.search(rf"^{re.escape(target)}\s*:", content, re.MULTILINE) is not None
 
     if worktree_prepare_script.exists() and os.access(worktree_prepare_script, os.X_OK):
-        cmd = [str(worktree_prepare_script), slug, str(environment_owner), str(worktree_path)]
+        cmd = [str(worktree_prepare_script), slug]
         logger.info("Preparing worktree with: %s", " ".join(cmd))
         try:
             subprocess.run(
                 cmd,
-                cwd=str(environment_owner),
+                cwd=str(Path(cwd)),
                 check=True,
                 capture_output=True,
                 text=True,

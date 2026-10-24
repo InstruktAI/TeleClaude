@@ -14,8 +14,7 @@ from sqlmodel import Session as SqlSession
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
-from teleclaude.constants import ARTIFACT_DEFERRALS, TodoStatus
-from teleclaude.core.checkout_roots import worktree_location
+from teleclaude.constants import ARTIFACT_DEFERRALS, WORKTREE_DIR, TodoStatus
 from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG
 from teleclaude.core.next_machine.lifecycle import READY_BAND_PHASES, coerce_lifecycle_phase, is_ready_band_eligible
 from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
@@ -119,7 +118,7 @@ class TodosDbStateMixin:
             return False
 
         project_root = self._project_root()
-        worktree_abandoned = worktree_location(project_root, slug)[0].exists()
+        worktree_abandoned = (project_root / WORKTREE_DIR / slug).exists()
         to_phase = payload.get("lifecycle_phase")
         kind = payload.get("kind")
         record_v2_to_v3_migration(

@@ -18,10 +18,9 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.checkout_roots import resolve_checkout_roots
-from teleclaude.core.worktree_layout import DEVELOPMENT_HOME_NAME, WORKTREE_HOMES_DIR, development_home_for_checkout
+from teleclaude.core.worktree_layout import WORKTREE_HOMES_DIR
 from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
-from teleclaude.paths import TELECLAUDE_SOURCE_HOME
+from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.project_root import worktree_home_root
 from teleclaude.slug import validate_slug
 
@@ -333,26 +332,10 @@ def _ensure_worktree_home_locked(
 def ensure_worktree_home(project_root: Path, slug: str) -> Path:
     """Create or refresh the slug's no-remote clone from the live home source."""
     _, home_root = _worktree_paths(project_root, slug)
-    source_root = TELECLAUDE_SOURCE_HOME
+    source_root = TELECLAUDE_HOME
     source_repository, source_digest = _source_snapshot(source_root)
     with _home_operation_lock(home_root.parent):
         return _ensure_worktree_home_locked(home_root, slug, source_root, source_repository, source_digest)
-
-
-def ensure_development_worktree_home(project_root: Path) -> Path:
-    """Create or refresh the reserved isolated home for the development checkout."""
-    home_root = development_home_for_checkout(project_root)
-    _project_homes_root(project_root)
-    source_root = TELECLAUDE_SOURCE_HOME
-    source_repository, source_digest = _source_snapshot(source_root)
-    with _home_operation_lock(home_root.parent):
-        return _ensure_worktree_home_locked(
-            home_root,
-            DEVELOPMENT_HOME_NAME,
-            source_root,
-            source_repository,
-            source_digest,
-        )
 
 
 def release_worktree_home(project_root: Path, slug: str) -> None:
@@ -473,10 +456,3 @@ def reconcile_worktree_homes(project_root: Path, *, at_startup: bool) -> None:
             ensure_worktree_home(project_root, slug)
         except (OSError, ValueError, WorktreeHomeError) as exc:
             logger.warning(_LOG_RECONCILE_FAILED, slug=slug, error=str(exc))
-
-    roots = resolve_checkout_roots(project_root)
-    if roots.purpose is not None and roots.authoring == project_root.expanduser().resolve():
-        try:
-            ensure_development_worktree_home(roots.authoring)
-        except (OSError, ValueError, WorktreeHomeError) as exc:
-            logger.warning(_LOG_RECONCILE_FAILED, slug=DEVELOPMENT_HOME_NAME, error=str(exc))

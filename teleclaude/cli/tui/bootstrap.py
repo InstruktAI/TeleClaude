@@ -56,7 +56,6 @@ def projects_from_projects_with_todos(projects: list[ProjectWithTodosDTO]) -> li
             name=project.name,
             path=project.path,
             description=project.description,
-            locations=project.locations,
         )
         for project in projects
     ]

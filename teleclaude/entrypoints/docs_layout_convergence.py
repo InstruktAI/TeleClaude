@@ -28,7 +28,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.session_auth import resolve_cli_identity
 from teleclaude.commit_identity import CommitIdentityUnresolvable, resolve_commit_identity_from_caller
-from teleclaude.core.checkout_roots import resolve_checkout_roots
 from teleclaude.docs_layout import (
     LayoutCommitRefused,
     LayoutConvergenceOutcome,
@@ -380,14 +379,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         logger.exception(_LOG_REGISTRY_FAILED_EVENT)
         print(_REGISTRY_FAILED_LINE)
         return EXIT_STATUSES[LayoutResultClass.FAILURE]
-    slug_roots = [resolve_checkout_roots(entry.path).authoring for entry in registered if entry.is_present]
+    slug_roots = [entry.path for entry in registered if entry.is_present]
     if arguments.roots:
-        roots = [resolve_checkout_roots(root.expanduser().resolve()).authoring for root in arguments.roots]
+        roots = [root.expanduser().resolve() for root in arguments.roots]
         return run(roots, [root.is_dir() for root in roots], slug_roots=slug_roots)
-    roots = [resolve_checkout_roots(entry.path).authoring for entry in registered]
     return run(
-        roots,
-        [entry.is_present and root.is_dir() for entry, root in zip(registered, roots, strict=True)],
+        [entry.path for entry in registered],
+        [entry.is_present for entry in registered],
         slug_roots=slug_roots,
     )
 

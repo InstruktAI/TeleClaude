@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict
 from teleclaude.api.auth import CallerIdentity, carried_caller, principal_for_carried_caller
 from teleclaude.api.todo_routes import _default_cwd
 from teleclaude.api_models import BugListEntryDTO
-from teleclaude.core.checkout_roots import resolve_checkout_roots
+from teleclaude.project_root import resolve_project_root
 from teleclaude.services.log_bug_hunter_suppressions import (
     Disposition,
     MatchMode,
@@ -98,12 +98,12 @@ def _project_slug(project: str | None, cwd: str | None) -> str:
                 return node.slug
         raise HTTPException(status_code=404, detail=_UNKNOWN_PROJECT_DETAIL.format(name=project))
     try:
-        match = get_project_catalog_service().for_path(Path(cwd or _default_cwd()))
+        root = resolve_project_root(cwd or _default_cwd())
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if match is None:
-        raise HTTPException(status_code=400, detail=_UNLOADABLE_PROJECT_DETAIL.format(root=cwd or _default_cwd()))
-    node, _ = match
+    node = load_project_node(root)
+    if node is None:
+        raise HTTPException(status_code=400, detail=_UNLOADABLE_PROJECT_DETAIL.format(root=root))
     return node.slug
 
 
@@ -114,7 +114,7 @@ async def list_bugs(
 ) -> list[BugListEntryDTO]:
     """List the project's active bug fixes with their lifecycle progress label."""
     try:
-        project_root = resolve_checkout_roots(cwd or _default_cwd()).workflow_state
+        project_root = resolve_project_root(cwd or _default_cwd())
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return await asyncio.to_thread(get_work_service(str(Path(project_root))).todo.bug_entries)

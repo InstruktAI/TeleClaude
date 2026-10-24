@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.checkout_roots import worktree_location
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import (
     _SINGLE_FLIGHT_GUARD,
@@ -777,7 +777,7 @@ async def _ensure_worktree_ready(
     cwd: str, resolved_slug: str, phase_slug: str, todos_db: WorkflowStore
 ) -> tuple[str, str | None]:
     """Ensure the worktree exists and is prepared under the slug single-flight lock."""
-    worktree_cwd = str(worktree_location(cwd, resolved_slug)[0])
+    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / resolved_slug)
     todo_state = await todos_db.read_state(resolved_slug)
     if todo_state is None:
         return worktree_cwd, format_error(

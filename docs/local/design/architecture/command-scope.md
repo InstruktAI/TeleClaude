@@ -55,53 +55,6 @@ flowchart LR
     S[daemon and live home] --> Sc[sessions, reminders, agents, computers,<br/>operations, message, auth,<br/>events, signals, history, memories,<br/>projects list, config by kind and slug]
 ```
 
-### Associated checkout roots
-
-The invocation resolver returns the active working checkout, logical project's
-workflow-state root, authoring checkout and installed checkout as distinct
-answers. Config supplies the registered association; workflow owns the resolution
-of its shared state and worktree owners. Consumers request the answer their
-operation acts on, following `sdlc/principle/domain-driven-design`. Every member
-of an association except the installed checkout's own working tree is a
-development location, including a worktree that the installed checkout held
-before its association. Their environment ownership follows
-`local/projects/teleclaude/spec/feature/workflow/worktree-prep-lifecycle`.
-
-The existing root table is qualified by this association: todo records, claims,
-artifacts and project-wide job/bug state remain at the primary workflow-state
-root. Source preparation, pending-doc authoring, Blueprint source and integration
-operate against the development checkout. Code-file operations remain in the
-active worktree. Installation configuration, revision activation and runtime
-assessment operate against the installed checkout. Physical maintenance records
-belong to the checkout activation they describe; sharing a logical project does
-not merge installation and development maintenance.
-
-Store access consumes the canonical shared-state identity through
-`local/projects/teleclaude/design/architecture/workflow-store`. Association
-preserves that identity and its selected adapter; source placement supplies no
-storage address or replacement store.
-
-An association transition preserves or settles the in-flight objects whose
-source ownership it changes before publishing that relationship. Workflow
-serializes the transition with source placement, including worktree creation
-and integration admission. A refused transition retains the existing ownership
-and names the affected work; it does not repath live work. The lifecycle and
-integration contracts remain owned by
-`local/projects/teleclaude/design/architecture/next-machine` and
-`local/projects/teleclaude/spec/feature/workflow/integration-state-machine`.
-
-Docs and bootstrap context select the invocation's coherent view under
-`local/projects/teleclaude/spec/feature/context/checkout-context-selection`.
-The global CLI remains the installed controller; a development directory changes
-the operation's target, not the running command's implementation. A missing
-controller capability is reported through the installed contract rather than
-executing development code against live state.
-
-Project addresses name the logical identity; checkout selection is explicit and
-never inferred from a `-dev` suffix. Source delivery at this boundary retains the
-existing upstream-mainline contract; provisioning a companion alone provides no
-public contribution handler.
-
 <!-- planned:reviewed-pr-contributions -->
 
 ### Contribution delivery purpose
