@@ -91,8 +91,6 @@ origin that cannot be resolved to a Discord destination is recorded as a
 structured miss and the message is delivered without a backlink. Other
 channels render no backlink.
 
-<!-- planned:github-issue-projection -->
-
 **Origin work item (GitHub).** When the originating session works on an item of
 a project on the GitHub workflow store, and the message was delivered, the
 requesting computer also hands the message, the resolved recipients, the
@@ -100,7 +98,6 @@ session and its Discord jump link when one resolves to that project's store,
 which shows it on the item's issue and assigns the recipients
 (`local/projects/teleclaude/spec/feature/workflow/github-work-record`). This
 never changes the message's delivery or its outcome.
-<!-- /planned:github-issue-projection -->
 
 ### Transcript normalization (outbound rendering)
 
