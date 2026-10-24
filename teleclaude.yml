@@ -114,6 +114,7 @@ checkpoint:
         - python
         - -m
         - teleclaude.core.reconciliation.config_schemas
+      runs_while_serving: true
     tui-reload:
       main_only: true
       precedence: 40
@@ -263,4 +264,4 @@ todos:
     full_name: InstruktAI/TeleClaude
   app: 5453276
 kind: project
-schema_version: 25
+schema_version: 26
