@@ -154,6 +154,20 @@ description: Decide whether a todo should exist, audit that decision at preparat
   creation. The surface verifies the decisions were faced, never that the
   answers are true; judging the answers stays with intelligence.
 
+<!-- planned:ci-results-as-events -->
+
+- **A failed required check files its own bug.** When a required CI check fails
+  on main or on a dependency update, the platform files a bug from that result
+  without interrogation, because the filing carries no judgment to face: it
+  states which revision failed which check, with the run's address, the commits
+  since the branch's last green run, the failed job and step, and a fingerprint
+  of that job and step. A later failure with the same fingerprint is added to
+  the open bug instead of filed again, and a green run on the same branch is
+  recorded on it as the recovery. Which change or component is at fault, and
+  whether the check itself is wrong, is the ordinary bug lane's diagnosis.
+
+<!-- /planned:ci-results-as-events -->
+
 ### Ground every defect claim in evidence
 
 The terms below are defined in `sdlc/concept/defect-evidence`.
@@ -416,6 +430,16 @@ The message-based flag is deliberately not durable todo state. It protects
 actively prepared work, where a claimant exists and effort is being spent.
 Unclaimed work is protected by the mandatory entry audit when preparation
 next begins.
+
+<!-- planned:ci-results-as-events -->
+
+A red check on main or on a dependency update otherwise reaches nobody: no agent
+watches CI, and a failure that waits to be noticed lets the next deliveries
+build on a broken revision. Interrogation exists to make a filer face a
+judgment, and a failed check's filing contains none; the judgment it needs is
+the diagnosis that follows.
+
+<!-- /planned:ci-results-as-events -->
 
 ## Scope
 
