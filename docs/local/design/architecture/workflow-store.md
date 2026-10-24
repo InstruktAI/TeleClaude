@@ -23,10 +23,19 @@ project resolver selects the adapter once for the canonical shared-state root.
 Local is the default. `todos.store: github` selects the GitHub adapter, which
 serves the whole port with the project's repository as its system of record;
 what a reader of that repository sees is owned by
-`local/projects/teleclaude/spec/feature/workflow/github-work-record`. The
+`local/projects/teleclaude/spec/feature/workflow/github-work-record`.
+<!-- planned-change:github-pr-collaboration -->
+
+The
 GitHub adapter module also serves the identity reads and the native target
 projection below, none of which is a port operation. Consumers do not select a
 backend, open a connection, inspect tables, or carry storage paths.
+<!-- change:github-pr-collaboration -->
+
+The GitHub adapter module also serves the identity reads and the work item
+lookup below, none of which is a port operation. Consumers do not select a
+backend, open a connection, inspect tables, or carry storage paths.
+<!-- /planned-change:github-pr-collaboration -->
 
 ## Inputs/Outputs
 
@@ -60,6 +69,8 @@ and preserve their current ownership and interpretation.
   from `todos.store` (#124 INV-B1). `WorkflowStore.capabilities` only gates
   operations; no consumer reads the backend from it.
 
+<!-- planned-change:github-pr-collaboration -->
+
 - **Native target projection.** The GitHub adapter module supplies a pure
   projection from the project's repository identity and an item's
   (`WorkItemId`, `StoreAddress`) pair to a session's native GitHub target.
@@ -87,6 +98,23 @@ and preserve their current ownership and interpretation.
   worktree of a checkout resolves that checkout's identity; every clone resolves
   its own root with the same repository facts. The native target projection
   copies that project path into the target unchanged.
+
+<!-- change:github-pr-collaboration -->
+
+- **Repository identity.** The GitHub adapter module resolves a project's
+  repository identity from the project's committed repository declaration
+  (`local/projects/teleclaude/spec/teleclaude-config`) and from nothing else:
+  never from a git remote, clone path, checkout name, slug or origin metadata.
+  Its repository facts are the declared stable repository ID and canonical
+  owner/name. Its project path is the canonical shared-state root the project
+  resolver resolves for the requested path, the root the selected store is
+  resolved for, and resolution requires that root to be a project registered
+  and present on this computer whose selected backend is `github`. Every linked
+  worktree of a checkout resolves that checkout's identity; every clone resolves
+  its own root with the same repository facts.
+
+<!-- /planned-change:github-pr-collaboration -->
+
 - **Item identity read.** For a `WorkItemId`, the GitHub adapter module reads
   the issue that key encodes from the repository identity's repository and
   returns the `WorkItemId` with that issue's node ID as its `StoreAddress`, both
@@ -95,6 +123,18 @@ and preserve their current ownership and interpretation.
   assignment its caller supplies; the store selects no actor.
   The read retains nothing: no cached pair, no local record, no local fallback.
   It is a module call with no API, command-line or relayed surface.
+
+<!-- planned:github-pr-collaboration -->
+
+- **Work item lookup.** For a repository ID and an issue or pull request
+  number, the GitHub adapter module answers which registered GitHub-backed
+  project on this computer declares that repository, which of its items the
+  number belongs to — the item's issue, or the pull request the adapter opened
+  for it — and which session holds that item's claim. It reads only the
+  working copies on this computer and makes no provider call; a number that
+  belongs to no item answers none.
+
+<!-- /planned:github-pr-collaboration -->
 
 The seven operation parts are realized by the current state and artifact
 operations:
@@ -131,6 +171,8 @@ never treats as its record. Every rule the local implementation decides is
 decided there once; the GitHub adapter owns only the mapping between the
 working copy and the repository.
 
+<!-- planned-change:github-pr-collaboration -->
+
 - **Platform identity.** Every GitHub read and write is made as the App the
   project's store declaration names, using that App profile from the
   machine's App inventory (`local/projects/teleclaude/spec/teleclaude-config`).
@@ -139,6 +181,40 @@ working copy and the repository.
   repository; the adapter keeps it in process memory until shortly before its
   expiry and never persists it. No session actor, person account or ambient
   token is used.
+
+<!-- change:github-pr-collaboration -->
+
+- **Platform identity.** Every GitHub read and write is made as the App the
+  project's store declaration names, using that App profile from the
+  machine's App inventory (`local/projects/teleclaude/spec/teleclaude-config`),
+  except that an item's pull request is opened and closed as the App the
+  inventory's role mapping names for the `builder` role, and its reviews are
+  posted as the App it names for the `reviewer` role. The identity owner's
+  credential component issues each App a repository-scoped installation
+  credential with only the access its writes need for the declared
+  repository; the adapter keeps each in process memory until shortly before
+  its expiry and never persists it. No session actor, person account or
+  ambient token is used.
+
+- **Pull requests.** An item's pull request is a reflection like the issue's
+  fields: written after the local commit from the record and the working
+  copy, owed and rewritten on refresh when its write fails, and never read as
+  state.
+  - From the moment the item's build has started until it is delivered or
+    removed, its branch, named for the item, has one open draft pull request
+    against the repository's default branch, linked to the item's issue. When
+    the branch is not yet on GitHub the reflection stays owed until it is.
+  - Each build review verdict in the record is posted once as a review on the
+    commit the verdict is bound to, with the verdict as approval or requested
+    changes and the review report that verdict is bound to as its body, under
+    its envelope line. A verdict whose commit is not on GitHub stays owed.
+  - Delivery closes the pull request with a comment naming the delivered
+    commit; removal closes it without one. Nothing merges it on GitHub.
+  - The pull request and its reviews are found again from GitHub by their
+    App author, branch and envelope, so a rebuilt working copy neither opens a
+    second pull request nor posts a review twice.
+
+<!-- /planned-change:github-pr-collaboration -->
 
 <!-- planned-change:github-issue-projection -->
 
@@ -465,9 +541,24 @@ sequenceDiagram
   the bot's last version, makes its item unverifiable. Writes to the item
   refuse, and rebuild refuses store resolution naming the item. No working
   copy is ever published in its place.
+
+<!-- planned-change:github-pr-collaboration -->
+
 - The native target projection reads an issue number from a `WorkItemId`;
   the GitHub adapter's port identities are working-copy identities, so the
   projection receives no store-produced key it accepts.
+
+<!-- change:github-pr-collaboration -->
+
+- A role mapping that names no App for `builder` or `reviewer`, or an App not
+  installed on the repository with pull request write access, leaves the
+  pull request reflections owed with that cause; the issue and the workflow
+  are unaffected.
+- A pull request someone merges on GitHub, or a review someone else posts,
+  changes nothing in the record: the item is still delivered only by the
+  integrator, and only the reviewer's stamped verdict counts.
+
+<!-- /planned-change:github-pr-collaboration -->
 
 <!-- planned:github-issue-projection -->
 

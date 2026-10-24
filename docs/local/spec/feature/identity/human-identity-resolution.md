@@ -16,6 +16,17 @@ The single lookup capability that maps any inbound human signal onto the operato
 
 When both are present, a platform-specific display-name override takes precedence over the configured person name. For memory-scoped identity keys, origin metadata yields `discord:<user_id>`, `telegram:<user_id>`, or `whatsapp:<phone_number>`; Discord takes precedence over Telegram, then WhatsApp, and no supported origin yields no key.
 
+<!-- planned:github-pr-collaboration -->
+
+A GitHub account login resolves to the configured person whose declared GitHub
+account handle (`local/projects/teleclaude/spec/teleclaude-config`, person
+`github.identity`) equals it, compared case-insensitively. GitHub is not a
+conversation entry platform: a login that matches no declared handle resolves
+to an empty `IdentityContext`, never to a customer, and a handle declared by
+more than one person resolves to none of them.
+
+<!-- /planned:github-pr-collaboration -->
+
 When a Discord account is bound, its current avatar URL is stored with the person's
 credential binding. For configured people whose Discord credential binding carries an
 avatar URL, the resolved identity also carries that stored presentation so downstream

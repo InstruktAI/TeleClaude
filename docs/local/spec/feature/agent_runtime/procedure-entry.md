@@ -53,6 +53,8 @@ its job name and an activation its home in that place. The full procedure ID
 and complete arguments remain recorded and inspectable in session details.
 Display abbreviation does not change dispatch, continuation or matching identity.
 
+<!-- planned-change:github-pr-collaboration -->
+
 A bound issue parameter identifies GitHub work when GitHub's issue lookup
 resolves it in the assignment's project. Session snapshots carry its verified
 number, URL, and bound work subject as an optional structured reference,
@@ -61,6 +63,20 @@ selection follows the GitHub CLI used by the assignment. The reference is
 independent of the session title and work-slug claim; an assignment without an
 identified GitHub issue carries none. An unavailable optional lookup leaves
 the session visible and eligible for a later lookup.
+<!-- change:github-pr-collaboration -->
+
+A bound issue parameter identifies GitHub work when the GitHub store's item
+identity read (`local/projects/teleclaude/design/architecture/workflow-store`)
+resolves it as an issue of the assignment's project repository. Session
+snapshots carry its verified number, URL, and bound work subject as an
+optional structured reference, including for sessions started before the
+display was opened. The parameter is an issue number or that issue's URL in
+the project's declared repository; a project that does not keep its work on
+GitHub identifies no GitHub issue. The reference is independent of the
+session title and work-slug claim; an assignment without an identified GitHub
+issue carries none. An unavailable optional lookup leaves the session visible
+and eligible for a later lookup.
+<!-- /planned-change:github-pr-collaboration -->
 
 ### Resolution
 
