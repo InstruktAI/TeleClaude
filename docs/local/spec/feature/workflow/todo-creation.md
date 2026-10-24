@@ -482,7 +482,9 @@ And a subsequent write or remove against "parent-slug" is refused with a 409, so
 Given an agent files acknowledged work through `telec todo create` or `telec bugs report`
 And another session is committing or publishing to main at the same time
 When that git work finishes within creation's bounded wait for it
-Then the agent sees the todo created before the command's response deadline
+Then creation checks the filing's documentation evidence as it stands once that work is done
+And the agent sees, before the command's response deadline, the todo created when that evidence holds
+And otherwise the filing refused for the missing, unresolved or stale evidence, with no todo state, artifact or dispatch produced
 When that git work is still running when the wait ends
 Then the agent sees the filing refused before the command's response deadline, with no todo state, artifact or dispatch produced
 And the refusal says that nothing was created, that other git work was in progress, and that running the same command again is safe
