@@ -58,18 +58,6 @@ the referenced revisions, and confirms that the pending documentation entering
 the lifecycle matches the reviewed content. Evidence survives without an
 existing todo and without a current session claim.
 
-<!-- planned:todo-creation-times-out-behind-main-lock -->
-
-Creation checks its evidence inside its own write transaction, with
-commit-review records read under that transaction's reservation, and does not
-wait on other sessions' git work. The admitted evidence is the evidence as of
-that check. A commit that lands after it is a later change to the admitted
-work's pending documentation and owes its own review under
-`general/policy/commits`, so the work is not held at admission for it
-(`general/principle/trust-and-guardrails`, `sdlc/policy/code-quality-practices`).
-
-<!-- /planned:todo-creation-times-out-behind-main-lock -->
-
 Every declared pending document is covered by a matching footer-associated
 commit. A missing association blocks entry even when the associated-commit
 lookup returns no commits; it does not classify the work as having no
@@ -493,11 +481,12 @@ And a subsequent write or remove against "parent-slug" is refused with a 409, so
 ```gherkin
 Given an agent files acknowledged work through `telec todo create` or `telec bugs report`
 And another session is committing or publishing to main at the same time
-When the agent submits the filing
+When that git work finishes within creation's bounded wait for it
 Then the agent sees the todo created before the command's response deadline
-And a filing that created its todo is never reported to the agent as a timeout
-When a commit has changed the filing's documentation evidence by the time creation checks it
-Then the agent sees the filing refused, with no todo state, artifact or dispatch produced
+When that git work is still running when the wait ends
+Then the agent sees the filing refused before the command's response deadline, with no todo state, artifact or dispatch produced
+And the refusal says that nothing was created, that other git work was in progress, and that running the same command again is safe
+And a filing whose todo was created is never reported to the agent as a timeout
 ```
 
 <!-- /planned:todo-creation-times-out-behind-main-lock -->
