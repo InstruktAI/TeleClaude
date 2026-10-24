@@ -9,15 +9,7 @@ visibility: 'public'
 
 - The daemon is a 24/7 service; downtime is not acceptable outside controlled restarts.
 
-<!-- planned-change:maintenance-prepares-before-swap -->
-
-- A maintenance run that replaces the daemon is a controlled restart. The daemon is down for the length of that run: it settles its accepted work and stops before the run's first step, no step runs while it serves, and it starts again after the last step (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). The run succeeds only once the started daemon is verified recovered. A run that cannot establish the daemon stopped leaves it as it is and runs no step, and a run whose start does not verify leaves the daemon with that reason recorded; `make status` reports either reason.
-
-<!-- change:maintenance-prepares-before-swap -->
-
 - A maintenance run that replaces the daemon is a controlled restart. The daemon is down for every step of that run except those the maintenance registry declares to run while it serves — Blueprint maintenance, publication and configuration-schema publication: it settles its accepted work and stops before the first of the other steps, none of them runs while it serves, and it starts again after the last of them (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). Those run after the verified start, while it serves. The run succeeds only once the started daemon is verified recovered. A run that cannot establish the daemon stopped leaves it as it is and runs no step, and a run whose start does not verify leaves the daemon with that reason recorded; `make status` reports either reason.
-
-<!-- /planned-change:maintenance-prepares-before-swap -->
 
 - `make start` and `make restart` first establish that the machine configuration loads; when it does not, they refuse with its finding and leave a running daemon running, because the daemon cannot boot on it.
 
@@ -46,15 +38,7 @@ visibility: 'public'
 - Explicit restart + separate verification is the safest minimal-downtime path.
 - A restart can terminate the process that requested it, and a daemon in its first seconds is at its busiest. A check inside the restart measures that warm-up rather than whether the restart happened, and turns a successful restart into a failed maintenance record that holds up delivery.
 
-<!-- planned-change:maintenance-prepares-before-swap -->
-
-- A daemon that keeps serving while maintenance changes the code, dependencies, configuration and service definitions it runs on reads state its loaded code may not understand. Keeping it safe then needs every writer ordered around the restart or gated on what the old process can read, and a single writer that escapes the ordering leaves the daemon refusing its own configuration. With the daemon stopped there is no older reader to protect, so the steps need only their own dependency order. The cost is downtime for the length of the run: sessions, leased workers and the hook outbox already outlive a stopped daemon, and callers already meet a refusal that tells them to retry.
-
-<!-- change:maintenance-prepares-before-swap -->
-
 - A daemon that keeps serving while maintenance changes the code, dependencies, configuration and service definitions it runs on reads state its loaded code may not understand. Keeping it safe then needs every writer ordered around the restart or gated on what the old process can read, and a single writer that escapes the ordering leaves the daemon refusing its own configuration. With the daemon stopped there is no older reader to protect, so the steps need only their own dependency order. Steps that replace nothing the daemon runs on already run against a serving daemon whenever no replacement is owed, so running them after the start keeps that guarantee without holding the daemon down for them. The remaining cost is downtime for the other steps: sessions, leased workers and the hook outbox already outlive a stopped daemon, and callers already meet a refusal that tells them to retry.
-
-<!-- /planned-change:maintenance-prepares-before-swap -->
 
 - Maintenance runs detached from the daemon it stops, so it outlives the stop and can wait out the started daemon's warm-up within a bound before it judges the start. A run that reported success without that verification would leave a daemon that never came back to be discovered by whoever next needed it, and a reason recorded where `make status` reads it reaches that person first.
 
@@ -87,8 +71,4 @@ visibility: 'public'
 - docs/local/adr/0100-commit-maintenance-drains-after-hook-return.md — why commit-boundary maintenance drains in a detached runner after Git returns.
 - docs/local/adr/0124-maintenance-replaces-the-daemon-inside-a-stopped-window.md — why a maintenance run stops the daemon instead of ordering its steps around a live process.
 
-<!-- planned:maintenance-prepares-before-swap -->
-
 - docs/local/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start.md — why the steps that replace nothing the daemon runs on run after the verified start.
-
-<!-- /planned:maintenance-prepares-before-swap -->

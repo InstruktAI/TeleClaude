@@ -65,40 +65,6 @@ Publication is one of those steps and keeps its own contract
 - **Plumbing.** Every project's steps include converging that project's own
   plumbing, whatever else its declaration carries.
 
-<!-- planned-change:maintenance-prepares-before-swap -->
-
-- **Daemon replacement.** In a root whose registry declares the restart
-  action, every run owes the daemon's replacement and is performed inside the
-  stopped-daemon window that commit-boundary maintenance uses
-  (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
-  The run reports the window's opening, or why it did not open, and the start's
-  verification, or why it did not verify; a run whose window did not open or
-  whose start did not verify exits non-zero. A commit activation owing the
-  restart action that is recorded during the run, or that overtakes its start,
-  is not the run's to perform: the run leaves the daemon stopped, reports the
-  activation it leaves to the drain, and the drain that performs it starts the
-  daemon through that activation's own window. A commit activation that owes no
-  restart leaves the run's start unchanged and is drained while the daemon
-  serves.
-- **Other disruptive steps.** Apart from the daemon's replacement, nothing a
-  run performs stops, restarts or reloads a running service. Reloading the
-  terminal interface is never performed by a run. During a run, installation
-  deploys none of the service definitions TeleClaude's installation renders,
-  and stops, restarts or reloads no running service. It may still start a
-  service that is not running, other than the daemon, and a component it sets
-  up may still rewrite its own scheduler configuration where that reloads
-  nothing. After its steps, the run reports each such change that is owed, with
-  the command that performs it. A reload is owed when a process it refreshes
-  started from an earlier commit than the one the run converged, and the
-  changes between the two owe that step under the root's own bindings.
-  Deploying service definitions is owed when a deployed definition differs from
-  what installation would deploy, or a service is due for withdrawal. A run
-  that establishes nothing is owed adds nothing. A run that cannot establish
-  whether a change is owed, such as which commit a running process started
-  from, says so.
-
-<!-- change:maintenance-prepares-before-swap -->
-
 - **Daemon replacement.** In a root whose registry declares the restart
   action, every run owes the daemon's replacement. Its steps are performed
   inside the stopped-daemon window that commit-boundary maintenance uses
@@ -134,25 +100,11 @@ Publication is one of those steps and keeps its own contract
   whether a change is owed, such as which commit a running process started
   from, says so.
 
-<!-- /planned-change:maintenance-prepares-before-swap -->
-
 - **Earlier failures.** A step that an earlier commit-boundary run recorded as
   failed is named after the run's own steps, with the replay that recovers it.
   That replay re-runs the recorded action for its original range. The run never
   replaces or clears that record. The report names the standing integrator as
   the owner of that replay.
-
-<!-- planned-change:maintenance-prepares-before-swap -->
-
-- **Report order.** Uncommitted edits come first, then the daemon's stop when
-  the run replaces it, then step outcomes, then the daemon's start and its
-  verification, then earlier failures, and owed disruptive steps last.
-- **Listing.** `telec sync --list` prints, in order, every step the root's
-  registry declares with what a run would do with it — perform it, replace the
-  daemon around the run, or only report whether it is owed — and changes
-  nothing.
-
-<!-- change:maintenance-prepares-before-swap -->
 
 - **Report order.** Uncommitted edits come first, then the daemon's stop when
   the run replaces it, then the outcomes of the steps inside the window, then
@@ -165,8 +117,6 @@ Publication is one of those steps and keeps its own contract
   registry declares with what a run would do with it — perform it, perform it
   after the daemon's start, replace the daemon around the run, or only report
   whether it is owed — and changes nothing.
-
-<!-- /planned-change:maintenance-prepares-before-swap -->
 
 - **Concurrency.** A run started while commit-boundary maintenance is still
   running never performs a step at the same time as that run, and leaves both
@@ -183,56 +133,6 @@ The on-demand run preserves the release checkout's selected source and its
 ordinary disruptive-step deferral contract.
 
 ### Use cases
-
-<!-- planned-change:maintenance-prepares-before-swap -->
-
-#### UC-ODM1: An operator runs the root’s maintenance on demand
-
-```gherkin
-Scenario: Apply the root's declared maintenance
-  Given an operator wants to run maintenance from an eligible canonical checkout
-  When their agent runs `telec sync`
-  Then every maintenance step declared by that root is attempted in order
-  And the operator sees each step's result as it completes
-
-Scenario: Continue maintenance after a step fails
-  Given the root's maintenance has later steps still owed
-  When one step fails during the run
-  Then every later step is still attempted
-  And the run reports the failure and exits unsuccessfully
-
-Scenario: Run maintenance in the platform's checkout
-  Given the platform root declares daemon replacement
-  When an operator runs `telec sync` there
-  Then the daemon is stopped before maintenance steps begin
-  And it is started and verified after the final step
-
-Scenario: Keep uncommitted changes out of publication
-  Given the root's working tree has uncommitted edits
-  When an operator runs `telec sync`
-  Then the changed paths and known holders are reported before the first step
-  And publication uses committed source and does not publish the uncommitted edits
-
-Scenario: Leave other running services alone
-  Given installation would deploy a changed definition for another running service
-  When an operator runs `telec sync` outside the daemon-replacement window
-  Then the service remains running and its changed definition is reported as owed
-  And the report names the command that deploys it
-
-Scenario: See the recovery route for an earlier failure
-  Given an earlier commit-boundary maintenance run recorded a step as failed
-  When an operator runs `telec sync` in that root
-  Then the report names the failed step and its replay command
-  And the failed record remains and its owning integrator is named
-
-Scenario: Refuse a run from an ineligible checkout
-  Given an operator runs `telec sync` outside canonical main or the installed release checkout
-  When the command begins
-  Then it refuses before any step runs
-  And names an eligible maintenance checkout
-```
-
-<!-- change:maintenance-prepares-before-swap -->
 
 #### UC-ODM1: An operator runs the root’s maintenance on demand
 
@@ -281,8 +181,6 @@ Scenario: Refuse a run from an ineligible checkout
   And names an eligible maintenance checkout
 ```
 
-<!-- /planned-change:maintenance-prepares-before-swap -->
-
 #### UC-ODM2: A failed step does not stop the rest
 
 #### UC-ODM3: A downstream project converges its own plumbing
@@ -322,8 +220,4 @@ And no step runs and no maintenance record is written
 - docs/local/adr/0094-publication-activates-from-recorded-commits.md — committed-state activation and replay-based recovery.
 - docs/local/adr/0124-maintenance-replaces-the-daemon-inside-a-stopped-window.md — why an owed replacement stops the daemon for the whole run.
 
-<!-- planned:maintenance-prepares-before-swap -->
-
 - docs/local/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start.md — why the steps that run while the daemon serves follow the window.
-
-<!-- /planned:maintenance-prepares-before-swap -->

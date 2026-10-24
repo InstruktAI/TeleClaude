@@ -99,15 +99,7 @@ remains unconditional, with capability-gated path bindings. Consumers resolve
 the composed model rather than imposing their own capability rules, under
 `sdlc/policy/domain-ownership`.
 
-<!-- planned-change:maintenance-prepares-before-swap -->
-
-23. **Action registries and bindings (verb/noun split)**: Detection is three tables joined by action id. The **checkpoint registry** maps an id to the agent-facing `run`, transcript `evidence`, `main_only`, `off_main_eligible`, `precedence`, and optional `evidence_must_follow_last_mutation`; it carries no executable command. The **maintenance registry** maps an id to the `command` an automated consumer executes, `main_only`, `precedence`, and its on-demand disposition (Invariant 29); it carries no agent-facing instruction or transcript evidence. Automated consumers execute selected maintenance actions in precedence waves: equal-precedence actions run concurrently, the next wave waits for every prior terminal outcome, and failure never cancels a later wave. An owed `restart` action is not a wave: it is the stopped-daemon window the other owed actions run inside (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). The single **binding table** maps a scope to action ids without owning registry membership. Each action id belongs to exactly one registry, while every binding and consumer resolves through the same joined model.
-
-<!-- change:maintenance-prepares-before-swap -->
-
 23. **Action registries and bindings (verb/noun split)**: Detection is three tables joined by action id. The **checkpoint registry** maps an id to the agent-facing `run`, transcript `evidence`, `main_only`, `off_main_eligible`, `precedence`, and optional `evidence_must_follow_last_mutation`; it carries no executable command. The **maintenance registry** maps an id to the `command` an automated consumer executes, `main_only`, `precedence`, its on-demand disposition (Invariant 29), and whether it runs while the daemon serves; it carries no agent-facing instruction or transcript evidence. Automated consumers execute selected maintenance actions in precedence waves: equal-precedence actions run concurrently, the next wave waits for every prior terminal outcome, and failure never cancels a later wave. An owed `restart` action is not a wave: it is the stopped-daemon window the other owed actions run inside, except the actions declared to run while the daemon serves, which run as waves after the window's verified start (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). The single **binding table** maps a scope to action ids without owning registry membership. Each action id belongs to exactly one registry, while every binding and consumer resolves through the same joined model.
-
-<!-- /planned-change:maintenance-prepares-before-swap -->
 
 TeleClaude owns both platform base registries. A project references their ids in its bindings and extends the registry whose eligibility contract its project-specific action satisfies.
 
@@ -118,17 +110,6 @@ The agent-stop engine continues to select judgment actions from path bindings;
 an activation binding names maintenance only. Capability composition admits the
 Blueprint action and its activation binding only in code-enabled projects.
 
-<!-- planned-change:maintenance-prepares-before-swap -->
-
-Blueprint maintenance runs after its toolchain prerequisites, inside the
-stopped-daemon window when the activation owes one. Its writer takes the Blueprint serialization boundary beneath
-the maintenance drain boundary. Query observation waits through the maintenance
-completion interface and then pins a published generation; it performs no
-extraction and holds no Blueprint lock while waiting for maintenance. This lock
-order and one execution owner follow `sdlc/policy/code-quality-practices` and
-`sdlc/principle/design-fundamentals`.
-<!-- change:maintenance-prepares-before-swap -->
-
 Blueprint maintenance runs after its toolchain prerequisites and, when the
 activation owes the daemon's replacement, after the stopped-daemon window's
 verified start, while the daemon serves. Its writer takes the Blueprint
@@ -137,7 +118,6 @@ observation waits through the maintenance completion interface and then pins a
 published generation; it performs no extraction and holds no Blueprint lock
 while waiting for maintenance. This lock order and one execution owner follow
 `sdlc/policy/code-quality-practices` and `sdlc/principle/design-fundamentals`.
-<!-- /planned-change:maintenance-prepares-before-swap -->
 
 The cache baseline and query guarantee belong to `sdlc/spec/codebase-blueprint`;
 the local behavioral contract is
@@ -145,13 +125,7 @@ the local behavioral contract is
 
 Every checkpoint-registry action also carries its judgment owner: an ordinary session by default, or the standing integrator for each main-only judgment action a project lists in `checkpoint.integrator_judgment`. A listed id that names no main-only checkpoint-registry action is rejected when the project's configuration is validated. The file-based engine defers an integrator-owned action for every non-integrator session, on main and off it. The declaration governs session surfacing only: the checkout-scoped marker of Invariant 19 is recorded for every qualifying advancement whether or not a project declares it, so the standing integrator judges canonical-main maintenance in every project, and a project that declares nothing also keeps each judgment surfaced to its own sessions. A project whose post-activation log judgment belongs to the integrator alone (`local/projects/teleclaude/policy/test-moratorium`) declares it there.
 
-<!-- planned-change:maintenance-prepares-before-swap -->
-
-An action is eligible for the checkpoint registry only when its outcome cannot be established by the mechanism that performs it: the checkpoint registry governs what an agent must judge and act on, never what a command either did or did not do. Deterministic maintenance therefore carries no checkpoint registry entry and is declared in the **maintenance registry** instead — `checkpoint.maintenance` in a project's `teleclaude.yml`, a map of action id to `command`, `main_only`, `precedence`, and the optional on-demand `on_demand` disposition and `owed_probe` command (Invariant 29), beside the `checkpoint.actions` map that declares judgment actions with `run` and `evidence`. An action id belongs to exactly one of the two registries across base and overlay together, and a declaration claiming an id the opposite registry already owns is rejected when the project's configuration is validated. Both registries are joined by action id into one merged model, so a single binding table and a single scope matcher serve every consumer; what differs is which registry a consumer reads. The `agent_stop` engine reads the checkpoint registry alone, which is what makes a mechanical action unsurfaceable rather than merely unsurfaced. A project declares its own actions in whichever registry this test places them.
-<!-- change:maintenance-prepares-before-swap -->
-
 An action is eligible for the checkpoint registry only when its outcome cannot be established by the mechanism that performs it: the checkpoint registry governs what an agent must judge and act on, never what a command either did or did not do. Deterministic maintenance therefore carries no checkpoint registry entry and is declared in the **maintenance registry** instead — `checkpoint.maintenance` in a project's `teleclaude.yml`, a map of action id to `command`, `main_only`, `precedence`, the optional on-demand `on_demand` disposition and `owed_probe` command (Invariant 29), and the optional `runs_while_serving` flag, beside the `checkpoint.actions` map that declares judgment actions with `run` and `evidence`. An action id belongs to exactly one of the two registries across base and overlay together, and a declaration claiming an id the opposite registry already owns is rejected when the project's configuration is validated. Both registries are joined by action id into one merged model, so a single binding table and a single scope matcher serve every consumer; what differs is which registry a consumer reads. The `agent_stop` engine reads the checkpoint registry alone, which is what makes a mechanical action unsurfaceable rather than merely unsurfaced. A project declares its own actions in whichever registry this test places them. An action declares `runs_while_serving` only once it is shown to replace nothing the daemon runs on; the platform base declares it for Blueprint maintenance and publication. An action without it runs inside the stopped-daemon window whenever its activation owes one.
-<!-- /planned-change:maintenance-prepares-before-swap -->
 
 The conventional kinds `docs`, `agents`, and `code` are sugar over bindings: `docs` and `agents` carry fixed base scope and default actions; `code` carries a project-declared scope onto which the base `test` / `log-check` actions attach automatically.
 
@@ -438,9 +412,5 @@ sequenceDiagram
 - docs/local/adr/0043-checkpoint-obligations-discharge-on-evidence.md
 - docs/local/adr/0100-commit-maintenance-drains-after-hook-return.md — why maintenance completion is separate from commit and checkpoint completion.
 
-<!-- planned:maintenance-prepares-before-swap -->
-
 - docs/local/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start.md — why maintenance actions that replace nothing the daemon runs on run after the window's verified start.
 - docs/local/adr/0129-overlays-can-declare-maintenance-actions-that-run-while-the-daemon-serves.md — why a project overlay can declare that a maintenance action runs while the daemon serves.
-
-<!-- /planned:maintenance-prepares-before-swap -->
