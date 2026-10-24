@@ -23,6 +23,7 @@ from teleclaude.config._environment import (
     replace_environment_value,
     replace_environment_values,
     require_owner_only_environment,
+    resolve_owner_linked_environment,
     write_environment_values,
 )
 from teleclaude.config._unresolved import NO_OVERRIDES, drop_unresolved_fields
@@ -589,7 +590,8 @@ def resolve_github_app_private_key(assignment: GitHubActorAssignment) -> SecretS
                 raise GitHubAppKeyRefused(GitHubAppKeyFailure.PROFILE_MISSING)
             if not profile.assignment.actor.same_account(assignment.actor):
                 raise GitHubAppKeyRefused(GitHubAppKeyFailure.ACTOR_MISMATCH)
-            with file_transaction(GLOBAL_CONFIG_PATH.with_name(ConfigFileName.ENV)) as environment_transaction:
+            environment_path = resolve_owner_linked_environment(GLOBAL_CONFIG_PATH.with_name(ConfigFileName.ENV))
+            with file_transaction(environment_path) as environment_transaction:
                 try:
                     values = read_environment_transaction(environment_transaction, owner_only=True, interpolate=False)
                 except (OSError, ValueError):

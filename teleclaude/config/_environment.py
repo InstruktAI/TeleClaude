@@ -524,6 +524,21 @@ def _render_reference_path(path: tuple[str | int, ...]) -> str:
     return ".".join(str(part) for part in path) or "<root>"
 
 
+def resolve_owner_linked_environment(path: Path) -> Path:
+    """Return the file an environment path names, following it only when it is a link this OS user owns.
+
+    The returned path still has to pass ``require_owner_only_environment``; a link owned by
+    anyone else is returned unresolved so that check refuses it.
+    """
+    try:
+        metadata = os.lstat(path)
+    except FileNotFoundError:
+        return path
+    if not stat.S_ISLNK(metadata.st_mode) or metadata.st_uid != os.getuid():
+        return path
+    return path.resolve(strict=True)
+
+
 def require_owner_only_environment(path: Path) -> None:
     """Require an existing regular readable file owned solely by this OS user."""
     try:
