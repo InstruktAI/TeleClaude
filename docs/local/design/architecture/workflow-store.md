@@ -200,14 +200,17 @@ working copy and the repository.
   fields: written after the local commit from the record and the working
   copy, owed and rewritten on refresh when its write fails, and never read as
   state.
-  - From the moment the item's build has started until it is delivered or
-    removed, its branch, named for the item, has one open draft pull request
-    against the repository's default branch, linked to the item's issue. When
-    the branch is not yet on GitHub the reflection stays owed until it is.
+  - The reflection written for the build's start opens the item's pull
+    request: its branch, named for the item, has one open draft pull request
+    against the repository's default branch, linked to the item's issue, until
+    the item is delivered or removed. When that write fails, or the branch is
+    not yet on GitHub, the pull request is owed and opened by the next refresh
+    that can, as every reflection is.
   - Each build review verdict in the record is posted once as a review on the
     commit the verdict is bound to, with the verdict as approval or requested
-    changes and the review report that verdict is bound to as its body, under
-    its envelope line. A verdict whose commit is not on GitHub stays owed.
+    changes and, as its body under its envelope line, the review findings
+    (`review-findings`) the verdict is bound to. A verdict whose commit is not
+    on GitHub stays owed.
   - Delivery closes the pull request with a comment naming the delivered
     commit; removal closes it without one. Nothing merges it on GitHub.
   - The pull request and its reviews are found again from GitHub by their

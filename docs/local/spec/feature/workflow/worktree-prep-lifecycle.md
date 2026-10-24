@@ -21,7 +21,9 @@ Starting a Todo's build publishes its branch, from the opening commit on, to
 `origin` before the build is recorded as started, so the branch exists where
 others can follow it from the first moment of the build. A publication that
 fails does not stop the build: it is logged, and the branch reaches `origin`
-with the Todo's next published commit.
+with the Todo's next published commit. What a GitHub-backed project shows for
+the branch from then on is owned by
+`local/projects/teleclaude/design/architecture/workflow-store`.
 
 <!-- /planned:github-pr-collaboration -->
 
