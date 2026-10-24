@@ -151,6 +151,38 @@ implementation remain the current appliance contract.
   (`config`); a desk session's lifecycle or its escalation relay
   (`agent_runtime`).
 
+<!-- planned:ci-results-as-events -->
+
+- **Owns (CI run outcomes):** translating a project's relayed GitHub
+  workflow-run completions into run outcomes and main-revision green
+  announcements
+  (`local/projects/teleclaude/spec/feature/integration/ci-run-outcomes`). One
+  platform event consumer on each computer is handed the relayed run
+  completions its own computer emitted. The ingress emits every relayed event,
+  so each completion is translated once in the cluster. The consumer reads from
+  GitHub only what the delivery lacks, through the in-process GitHub client, as
+  the App the project's configuration names, on the repository it declares:
+  - a red run's failed jobs and steps;
+  - the branch's last green run of that workflow, and the commits since it;
+  - for a green required-check run on main, whether every required check has a
+    green run for that revision.
+- **Also owns (CI event declarations):** `teleclaude.ci.run.completed`, published
+  for every completion, and `teleclaude.ci.revision.passed`, published once per
+  main revision. Neither reports a lifecycle state. A run completion is an act
+  about one run, and a run on an arbitrary branch says nothing about the health
+  of a platform thing, so these events feed no failure correlation and no
+  incident alert. A run completed event's subject is the run; a revision passed
+  event's subject is the revision. Both have the project as origin. Their ids
+  derive from the repository, run and attempt, and from the repository and
+  revision. A redelivered completion therefore states the same occurrence, and
+  consumers recognise it as a repeat.
+- **Does not own (CI run outcomes):** whether a failure files a bug, or what the
+  bug records (`workflow`); whether an installation activates a green revision
+  (its channel's activation contract); the shape of the CI declaration
+  (`config`).
+
+<!-- /planned:ci-results-as-events -->
+
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

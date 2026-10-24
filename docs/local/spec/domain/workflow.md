@@ -60,6 +60,32 @@ feature specs remain the current contract.
   groupings by role name; the catalog composes the roles and decides nothing
   about lanes (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
 
+<!-- planned:ci-results-as-events -->
+
+- **Also owns (failed-check bugs):** the filer that turns failed required CI
+  checks into bugs
+  (`local/projects/teleclaude/spec/feature/workflow/failed-check-bugs`). One
+  platform event consumer on each computer is handed the run completed events
+  its own computer emitted, so each run is filed once in the cluster, by the
+  computer whose store receives the bug. For each failure of a red
+  required-check run on main or on a dependency-update branch, it finds the open
+  bug that carries the failure's fingerprint. When none exists, it creates the
+  bug through the creation transaction, under the platform's system principal
+  (`local/projects/teleclaude/spec/feature/workflow/todo-creation`).
+- **Also owns (the `check-failures` artifact):** a filed bug's record of its
+  failures, occurrences and recoveries. It is append-only, and the filer is its
+  only writer, keying each entry by run, attempt and job so a repeated handling
+  appends nothing. Earlier entries never change, so a session that has claimed
+  the bug and read the record is never invalidated by a later append. The filer
+  never writes the bug's `input`, `log` or any other artifact. Like `log`,
+  `check-failures` is not prepare-owned, not drift-tracked and not
+  lifecycle-relevant; preparation discovers it with the bug's other artifacts.
+  A green required-check run on a branch appends that branch's recovery to every
+  open bug whose record holds a failure of that check on that branch since its
+  last recovery there.
+
+<!-- /planned:ci-results-as-events -->
+
 ### Preparation completion provenance
 
 Every transition into PREPARED records the completing prepare orchestrator's

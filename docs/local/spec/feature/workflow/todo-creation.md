@@ -7,7 +7,15 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:ci-results-as-events -->
+
 The Todo aggregate inside the `workflow` bounded context is created through one CLI entrypoint that calls a single server-side route, plus a creative-machine entrypoint that does not itself create todo entries:
+
+<!-- change:ci-results-as-events -->
+
+The Todo aggregate inside the `workflow` bounded context is created through one CLI entrypoint that calls a single server-side route, and through the platform's filing of failed required CI checks, plus a creative-machine entrypoint that does not itself create todo entries:
+
+<!-- /planned-change:ci-results-as-events -->
 
 - **`telec todo create <slug> <content> --kind <kind>`** — the single creation command. Both `<slug>` and `<content>` are required positionals; an empty or whitespace-only `<content>` is rejected before any request is made. `--kind` is required. The workflow service writes the todo entry, the default state, and an artifact in one transaction. Flags:
   - `--kind <kind>` — **required**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (diagnosis → plan lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). The kind maps one-to-one onto the todo's lifecycle lane from creation. A creation request without a kind is refused before anything is written, and the refusal names the four kinds. A wrong kind is corrected with `telec todo update <slug> --kind <kind>`.
@@ -28,6 +36,12 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
 - `--human-involved <reason>` — valid only for agent-session callers (the `agent` door); a human door derives involvement and ignores the flag. The reason must be non-empty; a missing or blank reason is refused as argument validation. The recorded value is resolved from the acting session's latest authenticated human input: inside the code-owned recency window it records `true`, outside it records `false` and the creation proceeds unchanged. The reason remains only in the invoking session's transcript and is never written to the todo, its artifacts, events, logs, output, or UI. Omitting the flag records `human_involved=false`; the record applies only to this creation act and never propagates through its lifecycle.
 
 - **`telec todo design [<slug>]`** — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
+
+<!-- planned:ci-results-as-events -->
+
+- **Failed required-check filing** — no command. The workflow's failed-check filer creates a `bug` through the same single creation transaction as `create`: the todo entry, the default state, the `input` artifact and the todo-created event. Its creation record's lineage root is the platform's system principal, with no acting session. It faces no interrogation gate, because `sdlc/policy/todo-creation-discipline` admits a failed required check's filing without one. What it files, and when it adds to an open bug instead, is `local/projects/teleclaude/spec/feature/workflow/failed-check-bugs`.
+
+<!-- /planned:ci-results-as-events -->
 
 The Todo aggregate's invariants — unique kebab-case slug, a canonical kind present from creation, `after` dependencies validated against the todo list — are enforced before the entry is written. The workflow service is the single emission point for the todo-created event.
 

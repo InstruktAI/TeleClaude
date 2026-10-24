@@ -41,6 +41,8 @@ A failure whose fingerprint has no open bug files one bug in the project's work.
 The bug states:
 
 - the check, the job and the step that failed, and the fingerprint;
+- the contract the failure breaks: the project declares the check required, so
+  a revision on main or on a dependency update passes it;
 - the revision and branch that failed;
 - the run's address;
 - the commits since that branch's last `green` run of the same check;
