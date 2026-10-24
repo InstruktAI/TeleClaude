@@ -25,6 +25,7 @@ dispatch:
 - @~/.teleclaude/docs/sdlc/policy/process-change-authority.md
 - @~/.teleclaude/docs/general/policy/human-involvement-recording.md
 - @~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
+- @~/.teleclaude/docs/sdlc/policy/peer-invocation.md
 
 ## Goal
 
@@ -76,6 +77,11 @@ focused procedure and advances through the machine-owned transitions.
    stamps `prd_approved`. Architecture and implementation plans advance on
    reviewer verdict alone. Task-plan authorization follows the separate task
    procedure and is not a PRD approval.
+
+5. **You alone invoke a peer.** A design judgment in preparation that is still
+   uncertain after grounding goes to one adversarial peer under
+   `sdlc/policy/peer-invocation`. Every session you dispatch reports to you
+   instead, through its own output and artifacts.
 
 The bug lane is the one named exception to the first default, and it is narrow: a
 dispatched peer authors the `diagnosis`, investigating and concluding in one act, while

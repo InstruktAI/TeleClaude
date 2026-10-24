@@ -65,8 +65,8 @@ The human decides these, and nothing else:
 Everything else is the agent's: architecture, implementation, validation,
 delivery, process design and operation, review composition, sequencing,
 recovery, testing, refactoring, migrations, routine security engineering,
-reversible maintenance. Technical uncertainty goes to evidence and independent
-peers (`general/policy/leadership`), never to the human.
+reversible maintenance. Technical uncertainty goes to evidence and its
+contract-named owner (`general/policy/leadership`), never to the human.
 
 ### Safety authorization is about exposure, not mechanism
 

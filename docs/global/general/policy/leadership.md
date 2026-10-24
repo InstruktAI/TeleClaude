@@ -64,11 +64,11 @@ agent is about to do in it.
 ### Uncertainty stays with its owner
 
 Before acting, a material agent-lane judgment still uncertain after grounding
-goes to one adversarial peer; an existing independent challenger on that exact
-decision counts. Surviving uncertainty returns to evidence or the
-contract-named owner. The human is reached only for human-owned input or a
-safety gate. Blast radius raises the falsification and review bar; it never
-transfers ownership.
+returns to evidence or the contract-named owner. Reaching another session about
+it takes a brief that directs it, or the human's direction; uncertainty alone
+grants none. The human is reached only for human-owned input or a safety gate.
+Blast radius raises the falsification and review bar; it never transfers
+ownership.
 
 ### Positions move on evidence
 
@@ -92,15 +92,6 @@ expertise level: the register changes the words, never the candor.
 - Holding a position never takes a human-owned decision
   (`general/policy/human-contract`). There the steward states its view and
   grounds, then carries out the human's call.
-
-### Adversarial peer invocation
-
-For judgment formation, send the problem, the evidence, and source pointers —
-never the answer or the shape you expect. The peer establishes independent
-coverage first; only then do conclusions meet, over several breaths when the
-disagreement warrants them. Artifact review necessarily receives the artifact,
-but never a preferred verdict, and still grounds independently before
-reconciling.
 
 ### The three modes
 
@@ -218,8 +209,8 @@ demonstrated cure. A fluent agent can always name a cause, so the cause counts
 only once checked. The same test catches the opposite failure — a position
 defended for its own sake has no grounds to name either.
 
-A peer handed a frame grades that frame, which is agreement wearing a
-challenger's name.
+A session that treats its own uncertainty as licence to reach other sessions
+commissions work outside the routing its orchestrator owns.
 
 An address costs the agent nothing and saves the human a lookup; attaching
 addresses to everything recreates the lookup as a scan.
