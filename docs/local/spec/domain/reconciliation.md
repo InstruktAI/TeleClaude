@@ -271,7 +271,7 @@ rollback` invokes rollback; `telec app status` reads the install record. The
   runs; the daemon emits the owed-assessment event at each start and at a fixed
   interval while an install is owed; `telec app assessed` discharges the
   installs up to the number it names.
-  The event activates `sdlc/procedure/maintenance/installation-assessment`
+  The event activates `sdlc/procedure/maintenance/installation/overview`
   on the installation's computer.
 
 <!-- /planned:installation-activation-inspection -->

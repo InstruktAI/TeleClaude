@@ -89,9 +89,10 @@ revisions through its channel, a canonical-main advancement activates nothing:
 its maintenance replaces no runtime and owes no log window before publication.
 The integrator publishes the integrated head and installs nothing itself; the
 installation's channel reaction installs that revision once. The integrator
-does not judge that install: every install's assessment is owned by
-`sdlc/procedure/maintenance/installation-assessment` on the installation's
-computer, so each install has one assessor.
+does not judge that install: every install's assessment is owned by the
+installation inspector on the installation's computer
+(`sdlc/procedure/maintenance/installation/overview`), so each install has one
+assessor.
 <!-- /planned-change:installation-activation-inspection -->
 
 ## Steps

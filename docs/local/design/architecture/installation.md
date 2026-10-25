@@ -218,7 +218,7 @@ outcome and the log window from that install onwards
 ### Assessment after an install
 
 Every install that opens its stopped window, initial provisioning included,
-owes the integrator's assessment of the release that runs after it
+owes the installation inspector's assessment of the release that runs after it
 (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
 The obligation belongs to the installation, so the route that reached the act
 and whether the machine performs source integration make no difference.
@@ -228,7 +228,7 @@ sequenceDiagram
   participant Rec as install act
   participant IR as assessment record
   participant D as daemon
-  participant I as integrator (platform home)
+  participant I as installation inspector (platform home)
   Rec->>D: stop, when one serves
   Rec->>IR: migration step of the release being installed: install numbered and owed
   Rec->>D: start on the release that serves
@@ -254,7 +254,7 @@ sequenceDiagram
   announcement each time an install is owed. The repetition covers an
   announcement that reached no subscriber, as on a machine whose installation
   publishes the assessment procedure only after the verified start.
-  The announcement activates `sdlc/procedure/maintenance/installation-assessment`
+  The announcement activates `sdlc/procedure/maintenance/installation/overview`
   in the platform home of the computer that emitted it
   (`local/projects/teleclaude/design/architecture/procedure-activation`); its
   one standing agent owns every owed assessment of the installation.

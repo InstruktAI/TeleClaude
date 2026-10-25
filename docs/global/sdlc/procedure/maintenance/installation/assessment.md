@@ -3,31 +3,16 @@ description: "Assess the release an install made live on the installation's own 
 visibility: 'public'
 delivered_by:
   - installation-activation-inspection
-subscriptions:
-  - teleclaude.installation.assessment.owed
-subscription_home: platform
-event_delivery: sequential
-interruptible: false
-role: integrator
-dispatch:
-  agent: [claude, codex]
-  thinking_mode: slow
 ---
 
 # Installation Assessment — Procedure
-
-## Required reads
-
-- @~/.teleclaude/docs/general/procedure/event-handling/overview.md
 
 ## Goal
 
 Judge whether the release an install made live behaves, on the installation's
 own computer, whether or not a development checkout exists there. Every install
 owes this assessment, whatever reached it: channel convergence, an explicit
-`telec app install`, or the move off a project checkout. This assignment
-assesses and recovers; it synchronizes no main, publishes nothing and enters
-nothing in an integration queue.
+`telec app install`, or the move off a project checkout.
 
 ## Preconditions
 

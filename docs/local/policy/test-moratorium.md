@@ -15,7 +15,7 @@ description: Python verification permits one bounded black-box CLI acceptance ha
 
 <!-- change:installation-activation-inspection -->
 
-- **The live daemon supplies operational signals.** What the main-only restart action reports, and where post-restart health is judged, is owned by `local/projects/teleclaude/policy/daemon-availability`. After an install, the installation's integrator reads that install's log window under `sdlc/procedure/maintenance/installation-assessment` and uses its judgment to investigate anomalies and fix forward. The log bug hunter provides a later anomaly backstop. A regular committer's validation and independent commit-review obligations remain governed by `general/policy/commits`.
+- **The live daemon supplies operational signals.** What the main-only restart action reports, and where post-restart health is judged, is owned by `local/projects/teleclaude/policy/daemon-availability`. After an install, the installation inspector reads that install's log window under `sdlc/procedure/maintenance/installation/overview` and uses its judgment to investigate anomalies and fix forward. The log bug hunter provides a later anomaly backstop. A regular committer's validation and independent commit-review obligations remain governed by `general/policy/commits`.
 
 <!-- /planned-change:installation-activation-inspection -->
 

@@ -134,12 +134,12 @@ serves.
 - **Announced while owed.** Each time the daemon starts while an install is
   owed, and again at a fixed interval for as long as one stays owed, it
   announces the owed assessment, so an announcement that found no recipient is
-  repeated. The announcement activates the integrator's installation
-  assessment on the installation's own computer
-  (`sdlc/procedure/maintenance/installation-assessment`), answered by one
+  repeated. The announcement activates the installation inspector on the
+  installation's own computer
+  (`sdlc/procedure/maintenance/installation/overview`), answered by one
   standing agent for the installation
   (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-standing-agent`).
-- **Recorded by the integrator.** `telec app assessed <install>` records that
+- **Recorded by the inspector.** `telec app assessed <install>` records that
   the install `telec app status` shows under that number has been assessed. It
   discharges that install and every earlier owed one; an install numbered after
   it stays owed, a later attempt at the same revision included. It refuses,
@@ -281,7 +281,7 @@ And the project keeps every todo, worktree and claim where it was
 <!-- planned:installation-activation-inspection -->
 
 - A recorded assessment states that an install was assessed, not what the
-  assessment concluded; its findings travel through the integrator's recovery
+  assessment concluded; its findings travel through the inspector's recovery
   and the project's bug process.
 
 <!-- /planned:installation-activation-inspection -->
