@@ -19,11 +19,13 @@ from teleclaude.core.events import (
     AgentEventContext,
     SystemCommandContext,
 )
+from teleclaude.core.integration.ci_run_outcomes import build_ci_run_outcomes_consumer
 from teleclaude.core.integration.event_bound_maintenance import build_event_bound_maintenance_consumer
 from teleclaude.core.integration.incident_alerts import build_incident_alerts_consumer
 from teleclaude.core.integration.subscribed_domain_events import build_subscribed_domain_events_consumer
 from teleclaude.core.integration.trigger_consumer import build_integration_trigger_consumer
 from teleclaude.core.internal_event_envelope import INTERNAL_EVENT_STREAM
+from teleclaude.core.next_machine.failed_check_bugs import build_failed_check_bugs_consumer
 from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router_consumer
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.procedure_routing import build_procedure_activation_consumer
@@ -230,6 +232,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             build_memory_closure_consumer(),
             build_procedure_activation_consumer(),
             build_event_bound_maintenance_consumer(),
+            build_ci_run_outcomes_consumer(self._event_producer),
+            build_failed_check_bugs_consumer(),
             build_correlation_consumer(self._event_db, self._event_producer, CorrelationConfig()),
             build_incident_alerts_consumer(self._event_db, self._event_catalog),
             build_subscribed_domain_events_consumer(self._event_db, self._event_catalog),

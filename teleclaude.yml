@@ -263,5 +263,11 @@ todos:
     id: 1086643517
     full_name: InstruktAI/TeleClaude
   app: 5453276
+ci:
+  required_checks:
+    - .github/workflows/lint-test.yaml
+  dependency_update_branches:
+    - renovate/
+    - dependabot/
 kind: project
 schema_version: 26

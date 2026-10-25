@@ -827,7 +827,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "read": CommandDef(
                         desc="Read a todo artifact",
-                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
+                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings|check-failures>",
                         flags=[F.FLAG_HELP],
                         examples=["telec todo artifacts read my-slug requirements"],
                         auth=CommandAuth(capability=Capability.ARTIFACT_READ, human=_HR_MEMBER),
@@ -836,13 +836,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc="Write a todo artifact",
                         args="<slug> <name: input|prd|architecture|diagnosis|investigation|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|log|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>",
                         flags=[F.FLAG_HELP],
-                        notes=["Legacy bug artifacts are read-only; write bug todo content to input."],
+                        notes=[
+                            "Legacy bug artifacts are read-only; write bug todo content to input.",
+                            "check-failures is written only by the platform's failed-check filer.",
+                        ],
                         examples=['telec todo artifacts write my-slug prd "# PRD content"'],
                         auth=CommandAuth(capability=Capability.ARTIFACT_WRITE, human=_HR_MEMBER),
                     ),
                     "diff": CommandDef(
                         desc="Show a unified diff between two artifact versions",
-                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
+                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings|check-failures> <old-digest> <new-digest>",
                         flags=[F.FLAG_HELP],
                         notes=[
                             "Looks up both versions by digest in the artifact version history "
@@ -860,6 +863,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         flags=[F.FLAG_HELP],
                         notes=[
                             "Refuses input because it is the seed artifact for a todo.",
+                            "Refuses check-failures because only the platform writes it.",
                             "Missing artifacts are treated as a successful no-op.",
                         ],
                         examples=["telec todo artifacts remove my-slug requirements"],

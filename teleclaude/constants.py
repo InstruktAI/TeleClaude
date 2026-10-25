@@ -80,6 +80,9 @@ class SessionTarget(StrEnum):
 
 SYSTEM_DAEMON_PRINCIPAL = "system:daemon"
 
+# The branch a project's revisions are admitted on: CI outcomes of this branch decide a revision's green.
+MAIN_BRANCH = "main"
+
 
 class DriverLaunchClass(StrEnum):
     """How a session-create launch is treated by the driver-start dedup guard.
@@ -226,6 +229,10 @@ ARTIFACT_PRD_REVIEW_FINDINGS = "prd-review-findings"
 ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS = "architecture-review-findings"
 ARTIFACT_PLAN_REVIEW_FINDINGS = "plan-review-findings"
 ARTIFACT_REVIEW_FINDINGS = "review-findings"
+# A failed-check bug's record of its failures, occurrences and recoveries. The platform's failed-check filer is
+# its only writer; it is read-only to every other caller and, like "log", not prepare-owned, not drift-tracked
+# and not lifecycle-relevant.
+ARTIFACT_CHECK_FAILURES = "check-failures"
 
 
 # TodoState state-dict keys for artifacts. Separate namespace from ARTIFACT_* names:
@@ -259,6 +266,7 @@ ARTIFACT_NAMES: frozenset[str] = frozenset(
         ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS,
         ARTIFACT_PLAN_REVIEW_FINDINGS,
         ARTIFACT_REVIEW_FINDINGS,
+        ARTIFACT_CHECK_FAILURES,
     }
 )
 
@@ -271,7 +279,11 @@ ARTIFACT_NAMES_RETIRED: frozenset[str] = frozenset(
     }
 )
 
-ARTIFACT_NAMES_WRITABLE: frozenset[str] = ARTIFACT_NAMES - ARTIFACT_NAMES_RETIRED
+# Kinds only the platform writes: callers may read them and may not write or remove them.
+ARTIFACT_NAMES_PLATFORM_WRITTEN: frozenset[str] = frozenset({ARTIFACT_CHECK_FAILURES})
+ARTIFACT_PLATFORM_WRITTEN_REFUSAL = "artifact kind '{name}' is platform-owned read-only: only the platform writes it"
+
+ARTIFACT_NAMES_WRITABLE: frozenset[str] = ARTIFACT_NAMES - ARTIFACT_NAMES_RETIRED - ARTIFACT_NAMES_PLATFORM_WRITTEN
 
 # The prepare-owned derivation-root artifacts. Writable only by a prepare-phase
 # writer (a prepare-orchestrator, human-identity session, or roleless operator

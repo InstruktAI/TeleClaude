@@ -20,22 +20,20 @@ from teleclaude.api.todo_artifact_authority import (
     refuse_non_prepare_writer,
     resolved_write_principal,
 )
-from teleclaude.api.todo_routes import (
-    _DRIFT_TRACKED_ARTIFACT_NAMES,
-    _default_cwd,
-    _get_workflow_store_from_cwd,
-    _sync_artifact_provenance_state,
-)
+from teleclaude.api.todo_routes import _default_cwd, _get_workflow_store_from_cwd
 from teleclaude.api.todo_update_support import require_slug_in_todo
 from teleclaude.constants import (
     ARTIFACT_INPUT,
+    ARTIFACT_NAMES_PLATFORM_WRITTEN,
     ARTIFACT_NAMES_RETIRED,
     ARTIFACT_NAMES_WRITABLE,
+    ARTIFACT_PLATFORM_WRITTEN_REFUSAL,
     PREPARE_ARTIFACT_NAMES,
 )
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.todo_creation import DRIFT_TRACKED_ARTIFACT_NAMES, sync_artifact_provenance_state
 from teleclaude.core.todos_db._artifacts import malformed_digest_detail
 from teleclaude.core.todos_db._errors import HolderWriteRefused
 from teleclaude.project_root import resolve_project_root
@@ -104,6 +102,12 @@ async def _clear_artifact_provenance_state(todos_db: WorkflowStore, slug: str, a
     await writer.commit(todos_db, slug)
 
 
+def _refuse_platform_written(name: str) -> None:
+    """Raise a 422 for an artifact kind only the platform writes, before any mutation."""
+    if name in ARTIFACT_NAMES_PLATFORM_WRITTEN:
+        raise HTTPException(status_code=422, detail=ARTIFACT_PLATFORM_WRITTEN_REFUSAL.format(name=name))
+
+
 async def _refuse_holder_mutation(todos_db: WorkflowStore, slug: str) -> None:
     """Raise a 409 if ``slug`` is a structural holder; its artifacts are frozen evidence."""
     if await todos_db.is_structural_group_holder(slug):
@@ -141,6 +145,7 @@ async def write_artifact(
     identity: CallerIdentity = Depends(carried_caller),
 ) -> _ArtifactWriteResponse:
     """Write (create or update) a todo artifact."""
+    _refuse_platform_written(name)
     if name not in ARTIFACT_NAMES_WRITABLE:
         if name in ARTIFACT_NAMES_RETIRED:
             raise HTTPException(
@@ -171,8 +176,8 @@ async def write_artifact(
     try:
         await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
         _ = codebase_sha_at_write, referenced_paths
-        if name in _DRIFT_TRACKED_ARTIFACT_NAMES:
-            await _sync_artifact_provenance_state(
+        if name in DRIFT_TRACKED_ARTIFACT_NAMES:
+            await sync_artifact_provenance_state(
                 todos_db,
                 slug,
                 name,
@@ -210,6 +215,7 @@ async def remove_artifact(
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> _ArtifactRemoveResponse:
     """Remove a todo artifact and its version history."""
+    _refuse_platform_written(name)
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_workflow_store_from_cwd(effective_cwd)
     await _refuse_holder_mutation(todos_db, slug)

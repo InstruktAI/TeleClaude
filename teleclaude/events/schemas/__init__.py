@@ -18,6 +18,7 @@ _DECLARATION_MODULES = (
     "teleclaude.events.schemas.signal",
     "teleclaude.events.schemas.session_mirrors",
     "teleclaude.events.schemas.memory",
+    "teleclaude.events.schemas.ci",
 )
 
 

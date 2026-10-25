@@ -38,6 +38,8 @@ class ReferenceKind(StrEnum):
     SCHEMA_PROPOSAL = "schema_proposal"
     ESCALATION = "escalation"
     MEMORY_SCOPE = "memory_scope"
+    CI_RUN = "ci_run"
+    COMMIT = "commit"
 
 
 @dataclass(frozen=True)
@@ -204,3 +206,17 @@ class MemoryScopeRef(TypedRef):
     """A memory scope, by identity key, with ``@<desk>`` appended for the memories kept at one help desk."""
 
     KIND: ClassVar[ReferenceKind] = ReferenceKind.MEMORY_SCOPE
+
+
+@dataclass(frozen=True)
+class CiRunRef(TypedRef):
+    """A CI run attempt, by ``<repository_id>/<run_id>/<attempt>``; a re-run is a new attempt."""
+
+    KIND: ClassVar[ReferenceKind] = ReferenceKind.CI_RUN
+
+
+@dataclass(frozen=True)
+class CommitRef(TypedRef):
+    """A commit of a repository, by ``<repository_id>/<sha>``."""
+
+    KIND: ClassVar[ReferenceKind] = ReferenceKind.COMMIT

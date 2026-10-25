@@ -8,7 +8,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.capabilities import Capabilities
 from teleclaude.checkpoint_model import triggered_action_ids
-from teleclaude.config.schema import CheckpointConfig
+from teleclaude.config.checkpoint_schema import CheckpointConfig
 from teleclaude.constants import CheckpointModel
 from teleclaude.core.next_machine.delivery import parse_git_porcelain_paths
 from teleclaude.git import GitCommandError, Repo
