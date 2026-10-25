@@ -224,19 +224,19 @@ And the refusal is the same whether or not that person is declared
 
 <!-- planned:target-view-hides-companion-on-pending-parent -->
 
-#### UC-3PR20: Phase-2 exposes a brand-new pending snippet only to a slug that delivers or reworks it
+#### UC-3PR20: Phase-2 shows a not-yet-delivered snippet only through the todos that introduce or rework it
 
 ```gherkin
-Given a brand-new snippet whose delivered_by names <owner-slug>
-And <rework-slug> carries a companion or planned material for that snippet
-When the caller runs telec docs get <id> without --target
-Then the pending snippet body is withheld
-When the caller runs telec docs get <id> --target <unrelated-slug>
-Then the pending snippet body is withheld
-When the caller runs telec docs get <id> --target <owner-slug>
-Then the owner's pending body is returned without any other slug's pending material
-When the caller runs telec docs get <id> --target <rework-slug>
-Then that slug's pending view is returned: its companion, or the pending body with its own planned material applied
+Given an operator and a new snippet that todo <todo-a> introduces and has not yet delivered
+And todo <todo-b> proposes its own rework of that snippet
+When the operator runs telec docs get <id> without --target
+Then the snippet's content is withheld
+When the operator runs telec docs get <id> --target <todo-c> for a todo that neither introduces nor reworks it
+Then the snippet's content is withheld
+When the operator runs telec docs get <id> --target <todo-a>
+Then the snippet reads as <todo-a> will deliver it, without any other todo's proposed changes
+When the operator runs telec docs get <id> --target <todo-b>
+Then the snippet reads as it will once <todo-b>'s rework lands on it
 ```
 
 <!-- /planned:target-view-hides-companion-on-pending-parent -->
