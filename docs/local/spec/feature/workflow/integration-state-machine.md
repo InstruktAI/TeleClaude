@@ -436,6 +436,8 @@ And no other session receives a message about the path
 And the owner is never sent the same path again
 ```
 
+<!-- planned-change:integrator-wakes-on-events -->
+
 #### UC-WISM29: A drained singleton parks on its queue watcher
 
 ```gherkin
@@ -451,6 +453,23 @@ And it does not reuse dirty-main clearance or candidate-settledness for that wai
 And a firing that finds a candidate cancels the queue watcher before continuing the drain
 And an empty queue leaves the watcher live until an explicit lifecycle condition cancels it
 ```
+
+<!-- change:integrator-wakes-on-events -->
+
+#### UC-WISM29: A drained singleton parks until its next event
+
+```gherkin
+Given the singleton integrator completes a drain with no eligible candidate remaining
+When the state machine returns its queue-empty outcome
+Then the outcome instructs the integrator to inspect canonical local main for direct commits ahead of origin/main
+And any such head is published after its owed maintenance and any live-runtime log judgment are complete
+And other sessions' review state and unrelated uncommitted paths do not delay that push
+And the integrator verifies origin/main contains the committed head before parking
+And the outcome instructs the integrator to park with no reminder armed
+And the next finalize-ready or maintenance-activation event reaches the parked integrator, which resumes from it
+```
+
+<!-- /planned-change:integrator-wakes-on-events -->
 
 #### UC-WISM39: The integration worktree cannot delete origin/main
 
@@ -488,6 +507,8 @@ release.
 - `workflow` — delivery bookkeeping records the delivery commit; the todo-delivered event is emitted by the workflow context after push succeeds.
 - `operations` — `telec todo integrate` returns an operation receipt; the integrator runs inside the operation runner so failures surface through operation status.
 
+<!-- planned-change:integrator-wakes-on-events -->
+
 - `workflow.lifecycle_runner` — observes workflow wake-up events only to
   re-evaluate prepare/work candidates and downstream dependencies. It does not
   spawn or inline the integrator for `finalize_ready`; the
@@ -495,6 +516,18 @@ release.
   the integration trigger consumer plus the integrator singleton lease. When
   the todo-delivered event fires, the runner may re-evaluate dependents whose
   work gates are now satisfied.
+
+<!-- change:integrator-wakes-on-events -->
+
+- `workflow.lifecycle_runner` — observes workflow wake-up events only to
+  re-evaluate prepare/work candidates and downstream dependencies. It does not
+  spawn or inline the integrator for `finalize_ready`; the
+  phase-advanced finalize-ready handoff is owned by the integration
+  procedure's subscription to it plus the integrator singleton lease. When
+  the todo-delivered event fires, the runner may re-evaluate dependents whose
+  work gates are now satisfied.
+
+<!-- /planned-change:integrator-wakes-on-events -->
 
 <!-- planned:reviewed-pr-contributions -->
 

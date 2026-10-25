@@ -130,6 +130,23 @@ contract governs only what happens when maintenance runs.
   anomaly review, without an automatic retry loop.
   An interrupted attempt remains eligible for retry; each action converges
   safely when repeated after its effect preceded record removal.
+
+<!-- planned:integrator-wakes-on-events -->
+
+- **Settlement announcement.** A commit activation of the canonical checkout
+  is settled once every action it owes has a terminal outcome: success, or a
+  failure that stays recorded. Settling announces the activation's state as an
+  event of the `teleclaude.maintenance.activation` family in the checkout's
+  project, with the activated tip as its subject: `failed` when any owed
+  action failed terminally, otherwise `succeeded`, stating whether a
+  stopped-daemon window replaced the daemon for it. A replay that completes the
+  failed actions settles the activation again and announces `succeeded` for the
+  same subject. An activation that settles while no daemon serves is announced
+  once one does, and a repeated announcement of one settlement carries the same
+  event id. Event activations are not announced.
+
+<!-- /planned:integrator-wakes-on-events -->
+
 - **One-shot drain.** Every hook that records owed work starts a contender. One OS-owned file lock
   admits a single active drain; contenders wait for that lock, process pending
   activations in Git ancestry order and actions by declared precedence, then
