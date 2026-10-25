@@ -22,6 +22,9 @@ from typing import Final, NotRequired, TypedDict
 
 _TRAILING_CONTINUATION_SPACE: Final[str] = " "
 _COMPACT_COMMAND: Final[str] = "/compact"
+_ADD_DIR_FLAG: Final[str] = "--add-dir"
+_FLAG_SEPARATOR: Final[str] = " "
+_GEMINI_SANDBOX_FLAG: Final[str] = "--sandbox"
 _CLAUDE_HELP_DESK_PROFILE_FLAGS: Final[str] = "--setting-sources '' --strict-mcp-config --tools Bash,Read,Glob,Grep"
 _CLAUDE_RESTRICTED_DESK_PROFILE_FLAGS: Final[str] = f"{_CLAUDE_HELP_DESK_PROFILE_FLAGS} --disable-slash-commands"
 _CLAUDE_DISCORD_AVATAR_URL: Final[str] = "https://avatars.githubusercontent.com/u/81847?v=4"
@@ -305,10 +308,8 @@ def agent_permutation(*order: AgentName) -> tuple[str, ...]:
     return tuple(member.value for member in seen)
 
 
-def _mount_flags(restricted_mount_dirs: tuple[str, ...], style: str) -> str:
-    if style == "space":
-        return " ".join(f"--add-dir {d}" for d in restricted_mount_dirs)
-    return ",".join(restricted_mount_dirs)
+def _mount_flags(restricted_mount_dirs: tuple[str, ...]) -> str:
+    return _FLAG_SEPARATOR.join(f"{_ADD_DIR_FLAG}{_FLAG_SEPARATOR}{d}" for d in restricted_mount_dirs)
 
 
 _DEEPSEEK_LAUNCH_ENVIRONMENT: tuple[tuple[str, str], ...] = (("DSH_TUI_NO_LAUNCHPAD", "1"),)
@@ -316,9 +317,9 @@ _DEEPSEEK_LAUNCH_ENVIRONMENT: tuple[tuple[str, str], ...] = (("DSH_TUI_NO_LAUNCH
 
 def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName, AgentDefinition]:
     """Assemble the immutable per-agent records from the platform's fixed facts."""
-    claude_mount = _mount_flags(restricted_mount_dirs, "space")
-    gemini_mount = _mount_flags(restricted_mount_dirs, "comma")
-    codex_mount = _mount_flags(restricted_mount_dirs, "space")
+    claude_mount = _mount_flags(restricted_mount_dirs)
+    gemini_mount = _mount_flags(restricted_mount_dirs)
+    codex_mount = _mount_flags(restricted_mount_dirs)
 
     return {
         AgentName.CLAUDE: AgentDefinition(
@@ -512,7 +513,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                 "session_pattern": "*/.system_generated/logs/transcript.jsonl",
                 "profiles": {
                     "default": "--dangerously-skip-permissions",
-                    "restricted": f"--sandbox --add-dir {gemini_mount}",
+                    LaunchProfile.RESTRICTED: f"{_GEMINI_SANDBOX_FLAG}{_FLAG_SEPARATOR}{gemini_mount}",
                 },
                 "mode_chains": {
                     "fast": [{"model": "gemini", "flags": "--model 'Gemini 3.8 Flash (Low)'"}],
