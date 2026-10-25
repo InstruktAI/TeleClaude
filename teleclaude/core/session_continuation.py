@@ -74,7 +74,7 @@ def _project_root(session: Session) -> Path:
 
 
 def _reconstructed_parameters(session: Session, procedure_id: str) -> tuple[tuple[str, str], ...]:
-    """Bind the parameters the row retains: the working slug as ``slug``, then declared defaults.
+    """Bind the parameters the row retains: the working slug as ``slug``.
 
     A required parameter the row does not retain (a research brief, a commit list) refuses the
     continuation naming it.
@@ -84,8 +84,6 @@ def _reconstructed_parameters(session: Session, procedure_id: str) -> tuple[tupl
     for parameter in declarations.parameters:
         if parameter.name == SLUG_PARAMETER and session.working_slug:
             bound.append((parameter.name, session.working_slug))
-        elif parameter.default is not None:
-            bound.append((parameter.name, parameter.default))
         elif parameter.required:
             raise ContinuationRefused(
                 _MISSING_INPUT_TEMPLATE.format(

@@ -8,17 +8,14 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import db
-from teleclaude.core.models._session import ProcedureEntryKind
 from teleclaude.core.roles import Role, resolve_role
 from teleclaude.core.session_transcript import session_transcript
 from teleclaude.core.summarizer import generate_session_title
-from teleclaude.types.work_subject import WorkSubjectParameter
 from teleclaude.utils.transcript import extract_last_authored_exchange
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
-    from teleclaude.core.models._session import ProcedureInvocation
 
 logger = get_logger(__name__)
 
@@ -30,16 +27,8 @@ _ASSISTANT_ROLE = "assistant"
 _REPLY_SEPARATOR = "\n\n"
 
 
-def compose_command_session_title(
-    command: str,
-    args: str,
-    *,
-    role: str | None,
-    invocation: ProcedureInvocation | None = None,
-) -> str:
-    """Render an assignment's catalog role and recorded subject."""
-    if invocation is not None and invocation.entry_kind is ProcedureEntryKind.DIRECT:
-        args = dict(invocation.parameters).get(WorkSubjectParameter.BRANCH, args)
+def compose_command_session_title(command: str, args: str, *, role: str | None) -> str:
+    """Render an assignment's catalog role followed by the arguments its caller supplied, or the role alone."""
     resolved_role = resolve_role(role)
     if not isinstance(resolved_role, Role):
         raise ValueError(_MISSING_TITLE_ROLE.format(command=command, role=role))

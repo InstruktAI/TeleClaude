@@ -192,7 +192,7 @@ def bind_parameters(
     """Bind the raw argument text to the declared parameters once.
 
     Whitespace tokens bind to the positional entries in order, the untokenized remainder to a ``rest``
-    entry, defaults fill omitted optional entries; a missing required entry or a surplus token refuses.
+    entry; an omitted optional entry stays unbound, a missing required entry or a surplus token refuses.
     """
     text = arguments.strip()
     if not parameters:
@@ -216,9 +216,8 @@ def bind_parameters(
                 raise _parameter_refusal(
                     _MISSING_PARAMETER_TEMPLATE.format(procedure=procedure_id, name=parameter.name)
                 )
-            value = parameter.default
-        if value is not None:
-            bound.append((parameter.name, value))
+            continue
+        bound.append((parameter.name, value))
     return tuple(bound)
 
 

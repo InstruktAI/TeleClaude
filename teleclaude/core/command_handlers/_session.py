@@ -47,7 +47,6 @@ from teleclaude.core.models import (
     JsonDict,
     ProjectInfo,
     Session,
-    SessionEntryPoint,
     SessionLaunchKind,
     SessionSnapshot,
 )
@@ -89,6 +88,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _UNBOUND_TMUX_NAME = ""
+_NO_TITLE_ARGUMENTS = ""
+_NO_ASSIGNMENT_TITLE = ""
 _SESSION_CLOSE_FAILED_EVENT = "Failed to close session %s: %s"
 
 _WORKING_DIR_NOT_ABSOLUTE_TEMPLATE = "Working directory must be an absolute path: {working_dir}"
@@ -374,20 +375,15 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
             principal = owner_principal
             human_email = owner_principal.removeprefix("human:")
 
-    command_line = next(iter((cmd.initial_input or "").splitlines()), "")
-    _, _, command_args = command_line.partition(" ")
-    title_args = command_args
-    if cmd.entry_point is SessionEntryPoint.CRON and cmd.job is not None:
-        title_args = cmd.job
+    # The title's subject is what the caller supplied, as the persisted invocation records it: never the
+    # job, the activation home or the transport line, which keep their own fields.
+    title_args = (
+        launch.invocation.arguments if launch is not None and launch.invocation is not None else _NO_TITLE_ARGUMENTS
+    )
     title = cmd.title or (
-        compose_command_session_title(
-            cmd.command,
-            title_args,
-            role=cmd.role,
-            invocation=launch.invocation if launch is not None else None,
-        )
+        compose_command_session_title(cmd.command, title_args, role=cmd.role)
         if cmd.command is not None
-        else ""
+        else _NO_ASSIGNMENT_TITLE
     )
 
     # A desk session records its confinement in the creating write, so no

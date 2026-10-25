@@ -30,7 +30,6 @@ class ParameterKey(StrEnum):
 
     NAME = "name"
     REQUIRED = "required"
-    DEFAULT = "default"
     REST = "rest"
 
 
@@ -49,8 +48,6 @@ class EntryFinding(StrEnum):
     PARAMETERS_INVALID_VALUE = "snippet_parameters_invalid_value"
     PARAMETERS_DUPLICATE_NAME = "snippet_parameters_duplicate_name"
     PARAMETERS_REST_NOT_LAST = "snippet_parameters_rest_not_last"
-    PARAMETERS_DEFAULT_INVALID = "snippet_parameters_default_invalid"
-    PARAMETERS_DEFAULT_ON_REQUIRED = "snippet_parameters_default_on_required"
     PARAMETERS_WITHOUT_ROLE = "snippet_parameters_without_role"
     DISPATCH_INVALID_VALUE = "snippet_dispatch_invalid_value"
     DISPATCH_AGENT_EMPTY = "snippet_dispatch_agent_empty"
@@ -77,7 +74,6 @@ class ProcedureParameter:
 
     name: str
     required: bool
-    default: str | None
     rest: bool
 
 
@@ -129,7 +125,6 @@ def _parse_parameters(raw: object) -> tuple[tuple[ProcedureParameter, ...], list
             continue
         name = item.get(ParameterKey.NAME)
         required = item.get(ParameterKey.REQUIRED, False)
-        default = item.get(ParameterKey.DEFAULT)
         rest = item.get(ParameterKey.REST, False)
         if (
             not isinstance(name, str)
@@ -142,12 +137,7 @@ def _parse_parameters(raw: object) -> tuple[tuple[ProcedureParameter, ...], list
         if name in seen:
             findings.append(EntryFindingDetail(EntryFinding.PARAMETERS_DUPLICATE_NAME, name))
         seen.add(name)
-        if default is not None and not isinstance(default, str):
-            findings.append(EntryFindingDetail(EntryFinding.PARAMETERS_DEFAULT_INVALID, name))
-            default = None
-        elif default is not None and required:
-            findings.append(EntryFindingDetail(EntryFinding.PARAMETERS_DEFAULT_ON_REQUIRED, name))
-        parameters.append(ProcedureParameter(name=name, required=required, default=default, rest=rest))
+        parameters.append(ProcedureParameter(name=name, required=required, rest=rest))
     for index, parameter in enumerate(parameters):
         if parameter.rest and index != len(parameters) - 1:
             findings.append(EntryFindingDetail(EntryFinding.PARAMETERS_REST_NOT_LAST, parameter.name))
@@ -229,7 +219,6 @@ class ParameterPayload(TypedDict):
 
     name: str
     required: bool
-    default: NotRequired[str]
     rest: NotRequired[bool]
 
 
@@ -263,8 +252,6 @@ def entry_payload(declarations: EntryDeclarations) -> EntryPayload:
 
 def _parameter_payload(parameter: ProcedureParameter) -> ParameterPayload:
     payload = ParameterPayload(name=parameter.name, required=parameter.required)
-    if parameter.default is not None:
-        payload[ParameterKey.DEFAULT.value] = parameter.default
     if parameter.rest:
         payload[ParameterKey.REST.value] = True
     return payload
