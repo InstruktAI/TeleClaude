@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Callable
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import NoReturn
@@ -20,6 +21,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import (
+    APP_ASSESSED,
     APP_INSTALL,
     APP_RESTART,
     APP_ROLLBACK,
@@ -38,6 +40,14 @@ from teleclaude.core.reconciliation.install_act import (
     rollback,
 )
 from teleclaude.core.reconciliation.installation import InstallAct, InstallationLayout, InstallRecord, read_record
+from teleclaude.core.reconciliation.installation_assessment import (
+    AssessmentRecord,
+    NothingOwed,
+    OwedInstall,
+    read_assessment,
+    serving_active_release,
+    update_assessment,
+)
 from teleclaude.core.reconciliation.installation_ports import LiveInstallPorts
 from teleclaude.core.reconciliation.installation_release import ReleasePreparationError
 from teleclaude.deployment.release_checkout import release_tag
@@ -50,6 +60,7 @@ __all__ = ["handle_app"]
 _LIFECYCLE_SCRIPT = Path("bin") / "daemon-control.sh"
 _LIFECYCLE_EVENT = "telec_app_lifecycle"
 _ACT_EVENT = "telec_app_act"
+_ASSESSED_EVENT = "telec_app_assessed"
 _NO_ACTIVE_RELEASE = "No release is active: the platform is not installed here. Install it with the bootstrap first."
 _NO_KEPT_REPOSITORY = (
     "The installation keeps no repository yet, so it has nothing to install from. Run the bootstrap first."
@@ -76,6 +87,21 @@ _PUBLICATION_OWED = (
 _STATUS_PUBLICATION = "Publication owed:  {revision}{failure}"
 _STATUS_LAST_ACT = "Last act:          {act} {outcome} {revision} at {at}"
 _STATUS_REASON = "  reason: {reason}"
+_STATUS_OWED = "Assessment owed:  install {number}, release {revision}, since {since}"
+_STATUS_LAST_ASSESSMENT = "Last assessment:  install {number}, release {revision}, at {at}"
+_ASSESSED_OPERAND = "telec app assessed takes the number of one install, as `telec app status` lists it."
+_ASSESSED_NOT_SERVING = (
+    "The daemon does not serve the active release: {reason}. Restore service with `telec app start`, or repair "
+    "forward when `telec app status` reports the daemon left stopped, then assess."
+)
+_ASSESSED_NOTHING_OWED = "No owed install carries number {number}."
+_ASSESSED_OWED_HEADER = "Owed installs:"
+_ASSESSED_OWED_ENTRY = "  install {number}, release {revision}"
+_ASSESSED_NONE_OWED = "No install is owed an assessment."
+_ASSESSED_REPORT = "Assessed install {number}, release {revision}."
+_ASSESSED_STILL_OWED = "Still owed: {numbers}"
+_LINE_SEPARATOR = "\n"
+_NUMBER_SEPARATOR = ", "
 _STORE_SEPARATOR = ", "
 _NO_STORES = "none"
 _ACT_REPORT = "{status}: {revision}"
@@ -94,6 +120,7 @@ class AppSubcommand(StrEnum):
     RESTART = "restart"
     INSTALL = "install"
     ROLLBACK = "rollback"
+    ASSESSED = "assessed"
 
 
 def _refuse(message: str, code: int = _FAILED_EXIT_CODE) -> NoReturn:
@@ -164,10 +191,21 @@ def _record_lines(record: InstallRecord, layout: InstallationLayout) -> list[str
     return lines
 
 
+def _assessment_lines(assessment: AssessmentRecord) -> list[str]:
+    lines = [
+        _STATUS_OWED.format(number=install.number, revision=install.revision, since=install.owed_since)
+        for install in assessment.owed
+    ]
+    if assessment.last is not None:
+        last = assessment.last
+        lines.append(_STATUS_LAST_ASSESSMENT.format(number=last.number, revision=last.revision, at=last.at))
+    return lines
+
+
 def _status(args: list[str]) -> None:
     _no_operands(AppSubcommand.STATUS, APP_STATUS, args)
     layout = InstallationLayout()
-    for line in _record_lines(read_record(layout), layout):
+    for line in [*_record_lines(read_record(layout), layout), *_assessment_lines(read_assessment(layout))]:
         print(line)
     sys.stdout.flush()
     _run_lifecycle(AppSubcommand.STATUS)
@@ -235,6 +273,42 @@ def _rollback(args: list[str]) -> None:
     _report(rollback(LiveInstallPorts(layout), layout))
 
 
+def _owed_listing(owed: tuple[OwedInstall, ...]) -> list[str]:
+    if not owed:
+        return [_ASSESSED_NONE_OWED]
+    return [
+        _ASSESSED_OWED_HEADER,
+        *(_ASSESSED_OWED_ENTRY.format(number=install.number, revision=install.revision) for install in owed),
+    ]
+
+
+def _assessed(args: list[str]) -> None:
+    operands = parse_command_args(APP_ASSESSED, args).positionals
+    if len(operands) != 1 or not operands[0].isdecimal():
+        raise CliUsageError(_ASSESSED_OPERAND)
+    number = int(operands[0])
+    layout = InstallationLayout()
+    not_serving = serving_active_release(layout)
+    if not_serving is not None:
+        _refuse(_ASSESSED_NOT_SERVING.format(reason=not_serving))
+    try:
+        after = update_assessment(lambda record: record.assessed(number, datetime.now(UTC)), layout)
+    except NothingOwed as error:
+        _refuse(_LINE_SEPARATOR.join([_ASSESSED_NOTHING_OWED.format(number=number), *_owed_listing(error.owed)]))
+    if after.last is not None:
+        logger.info(
+            _ASSESSED_EVENT,
+            number=after.last.number,
+            revision=after.last.revision,
+            still_owed=[install.number for install in after.owed],
+        )
+        print(_ASSESSED_REPORT.format(number=after.last.number, revision=after.last.revision))
+    if after.owed:
+        print(
+            _ASSESSED_STILL_OWED.format(numbers=_NUMBER_SEPARATOR.join(str(install.number) for install in after.owed))
+        )
+
+
 _HANDLERS: dict[AppSubcommand, Callable[[list[str]], None]] = {
     AppSubcommand.STATUS: _status,
     AppSubcommand.START: _start,
@@ -242,6 +316,7 @@ _HANDLERS: dict[AppSubcommand, Callable[[list[str]], None]] = {
     AppSubcommand.RESTART: _restart,
     AppSubcommand.INSTALL: _install,
     AppSubcommand.ROLLBACK: _rollback,
+    AppSubcommand.ASSESSED: _assessed,
 }
 
 

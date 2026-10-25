@@ -1,7 +1,10 @@
 """Run one release's migrations in the install act's stopped window and report which started.
 
 The install act stops the daemon, then runs this entrypoint with the interpreter of the release being
-installed. It runs the ledger-recorded migrations in order — installation migrations, configuration
+installed. It first records the install as owed its assessment
+(``teleclaude.core.reconciliation.installation_assessment``), before any migration starts, so the obligation
+outlives the restart whichever release's install act performed the install. It then runs the
+ledger-recorded migrations in order — installation migrations, configuration
 documents — and then opens every store the daemon opens at startup through the one opening path
 (``teleclaude.core.store_opening``), whose core database initialization runs its own ledger and whose
 other owners migrate when opened. Every owner signals to the install record, against this release, before
@@ -14,6 +17,7 @@ import argparse
 import asyncio
 import sys
 from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -24,6 +28,7 @@ from teleclaude.config.migrations._run import ExitStatus, run_trigger
 from teleclaude.core.db import db
 from teleclaude.core.migration_signal import MigrationExitCode, bind_install_target, unrecorded_signal_seen
 from teleclaude.core.reconciliation.installation import InstallationLayout, MigratedState, read_record
+from teleclaude.core.reconciliation.installation_assessment import update_assessment
 from teleclaude.core.store_opening import open_stores
 from teleclaude.core.todos_db._adapter import close_todos_db_instances
 from teleclaude.deployment.migration_runner import migrate_committed_range
@@ -44,6 +49,8 @@ _PROJECT_SEPARATOR = ", "
 _OPENED_EVENT = "release_migration_stores_opened"
 _UNIT_FAILED_EVENT = "release_migration_failed"
 _UNIT_FAILED = "migrating for {target} failed: {error}"
+_OWE_FAILED_EVENT = "release_assessment_owe_failed"
+_OWE_FAILED = "recording the owed assessment for {target} failed: {error}"
 
 
 async def _open_and_close_stores(target: str) -> str | None:
@@ -66,6 +73,25 @@ async def _open_and_close_stores(target: str) -> str | None:
         await db.close()
 
 
+def _record_owed_assessment(layout: InstallationLayout, target: str) -> str | None:
+    """Record the install of ``target`` as owed its assessment; the failure reason, or ``None``."""
+    try:
+        update_assessment(lambda record: record.owe(target, datetime.now(UTC)), layout)
+    except (OSError, ValidationError) as error:
+        logger.error(_OWE_FAILED_EVENT, target=target, exc_info=True)
+        return _OWE_FAILED.format(target=target, error=error)
+    return None
+
+
+def _migrate(repository: Path, previous: str | None, target: str) -> str | None:
+    """Run the release's migrations and open its stores; the failure reason, or ``None``."""
+    if migrate_committed_range(repository, previous, target) != 0:
+        return _MIGRATIONS_FAILED.format(target=target)
+    if previous is not None and (status := run_trigger(MigrationTrigger.INSTALL)) is not ExitStatus.SUCCESS:
+        return _CONFIGURATION_FAILED.format(target=target, status=status.name.lower())
+    return asyncio.run(_open_and_close_stores(target))
+
+
 def _collected(layout: InstallationLayout, target: str) -> MigratedState:
     """The migrations the record holds for the install window of ``target``."""
     window = read_record(layout).installing
@@ -86,15 +112,7 @@ def main(arguments: list[str] | None = None) -> int:
     failure: str | None = None
     with bind_install_target(target):
         try:
-            if migrate_committed_range(repository, options.previous, target) != 0:
-                failure = _MIGRATIONS_FAILED.format(target=target)
-            elif (
-                options.previous is not None
-                and (status := run_trigger(MigrationTrigger.INSTALL)) is not ExitStatus.SUCCESS
-            ):
-                failure = _CONFIGURATION_FAILED.format(target=target, status=status.name.lower())
-            else:
-                failure = asyncio.run(_open_and_close_stores(target))
+            failure = _record_owed_assessment(layout, target) or _migrate(repository, options.previous, target)
         except Exception as error:  # supervision boundary: every failure of the unit is the entrypoint's reported one
             logger.error(_UNIT_FAILED_EVENT, target=target, exc_info=True)
             failure = _UNIT_FAILED.format(target=target, error=error)

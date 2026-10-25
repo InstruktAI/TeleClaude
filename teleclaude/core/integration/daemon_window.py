@@ -272,7 +272,7 @@ def start_until_verified(lifecycle: Lifecycle, accepts: Callable[[HealthDTO], bo
     reason = _START_TIMEOUT if started.timed_out else (started.output_tail or _START_UNVERIFIED)
     while time.monotonic() < deadline:
         try:
-            health = asyncio.run(_read_health())
+            health = asyncio.run(read_typed_health())
         except Exception as error:
             reason = _HEALTH_READ_FAILURE.format(error_kind=type(error).__name__)
             time.sleep(_POLL_INTERVAL_SECONDS)
@@ -332,8 +332,11 @@ def _start_commit_matches_checkout(root: Path, requested: str, reported: str | N
         return False
 
 
-async def _read_health() -> HealthDTO:
-    """Read the daemon's typed health DTO using the CLI's published local API client."""
+async def read_typed_health() -> HealthDTO:
+    """Read the daemon's typed health DTO using the CLI's published local API client.
+
+    Verification of a start and the check that a daemon serves the active release read health through this one path.
+    """
     client = TelecAPIClient()
     await client.connect()
     try:

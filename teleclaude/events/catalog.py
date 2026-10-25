@@ -312,5 +312,5 @@ class EventCatalog:
 
 def build_default_catalog() -> EventCatalog:
     """Generate the catalog from every built-in declaration."""
-    declared_events = import_module("teleclaude.events.schemas").declared_events
+    declared_events = import_module("teleclaude.events.schemas.registry").declared_events
     return EventCatalog(declared_events())
