@@ -113,16 +113,17 @@ changes nothing. No state is backed up or restored.
 
 ### Assessment after an install
 
-Every install that stops the daemon owes one assessment of the release that
-runs after it, whichever route reached the install and whether or not the
-machine performs any source integration. Initial provisioning, which stops
-nothing, owes one for the release its first start serves.
+Every install that opens its stopped window — the daemon stopped, or none
+serving — owes one assessment of the release that runs after it, whichever
+route reached the install and whether or not the machine performs any source
+integration. For initial provisioning that is the release its first start
+serves.
 
 - **Owed before the restart.** The installation records the install as owed
-  once the daemon has stopped, before any migration starts, so the obligation
-  outlives the restart and every outcome the install can end in. An install
-  that stops nothing — refused, unchanged, or failed while preparing — owes
-  none.
+  when its stopped window opens, before any migration starts, so the
+  obligation outlives the restart and every outcome the install can end in. An
+  install that ends before its stopped window — refused, unchanged, failed
+  while preparing, or with its stop withheld — owes none.
 - **Announced at every start.** Each time the daemon starts while an install is
   owed, it announces the owed assessment. The announcement activates the
   integrator's installation assessment on the installation's own computer

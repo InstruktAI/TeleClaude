@@ -266,7 +266,7 @@ rollback` invokes rollback; `telec app status` reads the install record. The
 - **Assessment owed.** Beside the install record, the installation keeps the
   assessment record: the installs whose assessment is owed and the most recent
   recorded assessment. The install
-  operation records an install as owed once it has stopped the daemon; the
+  operation records an install as owed when it opens the stopped window; the
   daemon emits the owed-assessment event at each start while an install is
   owed; `telec app assessed` discharges the installs up to the one it names.
   The event activates `sdlc/procedure/maintenance/installation-assessment`
@@ -347,7 +347,7 @@ convergence happens in no registered project, person, or company.
 <!-- planned:installation-activation-inspection -->
 
 The owed-assessment event states as subject the newest owed install — its
-revision and when it stopped the daemon — and states no origin: the
+revision and when its stopped window opened — and states no origin: the
 installation belongs to no registered project, person, or company.
 
 <!-- /planned:installation-activation-inspection -->

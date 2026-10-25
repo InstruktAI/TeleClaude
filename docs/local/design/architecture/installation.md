@@ -213,8 +213,8 @@ outcome and the log window from that install onwards
 
 ### Assessment after an install
 
-Every install that stops the daemon, and initial provisioning, owes the
-integrator's assessment of the release that runs after it
+Every install that opens its stopped window, initial provisioning included,
+owes the integrator's assessment of the release that runs after it
 (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
 The obligation belongs to the installation, so the route that reached the act
 and whether the machine performs source integration make no difference.
@@ -225,7 +225,7 @@ sequenceDiagram
   participant IR as assessment record
   participant D as daemon
   participant I as integrator (platform home)
-  Rec->>D: stop
+  Rec->>D: stop, when one serves
   Rec->>IR: install owed an assessment
   Rec->>D: start on the release that serves
   D->>IR: read owed installs
@@ -235,9 +235,9 @@ sequenceDiagram
 ```
 
 - **Owed inside the stopped window.** The install act writes the owed install
-  to the assessment record once the daemon has stopped, before any migration, so
-  every outcome after the stop — completed, returned to the previous release,
-  or left stopped — leaves it owed.
+  to the assessment record when its stopped window opens, before any
+  migration, so every outcome after that — completed, returned to the previous
+  release, or left stopped — leaves it owed.
 - **Announced at each start.** The daemon reads the assessment record when it
   starts and, while an install is owed, emits the owed-assessment announcement.
   The announcement activates `sdlc/procedure/maintenance/installation-assessment`
