@@ -18,7 +18,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 import teleclaude.core.todo_dependency_warnings as dependency_warnings
 from teleclaude.api.auth import CallerIdentity, carried_caller
-from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
 from teleclaude.api.todo_artifact_authority import (
     refuse_todo_update_outside_claiming_group,
     resolve_creation_lineage,
@@ -43,15 +42,10 @@ from teleclaude.api_models import TodoDumpRequest
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.config.machine import config
 from teleclaude.constants import (
-    ARTIFACT_ARCHITECTURE,
-    ARTIFACT_DIAGNOSIS,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_INPUT,
-    ARTIFACT_PRD,
-    ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
     SLUG_NOT_FOUND_DETAIL,
-    TodoStatus,
 )
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.human_involvement import (
@@ -59,37 +53,24 @@ from teleclaude.core.human_involvement import (
     HumanInvolvementSurface,
     resolve_human_involvement,
 )
-from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
 from teleclaude.core.next_machine.documentation_evidence import (
     DocumentationEvidenceRefused,
-    require_reviewed_pending_documentation,
-    snapshot_pending_carrier_blobs,
-    source_commit_refs,
 )
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
     KindMigrationResult,
     migrate_todo_kind,
 )
-from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
-from teleclaude.core.next_machine.provenance import sync_artifact_provenance
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
+from teleclaude.core.next_machine.todo_creation import NewTodo, announce_todo_created, write_new_todo
 from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db._errors import HolderReconciliationRefused, HolderTransitionRefused
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.core.workflow_store.store import get_workflow_store
-from teleclaude.core.workflow_store.types import DocumentationAdmission, ReviewedDocumentationSource
-from teleclaude.events.envelope import EventLevel
-from teleclaude.events.envelope_facts import home_for_project_path
-from teleclaude.events.producer import publish_event
-from teleclaude.events.references import TodoRef
-from teleclaude.events.schemas.sdlc import TodoCreated, TodoCreatedData
-from teleclaude.events.wire import LegacyFacts
 from teleclaude.slug import validate_slug
-from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.creation_record import EntryPoint
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
 from teleclaude.types.todo_kind import TodoKind
@@ -103,15 +84,6 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]+$")
-_DRIFT_TRACKED_ARTIFACT_NAMES = {
-    ARTIFACT_INPUT,
-    ARTIFACT_PRD,
-    ARTIFACT_REQUIREMENTS,
-    ARTIFACT_ARCHITECTURE,
-    ARTIFACT_DIAGNOSIS,
-    ARTIFACT_IMPLEMENTATION_PLAN,
-    ARTIFACT_TASK_PLAN,
-}
 _CLAIMED_HOLD_WARNING = (
     "Hold affects future dispatch only; claimed session {session_id} keeps running. "
     "Contact it with `telec sessions send {session_id} <message>`."
@@ -480,81 +452,6 @@ def _validate_slug_for_create(slug: str, *, field_name: str) -> None:
         raise HTTPException(status_code=400, detail=f"invalid {field_name} '{slug}': {exc}") from exc
 
 
-async def _require_creation_documentation_evidence(
-    todos_db: WorkflowStore,
-    slug: str,
-    parent_slug: str | None,
-    *,
-    icebox: bool,
-) -> DocumentationAdmission | None:
-    """Require current evidence before active admission, including first-child inputs."""
-    parent_record = await todos_db.read_todo_diagnostic_record(parent_slug) if parent_slug else None
-    parent_id = parent_record["id"] if parent_record is not None else None
-    parent_status = TodoStatus(parent_record["status"]) if parent_record is not None else None
-    has_incoming_parent = parent_record is not None and parent_record["status"] in {
-        TodoStatus.ACTIVE.value,
-        TodoStatus.ICEBOX.value,
-    }
-    if icebox:
-        carrier_path_blobs = (
-            snapshot_pending_carrier_blobs(todos_db.project_root, parent_slug)
-            if has_incoming_parent and parent_slug is not None
-            else ()
-        )
-        source_refs = (
-            source_commit_refs(todos_db.project_root, parent_slug)
-            if has_incoming_parent and parent_slug is not None
-            else ()
-        )
-        sources: tuple[ReviewedDocumentationSource, ...] = ()
-        if has_incoming_parent and parent_slug is not None:
-            try:
-                parked_snapshot = await require_reviewed_pending_documentation(
-                    todos_db.project_root,
-                    todos_db,
-                    (parent_slug,),
-                )
-                sources = parked_snapshot.sources
-            except DocumentationEvidenceRefused:
-                sources = ()
-        return DocumentationAdmission(
-            parent_slug=parent_slug,
-            parent_id=parent_id,
-            parent_status=parent_status,
-            sources=sources,
-            carrier_path_blobs=carrier_path_blobs,
-            source_commit_by_path=source_refs,
-            evidence_snapshot=None,
-        )
-    evidence_slugs = [slug]
-    if has_incoming_parent and parent_slug is not None:
-        evidence_slugs.append(parent_slug)
-    evidence_snapshot = await require_reviewed_pending_documentation(
-        todos_db.project_root,
-        todos_db,
-        tuple(evidence_slugs),
-    )
-    sources = evidence_snapshot.sources
-    parent_sources = (
-        tuple(source for source in sources if source.owner_slug == parent_slug)
-        if has_incoming_parent and parent_slug is not None
-        else ()
-    )
-    return DocumentationAdmission(
-        parent_slug=parent_slug,
-        parent_id=parent_id,
-        parent_status=parent_status,
-        sources=parent_sources,
-        carrier_path_blobs=tuple(
-            (path, blob)
-            for owner, path, blob in evidence_snapshot.carrier_blobs
-            if has_incoming_parent and owner == parent_slug
-        ),
-        source_commit_by_path=tuple((source.carrier_path, source.source_sha) for source in parent_sources),
-        evidence_snapshot=evidence_snapshot,
-    )
-
-
 async def _todo_build_started(todos_db: WorkflowStore, slug: str) -> bool:
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
@@ -583,39 +480,6 @@ async def _get_workflow_store_from_cwd(cwd: str) -> WorkflowStore:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return await get_workflow_store(project_root)
-
-
-async def _sync_artifact_provenance_state(
-    todos_db: WorkflowStore,
-    slug: str,
-    artifact_name: str,
-    *,
-    repo_root: str,
-    artifact_body: str,
-    prepared_session_id: str | None,
-) -> None:
-    raw_state = await todos_db.read_state(slug)
-    if raw_state is None:
-        return
-    writer = StateWriter(raw_state)
-    await sync_artifact_provenance(
-        todos_db,
-        writer,
-        slug,
-        artifact_name,
-        repo_root=repo_root,
-        artifact_body=artifact_body,
-        snippet_digest_fn=snippet_body_digest_for(repo_root),
-    )
-    if artifact_name == ARTIFACT_TASK_PLAN:
-        artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
-        writer.state.lifecycle_phase = adopt_prepare_handoff_phase(
-            writer.state,
-            report_digests={},
-            artifact_write_timestamps=artifact_write_timestamps,
-            prepared_session_id=prepared_session_id,
-        )
-    await writer.commit(todos_db, slug)
 
 
 @router.post("/dump")
@@ -721,40 +585,24 @@ async def todo_content_create(
         else:
             written_artifact_name = ARTIFACT_INPUT
             written_artifact_body = f"# {slug} — Input\n\n{request.content}\n"
-        documentation_admission = await _require_creation_documentation_evidence(
-            todos_db,
-            slug,
-            request.group,
-            icebox=request.icebox,
-        )
-        created_identity = await todos_db.create_item_with_initial_artifact(
-            slug,
-            state,
-            lineage=lineage.encode(),
-            after=request.after if request.after else None,
-            description=None,
-            schedule=normalized_schedule,
-            group_slug=request.group,
-            status=TodoStatus.ICEBOX if request.icebox else TodoStatus.ACTIVE,
-            entry_point=entry_point.value if entry_point is not None else None,
+        new_todo = NewTodo(
+            slug=slug,
+            kind=request.kind,
+            state=state,
+            lineage=lineage,
+            entry_point=entry_point,
             human_involved=human_involved,
-            context=creation_context,
             cwd=effective_cwd,
             artifact_name=written_artifact_name,
             artifact_body=written_artifact_body,
-            updated_by=identity.session_id,
-            documentation_admission=documentation_admission,
+            session_id=identity.session_id,
+            after=request.after if request.after else None,
+            schedule=normalized_schedule,
+            group=request.group,
+            icebox=request.icebox,
+            context=creation_context,
         )
-
-        if written_artifact_name in _DRIFT_TRACKED_ARTIFACT_NAMES:
-            await _sync_artifact_provenance_state(
-                todos_db,
-                created_identity,
-                written_artifact_name,
-                repo_root=effective_cwd,
-                artifact_body=written_artifact_body,
-                prepared_session_id=identity.session_id,
-            )
+        created_identity = await write_new_todo(todos_db, new_todo)
 
         if request.plan and request.kind == TodoKind.CHANGE:
             # Seed the supplied plan as a plan-drafting basis (see
@@ -772,26 +620,11 @@ async def todo_content_create(
             todos_db.notify_committed("todo_updated")
 
         lifecycle_phase = state.get("lifecycle_phase")
-        event_lifecycle_phase = lifecycle_phase if isinstance(lifecycle_phase, str) else None
-        await publish_event(
-            TodoCreated(
-                subject=TodoRef(created_identity),
-                home=home_for_project_path(effective_cwd),
-                data=TodoCreatedData(
-                    slug=created_identity,
-                    kind=map_v1_kind_to_canonical(request.kind),
-                    creation_mode="pickup" if pickup_requested else "silent",
-                    pickup_requested=pickup_requested,
-                    lifecycle_phase=event_lifecycle_phase,
-                    created_at=datetime.now(UTC).isoformat(),
-                    project_path=effective_cwd,
-                    lineage=lineage.encode(),
-                    entry_point=entry_point.value if entry_point is not None else None,
-                    human_involved=human_involved,
-                    context=creation_context,
-                ),
-            ),
-            LegacyFacts(producer="api.todo.create", level=EventLevel.WORKFLOW, domain="sdlc"),
+        await announce_todo_created(
+            new_todo,
+            identity=created_identity,
+            lifecycle_phase=lifecycle_phase if isinstance(lifecycle_phase, str) else None,
+            pickup_requested=pickup_requested,
         )
 
         logger.info(

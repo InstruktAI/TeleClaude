@@ -18,8 +18,10 @@ from teleclaude.cli.telec.surface import TODO_COMMAND, TODO_CREATE, TODO_DELIVER
 from teleclaude.constants import (
     ARTIFACT_INPUT,
     ARTIFACT_NAMES,
+    ARTIFACT_NAMES_PLATFORM_WRITTEN,
     ARTIFACT_NAMES_RETIRED,
     ARTIFACT_NAMES_WRITABLE,
+    ARTIFACT_PLATFORM_WRITTEN_REFUSAL,
     SLUG_NOT_FOUND_DETAIL,
     SLUG_NOT_IN_ICEBOX_DETAIL,
 )
@@ -662,6 +664,8 @@ def _validate_artifact_name_write(name: str) -> None:
     if name not in ARTIFACT_NAMES_WRITABLE:
         if name in ARTIFACT_NAMES_RETIRED:
             print(f"Artifact kind '{name}' is retired (read-only).", file=sys.stderr)
+        elif name in ARTIFACT_NAMES_PLATFORM_WRITTEN:
+            print(ARTIFACT_PLATFORM_WRITTEN_REFUSAL.format(name=name), file=sys.stderr)
         else:
             print(f"Unknown artifact kind: {name}", file=sys.stderr)
         print(f"Writable kinds: {', '.join(sorted(ARTIFACT_NAMES_WRITABLE))}", file=sys.stderr)
@@ -823,6 +827,9 @@ def _handle_artifacts_remove(args: list[str]) -> None:
         raise SystemExit(1)
 
     _validate_artifact_name(name_val)
+    if name_val in ARTIFACT_NAMES_PLATFORM_WRITTEN:
+        print(ARTIFACT_PLATFORM_WRITTEN_REFUSAL.format(name=name_val), file=sys.stderr)
+        raise SystemExit(1)
     if name_val == ARTIFACT_INPUT:
         print("input artifact cannot be removed")
         raise SystemExit(1)

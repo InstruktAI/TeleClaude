@@ -17,12 +17,13 @@ SYSTEM_ROOT_PREFIX = "system:"
 
 
 class EntryPoint(StrEnum):
-    """The creation door — stamped by the door itself, never declared by the caller."""
+    """The creation door — stamped by the door itself, never declared by the caller. ``platform`` is the platform's own filing."""
 
     TUI = "tui"
     CLI = "cli"
     AGENT = "agent"
     SPLIT = "split"
+    PLATFORM = "platform"
 
 
 class Lineage(NamedTuple):
