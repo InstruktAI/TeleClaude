@@ -11,9 +11,8 @@ __all__ = ["DRAIN_HELD_ENV", "DRAIN_HELD_VALUE", "ON_DEMAND_TRIGGER_ENV", "Maint
 ON_DEMAND_TRIGGER_ENV = "TELECLAUDE_MAINTENANCE_TRIGGER"
 
 # Every command a drain or an on-demand run starts carries this marker: the run already holds the
-# checkout's maintenance serialization, so a command that would otherwise take it (the installer's
-# release posture step, bin/install.sh) must not take it again from its own process. The name and the
-# value live here once.
+# checkout's maintenance serialization. bin/install.sh reads it, and its tmux-server step defers
+# changed definitions while it is set. The name and the value live here once.
 DRAIN_HELD_ENV = "TELECLAUDE_MAINTENANCE_DRAIN_HELD"
 DRAIN_HELD_VALUE = "1"
 
