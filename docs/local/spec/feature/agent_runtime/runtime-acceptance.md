@@ -52,9 +52,7 @@ The full profile obtains its runtime the way a machine first installs the
 platform: the install act's initial provisioning
 (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`)
 installs the checked revision from the checked source, and the machine
-convergence then runs from that release. The profile's lifecycle commands act
-on that installation, and its CLI requests reach that installation's daemon.
-The checked checkout itself is never the installed platform.
+convergence then runs from that release.
 <!-- /planned:main-full-acceptance-fails -->
 
 The fast profile covers cold CLI startup, version/help entry paths, the
