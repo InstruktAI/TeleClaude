@@ -151,6 +151,33 @@ implementation remain the current appliance contract.
   (`config`); a desk session's lifecycle or its escalation relay
   (`agent_runtime`).
 
+<!-- planned:discord-inbound-dropped-before-provisioning -->
+
+- **Owns (Discord message continuity):** the inbound behavior of
+  `local/projects/teleclaude/spec/feature/integration/discord-message-continuity`.
+  - **Startup classification.** A guild post is classified as managed or
+    unmanaged only after the run's routing attempt has completed.
+  - **Recovery after each new gateway session.** The adapter recovers, from
+    Discord's history, every thread and Team channel bound to a still-active
+    session. This runs after the first connection and after every later
+    connection that does not resume the previous gateway session.
+  - **The per-place recovery cursor.** The cursor is the newest Discord
+    message in that place whose handling has reached accepted input. It never
+    passes a message whose handling has not. It is durable operational state,
+    kept with the adapter's reflection state in the main runtime database.
+    Recovery reads only messages after the cursor, and a place without a cursor
+    has nothing to recover until its first message is accepted.
+  - **Ordering.** Recovered messages enter the live inbound path in posting
+    order before that place's live input is classified.
+  - **Recovered-input facts.** The normalized input carries the message's
+    original posting time and a recovered mark.
+- **Does not own (Discord message continuity):** duplicate suppression at
+  acceptance (`local/projects/teleclaude/spec/inbound-queue`), and how a
+  recovered input is presented to the agent
+  (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`).
+
+<!-- /planned:discord-inbound-dropped-before-provisioning -->
+
 - **Owns (CI run outcomes):** translating a project's relayed GitHub
   workflow-run completions into run outcomes and main-revision green
   announcements

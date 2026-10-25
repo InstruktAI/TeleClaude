@@ -150,6 +150,16 @@ occupied, and the composer's content and any screen shown in its place are
 left untouched. A startup message held past the same window fails its
 submission.
 
+<!-- planned:discord-inbound-dropped-before-provisioning -->
+
+Some conversation text is recovered by its channel after TeleClaude was
+offline, and carries the time it was originally posted. It reaches the agent
+preceded by a platform notification that it was posted at that time while
+TeleClaude was offline. The conversation text itself keeps conversation
+authority and is otherwise delivered unchanged.
+
+<!-- /planned:discord-inbound-dropped-before-provisioning -->
+
 When conversation text is submitted to an agent's empty composer and its first
 character after any leading whitespace and leading invisible format characters
 is one that runtime's composer treats as interface control, the runtime's

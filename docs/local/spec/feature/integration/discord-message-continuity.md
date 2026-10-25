@@ -41,8 +41,8 @@ The live path's checks apply unchanged to recovered messages: who may post,
 which session the place belongs to, and how voice and file attachments are
 handled. A recovered message keeps its original posting time and is identified
 as recovered, so the session can tell it was posted while TeleClaude was away.
-How that is shown to the agent belongs to the conversation-delivery contract
-(`local/projects/teleclaude/design/architecture/conversation-delivery`).
+How that is shown to the agent belongs to
+`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`.
 
 Messages in channels the daemon does not manage keep their current handling.
 
@@ -81,3 +81,5 @@ Scenario Outline: A message posted while the daemon restarts
   session. A message posted there while the daemon is away is not delivered.
 - Recovery reads Discord's copy. A message deleted from Discord before the
   daemon is back is not recovered.
+- Recovery in a place starts from the first message the daemon accepted there.
+  A place where no message has been accepted yet has nothing to recover.
