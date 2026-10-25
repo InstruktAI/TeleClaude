@@ -68,17 +68,24 @@ starts the daemon on it, under the guarantees of
   contract supports.
 - **Idempotent.** Installing the revision that is already active changes
   nothing.
-- **Migrated state.** An install migrated state when any store or document
-  the platform's migrations touch records a different schema, version marker
-  or migration ledger after the install than before it, whichever migration
-  owner changed it, and when that cannot be read. Every outcome below turns on
-  that observation, never on which migrations a release declares.
-- **Failure.** An install completes only once the daemon serves the new
-  release and its documentation and schemas are published. An install that
-  fails without having migrated state leaves the previously active release
-  active and serving, and reports why. One that fails after migrating state
-  reports the failure and which state moved, is never reported as complete,
-  and is repaired forward.
+- **Migrating install.** An install runs migrations when the change from the
+  active release to the target touches any migration of a store the platform
+  keeps, as each store owner declares where its migrations live in the
+  release — schema and data migrations alike, whether they run from a ledger or
+  when the store is opened. Whether an install is a migrating one is known
+  before the daemon stops. A migrating install is never undone by rollback.
+- **Failure.** An install completes once the daemon is verified serving the new
+  release. An install that fails before any migration changed state — every
+  failure of an install that runs no migrations, and a failure of a migrating
+  install before its first migration applied — leaves the previously active
+  release active and serving, and reports why. One that fails after a migration
+  applied reports the failure and which stores it reached, is never reported as
+  complete, and is repaired forward.
+- **Publication follows the install.** Publishing the installed release's
+  documentation and schemas
+  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`)
+  follows a completed install. A publication failure is reported and replayed;
+  it never changes which release is active.
 - **Every route is this act.** The bootstrap, channel convergence and an
   explicit `telec app install` all reach the live platform through it. What a
   commit on a project's main owes is
@@ -88,8 +95,8 @@ starts the daemon on it, under the guarantees of
 ### Rollback
 
 Rollback makes the previous release active again and restarts the daemon on
-it, only when the most recent install migrated no state. When that install
-migrated state, or no previous release is installed, rollback refuses, names the
+it, only when the most recent install ran no migrations. When that install
+ran migrations, or no previous release is installed, rollback refuses, names the
 condition, and changes nothing. No state is backed up or restored.
 
 ### First install
@@ -143,29 +150,29 @@ Scenario: Installing an older revision
   Then the install is refused
   And the platform keeps running the active release
 
-Scenario: An install that fails without migrating state
-  Given an install of a newer revision fails without having migrated state
+Scenario: An install that fails before any migration applied
+  Given an install of a newer revision fails before any migration changed state
   When the operator looks at the installation's status
   Then the previously active release is still active and serving
   And the failure and its reason are reported
 
-Scenario: An install that fails after migrating state
-  Given an install of a newer revision fails after it migrated state
+Scenario: An install that fails after a migration applied
+  Given an install of a newer revision fails after one of its migrations applied
   When the operator looks at the installation's status
   Then the install is reported as failed, not complete
-  And the report names which state moved
+  And the report names which stores its migrations reached
 ```
 
 #### UC-IR3: An agent returns the platform to the previous release
 
 ```gherkin
-Scenario: The most recent install migrated nothing
-  Given the most recent install migrated no state
+Scenario: The most recent install ran no migrations
+  Given the most recent install ran no migrations
   When an agent acting for the operator rolls the installation back
   Then the platform runs the previously active release again
 
-Scenario: The most recent install migrated state
-  Given the most recent install migrated state
+Scenario: The most recent install ran migrations
+  Given the most recent install ran migrations
   When an agent acting for the operator rolls the installation back
   Then the rollback is refused with that reason
   And the platform keeps running the active release
@@ -195,5 +202,9 @@ And the project keeps every todo, worktree and claim where it was
 
 - Installation machinery for projects other than the platform is outside this
   contract; a side project keeps its own checkout and deploy.
-- Rollback returns one step only. After an install that migrated state the way
+- Rollback returns one step only. After an install that ran migrations the way
   back is a forward repair.
+- Whether an install runs migrations is read from where the store owners
+  declare their migrations. A change to a declared migration counts even when
+  it finds nothing to migrate, and a migration placed outside its owner's
+  declared paths is not seen.
