@@ -27,7 +27,7 @@ from typing import Final
 import aiosqlite
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config.jobs import EffectiveJob, load_effective_jobs
+from teleclaude.config.jobs import DeclaredJob, load_declared_jobs
 from teleclaude.context_selector import entry_declaration_state
 from teleclaude.core.project_state import resolve_owning_checkout
 from teleclaude.core.roles import Role, RoleName, resolve_role
@@ -327,7 +327,7 @@ class _Declarations:
 
     def __init__(self) -> None:
         self._runtime_checkout = _owning_checkout(REPO_ROOT)
-        self._jobs: dict[Path, tuple[EffectiveJob, ...]] = {}
+        self._jobs: dict[Path, tuple[DeclaredJob, ...]] = {}
         self._roles: dict[tuple[Path, str], DeclaredRole | None] = {}
 
     def _existing_checkout(self, project_path: str | None) -> Path | None:
@@ -340,13 +340,14 @@ class _Declarations:
         owner = _owning_checkout(recorded)
         return owner if owner.is_dir() else None
 
-    def jobs(self, project_path: str | None) -> tuple[EffectiveJob, ...]:
+    def jobs(self, project_path: str | None) -> tuple[DeclaredJob, ...]:
+        """Every job the row's project declares, disabled ones included: a name is configured when declared."""
         checkout = self._existing_checkout(project_path)
         if checkout is None:
             return ()
         if checkout not in self._jobs:
             try:
-                self._jobs[checkout] = load_effective_jobs(checkout)
+                self._jobs[checkout] = load_declared_jobs(checkout)
             except (OSError, ValueError) as exc:
                 raise MigrationNotReady(UnreadableSource.JOB_CONFIGURATION, checkout, exc) from exc
         return self._jobs[checkout]
@@ -384,14 +385,14 @@ def _with_status(evidence: DeclarationEvidence | None, status: DeclarationStatus
     return replace(evidence, status=status) if evidence is not None else None
 
 
-def _job_procedure(job_name: str, jobs: tuple[EffectiveJob, ...]) -> str | None:
+def _job_procedure(job_name: str, jobs: tuple[DeclaredJob, ...]) -> str | None:
     for job in jobs:
         if job.identity == job_name and job.declaration.job:
             return job.declaration.job.strip()
     return None
 
 
-def _jobs_naming(procedure_id: str, jobs: tuple[EffectiveJob, ...]) -> list[str]:
+def _jobs_naming(procedure_id: str, jobs: tuple[DeclaredJob, ...]) -> list[str]:
     return [job.identity for job in jobs if job.declaration.job and job.declaration.job.strip() == procedure_id]
 
 

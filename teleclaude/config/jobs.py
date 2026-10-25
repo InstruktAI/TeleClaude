@@ -40,12 +40,17 @@ class JobOrigin:
 
 
 @dataclass(frozen=True)
-class EffectiveJob:
-    """One enabled, complete job ready for a project's runner pass."""
+class DeclaredJob:
+    """One job entry a project carries, resolved against its published declaration, enabled or not."""
 
     identity: str
     declaration: JobScheduleConfig
     origin: JobOrigin
+
+
+@dataclass(frozen=True)
+class EffectiveJob(DeclaredJob):
+    """One enabled, complete job ready for a project's runner pass."""
 
 
 @dataclass(frozen=True)
@@ -90,14 +95,23 @@ class SubscriptionPlan:
 
 
 def load_effective_jobs(project_root: Path) -> tuple[EffectiveJob, ...]:
-    """Return the validated local and subscribed declarations for one project."""
+    """Return the enabled, validated local and subscribed jobs for one project."""
+    return tuple(
+        EffectiveJob(identity=job.identity, declaration=job.declaration, origin=job.origin)
+        for job in load_declared_jobs(project_root)
+        if job.declaration.enabled
+    )
+
+
+def load_declared_jobs(project_root: Path) -> tuple[DeclaredJob, ...]:
+    """Return every local and subscribed job entry of one project, resolved and validated, enabled or not."""
     target_root = project_root.expanduser().resolve()
     published_root = GLOBAL_CONFIG_PATH.parent
     published = load_global_config().jobs
     declared_project = load_declared_project_config(target_root)
     local = declared_project.jobs if declared_project is not None else []
     published_by_name = _index_by_name(published)
-    effective: list[EffectiveJob] = []
+    declared: list[DeclaredJob] = []
     for declaration in local:
         inherited = published_by_name.get(declaration.name)
         if inherited is not None:
@@ -111,17 +125,15 @@ def load_effective_jobs(project_root: Path) -> tuple[EffectiveJob, ...]:
                 raise ValueError(_LOCAL_JOB_POINTER_ERROR.format(name=declaration.name))
             resolved = declaration
         _validate_complete(resolved, target_root)
-        if not resolved.enabled:
-            continue
         origin_root = published_root if inherited else target_root
-        effective.append(
-            EffectiveJob(
+        declared.append(
+            DeclaredJob(
                 identity=resolved.name,
                 declaration=resolved,
                 origin=JobOrigin(root=origin_root, published=inherited is not None),
             )
         )
-    return tuple(effective)
+    return tuple(declared)
 
 
 def load_visible_jobs(project_root: Path) -> tuple[VisibleJob, ...]:
