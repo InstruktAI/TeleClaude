@@ -19,6 +19,7 @@ from .surface_types import (
     CommandDef,
     Flag,
     FlagConditionedAuth,
+    HookEntryVerb,
     JobsSubcommand,
     TelecCommand,
     strip_hidden_flag_tokens,
@@ -109,6 +110,30 @@ _RECEIPT_OUTCOME_DELIVERY = (
 _RECEIPT_RETURN_NOTE = f"Returns an operation receipt {_RECEIPT_OUTCOME_DELIVERY}"
 _RECEIPT_RETURN_SLUG_FORM_NOTE = f"The --slug form returns an operation receipt {_RECEIPT_OUTCOME_DELIVERY}"
 TODO_COMMAND = "todo"
+
+
+_HOOK_ENTRY_DESCRIPTIONS: dict[HookEntryVerb, str] = {
+    HookEntryVerb.PRE_COMMIT: "Run the thin pre-commit backstop",
+    HookEntryVerb.POST_COMMIT: "Run deterministic post-commit maintenance",
+    HookEntryVerb.POST_MERGE: "Run deterministic post-merge automation",
+}
+
+
+def _hook_entry_commands() -> dict[str, CommandDef]:
+    """Declare the git-hook entry verbs shared by ``telec code`` and ``telec repo``.
+
+    Returns fresh nodes per call: surface post-processing may mutate a node per path.
+    """
+    return {
+        verb: CommandDef(
+            desc=desc,
+            flags=[F.FLAG_HELP],
+            hidden=True,
+            auth=CommandAuth(human=frozenset(), caller_independent=True),
+        )
+        for verb, desc in _HOOK_ENTRY_DESCRIPTIONS.items()
+    }
+
 
 CLI_SURFACE: dict[str, CommandDef] = {
     "sessions": CommandDef(
@@ -1947,24 +1972,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(capability=Capability.STAMP, human=_HR_MEMBER),
             ),
-            "pre-commit": CommandDef(
-                desc="Run the thin pre-commit backstop",
-                flags=[F.FLAG_HELP],
-                hidden=True,
-                auth=CommandAuth(human=frozenset(), caller_independent=True),
-            ),
-            "post-commit": CommandDef(
-                desc="Run deterministic post-commit maintenance",
-                flags=[F.FLAG_HELP],
-                hidden=True,
-                auth=CommandAuth(human=frozenset(), caller_independent=True),
-            ),
-            "post-merge": CommandDef(
-                desc="Run deterministic post-merge automation",
-                flags=[F.FLAG_HELP],
-                hidden=True,
-                auth=CommandAuth(human=frozenset(), caller_independent=True),
-            ),
+            **_hook_entry_commands(),
             "maintenance": CommandDef(
                 desc="Inspect and recover canonical-main maintenance",
                 flags=[F.FLAG_HELP],
@@ -1994,6 +2002,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 },
             ),
         },
+    ),
+    "repo": CommandDef(
+        desc="Repository hook entry points",
+        flags=[F.FLAG_HELP],
+        hidden=True,
+        subcommands=_hook_entry_commands(),
     ),
     "sync": CommandDef(
         desc="Run this root's maintenance on demand: the fallback for commit-boundary maintenance",

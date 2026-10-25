@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 
+from teleclaude.cli.telec.surface_types import TelecCommand
 from teleclaude.core.integration.activation_registration import resolve_post_commit_activation_range
 from teleclaude.core.integration.post_commit_maintenance import (
     OwedSetRecorded,
@@ -13,13 +14,16 @@ from teleclaude.core.integration.post_commit_maintenance import (
 )
 from teleclaude.project_root import resolve_invocation_roots
 
-_POST_COMMIT_USAGE = "Usage: telec code post-commit"
+_POST_COMMIT_USAGE = "Usage: telec {family} post-commit"
 
 
-def handle_code_post_commit(args: list[str]) -> None:
-    """Execute the just-recorded canonical-root commit range."""
+def handle_code_post_commit(args: list[str], family: TelecCommand) -> None:
+    """Execute the just-recorded canonical-root commit range.
+
+    ``family`` is the command family the caller invoked; it names the usage line.
+    """
     if args:
-        print(_POST_COMMIT_USAGE, file=sys.stderr)
+        print(_POST_COMMIT_USAGE.format(family=family.value), file=sys.stderr)
         raise SystemExit(2)
     roots = resolve_invocation_roots()
     checkout_root = roots.repository_root
