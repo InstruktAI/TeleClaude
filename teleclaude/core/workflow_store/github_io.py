@@ -6,50 +6,43 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from concurrent.futures import Future
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from enum import StrEnum
 from time import monotonic
 from typing import Any, TypedDict, TypeVar, cast
-from urllib.parse import quote
 
-from githubkit.auth.token import TokenAuthStrategy
-from githubkit.cache.mem_cache import MemCacheStrategy
-from githubkit.exception import GitHubException, RateLimitExceeded, RequestFailed
+from githubkit.exception import GitHubException, RequestFailed
 from githubkit.utils import UNSET
 from githubkit_schemas.v2026_03_10.types import AppPermissionsType
 from httpx import HTTPError
-from pydantic import SecretStr
 
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
 from teleclaude.core.workflow_store.github_io_models import GitHubComment, GitHubIssue, GitHubRepositoryScope
 from teleclaude.core.workflow_store.github_io_runtime import GitHubMutationPacing, shared_github_io_loop
+from teleclaude.core.workflow_store.github_io_transport import (
+    GitHubIOFailure,
+    GitHubIORefused,
+    GitHubTransport,
+    int_argument,
+    split_repository,
+)
 from teleclaude.core.workflow_store.github_reflection import ISSUE_FIELD_PARTS, IssueReflection, ProjectionPart
-from teleclaude.github.client import create_github_client
-from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
 from teleclaude.types.github_account import GitHubAccountKind, github_app_bot_login
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 _EMPTY = ""
 _PAGE_SIZE = 100
-_TOKEN_REFRESH_MARGIN = timedelta(minutes=2)
 _WRITE_PERMISSIONS: AppPermissionsType = {"issues": "write"}
 _ISSUE_COLOR = "ededed"
 _LABEL_COLOR_PREFIX = "#"
-_REPOSITORY_SEPARATOR = "/"
 _Result = TypeVar("_Result")
 _PACED_WRITE_INTERVAL_S = 1.0
-_GITHUB_MESSAGE_LIMIT = 256
-_HTTP_REFUSAL_DETAIL = "{} returned HTTP {}"
-_HTTP_REFUSAL_WITH_MESSAGE = "{}: {}"
-_REFUSAL_WITH_DETAIL = "{}: {}"
 
 
 _GraphActor = TypedDict("_GraphActor", {"login": str, "__typename": str}, total=False)
 
 __all__ = [
     "GitHubComment",
-    "GitHubIOFailure",
-    "GitHubIORefused",
     "GitHubIssue",
     "GitHubMutationPacing",
     "GitHubOperation",
@@ -115,16 +108,6 @@ _COMMENT_EDIT_QUERY = """query($id:ID!, $before:String) { node(id:$id) { ... on 
     pageInfo { hasPreviousPage startCursor } } } } }"""
 _COMMENT_QUERY = """query($id:ID!) { node(id:$id) { ... on IssueComment { id databaseId body
   author { __typename login } editor { __typename login } lastEditedAt } } }"""
-
-
-class GitHubIOFailure(StrEnum):
-    """Provider failures exposed without response bodies or credential data."""
-
-    CREDENTIAL_REFUSED = "credential_refused"
-    UNAVAILABLE = "unavailable"
-    RATE_LIMITED = "rate_limited"
-    NOT_FOUND = "not_found"
-    VALIDATION_REFUSED = "validation_refused"
 
 
 class GitHubOperation(StrEnum):
@@ -198,15 +181,6 @@ class GitHubField(StrEnum):
 _IssueUpdate = dict[GitHubField, str | list[str] | None]
 
 
-class GitHubIORefused(RuntimeError):
-    """A bounded reason why one store operation could not reach GitHub."""
-
-    def __init__(self, reason: GitHubIOFailure, *, detail: str | None = None) -> None:
-        message = reason.value if detail is None else _REFUSAL_WITH_DETAIL.format(reason.value, detail)
-        super().__init__(message)
-        self.reason = reason
-
-
 class GitHubWorkflowIO:
     """Provide serialized issue, label, comment and edit-history operations for one repository."""
 
@@ -214,8 +188,7 @@ class GitHubWorkflowIO:
         self.repository = repository
         self.assignment = assignment
         self.scope = GitHubRepositoryScope(repository.repository_id, repository.repository)
-        self._credential: SecretStr | None = None
-        self._expires_at: datetime | None = None
+        self._transport = GitHubTransport(self.scope)
         self._pacing_window: GitHubMutationPacing | None = None
 
     @asynccontextmanager
@@ -408,39 +381,11 @@ class GitHubWorkflowIO:
     async def _dispatch(self, operation: GitHubOperation, *arguments: object) -> Any:
         return await _OPERATION_HANDLERS[operation](self, arguments)
 
-    async def _credential_token(self) -> SecretStr:
-        if self._credential is not None and self._expires_at is not None:
-            if self._expires_at > datetime.now(UTC) + _TOKEN_REFRESH_MARGIN:
-                return self._credential
-        try:
-            credential = await issue_github_installation_credential(self.assignment, self.scope, _WRITE_PERMISSIONS)
-        except GitHubCredentialRefused:
-            raise GitHubIORefused(GitHubIOFailure.CREDENTIAL_REFUSED) from None
-        self._credential = credential.token
-        self._expires_at = credential.expires_at
-        return credential.token
-
     async def _with_client(self, operation: GitHubOperation, request: Callable[[Any], Awaitable[_Result]]) -> _Result:
-        try:
-            token = await self._credential_token()
-            async with create_github_client(TokenAuthStrategy(token.get_secret_value()), MemCacheStrategy()) as client:
-                return await request(client)
-        except GitHubIORefused:
-            raise
-        except RateLimitExceeded:
-            raise GitHubIORefused(GitHubIOFailure.RATE_LIMITED) from None
-        except RequestFailed as error:
-            detail = _request_refusal_detail(operation, error)
-            if error.response.status_code == 404:
-                raise GitHubIORefused(GitHubIOFailure.NOT_FOUND, detail=detail) from None
-            if error.response.status_code in (400, 401, 403, 422):
-                raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED, detail=detail) from None
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=detail) from None
-        except (GitHubException, HTTPError, TimeoutError, OSError, ValueError, TypeError, AttributeError):
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE) from None
+        return await self._transport.call(self.assignment, _WRITE_PERMISSIONS, operation, request)
 
     async def _open_issue(self, title: str, body: str) -> GitHubIssue:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> GitHubIssue:
             await self._pace_mutation_start()
@@ -464,7 +409,7 @@ class GitHubWorkflowIO:
         assignees: list[str],
         changed_parts: frozenset[ProjectionPart],
     ) -> None:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> None:
             await self._pace_mutation_start()
@@ -493,7 +438,7 @@ class GitHubWorkflowIO:
         await self._with_client(GitHubOperation.UPDATE_ISSUE, request)
 
     async def _ensure_label(self, name: str, color: str, description: str) -> None:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> None:
             try:
@@ -529,7 +474,7 @@ class GitHubWorkflowIO:
         await self._with_client(GitHubOperation.ENSURE_LABEL, request)
 
     async def _delete_label(self, name: str) -> None:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> None:
             try:
@@ -543,7 +488,7 @@ class GitHubWorkflowIO:
         await self._with_client(GitHubOperation.DELETE_LABEL, request)
 
     async def _list_issues(self, since: datetime | None) -> tuple[GitHubIssue, ...]:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> tuple[GitHubIssue, ...]:
             found: list[GitHubIssue] = []
@@ -571,7 +516,7 @@ class GitHubWorkflowIO:
         return await self._with_client(GitHubOperation.LIST_ISSUES, request)
 
     async def _get_issue(self, number: int) -> GitHubIssue:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> GitHubIssue:
             response = await client.rest.issues.async_get(owner, repo, number)
@@ -581,7 +526,7 @@ class GitHubWorkflowIO:
         return await self._with_client(GitHubOperation.GET_ISSUE, request)
 
     async def _list_repository_labels(self) -> tuple[str, ...]:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> tuple[str, ...]:
             names: list[str] = []
@@ -599,7 +544,7 @@ class GitHubWorkflowIO:
         return await self._with_client(GitHubOperation.LIST_LABELS, request)
 
     async def _list_sub_issues(self, number: int) -> tuple[int, ...]:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> tuple[int, ...]:
             issue_ids: list[int] = []
@@ -617,7 +562,7 @@ class GitHubWorkflowIO:
         return await self._with_client(GitHubOperation.LIST_SUB_ISSUES, request)
 
     async def _get_parent(self, number: int) -> tuple[int, int] | None:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> tuple[int, int]:
             response = await client.rest.issues.async_get_parent(owner, repo, number)
@@ -632,7 +577,7 @@ class GitHubWorkflowIO:
             raise
 
     async def _add_sub_issue(self, number: int, sub_issue_id: int, replace_parent: bool) -> None:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> None:
             await self._pace_mutation_start()
@@ -643,7 +588,7 @@ class GitHubWorkflowIO:
         await self._with_client(GitHubOperation.ADD_SUB_ISSUE, request)
 
     async def _remove_sub_issue(self, number: int, sub_issue_id: int) -> None:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> None:
             await self._pace_mutation_start()
@@ -652,7 +597,7 @@ class GitHubWorkflowIO:
         await self._with_client(GitHubOperation.REMOVE_SUB_ISSUE, request)
 
     async def _list_dependencies_blocked_by(self, number: int) -> tuple[int, ...]:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> tuple[int, ...]:
             issue_ids: list[int] = []
@@ -670,7 +615,7 @@ class GitHubWorkflowIO:
         return await self._with_client(GitHubOperation.LIST_BLOCKED_BY, request)
 
     async def _add_blocked_by_dependency(self, number: int, issue_id: int) -> None:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> None:
             await self._pace_mutation_start()
@@ -679,7 +624,7 @@ class GitHubWorkflowIO:
         await self._with_client(GitHubOperation.ADD_BLOCKED_BY, request)
 
     async def _remove_dependency_blocked_by(self, number: int, issue_id: int) -> None:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> None:
             await self._pace_mutation_start()
@@ -688,7 +633,7 @@ class GitHubWorkflowIO:
         await self._with_client(GitHubOperation.REMOVE_BLOCKED_BY, request)
 
     async def _read_comments(self, number: int) -> tuple[GitHubComment, ...]:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> tuple[GitHubComment, ...]:
             cursor: str | None = None
@@ -724,7 +669,7 @@ class GitHubWorkflowIO:
         return await self._with_client(GitHubOperation.READ_COMMENTS, request)
 
     async def _create_comment(self, number: int, body: str) -> GitHubComment:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> GitHubComment:
             await self._pace_mutation_start()
@@ -735,7 +680,7 @@ class GitHubWorkflowIO:
         return await self._with_client(GitHubOperation.CREATE_COMMENT, request)
 
     async def _update_comment(self, comment_id: int, body: str) -> GitHubComment:
-        owner, repo = _split_repository(self.repository.repository)
+        owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> GitHubComment:
             await self._pace_mutation_start()
@@ -758,19 +703,6 @@ class GitHubWorkflowIO:
         window.count += 1
 
 
-def _request_refusal_detail(operation: GitHubOperation, error: RequestFailed) -> str:
-    detail = _HTTP_REFUSAL_DETAIL.format(operation.value, error.response.status_code)
-    try:
-        payload: object = error.response.json()
-    except ValueError:
-        payload = None
-    if isinstance(payload, dict):
-        message = payload.get(GitHubField.MESSAGE)
-        if isinstance(message, str):
-            return _HTTP_REFUSAL_WITH_MESSAGE.format(detail, message[:_GITHUB_MESSAGE_LIMIT])
-    return detail
-
-
 async def _dispatch_open_issue(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
     return await io._open_issue(str(args[0]), str(args[1]))
 
@@ -788,7 +720,7 @@ async def _dispatch_update_issue(io: GitHubWorkflowIO, args: tuple[object, ...])
     ):
         raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
     await io._update_issue(
-        _int_argument(args[0]),
+        int_argument(args[0]),
         str(args[1]),
         str(args[2]),
         str(args[3]),
@@ -809,29 +741,29 @@ async def _dispatch_delete_label(io: GitHubWorkflowIO, args: tuple[object, ...])
 
 
 async def _dispatch_list_sub_issues(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
-    return await io._list_sub_issues(_int_argument(args[0]))
+    return await io._list_sub_issues(int_argument(args[0]))
 
 
 async def _dispatch_add_sub_issue(io: GitHubWorkflowIO, args: tuple[object, ...]) -> None:
     if not isinstance(args[2], bool):
         raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-    await io._add_sub_issue(_int_argument(args[0]), _int_argument(args[1]), args[2])
+    await io._add_sub_issue(int_argument(args[0]), int_argument(args[1]), args[2])
 
 
 async def _dispatch_remove_sub_issue(io: GitHubWorkflowIO, args: tuple[object, ...]) -> None:
-    await io._remove_sub_issue(_int_argument(args[0]), _int_argument(args[1]))
+    await io._remove_sub_issue(int_argument(args[0]), int_argument(args[1]))
 
 
 async def _dispatch_list_blocked_by(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
-    return await io._list_dependencies_blocked_by(_int_argument(args[0]))
+    return await io._list_dependencies_blocked_by(int_argument(args[0]))
 
 
 async def _dispatch_add_blocked_by(io: GitHubWorkflowIO, args: tuple[object, ...]) -> None:
-    await io._add_blocked_by_dependency(_int_argument(args[0]), _int_argument(args[1]))
+    await io._add_blocked_by_dependency(int_argument(args[0]), int_argument(args[1]))
 
 
 async def _dispatch_remove_blocked_by(io: GitHubWorkflowIO, args: tuple[object, ...]) -> None:
-    await io._remove_dependency_blocked_by(_int_argument(args[0]), _int_argument(args[1]))
+    await io._remove_dependency_blocked_by(int_argument(args[0]), int_argument(args[1]))
 
 
 async def _dispatch_list_issues(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
@@ -844,19 +776,19 @@ async def _dispatch_list_labels(io: GitHubWorkflowIO, _args: tuple[object, ...])
 
 
 async def _dispatch_get_issue(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
-    return await io._get_issue(_int_argument(args[0]))
+    return await io._get_issue(int_argument(args[0]))
 
 
 async def _dispatch_read_comments(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
-    return await io._read_comments(_int_argument(args[0]))
+    return await io._read_comments(int_argument(args[0]))
 
 
 async def _dispatch_create_comment(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
-    return await io._create_comment(_int_argument(args[0]), str(args[1]))
+    return await io._create_comment(int_argument(args[0]), str(args[1]))
 
 
 async def _dispatch_update_comment(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
-    return await io._update_comment(_int_argument(args[0]), str(args[1]))
+    return await io._update_comment(int_argument(args[0]), str(args[1]))
 
 
 _OPERATION_HANDLERS: dict[GitHubOperation, Callable[[GitHubWorkflowIO, tuple[object, ...]], Awaitable[Any]]] = {
@@ -877,19 +809,6 @@ _OPERATION_HANDLERS: dict[GitHubOperation, Callable[[GitHubWorkflowIO, tuple[obj
     GitHubOperation.CREATE_COMMENT: _dispatch_create_comment,
     GitHubOperation.UPDATE_COMMENT: _dispatch_update_comment,
 }
-
-
-def _int_argument(value: object) -> int:
-    if not isinstance(value, int):
-        raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-    return value
-
-
-def _split_repository(value: str) -> tuple[str, str]:
-    owner, separator, repository = value.partition(_REPOSITORY_SEPARATOR)
-    if not separator or not owner or not repository or _REPOSITORY_SEPARATOR in repository:
-        raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-    return quote(owner, safe=_EMPTY), quote(repository, safe=_EMPTY)
 
 
 def _comment_from_graph(node: _GraphIssueComment) -> GitHubComment:

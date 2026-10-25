@@ -131,20 +131,6 @@ def _github_work_item_target(
     )
 
 
-def project_github_work_target(
-    repository_identity: GitHubRepositoryIdentity,
-    work_item_id: WorkItemId,
-    store_address: StoreAddress,
-) -> GitHubWorkTarget:
-    """Project a selected repository and item identity to its native GitHub target.
-
-    The opaque store address is intentionally projected away. Its correspondence
-    with the work item ID is guaranteed by the selected adapter's identity
-    invariant; this pure projection performs no lookup or provider call.
-    """
-    return _github_work_item_target(repository_identity, work_item_id)
-
-
 async def read_github_item_identity(
     repository_identity: GitHubRepositoryIdentity,
     work_item_id: WorkItemId,

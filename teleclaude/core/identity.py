@@ -210,6 +210,8 @@ _PEOPLE_DIR = PEOPLE_DIR
 _TELEGRAM_PLATFORM = "telegram"
 _DISCORD_PLATFORM = "discord"
 _WHATSAPP_PLATFORM = "whatsapp"
+_GITHUB_PLATFORM = "github"
+_GITHUB_LOGIN = "login"
 # Each person's own config file, relative to the people directory.
 _PERSON_CONFIG_PATTERN = f"*/{ConfigFileName.OVERLAY}"
 
@@ -229,6 +231,7 @@ class IdentityResolver:
         self._discord_nick_by_user_id: dict[str, str] = {}
         self._discord_avatar_by_email: dict[str, str] = {}
         self._by_whatsapp_phone: dict[str, PersonEntry] = {}
+        self._by_github_handle: dict[str, list[PersonEntry]] = {}
         self._color_by_email: dict[str, PersonChipColor] = {}
         self._registered_people_count: int = 0
         self._sole_person_email: str | None = None
@@ -336,6 +339,7 @@ class IdentityResolver:
         self._discord_nick_by_user_id.clear()
         self._discord_avatar_by_email.clear()
         self._by_whatsapp_phone.clear()
+        self._by_github_handle.clear()
         self._color_by_email.clear()
         self._registered_people_count = 0
         self._sole_person_email = None
@@ -403,6 +407,10 @@ class IdentityResolver:
                 normalized_phone = self._normalize_phone_number(str(whatsapp_creds.phone_number))
                 if normalized_phone:
                     self._by_whatsapp_phone[normalized_phone] = person
+
+            github_handle = person_conf.github.identity.handle
+            if github_handle:
+                self._by_github_handle.setdefault(github_handle.casefold(), []).append(person)
 
     def person_by_slug(self, slug: str) -> PersonEntry | None:
         """The one registered person holding this slug, or ``None`` when none or more than one does."""
@@ -614,6 +622,22 @@ class IdentityResolver:
                         platform="whatsapp",
                         platform_user_id=normalized_phone,
                     )
+
+        if origin == _GITHUB_PLATFORM:
+            login = origin_metadata.get(_GITHUB_LOGIN)
+            matches = self._by_github_handle.get(login.casefold(), []) if isinstance(login, str) else []
+            if len(matches) == 1:
+                person = matches[0]
+                return IdentityContext(
+                    person_name=person.name,
+                    person_email=person.email,
+                    person_slug=person.slug,
+                    person_role=self._normalize_role(person.role),
+                    display_name_override=self._display_name_override_for(person),
+                    platform=_GITHUB_PLATFORM,
+                    platform_user_id=str(login),
+                    avatar_url=self._avatar_url_for(person),
+                )
 
         return IdentityContext()
 

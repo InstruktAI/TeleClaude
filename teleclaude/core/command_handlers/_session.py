@@ -37,7 +37,6 @@ from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_dispatch import forward_command_to_peer
 from teleclaude.core.conversation_messages import format_identity_conversation
 from teleclaude.core.db import db
-from teleclaude.core.db._github_creation import validate_workflow_creation_address
 from teleclaude.core.inbound.fleet import local_conversation_adapters
 from teleclaude.core.integration.session_address import SessionAddressResolved, resolve_session_conversation_url
 from teleclaude.core.models import (
@@ -286,12 +285,6 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     # Do not inherit origin from parent sessions.
     last_input_origin = origin
     initiator_session_id = cmd.initiator_session_id
-    validate_workflow_creation_address(
-        cmd.workflow_creation,
-        config.computer.name,
-        initiator_session_id,
-        cmd.initiator_computer,
-    )
     parent_session = None
     if initiator_session_id:
         parent_session = await db.get_session(initiator_session_id)
@@ -442,7 +435,6 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         origin_metadata=creation_metadata,
         startup_intent=None if cmd.headless else launch,
         procedure_delivery=cmd.procedure_delivery,
-        workflow_creation=cmd.workflow_creation,
         emit_session_started=False,
     )
 

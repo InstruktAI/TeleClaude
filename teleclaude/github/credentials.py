@@ -39,10 +39,14 @@ _EMPTY = ""
 
 
 class _GitHubRepositoryScope(Protocol):
-    """Repository identity needed to scope an installation credential."""
+    """Repository identity needed to scope an installation credential.
+
+    A scope without a numeric ID names the repository only: its token is requested by repository
+    name and accepted only when GitHub returns exactly that one repository.
+    """
 
     @property
-    def repository_id(self) -> int: ...
+    def repository_id(self) -> int | None: ...
 
     @property
     def repository(self) -> str: ...
@@ -112,7 +116,9 @@ def _verify_issued_scope(
     ):
         raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
     repository = issued.repositories[0]
-    if repository.id != target.repository_id or repository.full_name.casefold() != target.repository.casefold():
+    if (
+        target.repository_id is not None and repository.id != target.repository_id
+    ) or repository.full_name.casefold() != target.repository.casefold():
         raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
     if not isinstance(issued.permissions, AppPermissions):
         raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
@@ -175,11 +181,18 @@ async def issue_github_installation_credential(
                 or installation.suspended_by is not None
             ):
                 raise GitHubCredentialRefused(GitHubCredentialFailure.INSTALLATION_UNAVAILABLE)
-            response = await app_client.rest.apps.async_create_installation_access_token(
-                installation.id,
-                repository_ids=[target.repository_id],
-                permissions=requested,
-            )
+            if target.repository_id is not None:
+                response = await app_client.rest.apps.async_create_installation_access_token(
+                    installation.id,
+                    repository_ids=[target.repository_id],
+                    permissions=requested,
+                )
+            else:
+                response = await app_client.rest.apps.async_create_installation_access_token(
+                    installation.id,
+                    repositories=[repository],
+                    permissions=requested,
+                )
             if response.status_code != 201:
                 raise GitHubCredentialRefused(GitHubCredentialFailure.PROVIDER_UNAVAILABLE)
             issued = response.parsed_data

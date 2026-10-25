@@ -36,7 +36,6 @@ from teleclaude.types.commands import (
 )
 from teleclaude.types.media import MediaRef
 from teleclaude.types.procedure_delivery import ProcedureSessionDeliveryInitialization
-from teleclaude.types.session_creation import reject_workflow_creation_input
 
 # The nested wire blocks a command carries as typed values.
 _ENDPOINT_FIELD = "endpoint"
@@ -77,7 +76,6 @@ _WIRE_ENUM_FIELDS: Mapping[str, type[Enum]] = {
 
 def command_from_dict(data: JsonDict) -> InternalCommand:
     """Rebuild an internal command from its cross-computer wire payload."""
-    reject_workflow_creation_input(data)
     raw_command_type = data.get("command_type")
     if not isinstance(raw_command_type, str):
         raise ValueError("command_type is required")

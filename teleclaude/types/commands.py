@@ -11,7 +11,6 @@ from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptE
 from teleclaude.core.models import EndpointStamp, SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._types import JsonDict, JsonValue
 from teleclaude.docs_subscriptions import EventDeliveryMode, SubscriptionAttendance, SubscriptionIdentity
-from teleclaude.types import session_creation
 from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.media import MediaRef
 from teleclaude.types.procedure_delivery import ProcedureSessionDeliveryInitialization
@@ -205,7 +204,6 @@ class CreateSessionCommand(InternalCommand):
     endpoint: EndpointStamp | None = None
     unattended: bool = False
     procedure_delivery: ProcedureSessionDeliveryInitialization | None = None
-    workflow_creation: session_creation.WorkflowDriverCreation | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -213,14 +211,6 @@ class CreateSessionCommand(InternalCommand):
             self.request_id = str(uuid4())
         if self.procedure_delivery is not None and self.entry_point is not SessionEntryPoint.PROCEDURE_ACTIVATION:
             raise ValueError("procedure delivery initialization requires a procedure activation session")
-
-    def to_dict(self) -> JsonDict:
-        """Only a command without in-process workflow context can become a wire payload."""
-        if self.workflow_creation is not None:
-            session_creation.refuse_workflow_creation_serialization()
-        payload = super().to_dict()
-        payload.pop(session_creation.WORKFLOW_CREATION_FIELD, None)
-        return payload
 
     def to_payload(self) -> dict[str, object]:
         args: list[str] = [self.initial_input] if self.initial_input else []

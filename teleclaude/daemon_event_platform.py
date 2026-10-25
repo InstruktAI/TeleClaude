@@ -57,8 +57,10 @@ from teleclaude.events.references import ComputerRef
 from teleclaude.events.schemas.system import DaemonRestarted, DaemonRestartedData, RuntimeSessionStatusData
 from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, LegacyFacts
 from teleclaude.hooks.dispatcher import HookDispatcher
+from teleclaude.hooks.github_handler import GitHubCommentEvent, handle_github_event
 from teleclaude.hooks.handlers import HandlerRegistry
 from teleclaude.hooks.inbound import install_inbound_routes
+from teleclaude.hooks.normalizers.github import GITHUB_SOURCE
 from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
@@ -83,6 +85,8 @@ if TYPE_CHECKING:
     from teleclaude.core.lifecycle import DaemonLifecycle
     from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
 
+_GITHUB_COMMENT_HANDLER = "github_comment_routing"
+_GITHUB_COMMENT_CONTRACT = "builtin-github-comment-routing"
 logger = get_logger(__name__)
 _EVENT_DB_REQUIRED_FOR_PIPELINE_CONTEXT = "_build_pipeline_context always runs after _init_event_db_storage"
 _RELAY_DELIVERY_PROCESSOR_NAME = "relay-delivery"
@@ -497,6 +501,17 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                 target=Target(handler="whatsapp_inbound"),
                 source_criterion=PropertyCriterion(match="whatsapp"),
                 type_criterion=PropertyCriterion(pattern="message.*"),
+            )
+        )
+
+        # Built-in routing of a configured person's GitHub comments to the session holding the item's claim.
+        handler_registry.register(_GITHUB_COMMENT_HANDLER, handle_github_event)
+        contract_registry.register(
+            Contract(
+                id=_GITHUB_COMMENT_CONTRACT,
+                target=Target(handler=_GITHUB_COMMENT_HANDLER),
+                source_criterion=PropertyCriterion(match=GITHUB_SOURCE),
+                type_criterion=PropertyCriterion(match=[event_type.value for event_type in GitHubCommentEvent]),
             )
         )
 

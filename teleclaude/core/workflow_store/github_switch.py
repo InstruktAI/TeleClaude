@@ -34,7 +34,8 @@ from teleclaude.core.todos_db._working_copy import (
 )
 from teleclaude.core.todos_db_path import todos_db_path
 from teleclaude.core.workflow_store.github import GitHubIdentityRefused, GitHubRepositoryIdentity
-from teleclaude.core.workflow_store.github_io import GitHubIORefused, GitHubMutationPacing
+from teleclaude.core.workflow_store.github_io import GitHubMutationPacing
+from teleclaude.core.workflow_store.github_io_transport import GitHubIORefused
 from teleclaude.core.workflow_store.github_record import (
     WORKFLOW_COMMENT_BODY_LIMIT,
     LedgerCommit,

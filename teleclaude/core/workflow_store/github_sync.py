@@ -46,17 +46,17 @@ from teleclaude.core.todos_db._working_copy import (
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
 from teleclaude.core.workflow_store.github_io import (
     GitHubComment,
-    GitHubIOFailure,
-    GitHubIORefused,
     GitHubIssue,
     GitHubWorkflowIO,
 )
+from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused
 from teleclaude.core.workflow_store.github_ledger import (
     GitHubLedgerRefused,
     find_ledger,
     parse_ledger_comment,
     trusted_body,
 )
+from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_question_projection import close_resolved_questions, waiting_person_handles
 from teleclaude.core.workflow_store.github_record import (
     ArtifactHistoryAction,
@@ -96,6 +96,10 @@ from teleclaude.core.workflow_store.github_reflection import (
     reflect_issue,
     serialize_projection_digests,
 )
+from teleclaude.core.workflow_store.github_reflection_queue import (
+    owe_unwritten_pull_request,
+    repair_owed_pull_requests,
+)
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 _LEGACY_PROJECT_ID = "legacy-{}-{}"
@@ -132,11 +136,13 @@ class GitHubWorkflowSync:
         repository: GitHubRepositoryIdentity,
         assignment: GitHubActorAssignment,
         io: GitHubWorkflowIO,
+        pull_requests: GitHubPullRequestIO,
     ) -> None:
         self.store = store
         self.repository = repository
         self.assignment = assignment
         self.io = io
+        self.pull_requests = pull_requests
 
     async def rebuild(self) -> None:
         """Restore every committed issue and project record into an absent database."""
@@ -174,6 +180,7 @@ class GitHubWorkflowSync:
                 )
                 _save_artifact_pointers(session, snapshot.item_id, revision)
                 clear_item_unverifiable(session, snapshot.item_id)
+                owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
             for entry, comment in ledger_entries:
                 for project_record in entry.project_records:
                     remote_id = project_record.remote_record_id or _LEGACY_PROJECT_ID.format(
@@ -229,6 +236,7 @@ class GitHubWorkflowSync:
                         base_revision=revision.revision,
                     )
                     _save_artifact_pointers(session, snapshot.item_id, revision)
+                    owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
                 for entry, comment in ledger_entries:
                     for project_record in entry.project_records:
                         remote_id = project_record.remote_record_id or _LEGACY_PROJECT_ID.format(
@@ -327,6 +335,7 @@ class GitHubWorkflowSync:
                 )
                 _save_artifact_pointers(session, snapshot.item_id, revision)
                 clear_item_unverifiable(session, snapshot.item_id)
+                owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
             for entry, comment in new_ledger:
                 for project_record in entry.project_records:
                     remote_id = project_record.remote_record_id or _LEGACY_PROJECT_ID.format(
@@ -344,17 +353,19 @@ class GitHubWorkflowSync:
         owed_overrides = {
             item_id: reflection_overrides[item_id] for item_id in applied_purges if item_id in reflection_overrides
         }
-        repaired_reflections = await self._repair_owed_reflections(
-            owed_overrides, {item_id for item_id, _reason in unverifiable}
-        )
-        if repaired_reflections:
+        blocked_items = {item_id for item_id, _reason in unverifiable}
+        try:
+            repaired_reflections = await self._repair_owed_reflections(owed_overrides, blocked_items)
+            if repaired_reflections:
 
-            def clear_reflections(session: Session) -> None:
-                for item_id, projection_digest in repaired_reflections.items():
-                    save_issue_projection_digest(session, item_id, projection_digest)
-                    clear_reflection_owed(session, item_id)
+                def clear_reflections(session: Session) -> None:
+                    for item_id, projection_digest in repaired_reflections.items():
+                        save_issue_projection_digest(session, item_id, projection_digest)
+                        clear_reflection_owed(session, item_id)
 
-            await self._run_async_transaction(clear_reflections)
+                await self._run_async_transaction(clear_reflections)
+        finally:
+            await repair_owed_pull_requests(self.store, self.pull_requests, blocked_items)
         if projection_repair_active:
             await self._complete_projection_repair_if_ready()
         return len(applied_items)

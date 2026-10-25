@@ -4,20 +4,23 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 import threading
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session as SyncSession
 
 from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import github_actor_for_app_id
 from teleclaude.config.project_models import TodoStoreBackend, TodoStoreConfig
 from teleclaude.core.todos_db._adapter import TodosDb
+from teleclaude.core.todos_db._github_pull_requests import work_item_for_number
 from teleclaude.core.todos_db._github_questions import insert_awaiting_question
 from teleclaude.core.todos_db._working_copy import (
     WorkingCopyField,
@@ -32,8 +35,13 @@ from teleclaude.core.todos_db._working_copy import (
     restore_project_record,
 )
 from teleclaude.core.todos_db_path import github_working_copy_path
-from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity, resolve_github_repository_identity
+from teleclaude.core.workflow_store.github import (
+    GitHubIdentityRefused,
+    GitHubRepositoryIdentity,
+    resolve_github_repository_identity,
+)
 from teleclaude.core.workflow_store.github_io import GitHubMutationPacing, GitHubWorkflowIO
+from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_push import GitHubWorkflowPush
 from teleclaude.core.workflow_store.github_record import (
     CommentEnvelopeAction,
@@ -45,6 +53,8 @@ from teleclaude.core.workflow_store.github_reflection import is_repository_work
 from teleclaude.core.workflow_store.github_sync import GitHubWorkflowSync
 from teleclaude.core.workflow_store.selection import selected_workflow_store_config
 from teleclaude.core.workflow_store.types import StoreCapabilities
+from teleclaude.project_manifest import load_roots
+from teleclaude.project_root import is_project_checkout
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 if TYPE_CHECKING:
@@ -56,6 +66,12 @@ _EMPTY = ""
 _QUESTION_LINE_BREAK = "\n"
 _MIGRATION_RECORD_ID = "github-store-switch:{}:{}"
 _ITEM_ID_BY_SLUG = "SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug"
+_ITEM_SLUG_BY_ID = "SELECT slug FROM todo WHERE CAST(id AS TEXT) = :item_id"
+_ITEM_STATE_BY_ID = "SELECT state FROM todo_state WHERE CAST(id AS TEXT) = :item_id"
+_READ_ONLY_URI = "file:{}?mode=ro"
+_IN_MEMORY_ENGINE_URL = "sqlite://"
+_ACTIVE_RUNNER = "active_runner"
+_ITEM_ID = "item_id"
 _instances: dict[str, GitHubWorkflowStore] = {}
 _locks: dict[str, threading.Lock] = {}
 _guard = threading.Lock()
@@ -76,8 +92,9 @@ class GitHubWorkflowStore(TodosDb):
         self._assignment = assignment
         self._migration_lock = asyncio.Lock()
         self._io = GitHubWorkflowIO(repository, assignment)
-        self._push = GitHubWorkflowPush(path, repository, assignment, self._io)
-        self._sync = GitHubWorkflowSync(self, repository, assignment, self._io)
+        self._pull_requests = GitHubPullRequestIO(repository)
+        self._push = GitHubWorkflowPush(path, repository, assignment, self._io, self._pull_requests)
+        self._sync = GitHubWorkflowSync(self, repository, assignment, self._io, self._pull_requests)
         self._push.set_conflict_refresh(self._sync.refresh)
         self.set_commit_callbacks(
             self._push.before_commit,
@@ -302,6 +319,61 @@ async def close_github_workflow_stores() -> None:
         _locks.clear()
     for store in stores:
         await store.close()
+
+
+@dataclass(frozen=True)
+class GitHubWorkItem:
+    """A work item found by its issue or pull request number, with the session holding its claim."""
+
+    project_root: Path
+    slug: str
+    active_runner: str | None
+
+
+def find_github_work_item(repository_id: int, number: int) -> GitHubWorkItem | None:
+    """Find the item an issue or pull request number of a repository belongs to on this computer.
+
+    Reads only a working copy that already exists: no provider call, no rebuild.
+    """
+    for project_root in load_roots():
+        if not project_root.exists() or not is_project_checkout(project_root):
+            continue
+        try:
+            identity = resolve_github_repository_identity(project_root)
+        except GitHubIdentityRefused:
+            continue
+        if identity.repository_id != repository_id:
+            continue
+        found = _read_work_item(identity.project_path, number)
+        if found is not None:
+            return found
+    return None
+
+
+def _read_work_item(project_root: Path, number: int) -> GitHubWorkItem | None:
+    path = github_working_copy_path(project_root)
+    if not path.is_file():
+        return None
+    engine = create_engine(
+        _IN_MEMORY_ENGINE_URL, creator=lambda: sqlite3.connect(_READ_ONLY_URI.format(path), uri=True)
+    )
+    try:
+        with SyncSession(engine) as session:
+            item_id = work_item_for_number(session, number)
+            if item_id is None:
+                return None
+            slug = session.execute(text(_ITEM_SLUG_BY_ID), {_ITEM_ID: item_id}).scalar_one_or_none()
+            state_value = session.execute(text(_ITEM_STATE_BY_ID), {_ITEM_ID: item_id}).scalar_one_or_none()
+    finally:
+        engine.dispose()
+    if not isinstance(slug, str):
+        return None
+    try:
+        state = json.loads(state_value) if isinstance(state_value, str) else {}
+    except json.JSONDecodeError:
+        state = {}
+    runner = state.get(_ACTIVE_RUNNER) if isinstance(state, dict) else None
+    return GitHubWorkItem(project_root, slug, runner if isinstance(runner, str) and runner else None)
 
 
 async def refresh_github_workflow_store(project_root_or_cwd: str | Path) -> int:

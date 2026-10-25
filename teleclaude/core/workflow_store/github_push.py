@@ -5,11 +5,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import sqlite3
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
-from concurrent.futures import Future
-from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
@@ -22,7 +19,6 @@ from teleclaude.core.todos_db._working_copy import (
     artifact_remote_version_id,
     clear_pending_changes,
     issue_relation_dependents,
-    issue_relations,
     item_bookkeeping,
     item_snapshot,
     item_unverifiable,
@@ -41,13 +37,12 @@ from teleclaude.core.workflow_store import github_reflection as _github_reflecti
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
 from teleclaude.core.workflow_store.github_io import (
     GitHubComment,
-    GitHubIOFailure,
-    GitHubIORefused,
     GitHubOperation,
     GitHubWorkflowIO,
 )
+from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused
 from teleclaude.core.workflow_store.github_ledger import GitHubLedgerRefused, find_ledger
-from teleclaude.core.workflow_store.github_question_projection import waiting_person_handles
+from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_record import (
     ArtifactHistoryAction,
     ArtifactHistoryNode,
@@ -78,10 +73,15 @@ from teleclaude.core.workflow_store.github_record import (
     split_state_version_comments,
     trusted_comment_body,
 )
-from teleclaude.core.workflow_store.github_reflection import INPUT_ARTIFACT_NAME, parse_projection_digests
+from teleclaude.core.workflow_store.github_reflection import INPUT_ARTIFACT_NAME
+from teleclaude.core.workflow_store.github_reflection_queue import (
+    dispatch_staged_pull_requests,
+    dispatch_staged_reflections,
+    stage_issue_reflections,
+    stage_pull_request_reflections,
+)
 from teleclaude.types.github_binding import GitHubActorAssignment
 
-_REFLECTIONS_KEY = "github_store_reflections"
 _CONFLICT_REFRESH_KEY = "github_store_conflict_refresh"
 _CONFLICT_DRIVER_KEY = "github_store_conflict_driver"
 _EMPTY = ""
@@ -91,11 +91,7 @@ _STATE_NAME = WorkflowField.STATE
 _RUN_ASYNC_METHOD = "run_async"
 _LEDGER_TITLE = "TeleClaude workflow ledger"
 _LEDGER_DESCRIPTION = "Project-level workflow records."
-_REFLECTION_QUEUE_FAILED = "github_store_reflection_queued_failed"
 _CONFLICT_REFRESH_FAILED = "github_store_conflict_refresh_failed"
-_REFLECTION_FAILED = "github_store_reflection_failed"
-_CLEAR_OWED_REFLECTION_SQL = "DELETE FROM github_owed_reflection WHERE item_id = ?"
-_SAVE_PROJECTION_DIGEST_SQL = "UPDATE github_item SET projection_digest = ? WHERE item_id = ?"
 _LEGACY_VERSION_ID = "legacy-{}-{}"
 logger = get_logger(__name__)
 
@@ -109,11 +105,13 @@ class GitHubWorkflowPush:
         repository: GitHubRepositoryIdentity,
         assignment: GitHubActorAssignment,
         io: GitHubWorkflowIO,
+        pull_requests: GitHubPullRequestIO,
     ) -> None:
         self.db_path = Path(db_path)
         self.repository = repository
         self.assignment = assignment
         self.io = io
+        self.pull_requests = pull_requests
         self._refresh_callback: Callable[[], Awaitable[int]] | None = None
 
     def set_conflict_refresh(self, callback: Callable[[], Awaitable[int]]) -> None:
@@ -244,23 +242,8 @@ class GitHubWorkflowPush:
         if ledger_comment_id is not None:
             for table, row_id in changes.project_records:
                 mark_project_record_pushed(session, table, row_id, ledger_comment_id)
-        projections: list[_github_reflection.ProjectionQueueEntry] = []
-        for issue_number, item_id, snapshot in reflection_rows:
-            bookkeeping = item_bookkeeping(session, item_id)
-            issue_id = _int_or_none(bookkeeping.get(WorkingCopyField.ISSUE_ID)) if bookkeeping else None
-            relations = issue_relations(session, snapshot, {})
-            reflection = _github_reflection.reflect_issue(
-                snapshot,
-                parent_issue_number=relations.parent_issue_number,
-                parent_issue_id=relations.parent_issue_id,
-                blocked_by_issue_ids=relations.blocked_by_issue_ids,
-                waiting_assignees=waiting_person_handles(session, item_id, snapshot),
-            )
-            previous = parse_projection_digests((bookkeeping or {}).get(WorkingCopyField.PROJECTION_DIGEST))
-            changed = _github_reflection.changed_projection_parts(reflection, previous)
-            digest = _github_reflection.serialize_projection_digests(reflection.projection_digests)
-            projections.append((issue_number, issue_id, item_id, reflection, changed, digest))
-        session.info[_REFLECTIONS_KEY] = projections
+        stage_issue_reflections(session, reflection_rows)
+        stage_pull_request_reflections(session, reflection_rows)
         for _issue_number, item_id, _snapshot in reflection_rows:
             mark_reflection_owed(session, item_id)
         clear_pending_changes(session)
@@ -408,23 +391,8 @@ class GitHubWorkflowPush:
 
     def after_commit(self, session: Session) -> None:
         """Queue issue reflections after local commit and retain failed reflections for refresh."""
-        reflections = session.info.pop(_REFLECTIONS_KEY, [])
-        for issue_number, issue_id, item_id, reflection, changed, digest in reflections:
-            if issue_id is None:
-                continue
-            try:
-                if not changed:
-                    _store_projection_reflection(self.db_path, item_id, digest)
-                    continue
-                future = self.io.queue_reflection(issue_number, issue_id, reflection, changed)
-                future.add_done_callback(partial(_reflection_finished, self.db_path, item_id, digest))
-            except Exception as error:
-                logger.warning(
-                    _REFLECTION_QUEUE_FAILED,
-                    item_id=item_id,
-                    reason=type(error).__name__,
-                    exc_info=True,
-                )
+        dispatch_staged_reflections(session, self.db_path, self.io)
+        dispatch_staged_pull_requests(session, self.db_path, self.pull_requests)
 
     def _append_unpushed_versions(
         self,
@@ -958,30 +926,6 @@ def _scalar_row(row: Mapping[str, object]) -> dict[str, str | int | float | bool
         else:
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
     return result
-
-
-def _reflection_finished(db_path: Path, item_id: str, projection_digest: str, future: Future[Any]) -> None:
-    try:
-        future.result()
-    except Exception as error:
-        logger.warning(
-            _REFLECTION_FAILED,
-            item_id=item_id,
-            reason=type(error).__name__,
-            exc_info=True,
-        )
-        return
-    _store_projection_reflection(db_path, item_id, projection_digest)
-
-
-def _store_projection_reflection(db_path: Path, item_id: str, projection_digest: str) -> None:
-    connection = sqlite3.connect(db_path)
-    try:
-        connection.execute(_SAVE_PROJECTION_DIGEST_SQL, (projection_digest, item_id))
-        connection.execute(_CLEAR_OWED_REFLECTION_SQL, (item_id,))
-        connection.commit()
-    finally:
-        connection.close()
 
 
 def _log_conflict_refresh_failure(task: asyncio.Task[Any]) -> None:

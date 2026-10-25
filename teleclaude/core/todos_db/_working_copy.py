@@ -14,6 +14,7 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from teleclaude.core.todos_db._github_pull_requests import initialize_pull_request_bookkeeping
 from teleclaude.core.todos_db._github_questions import initialize_question_bookkeeping
 
 _BOOKKEEPING_DDL = (
@@ -425,6 +426,7 @@ def initialize_working_copy(path: str | Path) -> None:
         for statement in _BOOKKEEPING_DDL:
             connection.execute(statement)
         initialize_question_bookkeeping(connection)
+        initialize_pull_request_bookkeeping(connection)
         repository_columns = {str(row[1]) for row in connection.execute(_REPOSITORY_COLUMNS_SQL)}
         if WorkingCopyField.INITIALIZED not in repository_columns:
             connection.execute(_INITIALIZED_COLUMN_DDL)

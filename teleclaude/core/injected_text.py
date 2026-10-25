@@ -31,6 +31,7 @@ class InjectedTextSourceFeature(StrEnum):
     TELEGRAM = "telegram"
     DISCORD = "discord"
     WHATSAPP = "whatsapp"
+    GITHUB = "github"
     VOICE = "voice"
     RELAY = "relay"
     CALLER_SEND = "caller_send"
@@ -60,6 +61,7 @@ def authority_for_source_feature(source: InjectedTextSourceFeature) -> InjectedI
             InjectedTextSourceFeature.TELEGRAM
             | InjectedTextSourceFeature.DISCORD
             | InjectedTextSourceFeature.WHATSAPP
+            | InjectedTextSourceFeature.GITHUB
             | InjectedTextSourceFeature.VOICE
             | InjectedTextSourceFeature.RELAY
         ):

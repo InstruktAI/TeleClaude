@@ -31,6 +31,7 @@ from teleclaude.core.next_machine._types import (
     WorkPhase,
 )
 from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
+from teleclaude.core.next_machine.branch_publish import publish_todo_branch
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
     DRIFT_SUBSTANTIVE,
@@ -321,6 +322,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         current_phase = require_lifecycle_phase(writer.state.lifecycle_phase, context=f"next_work({resolved_slug})")
         if current_phase == LifecyclePhase.PREPARED:
             phase_started = perf_counter()
+            await asyncio.to_thread(publish_todo_branch, Path(worktree_cwd))
             await _advance_prepared_to_build_started(todos_db, resolved_slug, state, worktree_cwd)
             _log_next_work_phase(
                 phase_slug,
