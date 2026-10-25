@@ -271,14 +271,14 @@ sequenceDiagram
 
 ### Command dispatch map
 
-| Sub-Phase   | Command         | Worker Role  | Thinking Mode      | Output                                                                                                                                  |
-| ----------- | --------------- | ------------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Build       | `/build`        | Builder      | `med`              | Code, tests, commits                                                                                                                    |
-| Build (bug) | `/build`        | Builder      | `med`              | Plan execution + reproduction test (RED→GREEN)                                                                                          |
-| Review      | `/review-build` | Reviewer     | `slow` (mandatory) | `review-findings.md`, verdict                                                                                                           |
-| Fix         | _(no dispatch)_ | Fixer        | _(reused)_         | Orchestrator relays the review-findings artifact to the existing builder session, which records dispositions, applies fixes and commits |
-| Deferrals   | `/defer`        | Orchestrator | —                  | New todos from deferrals                                                                                                                |
-| Finalize    | `/finalize`     | Finalizer    | `med`              | Branch pushed, FINALIZE_READY                                                                                                           |
+| Sub-Phase   | Command         | Worker Role  | Output                                                                                                                                  |
+| ----------- | --------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Build       | `/build`        | Builder      | Code, tests, commits                                                                                                                    |
+| Build (bug) | `/build`        | Builder      | Plan execution + reproduction test (RED→GREEN)                                                                                          |
+| Review      | `/review-build` | Reviewer     | `review-findings.md`, verdict                                                                                                           |
+| Fix         | _(no dispatch)_ | Fixer        | Orchestrator relays the review-findings artifact to the existing builder session, which records dispositions, applies fixes and commits |
+| Deferrals   | `/defer`        | Orchestrator | New todos from deferrals                                                                                                                |
+| Finalize    | `/finalize`     | Finalizer    | Branch pushed, FINALIZE_READY                                                                                                           |
 
 ### Lifecycle events
 

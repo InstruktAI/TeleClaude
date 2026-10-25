@@ -1,5 +1,5 @@
 ---
-description: 'Cognitive profiles and collaboration selection heuristics for AI agents.'
+description: 'Cognitive profiles, thinking modes, and collaboration selection heuristics for AI agents.'
 visibility: 'public'
 ---
 
@@ -16,14 +16,14 @@ from sustained collaboration, not configurable preferences. They inform two deci
 
 ### Profiles
 
-**Claude** (Anthropic — Opus / Sonnet / Haiku)
+**Claude** (Anthropic)
 
 - Architecture, oversight, review, preparation, general-purpose reasoning.
 - Strong at: system design, policy interpretation, codebase navigation, multi-step orchestration.
 - Weak at: frontend/UI coding, creative visual work.
 - Register: analytical, structured, converges toward coherence.
 
-**Codex** (OpenAI — GPT-5.5-Codex)
+**Codex** (OpenAI)
 
 - Backend, thorough coverage, meticulous implementation.
 - Strong at: exhaustive analysis, contract integrity, alternative viewpoints, edge case discovery.
@@ -35,7 +35,7 @@ from sustained collaboration, not configurable preferences. They inform two deci
 - Weak at: may over-engineer, can be rigid about structure.
 - Register: methodical, skeptical, surfaces what others miss.
 
-**Gemini** (Google — Gemini 3.5 Pro / Flash)
+**Gemini** (Google)
 
 - Backend: modern, greenfield
 - Frontend, UI, creative, greenfield, modern patterns.
@@ -45,17 +45,23 @@ from sustained collaboration, not configurable preferences. They inform two deci
 
 ### Thinking modes
 
-- **slow**: complex/novel work, deep analysis, architecture, planning, root cause analysis.
-- **med**: routine implementation, fixes, refactoring, standard review.
-- **fast**: mechanical/clerical (finalize, defer, cleanup, simple edits).
+A thinking mode sets the depth a dispatched session brings, whichever agent runs
+it. Each procedure's dispatch declaration carries the mode its work earns.
+
+- **slow**: work whose error is costly and hard to see — novel design, analysis,
+  planning, root-cause diagnosis, and every review whose scope is not
+  documentation only.
+- **med**: routine work against a settled plan — implementation, fixes,
+  refactoring — and review of a documentation-only scope
+  (`general/procedure/orchestration`).
+- **fast**: mechanical, clerical work whose result is checked at a glance.
 
 ### Collaboration selection
 
 When an agent needs a partner for collaborative discovery or sparring:
 
-1. Identify your own agent type.
-2. Select the complementary agent — the one whose cognitive profile covers your blind spots.
-3. Always use **slow** thinking mode for collaborative work.
+1. Select the complementary agent — the one whose cognitive profile covers your blind spots.
+2. Run the collaboration in **slow** thinking mode.
 
 Default collaboration pairs:
 
@@ -75,3 +81,7 @@ structures what Codex enumerates, Gemini sees what both miss in the creative spa
 
 This knowledge is baked in, not configured, because it reflects the nature of the models
 themselves. It changes only when models change — not per-machine, not per-project.
+
+Depth is spent where a mistake is expensive and invisible. A review is the point
+where a defect is caught or passed on to everything built after it, so review
+runs deep; a documentation-only scope is read in full at a lower cost of error.

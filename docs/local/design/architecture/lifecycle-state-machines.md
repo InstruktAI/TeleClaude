@@ -172,17 +172,22 @@ flowchart TB
 
 ### Worker dispatch pattern
 
-All workers are dispatched via `telec sessions run`. The machine specifies the command; the orchestrator specifies agent and thinking mode.
+Workers are dispatched via `telec sessions run`. The machine names the procedure;
+the procedure's `dispatch` declaration supplies the agent preference and thinking
+mode, and an explicit caller mode overrides it
+(`local/projects/teleclaude/spec/feature/agent_runtime/role-aware-agent-dispatch`).
+The prepare orchestrator performs intake, architecture and planning in its own
+session; the sessions below are the ones a machine dispatches.
 
-| Phase    | Worker Role                               | Command                                                                                                                                                                                           | Thinking Mode      |
-| -------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| Prepare  | Intaker / Architect / Diagnoser / Planner | `sdlc/procedure/lifecycle/prepare/intake`, `sdlc/procedure/lifecycle/prepare/architecture`, `sdlc/procedure/lifecycle/prepare/diagnose-peer` (bug), `sdlc/procedure/lifecycle/prepare/plan-draft` | `slow`             |
-| Prepare  | Drift Analyzer                            | `sdlc/procedure/lifecycle/prepare/drift-analyze`                                                                                                                                                  | `fast`             |
-| Prepare  | Reviewer                                  | `sdlc/procedure/lifecycle/prepare/review-architecture`, `sdlc/procedure/lifecycle/prepare/review-plan`                                                                                            | `slow`             |
-| Build    | Builder                                   | `sdlc/procedure/lifecycle/work/build` (all kinds, incl. bug)                                                                                                                                      | `med`              |
-| Review   | Reviewer                                  | `sdlc/procedure/lifecycle/work/review-build`                                                                                                                                                      | `slow` (mandatory) |
-| Fix      | Fixer                                     | _(no dispatch — the orchestrator relays the review-findings artifact to the existing builder session)_                                                                                            | _(reused)_         |
-| Finalize | Finalizer                                 | `sdlc/procedure/lifecycle/work/finalize`                                                                                                                                                          | `med`              |
+| Phase    | Worker Role    | Command                                                                                                                                               |
+| -------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Prepare  | Diagnoser      | `sdlc/procedure/lifecycle/prepare/diagnose-peer` (bug)                                                                                                |
+| Prepare  | Drift Analyzer | `sdlc/procedure/lifecycle/prepare/drift-analyze`                                                                                                      |
+| Prepare  | Reviewer       | `sdlc/procedure/lifecycle/prepare/review-prd`, `sdlc/procedure/lifecycle/prepare/review-architecture`, `sdlc/procedure/lifecycle/prepare/review-plan` |
+| Build    | Builder        | `sdlc/procedure/lifecycle/work/build` (all kinds, incl. bug)                                                                                          |
+| Review   | Reviewer       | `sdlc/procedure/lifecycle/work/review-build`                                                                                                          |
+| Fix      | Fixer          | _(no dispatch — the orchestrator relays the review-findings artifact to the existing builder session)_                                                |
+| Finalize | Finalizer      | `sdlc/procedure/lifecycle/work/finalize`                                                                                                              |
 
 ### Detailed documentation
 
