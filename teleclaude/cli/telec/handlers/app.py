@@ -14,10 +14,12 @@ import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
+from functools import partial
 from pathlib import Path
 from typing import NoReturn
 
 from instrukt_ai_logging import get_logger
+from pydantic import ValidationError
 
 from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, parse_command_args
 from teleclaude.cli.telec.help import _usage
@@ -31,8 +33,16 @@ from teleclaude.cli.telec.surface import (
     APP_STOP,
 )
 from teleclaude.cli.telec.surface_types import CommandDef, TelecCommand
+from teleclaude.config._models import ReleaseChannel
 from teleclaude.config.machine import config
-from teleclaude.core.reconciliation.channel_target import ChannelTargetError, channel_target, release_tag_of
+from teleclaude.core.reconciliation.channel_target import (
+    ChannelTargetError,
+    active_release_version,
+    channel_target,
+    release_tag_of,
+    source_full_name,
+)
+from teleclaude.core.reconciliation.convergence_decision import ConvergenceRecord, read_convergence
 from teleclaude.core.reconciliation.install_act import (
     InstallRequest,
     InstallResult,
@@ -52,6 +62,7 @@ from teleclaude.core.reconciliation.installation_assessment import (
 from teleclaude.core.reconciliation.installation_ports import LiveInstallPorts
 from teleclaude.core.reconciliation.installation_release import ReleasePreparationError
 from teleclaude.deployment.release_checkout import release_tag
+from teleclaude.deployment.self_update import is_superseded
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)
@@ -90,6 +101,13 @@ _STATUS_LAST_ACT = "Last act:          {act} {outcome} {revision} at {at}"
 _STATUS_REASON = "  reason: {reason}"
 _STATUS_OWED = "Assessment owed:  install {number}, release {revision}, since {since}"
 _STATUS_LAST_ASSESSMENT = "Last assessment:  install {number}, release {revision}, at {at}"
+_STATUS_CHANNEL = "Channel:          {channel}"
+_STATUS_SOURCE = "Source:           {source}"
+_STATUS_NO_SOURCE = "none (the installation follows no GitHub repository)"
+_STATUS_NO_DECISION = "Last decision:    no convergence decision has been made yet"
+_STATUS_DECISION = "Last decision:    {outcome} at {at}"
+_STATUS_HELD = "Held release:     {tag} of {source}, beyond the active release's compatibility series, held since {at}"
+_STATUS_CONVERGENCE_UNREADABLE = "Last decision:    the convergence record could not be read: {error}"
 _ASSESSED_OPERAND = "telec app assessed takes the number of one install, as `telec app status` lists it."
 _ASSESSED_NOT_SERVING = (
     "The daemon does not serve the active release: {reason}. Restore service with `telec app start`, or repair "
@@ -207,10 +225,44 @@ def _assessment_lines(assessment: AssessmentRecord) -> list[str]:
     return lines
 
 
+def _convergence_lines(layout: InstallationLayout) -> list[str]:
+    """The channel, the followed source, the last convergence decision with its reason, and any held release."""
+    lines = [
+        _STATUS_CHANNEL.format(channel=config.deployment.channel.value),
+        _STATUS_SOURCE.format(source=source_full_name(layout) or _STATUS_NO_SOURCE),
+    ]
+    try:
+        record = read_convergence()
+    except (OSError, ValidationError) as error:
+        return [*lines, _STATUS_CONVERGENCE_UNREADABLE.format(error=error)]
+    return [*lines, *_decision_lines(record, layout)]
+
+
+def _decision_lines(record: ConvergenceRecord, layout: InstallationLayout) -> list[str]:
+    try:
+        active = active_release_version(layout)
+    except ChannelTargetError:
+        active = None
+    lines = [_STATUS_NO_DECISION]
+    if record.last is not None:
+        lines = [
+            _STATUS_DECISION.format(outcome=record.last.outcome.value, at=record.last.at),
+            _STATUS_REASON.format(reason=record.last.reason),
+        ]
+    held = record.holding(active)
+    if held is not None:
+        lines.append(_STATUS_HELD.format(tag=held.tag, source=held.source, at=held.held_at))
+    return lines
+
+
 def _status(args: list[str]) -> None:
     _no_operands(AppSubcommand.STATUS, APP_STATUS, args)
     layout = InstallationLayout()
-    for line in [*_record_lines(read_record(layout), layout), *_assessment_lines(read_assessment(layout))]:
+    for line in [
+        *_record_lines(read_record(layout), layout),
+        *_convergence_lines(layout),
+        *_assessment_lines(read_assessment(layout)),
+    ]:
         print(line)
     sys.stdout.flush()
     _run_lifecycle(AppSubcommand.STATUS)
@@ -247,17 +299,26 @@ def _report(result: InstallResult) -> None:
 
 
 def _request(revision: str | None, layout: InstallationLayout, ports: LiveInstallPorts) -> InstallRequest:
-    """The install request: the named revision, or the target the installation's channel resolves."""
+    """The install request: the named revision, or the target the installation's channel resolves.
+
+    A named revision is a deliberate selection and asks no confirmation. An edge target is the newest green
+    revision, and the act confirms before it stops the daemon that no newer green revision overtook it.
+    """
     if revision is not None:
         return InstallRequest(target=revision, release_tag=release_tag_of(revision))
     if not layout.repository.is_dir():
         _refuse(_NO_KEPT_REPOSITORY)
+    channel = config.deployment.channel
     try:
         ports.fetch(None)
-        target = channel_target(layout, config.deployment.channel, config.deployment.series)
+        target = channel_target(layout, channel)
     except (ReleasePreparationError, ChannelTargetError) as error:
         _refuse(str(error))
-    return InstallRequest(target=target.reference, release_tag=target.release_tag)
+    return InstallRequest(
+        target=target.reference,
+        release_tag=target.release_tag,
+        is_superseded=partial(is_superseded, layout) if channel is ReleaseChannel.EDGE else None,
+    )
 
 
 def _install(args: list[str]) -> None:

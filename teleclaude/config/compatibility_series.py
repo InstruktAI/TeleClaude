@@ -45,6 +45,12 @@ class CompatibilitySeries:
         major = numbers[0]
         return cls(major=major, minor=numbers[1] if major == _PRE_RELEASE_MAJOR else None)
 
+    @classmethod
+    def of_version(cls, version: tuple[int, int, int]) -> CompatibilitySeries:
+        """The series a release version belongs to: its minor line while the major is zero, its major line from 1.0."""
+        major, minor, _patch = version
+        return cls(major=major, minor=minor if major == _PRE_RELEASE_MAJOR else None)
+
     def admits(self, version: tuple[int, int, int]) -> bool:
         """Whether a release version lies inside this series."""
         return version[0] == self.major and (self.minor is None or version[1] == self.minor)

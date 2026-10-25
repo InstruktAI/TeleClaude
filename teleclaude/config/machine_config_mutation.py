@@ -31,7 +31,6 @@ _INVALID_FIELD_PATH_ERROR = "Machine configuration field path is invalid."
 _COMPUTER = "computer"
 _DEPLOYMENT = "deployment"
 _CHANNEL = "channel"
-_COMPATIBILITY_SERIES = "compatibility_series"
 _AGENTS = "agents"
 _DEFAULT = "default"
 _ENABLED = "enabled"
@@ -121,9 +120,9 @@ def remove_machine_config_fields(field_paths: tuple[tuple[str, ...], ...]) -> Ma
     return _mutate(MachineConfigOperation.REMOVE, lambda raw: _remove_fields(raw, field_paths))
 
 
-def set_deployment(channel: ReleaseChannel, compatibility_series: str) -> MachineConfigMutationResult:
+def set_deployment(channel: ReleaseChannel) -> MachineConfigMutationResult:
     """Set the typed machine deployment selection."""
-    deployment: dict[object, object] = {_CHANNEL: channel.value, _COMPATIBILITY_SERIES: compatibility_series}
+    deployment: dict[object, object] = {_CHANNEL: channel.value}
     patch: dict[object, object] = {_DEPLOYMENT: deployment}
     return _mutate(MachineConfigOperation.DEPLOYMENT, lambda raw: _deep_merge(raw, patch))
 

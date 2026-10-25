@@ -1,8 +1,10 @@
-"""Read GitHub Actions facts a run-completion delivery lacks, as the project's App on one repository.
+"""Read GitHub facts about one repository: the Actions facts a run-completion delivery lacks, and the commits and
+releases a followed source publishes.
 
-The reads are authoritative at the moment they are made, so the platform holds no CI history. Rate limits and
-provider failures raise a bounded refusal; nothing is defaulted, so a consumer retries or dead-letters instead
-of publishing a guessed fact.
+A project's repository is read as the project's App. A followed source this computer holds no App for is read
+without a credential, which a public repository allows. The reads are authoritative at the moment they are made,
+so the platform holds no CI history. Rate limits and provider failures raise a bounded refusal; nothing is
+defaulted, so a consumer retries or dead-letters instead of publishing a guessed fact.
 """
 
 from __future__ import annotations
@@ -14,9 +16,11 @@ from typing import Final
 from urllib.parse import quote
 
 from githubkit.auth.token import TokenAuthStrategy
+from githubkit.auth.unauth import UnauthAuthStrategy
 from githubkit.cache.mem_cache import MemCacheStrategy
 from githubkit.exception import GitHubException, RateLimitExceeded, RequestFailed
 from githubkit.github import GitHub
+from githubkit_schemas.v2026_03_10.models import MinimalRepository
 from githubkit_schemas.v2026_03_10.types import AppPermissionsType
 from httpx import HTTPError
 
@@ -33,6 +37,7 @@ _RANGE_TEMPLATE = "{base}...{head}"
 _COMMIT_SUBJECT_SEPARATOR = "\n"
 _SUCCESSFUL_RUN_FILTER: Final = "success"
 _PERMISSIONS: Final[AppPermissionsType] = {"actions": "read", "contents": "read"}
+_Client = GitHub[TokenAuthStrategy] | GitHub[UnauthAuthStrategy]
 _REFUSAL_WITH_DETAIL = "{reason}: {detail}"
 _NO_FAILED_STEP_ERROR = "job {job!r} concluded {conclusion} with no step that did not succeed"
 _MISSING_STEPS_ERROR = "job {job!r} of run {run_id} lists no steps"
@@ -82,6 +87,13 @@ class RepositoryScope:
 
 
 @dataclass(frozen=True)
+class PublicRepository:
+    """A repository read without a credential: only its canonical owner/name is known."""
+
+    repository: str
+
+
+@dataclass(frozen=True)
 class FailedStep:
     """A failed job and the first of its steps that did not succeed."""
 
@@ -105,11 +117,22 @@ class GreenRun:
     run_url: str
 
 
-class GitHubActionsReader:
-    """Reads Actions facts of one repository as the App assigned to the project, with one installation credential."""
+@dataclass(frozen=True)
+class PublishedRelease:
+    """A published release by its tag; drafts and pre-releases are never listed."""
 
-    def __init__(self, scope: RepositoryScope, assignment: GitHubActorAssignment) -> None:
-        self._scope = scope
+    tag: str
+
+
+class GitHubActionsReader:
+    """Reads facts of one repository: as the App assigned to the project with one installation credential, or,
+    for a public repository named without an App, without a credential."""
+
+    def __init__(
+        self, scope: RepositoryScope | PublicRepository, assignment: GitHubActorAssignment | None = None
+    ) -> None:
+        self._repository = scope.repository
+        self._scope = scope if isinstance(scope, RepositoryScope) else None
         self._assignment = assignment
         self._owner, _, self._name = scope.repository.partition(_REPOSITORY_SEPARATOR)
         self._token: str | None = None
@@ -117,7 +140,7 @@ class GitHubActionsReader:
     async def failed_jobs(self, run_id: int, attempt: int) -> tuple[FailedStep, ...]:
         """The jobs of one run attempt that failed, each with its first step that did not succeed."""
 
-        async def request(client: GitHub[TokenAuthStrategy]) -> tuple[FailedStep, ...]:
+        async def request(client: _Client) -> tuple[FailedStep, ...]:
             failed: list[FailedStep] = []
             page = _FIRST_PAGE
             while True:
@@ -149,7 +172,7 @@ class GitHubActionsReader:
     async def last_green_revision(self, workflow_id: int, branch: str, before_run_id: int) -> str | None:
         """The head sha of the newest successful run of a workflow on a branch older than the given run, or none."""
 
-        async def request(client: GitHub[TokenAuthStrategy]) -> str | None:
+        async def request(client: _Client) -> str | None:
             page = _FIRST_PAGE
             while True:
                 response = await client.rest.actions.async_list_workflow_runs(
@@ -174,7 +197,7 @@ class GitHubActionsReader:
     async def commits_between(self, base: str, head: str) -> tuple[CommitSummary, ...]:
         """The commits after ``base`` up to ``head``, oldest first, as GitHub's comparison returns them."""
 
-        async def request(client: GitHub[TokenAuthStrategy]) -> tuple[CommitSummary, ...]:
+        async def request(client: _Client) -> tuple[CommitSummary, ...]:
             response = await client.rest.repos.async_compare_commits(
                 self._owner,
                 self._name,
@@ -193,13 +216,13 @@ class GitHubActionsReader:
         """The newest run of each named workflow for a revision on a branch of this repository, when every one
         concluded success, else none. Runs on other branches, or whose head is another repository, are not considered."""
 
-        async def request(client: GitHub[TokenAuthStrategy]) -> tuple[GreenRun, ...] | None:
+        async def request(client: _Client) -> tuple[GreenRun, ...] | None:
             response = await client.rest.actions.async_list_workflow_runs_for_repo(
                 self._owner, self._name, head_sha=sha, per_page=_PAGE_SIZE
             )
             newest: dict[str, tuple[int, str, str | None]] = {}
             for run in response.parsed_data.workflow_runs:
-                if run.head_branch != branch or run.head_repository.id != self._scope.repository_id:
+                if run.head_branch != branch or not self._head_in_repository(run.head_repository):
                     continue
                 known = newest.get(run.path)
                 if known is None or run.id > known[0]:
@@ -214,8 +237,51 @@ class GitHubActionsReader:
 
         return await self._read(request)
 
-    async def _read[ResultT](self, request: Callable[[GitHub[TokenAuthStrategy]], Awaitable[ResultT]]) -> ResultT:
+    async def recent_commits(self, branch: str, limit: int) -> tuple[str, ...]:
+        """The shas of the newest ``limit`` commits of a branch, newest first, in one request."""
+
+        async def request(client: _Client) -> tuple[str, ...]:
+            response = await client.rest.repos.async_list_commits(self._owner, self._name, sha=branch, per_page=limit)
+            return tuple(commit.sha for commit in response.parsed_data)
+
+        return await self._read(request)
+
+    async def published_releases(self) -> tuple[PublishedRelease, ...]:
+        """Every published release, following the provider's pages until none remains.
+
+        The provider orders releases by creation, not by version, so no earlier cutoff is complete.
+        """
+
+        async def request(client: _Client) -> tuple[PublishedRelease, ...]:
+            published: list[PublishedRelease] = []
+            page = _FIRST_PAGE
+            while True:
+                response = await client.rest.repos.async_list_releases(
+                    self._owner, self._name, per_page=_PAGE_SIZE, page=page
+                )
+                releases = response.parsed_data
+                published.extend(
+                    PublishedRelease(tag=release.tag_name)
+                    for release in releases
+                    if not release.draft and not release.prerelease
+                )
+                if len(releases) < _PAGE_SIZE:
+                    return tuple(published)
+                page += 1
+
+        return await self._read(request)
+
+    def _head_in_repository(self, head_repository: MinimalRepository) -> bool:
+        """Whether a run's head is this repository: by stable id when it is known, else by canonical name."""
+        if self._scope is not None:
+            return head_repository.id == self._scope.repository_id
+        return head_repository.full_name == self._repository
+
+    async def _read[ResultT](self, request: Callable[[_Client], Awaitable[ResultT]]) -> ResultT:
         try:
+            if self._scope is None or self._assignment is None:
+                async with create_github_client(UnauthAuthStrategy(), MemCacheStrategy()) as public_client:
+                    return await request(public_client)
             if self._token is None:
                 credential = await issue_github_installation_credential(self._assignment, self._scope, _PERMISSIONS)
                 self._token = credential.token.get_secret_value()

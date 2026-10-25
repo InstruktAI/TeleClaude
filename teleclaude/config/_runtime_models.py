@@ -8,7 +8,6 @@ from pydantic import Field, TypeAdapter, ValidationInfo, field_validator, model_
 
 from teleclaude.closed_model import ClosedModel
 from teleclaude.config._coerce import FLAG, FLOAT_STRICT, INT_STRICT, TEXT
-from teleclaude.config.compatibility_series import CompatibilitySeries
 from teleclaude.config.tiers import Tier
 
 _INVALID_SECTION_TEMPLATE = "Invalid config key `config.yml:{section}`: expected a mapping."
@@ -18,9 +17,7 @@ _WORKFLOW_RUNNER_ERROR = "workflow.runner must be one of {members}"
 _WORKFLOW_DISPATCH_MINIMUM_ERROR = "workflow.max_todo_dispatch must be greater than or equal to 1"
 _WORKFLOW_DISPATCH_INTEGER_ERROR = "workflow.max_todo_dispatch must be an integer"
 _DEPLOYMENT_CHANNEL_ERROR = "deployment.channel must be one of {channels}"
-_DEPLOYMENT_STABLE_ERROR = "deployment.compatibility_series is required and must be non-empty when channel=stable"
 _WORKFLOW_AUTOSTART_SECTION = "workflow.autostart"
-_EMPTY_TEXT = ""
 _TERMINAL_MAPPING_ERROR = "Invalid config key `config.yml:terminal`: expected a mapping."
 _HOOK_OUTBOX_SECTION = "hook_outbox"
 _API_SECTION = "api"
@@ -28,7 +25,6 @@ _DAEMON_SECTION = "daemon"
 _PROCESS_JANITOR_SECTION = "process_janitor"
 _WORKFLOW_SECTION = "workflow"
 _DEPLOYMENT_SECTION = "deployment"
-_DEPLOYMENT_CHANNEL_FIELD = "channel"
 
 
 class _HookOutboxField(StrEnum):
@@ -246,24 +242,22 @@ class WorkflowConfig(ClosedModel):
 
 
 class ReleaseChannel(StrEnum):
-    """TeleClaude self-update release channel."""
+    """TeleClaude release channel: the main-following edge or the release-following stable."""
 
-    ALPHA = "alpha"
-    BETA = "beta"
+    EDGE = "edge"
     STABLE = "stable"
 
 
 class DeploymentConfig(ClosedModel):
-    """Release channel and compatibility series for TeleClaude self-update.
+    """Release channel for TeleClaude self-update.
 
-    Machine-wide: the release channel governs this host's self-update — installed
-    once per host, not per project. ``stable`` requires a ``compatibility_series``: the
-    minor line while the major is zero, the major line once it is positive. Alpha and
-    beta never read it, so a value carried there is accepted unvalidated.
+    Machine-wide: the release channel governs this host's activation of revisions — installed
+    once per host, not per project. ``edge`` follows the newest green main revision of the
+    followed source; ``stable`` follows its published releases and stays inside the compatibility
+    series the active release derives. A configuration that declares no channel follows ``stable``.
     """
 
-    channel: ReleaseChannel = ReleaseChannel.ALPHA
-    compatibility_series: TEXT = ""
+    channel: ReleaseChannel = ReleaseChannel.STABLE
 
     @model_validator(mode="before")
     @classmethod
@@ -278,26 +272,6 @@ class DeploymentConfig(ClosedModel):
         except ValueError:
             channels = [channel.value for channel in ReleaseChannel]
             raise ValueError(_DEPLOYMENT_CHANNEL_ERROR.format(channels=channels)) from None
-
-    @field_validator("compatibility_series", mode="before")
-    @classmethod
-    def _canonicalize_series(cls, value: object, info: ValidationInfo) -> object:
-        if value is None:
-            return _EMPTY_TEXT
-        if info.data.get(_DEPLOYMENT_CHANNEL_FIELD) is not ReleaseChannel.STABLE or value == _EMPTY_TEXT:
-            return value
-        return str(CompatibilitySeries.parse(value))
-
-    @model_validator(mode="after")
-    def _validate_stable_series(self) -> Self:
-        if self.channel == ReleaseChannel.STABLE and not self.compatibility_series:
-            raise ValueError(_DEPLOYMENT_STABLE_ERROR)
-        return self
-
-    @property
-    def series(self) -> CompatibilitySeries | None:
-        """The series stable self-update follows; None on a channel that follows none."""
-        return CompatibilitySeries.parse(self.compatibility_series) if self.channel == ReleaseChannel.STABLE else None
 
 
 class TerminalConfig(ClosedModel):

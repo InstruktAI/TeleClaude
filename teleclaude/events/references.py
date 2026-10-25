@@ -41,6 +41,7 @@ class ReferenceKind(StrEnum):
     CI_RUN = "ci_run"
     COMMIT = "commit"
     INSTALL = "install"
+    RELEASE = "release"
 
 
 @dataclass(frozen=True)
@@ -228,3 +229,10 @@ class InstallRef(TypedRef):
     """An install of a release on a computer, by ``<computer>/<number>``; the number is the installation's own."""
 
     KIND: ClassVar[ReferenceKind] = ReferenceKind.INSTALL
+
+
+@dataclass(frozen=True)
+class ReleaseRef(TypedRef):
+    """A published release of a source repository, by ``<owner>/<repo>@<version>``."""
+
+    KIND: ClassVar[ReferenceKind] = ReferenceKind.RELEASE

@@ -179,8 +179,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "max_todo_dispatch": 5,
     },
     "deployment": {
-        "channel": "alpha",
-        "compatibility_series": "",
+        "channel": "stable",
     },
     "experiments": [],
 }

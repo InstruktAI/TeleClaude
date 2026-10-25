@@ -18,24 +18,26 @@ import os
 import stat
 import sys
 import tempfile
+from functools import partial
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config._models import ReleaseChannel
-from teleclaude.config.compatibility_series import CompatibilitySeries
 from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.machine import config
 from teleclaude.core.reconciliation.channel_target import (
     ChannelTarget,
     ChannelTargetError,
     channel_target,
+    newest_release_target,
     release_tag_of,
 )
 from teleclaude.core.reconciliation.install_act import InstallRequest, InstallResult, InstallStatus, install
 from teleclaude.core.reconciliation.installation import InstallationLayout
 from teleclaude.core.reconciliation.installation_ports import LiveInstallPorts
 from teleclaude.core.reconciliation.installation_release import ReleasePreparationError
+from teleclaude.deployment.self_update import is_superseded
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.logging_config import setup_logging
 from teleclaude.paths import ENV_PATH
@@ -71,7 +73,7 @@ def first_install_target(layout: InstallationLayout) -> ChannelTarget:
     The first install is the source's latest release and nothing else: no other class of source is
     substituted, so a source with no release is reported rather than activated from its mainline.
     """
-    return channel_target(layout, ReleaseChannel.BETA, None)
+    return newest_release_target(layout, None)
 
 
 def bootstrap(source: str, layout: InstallationLayout | None = None, revision: str | None = None) -> InstallResult:
@@ -135,12 +137,13 @@ def _running_revision(checkout: Path) -> str:
 
 
 def move_off_checkout(
-    checkout: Path,
-    channel: ReleaseChannel | None = None,
-    series: CompatibilitySeries | None = None,
-    layout: InstallationLayout | None = None,
+    checkout: Path, channel: ReleaseChannel | None = None, layout: InstallationLayout | None = None
 ) -> InstallResult:
-    """Move the platform that runs from ``checkout`` onto an installation, in one controlled restart."""
+    """Move the platform that runs from ``checkout`` onto an installation, in one controlled restart.
+
+    A target the edge channel resolves is the newest green revision, and the act confirms before it stops the
+    checkout's platform that no newer green revision overtook it; the move is then simply run again.
+    """
     resolved = layout or InstallationLayout()
     source = _origin_of(checkout)
     running = _running_revision(checkout)
@@ -148,7 +151,7 @@ def move_off_checkout(
     ports = LiveInstallPorts(resolved)
     ports.fetch(source)
     try:
-        target = channel_target(resolved, channel, series) if channel is not None else first_install_target(resolved)
+        target = channel_target(resolved, channel) if channel is not None else first_install_target(resolved)
     except ChannelTargetError as error:
         raise MoveRefused(_NO_TARGET.format(error=error)) from error
     request = InstallRequest(
@@ -157,16 +160,17 @@ def move_off_checkout(
         source=source,
         checkout=checkout,
         running=running,
+        is_superseded=partial(is_superseded, resolved) if channel is ReleaseChannel.EDGE else None,
     )
     return install(request, ports, resolved)
 
 
-def _machine_channel() -> tuple[ReleaseChannel | None, CompatibilitySeries | None]:
-    """The channel and series the machine's own configuration declares; neither when it does not load."""
+def _machine_channel() -> ReleaseChannel | None:
+    """The channel the machine's own configuration declares; none when it does not load."""
     try:
-        return config.deployment.channel, config.deployment.series
+        return config.deployment.channel
     except (ConfigLoadError, FileNotFoundError, ValueError):
-        return None, None
+        return None
 
 
 def _report(result: InstallResult) -> int:
@@ -193,8 +197,7 @@ def main(arguments: list[str] | None = None) -> int:
     try:
         if options.verb == _BOOTSTRAP_VERB:
             return _report(bootstrap(options.source, revision=options.revision))
-        channel, series = _machine_channel()
-        return _report(move_off_checkout(options.checkout.resolve(), channel, series))
+        return _report(move_off_checkout(options.checkout.resolve(), _machine_channel()))
     except (MoveRefused, ReleasePreparationError, ChannelTargetError, OSError) as error:
         print(str(error), file=sys.stderr)
         return _FAILED_EXIT_CODE

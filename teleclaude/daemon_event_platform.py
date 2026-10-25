@@ -32,7 +32,10 @@ from teleclaude.core.procedure_routing import build_procedure_activation_consume
 from teleclaude.core.reconciliation import FleetCapabilityMap, contraction_answer_from_live_map
 from teleclaude.core.reconciliation.installation import InstallationLayout
 from teleclaude.core.reconciliation.installation_assessment import AssessmentAnnouncer
-from teleclaude.core.reconciliation.installation_reaction import build_installation_reaction_consumer
+from teleclaude.core.reconciliation.installation_reaction import (
+    InstallationSourceReader,
+    build_installation_reaction_consumer,
+)
 from teleclaude.core.runtime_event_consumers import RuntimeVoiceSurface, build_runtime_event_consumers
 from teleclaude.core.runtime_events import INTERNAL_RUNTIME_EVENT_STREAM
 from teleclaude.core.session_cleanup import terminate_session
@@ -103,6 +106,8 @@ _RETIRED_GROUP_ABSENT_EVENT = "No stream yet; no retired system pipeline consume
 _TASK_SCHEDULE_CLOCK_TASK_NAME = "task-schedule-clock"
 _ASSESSMENT_ANNOUNCER_TASK_NAME = "installation-assessment-announcer"
 _ASSESSMENT_ANNOUNCER_STARTED_EVENT = "Installation assessment announcer started"
+_SOURCE_READER_TASK_NAME = "installation-source-reader"
+_SOURCE_READER_STARTED_EVENT = "Installation source reader started"
 _EVENT_CONSUMERS_STARTED_EVENT = "Event consumer runtime started"
 _MEMORY_TRANSITION_TASK_NAME = "memory-transition"
 _MEMORY_TRANSITION_LOG_TASK_NAME = "memory_transition"
@@ -147,6 +152,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _relay_delivery_processor: EventProcessor[Any] | None
         _task_schedule_clock_task: SupervisedTask | None
         _assessment_announcer_task: SupervisedTask | None
+        _source_reader_task: SupervisedTask | None
         _hook_dispatcher: HookDispatcher | None
         cache: DaemonCache
 
@@ -242,7 +248,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             build_memory_closure_consumer(),
             build_procedure_activation_consumer(),
             build_event_bound_maintenance_consumer(),
-            build_installation_reaction_consumer(),
+            build_installation_reaction_consumer(self._event_producer),
             build_ci_run_outcomes_consumer(self._event_producer),
             build_failed_check_bugs_consumer(),
             build_correlation_consumer(self._event_db, self._event_producer, CorrelationConfig()),
@@ -435,6 +441,14 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         )
         logger.info(_ASSESSMENT_ANNOUNCER_STARTED_EVENT)
 
+    def _start_installation_source_reader(self, event_producer: EventProducer) -> None:
+        """Start the interval read of the followed source that feeds the channel decision beside the relayed signals."""
+        reader = InstallationSourceReader(event_producer, InstallationLayout())
+        self._source_reader_task = self.task_registry.supervise(
+            _SOURCE_READER_TASK_NAME, partial(reader.run, self.shutdown_event), restart=True
+        )
+        logger.info(_SOURCE_READER_STARTED_EVENT)
+
     async def _start_event_platform_prepare(self) -> None:
         """Prepare the owned producer, both reader positions, and ingress boundary before startup producers run."""
         redis_configured = bool(config.redis.url)
@@ -500,6 +514,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         await self._emit_daemon_restarted_event(event_producer, computer_label)
         self._start_task_schedule_clock(event_producer)
         self._start_assessment_announcer(event_producer)
+        self._start_installation_source_reader(event_producer)
 
     async def _init_webhook_service(self) -> None:
         """Prepare the hook dispatcher, inbound routes and its reader position before startup producers run."""

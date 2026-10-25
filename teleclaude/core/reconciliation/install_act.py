@@ -14,6 +14,7 @@ Everything that touches git, processes or the filesystem is a port the act drive
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -49,6 +50,9 @@ _NOT_SETTLED = "; the attempted release could not be stopped, so nothing was swi
 _RESTORE_UNVERIFIED = "; the previously active release did not verify either: {detail}"
 _PREPARATION_FAILED = "preparing the release failed at {step}: {detail}"
 _IN_PROGRESS = "another install or rollback is in progress"
+_SUPERSEDED = (
+    "revision {target} was overtaken by a newer green revision before its activation, so the active release is kept"
+)
 _MIGRATIONS_STARTED = "a migration started since the active release became active, in {stores}"
 _NO_PREVIOUS = "no previous release is installed"
 _INSTALL_UNSETTLED = (
@@ -81,6 +85,7 @@ class InstallResult:
     left_stopped: bool = False
     publication_failure: str | None = None
     contained: bool = False
+    superseded: bool = False
 
 
 @dataclass(frozen=True)
@@ -92,6 +97,9 @@ class InstallRequest:
     the repository to keep when the installation has none yet. ``checkout`` is a project checkout whose
     daemon serves the machine, for the move off it; ``running`` is the revision that checkout runs, which
     stands in for the active release when the forward rule and the migrations ask where the platform is.
+    ``is_superseded`` is the caller's confirmation that a channel-resolved edge target is still the newest
+    green revision: the act asks it with the resolved commit once the release is prepared and before anything
+    stops, and ends refused when it answers yes.
     """
 
     target: str
@@ -99,6 +107,7 @@ class InstallRequest:
     source: str | None = None
     checkout: Path | None = None
     running: str | None = None
+    is_superseded: Callable[[str], bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -218,6 +227,16 @@ def _install(request: InstallRequest, ports: InstallPorts, layout: InstallationL
         ports.prepare(target)
     except ReleasePreparationError as error:
         return _ended(layout, ActOutcome.FAILED_RETURNED, target, _preparation_reason(error))
+    if request.is_superseded is not None:
+        try:
+            superseded = request.is_superseded(target)
+        except ReleasePreparationError as error:
+            return _ended(layout, ActOutcome.FAILED_RETURNED, target, _preparation_reason(error))
+        if superseded:
+            # Activation begins at the stop; until then an overtaken target costs nothing to abandon.
+            return replace(
+                _ended(layout, ActOutcome.REFUSED, target, _SUPERSEDED.format(target=target)), superseded=True
+            )
     if provisioning:
         return _provision(target, request.running, ports, layout)
     return _replace(request, active, baseline, target, ports, layout)

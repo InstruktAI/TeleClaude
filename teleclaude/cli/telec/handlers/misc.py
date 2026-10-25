@@ -22,7 +22,7 @@ from teleclaude.project_root import resolve_invocation_cwd
 if TYPE_CHECKING:
     from teleclaude.api_models import CreateSessionResponseDTO
 
-_CHANNEL_SERIES_TEMPLATE = "{channel} ({series})"
+_UNKNOWN_CHANNEL = "unknown"
 
 __all__ = [
     "_attach_tmux_session",
@@ -63,15 +63,11 @@ def _handle_version() -> None:
     """Print runtime version metadata."""
     commit_hash = _git_short_commit_hash()
     try:
-        deployment = importlib.import_module("teleclaude.config.machine").config.deployment
-        channel = deployment.channel
-        series = deployment.series
+        channel = str(importlib.import_module("teleclaude.config.machine").config.deployment.channel)
     except (AttributeError, OSError, TypeError, ValueError):
-        channel = "alpha"
-        series = None
+        channel = _UNKNOWN_CHANNEL
 
-    channel_str = _CHANNEL_SERIES_TEMPLATE.format(channel=channel, series=series) if series is not None else channel
-    print(f"TeleClaude v{_teleclaude_version()} (channel: {channel_str}, commit: {commit_hash})")
+    print(f"TeleClaude v{_teleclaude_version()} (channel: {channel}, commit: {commit_hash})")
 
 
 def _handle_revive(args: list[str]) -> None:

@@ -355,6 +355,8 @@ _RELAY_DELIVERY_TASK_ATTRIBUTE = "_relay_delivery_task"
 _RELAY_DELIVERY_STOPPED = "Relay delivery processor stopped"
 _ASSESSMENT_ANNOUNCER_TASK_ATTRIBUTE = "_assessment_announcer_task"
 _ASSESSMENT_ANNOUNCER_STOPPED = "Installation assessment announcer stopped"
+_SOURCE_READER_TASK_ATTRIBUTE = "_source_reader_task"
+_SOURCE_READER_STOPPED = "Installation source reader stopped"
 _EVENT_CONSUMER_STOPPED = "Event consumer stopped"
 # Startup retry configuration
 STARTUP_MAX_RETRIES = 3
@@ -567,6 +569,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._relay_delivery_task: SupervisedTask | None = None
         self._task_schedule_clock_task: SupervisedTask | None = None
         self._assessment_announcer_task: SupervisedTask | None = None
+        self._source_reader_task: SupervisedTask | None = None
         self._workflow_bridge_task: SupervisedTask | None = None
         self._workflow_bridge: WorkflowBridge | None = None
         self._identity_bridge_task: SupervisedTask | None = None
@@ -1160,6 +1163,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         await self._await_worker_attr("_task_schedule_clock_task", "Task schedule clock stopped", timeout=5.0)
         await self._await_worker_attr(_ASSESSMENT_ANNOUNCER_TASK_ATTRIBUTE, _ASSESSMENT_ANNOUNCER_STOPPED, timeout=5.0)
+        await self._await_worker_attr(_SOURCE_READER_TASK_ATTRIBUTE, _SOURCE_READER_STOPPED, timeout=5.0)
         for consumer_task in self._event_consumer_tasks:
             await self._await_worker(consumer_task, consumer_task.name, _EVENT_CONSUMER_STOPPED, timeout=5.0)
         await self._await_worker_attr(_RELAY_DELIVERY_TASK_ATTRIBUTE, _RELAY_DELIVERY_STOPPED, timeout=5.0)

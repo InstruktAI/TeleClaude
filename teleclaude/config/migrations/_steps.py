@@ -31,6 +31,7 @@ from teleclaude.config.migrations import (
     v024_declare_github_identities,
     v025_declare_todo_repository,
     v026_declare_maintenance_runs_while_serving,
+    v027_channel_enrollment,
 )
 
 STEPS: Final = (
@@ -60,4 +61,5 @@ STEPS: Final = (
     v024_declare_github_identities,
     v025_declare_todo_repository,
     v026_declare_maintenance_runs_while_serving,
+    v027_channel_enrollment,
 )
