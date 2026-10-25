@@ -8,7 +8,6 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from teleclaude.closed_model import ClosedModel
-from teleclaude.core.roles import RoleName
 from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
 
 _BOT_REQUIRED = "A platform GitHub assignment requires a Bot account"
@@ -52,22 +51,3 @@ class GitHubActorAssignment(ClosedModel):
         if self.actor.type is not GitHubAccountKind.BOT:
             raise ValueError(_BOT_REQUIRED)
         return self
-
-
-class AdmittedWorkflowParent(BaseModel):
-    """Qualified parent fact issued by the child owner after its existing ChildPlan admission."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    computer: str = Field(min_length=1)
-    session_id: str = Field(min_length=1)
-
-
-class GitHubSessionBinding(BaseModel):
-    """Persisted assignment stamped with the actual session's catalog role."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    session_id: str = Field(min_length=1)
-    role: RoleName
-    assignment: GitHubActorAssignment
-    workflow_parent: AdmittedWorkflowParent | None = None

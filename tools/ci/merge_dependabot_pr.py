@@ -4,27 +4,38 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
+from typing import Literal
 
-EMPTY_VALUE = ""
+from githubkit import GitHub
+from githubkit.auth.token import TokenAuthStrategy
+from githubkit.exception import GitHubException
+
 DESCRIPTION = "Merge a Dependabot pull request."
-GH = "gh"
-MERGE = "merge"
-MISSING_PR_URL = "Required environment variable is missing or empty: PR_URL"
-PR = "pr"
-PR_URL = "PR_URL"
-SQUASH = "--squash"
+EMPTY_VALUE = ""
+GITHUB_REPOSITORY = "GITHUB_REPOSITORY"
+GITHUB_TOKEN = "GITHUB_TOKEN"
+MERGE_FAILED = "Merging the pull request failed: {}"
+MISSING_ENVIRONMENT = "Required environment variable is missing or empty: {}"
+PR_NUMBER = "PR_NUMBER"
+REPOSITORY_SEPARATOR = "/"
+SQUASH: Literal["squash"] = "squash"
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Merge the pull request supplied by the trusted workflow condition."""
+    """Squash-merge the pull request supplied by the trusted workflow condition."""
     argparse.ArgumentParser(description=DESCRIPTION).parse_args(argv)
-    url = os.environ.get(PR_URL, EMPTY_VALUE)
-    if not url:
-        print(MISSING_PR_URL)
+    values = {name: os.environ.get(name, EMPTY_VALUE) for name in (GITHUB_REPOSITORY, GITHUB_TOKEN, PR_NUMBER)}
+    for name, value in values.items():
+        if not value:
+            print(MISSING_ENVIRONMENT.format(name))
+            return 1
+    owner, _separator, repository = values[GITHUB_REPOSITORY].partition(REPOSITORY_SEPARATOR)
+    try:
+        number = int(values[PR_NUMBER])
+        GitHub(TokenAuthStrategy(values[GITHUB_TOKEN])).rest.pulls.merge(owner, repository, number, merge_method=SQUASH)
+    except (GitHubException, ValueError) as error:
+        print(MERGE_FAILED.format(type(error).__name__))
         return 1
-    # GitHub CLI is the supported interface for GitHub pull-request merging.
-    subprocess.run([GH, PR, MERGE, SQUASH, url], check=True)
     return 0
 
 

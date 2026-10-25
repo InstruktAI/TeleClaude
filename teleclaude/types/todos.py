@@ -216,6 +216,7 @@ class HoldAuditState(BaseModel):
 class TodoEventKind(StrEnum):
     """Closed vocabulary of ``Event.kind`` values the lifecycle reads back."""
 
+    BUILD_REVIEW_STAMP = "build_review_stamp"
     COMMIT_REVIEW_STAMP = "commit_review_stamp"
     CODE_CONFORMANCE_RETURN = "code_conformance_return"
     PREPARE_CLAIM = "prepare_claim"
@@ -234,6 +235,15 @@ class CommitReviewDetail(StrEnum):
     SHA = "sha"
     VERDICT = "verdict"
     REASON = "reason"
+
+
+class BuildReviewDetail(StrEnum):
+    """Keys of a build-review stamp event's ``details`` payload."""
+
+    ROUND = "round"
+    COMMIT = "commit"
+    VERDICT = "verdict"
+    REPORT_DIGEST = "report_digest"
 
 
 class PrepareClaimDetail(StrEnum):

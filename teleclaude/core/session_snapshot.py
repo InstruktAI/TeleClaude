@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import subprocess
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -13,6 +12,7 @@ from instrukt_ai_logging import get_logger
 from pydantic import ValidationError
 
 from teleclaude.core.models._snapshot import SessionSnapshot
+from teleclaude.github.issue_lookup import IssueLookupUnavailable, read_issue_reference
 from teleclaude.types.github_issue import GitHubIssueReference
 from teleclaude.types.work_subject import WorkSubjectParameter
 
@@ -23,8 +23,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SUBJECT_FIELD = "subject"
-_GH_ISSUE_VIEW = ("gh", "issue", "view", "--json", "number,url", "--")
-_LOOKUP_TIMEOUT_SECONDS = 10
 _LOOKUP_RETRY_SECONDS = 60
 _LOOKUP_CACHE_SIZE = 256
 _LOOKUP_UNAVAILABLE_EVENT = "session_github_issue_lookup_unavailable"
@@ -63,17 +61,8 @@ class SessionIssueMetadata:
 
 @lru_cache(maxsize=_LOOKUP_CACHE_SIZE)
 def _verified_issue(project_path: str, selector: str) -> GitHubIssueReference:
-    """Resolve issue identity using the assignment's own GitHub repository selection."""
-    # GitHub CLI owns the assignment's authenticated repository selection; no Python API reproduces it.
-    result = subprocess.run(
-        [*_GH_ISSUE_VIEW, selector],
-        cwd=project_path,
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=_LOOKUP_TIMEOUT_SECONDS,
-    )
-    return GitHubIssueReference.model_validate_json(result.stdout)
+    """Resolve issue identity from the assignment's repository through the GitHub library."""
+    return asyncio.run(read_issue_reference(project_path, selector))
 
 
 @lru_cache(maxsize=_LOOKUP_CACHE_SIZE)
@@ -81,7 +70,7 @@ def _issue_lookup_attempt(project_path: str, selector: str, _retry_period: int) 
     """Cache unavailable lookups for one retry period; verified identities remain cached."""
     try:
         return _verified_issue(project_path, selector)
-    except (OSError, subprocess.SubprocessError, ValidationError) as error:
+    except (IssueLookupUnavailable, ValidationError) as error:
         # Issue navigation is optional: a GitHub outage must not make the session view unavailable.
         logger.warning(_LOOKUP_UNAVAILABLE_EVENT, project_path=project_path, error_type=type(error).__name__)
         return None

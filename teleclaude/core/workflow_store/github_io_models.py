@@ -37,3 +37,28 @@ class GitHubIssue:
     node_id: str
     creator: str
     updated_at: datetime | None
+
+
+@dataclass(frozen=True)
+class GitHubPullRequest:
+    """Pull request facts needed to identify an item's pull request and decide its next write."""
+
+    number: int
+    node_id: str
+    author: str
+    title: str
+    body: str
+    draft: bool
+    open: bool
+    head_branch: str
+
+
+@dataclass(frozen=True)
+class GitHubReview:
+    """Submitted pull request review facts needed to recognize an already posted review."""
+
+    review_id: int
+    author: str
+    commit_id: str
+    state: str
+    body: str

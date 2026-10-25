@@ -280,6 +280,16 @@ def reflect_issue(
     )
 
 
+def issue_title(snapshot: WorkingCopyItemSnapshot) -> str:
+    """Return the title the item's issue carries, which its pull request shares."""
+    return _title_and_body(_input_content(snapshot), str(snapshot.todo.get(WorkflowField.SLUG, _EMPTY)))[0]
+
+
+def stable_digest(value: object) -> str:
+    """Fingerprint a JSON-serializable projection value the way every reflection digest is made."""
+    return _digest(value)
+
+
 def is_repository_work(workflow_state: Mapping[str, object] | None) -> bool:
     """Return whether the adapter publishes this item's kind and creative-track state."""
     state = _state_mapping(workflow_state)

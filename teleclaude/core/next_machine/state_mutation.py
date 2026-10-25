@@ -34,10 +34,13 @@ from teleclaude.types.todos import (
     ApprovalStamp,
     AuditReviewEntry,
     AuditState,
+    BuildReviewDetail,
     BuildReviewState,
     DriftReviewedStamp,
+    Event,
     ReviewVerdictState,
     SkipStamp,
+    TodoEventKind,
     TodoState,
 )
 
@@ -304,6 +307,21 @@ class ReviewManager:
         review.reviewed_target_digest = reviewed_target_digest
         review.review_report_digest = review_report_digest
         review.caller_session_id = caller_session_id
+
+        if isinstance(review, BuildReviewState):
+            self._writer.state.events.append(
+                Event(
+                    at=now,
+                    actor=caller_session_id,
+                    kind=TodoEventKind.BUILD_REVIEW_STAMP,
+                    details={
+                        BuildReviewDetail.ROUND: review.round,
+                        BuildReviewDetail.COMMIT: reviewed_target_digest,
+                        BuildReviewDetail.VERDICT: verdict,
+                        BuildReviewDetail.REPORT_DIGEST: review_report_digest,
+                    },
+                )
+            )
 
         if isinstance(review, ReviewVerdictState):
             audit_entry = self._writer.audit_entry(review_type)

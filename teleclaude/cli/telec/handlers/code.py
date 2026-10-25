@@ -18,7 +18,7 @@ from sqlalchemy.exc import OperationalError
 from teleclaude.cli.session_auth import ResolvedCliIdentity, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, parse_command_args
-from teleclaude.cli.telec.handlers._code_branch_publish import publish_todo_branch
+from teleclaude.cli.telec.handlers._code_branch_publish import publish_committed_todo_branch
 from teleclaude.cli.telec.handlers._code_commit_guidance import (
     _commit_stage_paths,
     _print_commit_review_guidance,
@@ -524,7 +524,7 @@ def handle_code_commit(args: list[str]) -> None:
             todo_slug=todo_slug,
         )
 
-    publish_todo_branch(project_root)
+    publish_committed_todo_branch(project_root)
 
 
 def _resolve_human_involvement_declaration(reason: str | None) -> bool:
