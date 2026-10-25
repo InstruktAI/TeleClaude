@@ -200,9 +200,11 @@ outcome and the log window from that install onwards
 
 The bootstrap checks prerequisites, creates the installation, installs the
 source's latest release through the install act and publishes `telec`. On a machine
-where no daemon serves, that first install has nothing to stop or verify: it
-prepares the release, creates its stores, switches `current` and publishes
-`telec`. Services are installed and the daemon started by `telec app start` once
+with no installed release and no daemon serving, that initial provisioning has
+nothing to stop or verify: it prepares the release, creates its stores,
+switches `current` and publishes `telec`. Every other install — an existing
+installation whose daemon is stopped included — starts the daemon on the new
+release and verifies it. Services are installed and the daemon started by `telec app start` once
 the configuration is valid. Until a daemon serves the machine, `telec config` and the
 terminal interface's configuration view execute configuration in their own
 process (`local/projects/teleclaude/spec/domain/config`), so the platform can be
