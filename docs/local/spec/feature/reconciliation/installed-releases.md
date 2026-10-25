@@ -68,25 +68,24 @@ starts the daemon on it, under the guarantees of
   contract supports.
 - **Idempotent.** Installing the revision that is already active changes
   nothing.
-- **Ran migrations.** Every owner whose store the platform migrates — through
-  a migration ledger or when the store is opened — reports, before it changes
-  anything, that it is beginning a migration, and afterwards what that
-  migration did: changed its store, left it unchanged as the owner can
-  establish, or had effects it cannot establish. An install migrated state when
-  any begun migration changed its store or had unknown effects, or when an
-  owner could not report. An install ran migrations when it migrated state; a
-  migration refused with its store established unchanged is not one. An install
-  that ran migrations is never undone by rollback.
+- **Ran migrations.** Any migration that starts since the active release
+  became active, in any store, counts as having changed state, whatever it
+  does — a migration interrupted before its ledger write included. Every owner
+  whose store the platform migrates, through a migration ledger or when the
+  store is opened, signals that it is starting a migration before it changes
+  anything; an owner that cannot signal counts as having started one. An
+  install ran migrations when any migration started during it. An install that
+  ran migrations is never undone by rollback.
 - **Failure.** An install completes once the daemon is verified serving the new
   release, whether a daemon was serving before it or was stopped. The one
   exception is initial provisioning — the bootstrap's install on a machine with
   no installed release and no daemon serving — which completes once its release
   is active and `telec` is published. The move off a project checkout, where
-  that checkout's daemon serves, completes like any other install. An install that fails without having migrated state — including one
-  whose begun migrations all left their stores unchanged — leaves the
-  previously active release active and serving, and reports why. One that fails
-  after it migrated state reports the failure and which stores were changed or
-  are unknown, is never reported as complete, and is repaired forward.
+  that checkout's daemon serves, completes like any other install. An install
+  that fails before any migration started leaves the previously active release
+  active and serving, and reports why. One that fails after a migration started
+  reports the failure and which stores its migrations reached, is never
+  reported as complete, and is repaired forward.
 - **Publication follows the install.** Publishing the installed release's
   documentation and schemas
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`)
@@ -101,13 +100,12 @@ starts the daemon on it, under the guarantees of
 ### Rollback
 
 Rollback makes the previous release active again and restarts the daemon on
-it, only while no migration has changed state or had unknown effects since the
-active release became active — neither during its install nor afterwards, when
-the active release first opens a store. Store owners report every migration the
-active release begins to the installation, whenever it begins. When a migration
-has changed state or its effects are unknown, or no previous release is
-installed, rollback refuses, names the condition, and changes nothing. No state
-is backed up or restored.
+it, only while no migration has started since the active release became
+active — neither during its install nor afterwards, when the active release
+first opens a store. Store owners signal every migration the active release
+starts to the installation, whenever it starts. When a migration has started,
+or no previous release is installed, rollback refuses, names the condition, and
+changes nothing. No state is backed up or restored.
 
 ### First install
 
@@ -160,29 +158,29 @@ Scenario: Installing an older revision
   Then the install is refused
   And the platform keeps running the active release
 
-Scenario: An install that fails without having migrated state
-  Given an install of a newer revision fails while no migration has changed a store or had unknown effects
+Scenario: An install that fails before any migration started
+  Given an install of a newer revision fails before any migration started
   When the operator looks at the installation's status
   Then the previously active release is still active and serving
   And the failure and its reason are reported
 
-Scenario: An install that fails after it migrated state
-  Given an install of a newer revision fails after a migration changed a store or had unknown effects
+Scenario: An install that fails after a migration started
+  Given an install of a newer revision fails after one of its migrations started
   When the operator looks at the installation's status
   Then the install is reported as failed, not complete
-  And the report names which stores were changed or are unknown
+  And the report names which stores its migrations reached
 ```
 
 #### UC-IR3: An agent returns the platform to the previous release
 
 ```gherkin
-Scenario: The active release has migrated nothing
-  Given no migration has changed state since the active release became active
+Scenario: No migration has started since activation
+  Given no migration has started since the active release became active
   When an agent acting for the operator rolls the installation back
   Then the platform runs the previously active release again
 
-Scenario: The active release has migrated state
-  Given a migration has changed state since the active release became active
+Scenario: A migration has started since activation
+  Given a migration has started since the active release became active
   When an agent acting for the operator rolls the installation back
   Then the rollback is refused with that reason
   And the platform keeps running the active release
@@ -214,8 +212,9 @@ And the project keeps every todo, worktree and claim where it was
   contract; a side project keeps its own checkout and deploy.
 - Rollback returns one step only. After an install that ran migrations the way
   back is a forward repair.
-- Whether state migrated is what the store owners report. The install opens,
-  inside its stopped window, every store the daemon opens at startup and every
-  registered project's todo store, so their migrations run there; a store the
-  active release first opens later reports its migration then, and from that
-  moment rollback is no longer offered.
+- Whether a migration started is what the store owners signal. The install
+  opens, inside its stopped window, every store the daemon opens at startup and
+  every registered project's todo store, so their migrations start there; a
+  store the active release first opens later signals its migration then, and
+  from that moment rollback is no longer offered. A started migration that
+  changed nothing still withdraws rollback.

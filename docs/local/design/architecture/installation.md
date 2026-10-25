@@ -47,10 +47,9 @@ contracts of the contexts it crosses. It owns none of their rules.
 - Live surfaces bound to `current`: the service definitions, the published
   `telec`, the agent hook commands, the home-level wrappers, shell setup and
   shared-script links, and every path the runtime composes for a session.
-- The install record: the active and previous release, whether state has
-  migrated since the active release became active and which stores were
-  changed or are unknown, and the
-  outcome of the most recent act with its reason.
+- The install record: the active and previous release, whether any migration
+  has started since the active release became active and in which stores, and
+  the outcome of the most recent act with its reason.
 
 ```mermaid
 flowchart LR
@@ -129,7 +128,7 @@ sequenceDiagram
   Rec->>Rel: fetch, add worktree at target, build environment (daemon serving)
   Rec->>Life: stop (preparation settles accepted work)
   Rec->>Rel: run ledger migrations, then open every store the daemon opens
-  Rel-->>Rec: each owner: beginning / changed, unchanged or unknown
+  Rel-->>Rec: each owner: starting a migration
   Rel->>Home: migrate stores
   Rec->>Rec: switch current
   Rec->>Life: start; verify the daemon serves the new revision
@@ -148,17 +147,14 @@ sequenceDiagram
   initialization, every store the daemon opens at startup — the event store,
   session mirrors and hook outbox among them — and every registered project's
   todo store, so open-time schema and data migrations run while no older reader
-  serves. Each owner reports to the install act before it changes anything that
-  it is beginning a migration, and afterwards what it did: changed its store,
-  left it unchanged as the owner establishes, or had effects it cannot
-  establish; an owner that cannot report counts as unknown
-  (`local/projects/teleclaude/policy/single-database`). Configuration documents
-  report through their per-document run outcome: migrated outcomes — committed,
-  left uncommitted, written untracked — count as changed; current, withheld,
-  restored after a refused commit, and failed outcomes whose contract leaves
-  the document's bytes unchanged count as unchanged. The install migrated state
-  exactly when some begun migration changed its store or is unknown; until then,
-  no state has changed.
+  serves. Each owner signals to the install act, before it changes anything,
+  that it is starting a migration; an owner that cannot signal counts as having
+  started one (`local/projects/teleclaude/policy/single-database`). The ledger
+  runners already know when they start one; the stores that migrate when opened
+  emit the same signal. Configuration documents signal through their
+  per-document run outcome: a document found below the current version counts
+  as started. Any started migration counts as having changed state, whatever it
+  did; until the first signal, no state has changed.
 - **Switch, start, verify.** `current` is switched atomically, the service
   definitions are deployed only when their rendered content changed, and the
   start is verified against the new revision with admission open, as the
@@ -174,10 +170,10 @@ sequenceDiagram
 
 ### Rollback
 
-Rollback reads the install record. Store owners report every migration the
-active release begins to that record, during the install and whenever the
-active release first opens a store afterwards. When no migration has changed
-state or had unknown effects since the active release became active, and a previous release is installed, it stops the daemon through the
+Rollback reads the install record. Store owners signal every migration the
+active release starts to that record, during the install and whenever the
+active release first opens a store afterwards. When no migration has started
+since the active release became active, and a previous release is installed, it stops the daemon through the
 lifecycle contract, switches `current` to the previous release, starts and
 verifies, and records that no further rollback is available. Otherwise it
 refuses and changes nothing.
@@ -223,17 +219,15 @@ checkout stays a registered project.
 - **Stop withheld** (preparation incomplete or withheld): no migration runs;
   the lifecycle contract's outcome is reported and the active release stays
   active.
-- **A failure after the stop while no state has migrated** — including a
-  refused migration whose owner establishes its store unchanged, and a start
-  that does not verify after an install that migrated no state:
+- **A failure after the stop before any migration started** — including a
+  start that does not verify after an install in which no migration started:
   `current`
   returns to the previously active release, the daemon is started on it and
   verified, and the failure is recorded.
-- **A failure after state migrated** — a begun migration changed its store or
-  its effects are unknown: `current`
+- **A failure after a migration started**: `current`
   is left where the failure found it and the daemon stays stopped, because
   neither release is known to serve the partly migrated state; the install
-  record names which stores were changed or are unknown, the reason is reported
+  record names which stores its migrations reached, the reason is reported
   where `telec app status` shows it, and recovery is a forward repair followed
   by another install.
 - **Publication fails after a completed install**: the daemon keeps serving the
@@ -242,12 +236,12 @@ checkout stays a registered project.
 - **A release folder disappears**: nothing live names it, so only a rollback to
   it is affected, and rollback refuses with that reason.
 - **A store first opened after the install completes** migrates when the
-  active release opens it; its owner reports that migration to the install
+  active release opens it; its owner signals that migration to the install
   record, and from then on rollback refuses. The stopped window opens every
   store the daemon opens at startup and every registered project's todo store,
   so that most migrations run inside it.
-- **An owner cannot report to the install record**: the migration counts as
-  having unknown effects, and rollback refuses.
+- **An owner cannot signal to the install record**: the migration counts as
+  started, and rollback refuses.
 
 ## See Also
 

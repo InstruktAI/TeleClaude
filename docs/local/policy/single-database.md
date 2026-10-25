@@ -38,14 +38,13 @@ visibility: 'public'
 
 <!-- planned:platform-installation -->
 
-- **Each domain's store reports the migrations it runs.** Whether a migration
-  runs from a ledger or when the store is opened, the owning domain reports,
-  before the migration changes anything, that it is beginning one, and
-  afterwards what it did: changed the store, left it unchanged as the owner
-  can establish, or had effects the owner cannot establish — whenever the
-  migration runs, during an install or when the active release first opens the
-  store. The install act decides how a failed install recovers, and whether
-  rollback is still offered, from those reports alone
+- **Each domain's store signals the migrations it starts.** Whether a
+  migration runs from a ledger or when the store is opened, the owning domain
+  signals, before the migration changes anything, that it is starting one —
+  whenever it runs, during an install or when the active release first opens
+  the store. Any started migration counts as having changed state, whatever it
+  does. The install act decides how a failed install recovers, and whether
+  rollback is still offered, from those signals alone
   (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
 
 <!-- /planned:platform-installation -->
@@ -60,10 +59,11 @@ visibility: 'public'
 <!-- planned:platform-installation -->
 
 - Only the owning domain knows, before it acts, that a migration is about to
-  change its store; a ledger is written after the migration's effects and a
+  start in its store; a ledger is written after the migration's effects and a
   source change does not mean a migration ran, so neither can stand in for the
-  owner's report when an install decides whether the previous release can still
-  read what it leaves behind.
+  owner's signal when an install decides whether the previous release can still
+  read what it leaves behind. Counting every started migration as a change
+  needs no account of what each one did.
 
 <!-- /planned:platform-installation -->
 
