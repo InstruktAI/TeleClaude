@@ -24,11 +24,28 @@ stable installation stays within follows from its active release.
 
 ### Channel declaration
 
+<!-- planned-change:app-status-rejects-legacy-channel -->
+
 The deployment model owns the field's spelling and serialized schema. The
 channel is `edge` or `stable`; any other value fails configuration validation
 before the configuration is stored. A configuration that declares no channel
 follows stable, so a new installation whose operator chooses nothing follows
 the source's releases.
+
+<!-- change:app-status-rejects-legacy-channel -->
+
+The deployment model owns the field's spelling and serialized schema. The
+channel is `edge` or `stable`, and the serialized schema offers only those two.
+An earlier spelling in the migration table below reads as the channel it maps
+to wherever it reaches the field, including through an environment reference
+whose value no configuration migration can rewrite
+(`local/projects/teleclaude/spec/feature/config/yaml-env-var-expansion`,
+`local/projects/teleclaude/policy/configuration-migrations`). Any other value
+fails configuration validation before the configuration is stored. A
+configuration that declares no channel follows stable, so a new installation
+whose operator chooses nothing follows the source's releases.
+
+<!-- /planned-change:app-status-rejects-legacy-channel -->
 
 ### Migration of earlier declarations
 
