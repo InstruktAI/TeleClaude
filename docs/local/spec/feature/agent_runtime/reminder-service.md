@@ -44,6 +44,17 @@ Other prescribed profiles are registered beside the job or procedure that owns
 their intent. Their delivered slugs are reserved against arbitrary use without
 centralizing their definitions.
 
+<!-- planned:integrator-wakes-on-events -->
+
+A prescribed profile that its owner retires keeps its slug reserved. Setting a
+retired slug is refused with the successor that replaced the profile, so a caller
+still following the retired instruction learns how to continue without it rather
+than meeting a generic shape refusal. `integrator-queue-watch` is retired: the
+integrator is woken by its procedure's event subscriptions, and the caller
+continues with the procedure's next step.
+
+<!-- /planned:integrator-wakes-on-events -->
+
 Time-scheduled reminders have at most one live occurrence. A one-shot is
 consumed when its firing is accepted by control delivery. A recurring schedule
 advances after an accepted firing; after downtime, at most one overdue
