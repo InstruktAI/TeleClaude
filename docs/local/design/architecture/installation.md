@@ -182,10 +182,43 @@ refuses and changes nothing.
 
 ### Channel reaction
 
+<!-- planned-change:channel-activation-on-green -->
+
 The running daemon receives the source's relayed pushes and releases, selects
 the target under the channel contract, and invokes the install act. The pending
 convergence record keeps the target until the act completes, so a duplicate
 signal installs nothing twice.
+
+<!-- change:channel-activation-on-green -->
+
+The running daemon receives the source's relayed green announcements and
+published releases, and reads the source on a fixed interval, so a machine
+outside the relaying cluster converges too. Reconciliation selects the target
+under the channel contract and invokes the install act; a release beyond the
+active release's compatibility series is held, and its held-release event starts
+or wakes the integrator's breaking-release procedure on this computer, which
+installs it through the same act once its upgrade steps are done. The pending
+convergence record keeps the target until the act completes, so a duplicate
+signal installs nothing twice.
+
+```mermaid
+sequenceDiagram
+  participant Int as integration
+  participant Rec as reconciliation (channel convergence)
+  participant Act as install act
+  participant Proc as breaking-release procedure (integrator)
+  Int-->>Rec: green announcement · published release · interval read
+  alt edge green, or stable within the series
+    Rec->>Act: install(newest admitted target)
+  else stable release beyond the series
+    Rec->>Rec: hold the release, record why
+    Rec-->>Proc: held-release event (activates on this computer)
+    Proc->>Proc: perform the upgrade guide's steps in order
+    Proc->>Act: telec app install <held release>
+  end
+```
+
+<!-- /planned-change:channel-activation-on-green -->
 
 ### Interim integrator judgment
 

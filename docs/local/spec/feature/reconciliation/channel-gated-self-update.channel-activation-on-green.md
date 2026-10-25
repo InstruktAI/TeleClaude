@@ -21,7 +21,7 @@ The behavioral contract for how an installation keeps its own running version cu
 
 An installation follows one source and one channel. Both are the installation's own setting, held by configuration, and neither is a property of a particular machine or of the upstream repository. Only the followed source's changes and releases can start convergence.
 
-- **edge** — follows the source's main line and converges only to a revision announced green: every required check of the source has passed on it (`local/projects/teleclaude/spec/feature/integration/ci-run-outcomes`). It always converges to the newest green revision; a green revision that a newer one overtakes before convergence is skipped, and a revision with a red or missing required check is never selected. Edge revisions carry no release classification, so every selected edge revision converges automatically. While the source announces no green revision newer than the active release, the installation stays on its active release and its status names why it is not advancing.
+- **edge** — follows the source's main line and converges only to a revision announced green: every required check of the source has passed on it (`local/projects/teleclaude/spec/feature/integration/ci-run-outcomes`). It always converges to the newest green revision: activation begins when the install stops the daemon, and a green revision that a newer one overtakes before its activation begins is never activated. A revision with a red or missing required check is never selected. Edge revisions carry no release classification, so every selected edge revision converges automatically. While no green revision newer than the active release is known, the installation stays on its active release and its status names why it is not advancing. An installation learns its source's green revisions and releases whether or not it is in the cluster that receives the source's webhooks.
 - **stable** — follows the source's published releases. A release within the active release's compatibility series — the same minor while the major is zero, and the same major from 1.0 onward — converges automatically. Release classification owns the compatibility promise (`local/projects/teleclaude/spec/release-inspector-prompt`).
 
 ### Breaking releases
@@ -67,10 +67,10 @@ Scenario Outline: An edge installation follows its source's main line
   Then the installation's convergence decision is <decision>
 
   Examples:
-    | announcement                                                      | decision                       |
-    | a newer mainline revision is announced green                      | converge to that revision once |
-    | two newer revisions are announced green before convergence starts | converge to the newer one only |
-    | a newer mainline revision has a red or missing required check     | keep the active release        |
+    | announcement                                                          | decision                       |
+    | a newer mainline revision is announced green                          | converge to that revision once |
+    | two revisions are announced green before the first one is activated   | activate the newer one only    |
+    | a newer mainline revision has a red or missing required check         | keep the active release        |
 ```
 
 #### UC-CSU-2: Beta converges on a published release

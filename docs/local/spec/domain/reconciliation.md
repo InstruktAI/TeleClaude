@@ -282,20 +282,24 @@ rollback` invokes rollback; `telec app status` reads the install record. The
   it admits a main revision announced green
   (`local/projects/teleclaude/spec/feature/integration/ci-run-outcomes`) whose
   history contains the active release's source, and keeps only the newest such
-  revision, so a convergence always installs the newest green revision known
-  when it starts. On stable it admits a published release within the derived
+  revision. Activation begins when the install stops the daemon: until then an
+  edge target that a newer admitted revision overtakes is abandoned while the
+  active release keeps serving, and the newer one is installed instead, so a
+  revision overtaken before its activation is never activated. On stable it admits a published release within the derived
   series; a later release beyond it is never installed by this operation: the
   operation holds the newest such release, records why, and emits the
   held-release event once per release. The admitted target is installed through
   the install operation; installing a revision at or beyond the held release
   clears the hold.
 - **Signals.** Relayed green announcements and published releases of the
-  source reach the operation as platform events. On stable, the operation also
-  reads the source's published releases on a fixed interval through
-  `integration`'s GitHub client, so an installation outside the cluster whose
-  ingress receives the source's webhooks, or one that was not running when a
-  release was relayed, still converges. A pushed revision is no signal on any
-  channel.
+  source reach the operation as platform events. The operation also reads the
+  source on a fixed interval: on stable its published releases, on edge the
+  newest main revision `integration` establishes as green under its one
+  required-check rule
+  (`local/projects/teleclaude/spec/feature/integration/ci-run-outcomes`). An
+  installation outside the cluster whose ingress receives the source's
+  webhooks, or one that was not running when a signal was relayed, therefore
+  still converges. A pushed revision is no signal on any channel.
 - **Consumers.** `telec app status` reads the convergence decision and any held
   release. The held-release event activates
   `sdlc/procedure/maintenance/breaking-release-upgrade` on the installation's

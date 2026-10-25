@@ -79,6 +79,19 @@ The platform publishes that once per revision. The event names the revision and
 the run of each required check that made it green. A revision with a `red` or
 missing required check is not green, and nothing is published for it.
 
+<!-- planned:channel-activation-on-green -->
+
+### Newest green revision of a followed repository
+
+An installation that follows a repository can ask for that repository's newest
+green main revision, whether or not its computer receives the repository's run
+completions. The answer applies the rule of Revision green: every required
+check, as the repository declares them at that revision, has a `green` run for
+it. It is read from the repository's run results on GitHub; when those results
+cannot be read, the answer says so and names no revision.
+
+<!-- /planned:channel-activation-on-green -->
+
 ### Once per completion
 
 GitHub retries deliveries, and every computer receives every relayed event. The

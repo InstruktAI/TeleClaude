@@ -22,14 +22,11 @@ dispatch:
 
 ## Goal
 
-Bring the release the installation holds for its integrator into the
-installation. A release beyond the active release's compatibility series is
-never installed automatically
-(`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`),
-because what it needs — a backup, a data conversion, a changed setting — takes
-judgment. This session supplies that judgment on the installation's own
-computer, whether or not a development checkout exists there, and asks a person
-only for what only a person can supply (`general/policy/human-contract`).
+Bring the release the installation holds for its integrator
+(`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`)
+into the installation, on the installation's own computer, whether or not a
+development checkout exists there. A person is asked only for what only a
+person can supply (`general/policy/human-contract`).
 
 ## Preconditions
 
