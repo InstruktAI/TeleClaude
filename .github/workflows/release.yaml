@@ -571,6 +571,8 @@ jobs:
           source bin/init/tool_versions.sh
           npm install --global --no-audit --no-fund "prettier@$PRETTIER_INSTALL_VERSION"
           python3 tools/ci/export_env.py --path "$GITHUB_WORKSPACE/bin"
+      - name: Install native libraries the candidate's modules load
+        run: uv run python -m tools.ci.install_candidate_native_libraries
       - name: Download and verify captured inspection artifact
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
