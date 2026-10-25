@@ -89,16 +89,6 @@ starts the daemon on it, under the guarantees of
   reports the failure and which stores its migrations reached, is never
   reported as complete, and is repaired forward.
 
-<!-- planned-change:docs-publish-on-commit -->
-
-- **Publication follows the install.** Publishing the installed release's
-  documentation and schemas
-  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`)
-  follows a completed install. A publication failure is reported and replayed;
-  it never changes which release is active.
-
-<!-- change:docs-publish-on-commit -->
-
 - **Publication follows the install.** Publishing the installed release's
   configuration schemas
   (`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`)
@@ -107,8 +97,6 @@ starts the daemon on it, under the guarantees of
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`)
   follows a completed install. A publication failure is reported and replayed;
   it never changes which release is active.
-
-<!-- /planned-change:docs-publish-on-commit -->
 
 - **Every route is this act.** The bootstrap, channel convergence and an
   explicit `telec app install` all reach the live platform through it. What a

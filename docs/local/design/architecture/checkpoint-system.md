@@ -218,15 +218,6 @@ root. TeleClaude's overlay overrides `plumbing-convergence` by id with fleet
 convergence, bound to its hook templates and to its help-desk and home master
 templates, the latter also owing publication.
 
-<!-- planned-change:docs-publish-on-commit -->
-
-TeleClaude's overlay declares no action that migrates, restarts, reloads or
-publishes the platform: its project's commits and on-demand runs change nothing
-live, and installing a release performs those effects
-(`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
-
-<!-- change:docs-publish-on-commit -->
-
 TeleClaude's overlay declares no action that migrates, restarts or reloads the
 platform: its project's commits and on-demand runs change nothing live, and
 installing a release performs those effects
@@ -235,8 +226,6 @@ The base publication action runs in the platform's project as in any project,
 so its commits and on-demand runs publish the platform's documentation and
 agent artifacts
 (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
-
-<!-- /planned-change:docs-publish-on-commit -->
 
 The base `install` action still runs in the platform's project, at the commit
 boundary and on demand, and there the project's installer prepares only that

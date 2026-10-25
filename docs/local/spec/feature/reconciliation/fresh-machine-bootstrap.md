@@ -10,20 +10,6 @@ visibility: internal
 
 ## What it is
 
-<!-- planned-change:docs-publish-on-commit -->
-
-Installation is the only step a fresh machine needs before it can run TeleClaude.
-It creates the machine's installation, installs the source's latest release
-through the install act of
-`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`, and
-publishes `telec` from it; it never turns the checkout it runs from into the
-live platform, and a project checkout it runs from stays an ordinary project.
-When installation completes, the machine can be started with no further setup,
-has an owner who can administer it, and serves the documentation and agent
-artifacts of its installed release.
-
-<!-- change:docs-publish-on-commit -->
-
 Installation is the only step a fresh machine needs before it can run TeleClaude.
 It creates the machine's installation, installs the source's latest release
 through the install act of
@@ -34,8 +20,6 @@ When installation completes, the machine can be started with no further setup,
 has an owner who can administer it, and serves the documentation and agent
 artifacts the platform's publication deploys for it
 (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
-
-<!-- /planned-change:docs-publish-on-commit -->
 
 Installation runs in one of two situations, and it reads which one from whether
 it has a terminal:
@@ -193,24 +177,7 @@ When installation runs with no terminal and no owner seed
 Then owner establishment changes nothing and does not fail the installation
 ```
 
-<!-- planned-change:docs-publish-on-commit -->
-
 #### UC-FMB12: Installation publishes the installed release's documentation
-
-```gherkin
-Given a fresh machine whose home has never received published documentation
-When installation completes
-Then the home serves the documentation and agent artifacts committed at the installed release's commit
-And a published snippet can be read through the documentation surface
-And the platform starts without failing to find its published documentation
-And uncommitted changes in the checkout installation ran from are not published
-```
-
-<!-- change:docs-publish-on-commit -->
-
-#### UC-FMB12: Installation publishes the installed release's documentation
-
-<!-- /planned-change:docs-publish-on-commit -->
 
 #### UC-FMB13: Installation that cannot publish does not succeed
 
@@ -221,21 +188,7 @@ Then installation does not report success
 And it names the cause publication reported
 ```
 
-<!-- planned-change:docs-publish-on-commit -->
-
 #### UC-FMB14: A release installed from a tag publishes that release
-
-```gherkin
-Given a machine whose home serves documentation from another commit
-When installation installs a release tag
-Then the home serves the documentation and agent artifacts committed at that release
-```
-
-<!-- change:docs-publish-on-commit -->
-
-#### UC-FMB14: A release installed from a tag publishes that release
-
-<!-- /planned-change:docs-publish-on-commit -->
 
 #### UC-FMB15: Installation exposes time spent in its stages
 
