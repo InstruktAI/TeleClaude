@@ -10,7 +10,7 @@ visibility: 'public'
 The Work state machine routes implementation through four sub-phases: **Build → Review → Fix → Finalize**. It shares the same canonical `lifecycle_phase` field as Prepare, but it does not advance that pointer on its own. Natural progression happens only when the current phase receives an authoritative stamp.
 
 **Entry point:** `telec todo work {slug}` for orchestrator-driven work
-**Implementation:** [`next_work()`](../../../../teleclaude/core/next_machine/core.py)
+**Implementation:** `next_work()` in `teleclaude/core/next_machine/work.py`
 **Terminal output:** the finalize handoff (`FINALIZE HANDOFF COMPLETE`), returned once the lifecycle reaches `FINALIZE_READY` (terminal Phase-B lifecycle phase; integration is triggered by the `TodosDb` write-state chokepoint when the phase is written, not by an in-machine handoff step). Bare `telec todo work` returns a terminal self-end script.
 
 ### Referenced files
