@@ -101,44 +101,12 @@ only in another delivery, or none, is a procedure that declares no role. The
 report records, for each such mapping, whether the declaration was live or
 pending.
 
-<!-- planned:role-migration-drops-disabled-jobs -->
-
-The job declarations a job name resolves through are every entry the project's
-job configuration carries, as config composes it, a disabled entry included. A
-published job the project carries no entry for is not among them. Enablement
-decides whether the runner schedules a job, never whether its declaration
-carries its name
-(`local/projects/teleclaude/spec/feature/config/job-declaration-model`).
-<!-- /planned:role-migration-drops-disabled-jobs -->
-
 A declaration source the mapping needs and cannot read — the documentation
 publishers, or the job configuration of a project whose checkout exists — makes
 the migration not ready: it stops before the report or any row changes, its
 error names the unreadable source, the migration stays unrecorded, and the next
 start runs it again. A project whose checkout no longer exists carries no job
 declaration.
-
-<!-- planned:role-migration-drops-disabled-jobs -->
-
-### Rows refused while disabled declarations were skipped
-
-A cutover that resolved job names through enabled declarations only left a row
-whose job named a disabled declaration unmapped, with the reason that no
-configured job carries the recorded job name. A later forward migration
-revisits those rows once. It reads the cutover's ledger, and for each entry
-carrying that reason whose row still has the role `unmapped` and the job and
-command the ledger recorded, it maps the ledger's recorded combination through
-the Mapping table against the declarations current at that migration. The row
-takes the result. A row that still maps to no role keeps `unmapped` and its
-recorded values. A row whose role, job or command no longer matches what the
-ledger recorded is left as it is. Without the cutover's ledger, no recorded
-system role exists to read, and no row changes.
-
-Like the cutover, the revisit publishes its own report before any row changes.
-The report lists each revisited session with its recorded values and its
-result. Rows and their persisted launch intents change in one transaction, and
-a recorded revisit never runs again.
-<!-- /planned:role-migration-drops-disabled-jobs -->
 
 ### Continuation of migrated sessions
 
