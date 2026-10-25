@@ -10,6 +10,7 @@ import json
 import math
 import os
 import platform
+import re
 import shutil
 import signal
 import socket
@@ -45,6 +46,7 @@ _UV_LOCKED_OPTION = "--locked"
 _UV_NO_INSTALL_PROJECT_OPTION = "--no-install-project"
 _UV_NO_DEFAULT_GROUPS_OPTION = "--no-default-groups"
 _ENVIRONMENT_VARIABLE = "UV_PROJECT_ENVIRONMENT"
+_ENVIRONMENT_ASSIGNMENT = "{name}={value}"
 _UV_NO_SYNC_VARIABLE = "UV_NO_SYNC"
 _UV_CACHE_VARIABLE = "UV_CACHE_DIR"
 _COLD_HOME_VARIABLE = "HOME"
@@ -110,6 +112,7 @@ _UNKNOWN_REVISION = "unknown"
 _EMPTY = ""
 _DIAGNOSTIC_LIMIT = 4096
 _INSTALLER_LOG_PATH = Path("install.log")
+_CONVERGENCE_INSTALLER = Path("bin") / "install.sh"
 _INSTALLER_LOG_LABEL = "Installer log (end): "
 _INSTALLER_LOG_UNAVAILABLE = "Installer log unavailable ({error_class})."
 _INSTALLER_LOG_TRUNCATION_MARKER = "[earlier installer log content omitted]\n"
@@ -160,7 +163,10 @@ _EXPECTED_PERSON_IDENTITY_ERROR = "The owner person record lacks platform admini
 _EXPECTED_OWNER_WHOAMI_ERROR = "The fresh CLI process did not report the seeded administrator identity."
 _EXPECTED_COMPUTER_LIST_ERROR = "The daemon did not return a ready local computer."
 _EXPECTED_READINESS_ERROR = "The supported lifecycle did not report a ready daemon in time."
-_FULL_INSTALL_ERROR = "The supported installer failed in the disposable runtime."
+_FULL_PROVISION_ERROR = "The supported bootstrap did not install the checked revision in the disposable runtime."
+_FULL_INSTALL_ERROR = "The installed release's convergence failed in the disposable runtime."
+_FULL_ACTIVE_RELEASE_ERROR = "The provisioned installation did not name its active release location."
+_FULL_PUBLICATION_ERROR = "The installed release's convergence did not report the published telec."
 _FULL_SERVICE_STOP_ERROR = "The supported lifecycle could not stop the disposable runtime."
 _FULL_TEMP_CLEANUP_ERROR = "The disposable runtime temporary resources could not be removed."
 _FULL_TERMINAL_SETUP_ERROR = "The owned PTY could not enter the checked source directory."
@@ -180,6 +186,7 @@ _PROCESS_FAILURE_DETAIL = "The command failed with exit status {exit_status}."
 _PROCESS_TIMEOUT_DETAIL = "The command exceeded its deadline."
 _PROCESS_OUTPUT_LIMIT_DETAIL = "The command exceeded the output limit."
 _BASH_EXECUTABLE = "/bin/bash"
+_ENV_EXECUTABLE = "env"
 _BASH_NO_PROFILE_OPTION = "--noprofile"
 _BASH_NO_RC_OPTION = "--norc"
 _BASH_INTERACTIVE_OPTION = "-i"
@@ -236,7 +243,18 @@ _SERVICE_STATUS_COMMAND = ("make", "status")
 _SERVICE_START_COMMAND = ("make", "start")
 _SERVICE_STOP_COMMAND = ("make", "stop")
 _SERVICE_RESTART_COMMAND = ("make", "restart")
-_INSTALLER_COMMAND = ("bin/install.sh", "--yes")
+_PROVISIONING_MODULE = "teleclaude.core.reconciliation.installation_move"
+_PROVISIONING_ARGUMENTS = ("-P", "-m", _PROVISIONING_MODULE, "bootstrap")
+_PROVISIONING_SOURCE_OPTION = "--source"
+_PROVISIONING_REVISION_OPTION = "--revision"
+_PROVISIONING_COMPLETED_LINE = "completed: {revision}"
+_ACTIVE_LOCATION_ARGUMENTS = (
+    "-P",
+    "-c",
+    "from teleclaude.core.reconciliation.installation import InstallationLayout; "
+    "print(InstallationLayout().active_release())",
+)
+_PUBLISHED_TELEC_PATTERN = re.compile(r"Installed telec at (\S+)")
 _COMPUTERS_LIST_COMMAND = ("bin/telec", "computers", "list")
 _CONFIG_COMPUTER_GET_COMMAND = ("bin/telec", "config", "computer", "get", "--format", "json")
 _CONFIG_COMPUTER_PATCH_PREFIX = ("bin/telec", "config", "computer", "patch")
@@ -508,6 +526,7 @@ class FullRuntimeResources:
     environment: dict[str, str]
     source_revision: str
     source_tree: str
+    dependency_environment: Path | None = None
     admin_terminal: PersistentTerminal | None = None
     install_attempted: bool = False
     start_attempted: bool = False
@@ -529,6 +548,8 @@ class FullRuntimeResources:
 
     def sanitize(self, text: str) -> str:
         """Remove source, home and disposable paths from retained command evidence."""
+        if self.dependency_environment is not None:
+            text = text.replace(str(self.dependency_environment), _DEPENDENCY_ENVIRONMENT_PLACEHOLDER)
         text = text.replace(str(self.source_root), _SOURCE_TREE_PLACEHOLDER)
         text = text.replace(str(self.temporary_root), _SYNTHETIC_RUNTIME_PLACEHOLDER)
         home = self.environment.get(_COLD_HOME_VARIABLE)
@@ -847,14 +868,22 @@ def _record_terminal_command(
     terminal: PersistentTerminal,
     argv: Sequence[str],
     evidence: list[CommandEvidence],
+    timeout_seconds: float | None = None,
 ) -> tuple[int | None, str]:
     """Run one fresh CLI command on an owned PTY and retain bounded sanitized evidence."""
     started = time.monotonic()
     argv_tuple = tuple(argv)
     if argv_tuple and argv_tuple[0] == str(_CLI_EXECUTABLE):
         argv_tuple = (str(resources.source_root / _CLI_EXECUTABLE), *argv_tuple[1:])
+        if resources.dependency_environment is not None:
+            # bin/telec runs `uv run` without synchronization, so the checked executable selects the checked
+            # revision's prepared dependency environment; the installation's processes never inherit it.
+            selector = _ENVIRONMENT_ASSIGNMENT.format(
+                name=_ENVIRONMENT_VARIABLE, value=resources.dependency_environment
+            )
+            argv_tuple = (_ENV_EXECUTABLE, selector, *argv_tuple)
     try:
-        result = terminal.run(argv_tuple)
+        result = terminal.run(argv_tuple, timeout_seconds=timeout_seconds)
     except TerminalFailure as exc:
         evidence.append(
             CommandEvidence(
@@ -1071,11 +1100,6 @@ def _parse_whoami_fields(output: str) -> WhoAmIFields | None:
     return WhoAmIFields(email=email, role=role)
 
 
-def _require_process_success(result: ProcessExecution) -> None:
-    if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
-        raise RuntimeError(_EXPECTED_COMMAND_ERROR)
-
-
 def _require_terminal_success(exit_status: int | None, output: str, evidence: Sequence[CommandEvidence]) -> None:
     if exit_status != _PROCESS_SUCCESS or not output.strip() or evidence[-1].diagnostics:
         raise RuntimeError(_FULL_NO_OUTPUT_ERROR)
@@ -1178,6 +1202,18 @@ def _restore_full_profile_changes(resources: FullRuntimeResources, evidence: lis
             raise RuntimeError(_FULL_CONFIG_RESTORE_ERROR) from exc
 
 
+def _run_lifecycle_command(
+    resources: FullRuntimeResources,
+    command: Sequence[str],
+    timeout_seconds: float,
+    evidence: list[CommandEvidence],
+) -> bool:
+    """Run a lifecycle command where `telec app` clears its caller: on the logged-in administrator terminal."""
+    terminal = resources.open_admin_terminal()
+    exit_status, _ = _record_terminal_command(resources, terminal, command, evidence, timeout_seconds)
+    return exit_status == _PROCESS_SUCCESS and not evidence[-1].diagnostics
+
+
 def _close_full_profile_resources(
     resources: FullRuntimeResources,
     cleanup_evidence: list[CommandEvidence],
@@ -1189,6 +1225,23 @@ def _close_full_profile_resources(
     except Exception:
         failures.append(_FULL_CONFIG_RESTORE_ERROR)
     terminal = resources.admin_terminal
+    if resources.install_attempted:
+        # The stop is cleared as the logged-in administrator, so it runs before that login ends.
+        if terminal is not None:
+            stopped = _run_lifecycle_command(
+                resources, _SERVICE_STOP_COMMAND, _STOP_COMMAND_TIMEOUT_SECONDS, cleanup_evidence
+            )
+        else:
+            result = _record_external_command(
+                resources,
+                _SERVICE_STOP_COMMAND,
+                cwd=resources.source_root,
+                timeout_seconds=_STOP_COMMAND_TIMEOUT_SECONDS,
+                evidence=cleanup_evidence,
+            )
+            stopped = result.exit_status == _PROCESS_SUCCESS and not result.diagnostics
+        if not stopped:
+            failures.append(_FULL_SERVICE_STOP_ERROR)
     if terminal is not None:
         try:
             logout_status, logout_output = _record_terminal_command(
@@ -1200,16 +1253,6 @@ def _close_full_profile_resources(
             _require_terminal_success(logout_status, logout_output, cleanup_evidence)
         except Exception:
             failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
-    if resources.install_attempted:
-        result = _record_external_command(
-            resources,
-            _SERVICE_STOP_COMMAND,
-            cwd=resources.source_root,
-            timeout_seconds=_STOP_COMMAND_TIMEOUT_SECONDS,
-            evidence=cleanup_evidence,
-        )
-        if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
-            failures.append(_FULL_SERVICE_STOP_ERROR)
     if terminal is not None:
         try:
             terminal.close()
@@ -1226,14 +1269,7 @@ def _close_full_profile_resources(
 def _run_readiness_check(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
     deadline = time.monotonic() + _READINESS_WINDOW_SECONDS
     while time.monotonic() < deadline:
-        result = _record_external_command(
-            resources,
-            _SERVICE_STATUS_COMMAND,
-            cwd=resources.source_root,
-            timeout_seconds=_FULL_COMMAND_TIMEOUT_SECONDS,
-            evidence=evidence,
-        )
-        if result.exit_status == _PROCESS_SUCCESS and not result.diagnostics:
+        if _run_lifecycle_command(resources, _SERVICE_STATUS_COMMAND, _FULL_COMMAND_TIMEOUT_SECONDS, evidence):
             return
         time.sleep(_READINESS_POLL_INTERVAL_SECONDS)
     raise RuntimeError(_EXPECTED_READINESS_ERROR)
@@ -1311,78 +1347,159 @@ def _await_config_restart(
     raise RuntimeError(_HEALTH_INSTANCE_UNCHANGED)
 
 
-def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
-    resources.install_attempted = True
-    installer_environment = dict(resources.environment)
-    installer_environment[_ENV_OWNER_NAME_VARIABLE] = _OWNER_SEED_NAME
-    installer_environment[_ENV_OWNER_EMAIL_VARIABLE] = _OWNER_SEED_EMAIL
-    installer_environment.pop(_CI_VARIABLE, None)
-    install_result = _run_bounded_process(
-        (str(resources.source_root / _INSTALLER_COMMAND[0]), *_INSTALLER_COMMAND[1:]),
+def _installer_log_diagnostic(resources: FullRuntimeResources, log_path: Path, diagnostic_prefix: str) -> str:
+    """The end of an installer log, sized to what the diagnostic budget leaves after the process output."""
+    try:
+        log_budget = max(
+            1,
+            _DIAGNOSTIC_LIMIT
+            - len(diagnostic_prefix)
+            - len(_INSTALLER_LOG_LABEL)
+            - len(_INSTALLER_LOG_TRUNCATION_MARKER),
+        )
+        with log_path.open(_BINARY_READ_MODE) as installer_log:
+            installer_log.seek(0, os.SEEK_END)
+            log_size = installer_log.tell()
+            log_start = max(0, log_size - log_budget)
+            installer_log.seek(log_start)
+            log_excerpt = installer_log.read(log_budget).decode(_UTF8, errors=_UTF8_REPLACEMENT)
+        truncation_marker = _INSTALLER_LOG_TRUNCATION_MARKER if log_start else _EMPTY
+        available_log_chars = max(
+            1,
+            _DIAGNOSTIC_LIMIT - len(diagnostic_prefix) - len(_INSTALLER_LOG_LABEL) - len(truncation_marker),
+        )
+        sanitized_log_excerpt = resources.sanitize(log_excerpt)
+        return f"{_INSTALLER_LOG_LABEL}{truncation_marker}{sanitized_log_excerpt[-available_log_chars:]}"
+    except OSError as error:
+        return _INSTALLER_LOG_UNAVAILABLE.format(error_class=type(error).__name__)[
+            : _DIAGNOSTIC_LIMIT - len(diagnostic_prefix)
+        ]
+
+
+def _run_installation_step(
+    resources: FullRuntimeResources,
+    argv: Sequence[str],
+    *,
+    environment: Mapping[str, str],
+    log_path: Path | None,
+    evidence: list[CommandEvidence],
+    failure: str,
+) -> ProcessExecution:
+    """Run one installation step with bounded evidence; a failure retains the process output and installer log."""
+    result = _run_bounded_process(
+        argv,
         cwd=resources.source_root,
-        environment=installer_environment,
+        environment=environment,
         timeout_seconds=_INSTALL_COMMAND_TIMEOUT_SECONDS,
         output_limit_bytes=_INSTALLER_OUTPUT_LIMIT_BYTES,
     )
+    failed = result.exit_status != _PROCESS_SUCCESS or bool(result.diagnostics)
     diagnostics = _EMPTY
-    if install_result.exit_status != _PROCESS_SUCCESS or install_result.diagnostics:
+    if failed:
         max_process_diagnostic_chars = (
             _DIAGNOSTIC_LIMIT - len(_INSTALLER_LOG_LABEL) - len(_INSTALLER_LOG_TRUNCATION_MARKER) - 1
         )
-        process_diagnostics = resources.sanitize(install_result.diagnostics)[:max_process_diagnostic_chars]
+        process_diagnostics = resources.sanitize(result.diagnostics)[:max_process_diagnostic_chars]
         diagnostic_prefix = f"{process_diagnostics}{_DIAGNOSTIC_SEPARATOR}" if process_diagnostics else _EMPTY
-        installer_log_diagnostic: str
-        try:
-            log_budget = max(
-                1,
-                _DIAGNOSTIC_LIMIT
-                - len(diagnostic_prefix)
-                - len(_INSTALLER_LOG_LABEL)
-                - len(_INSTALLER_LOG_TRUNCATION_MARKER),
-            )
-            with (resources.source_root / _INSTALLER_LOG_PATH).open(_BINARY_READ_MODE) as installer_log:
-                installer_log.seek(0, os.SEEK_END)
-                log_size = installer_log.tell()
-                log_start = max(0, log_size - log_budget)
-                installer_log.seek(log_start)
-                log_excerpt = installer_log.read(log_budget).decode(_UTF8, errors=_UTF8_REPLACEMENT)
-            truncation_marker = _INSTALLER_LOG_TRUNCATION_MARKER if log_start else _EMPTY
-            available_log_chars = max(
-                1,
-                _DIAGNOSTIC_LIMIT - len(diagnostic_prefix) - len(_INSTALLER_LOG_LABEL) - len(truncation_marker),
-            )
-            sanitized_log_excerpt = resources.sanitize(log_excerpt)
-            installer_log_diagnostic = (
-                f"{_INSTALLER_LOG_LABEL}{truncation_marker}{sanitized_log_excerpt[-available_log_chars:]}"
-            )
-        except OSError as error:
-            installer_log_diagnostic = _INSTALLER_LOG_UNAVAILABLE.format(error_class=type(error).__name__)[
-                : _DIAGNOSTIC_LIMIT - len(diagnostic_prefix)
-            ]
-        log_tail = installer_log_diagnostic[-_INSTALLER_LOG_TAIL_LIMIT:]
-        stdout_tail = resources.sanitize(install_result.stdout[-_INSTALLER_STDOUT_TAIL_LIMIT:])
-        stderr_tail = resources.sanitize(install_result.stderr[-_INSTALLER_STDERR_TAIL_LIMIT:])
+        log_section = _EMPTY
+        if log_path is not None:
+            log_tail = _installer_log_diagnostic(resources, log_path, diagnostic_prefix)[-_INSTALLER_LOG_TAIL_LIMIT:]
+            log_section = f"{log_tail}{_DIAGNOSTIC_SEPARATOR}"
+        stdout_tail = resources.sanitize(result.stdout[-_INSTALLER_STDOUT_TAIL_LIMIT:])
+        stderr_tail = resources.sanitize(result.stderr[-_INSTALLER_STDERR_TAIL_LIMIT:])
         diagnostics = (
-            f"{diagnostic_prefix}{log_tail}{_DIAGNOSTIC_SEPARATOR}"
+            f"{diagnostic_prefix}{log_section}"
             f"{_INSTALLER_STDOUT_TAIL_LABEL}{stdout_tail}{_DIAGNOSTIC_SEPARATOR}"
             f"{_INSTALLER_STDERR_TAIL_LABEL}{stderr_tail}"
         )[-_DIAGNOSTIC_LIMIT:]
     evidence.append(
         CommandEvidence(
-            argv=tuple(resources.sanitize(value) for value in _INSTALLER_COMMAND),
-            exit_status=install_result.exit_status,
-            duration_seconds=install_result.duration_seconds,
-            stdout=resources.sanitize(install_result.stdout)[:_DIAGNOSTIC_LIMIT]
-            if install_result.exit_status != _PROCESS_SUCCESS or install_result.diagnostics
-            else _EMPTY,
-            stderr=resources.sanitize(install_result.stderr)[:_DIAGNOSTIC_LIMIT]
-            if install_result.exit_status != _PROCESS_SUCCESS or install_result.diagnostics
-            else _EMPTY,
+            argv=tuple(resources.sanitize(value) for value in argv),
+            exit_status=result.exit_status,
+            duration_seconds=result.duration_seconds,
+            stdout=resources.sanitize(result.stdout)[:_DIAGNOSTIC_LIMIT] if failed else _EMPTY,
+            stderr=resources.sanitize(result.stderr)[:_DIAGNOSTIC_LIMIT] if failed else _EMPTY,
             diagnostics=diagnostics,
         )
     )
-    if install_result.exit_status != _PROCESS_SUCCESS or install_result.diagnostics:
-        raise RuntimeError(_FULL_INSTALL_ERROR)
+    if failed:
+        raise RuntimeError(failure)
+    return result
+
+
+def _provision_installation(
+    resources: FullRuntimeResources, dependency_environment: Path, evidence: list[CommandEvidence]
+) -> None:
+    """Install the checked revision through the bootstrap's initial provisioning, as a fresh machine does."""
+    environment = dict(resources.environment)
+    environment.pop(_CI_VARIABLE, None)
+    environment[_PYTHON_PATH_VARIABLE] = str(resources.source_root)
+    result = _run_installation_step(
+        resources,
+        (
+            str(dependency_environment / _PYTHON_ENVIRONMENT_EXECUTABLE),
+            *_PROVISIONING_ARGUMENTS,
+            _PROVISIONING_SOURCE_OPTION,
+            str(resources.source_root),
+            _PROVISIONING_REVISION_OPTION,
+            resources.source_revision,
+        ),
+        environment=environment,
+        log_path=None,
+        evidence=evidence,
+        failure=_FULL_PROVISION_ERROR,
+    )
+    if _PROVISIONING_COMPLETED_LINE.format(revision=resources.source_revision) not in result.stdout.splitlines():
+        raise RuntimeError(_FULL_PROVISION_ERROR)
+
+
+def _active_release_location(
+    resources: FullRuntimeResources, dependency_environment: Path, evidence: list[CommandEvidence]
+) -> Path:
+    """The folder of the release the provisioned installation reports active, from its layout."""
+    environment = dict(resources.environment)
+    environment[_PYTHON_PATH_VARIABLE] = str(resources.source_root)
+    result = _run_installation_step(
+        resources,
+        (str(dependency_environment / _PYTHON_ENVIRONMENT_EXECUTABLE), *_ACTIVE_LOCATION_ARGUMENTS),
+        environment=environment,
+        log_path=None,
+        evidence=evidence,
+        failure=_FULL_ACTIVE_RELEASE_ERROR,
+    )
+    location = Path(result.stdout.strip())
+    if not location.is_absolute() or not (location / _CONVERGENCE_INSTALLER).is_file():
+        raise RuntimeError(_FULL_ACTIVE_RELEASE_ERROR)
+    return location
+
+
+def _converge_installation(resources: FullRuntimeResources, location: Path, evidence: list[CommandEvidence]) -> None:
+    """Run the installed release's machine convergence and put the `telec` it publishes on the lifecycle's PATH."""
+    environment = dict(resources.environment)
+    environment.pop(_CI_VARIABLE, None)
+    result = _run_installation_step(
+        resources,
+        (str(location / _CONVERGENCE_INSTALLER),),
+        environment=environment,
+        log_path=location / _INSTALLER_LOG_PATH,
+        evidence=evidence,
+        failure=_FULL_INSTALL_ERROR,
+    )
+    published = _PUBLISHED_TELEC_PATTERN.search(result.stdout)
+    if published is None:
+        raise RuntimeError(_FULL_PUBLICATION_ERROR)
+    publication_directory = str(Path(published.group(1)).parent)
+    resources.environment[_PATH_VARIABLE] = (
+        f"{publication_directory}{_PATH_SEPARATOR}{resources.environment[_PATH_VARIABLE]}"
+    )
+
+
+def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    resources.install_attempted = True
+    dependency_environment = ensure_dependency_environment(resources.source_root)
+    resources.dependency_environment = dependency_environment
+    _provision_installation(resources, dependency_environment, evidence)
+    _converge_installation(resources, _active_release_location(resources, dependency_environment, evidence), evidence)
     terminal = resources.open_admin_terminal()
     login_status, login_output = _record_terminal_command(
         resources,
@@ -1392,14 +1509,8 @@ def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[Comm
     )
     _require_terminal_success(login_status, login_output, evidence)
     resources.start_attempted = True
-    start_result = _record_external_command(
-        resources,
-        _SERVICE_START_COMMAND,
-        cwd=resources.source_root,
-        timeout_seconds=_START_COMMAND_TIMEOUT_SECONDS,
-        evidence=evidence,
-    )
-    _require_process_success(start_result)
+    if not _run_lifecycle_command(resources, _SERVICE_START_COMMAND, _START_COMMAND_TIMEOUT_SECONDS, evidence):
+        raise RuntimeError(_EXPECTED_COMMAND_ERROR)
     _run_readiness_check(resources, evidence)
     _disable_external_adapters(resources, evidence)
     computer_status, computer_output = _record_terminal_command(
@@ -1471,14 +1582,8 @@ def _full_configuration_change(resources: FullRuntimeResources, evidence: list[C
 
 def _full_restart_persistence(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
     resources.start_attempted = True
-    restart_result = _record_external_command(
-        resources,
-        _SERVICE_RESTART_COMMAND,
-        cwd=resources.source_root,
-        timeout_seconds=_RESTART_COMMAND_TIMEOUT_SECONDS,
-        evidence=evidence,
-    )
-    _require_process_success(restart_result)
+    if not _run_lifecycle_command(resources, _SERVICE_RESTART_COMMAND, _RESTART_COMMAND_TIMEOUT_SECONDS, evidence):
+        raise RuntimeError(_EXPECTED_COMMAND_ERROR)
     _run_readiness_check(resources, evidence)
     terminal = resources.open_admin_terminal()
     computer, _, _ = _read_computer_config(resources, terminal, evidence)

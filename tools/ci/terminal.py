@@ -107,19 +107,21 @@ class PersistentTerminal:
         fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
         return self
 
-    def run(self, command: Sequence[str]) -> CommandResult:
+    def run(self, command: Sequence[str], *, timeout_seconds: float | None = None) -> CommandResult:
         if self._process is None or self._master_fd is None:
             raise TerminalFailure(_TERMINAL_NOT_STARTED)
         marker = f"{_EXIT_MARKER_PREFIX}{uuid.uuid4().hex}"
         shell_command = _SHELL_COMMAND_FORMAT.format(command=shlex.join(list(command)), marker=marker)
         os.write(self._master_fd, (shell_command + _NEWLINE).encode(_UTF8))
-        output, status = self._read_to_marker(marker)
+        output, status = self._read_to_marker(
+            marker, self._timeout_seconds if timeout_seconds is None else timeout_seconds
+        )
         return CommandResult(returncode=status, output=output)
 
-    def _read_to_marker(self, marker: str) -> tuple[str, int]:
+    def _read_to_marker(self, marker: str, timeout_seconds: float) -> tuple[str, int]:
         assert self._master_fd is not None
         assert self._process is not None
-        deadline = time.monotonic() + self._timeout_seconds
+        deadline = time.monotonic() + timeout_seconds
         encoded_marker = marker.encode(_UTF8)
         start = 0
         while time.monotonic() < deadline:

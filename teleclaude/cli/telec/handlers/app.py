@@ -9,6 +9,7 @@ restart, health). A project checkout the caller stands in is neither run nor cha
 from __future__ import annotations
 
 import os
+import signal
 import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -145,6 +146,10 @@ def _run_lifecycle(verb: AppSubcommand) -> None:
     """Hand the process to the active release's lifecycle, so its output and exit status are the verb's own."""
     script = _lifecycle_script(InstallationLayout())
     logger.info(_LIFECYCLE_EVENT, verb=verb.value, script=str(script))
+    # Python ignores SIGPIPE and an exec'd program inherits that. The lifecycle script streams the daemon's
+    # startup log through a `tail | while` pipeline it stops by killing the reader; with SIGPIPE ignored
+    # the `tail` never ends and the verb never returns.
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     # The service lifecycle is a release's own script; there is no Python API for it, and replacing
     # this process keeps the terminal and exit status exactly the lifecycle's.
     os.execv(script, [str(script), verb.value])

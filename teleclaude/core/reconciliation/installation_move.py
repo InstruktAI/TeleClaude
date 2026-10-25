@@ -1,13 +1,13 @@
 """Create the machine's installation and move the platform onto it: the bootstrap and the move off a checkout.
 
 Both reach the live platform through the install act, never through a second installer. The bootstrap
-runs on a machine with no platform: it keeps the source's repository, installs the source's latest release
-through the act's initial provisioning path, and publishes ``telec`` from it. The move runs on a machine
-whose live platform is its project checkout: it makes the machine environment file a real file in the
-platform home, installs a release at a revision the forward-only rule admits over the commit the checkout
-runs — a controlled restart, stopped through the checkout's own lifecycle — and leaves the checkout an
-ordinary registered project. Rebinding the home-level surfaces to ``current`` is the installer's convergence
-run from the installed release (``bin/install.sh``)
+runs on a machine with no platform: it keeps the source's repository, installs the revision it is given
+(the source's latest release when none is named) through the act's initial provisioning path, and publishes
+``telec`` from it. The move runs on a machine whose live platform is its project checkout: it makes the
+machine environment file a real file in the platform home, installs a release at a revision the forward-only
+rule admits over the commit the checkout runs — a controlled restart, stopped through the checkout's own
+lifecycle — and leaves the checkout an ordinary registered project. Rebinding the home-level surfaces to
+``current`` is the installer's convergence run from the installed release (``bin/install.sh``)
 (``local/projects/teleclaude/spec/feature/reconciliation/installed-releases``).
 """
 
@@ -26,7 +26,12 @@ from teleclaude.config._models import ReleaseChannel
 from teleclaude.config.compatibility_series import CompatibilitySeries
 from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.machine import config
-from teleclaude.core.reconciliation.channel_target import ChannelTarget, ChannelTargetError, channel_target
+from teleclaude.core.reconciliation.channel_target import (
+    ChannelTarget,
+    ChannelTargetError,
+    channel_target,
+    release_tag_of,
+)
 from teleclaude.core.reconciliation.install_act import InstallRequest, InstallResult, InstallStatus, install
 from teleclaude.core.reconciliation.installation import InstallationLayout
 from teleclaude.core.reconciliation.installation_ports import LiveInstallPorts
@@ -41,6 +46,7 @@ _BOOTSTRAP_VERB = "bootstrap"
 _MOVE_VERB = "move"
 _SOURCE_OPTION = "--source"
 _CHECKOUT_OPTION = "--checkout"
+_REVISION_OPTION = "--revision"
 _REMOTE_NAME = "origin"
 _ENV_MODE_MASK = 0o777
 _TEXT_ENCODING = "utf-8"
@@ -68,11 +74,19 @@ def first_install_target(layout: InstallationLayout) -> ChannelTarget:
     return channel_target(layout, ReleaseChannel.BETA, None)
 
 
-def bootstrap(source: str, layout: InstallationLayout | None = None) -> InstallResult:
-    """Keep the source's repository and install its latest release as the machine's first active release."""
+def bootstrap(source: str, layout: InstallationLayout | None = None, revision: str | None = None) -> InstallResult:
+    """Keep the source's repository and install ``revision`` as the machine's first active release.
+
+    Without a named revision the first release is the source's latest one. A named revision is built into the
+    request the way ``telec app install <revision>`` builds it.
+    """
     resolved = layout or InstallationLayout()
     ports = LiveInstallPorts(resolved)
     ports.fetch(source)
+    if revision is not None:
+        return install(
+            InstallRequest(target=revision, release_tag=release_tag_of(revision), source=source), ports, resolved
+        )
     target = first_install_target(resolved)
     return install(
         InstallRequest(target=target.reference, release_tag=target.release_tag, source=source), ports, resolved
@@ -166,18 +180,19 @@ def _report(result: InstallResult) -> int:
 
 
 def main(arguments: list[str] | None = None) -> int:
-    """Run ``bootstrap --source <url>`` or ``move --checkout <path>``; non-zero when the machine is not on an installation."""
+    """Run ``bootstrap --source <url> [--revision <reference>]`` or ``move --checkout <path>``; non-zero when the machine is not on an installation."""
     setup_logging()
     parser = argparse.ArgumentParser(description=__doc__)
     verbs = parser.add_subparsers(dest="verb", required=True)
     bootstrap_parser = verbs.add_parser(_BOOTSTRAP_VERB)
     bootstrap_parser.add_argument(_SOURCE_OPTION, required=True)
+    bootstrap_parser.add_argument(_REVISION_OPTION)
     move_parser = verbs.add_parser(_MOVE_VERB)
     move_parser.add_argument(_CHECKOUT_OPTION, type=Path, required=True)
     options = parser.parse_args(arguments)
     try:
         if options.verb == _BOOTSTRAP_VERB:
-            return _report(bootstrap(options.source))
+            return _report(bootstrap(options.source, revision=options.revision))
         channel, series = _machine_channel()
         return _report(move_off_checkout(options.checkout.resolve(), channel, series))
     except (MoveRefused, ReleasePreparationError, ChannelTargetError, OSError) as error:
