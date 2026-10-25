@@ -158,7 +158,9 @@ followed by a platform notification that it was posted at that time while
 TeleClaude was offline. The text and its notification are accepted together
 as one conversation input, which keeps conversation authority. That input is
 delivered, marked and correlated with its transcript entry exactly as any
-other accepted conversation input is.
+other accepted conversation input is. When recovered text resolves to a
+platform command, its posting time and the fact that it was recovered are
+carried as entry facts of the command's loader instead.
 
 <!-- /planned:discord-inbound-dropped-before-provisioning -->
 
