@@ -1,6 +1,6 @@
 ---
 visibility: 'public'
-description: 'Each installation follows the repository and channel it is configured with (edge / stable), activates every admitted revision that breaks nothing exactly once without operator action, and hands a breaking release to its integrator.'
+description: 'Each installation follows the repository and channel it is configured with (edge / stable), activates every admitted revision that breaks nothing exactly once without operator action, and hands a breaking release to its installation inspector.'
 ---
 
 # Channel-Gated Self-Update — Spec
@@ -11,7 +11,7 @@ description: 'Each installation follows the repository and channel it is configu
 
 ## What it is
 
-The behavioral contract for how an installation keeps its own running version current. Each installation follows a **source** — a repository, upstream or a fork — on a **channel**; whenever the source offers a newer revision the channel admits, the installation converges to the newest one, applies it exactly once, and returns to a healthy running state, with no operator command. A release that breaks compatibility is not applied automatically: it goes to the installation's integrator. The contract is stated in behavior, independent of how revisions are detected, fetched, built, or restarted; any implementation (current or future) must satisfy it.
+The behavioral contract for how an installation keeps its own running version current. Each installation follows a **source** — a repository, upstream or a fork — on a **channel**; whenever the source offers a newer revision the channel admits, the installation converges to the newest one, applies it exactly once, and returns to a healthy running state, with no operator command. A release that breaks compatibility is not applied automatically: it goes to the installation's inspector. The contract is stated in behavior, independent of how revisions are detected, fetched, built, or restarted; any implementation (current or future) must satisfy it.
 
 **Business value:** a fleet of machines — the maintainer's laptop, friends' computers, an always-on appliance — stays current automatically and safely, each at the stability level its owner chose. A machine following main only ever runs code that passed CI; a machine following releases takes every compatible release by itself and has a breaking one carried out for it. Nobody runs manual upgrades, a contributor's fork works the same way as upstream, and no machine receives a revision its channel has not admitted.
 
@@ -26,7 +26,7 @@ An installation follows one source and one channel. Both are the installation's 
 
 ### Breaking releases
 
-A published release that crosses the active release's compatibility series never converges automatically. Reconciliation hands it to the installation's integrator, which carries out the release's upgrade instructions and then installs it through the same install act (`sdlc/procedure/maintenance/breaking-release-upgrade`); a person is involved only for what only a person can supply (`general/policy/human-contract`). The installation keeps its active release until that install completes. Every installation has an integrator for this, including one with no development checkout beside it.
+A published release that crosses the active release's compatibility series never converges automatically. Reconciliation hands it to the installation inspector, the standing role that answers the installation's events on its own computer, which carries out the release's upgrade instructions and then installs it through the same install act (`sdlc/procedure/maintenance/installation/overview`); a person is involved only for what only a person can supply (`general/policy/human-contract`). The installation keeps its active release until that install completes. Every installation has its inspector for this, including one with no development checkout beside it.
 
 ### Installing the selected revision
 
@@ -131,13 +131,13 @@ Scenario Outline: An installation meets a change of some repository
 
 #### UC-CSU-12: A failed install leaves convergence incomplete
 
-#### UC-CSU-13: A breaking release reaches the operator's installation through its integrator
+#### UC-CSU-13: A breaking release reaches the operator's installation through its inspector
 
 ```gherkin
 Given an operator's installation on the stable channel runs a release
 When a release crossing its compatibility series is published by its source
 Then the installation does not install that release on its own
-And the release is handed to the installation's integrator
+And the release is handed to the installation's inspector
 And the installation keeps running its active release until that release's install completes
 ```
 
