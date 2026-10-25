@@ -64,12 +64,18 @@ from teleclaude.core.next_machine.kind_migration import (
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
-from teleclaude.core.next_machine.todo_creation import NewTodo, announce_todo_created, write_new_todo
+from teleclaude.core.next_machine.todo_creation import (
+    SYNCHRONOUS_FILING_LOCK_WAIT_BOUND_S,
+    NewTodo,
+    announce_todo_created,
+    write_new_todo,
+)
 from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db._errors import HolderReconciliationRefused, HolderTransitionRefused
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.core.workflow_store.store import get_workflow_store
+from teleclaude.git_lock import MainBranchLockBusy
 from teleclaude.slug import validate_slug
 from teleclaude.types.creation_record import EntryPoint
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
@@ -89,6 +95,11 @@ _CLAIMED_HOLD_WARNING = (
     "Contact it with `telec sessions send {session_id} <message>`."
 )
 _TODO_UPDATE_EVENT_SOURCE = "api.todo.update"
+_CREATION_BUSY_MESSAGE = (
+    "Todo creation was refused and nothing was created, because other git work was in progress. "
+    "Running the same command again is safe."
+)
+_CREATION_BUSY_LOG_EVENT = "todo creation refused: main-branch lock busy"
 _REACTIVATE_NO_MATCH_DETAIL_TEMPLATE = "No soft-removed entry found for slug '{slug}'"
 _REACTIVATE_AMBIGUOUS_DETAIL_TEMPLATE = (
     "Ambiguous slug '{slug}': multiple removed rows exist ({details}). Restore by id instead."
@@ -601,6 +612,7 @@ async def todo_content_create(
             group=request.group,
             icebox=request.icebox,
             context=creation_context,
+            lock_wait_bound_s=SYNCHRONOUS_FILING_LOCK_WAIT_BOUND_S,
         )
         created_identity = await write_new_todo(todos_db, new_todo)
 
@@ -651,6 +663,13 @@ async def todo_content_create(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except DocumentationEvidenceRefused as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except MainBranchLockBusy as exc:
+        logger.warning(_CREATION_BUSY_LOG_EVENT, slug=slug, bound_s=exc.bound_s)
+        raise DeclaredWorkRefusal(
+            status_code=503,
+            detail=_CREATION_BUSY_MESSAGE,
+            work_feedback=_CREATION_BUSY_MESSAGE,
+        ) from exc
     except Exception:
         logger.error("todo creation failed", slug=slug, exc_info=True)
         raise

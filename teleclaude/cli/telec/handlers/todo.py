@@ -450,7 +450,6 @@ def _handle_todo_create(args: list[str]) -> None:
         "POST",
         "/todos/dump",
         json_body=request.model_dump(mode="json"),
-        timeout=10.0,
     )
 
     if isinstance(result, dict) and result.get("status") == "ok":

@@ -659,7 +659,6 @@ class PreparationViewActionsMixin:
                     "/todos/dump",
                     json_body=request.model_dump(mode="json"),
                     params=_with_computer(None, computer),
-                    timeout=10.0,
                     clearance_scope=ClearanceScope.verb(
                         "bugs report" if kind == TODO_KIND_BUG else "todo create",
                         role_target=ProjectPath(Path(project_root)),

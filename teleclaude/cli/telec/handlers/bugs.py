@@ -276,7 +276,6 @@ def _handle_bugs_report(args: list[str]) -> None:
         "POST",
         "/todos/dump",
         json_body=bug_request.model_dump(mode="json"),
-        timeout=10.0,
     )
     if not (isinstance(api_result, dict) and api_result.get("status") == "ok"):
         detail = api_result.get("detail", api_result) if isinstance(api_result, dict) else api_result

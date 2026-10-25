@@ -147,12 +147,16 @@ class TodosDbWorkflowOperationsMixin:
         artifact_body: str,
         updated_by: str | None,
         documentation_admission: DocumentationAdmission | None = None,
+        lock_wait_bound_s: float | None = None,
     ) -> WorkItemId:
-        """Atomically create the item, initial state and first artifact version."""
+        """Atomically create the item, initial state and first artifact version.
+
+        ``lock_wait_bound_s`` limits the wait for the shared git lock; without it creation waits as long as needed.
+        """
         reconciliation_receipts: list[MarkerReceipt] = []
         committed = False
         try:
-            async with main_branch_lock_async():
+            async with main_branch_lock_async(bound_s=lock_wait_bound_s):
                 async with self._session() as session:
                     async with session.begin():
                         if (
