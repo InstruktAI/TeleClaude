@@ -453,8 +453,6 @@ And every artifact "parent-slug" carried survives unchanged, with its full versi
 And a subsequent write or remove against "parent-slug" is refused with a 409, so the preserved evidence is read-only
 ```
 
-<!-- planned:todo-creation-times-out-behind-main-lock -->
-
 #### UC-WTC35: A filing made while other sessions commit reports its own outcome
 
 ```gherkin
@@ -469,8 +467,6 @@ Then the agent sees the filing refused before the command's response deadline, w
 And the refusal says that nothing was created, that other git work was in progress, and that running the same command again is safe
 And a filing whose todo was created is never reported to the agent as a timeout
 ```
-
-<!-- /planned:todo-creation-times-out-behind-main-lock -->
 
 ### Dependency gate at create-time
 
