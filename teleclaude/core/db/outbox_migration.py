@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from teleclaude.core.db.connection_factory import create_sync_db_engine, init_outbox_schema
+from teleclaude.core.migration_signal import MigrationStore, signal_migration_started
 
 
 class _LegacyOutboxRow(NamedTuple):
@@ -104,6 +105,7 @@ def migrate_outbox_on_startup(main_db_path: str, outbox_db_path: str) -> None:
         if not _has_legacy_outbox_table(main_conn):
             return
 
+        signal_migration_started(MigrationStore.HOOK_OUTBOX)
         _ensure_outbox_schema(outbox_db_path)
         rows = _load_legacy_rows(main_conn)
         if rows:

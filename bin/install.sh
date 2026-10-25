@@ -29,6 +29,10 @@ COREPACK_MIN_VERSION="0.34.5"
 # Node 22/24 patch releases that later corepack majors drop.
 COREPACK_INSTALL_VERSION="0.34.7"
 source "$INSTALL_DIR/bin/init/tool_versions.sh"
+# shellcheck source=/dev/null
+source "$INSTALL_DIR/bin/init/live_root.sh"
+# The path live surfaces (the published telec, links, service definitions) name for this checkout.
+LIVE_ROOT="$(live_root_of "$INSTALL_DIR")"
 
 # Installer output goes to the log file, so a corepack download confirmation
 # would block on input nobody can see.
@@ -38,15 +42,10 @@ NON_INTERACTIVE=false
 CI_MODE=false
 DEPS_ONLY_MODE=false
 
-is_git_worktree() {
-    if command -v git > /dev/null 2>&1 && git -C "$INSTALL_DIR" rev-parse --git-dir > /dev/null 2>&1; then
-        local git_dir common_dir
-        git_dir=$(git -C "$INSTALL_DIR" rev-parse --git-dir 2>/dev/null)
-        common_dir=$(git -C "$INSTALL_DIR" rev-parse --git-common-dir 2>/dev/null)
-        [ "$git_dir" != "$common_dir" ]
-        return
-    fi
-    return 1
+# Whether this checkout is a release of the installation (a folder of its releases): a release is a
+# full build, never a development checkout.
+is_installation_release() {
+    is_installation_release_dir "$INSTALL_DIR"
 }
 
 parse_args() {
@@ -76,7 +75,9 @@ parse_args() {
 
 select_install_mode() {
     if [ "$CI_MODE" = false ] && [ "$DEPS_ONLY_MODE" = false ]; then
-        if is_git_worktree; then
+        # A checkout that is not a release of the installation prepares only its own development
+        # environment: it deploys no service, publishes no telec, and writes no agent hook or home link.
+        if ! is_installation_release; then
             DEPS_ONLY_MODE=true
             NON_INTERACTIVE=true
         elif [ -n "${CI:-}" ]; then
@@ -934,7 +935,8 @@ install_system_deps() {
         # or its host is loopback; a configured remote endpoint needs nothing here.
         # Classification (loopback vs remote) lives in bin/init/redis_locality.sh.
         local redis_url_value=""
-        [ -f "$INSTALL_DIR/.env" ] && redis_url_value="$(grep -E '^REDIS_URL=.+' "$INSTALL_DIR/.env" | head -1)"
+        local machine_env="${TELECLAUDE_HOME:-$HOME/.teleclaude}/.env"
+        [ -f "$machine_env" ] && redis_url_value="$(grep -E '^REDIS_URL=.+' "$machine_env" | head -1)"
         redis_url_value="${redis_url_value#REDIS_URL=}"
         # An installed server is the record of a previous yes, so asking again
         # offers a choice whose answer cannot change anything. Every sibling
@@ -1156,7 +1158,8 @@ install_python_deps() {
     # TTS-exclusive deps live in the `tts` extra, provisioned on demand the first
     # time TTS is enabled (uv sync --frozen --extra tts), not at setup time.
     print_info "Syncing Python environment with uv..."
-    if [ "$CI_MODE" = true ]; then
+    # A release is built from its lock and never edited: a sync that rewrote the lock would dirty it.
+    if [ "$CI_MODE" = true ] || is_installation_release; then
         (cd "$INSTALL_DIR" && uv sync --frozen)
     else
         (cd "$INSTALL_DIR" && uv sync)
@@ -1204,17 +1207,6 @@ fail_install_on_convergence_failure() {
         print_error "Documentation layout convergence failed (report above)"
         log "Install failed: documentation layout convergence"
         return 1
-    fi
-}
-
-publish_config_schemas() {
-    PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.core.reconciliation.config_schemas
-}
-
-publish_installed_commit() {
-    if ! PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.entrypoints.install_publication; then
-        print_error "Installed-checkout documentation publication failed — fix the reported cause and re-run make install"
-        exit 1
     fi
 }
 
@@ -1475,26 +1467,8 @@ install_global_cli() {
     fi
     print_header "Installing Global CLI (telec)"
 
-    publish_binary telec "$INSTALL_DIR/bin/telec"
+    publish_binary telec "$LIVE_ROOT/bin/telec"
     print_success "Installed telec at $TELEC_BIN_DIR/telec"
-}
-
-# Select the installed release in detached HEAD. A no-op unless this checkout is a beta or stable
-# installation (teleclaude/deployment/release_checkout.py names it by the executable published above).
-# A maintenance run that started this install already holds the checkout's maintenance
-# serialization and says so through TELECLAUDE_MAINTENANCE_DRAIN_HELD; a standalone install takes it once.
-select_installed_release() {
-    print_header "Selecting the installed release"
-    local flags=(--root "$INSTALL_DIR" --head)
-    if [ -n "${TELECLAUDE_MAINTENANCE_DRAIN_HELD:-}" ]; then
-        flags+=(--serialized)
-    fi
-    if PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.deployment.release_checkout "${flags[@]}"; then
-        print_success "Installed release selected"
-    else
-        print_error "The installed release could not be selected (reason above) — fix it and re-run install"
-        exit 1
-    fi
 }
 
 # Check that the macOS launcher compiler is present before installation work.
@@ -1614,7 +1588,7 @@ validate_config() {
     fi
 }
 
-# Exit status the migration entrypoint publishes (ExitStatus in teleclaude/config/migrations/__main__.py)
+# Exit status the migration entrypoint publishes (ExitStatus in teleclaude/config/migrations/_run.py)
 # when it withheld the run because the running daemon cannot read the current configuration version and
 # no document failed.
 CONFIG_MIGRATION_EXIT_WITHHELD=3
@@ -1733,18 +1707,23 @@ main() {
     run_install_stage ensure_teleclaude_yaml ensure_teleclaude_yaml
     run_install_stage migrate_config_documents migrate_config_documents
     run_install_stage discard_declaration_views discard_declaration_views
-    run_install_stage validate_config validate_config
-    if [ "$CI_MODE" = false ]; then
-        run_install_stage owner_establish run_owner_establishment establish
+    # A checkout verifying its configuration in CI needs it valid. A release's convergence does not: the
+    # configuration is completed afterwards, in the terminal interface or with `telec config`, so `telec`
+    # is published before any configuration is required.
+    if [ "$CI_MODE" = true ]; then
+        run_install_stage validate_config validate_config
     fi
     run_install_stage install_global_cli install_global_cli
     run_install_stage _ensure_local_bin_on_path _ensure_local_bin_on_path
-
     if [ "$CI_MODE" = false ]; then
-        run_install_stage select_installed_release select_installed_release
+        run_install_stage owner_establish run_owner_establishment establish
+    fi
+
+    # Services are deployed and the daemon started by `telec app start` once the configuration is valid,
+    # and the release's documentation, agent artifacts and schemas are published by the install act.
+    if [ "$CI_MODE" = false ]; then
         run_install_stage run_macos_launcher_identity run_macos_launcher_identity
         run_install_stage install_macos_tmux_server install_macos_tmux_server
-        run_install_stage install_service install_service
         run_install_stage withdraw_docs_watch_service withdraw_docs_watch_service
     fi
 
@@ -1752,8 +1731,6 @@ main() {
     if [ "$CI_MODE" = false ]; then
         run_install_stage configure_agent_cli configure_agent_cli
         run_install_stage activate_home_repository activate_home_repository
-        run_install_stage publish_installed_commit publish_installed_commit
-        run_install_stage publish_config_schemas publish_config_schemas
     fi
     run_install_stage converge_plumbing converge_plumbing
     if [ "$CI_MODE" = false ]; then

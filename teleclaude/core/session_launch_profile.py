@@ -18,6 +18,7 @@ from teleclaude.caller_identity import is_desk_role
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.identity import session_person_role
 from teleclaude.core.models import EndpointStamp, Session
+from teleclaude.core.reconciliation.live_surfaces import through_current
 from teleclaude.core.session_utils import get_session_output_dir, resolve_working_dir
 from teleclaude.core.tool_access import desk_command_paths
 from teleclaude.install.configure_agent_cli import claude_platform_hooks
@@ -70,7 +71,7 @@ def _render_claude_desk_flags(session: Session) -> str:
     settings = {
         **_CLAUDE_DESK_SETTINGS,
         _PERMISSIONS_KEY: {**_CLAUDE_DESK_PERMISSIONS, _ALLOW_KEY: allow},
-        _CLAUDE_HOOKS_KEY: claude_platform_hooks(REPO_ROOT),
+        _CLAUDE_HOOKS_KEY: claude_platform_hooks(through_current(REPO_ROOT)),
     }
     parts = [
         _DESK_SETTINGS_FLAG,

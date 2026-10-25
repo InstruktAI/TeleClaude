@@ -2019,6 +2019,64 @@ CLI_SURFACE: dict[str, CommandDef] = {
         examples=["telec sync", "telec sync --list"],
         auth=CommandAuth(capability=Capability.CODE, human=_HR_MEMBER),
     ),
+    "app": CommandDef(
+        desc="Operate the installed platform: its status, lifecycle, installs and rollback",
+        flags=[F.FLAG_HELP],
+        notes=[
+            "Every verb acts on the machine's installation, whatever directory the caller stands in; nothing in a project checkout is run or changed.",
+            "A commit in a project reaches nothing live: a revision becomes the platform's active release only through `install`.",
+        ],
+        subcommands={
+            "status": CommandDef(
+                desc="Show the daemon's health, the active release and the last install or rollback",
+                flags=[F.FLAG_HELP],
+                examples=["telec app status"],
+                auth=CommandAuth(
+                    capability=Capability.INSTALLATION_READ, human=_HR_MEMBER, scope=CommandScope.PLATFORM
+                ),
+            ),
+            "start": CommandDef(
+                desc="Install the services and start the installation's daemon",
+                flags=[F.FLAG_HELP],
+                notes=["Refuses until the machine configuration is valid; complete it with `telec config`."],
+                examples=["telec app start"],
+                auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+            ),
+            "stop": CommandDef(
+                desc="Stop the installation's daemon once its accepted work has settled",
+                flags=[F.FLAG_HELP],
+                examples=["telec app stop"],
+                auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+            ),
+            "restart": CommandDef(
+                desc="Restart the installation's daemon on its active release",
+                flags=[F.FLAG_HELP],
+                examples=["telec app restart"],
+                auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+            ),
+            "install": CommandDef(
+                desc="Install a revision as the active release",
+                args="[<revision>]",
+                flags=[F.FLAG_HELP],
+                notes=[
+                    "Without a revision, installs the target the installation's channel resolves for the repository it follows.",
+                    "Moves forward only: a revision older than the active release is refused and nothing changes.",
+                    "The previously active release stays installed. When no migration started the install can be rolled back; after one started, the way back is a forward repair.",
+                ],
+                examples=["telec app install", "telec app install v1.4.0"],
+                auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+            ),
+            "rollback": CommandDef(
+                desc="Make the previously active release active again",
+                flags=[F.FLAG_HELP],
+                notes=[
+                    "Refused, naming the condition, when a migration has started since the active release became active."
+                ],
+                examples=["telec app rollback"],
+                auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+            ),
+        },
+    ),
 }
 # =============================================================================
 # Computer addressing — every command that acts on state a computer owns accepts the
@@ -2142,6 +2200,13 @@ MESSAGE = CLI_SURFACE["message"]
 AUDIO = CLI_SURFACE["audio"].subcommands["stt"]
 
 SYNC = CLI_SURFACE["sync"]
+
+APP_STATUS = CLI_SURFACE["app"].subcommands["status"]
+APP_START = CLI_SURFACE["app"].subcommands["start"]
+APP_STOP = CLI_SURFACE["app"].subcommands["stop"]
+APP_RESTART = CLI_SURFACE["app"].subcommands["restart"]
+APP_INSTALL = CLI_SURFACE["app"].subcommands["install"]
+APP_ROLLBACK = CLI_SURFACE["app"].subcommands["rollback"]
 
 CONTENT_DUMP = CLI_SURFACE["content"].subcommands["dump"]
 

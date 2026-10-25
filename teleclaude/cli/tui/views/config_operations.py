@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Final
+from typing import Final, Protocol
 from uuid import uuid4
 
 from pydantic import BaseModel, ValidationError
 
-from teleclaude.cli.api_client import TelecAPIClient
+from teleclaude.api_models_identity import WhoAmIDTO
+from teleclaude.cli.api_client_request import JsonBody
 from teleclaude.config.operation_answers import (
     EditorViewAnswer,
     EnvironmentVariablesAnswer,
@@ -102,11 +103,23 @@ def _answer[AnswerT: BaseModel](answer: type[AnswerT], payload: Document) -> Ans
         ) from error
 
 
-class ConfigOperations:
-    """The Config tab's requests to the daemon's configuration operations."""
+class ConfigHost(Protocol):
+    """Where the Config tab's operations run: the daemon's client, or this process while no daemon serves."""
 
-    def __init__(self, api: TelecAPIClient) -> None:
-        self._api = api
+    async def run_config_operation(self, request_body: JsonBody, command_path: str) -> str:
+        """Run one operation cleared as ``command_path``; the answer is the operation's outcome as JSON."""
+        ...
+
+    async def whoami(self) -> WhoAmIDTO:
+        """The facts of the caller operating the tab, as the host resolves them."""
+        ...
+
+
+class ConfigOperations:
+    """The Config tab's requests to the configuration owner's operations, wherever they run."""
+
+    def __init__(self, host: ConfigHost) -> None:
+        self._api = host
 
     async def _run(self, request: ConfigRequest, command_path: str) -> Document:
         answer = await self._api.run_config_operation(request.model_dump(mode=_JSON_MODE), command_path)

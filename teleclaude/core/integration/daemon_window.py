@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -43,6 +44,9 @@ _MAKE_EXECUTABLE = "make"
 _STOP_TARGET = "stop"
 _START_TARGET = "start"
 _STOP_OUTCOME_ARGUMENT = "STOP_OUTCOME_FILE={path}"
+_STOP_OUTCOME_VARIABLE = "STOP_OUTCOME_FILE"
+_LIFECYCLE_STOP_VERB = "stop"
+_LIFECYCLE_START_VERB = "start"
 _STOPPED_OUTCOME = "stopped"
 _STOPPED_CLEANUP_FAILURE_OUTCOME = "stopped_cleanup_failure"
 _WITHHELD_DRAINING_OUTCOME = "withheld_draining"
@@ -100,6 +104,69 @@ class WindowCloseResult:
     output_tail: str | None = None
 
 
+@dataclass(frozen=True)
+class Lifecycle:
+    """One checkout's service lifecycle: where its stop and start commands run and how they report the outcome."""
+
+    cwd: Path
+    stop: tuple[str, ...]
+    start: tuple[str, ...]
+    outcome_as_argument: bool
+
+    def stop_vector(self, outcome_path: Path) -> list[str]:
+        """The stop command; a project's ``make stop`` takes the outcome file as an argument."""
+        if self.outcome_as_argument:
+            return [*self.stop, _STOP_OUTCOME_ARGUMENT.format(path=outcome_path)]
+        return list(self.stop)
+
+    def stop_environment(self, outcome_path: Path) -> Mapping[str, str] | None:
+        """The stop command's environment; a lifecycle script reads the outcome file from it."""
+        if self.outcome_as_argument:
+            return None
+        # guard: direct-env-read - allowed: child-process environment construction
+        return {**os.environ, _STOP_OUTCOME_VARIABLE: str(outcome_path)}  # fmt: skip
+
+
+def make_lifecycle(root: Path) -> Lifecycle:
+    """A project's lifecycle through its ``make`` targets."""
+    return Lifecycle(
+        cwd=root,
+        stop=(_MAKE_EXECUTABLE, _STOP_TARGET),
+        start=(_MAKE_EXECUTABLE, _START_TARGET),
+        outcome_as_argument=True,
+    )
+
+
+def script_lifecycle(script: Path) -> Lifecycle:
+    """A release's lifecycle through its own ``bin/daemon-control.sh``."""
+    return Lifecycle(
+        cwd=script.parent.parent,
+        stop=(str(script), _LIFECYCLE_STOP_VERB),
+        start=(str(script), _LIFECYCLE_START_VERB),
+        outcome_as_argument=False,
+    )
+
+
+@dataclass(frozen=True)
+class StopAttempt:
+    """The lifecycle's recorded stop outcome after the daemon held no accepted work, or why it could not run."""
+
+    outcome: StopOutcome | None
+    result: CommandResult | None
+    wait: AdmissionWait
+    error_kind: str | None = None
+
+
+@dataclass(frozen=True)
+class StartAttempt:
+    """A lifecycle start and whether the daemon verified healthy, admitting work, on the revision accepted."""
+
+    started: CommandResult
+    verified: bool
+    reason: str | None = None
+    start_commit: str | None = None
+
+
 def _must_keep_waiting(socket_path: str) -> bool:
     """Whether the daemon is open with held work, or its preparation state cannot be read."""
     try:
@@ -133,70 +200,74 @@ def wait_for_no_accepted_work(
     return AdmissionWait(waited_seconds=clock() - started, bound_expired=False)
 
 
+def stop_when_quiet(lifecycle: Lifecycle, scratch: Path, log_fields: Mapping[str, object]) -> StopAttempt:
+    """Wait for accepted work to settle, then ask the lifecycle to stop; a draining refusal waits and asks again."""
+    wait = wait_for_no_accepted_work(API_SOCKET_PATH)
+    while True:
+        try:
+            outcome, result = _request_stop(lifecycle, scratch)
+        except OSError as error:
+            return StopAttempt(outcome=None, result=None, wait=wait, error_kind=type(error).__name__)
+        if outcome is StopOutcome.WITHHELD_DRAINING:
+            logger.warning(
+                _WINDOW_PREPARATION_EXPIRED_EVENT,
+                **log_fields,
+                waited_seconds=round(wait.waited_seconds, 1),
+                output_tail=result.output_tail,
+            )
+            wait = wait_for_no_accepted_work(API_SOCKET_PATH)
+            continue
+        return StopAttempt(outcome=outcome, result=result, wait=wait)
+
+
 def open_window(
     root: Path,
     activation: MaintenanceActivation,
 ) -> WindowOpenResult:
     """Wait for accepted work, then open a window only on the lifecycle's recorded stopped outcome."""
     activation_fields = _activation_fields(activation)
-    wait = wait_for_no_accepted_work(API_SOCKET_PATH)
-    while True:
-        try:
-            outcome, result = _request_stop(root)
-        except OSError as error:
-            reason = _OPEN_STOP_FAILURE.format(error_kind=type(error).__name__)
-            record_window_failure(root, reason)
-            logger.error(_WINDOW_OPEN_REFUSED_EVENT, **(activation_fields or {}), reason=reason)
-            return WindowOpenResult(opened=False, reason=reason)
-        if outcome in (StopOutcome.STOPPED, StopOutcome.STOPPED_CLEANUP_FAILURE):
-            warning = result.output_tail if outcome is StopOutcome.STOPPED_CLEANUP_FAILURE else None
-            if outcome is StopOutcome.STOPPED_CLEANUP_FAILURE:
-                warning = warning or _OUTPUT_UNAVAILABLE
-                logger.warning(
-                    _WINDOW_STOP_CLEANUP_FAILED_EVENT,
-                    **(activation_fields or {}),
-                    waited_seconds=round(wait.waited_seconds, 1),
-                    output_tail=warning,
-                )
-            logger.info(
-                _WINDOW_OPEN_EVENT,
-                **(activation_fields or {}),
-                waited_seconds=round(wait.waited_seconds, 1),
-                bound_expired=wait.bound_expired,
-            )
-            return WindowOpenResult(opened=True, warning=warning)
-        if outcome is StopOutcome.WITHHELD_DRAINING:
-            logger.warning(
-                _WINDOW_PREPARATION_EXPIRED_EVENT,
-                **(activation_fields or {}),
-                waited_seconds=round(wait.waited_seconds, 1),
-                output_tail=result.output_tail,
-            )
-            wait = wait_for_no_accepted_work(API_SOCKET_PATH)
-            continue
-
-        reason = result.output_tail or _CONTEXT_STOP_REFUSED
-        if outcome is None:
-            reason = result.output_tail or _MISSING_STOP_OUTCOME
+    attempt = stop_when_quiet(make_lifecycle(root), maintenance_directory(root), activation_fields or {})
+    if attempt.error_kind is not None:
+        reason = _OPEN_STOP_FAILURE.format(error_kind=attempt.error_kind)
         record_window_failure(root, reason)
         logger.error(_WINDOW_OPEN_REFUSED_EVENT, **(activation_fields or {}), reason=reason)
         return WindowOpenResult(opened=False, reason=reason)
+    outcome, result, wait = attempt.outcome, attempt.result, attempt.wait
+    assert result is not None
+    if outcome in (StopOutcome.STOPPED, StopOutcome.STOPPED_CLEANUP_FAILURE):
+        warning = result.output_tail if outcome is StopOutcome.STOPPED_CLEANUP_FAILURE else None
+        if outcome is StopOutcome.STOPPED_CLEANUP_FAILURE:
+            warning = warning or _OUTPUT_UNAVAILABLE
+            logger.warning(
+                _WINDOW_STOP_CLEANUP_FAILED_EVENT,
+                **(activation_fields or {}),
+                waited_seconds=round(wait.waited_seconds, 1),
+                output_tail=warning,
+            )
+        logger.info(
+            _WINDOW_OPEN_EVENT,
+            **(activation_fields or {}),
+            waited_seconds=round(wait.waited_seconds, 1),
+            bound_expired=wait.bound_expired,
+        )
+        return WindowOpenResult(opened=True, warning=warning)
+
+    reason = result.output_tail or _CONTEXT_STOP_REFUSED
+    if outcome is None:
+        reason = result.output_tail or _MISSING_STOP_OUTCOME
+    record_window_failure(root, reason)
+    logger.error(_WINDOW_OPEN_REFUSED_EVENT, **(activation_fields or {}), reason=reason)
+    return WindowOpenResult(opened=False, reason=reason)
 
 
-def close_window(
-    root: Path,
-    start_commit: str,
-    covered_activations: tuple[MaintenanceActivation, ...] = (),
-    current_tip: Callable[[], str] | None = None,
-) -> WindowCloseResult:
-    """Start the daemon and verify its health, open admission and checkout start commit within one bound."""
-    activation_fields = tuple(_activation_fields(activation) for activation in covered_activations)
+def start_until_verified(lifecycle: Lifecycle, accepts: Callable[[HealthDTO], bool]) -> StartAttempt:
+    """Start through the lifecycle and verify, within one bound, health, open admission and an accepted revision."""
     deadline = time.monotonic() + WINDOW_START_BOUND_SECONDS
     started = run_process_group_command(
-        [_MAKE_EXECUTABLE, _START_TARGET],
-        root,
+        list(lifecycle.start),
+        lifecycle.cwd,
         timeout_seconds=max(0.0, deadline - time.monotonic()),
-        capture_output=secret_output_masker(root),
+        capture_output=secret_output_masker(lifecycle.cwd),
     )
     reason = _START_TIMEOUT if started.timed_out else (started.output_tail or _START_UNVERIFIED)
     while time.monotonic() < deadline:
@@ -207,28 +278,43 @@ def close_window(
             time.sleep(_POLL_INTERVAL_SECONDS)
             continue
         preparation = health.preparation
-        accepted_tip = current_tip() if current_tip is not None else start_commit
-        if (
-            _start_commit_matches_checkout(root, start_commit, health.start_commit, accepted_tip)
-            and preparation is not None
-            and preparation.phase is DrainPhase.OPEN
-        ):
-            clear_window_failure(root)
-            logger.info(
-                _WINDOW_CLOSED_EVENT,
-                covered_activations=activation_fields,
-                verified=True,
-                start_commit=health.start_commit,
-            )
-            return WindowCloseResult(verified=True, output_tail=started.output_tail)
+        if accepts(health) and preparation is not None and preparation.phase is DrainPhase.OPEN:
+            return StartAttempt(started=started, verified=True, start_commit=health.start_commit)
         reason = _START_UNVERIFIED
         time.sleep(_POLL_INTERVAL_SECONDS)
 
     if started.exit_code != 0 and started.output_tail:
         reason = _START_FAILURE_REASON.format(reason=reason, output_tail=started.output_tail)
+    return StartAttempt(started=started, verified=False, reason=reason)
+
+
+def close_window(
+    root: Path,
+    start_commit: str,
+    covered_activations: tuple[MaintenanceActivation, ...] = (),
+    current_tip: Callable[[], str] | None = None,
+) -> WindowCloseResult:
+    """Start the daemon and verify its health, open admission and checkout start commit within one bound."""
+    activation_fields = tuple(_activation_fields(activation) for activation in covered_activations)
+
+    def accepts(health: HealthDTO) -> bool:
+        accepted_tip = current_tip() if current_tip is not None else start_commit
+        return _start_commit_matches_checkout(root, start_commit, health.start_commit, accepted_tip)
+
+    attempt = start_until_verified(make_lifecycle(root), accepts)
+    if attempt.verified:
+        clear_window_failure(root)
+        logger.info(
+            _WINDOW_CLOSED_EVENT,
+            covered_activations=activation_fields,
+            verified=True,
+            start_commit=attempt.start_commit,
+        )
+        return WindowCloseResult(verified=True, output_tail=attempt.started.output_tail)
+    reason = attempt.reason or _START_UNVERIFIED
     record_window_failure(root, reason)
     logger.error(_WINDOW_CLOSED_EVENT, covered_activations=activation_fields, verified=False, reason=reason)
-    return WindowCloseResult(verified=False, reason=reason, output_tail=started.output_tail)
+    return WindowCloseResult(verified=False, reason=reason, output_tail=attempt.started.output_tail)
 
 
 def _start_commit_matches_checkout(root: Path, requested: str, reported: str | None, current: str) -> bool:
@@ -256,19 +342,19 @@ async def _read_health() -> HealthDTO:
         await client.close()
 
 
-def _request_stop(root: Path) -> tuple[StopOutcome | None, CommandResult]:
-    """Ask the lifecycle to stop and return its recorded outcome independently of make's exit status."""
-    directory = maintenance_directory(root)
+def _request_stop(lifecycle: Lifecycle, directory: Path) -> tuple[StopOutcome | None, CommandResult]:
+    """Ask the lifecycle to stop and return its recorded outcome independently of its exit status."""
     directory.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=directory, prefix=_STOP_OUTCOME_PREFIX, delete=False) as handle:
         outcome_path = Path(handle.name)
     outcome_path.unlink(missing_ok=True)
     try:
         result = run_process_group_command(
-            [_MAKE_EXECUTABLE, _STOP_TARGET, _STOP_OUTCOME_ARGUMENT.format(path=outcome_path)],
-            root,
+            lifecycle.stop_vector(outcome_path),
+            lifecycle.cwd,
+            lifecycle.stop_environment(outcome_path),
             timeout_seconds=_stop_command_bound_seconds(),
-            capture_output=secret_output_masker(root),
+            capture_output=secret_output_masker(lifecycle.cwd),
         )
         try:
             value = outcome_path.read_text(encoding=_TEXT_ENCODING).strip()

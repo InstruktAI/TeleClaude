@@ -27,6 +27,7 @@ from typing import Final
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import TodoStatus
+from teleclaude.core.migration_signal import MigrationStore, signal_migration_started
 from teleclaude.docs_layout import rewrite_layout_text
 from teleclaude.snippet_validation import read_declared_project_slug
 
@@ -146,6 +147,7 @@ def _rewrite_artifacts(
         if renamed == content:
             continue
         new_digest = _sha256(renamed)
+        signal_migration_started(MigrationStore.TODOS)
         conn.execute(_UPDATE_ARTIFACT_SQL, (renamed, new_digest, now, todo_id, name))  # guard: raw-sql
         conn.execute(_INSERT_VERSION_SQL, (todo_id, slug, name, renamed, new_digest, now))  # guard: raw-sql
         digest_moves.setdefault(todo_id, {})[old_digest] = new_digest
@@ -175,6 +177,7 @@ def _rewrite_states(
         for old_digest, new_digest in digest_moves.get(todo_id, {}).items():
             renamed = renamed.replace(old_digest, new_digest)
         if renamed != state:
+            signal_migration_started(MigrationStore.TODOS)
             conn.execute(_UPDATE_STATE_SQL, (renamed, todo_id))  # guard: raw-sql
             rewritten += 1
     return rewritten

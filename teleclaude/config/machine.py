@@ -21,7 +21,7 @@ from teleclaude.config._models import (
 from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.migrations.read import upcast_for_read
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.paths import PROJECT_ENV_PATH
+from teleclaude.paths import ENV_PATH
 
 _WORKING_DIR_VARIABLE = "WORKING_DIR"
 _READ_ERROR = "Failed to read config file {path}: {error}"
@@ -58,7 +58,7 @@ def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
 _config_path = resolve_runtime_config_path()
 _config: TeleclaudeConfig | None = None
 config_path = _config_path
-dotenv_path = PROJECT_ENV_PATH  # public alias; the config watcher watches config_path + dotenv_path
+dotenv_path = ENV_PATH  # public alias; the config watcher watches config_path + dotenv_path
 
 
 def _runtime_config() -> TeleclaudeConfig:

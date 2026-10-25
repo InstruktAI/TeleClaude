@@ -22,6 +22,21 @@ class ConfigFileName(StrEnum):
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TELECLAUDE_HOME = Path("~/.teleclaude").expanduser()
 HELP_DESK_DIRNAME = "help-desk"
+VENDOR_DIRNAME = "instrukt-ai"
+PLATFORM_DIRNAME = "teleclaude"
+_DEFAULT_DATA_HOME = Path(".local") / "share"
+
+
+def _xdg_data_home() -> Path:
+    """The XDG data directory: ``$XDG_DATA_HOME`` when set to an absolute path, else ``~/.local/share``."""
+    configured = os.environ.get("XDG_DATA_HOME")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+    if configured and Path(configured).is_absolute():
+        return Path(configured)
+    return Path.home() / _DEFAULT_DATA_HOME
+
+
+INSTALLATION_ROOT = _xdg_data_home() / VENDOR_DIRNAME / PLATFORM_DIRNAME
+DAEMON_PID_PATH = INSTALLATION_ROOT / "teleclaude.pid"
 
 
 def invocation_cwd() -> Path:
@@ -96,7 +111,6 @@ MACHINE_CONFIG_PATH = TELECLAUDE_HOME / ConfigFileName.MACHINE
 PROJECTS_MANIFEST_PATH = TELECLAUDE_HOME / "projects.yaml"
 ENV_PATH = TELECLAUDE_HOME / ConfigFileName.ENV
 HOME_RETAINED_SET_PATH = TELECLAUDE_HOME / ".gitignore"
-PROJECT_ENV_PATH = REPO_ROOT / ConfigFileName.ENV
 
 _SAFE_PATH_COMPONENT_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _SAFE_PATH_COMPONENT_HASH_LENGTH = 32

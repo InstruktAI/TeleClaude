@@ -16,6 +16,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
+from teleclaude.core.migration_signal import MigrationStore, signal_migration_started
 from teleclaude.core.roles import is_worker_role
 from teleclaude.mirrors._session_convergence import converge_session_owned_conversations
 from teleclaude.mirrors._source_observation_migration import (
@@ -205,6 +206,8 @@ def migrate_add_mirror_columns(
     backfill_session_attributions: Callable[[sqlite3.Connection, str, Path], None],
 ) -> None:
     """Idempotently bring mirrors schema and derived fields to the current contract."""
+    if int(conn.execute(_READ_DATA_REVISION_SQL).fetchone()[0]) < LATEST_DATA_REVISION:
+        signal_migration_started(MigrationStore.MIRRORS)
     _rename_agent_spawn_column(conn)
     for stmt in _ADD_COLUMN_STATEMENTS:
         try:

@@ -1,13 +1,14 @@
-"""Installed release checkout: which checkout is the installation, and the release it selects.
+"""Release posture: the exact source a release of the installation selects.
 
-A beta or stable installation runs the exact source its channel admitted: its checkout has a
-detached HEAD at the release's commit, and an argument-less ``git pull`` cannot integrate
-newer development commits into it. This module owns that installed-source posture for every
-consumer — the channel updater, the maintenance executor, configuration migration and
-publication — so none of them derives its own copy of the installation fact.
+Each release runs the exact source of its revision: its worktree has a detached HEAD at the
+revision's commit, and an argument-less ``git pull`` cannot integrate newer development commits
+into it. This module owns that installed-source posture for every consumer — the maintenance
+executor, configuration migration and publication — so none of them derives its own copy of the
+installation fact.
 
-The installation is the checkout the installer-published ``telec`` executable belongs to. The
-imported module location, the release channel or a detached HEAD alone identify nothing.
+Which checkouts are releases is the installation's to say (``reconciliation.installation``): a
+release is a folder of the installation's releases. The imported module location, the release
+channel or a detached HEAD alone identify nothing, and no project checkout is a release.
 """
 
 from __future__ import annotations
@@ -20,19 +21,14 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config._models import ReleaseChannel
-from teleclaude.config.machine import config
 from teleclaude.core.integration._maintenance_records import maintenance_drain_lock
+from teleclaude.core.reconciliation.installation import is_installed_release
 from teleclaude.deployment import parse_version
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.logging_config import setup_logging
-from teleclaude.paths import ConfigFileName
 
 logger = get_logger(__name__)
 
-_PUBLISHED_EXECUTABLE = Path(".local") / "bin" / "telec"
-_EXECUTABLE_DIRECTORY = "bin"
-_GIT_DIRECTORY = ".git"
 _TAG_TEMPLATE = "v{major}.{minor}.{patch}"
 _FETCH_CONFIG_KEY = "remote.origin.fetch"
 _FETCH_GLOB = "+refs/heads/*:refs/remotes/origin/*"
@@ -53,10 +49,9 @@ _SELECTED_EVENT = "release_checkout_selected"
 _NOT_APPLICABLE_EVENT = "release_checkout_not_applicable"
 _UNMET_EVENT = "release_checkout_unmet"
 _OBSERVED_LINE = "release {tag} {commit}"
-_NOT_APPLICABLE_LINE = "no release installation here"
-_NO_RELEASE_SELECTED_LINE = "no release selected yet: {detail}"
+_OBSERVED_UNTAGGED_LINE = "revision {commit}"
+_NOT_APPLICABLE_LINE = "not a release of the installation"
 _SUPERSEDED_DETAIL = "checkout is at {actual}, not the expected {expected}"
-_TAG_MISSING_DETAIL = "no release tag names commit {commit}"
 _COMMIT_UNKNOWN_DETAIL = "commit {commit} is not available in this checkout: {error}"
 _CHECKOUT_REFUSED_DETAIL = "git refused to select {commit} without discarding local work: {error}"
 _UNPRESERVED_HEAD_DETAIL = "the detached HEAD {commit} is held by no branch or tag, so leaving it would strand its work"
@@ -81,7 +76,6 @@ class PostureRefusal(StrEnum):
     """Why a checkout could not be brought to its release's detached posture."""
 
     SUPERSEDED = "superseded"
-    TAG_MISSING = "tag_missing"
     COMMIT_UNKNOWN = "commit_unknown"
     CHECKOUT_REFUSED = "checkout_refused"
     UNPRESERVED_HEAD = "unpreserved_head"
@@ -101,43 +95,15 @@ class PostureUnmet(Exception):
 
 @dataclass(frozen=True)
 class SelectedRelease:
-    """The release an installation selects: its tag and full commit, observable together."""
+    """The release an installation selects: its tag, when the revision is a published release, and its full commit."""
 
-    tag: str
+    tag: str | None
     commit: str
 
 
-def installed_checkout_root() -> Path | None:
-    """The checkout the installer-published ``telec`` executable belongs to, or ``None`` when unpublished.
-
-    Only a primary checkout qualifies: a linked worktree carries no installation.
-    """
-    link = Path.home() / _PUBLISHED_EXECUTABLE
-    if not link.is_symlink():
-        return None
-    target = link.resolve()
-    if target.parent.name != _EXECUTABLE_DIRECTORY:
-        return None
-    root = target.parent.parent
-    if not (root / _GIT_DIRECTORY).is_dir() or not (root / ConfigFileName.OVERLAY).is_file():
-        return None
-    return root
-
-
-def is_installed_checkout(root: Path) -> bool:
-    """Whether ``root`` is the checkout the published executable belongs to."""
-    installed = installed_checkout_root()
-    return installed is not None and root.resolve() == installed
-
-
 def is_release_installation(root: Path) -> bool:
-    """Whether ``root`` is the installed checkout of a beta or stable channel.
-
-    An unreadable machine configuration raises ``ConfigLoadError``: the channel cannot be told, and
-    guessing it would either grant installation effects to a checkout that has none or withhold the
-    source protection from one that does.
-    """
-    return is_installed_checkout(root) and config.deployment.channel is not ReleaseChannel.ALPHA
+    """Whether ``root`` is a release of the installation, active or not."""
+    return is_installed_release(root)
 
 
 def selected_revision(root: Path) -> str | None:
@@ -234,8 +200,6 @@ def _checkout_detached(repository: Repo, commit: str) -> None:
 def _settle_posture(repository: Repo, commit: str) -> SelectedRelease:
     """Detach ``commit``, make an ordinary pull inert, and prove both."""
     tag = release_tag(repository, commit)
-    if tag is None:
-        raise PostureUnmet(PostureRefusal.TAG_MISSING, _TAG_MISSING_DETAIL.format(commit=commit))
     if not repository.head.is_detached or repository.head.commit.hexsha != commit:
         _checkout_detached(repository, commit)
     _normalize_fetch_mapping(repository)
@@ -318,23 +282,18 @@ def _report(root: Path, run: str | None) -> int:
         return _UNMET_EXIT_CODE
     if selected is None:
         print(_NOT_APPLICABLE_LINE)
+    elif selected.tag is None:
+        print(_OBSERVED_UNTAGGED_LINE.format(commit=selected.commit))
     else:
         print(_OBSERVED_LINE.format(tag=selected.tag, commit=selected.commit))
     return _SUCCEEDED_EXIT_CODE
 
 
 def _normalize_head(root: Path) -> SelectedRelease | None:
-    """Normalize the commit the installation runs now; an installation that has not adopted a release yet has none."""
+    """Normalize the commit a release runs now; a checkout that is no release has none."""
     if not is_release_installation(root):
         return None
-    head = Repo(str(root.resolve())).head.commit.hexsha
-    try:
-        return normalize_posture(root, head)
-    except PostureUnmet as unmet:
-        if unmet.refusal is not PostureRefusal.TAG_MISSING:
-            raise
-        print(_NO_RELEASE_SELECTED_LINE.format(detail=unmet.detail))
-        return None
+    return normalize_posture(root, Repo(str(root.resolve())).head.commit.hexsha)
 
 
 def main(arguments: list[str] | None = None) -> int:

@@ -8,8 +8,8 @@ import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 
-from teleclaude.docs_publishers import git_common_root
-from teleclaude.paths import COMMANDS_DIR, DEPLOYED_COMMANDS_MANIFEST_PATH, REPO_ROOT
+from teleclaude.core.reconciliation.platform_repository import platform_scope_key
+from teleclaude.paths import COMMANDS_DIR, DEPLOYED_COMMANDS_MANIFEST_PATH
 
 _UTF8 = "utf-8"
 _NEWLINE = "\n"
@@ -49,8 +49,8 @@ _LEGACY_GLOBAL_SCOPE_KEY = "global"
 
 
 def _mother_scope_key() -> str:
-    """Return the canonical scope key Mother's own checkout owns paths under."""
-    return str(git_common_root(REPO_ROOT).resolve())
+    """Return the scope key the platform's own repository owns paths under, stable across releases."""
+    return platform_scope_key()
 
 
 def _validate_owned_path(candidate: object, *, manifest_path: Path) -> None:

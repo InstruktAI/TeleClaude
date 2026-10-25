@@ -107,18 +107,18 @@ TeleClaude is not a bot. It is a high-integrity operating system for the agentic
 
 ## Getting Started
 
-**Prerequisites:** Python 3.11+, tmux. That's it. The TUI is the cockpit — no adapters required. Optional: configure Telegram, Discord, or WhatsApp adapters for mobile access; add Redis for the multi-computer mesh.
+**Prerequisites:** git, [uv](https://docs.astral.sh/uv/), Node.js 22+ and tmux (on macOS also the Xcode Command Line Tools). That's it. The TUI is the cockpit — no adapters required. Optional: configure Telegram, Discord, or WhatsApp adapters for mobile access; add Redis for the multi-computer mesh.
 
 ```bash
-git clone https://github.com/morriz/teleclaude.git
-cd teleclaude
-make install
-telec config wizard
-make start
+curl -fsSL https://raw.githubusercontent.com/InstruktAI/TeleClaude/<release-tag>/bin/bootstrap.sh | bash
+telec            # complete the configuration in the terminal interface (or: telec config)
+telec app start  # installs the services and starts the daemon once the configuration is valid
 instrukt-ai-logs teleclaude  # Monitor the newly installed daemon
 ```
 
-`make install`, `telec config wizard`, and `make start` are for this TeleClaude repo itself. They install machine-global tooling, collect interactive configuration, and bring the daemon up. The installer publishes the CLIs (`telec`, `graphify`) to `~/.local/bin`, ensures the InstruktAI logging CLI (`instrukt-ai-logs`) is present and current and wires its rotation and scheduling, and, if `~/.local/bin` isn't on your `PATH`, detects your shell and offers to add it — no manual PATH editing.
+The bootstrap needs no clone. It installs the latest release of the repository it follows (set `TELECLAUDE_SOURCE` to follow a fork) into the platform's own folder under the XDG data directory, publishes `telec` from it, and converges the machine's tooling, owner and agent CLI integration. The platform runs from the installation's active release, never from a checkout: commits, worktrees and sessions in a project change nothing live until a revision is installed with `telec app install` (a channel installs by itself when its source publishes one), and `telec app rollback` returns to the previous release while no migration has started. `telec app status|start|stop|restart` operate the platform from any directory. The installer publishes the CLIs (`telec`, `graphify`) to `~/.local/bin`, ensures the InstruktAI logging CLI (`instrukt-ai-logs`) is present and current and wires its rotation and scheduling, and, if `~/.local/bin` isn't on your `PATH`, detects your shell and offers to add it — no manual PATH editing.
+
+Working on TeleClaude itself is ordinary project work: clone the repository as a project, run `make install` for its development environment (it deploys no service and publishes no `telec`), and develop in worktrees. A machine that runs the platform from its checkout moves onto an installation by running the same bootstrap once; the checkout stays a registered project with all its todos, worktrees and claims.
 
 `telec config project create` and `adopt` are different. They bring a project under TeleClaude, each as its own act. `telec config project create <name>` makes a new, empty project of its own in your projects area (`--company <slug>` for a company's, `--path <dir>` for a platform administrator's ownerless one outside every home); after scaffolding into it, `telec config project adopt` declares what it now holds. `telec config project adopt` registers the folder you stand in, where it is, keeping its history and location, and re-running it brings an already-registered project back in line. `telec sync` runs a registered project's maintenance on demand. Documentation publication happens through the project's own commit and review boundary, not as a side effect of any of them. This is project setup, not repo installation.
 

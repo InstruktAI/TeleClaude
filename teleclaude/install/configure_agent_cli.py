@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from teleclaude.constants import CODEX_HOOK_STOP_TIMEOUT_SEC, MAIN_MODULE
+from teleclaude.core.reconciliation.live_surfaces import through_current
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters.agy import AgyHookEvent
 from teleclaude.install.codex_hooks_install import (
@@ -29,7 +30,7 @@ from teleclaude.install.codex_hooks_install import (
 )
 from teleclaude.install.dsh_hooks_install import configure_dsh, configure_dsh_tui_onboarding
 from teleclaude.install.mcp_config import load_managed_mcp_server_names as _load_managed_mcp_server_names
-from teleclaude.paths import BIN_DIR, ENV_PATH, SHELL_DIR, ConfigFileName
+from teleclaude.paths import BIN_DIR, SHELL_DIR
 from teleclaude.project_root import resolve_project_root
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
@@ -47,6 +48,11 @@ _SHELL_RC_PAIRS: tuple[tuple[str, str], ...] = (
     ("bashrc", ".bashrc"),
     ("profile", ".profile"),
 )
+
+
+def _live_root(repo_root: Path) -> Path:
+    """The project root a live surface names: a release of the installation is addressed through ``current``."""
+    return through_current(resolve_project_root(repo_root))
 
 
 def _load_settings_overrides(agent: str) -> dict[str, object] | None:  # guard: loose-dict - JSON from disk
@@ -640,7 +646,7 @@ def _prune_managed_mcp_servers(
 
 def configure_claude(repo_root: Path) -> None:
     """Configure Claude Code hooks."""
-    repo_root = resolve_project_root(repo_root)
+    repo_root = _live_root(repo_root)
     managed_mcp_names = _load_managed_mcp_server_names(repo_root)
     settings_path = Path.home() / ".claude" / "settings.json"
     _optional_object(_load_user_json_or_refuse(settings_path, label="Claude"), "env", label="Claude settings")
@@ -663,7 +669,7 @@ def configure_claude(repo_root: Path) -> None:
 
 def configure_agy(repo_root: Path) -> None:
     """Configure Antigravity CLI (agy) hooks, settings, and MCP."""
-    repo_root = resolve_project_root(repo_root)
+    repo_root = _live_root(repo_root)
     receiver_script = repo_root / "teleclaude" / "hooks" / "receiver" / "__main__.py"
     if not receiver_script.exists():
         print(f"Warning: Antigravity receiver not found at {receiver_script}")
@@ -735,7 +741,7 @@ def configure_codex(
     repo_root: Path,
 ) -> None:
     """Configure native Codex hooks and settings."""
-    repo_root = resolve_project_root(repo_root)
+    repo_root = _live_root(repo_root)
     receiver_script = repo_root / "teleclaude" / "hooks" / "receiver" / "__main__.py"
     if not receiver_script.exists():
         print(f"Warning: Codex receiver not found at {receiver_script}")
@@ -815,7 +821,7 @@ def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
     Migrates from old rendered-copy installs by replacing regular files with symlinks.
     """
     _ = repo_root  # kept for call-site compatibility; source path uses WRAPPER_TEMPLATE_DIR
-    source_path = WRAPPER_TEMPLATE_DIR / wrapper_name
+    source_path = through_current(WRAPPER_TEMPLATE_DIR) / wrapper_name
     if not source_path.exists():
         print(f"Warning: wrapper source missing: {source_path}")
         return
@@ -825,7 +831,7 @@ def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
     target_path = bin_dir / wrapper_name
 
     # Already a correct symlink — nothing to do
-    if target_path.is_symlink() and target_path.resolve() == source_path.resolve():
+    if target_path.is_symlink() and Path(os.readlink(target_path)) == source_path:
         print(f"{wrapper_name} wrapper already linked at {target_path}")
         return
 
@@ -848,13 +854,13 @@ def install_shell_environment() -> None:
     """
     SHELL_DIR.mkdir(parents=True, exist_ok=True)
     for source_name, target_name in _SHELL_RC_PAIRS:
-        source_path = SHELL_TEMPLATE_DIR / source_name
+        source_path = through_current(SHELL_TEMPLATE_DIR) / source_name
         if not source_path.exists():
             print(f"Warning: shell rc source missing: {source_path}")
             continue
         target_path = SHELL_DIR / target_name
 
-        if target_path.is_symlink() and target_path.resolve() == source_path.resolve():
+        if target_path.is_symlink() and Path(os.readlink(target_path)) == source_path:
             print(f"shell rc already linked: {target_path}")
             continue
 
@@ -865,32 +871,9 @@ def install_shell_environment() -> None:
         print(f"shell rc linked: {target_path} -> {source_path}")
 
 
-def install_env_symlink(repo_root: Path) -> None:
-    """Symlink ~/.teleclaude/.env to the project .env for MCP server env loading."""
-    project_env = repo_root / ConfigFileName.ENV
-    target = ENV_PATH
-    target.parent.mkdir(parents=True, exist_ok=True)
-
-    if not project_env.exists():
-        print(f"Warning: No .env found at {project_env}, skipping symlink")
-        return
-
-    if target.is_symlink():
-        if target.resolve() == project_env.resolve():
-            print(f".env symlink already configured at {target}")
-            return
-        target.unlink()
-    elif target.exists():
-        print(f"Warning: {target} exists and is not a symlink, skipping")
-        return
-
-    target.symlink_to(project_env)
-    print(f".env symlink installed: {target} -> {project_env}")
-
-
 def main() -> None:
     """CLI entrypoint for configuring supported agent CLIs."""
-    repo_root = resolve_project_root(Path(__file__).resolve().parents[2])
+    repo_root = _live_root(Path(__file__).resolve().parents[2])
     print(f"Configuring agent CLIs from repo: {repo_root}")
 
     install_agent_wrapper(repo_root, "teleclaude-capabilities.sh")
@@ -898,7 +881,6 @@ def main() -> None:
     install_agent_wrapper(repo_root, "gog")
     install_agent_wrapper(repo_root, "teleclaude-shell")
     install_shell_environment()
-    install_env_symlink(repo_root)
     configure_claude(repo_root)
     configure_agy(repo_root)
     configure_codex(repo_root)

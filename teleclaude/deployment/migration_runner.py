@@ -16,6 +16,7 @@ from typing import TypedDict, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.migration_signal import MigrationStore, signal_migration_started
 from teleclaude.deployment import parse_version, version_cmp, version_in_range
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.logging_config import setup_logging
@@ -232,6 +233,7 @@ def run_migrations(from_ver: str, to_ver: str, dry_run: bool = False) -> Migrati
             continue
 
         try:
+            signal_migration_started(MigrationStore.INSTALLATION)
             migrated = _as_bool(module.migrate(), migration_name, "migrate")
             if not migrated:
                 raise RuntimeError(f"Migration returned False: {migration_name}")
@@ -251,21 +253,16 @@ def run_migrations(from_ver: str, to_ver: str, dry_run: bool = False) -> Migrati
     return result
 
 
-def main(arguments: list[str] | None = None) -> int:
-    """Run installation migrations when a committed activation advances the declared project version."""
-    setup_logging()
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(_BEFORE_SHA_FLAG)
-    parser.add_argument(_AFTER_SHA_FLAG, required=True)
-    args = parser.parse_args(arguments)
-    if args.before_sha is None:
+def migrate_committed_range(root: Path, before_sha: str | None, after_sha: str) -> int:
+    """Run the installation migrations a committed range owes; zero on success, non-zero with the reason printed."""
+    if before_sha is None:
         logger.info(_NO_MIGRATIONS_EVENT, reason=_NO_BEFORE_REVISION)
         return 0
 
     try:
-        repository = Repo(str(Path.cwd()))
-        from_version = committed_version(repository, args.before_sha)
-        to_version = committed_version(repository, args.after_sha)
+        repository = Repo(str(root))
+        from_version = committed_version(repository, before_sha)
+        to_version = committed_version(repository, after_sha)
         if version_cmp(from_version, to_version) >= 0:
             logger.info(
                 _NO_MIGRATIONS_EVENT,
@@ -291,6 +288,16 @@ def main(arguments: list[str] | None = None) -> int:
     return 0
 
 
+def main(arguments: list[str] | None = None) -> int:
+    """Run installation migrations when a committed activation advances the declared project version."""
+    setup_logging()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(_BEFORE_SHA_FLAG)
+    parser.add_argument(_AFTER_SHA_FLAG, required=True)
+    args = parser.parse_args(arguments)
+    return migrate_committed_range(Path.cwd(), args.before_sha, args.after_sha)
+
+
 __all__ = [
     "MIGRATIONS_DIR",
     "MIGRATION_STATE_FILE",
@@ -298,6 +305,7 @@ __all__ = [
     "committed_version",
     "discover_migrations",
     "main",
+    "migrate_committed_range",
     "run_migrations",
 ]
 

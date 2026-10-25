@@ -6,7 +6,7 @@ import os
 import shutil
 import subprocess
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
@@ -44,8 +44,9 @@ from teleclaude.config.migrations.v004_relocate_legacy_discord_provider_ids impo
 from teleclaude.config.migrations.v009_fold_trusted_directories import RegistryConflict
 from teleclaude.config.schema import CURRENT_SCHEMA_VERSION, ConfigKind
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.core.migration_signal import MigrationSignalError, MigrationStore, signal_migration_started
 from teleclaude.deployment.release_checkout import is_release_installation
-from teleclaude.file_transaction import file_transaction
+from teleclaude.file_transaction import FileTransaction, file_transaction
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT, ConfigFileName
 
@@ -101,7 +102,12 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
         clean_before = repository is not None and tracked and not _path_is_dirty(repository, relative_path)
         retained = trigger is not MigrationTrigger.WRITER and _is_installed_release_declaration(path, subject)
         if trigger is not MigrationTrigger.WRITER and not retained:
-            _retire(subject)
+            try:
+                _retire(subject)
+            except MigrationSignalError:
+                return record_migration(
+                    key, subject, 0, CURRENT_SCHEMA_VERSION, trigger, MigrationOutcome.FAILED, _MIGRATION_ERROR, None
+                )
         try:
             document = _parse_document(original)
         except YAMLError:
@@ -150,7 +156,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
         delivered: list[Destination] = []
         try:
             if not retained:
-                carry_pending(document, subject, delivered=delivered.append)
+                _signal_and_carry_pending(document, subject, from_version, delivered.append)
             migrated = upcast(document, subject)
             if retained:
                 outcome = _retained_outcome(path, document, migrated)
@@ -209,7 +215,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 None,
                 diagnostic=describe_load_error(refusal),
             )
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, MigrationSignalError):
             return record_migration(
                 key,
                 subject,
@@ -254,48 +260,79 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 None,
             )
         assert relative_path is not None
-        try:
-            message = _MIGRATION_SUBJECT.format(path=relative_path, version=CURRENT_SCHEMA_VERSION)
-            commit = _commit_migration_document(repository, relative_path, message, migrated)
-        except (MigrationCommitRefused, GitCommandError, OSError) as refusal:
-            if transaction.read_text(encoding=_UTF8) != text:
-                return record_migration(
-                    key,
-                    subject,
-                    from_version,
-                    CURRENT_SCHEMA_VERSION,
-                    trigger,
-                    MigrationOutcome.MIGRATED_UNCOMMITTED,
-                    _COMMIT_REFUSED,
-                    None,
-                    diagnostic=str(refusal),
-                )
-            transaction.replace_text(_committed_text(repository, relative_path))
+        return _commit_migrated_document(
+            _CommitRequest(repository, relative_path, migrated, text, key, subject, from_version, trigger),
+            transaction,
+        )
+
+
+@dataclass(frozen=True)
+class _CommitRequest:
+    """What landing one migrated document needs: where it lives, what it became, and how to record the outcome."""
+
+    repository: Repo
+    relative_path: str
+    migrated: Mapping[str, object]
+    text: str
+    key: str
+    subject: SubjectRef
+    from_version: int
+    trigger: MigrationTrigger
+
+
+def _commit_migrated_document(request: _CommitRequest, transaction: FileTransaction) -> MigrationRecord:
+    """Land the migrated document through the sealed commit, restoring it when the commit is refused."""
+    try:
+        message = _MIGRATION_SUBJECT.format(path=request.relative_path, version=CURRENT_SCHEMA_VERSION)
+        commit = _commit_migration_document(request.repository, request.relative_path, message, request.migrated)
+    except (MigrationCommitRefused, GitCommandError, OSError) as refusal:
+        if transaction.read_text(encoding=_UTF8) != request.text:
             return record_migration(
-                key,
-                subject,
-                from_version,
+                request.key,
+                request.subject,
+                request.from_version,
                 CURRENT_SCHEMA_VERSION,
-                trigger,
-                MigrationOutcome.RESTORED_AFTER_REFUSED_COMMIT,
+                request.trigger,
+                MigrationOutcome.MIGRATED_UNCOMMITTED,
                 _COMMIT_REFUSED,
                 None,
                 diagnostic=str(refusal),
             )
+        transaction.replace_text(_committed_text(request.repository, request.relative_path))
         return record_migration(
-            key,
-            subject,
-            from_version,
+            request.key,
+            request.subject,
+            request.from_version,
             CURRENT_SCHEMA_VERSION,
-            trigger,
-            MigrationOutcome.MIGRATED_COMMITTED,
+            request.trigger,
+            MigrationOutcome.RESTORED_AFTER_REFUSED_COMMIT,
+            _COMMIT_REFUSED,
             None,
-            commit,
+            diagnostic=str(refusal),
         )
+    return record_migration(
+        request.key,
+        request.subject,
+        request.from_version,
+        CURRENT_SCHEMA_VERSION,
+        request.trigger,
+        MigrationOutcome.MIGRATED_COMMITTED,
+        None,
+        commit,
+    )
+
+
+def _signal_and_carry_pending(
+    document: Mapping[str, object], subject: SubjectRef, from_version: int, delivered: Callable[[Destination], None]
+) -> None:
+    """Signal that a migration is starting when the document is behind, then deliver its pending moves."""
+    if from_version < CURRENT_SCHEMA_VERSION:
+        signal_migration_started(MigrationStore.CONFIGURATION)
+    carry_pending(document, subject, delivered=delivered)
 
 
 def _is_installed_release_declaration(path: Path, subject: SubjectRef) -> bool:
-    """Whether the document is the project declaration of the installed beta or stable checkout.
+    """Whether the document is the project declaration of a release of the installation.
 
     That declaration is part of the selected release source: it is evaluated and validated in memory,
     like any read, and a migration run never retires state from it, carries values out of it,

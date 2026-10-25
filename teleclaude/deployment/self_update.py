@@ -1,45 +1,48 @@
-"""Channel-gated self-update: the maintenance action that converges this installation to its channel's target.
+"""The installation's own channel reaction: install the revision its channel admits when its source publishes one.
 
-The action is handed the platform event it reacts to as a file. From the event and this computer's
-deployment channel it decides whether the event calls for a target the checkout lacks. The alpha
-channel reaches its target by advancing the checkout's main branch by fast-forward. A beta or stable
-installation selects the release's exact commit in detached HEAD, resolved once and retained, so the
-source it runs never depends on what a branch or a moved tag names later. A release advances the source
-only to a strictly later version whose history contains the installed commit; an older announcement the
-installation already contains leaves it unchanged, and any other transition is refused before the source
-moves. The advance is recorded as an ordinary canonical-main activation; its maintenance includes the
-installation migrations and controlled daemon window. A recording the maintenance executor refuses leaves
-the convergence pending.
+A relayed ``github.push`` or ``github.release`` of the repository the installation follows is handed to
+the running daemon (``reconciliation.installation_reaction``), which launches this module as its own
+process — the install stops the daemon that decided it, so the act cannot run inside it. From the event
+and this computer's channel the reaction decides whether the event calls for a target; the install act
+(``reconciliation.install_act``) then does what every route to live does: it refuses an older target,
+prepares the release while the daemon serves, migrates in a stopped window and verifies the start.
 
-A convergence is recorded as pending before anything is fetched and cleared only after its last step
-succeeded. Every run completes a pending convergence first, so a replay finishes whatever a failed
-attempt left undone, step by step, each step skipped only when its effect is already established.
+A convergence is recorded as pending before anything is fetched and cleared only once the act ended
+without failing, so a replay completes whatever an interrupted attempt left undone and a target version is
+applied at most once. A release target resolves once and its commit is retained; the alpha channel's
+moving mainline is resolved anew on each attempt.
 """
 
 from __future__ import annotations
 
+import argparse
+import fcntl
 import json
 import sys
-import tomllib
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import partial
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict
 
-from teleclaude.checkpoint_model import ActivationRange
 from teleclaude.config._models import ReleaseChannel
 from teleclaude.config.compatibility_series import CompatibilitySeries
-from teleclaude.config.machine import config
-from teleclaude.core.integration.post_commit_maintenance import ActivationRefused, record_activation
-from teleclaude.deployment import parse_version, version_cmp
+from teleclaude.core.reconciliation.channel_target import release_tag_of
+from teleclaude.core.reconciliation.install_act import InstallRequest, InstallResult, InstallStatus, install
+from teleclaude.core.reconciliation.installation import InstallationLayout
+from teleclaude.core.reconciliation.installation_ports import LiveInstallPorts
+from teleclaude.core.reconciliation.installation_release import ReleasePreparationError
+from teleclaude.deployment import parse_version
 from teleclaude.deployment.migration_runner import DeploymentMigrationError, committed_version
-from teleclaude.deployment.release_checkout import PostureUnmet, select_release
 from teleclaude.events.envelope import ReceivedEvent
-from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo, no_autostash_env
+from teleclaude.git import GitCommandError, Repo
 from teleclaude.logging_config import setup_logging
 from teleclaude.paths import MIGRATION_STATE_PATH
 
@@ -57,44 +60,27 @@ _RELEASE_FIELD = "release"
 _TAG_FIELD = "tag_name"
 _ALPHA_TARGET = "origin/main"
 _TAG_TEMPLATE = "v{major}.{minor}.{patch}"
-_FETCH_ARGUMENTS = ("--tags", "origin", "main")
-_FAST_FORWARD_ARGUMENTS = ("merge", "--ff-only")
-_PYPROJECT_FILENAME = "pyproject.toml"
-_PROJECT_TABLE = "project"
-_VERSION_KEY = "version"
 _TEXT_ENCODING = "utf-8"
-_USAGE = "usage: python -m teleclaude.deployment.self_update <event-file>"
-_USAGE_EXIT_CODE = 2
+_TEMPORARY_NAME = "{name}.{unique}.tmp"
+_LOCK_MODE = "a+"
+_CONVERGENCE_LOCK_PATH = PENDING_CONVERGENCE_PATH.with_name("self_update_pending.converge.lock")
+_INCOMPLETE = "the convergence did not complete and stays pending"
+_FAILURE_SEPARATOR = "; "
+_PENDING_DIRECTORY = PENDING_CONVERGENCE_PATH.with_name("self_update_pending")
+_ENTRY_NAME = "{admitted_ns:020d}-{unique}.json"
+_ENTRY_PATTERN = "*.json"
+_ENTRY_UNREADABLE_ERROR = "the pending convergence record {path} could not be read: {error}"
+_UNINSTALLED_VERSION = "0.0.0"
+_TARGET_OPTION = "--target"
+_ADMITTED_OPTION = "--admitted"
 _FAILED_EXIT_CODE = 1
-_DECISION_EVENT = "self_update_decision"
-_STEP_EVENT = "self_update_step"
 _FAILED_EVENT = "self_update_failed"
-_NO_VERSION_ERROR = "{path} declares no project version"
+_ENDED_EVENT = "self_update_ended"
 _NO_SERIES_ERROR = "stable self-update requires a compatibility series, and this installation declares none"
 _UNKNOWN_TARGET_ERROR = "target {target!r} is not an advance this action performs"
-_MISSING_TARGET_ERROR = "target {target} is not available after fetching"
-_NOT_INSTALLATION_ERROR = "{root} is not the installed checkout, so it selects no release"
-_RECOVERY_CONFLICT_ERROR = (
-    "the checkout is at {head}, neither where the convergence left from ({from_commit}) nor its target ({target})"
-)
-_TARGET_UNKNOWN_ERROR = "the retained target commit {commit} is not available in this checkout"
-_TARGET_VERSION_UNREADABLE_ERROR = "the release commit {commit} declares no readable project version: {error}"
-_TAG_VERSION_MISMATCH_ERROR = "release {tag} names commit {commit}, which declares version {version}"
-_NOT_LATER_ERROR = (
-    "release {tag} (version {version}) is not a later version than the installed {installed}, "
-    "so the installed source is kept"
-)
-_NOT_DESCENDANT_ERROR = (
-    "release {tag} ({commit}) does not contain the installed source {installed}, so the installed source is kept"
-)
-_RECORDING_REFUSED_ERROR = (
-    "the activation from {from_commit} to {to_commit} was not recorded ({reason}): {detail}; "
-    "the convergence stays pending"
-)
 _PENDING_SCHEMA_VERSION: Literal[1] = 1
 _SCHEMA_VERSION_FIELD = "schema_version"
 _PENDING_NOT_A_RECORD_ERROR = "the pending convergence record is not a JSON object"
-_FAST_FORWARD_CONTAINED_EVENT = "self_update_target_contained"
 _PENDING_MIGRATED_EVENT = "self_update_pending_migrated"
 
 
@@ -107,16 +93,11 @@ class SkipReason(StrEnum):
     OUTSIDE_SERIES = "release_outside_compatibility_series"
 
 
-class ConvergenceStep(StrEnum):
-    """The ordered steps of a convergence."""
-
-    ADVANCE = "advance"
-    RECORD = "record"
-    CLEAR = "clear"
-
-
 class SelfUpdateError(Exception):
     """A convergence step failed; the message is the reason the action reports."""
+
+
+_STEP_FAILURES = (SelfUpdateError, ReleasePreparationError, GitCommandError, OSError, ValueError)
 
 
 class PendingConvergence(BaseModel):
@@ -190,26 +171,10 @@ def _tag_ref(version: tuple[int, int, int]) -> str:
     return _TAG_TEMPLATE.format(major=major, minor=minor, patch=patch)
 
 
-def _declared_version(text: str, source: str) -> str:
-    """The project version a ``pyproject.toml`` text declares."""
-    project = tomllib.loads(text).get(_PROJECT_TABLE)
-    version = project.get(_VERSION_KEY) if isinstance(project, dict) else None
-    if not isinstance(version, str) or not version:
-        raise SelfUpdateError(_NO_VERSION_ERROR.format(path=source))
-    return version
+def _ingest_stored_pending() -> None:
+    """Bring a convergence stored as the single earlier record, in either earlier shape, into the per-admission store.
 
-
-def _checkout_version(root: Path) -> str:
-    """The version the checkout's files declare, which is what its migrations are keyed to."""
-    pyproject = root / _PYPROJECT_FILENAME
-    return _declared_version(pyproject.read_text(encoding=_TEXT_ENCODING), str(pyproject))
-
-
-def _upgrade_stored_pending() -> None:
-    """Bring a stored unversioned record forward to the current shape before any consumer reads it.
-
-    A current or newer-versioned record is left untouched, and a record that is neither the exact
-    unversioned shape nor current is refused by the reader that follows, with its evidence intact.
+    A record of a newer version, or of neither earlier shape, is refused with its evidence left in place.
     """
     if not PENDING_CONVERGENCE_PATH.exists():
         return
@@ -217,34 +182,75 @@ def _upgrade_stored_pending() -> None:
     if not isinstance(stored, dict):
         raise SelfUpdateError(_PENDING_NOT_A_RECORD_ERROR)
     if _SCHEMA_VERSION_FIELD in stored:
-        return
-    legacy = _PendingConvergenceV0.model_validate(stored)
-    _write_pending(
-        PendingConvergence(
+        pending = PendingConvergence.model_validate(stored)
+    else:
+        legacy = _PendingConvergenceV0.model_validate(stored)
+        pending = PendingConvergence(
             from_version=legacy.from_version,
             from_commit=legacy.from_commit,
             target=legacy.target,
             target_commit=None,
         )
-    )
-    logger.info(_PENDING_MIGRATED_EVENT, from_commit=legacy.from_commit, target=legacy.target)
+        logger.info(_PENDING_MIGRATED_EVENT, from_commit=legacy.from_commit, target=legacy.target)
+    _write_entry(pending, admitted_ns=PENDING_CONVERGENCE_PATH.stat().st_mtime_ns)
+    PENDING_CONVERGENCE_PATH.unlink()
 
 
-def _read_pending() -> PendingConvergence | None:
-    if not PENDING_CONVERGENCE_PATH.exists():
-        return None
-    return PendingConvergence.model_validate_json(PENDING_CONVERGENCE_PATH.read_text(encoding=_TEXT_ENCODING))
-
-
-def _write_pending(pending: PendingConvergence) -> None:
-    PENDING_CONVERGENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temporary = PENDING_CONVERGENCE_PATH.with_name(PENDING_CONVERGENCE_PATH.name + ".tmp")
+def _write_entry(pending: PendingConvergence, *, admitted_ns: int, path: Path | None = None) -> Path:
+    """Store one admission's convergence as a record of its own, atomically; a given ``path`` rewrites that record."""
+    _PENDING_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    entry = path or _PENDING_DIRECTORY / _ENTRY_NAME.format(admitted_ns=admitted_ns, unique=uuid4().hex)
+    temporary = entry.with_name(_TEMPORARY_NAME.format(name=entry.name, unique=uuid4().hex))
     temporary.write_text(pending.model_dump_json(), encoding=_TEXT_ENCODING)
-    temporary.replace(PENDING_CONVERGENCE_PATH)
+    temporary.replace(entry)
+    return entry
 
 
-def _clear_pending() -> None:
-    PENDING_CONVERGENCE_PATH.unlink(missing_ok=True)
+def _read_entry(path: Path) -> PendingConvergence:
+    try:
+        return PendingConvergence.model_validate_json(path.read_text(encoding=_TEXT_ENCODING))
+    except (OSError, ValueError) as error:
+        raise SelfUpdateError(_ENTRY_UNREADABLE_ERROR.format(path=path, error=error)) from error
+
+
+def _entries() -> list[Path]:
+    """The stored convergences in the order they were admitted."""
+    if not _PENDING_DIRECTORY.is_dir():
+        return []
+    return sorted(_PENDING_DIRECTORY.glob(_ENTRY_PATTERN))
+
+
+@contextmanager
+def _convergence_lock() -> Iterator[None]:
+    """Hold the one lock the stored convergences are processed under.
+
+    Overlapping reactions each run as a process of their own; serializing them keeps one from retrying
+    or discarding a convergence while another is part-way through it.
+    """
+    PENDING_CONVERGENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with _CONVERGENCE_LOCK_PATH.open(_LOCK_MODE, encoding=_TEXT_ENCODING) as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def record_admitted_target(target: str, layout: InstallationLayout | None = None) -> None:
+    """Keep one admission durably, as a convergence of its own, before its process launches and the event is acknowledged.
+
+    Every admission is its own record with the source it left from, so it never depends on what an earlier
+    one left unfinished, on who holds the lock, or on another admission of the same moving ref: each
+    record is retried with its own retained identity and discarded only when its own convergence settled.
+    """
+    resolved = layout or InstallationLayout()
+    pending = PendingConvergence(
+        from_version=_active_version(resolved),
+        from_commit=resolved.active_revision() or _UNINSTALLED_VERSION,
+        target=_validated_target(target),
+        target_commit=None,
+    )
+    _write_entry(pending, admitted_ns=time.time_ns())
 
 
 def _validated_target(target: str) -> str:
@@ -257,169 +263,89 @@ def _validated_target(target: str) -> str:
         raise SelfUpdateError(_UNKNOWN_TARGET_ERROR.format(target=target)) from error
 
 
-def _fast_forward_main(repo: Repo, target: str) -> None:
-    """Alpha: fetch, then fast-forward main to the target unless main already contains it."""
-    repo.git.fetch(*_FETCH_ARGUMENTS)
+def _active_version(layout: InstallationLayout) -> str:
+    """The project version the active release declares, which its migrations are keyed to; none when nothing is installed."""
+    active = layout.active_revision()
+    if active is None:
+        return _UNINSTALLED_VERSION
     try:
-        target_commit = repo.commit(_validated_target(target))
-    except (GitCommandError, ValueError) as error:
-        raise SelfUpdateError(_MISSING_TARGET_ERROR.format(target=target)) from error
-    if repo.is_ancestor(target_commit, repo.head.commit):
-        return
-    execute = cast(Callable[..., object], repo.git.execute)
-    execute([GIT_EXECUTABLE, *_FAST_FORWARD_ARGUMENTS, target_commit.hexsha], env=no_autostash_env())
+        return committed_version(Repo(str(layout.repository)), active)
+    except (DeploymentMigrationError, GitCommandError, OSError):
+        return _UNINSTALLED_VERSION
 
 
-def _resolve_release(repo: Repo, pending: PendingConvergence) -> PendingConvergence:
-    """Fetch, then retain the commit the release tag names; a retained commit is never re-resolved."""
-    repo.git.fetch(*_FETCH_ARGUMENTS)
-    if pending.target_commit is not None:
-        try:
-            repo.commit(pending.target_commit)
-        except (GitCommandError, ValueError) as error:
-            raise SelfUpdateError(_TARGET_UNKNOWN_ERROR.format(commit=pending.target_commit)) from error
-        return pending
-    try:
-        target_commit = repo.commit(_validated_target(pending.target)).hexsha
-    except (GitCommandError, ValueError) as error:
-        raise SelfUpdateError(_MISSING_TARGET_ERROR.format(target=pending.target)) from error
-    resolved = pending.model_copy(update={"target_commit": target_commit})
-    _write_pending(resolved)
-    return resolved
-
-
-def _require_supported_transition(repo: Repo, pending: PendingConvergence) -> None:
-    """Refuse, before the source moves, a release advance that is not a later version of the installed history.
-
-    The target's version is the one its own commit declares, and it must be the version its tag names.
-    Selecting the installed commit again only normalizes its posture and is always supported.
-    """
-    target_commit = pending.target_commit
-    assert target_commit is not None
-    if pending.from_commit == target_commit:
-        return
-    try:
-        target_version = committed_version(repo, target_commit)
-    except DeploymentMigrationError as error:
-        raise SelfUpdateError(_TARGET_VERSION_UNREADABLE_ERROR.format(commit=target_commit, error=error)) from error
-    if parse_version(target_version) != parse_version(pending.target):
-        raise SelfUpdateError(
-            _TAG_VERSION_MISMATCH_ERROR.format(tag=pending.target, commit=target_commit, version=target_version)
-        )
-    if version_cmp(pending.from_version, target_version) >= 0:
-        raise SelfUpdateError(
-            _NOT_LATER_ERROR.format(tag=pending.target, version=target_version, installed=pending.from_version)
-        )
-    if not repo.is_ancestor(repo.commit(pending.from_commit), repo.commit(target_commit)):
-        raise SelfUpdateError(
-            _NOT_DESCENDANT_ERROR.format(tag=pending.target, commit=target_commit, installed=pending.from_commit)
-        )
-
-
-def _select_release(root: Path, repo: Repo, pending: PendingConvergence) -> bool:
-    """Select the retained release commit in detached HEAD; ``False`` when the target is already contained.
-
-    A fresh attempt whose target the checkout already contains selects nothing: an older release
-    announcement is not a rollback. An interrupted attempt continues only from where it left or at
-    its target; any other checkout is preserved and reported. Whatever is selected is judged against
-    the source and version the convergence left from, never against where the checkout now is.
-    """
-    target_commit = pending.target_commit
-    assert target_commit is not None
-    head_commit = repo.head.commit
-    head = head_commit.hexsha
-    if (
-        head == pending.from_commit
-        and head != target_commit
-        and repo.is_ancestor(repo.commit(target_commit), head_commit)
-    ):
-        logger.info(_FAST_FORWARD_CONTAINED_EVENT, target=pending.target, head=head)
-        return False
-    if head not in (pending.from_commit, target_commit):
-        raise SelfUpdateError(
-            _RECOVERY_CONFLICT_ERROR.format(head=head, from_commit=pending.from_commit, target=target_commit)
-        )
-    _require_supported_transition(repo, pending)
-    try:
-        selected = select_release(root, target_commit)
-    except PostureUnmet as unmet:
-        raise SelfUpdateError(unmet.detail) from unmet
-    if selected is None:
-        raise SelfUpdateError(_NOT_INSTALLATION_ERROR.format(root=root))
-    return True
-
-
-def _record_advance(root: Path, repo: Repo, pending: PendingConvergence) -> None:
-    """Record the advance as a canonical-main activation; a refused recording leaves the convergence pending.
-
-    Actions already recorded are skipped, and an advance that owes none is recorded as exactly that.
-    """
-    head = repo.head.commit.hexsha
-    if head == pending.from_commit:
-        return
-    recording = record_activation(root, ActivationRange(before_sha=pending.from_commit, after_sha=head))
-    logger.info(
-        _STEP_EVENT,
-        step=ConvergenceStep.RECORD,
-        from_commit=pending.from_commit,
-        to_commit=head,
-        recording=type(recording).__name__,
+def _install_entry(path: Path, ports: LiveInstallPorts, layout: InstallationLayout) -> None:
+    """Install one stored convergence and discard its record once the act settled; the commit it resolved is retained first."""
+    pending = _read_entry(path)
+    release_tag = release_tag_of(pending.target)
+    retained = pending
+    if release_tag is not None and pending.target_commit is None:
+        ports.fetch(None)
+        retained = pending.model_copy(update={"target_commit": ports.resolve(pending.target)})
+        _write_entry(retained, admitted_ns=0, path=path)
+    result = install(
+        InstallRequest(target=retained.target_commit or retained.target, release_tag=release_tag), ports, layout
     )
-    if isinstance(recording, ActivationRefused):
-        raise SelfUpdateError(
-            _RECORDING_REFUSED_ERROR.format(
-                from_commit=pending.from_commit, to_commit=head, reason=recording.reason, detail=recording.detail
-            )
-        )
+    log = logger.error if result.status is InstallStatus.FAILED else logger.info
+    log(_ENDED_EVENT, target=pending.target, status=result.status, reason=result.reason)
+    if not _settled(result):
+        raise SelfUpdateError(result.reason or _INCOMPLETE)
+    path.unlink(missing_ok=True)
 
 
-def _complete(root: Path, pending: PendingConvergence) -> None:
-    """Complete a pending convergence in order, clearing it only after its last step succeeded."""
-    repo = Repo(str(root))
-    if config.deployment.channel is ReleaseChannel.ALPHA:
-        _fast_forward_main(repo, pending.target)
-    else:
-        pending = _resolve_release(repo, pending)
-        if not _select_release(root, repo, pending):
-            _clear_pending()
-            return
-    _record_advance(root, repo, pending)
-    _clear_pending()
-    logger.info(_STEP_EVENT, step=ConvergenceStep.CLEAR, target=pending.target)
+def _settled(result: InstallResult) -> bool:
+    """Whether the act left nothing for a replay: it installed, changed nothing, or found the target already contained.
+
+    Any other refusal — a transition the rule refuses, an install already in progress — and every failure
+    leaves the convergence pending and is reported as incomplete.
+    """
+    if result.status in (InstallStatus.COMPLETED, InstallStatus.UNCHANGED):
+        return True
+    return result.status is InstallStatus.REFUSED and result.contained
 
 
-def converge(event_file: Path, root: Path) -> None:
-    """Complete any unfinished convergence, then converge to the target the event calls for, if it calls for one."""
-    _upgrade_stored_pending()
-    pending = _read_pending()
-    if pending is not None:
-        _complete(root, pending)
-    event = ReceivedEvent.model_validate_json(event_file.read_text(encoding=_TEXT_ENCODING))
-    verdict = target_for_event(event, config.deployment.channel, config.deployment.series)
-    if isinstance(verdict, SkipReason):
-        logger.info(_DECISION_EVENT, event_id=event.id, event_type=event.type, outcome=verdict)
-        return
-    logger.info(_DECISION_EVENT, event_id=event.id, event_type=event.type, target=verdict.ref)
-    pending = PendingConvergence(
-        from_version=_checkout_version(root),
-        from_commit=Repo(str(root)).head.commit.hexsha,
-        target=verdict.ref,
-        target_commit=None,
-    )
-    _write_pending(pending)
-    _complete(root, pending)
+def converge(layout: InstallationLayout | None = None) -> None:
+    """Settle every stored convergence in the order admitted, serialized with every other reaction."""
+    with _convergence_lock():
+        _converge_locked(layout or InstallationLayout())
+
+
+def _converge_locked(resolved: InstallationLayout) -> None:
+    """Install each stored convergence from its own retained identity.
+
+    One that does not settle stays stored, untouched, and does not stop the others: a later release may be
+    the very one that repairs what an earlier one could not do. The process ends as incomplete when any
+    did not settle.
+    """
+    ports = LiveInstallPorts(resolved)
+    _ingest_stored_pending()
+    failures: list[str] = []
+    for path in _entries():
+        _attempt(partial(_install_entry, path, ports, resolved), failures)
+    if failures:
+        raise SelfUpdateError(_FAILURE_SEPARATOR.join(failures))
+
+
+def _attempt(step: Callable[[], object], failures: list[str]) -> None:
+    try:
+        step()
+    except _STEP_FAILURES as error:
+        logger.error(_FAILED_EVENT, error=str(error), exc_info=True)
+        failures.append(str(error))
 
 
 def main(arguments: list[str] | None = None) -> int:
-    """Converge this installation for the event in the given file; non-zero when a step failed."""
+    """Converge this installation to the target named by ``--target``; non-zero when the act failed."""
     setup_logging()
-    operands = sys.argv[1:] if arguments is None else arguments
-    if len(operands) != 1:
-        print(_USAGE, file=sys.stderr)
-        return _USAGE_EXIT_CODE
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(_TARGET_OPTION, required=True)
+    parser.add_argument(_ADMITTED_OPTION, action="store_true")
+    options = parser.parse_args(arguments)
     try:
-        converge(Path(operands[0]), Path.cwd())
-    except (SelfUpdateError, GitCommandError, OSError, ValueError) as error:
+        if not options.admitted:
+            record_admitted_target(options.target)
+        converge()
+    except _STEP_FAILURES as error:
         logger.error(_FAILED_EVENT, error=str(error), exc_info=True)
         print(str(error), file=sys.stderr)
         return _FAILED_EXIT_CODE

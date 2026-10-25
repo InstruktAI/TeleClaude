@@ -31,6 +31,8 @@ class Capability(StrEnum):
     TODO_ORCHESTRATION = "todo-orchestration"
     INTEGRATION = "integration"
     MAINTENANCE_RECOVERY = "maintenance-recovery"
+    INSTALLATION = "installation"
+    INSTALLATION_READ = "installation-read"
     MEMORY_CURATION = "memory-curation"
     SESSION_OBSERVE = "session-observe"
     TRANSCRIPT_READ = "transcript-read"
@@ -160,6 +162,10 @@ class UnknownRole:
     recorded: str
 
 
+# What every role holds beyond its own assignment: reading the installation's status never needs a grant.
+_AGENT_BASELINE: frozenset[Capability] = frozenset({Capability.INSTALLATION_READ})
+
+
 def _entry(
     name: RoleName,
     role_class: RoleClass,
@@ -167,7 +173,7 @@ def _entry(
     capabilities: frozenset[Capability],
     label: RoleLabel,
 ) -> tuple[RoleName, Role]:
-    return name, Role(name, role_class, full_reach, capabilities, label)
+    return name, Role(name, role_class, full_reach, capabilities | _AGENT_BASELINE, label)
 
 
 # The set every worker-class role starts from. It holds no capability that observes the fleet or starts,
@@ -394,6 +400,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.REMINDERS,
                     Capability.INTEGRATION,
                     Capability.MAINTENANCE_RECOVERY,
+                    Capability.INSTALLATION,
                     Capability.DISPATCH_WORKER,
                     Capability.CODE,
                     Capability.CODE_CHECK,
@@ -490,6 +497,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.DOCS_READ,
                     Capability.REMINDERS,
                     Capability.MAINTENANCE_RECOVERY,
+                    Capability.INSTALLATION,
                     Capability.TODO_READ,
                     Capability.TODO_WRITE,
                     Capability.OPERATION_READ,

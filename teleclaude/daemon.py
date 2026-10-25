@@ -300,10 +300,11 @@ _t = time.perf_counter()
 from teleclaude.config.declaration_changes import publish_declaration_changes
 from teleclaude.paths import (
     COMPANIES_ROOT,
+    DAEMON_PID_PATH,
+    ENV_PATH,
     GLOBAL_CONFIG_PATH,
     MAIN_DB_PATH,
     PEOPLE_DIR,
-    PROJECT_ENV_PATH,
     PROJECTS_MANIFEST_PATH,
     RUNTIME_SETTINGS_PATH,
     ConfigFileName,
@@ -421,9 +422,9 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             for exp in config.experiments:
                 logger.debug("Active experiment: name=%s agents=%s", exp.name, exp.agents)
 
-        # PID file for locking - use project root
         project_root = Path(__file__).parent.parent
-        self.pid_file = project_root / "teleclaude.pid"
+        # PID file for locking - lives in the installation root, outside every release
+        self.pid_file = DAEMON_PID_PATH
         self.pid_file_handle: TextIO | None = None  # Will hold the locked file handle
 
         # Note: tmux_bridge and db are functional modules (no instantiation)
@@ -842,6 +843,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             # Open file for append+read (creates if doesn't exist, preserves inode)
             # This is critical: "a+" mode preserves the file's inode even if the file
             # was deleted, ensuring fcntl locks remain effective across processes
+            self.pid_file.parent.mkdir(parents=True, exist_ok=True)
             self.pid_file_handle = open(self.pid_file, "a+", encoding="utf-8")
 
             # Try to acquire exclusive lock (non-blocking)
@@ -1681,7 +1683,7 @@ async def main() -> None:
     logger.info("Starting TeleClaude Daemon (version=v2-append-only-v3)")
 
     # Create daemon
-    daemon = TeleClaudeDaemon(str(PROJECT_ENV_PATH))
+    daemon = TeleClaudeDaemon(str(ENV_PATH))
 
     # Setup signal handlers for graceful shutdown
     def signal_handler(signum: int, _frame: object) -> None:

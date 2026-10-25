@@ -59,7 +59,7 @@ from teleclaude.docs_subscriptions import (
     SubscriptionIdentity,
 )
 from teleclaude.events.envelope import ReceivedEvent
-from teleclaude.paths import REPO_ROOT
+from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.commands import ActivateProcedureCommand, CreateSessionCommand
 from teleclaude.types.procedure_delivery import (
@@ -91,7 +91,7 @@ _activation_locks_guard = asyncio.Lock()
 def _home_folder(home: ActivationHome) -> Path:
     """The folder a standing agent for the home works in on this computer; raises when the home is absent here."""
     if home.kind is SubscriptionHomeKind.PLATFORM:
-        return REPO_ROOT
+        return TELECLAUDE_HOME
     folder = registered_home_folder(ConfigSubjectKind(home.kind.value), home.slug)
     if folder is None:
         raise ProcedureActivationTerminalError(

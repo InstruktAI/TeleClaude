@@ -37,6 +37,7 @@ class TelecCommand(str, Enum):
     MESSAGE = "message"
     AUDIO = "audio"
     SYNC = "sync"
+    APP = "app"
 
 
 class HookEntryVerb(StrEnum):

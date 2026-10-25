@@ -616,6 +616,8 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             await self.api.connect()
         except APP_RUNTIME_ERRORS:
             logger.exception("Failed to connect API")
+        # While no daemon serves this computer the configuration view runs its operations here, so it loads now.
+        self.query_one(ConfigContent).load_when_connected()
 
         refusals = self.api.start_websocket(
             callback=self._on_ws_event,

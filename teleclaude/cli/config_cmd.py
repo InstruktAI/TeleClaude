@@ -20,6 +20,7 @@ from typing import Any, TextIO, cast
 
 import yaml
 
+from teleclaude.cli.config_local_host import daemon_serves_this_computer, run_locally_blocking
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.addressing import address_computer, addressed_computer, explicit_computer
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
@@ -215,7 +216,13 @@ def _require_instance(
 
 
 def _perform(request: ConfigRequest) -> ConfigOutcome:
-    """Submit the typed request to the daemon on this computer or its addressed owner."""
+    """Submit the typed request to the daemon on this computer or its addressed owner.
+
+    A request that addresses this computer while no daemon serves it runs in this process, through
+    the same dispatcher, and answers with the same typed outcome.
+    """
+    if addressed_computer() is None and not daemon_serves_this_computer():
+        return run_locally_blocking(request)
     answer = tool_api_call(
         HTTPMethod.POST, _OPERATIONS_PATH, json_body=request.model_dump(mode=_JSON_MODE), timeout=60.0
     )

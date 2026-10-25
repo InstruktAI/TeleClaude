@@ -24,9 +24,9 @@ from tempfile import TemporaryFile
 
 from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.constants import AGENT_ARTIFACT_SOURCE_GLOBS, ArtifactKind
-from teleclaude.docs_publishers import git_common_root
+from teleclaude.core.reconciliation.platform_repository import is_platform_repository
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
-from teleclaude.paths import REPO_ROOT, ConfigFileName
+from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest import ConfigKind
 from teleclaude.snippet_validation import companion_shape, is_retirement_companion
 
@@ -133,8 +133,8 @@ class UnclassifiedSourceError(ValueError):
 
 
 def is_mother_project(project_root: Path) -> bool:
-    """Return whether ``project_root`` is (or shares a checkout with) Mother."""
-    return git_common_root(project_root).resolve() == git_common_root(REPO_ROOT).resolve()
+    """Return whether ``project_root`` is (or shares a repository with) the platform's own project."""
+    return is_platform_repository(project_root)
 
 
 @dataclass(frozen=True)

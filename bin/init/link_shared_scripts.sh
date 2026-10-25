@@ -13,13 +13,16 @@ if ! declare -F print_success >/dev/null; then
     }
 fi
 
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/live_root.sh"
+
 link_shared_scripts() {
     print_header "Linking Shared Scripts"
 
     local base_dir="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
     local target_dir="$base_dir/scripts"
     mkdir -p "$base_dir"
-    ln -sfn "$INSTALL_DIR/scripts" "$target_dir"
+    ln -sfn "$(live_root_of "$INSTALL_DIR")/scripts" "$target_dir"
 
     print_success "Shared scripts linked"
 }

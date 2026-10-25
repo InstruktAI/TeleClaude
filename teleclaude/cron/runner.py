@@ -66,7 +66,6 @@ from teleclaude.cron.state import (
 )
 from teleclaude.file_transaction import FileTransaction
 from teleclaude.paths import CRON_PID_PATH, TELECLAUDE_HOME, ConfigFileName
-from teleclaude.project_root import resolve_project_root
 from teleclaude.runtime.config import require_own_checkout
 from teleclaude.services.project_catalog import ProjectCatalogService, ProjectNode, get_project_catalog_service
 
@@ -101,7 +100,7 @@ class Schedule(Enum):
 def load_job_state(catalog: ProjectCatalogService | None = None) -> CronState:
     """Load state with the runner-owned forward migration context."""
     active_catalog = catalog or get_project_catalog_service()
-    legacy_project = active_catalog.get_by_root(resolve_project_root(_REPO_ROOT))
+    legacy_project = active_catalog.get_platform_project()
     return CronState.load(
         legacy_project_slug=legacy_project.slug if legacy_project is not None else None,
         aggregate_job_keys=_LEGACY_AGGREGATE_JOB_KEYS,

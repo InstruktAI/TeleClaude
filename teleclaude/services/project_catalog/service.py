@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from teleclaude.config.loader import load_global_config
+from teleclaude.core.reconciliation.platform_repository import is_platform_repository
 from teleclaude.paths import PROJECTS_MANIFEST_PATH
 from teleclaude.project_manifest import load_roots
 from teleclaude.project_manifest_runtime import load_registered_entries
@@ -101,6 +102,17 @@ class ProjectCatalogService:
         resolved = root.expanduser().resolve()
         for node in self.list_projects():
             if node.root == resolved:
+                return node
+        return None
+
+    def get_platform_project(self) -> ProjectNode | None:
+        """Return the registered project that is the platform's own repository, or ``None``.
+
+        The running code sits in a release of the installation, never in a registered project, so the
+        platform's own project is found through the registry.
+        """
+        for node in self.list_projects():
+            if is_platform_repository(node.root):
                 return node
         return None
 

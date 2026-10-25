@@ -25,7 +25,7 @@ from teleclaude.git import (
     hook_free_environment,
 )
 from teleclaude.git_tree import TreeSource, list_tree_paths, materialize_tree
-from teleclaude.paths import REPO_ROOT, ConfigFileName, is_platform_home
+from teleclaude.paths import ConfigFileName, is_platform_home
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.gate import (
     LintGateResult,
@@ -195,7 +195,7 @@ def _run_commit_gate(project_root: Path, decision: GateDecision) -> int:
         print(_RESTAGE_INSTRUCTION, file=sys.stderr)
         return 1
 
-    self_repository = is_self_repository(project_root, REPO_ROOT)
+    self_repository = is_self_repository(project_root)
     snapshot_needed = self_repository or any(_home_needs_snapshot(home) for home in homes)
     content_context = materialize_tree(tree_source) if snapshot_needed else nullcontext(None)
     child_environment = hook_free_environment(project_root)

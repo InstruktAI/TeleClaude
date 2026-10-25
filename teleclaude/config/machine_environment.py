@@ -11,7 +11,7 @@ import os
 from collections.abc import Mapping
 
 from teleclaude.config._environment import read_environment_file
-from teleclaude.paths import PROJECT_ENV_PATH
+from teleclaude.paths import ENV_PATH
 
 # Variables present before any .env load are shell-provided and keep precedence;
 # .env-sourced variables are refreshed from the file on every read of the environment.
@@ -28,7 +28,7 @@ def machine_runtime_environment() -> Mapping[str, str]:
     file are dropped, so a reload reflects both edits and deletions of the ``${NAME}``-backed
     values the TUI writes to ``.env``.
     """
-    values = read_environment_file(PROJECT_ENV_PATH)
+    values = read_environment_file(ENV_PATH)
     current = {key for key in values if key not in _PRE_DOTENV_ENV_KEYS}
     for key in _dotenv_managed_keys - current:
         os.environ.pop(key, None)
@@ -41,7 +41,7 @@ def machine_runtime_environment() -> Mapping[str, str]:
 
 def machine_runtime_environment_snapshot(env_file_values: Mapping[str, str] | None = None) -> dict[str, str]:
     """Resolve the immutable machine environment with the same shell-over-file precedence as runtime refresh."""
-    values = dict(read_environment_file(PROJECT_ENV_PATH) if env_file_values is None else env_file_values)
+    values = dict(read_environment_file(ENV_PATH) if env_file_values is None else env_file_values)
     return {
         **values,
         **{key: os.environ[key] for key in _PRE_DOTENV_ENV_KEYS if key in os.environ},

@@ -20,7 +20,7 @@ from teleclaude.artifact_ownership import retired_pointer_candidate, retract_ret
 from teleclaude.capabilities import PermissionSurface, resolve_capabilities, resolve_tier_permissions
 from teleclaude.config.schema import ConfigKind
 from teleclaude.config.tree_homes import TreeHome, group_paths_by_owning_home_tolerant, homes_at_or_beneath
-from teleclaude.deployment.release_checkout import selected_revision
+from teleclaude.core.reconciliation.installation import InstallationLayout
 from teleclaude.docs_index import build_all_indexes, build_tier_index, reroot_index_document
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, git_common_root
@@ -30,6 +30,7 @@ from teleclaude.git_tree import TreeSource, list_tree_paths, materialize_tree
 from teleclaude.install.distribution import (
     DistributionBuild,
     HomeMasterInflationError,
+    PublicationHalves,
     committed_retired_outputs,
     distribute_committed,
 )
@@ -243,16 +244,7 @@ def publish_homes(
             project_slug_resolution(),
             domain_resolution(),
         ):
-            installed_revision = selected_revision(canonical_root) if source is PublicationSource.MAIN_TIP else None
-            if installed_revision is not None:
-                source = PublicationSource.INSTALLED_COMMIT
-                tip = installed_revision
-            else:
-                tip = (
-                    _main_tip(canonical_root)
-                    if source is PublicationSource.MAIN_TIP
-                    else _installed_commit(project_root)
-                )
+            tip = _main_tip(canonical_root) if source is PublicationSource.MAIN_TIP else _installed_commit(project_root)
             if tip is None:
                 if source is PublicationSource.MAIN_TIP:
                     return _failed_run(mode, _GIT_VERIFY_ERROR, PublicationRunFailure.MAIN_TIP_UNAVAILABLE)
@@ -321,9 +313,10 @@ def _publish_under_lease(
         return _finish_run(canonical_root, tip, mode, results, state, all_homes, tree_paths)
 
     with materialize_tree(source) as snapshot_root:
-        selected = selected_revision(canonical_root)
-        if selected is not None and selected != tip:
-            return _failed_run(mode, _SELECTION_CHANGED.format(tip=tip, selected=selected))
+        if publication_source is PublicationSource.INSTALLED_COMMIT:
+            active = InstallationLayout().active_revision()
+            if active != tip:
+                return _failed_run(mode, _SELECTION_CHANGED.format(tip=tip, selected=active))
         for home, error in skipped:
             results[home.root.as_posix()] = _skipped_home(
                 home, tip, mode, error, canonical_root, snapshot_root, source, tree_paths
@@ -334,7 +327,9 @@ def _publish_under_lease(
         ]
         if project_homes:
             for home, _ in project_homes:
-                result = _publish_project_home(canonical_root, snapshot_root, source, tree_paths, home, tip, mode)
+                result = _publish_project_home(
+                    canonical_root, snapshot_root, source, tree_paths, home, tip, mode, publication_source
+                )
                 results[home.root.as_posix()] = result
         if scoped_non_project:
             _publish_global_and_tier_homes(
@@ -401,8 +396,15 @@ def _publish_project_home(
     home: TreeHome,
     tip: str,
     mode: PublicationMode,
+    publication_source: PublicationSource,
 ) -> HomePublicationResult:
-    """Build and install one repository-root project home as an undoable unit."""
+    """Build and install one repository-root project home as an undoable unit.
+
+    The platform's published documentation and agent artifacts publish when a release is installed; its
+    own project's commit-boundary publication performs the local half only, so a commit changes nothing
+    every session reads before it is installed.
+    """
+    halves = _publication_halves(snapshot_root, publication_source)
     distribution: DistributionBuild | None = None
     try:
         capabilities = resolve_capabilities(snapshot_root)
@@ -413,6 +415,7 @@ def _publish_project_home(
             canonical_root,
             agents_enabled=capabilities.agents,
             docs_enabled=capabilities.docs,
+            halves=halves,
         )
         retired_outputs = (
             _retractable_outputs(snapshot_root, canonical_root, committed_retired_outputs(snapshot_root))
@@ -440,7 +443,7 @@ def _publish_project_home(
             canonical_root=canonical_root,
             candidates=distribution.retired_pointers,
         )
-        if capabilities.docs and is_mother_project(snapshot_root):
+        if capabilities.docs and halves is not PublicationHalves.LOCAL and is_mother_project(snapshot_root):
             failed_refreshes = refresh_home_entrypoints(TELECLAUDE_HOME)
             if failed_refreshes:
                 return HomePublicationResult(
@@ -457,6 +460,15 @@ def _publish_project_home(
             home, tip, mode, HomePublicationOutcome.FAILED, _HOME_INSTALL_FAILED.format(error=exc)
         )
     return HomePublicationResult(home, tip, mode, HomePublicationOutcome.PUBLISHED)
+
+
+def _publication_halves(snapshot_root: Path, publication_source: PublicationSource) -> PublicationHalves:
+    """The half of a project home's publication this source performs."""
+    if publication_source is PublicationSource.INSTALLED_COMMIT:
+        return PublicationHalves.PUBLISHED
+    if is_mother_project(snapshot_root):
+        return PublicationHalves.LOCAL
+    return PublicationHalves.BOTH
 
 
 def _publish_global_and_tier_homes(

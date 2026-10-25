@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Final
 
+from teleclaude.core.reconciliation.platform_repository import is_platform_repository
 from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.runtime.command_runner import run_process_group_command
 
@@ -39,14 +40,13 @@ _COMMIT_GATE_FAILURE = "Cold CLI runtime acceptance failed for active-index tree
 _COMMIT_GATE_SUCCESS = "Cold CLI runtime acceptance passed for active-index tree {tree}."
 _REPOSITORY_IDENTITY_UNAVAILABLE = "Could not establish the repository identity for runtime acceptance."
 _IDENTITY_FAILURES = (BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError, ValueError)
-_GIT_COMMON_DIRECTORY_ARGUMENTS: Final[tuple[str, ...]] = ("--git-common-dir",)
 _GIT_HEAD_ARGUMENTS: Final[tuple[str, ...]] = ("--verify", "HEAD")
 
 
-def is_self_repository(project_root: Path, installation_root: Path) -> bool:
-    """Match the repository's shared Git common directory, including linked worktrees."""
+def is_self_repository(project_root: Path) -> bool:
+    """Whether ``project_root`` belongs to the platform's own repository, linked worktrees included."""
     try:
-        return _common_git_directory(project_root) == _common_git_directory(installation_root)
+        return is_platform_repository(project_root)
     except _IDENTITY_FAILURES as exc:
         raise ValueError(_REPOSITORY_IDENTITY_UNAVAILABLE) from exc
 
@@ -105,19 +105,6 @@ def active_index_identity(project_root: Path) -> tuple[str, str]:
         revision = _UNBORN_REVISION
     tree = repo.git.write_tree().strip()
     return revision or _UNBORN_REVISION, tree
-
-
-def _common_git_directory(repository_root: Path) -> Path:
-    """Resolve Git's shared directory for a checkout or linked worktree."""
-    repo = Repo(str(repository_root))
-    working_tree = repo.working_tree_dir
-    if working_tree is None:
-        raise ValueError(_REPOSITORY_IDENTITY_UNAVAILABLE)
-    value = repo.git.rev_parse(*_GIT_COMMON_DIRECTORY_ARGUMENTS).strip()
-    common_directory = Path(value)
-    if not common_directory.is_absolute():
-        common_directory = Path(working_tree) / common_directory
-    return common_directory.resolve()
 
 
 def _controller_environment(source_root: Path) -> dict[str, str]:

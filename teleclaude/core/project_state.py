@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from teleclaude.core.reconciliation.installation import is_installed_release
 from teleclaude.paths import ConfigFileName
 
 _GIT_DIRNAME = ".git"
@@ -12,7 +13,11 @@ _CHECKOUT_ERROR = "cwd does not resolve to a project checkout: {path}"
 
 
 def resolve_owning_checkout(start: str | Path) -> Path | None:
-    """Return the primary checkout that owns the repository containing ``start``."""
+    """Return the primary checkout that owns the repository containing ``start``.
+
+    A release of the installation is its own root: it is a full build, never a linked worktree whose
+    state belongs to the repository it was added from.
+    """
     current = Path(start).expanduser().resolve()
     if current.is_file():
         current = current.parent
@@ -22,6 +27,8 @@ def resolve_owning_checkout(start: str | Path) -> Path | None:
         if git_path.is_dir():
             return current
         if git_path.is_file():
+            if is_installed_release(current):
+                return current
             try:
                 content = git_path.read_text().strip()
             except OSError as exc:

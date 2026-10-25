@@ -1,0 +1,111 @@
+"""Run one release's migrations in the install act's stopped window and report which started.
+
+The install act stops the daemon, then runs this entrypoint with the interpreter of the release being
+installed. It runs the ledger-recorded migrations in order — installation migrations, configuration
+documents — and then opens every store the daemon opens at startup through the one opening path
+(``teleclaude.core.store_opening``), whose core database initialization runs its own ledger and whose
+other owners migrate when opened. Every owner signals to the install record, against this release, before
+it changes anything; the entrypoint prints what the record collected for the install act.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import sys
+from contextlib import suppress
+from pathlib import Path
+
+from instrukt_ai_logging import get_logger
+from pydantic import ValidationError
+
+from teleclaude.config.migrations._chain import MigrationTrigger
+from teleclaude.config.migrations._run import ExitStatus, run_trigger
+from teleclaude.core.db import db
+from teleclaude.core.migration_signal import MigrationExitCode, bind_install_target, unrecorded_signal_seen
+from teleclaude.core.reconciliation.installation import InstallationLayout, MigratedState, read_record
+from teleclaude.core.store_opening import open_stores
+from teleclaude.core.todos_db._adapter import close_todos_db_instances
+from teleclaude.deployment.migration_runner import migrate_committed_range
+from teleclaude.events.db import get_event_db
+from teleclaude.logging_config import setup_logging
+
+logger = get_logger(__name__)
+
+_TARGET_OPTION = "--target"
+_PREVIOUS_OPTION = "--previous"
+_REPOSITORY_OPTION = "--repository"
+_MIGRATIONS_FAILED = "installation migrations failed for {target}"
+_CONFIGURATION_FAILED = "configuration document migrations ended {status} for {target}"
+_STORES_FAILED = "stores did not open for {target}: {projects}"
+_STORES_ERROR = "opening the stores for {target} failed: {error}"
+_STORES_ERROR_EVENT = "release_migration_stores_failed"
+_PROJECT_SEPARATOR = ", "
+_OPENED_EVENT = "release_migration_stores_opened"
+_UNIT_FAILED_EVENT = "release_migration_failed"
+_UNIT_FAILED = "migrating for {target} failed: {error}"
+
+
+async def _open_and_close_stores(target: str) -> str | None:
+    """Open every startup store, then release the connections; the failure reason, or ``None``."""
+    try:
+        opening = await open_stores()
+    except Exception as error:  # supervision boundary: any store's failure is this entrypoint's reported failure
+        logger.error(_STORES_ERROR_EVENT, target=target, exc_info=True)
+        return _STORES_ERROR.format(target=target, error=error)
+    try:
+        if opening.failed_projects:
+            return _STORES_FAILED.format(
+                target=target, projects=_PROJECT_SEPARATOR.join(str(root) for root in opening.failed_projects)
+            )
+        logger.info(_OPENED_EVENT, target=target)
+        return None
+    finally:
+        await close_todos_db_instances()
+        await (await get_event_db()).close()
+        await db.close()
+
+
+def _collected(layout: InstallationLayout, target: str) -> MigratedState:
+    """The migrations the record holds for the install window of ``target``."""
+    window = read_record(layout).installing
+    return window.migrated if window is not None and window.target == target else MigratedState()
+
+
+def main(arguments: list[str] | None = None) -> int:
+    """Migrate for the release named by ``--target`` and print the collected start signals as JSON."""
+    setup_logging()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(_TARGET_OPTION, required=True)
+    parser.add_argument(_PREVIOUS_OPTION)
+    parser.add_argument(_REPOSITORY_OPTION, type=Path)
+    options = parser.parse_args(arguments)
+    layout = InstallationLayout()
+    repository: Path = options.repository or layout.repository
+    target: str = options.target
+    failure: str | None = None
+    with bind_install_target(target):
+        try:
+            if migrate_committed_range(repository, options.previous, target) != 0:
+                failure = _MIGRATIONS_FAILED.format(target=target)
+            elif (
+                options.previous is not None
+                and (status := run_trigger(MigrationTrigger.INSTALL)) is not ExitStatus.SUCCESS
+            ):
+                failure = _CONFIGURATION_FAILED.format(target=target, status=status.name.lower())
+            else:
+                failure = asyncio.run(_open_and_close_stores(target))
+        except Exception as error:  # supervision boundary: every failure of the unit is the entrypoint's reported one
+            logger.error(_UNIT_FAILED_EVENT, target=target, exc_info=True)
+            failure = _UNIT_FAILED.format(target=target, error=error)
+    with suppress(OSError, ValidationError):
+        print(_collected(layout, target).model_dump_json())
+    if failure is not None:
+        print(failure, file=sys.stderr)
+    if unrecorded_signal_seen():
+        return MigrationExitCode.UNACCOUNTED
+    return MigrationExitCode.FAILED if failure is not None else MigrationExitCode.SUCCEEDED
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

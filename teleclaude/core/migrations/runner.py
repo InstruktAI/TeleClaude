@@ -8,6 +8,8 @@ from typing import cast
 import aiosqlite
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.migration_signal import MigrationStore, signal_migration_started
+
 logger = get_logger(__name__)
 
 _SKIP_FILES = {"__init__.py", "runner.py"}
@@ -120,6 +122,7 @@ async def run_pending_migrations(db: aiosqlite.Connection) -> int:
             logger.error(_LOG_MISSING_UP, version)
             continue
 
+        signal_migration_started(MigrationStore.CORE_DATABASE)
         await module.up(db)  # type: ignore[misc, unused-ignore]  # Dynamic module load
 
         await db.execute(_INSERT_APPLIED_SQL, (version,))

@@ -51,7 +51,7 @@ from teleclaude.config.schema import ConfigKind, GlobalConfig, PersonConfig
 from teleclaude.config.transaction_views import read_subject_in_transactions
 from teleclaude.config_subjects import ConfigEnvironment, ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import FileTransaction, file_transaction
-from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, ConfigFileName
+from teleclaude.paths import ENV_PATH, GLOBAL_CONFIG_PATH, ConfigFileName
 
 _KEY_SEPARATOR = "."
 _COMPUTER_PREFIX = "computer."
@@ -252,7 +252,7 @@ def _document_paths(ref: SubjectRef) -> tuple[Path, ...]:
 
 def _environment_paths(ref: SubjectRef) -> tuple[Path, ...]:
     if ref.kind is ConfigSubjectKind.COMPUTER:
-        return (PROJECT_ENV_PATH,)
+        return (ENV_PATH,)
     if ref.kind is ConfigSubjectKind.PERSON and ref.instance is not None:
         return (GLOBAL_CONFIG_PATH.with_name(_GLOBAL_ENV_NAME), person_secret_store_path(ref.instance))
     if ref.kind is ConfigSubjectKind.GLOBAL:
@@ -263,7 +263,7 @@ def _environment_paths(ref: SubjectRef) -> tuple[Path, ...]:
 def _environment_path(ref: SubjectRef, environment: ConfigEnvironment) -> Path:
     match environment:
         case ConfigEnvironment.MACHINE:
-            return PROJECT_ENV_PATH
+            return ENV_PATH
         case ConfigEnvironment.GLOBAL:
             return GLOBAL_CONFIG_PATH.with_name(_GLOBAL_ENV_NAME)
         case ConfigEnvironment.PERSON:

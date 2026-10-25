@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 from teleclaude.config.loader import load_declared_project_config
+from teleclaude.core.reconciliation.platform_repository import is_platform_repository
 from teleclaude.domains import publishes_for_root
-from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, GLOBAL_DOCS_ROOTS, PEOPLE_DIR, REPO_ROOT
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, GLOBAL_DOCS_ROOTS, PEOPLE_DIR
 from teleclaude.project_manifest import load_roots
 from teleclaude.slug import derive_project_slug, normalize_slug
 from teleclaude.snippet_validation import is_generated_global_doc_artifact, tier_root_kind
@@ -120,14 +121,13 @@ def gather_publishers(project_root: Path, current_docs_global: Path) -> list[Pub
 def mother_publisher(publishers: list[Publisher]) -> Publisher | None:
     """Identify the publisher whose docs source belongs to Mother's canonical checkout.
 
-    Mother owns the ``snippets/`` support tree, identified by comparing git
-    canonical roots rather than exact ``docs_global`` paths. ``REPO_ROOT`` can
-    reflect a different linked worktree than a publisher's live source even when
-    both belong to Mother, so raw-path comparison would lose ownership.
+    Mother owns the ``snippets/`` support tree, identified by the repository a
+    publisher's source belongs to rather than exact ``docs_global`` paths: the code can
+    run from a release or a linked worktree while the publisher's live source is
+    the platform project's checkout, so raw-path comparison would lose ownership.
     """
-    mother_root = git_common_root(REPO_ROOT).resolve()
     for publisher in publishers:
-        if git_common_root(publisher.docs_global.parent.parent).resolve() == mother_root:
+        if is_platform_repository(publisher.docs_global.parent.parent):
             return publisher
     return None
 

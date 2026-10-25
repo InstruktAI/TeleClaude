@@ -23,7 +23,7 @@ from teleclaude.core.operations._outcome import OperationCompletion
 from teleclaude.core.todos_db._exceptions import OperationErrorPayload, OperationFailure
 from teleclaude.cron.dispatch_record import DispatchRefusal, JobDispatchRecord, parse_dispatch_line
 from teleclaude.cron.state import JobRunStatus, RunLookup, read_run_state
-from teleclaude.paths import REPO_ROOT
+from teleclaude.paths import REPO_ROOT, TELECLAUDE_HOME
 from teleclaude.services.project_catalog import get_project_catalog_service
 
 logger = get_logger(__name__)
@@ -92,10 +92,11 @@ class JobRunRequest:
 def job_project_path(request: JobRunRequest) -> str | None:
     """The root of the project a run is for, so the receipt records that project's subject and owner.
 
-    The named project, else the runner's own; None when it is not registered, as the runner then opens no run.
+    The named project, else the platform's own project found through the registry; None when it is not registered,
+    as the runner then opens no run.
     """
     catalog = get_project_catalog_service()
-    node = catalog.get_by_slug(request.project) if request.project else catalog.get_by_root(REPO_ROOT)
+    node = catalog.get_by_slug(request.project) if request.project else catalog.get_platform_project()
     return str(node.root) if node is not None else None
 
 
@@ -141,7 +142,7 @@ async def _launch_runner(request: JobRunRequest) -> asyncio.subprocess.Process:
             request.runner_filter,
             _RUNNER_FORCE_FLAG,
             _RUNNER_API_DISPATCH_FLAG,
-            cwd=str(REPO_ROOT),
+            cwd=str(TELECLAUDE_HOME),
             stdout=PIPE,
             stderr=None,
             start_new_session=True,

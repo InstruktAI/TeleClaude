@@ -24,7 +24,7 @@ _PROCESS_POLL_INTERVAL_SECONDS = 0.05
 _PROCESS_GROUP_NESTED_TERM_GRACE_SECONDS = (
     _PROCESS_GROUP_TERM_GRACE_SECONDS + _PROCESS_GROUP_KILL_GRACE_SECONDS + _PROCESS_POLL_INTERVAL_SECONDS
 )
-_COMMAND_START_FAILURE_EXIT_CODE = 127
+COMMAND_START_FAILURE_EXIT_CODE = 127
 _OUTPUT_TAIL_CHARACTERS = 4096
 _OUTPUT_ENCODING = "utf-8"
 _OUTPUT_DECODE_ERRORS = "replace"
@@ -261,7 +261,7 @@ def run_process_group_commands(
                     processes.append(None)
                     started_at.append(time.monotonic())
                     start_failure = CommandResult(
-                        _COMMAND_START_FAILURE_EXIT_CODE,
+                        COMMAND_START_FAILURE_EXIT_CODE,
                         _START_FAILURE_OUTPUT.format(kind=type(exc).__name__, error=exc)
                         if capture_output is not None
                         else None,

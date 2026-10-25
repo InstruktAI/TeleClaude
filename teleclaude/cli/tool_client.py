@@ -148,6 +148,11 @@ class ToolAPIError(Exception):
             exit_not_accepted(cause)
 
 
+def api_socket_path(override: str | None = None) -> str:
+    """The daemon's local API socket: the caller's override, else the environment's, else the default."""
+    return override or os.environ.get(_API_SOCKET_ENV, API_SOCKET_PATH)  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+
+
 def tool_api_request(
     method: str,
     path: str,
@@ -178,7 +183,7 @@ def tool_api_request(
     Raises:
         ToolAPIError: On daemon unavailability, timeout, or HTTP error response.
     """
-    resolved_socket_path = socket_path or os.environ.get(_API_SOCKET_ENV, API_SOCKET_PATH)  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+    resolved_socket_path = api_socket_path(socket_path)
     scoped_identity: ResolvedCliIdentity | None = None
     if clearance_scope is not None:
         from teleclaude.cli.clearance import (  # noqa: PLC0415 - TUI call sites supply an explicit authorization scope.

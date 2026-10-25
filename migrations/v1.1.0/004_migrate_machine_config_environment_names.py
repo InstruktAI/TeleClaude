@@ -6,7 +6,7 @@ import yaml
 
 from teleclaude.config._environment import reconcile_environment_values
 from teleclaude.file_transaction import file_transaction
-from teleclaude.paths import MACHINE_CONFIG_PATH, PROJECT_ENV_PATH
+from teleclaude.paths import ENV_PATH, MACHINE_CONFIG_PATH
 
 _PLACEHOLDER_RENAMES: dict[tuple[str, ...], tuple[str, str]] = {
     ("summarizer", "local", "base_url"): ("SUMMARIZER_LLM_BASE_URL", "SUMMARIZER_LOCAL_BASE_URL"),
@@ -40,15 +40,13 @@ def migrate() -> bool:
         raw = yaml.safe_load(config_transaction.read_text()) or {}
         if not isinstance(raw, dict):
             raise ValueError("Machine configuration must be a mapping")
-        environment = _read_environment_text(
-            PROJECT_ENV_PATH.read_text(encoding="utf-8") if PROJECT_ENV_PATH.exists() else ""
-        )
+        environment = _read_environment_text(ENV_PATH.read_text(encoding="utf-8") if ENV_PATH.exists() else "")
         migrated = _replace_placeholders(raw)
         additions = _preflight_additions(environment, raw)
-        reconcile_environment_values(PROJECT_ENV_PATH, additions, frozenset())
+        reconcile_environment_values(ENV_PATH, additions, frozenset())
         config_transaction.replace_text(yaml.safe_dump(migrated, sort_keys=False))
         removals = _retired_aliases(migrated)
-        reconcile_environment_values(PROJECT_ENV_PATH, {}, removals)
+        reconcile_environment_values(ENV_PATH, {}, removals)
     return True
 
 

@@ -19,8 +19,6 @@ from teleclaude.core.cleanup_step import cleanup_step
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_delivery import reconcile_outstanding_conversation_deliveries
 from teleclaude.core.db import db
-from teleclaude.core.db.connection_factory import get_outbox_db_path
-from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
 from teleclaude.core.events import ProjectRefreshTrigger
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
 from teleclaude.core.operations.service import OperationsService, get_operations_service, set_operations_service
@@ -32,10 +30,10 @@ from teleclaude.core.session_config_subject import (
     backfill_session_subject_owners,
 )
 from teleclaude.core.session_materialization import SessionMaterializer
+from teleclaude.core.store_opening import open_stores
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
 from teleclaude.core.workflow_store.store import close_workflow_stores
 from teleclaude.memory.store import MemoryStore
-from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
 from teleclaude.runtime.agy_workspace_trust import remove_vanished_worktree_trust
 from teleclaude.services.project_catalog import get_project_catalog_service
 
@@ -133,11 +131,10 @@ class DaemonLifecycle:
             logger.warning("Lifecycle startup already completed; skipping")
             return
         startup_started_at = time.perf_counter()
-        migrate_outbox_on_startup(str(MAIN_DB_PATH), str(get_outbox_db_path(TELECLAUDE_HOME)))
-        logger.info("[STARTUP] Initializing database (usually <1s)")
-        await db.initialize()
+        logger.info("[STARTUP] Opening stores (usually <1s)")
+        await open_stores()
         configure_session_source_reconciler(self.session_materializer.reconcile)
-        logger.info("Database initialized in %.3fs", time.perf_counter() - startup_started_at)
+        logger.info("Stores opened in %.3fs", time.perf_counter() - startup_started_at)
 
         # Build the current request surface before event consumers are composed.
         # The surface is not listening yet; the platform can prepare its producer

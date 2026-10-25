@@ -47,7 +47,7 @@ from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.validation import AvailabilityState
 from teleclaude.domains import valid_domains
 from teleclaude.mcp.registry import load_effective_registry
-from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, REPO_ROOT, TELECLAUDE_HOME, ConfigFileName
+from teleclaude.paths import ENV_PATH, GLOBAL_CONFIG_PATH, REPO_ROOT, TELECLAUDE_HOME, ConfigFileName
 from teleclaude.project_manifest import load_registered_roots
 
 logger = get_logger(__name__)
@@ -360,7 +360,7 @@ def resolve_env_file_path(env_path: Path | None = None) -> Path:
     """Resolve the target env file path for config writes."""
     if env_path is not None:
         return env_path.expanduser()
-    return PROJECT_ENV_PATH
+    return ENV_PATH
 
 
 def set_env_var(name: str, value: str, env_path: Path | None = None) -> Path:

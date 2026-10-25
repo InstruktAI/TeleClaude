@@ -16,6 +16,7 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
+from teleclaude.cli.config_local_host import LocalConfigHost, daemon_serves_this_computer
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
@@ -39,6 +40,7 @@ from teleclaude.cli.tui.views.config_render import ConfigContentRenderMixin
 from teleclaude.config.operation_answers import EditorFieldAnswer
 from teleclaude.config.operation_requests import ConfigFailureKind
 from teleclaude.config_subjects import ConfigSubjectKind
+from teleclaude.core.reconciliation.live_surfaces import published_telec_path
 
 __all__ = ["ConfigContent", "ConfigView"]
 
@@ -73,6 +75,14 @@ _LOAD_GROUP = "config-load"
 _SECRETS_GROUP = "config-secrets"
 _VALIDATE_GROUP = "config-validate"
 _DAEMON_UNAVAILABLE = "The daemon is not reachable."
+_APP_COMMAND = "app"
+_APP_START_VERB = "start"
+_APP_START_TIMEOUT_SECONDS = 300.0
+_STARTING_PLATFORM = "Configuration is valid: starting the platform..."
+_PLATFORM_STARTED = "Configuration is valid and the platform is starting; the connection follows."
+_PLATFORM_START_FAILED = "The platform did not start: {detail}"
+_START_OUTPUT_TAIL_CHARS = 400
+_TELEC_UNPUBLISHED = "telec is not published; run the bootstrap"
 _PERSON_NAME_ID = "identity.name"
 _PERSON_ROLE_ID = "identity.role"
 _PERSON_EMAIL_ID = "identity.email"
@@ -451,11 +461,16 @@ class ConfigContent(
         return [field.identity for field in self.person_reflected_fields]
 
     def _operations(self) -> ConfigOperations | None:
-        """The daemon requests of this tab, or None while the TUI has not connected to the daemon."""
+        """The requests of this tab: the daemon's while the TUI is connected to it, this process's while none serves.
+
+        None while a daemon serves but the TUI has not connected to it yet.
+        """
         api = getattr(self.app, _API_ATTRIBUTE, None)
-        if api is None or not api.is_connected:
-            return None
-        return ConfigOperations(api)
+        if api is not None and api.is_connected:
+            return ConfigOperations(api)
+        if not daemon_serves_this_computer():
+            return ConfigOperations(LocalConfigHost())
+        return None
 
     def refresh_data(self) -> None:
         """Ask the daemon for the machine configuration, environment state, and people, and show them."""
@@ -565,6 +580,44 @@ class ConfigContent(
             self._validation_results = []
             self._status_message = f"Validation failed: {exc}"
             self._status_is_error = True
+        self.refresh(layout=True)
+        if not self._status_is_error and not daemon_serves_this_computer():
+            await self._start_platform()
+
+    async def _start_platform(self) -> None:
+        """Start the platform through ``telec app start`` once the configuration validates and no daemon serves."""
+        telec = published_telec_path()
+        self._status_message = _STARTING_PLATFORM
+        self.refresh(layout=True)
+        if not telec.exists():
+            self._report_start_failure(_TELEC_UNPUBLISHED)
+            return
+        # The service lifecycle is `telec app start`; it has no Python API, and the terminal interface only asks.
+        process = await asyncio.create_subprocess_exec(
+            str(telec),
+            _APP_COMMAND,
+            _APP_START_VERB,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            output, _ = await asyncio.wait_for(process.communicate(), timeout=_APP_START_TIMEOUT_SECONDS)
+        except TimeoutError:
+            process.kill()
+            await process.wait()
+            self._report_start_failure(_DAEMON_UNAVAILABLE)
+            return
+        if process.returncode != 0:
+            self._report_start_failure(output.decode(errors="replace")[-_START_OUTPUT_TAIL_CHARS:].strip())
+            return
+        self._status_message = _PLATFORM_STARTED
+        self._status_is_error = False
+        self.refresh(layout=True)
+
+    def _report_start_failure(self, detail: str) -> None:
+        """Show why the platform did not start, in the status line."""
+        self._status_message = _PLATFORM_START_FAILED.format(detail=detail)
+        self._status_is_error = True
         self.refresh(layout=True)
 
     def _current_context_key(self) -> str:

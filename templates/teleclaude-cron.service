@@ -7,4 +7,5 @@ User={{USER}}
 WorkingDirectory={{WORKING_DIR}}
 Environment=PATH={{PATH}}
 Environment=UV_NO_SYNC=1
+Environment=XDG_DATA_HOME={{XDG_DATA_HOME}}
 ExecStart=/bin/bash -lc '{{COMMAND}}'

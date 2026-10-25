@@ -11,6 +11,7 @@ import tempfile
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
+from enum import StrEnum
 from functools import partial
 from pathlib import Path
 from typing import NamedTuple, cast
@@ -33,6 +34,7 @@ from teleclaude.artifact_ownership import (
 )
 from teleclaude.capabilities import resolve_capabilities
 from teleclaude.constants import ArtifactKind
+from teleclaude.core.reconciliation.platform_repository import platform_scope_key
 from teleclaude.core.reconciliation.template_installation import template_tree_root
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
 from teleclaude.docs_publication import publish_generation
@@ -202,6 +204,20 @@ class DistributionObservation:
     process_correlation_id: str
 
 
+class PublicationHalves(StrEnum):
+    """Which half of a project's publication one distribution performs.
+
+    The published half is what every session reads: the documentation generation and the global agent
+    artifacts. The local half is what belongs to the project's own checkout: its project-local agent
+    artifacts. The platform's published half publishes when a release is installed; its project's
+    commit-boundary publication performs the local half only.
+    """
+
+    BOTH = "both"
+    PUBLISHED = "published"
+    LOCAL = "local"
+
+
 @dataclass(frozen=True)
 class DistributionRequest:
     """Inputs for the internal committed-source distribution operation."""
@@ -214,6 +230,7 @@ class DistributionRequest:
     agents_enabled: bool | None = None
     docs_enabled: bool | None = None
     preserve_previous_documentation: bool = False
+    halves: PublicationHalves = PublicationHalves.BOTH
 
 
 @dataclass
@@ -332,6 +349,7 @@ def distribute_committed(
     *,
     agents_enabled: bool,
     docs_enabled: bool,
+    halves: PublicationHalves = PublicationHalves.BOTH,
 ) -> DistributionBuild:
     """Build committed-source artifacts and return an undoable, not-yet-deployed result."""
     original_directory = Path.cwd()
@@ -342,6 +360,7 @@ def distribute_committed(
         agents_enabled=agents_enabled,
         docs_enabled=docs_enabled,
         preserve_previous_documentation=True,
+        halves=halves,
     )
     state = DistributionBuildState()
     try:
@@ -2051,7 +2070,10 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
     teleclaude_root = str(_REPO_ROOT)
     project_root = os.path.abspath(os.path.expanduser(args.project_root))
     deploy_root = os.path.abspath(os.path.expanduser(args.deploy_root)) if request is not None else project_root
-    is_mother_project = git_common_root(Path(project_root)).resolve() == Path(teleclaude_root).resolve()
+    is_mother_project = agent_artifacts.is_mother_project(Path(project_root))
+    halves = request.halves if request is not None else PublicationHalves.BOTH
+    publishes_published_half = halves is not PublicationHalves.LOCAL
+    publishes_local_half = halves is not PublicationHalves.PUBLISHED
     project_root_path = Path(project_root)
     checkout_local_outputs: list[Path] = []
     retired_pointers: list[Path] = []
@@ -2077,7 +2099,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             _ARTIFACT_DISTRIBUTION_STARTED,
             process_correlation_id=observation.process_correlation_id,
         )
-    if deploy and docs_enabled:
+    if deploy and docs_enabled and publishes_published_half:
         previous_root = deploy_documentation(
             project_root_path,
             Path(docs_source_dir),
@@ -2099,7 +2121,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
     else:
         domain_triggers = _resolve_domain_triggers(project_root_path)
 
-    if agents_enabled and deploy:
+    if agents_enabled and deploy and publishes_local_half:
         for master_path in _iter_project_agent_masters(project_root_path):
             checkout_local_outputs.append(
                 _write_project_agents(
@@ -2499,18 +2521,19 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             )
 
     if deploy and is_mother_project:
-        checkout_local_outputs.extend(
-            compose_global_skill_catalog(
-                project_root_path,
-                partial(
-                    _render_global_skill_catalog,
-                    mother_root=project_root_path,
-                    warn_only=args.warn_only,
-                    observation=observation,
+        if publishes_published_half:
+            checkout_local_outputs.extend(
+                compose_global_skill_catalog(
+                    project_root_path,
+                    partial(
+                        _render_global_skill_catalog,
+                        mother_root=project_root_path,
+                        warn_only=args.warn_only,
+                        observation=observation,
+                    ),
                 ),
-            ),
-        )
-        retired_pointers.append(retired_pointer_candidate(global_skill_source_root(project_root_path)))
+            )
+            retired_pointers.append(retired_pointer_candidate(global_skill_source_root(project_root_path)))
         if agents_enabled:
             global_dist_context: AbstractContextManager[str]
             if publication_build:
@@ -2520,7 +2543,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             else:
                 global_dist_context = tempfile.TemporaryDirectory(prefix=_GLOBAL_DISTRIBUTION_TEMP_PREFIX)
             with global_dist_context as global_dist:
-                if global_sources:
+                if global_sources and publishes_published_half:
                     _run_phase(
                         sources=global_sources,
                         prefix_root=agents_root,
@@ -2529,7 +2552,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                         emit_repo_codex=False,
                         deploy_enabled=True,
                         is_global_phase=True,
-                        scope_key=str(canonical_root.resolve()),
+                        scope_key=platform_scope_key(),
                     )
             local_dist_context: AbstractContextManager[str]
             if publication_build:
@@ -2539,7 +2562,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             else:
                 local_dist_context = tempfile.TemporaryDirectory(prefix=_LOCAL_DISTRIBUTION_TEMP_PREFIX)
             with local_dist_context as local_dist:
-                if local_sources:
+                if local_sources and publishes_local_half:
                     _run_phase(
                         sources=local_sources,
                         prefix_root=project_agents_root,

@@ -23,18 +23,12 @@ business:
         elsewhere, an agent spawns one there rather than serving it.
 # TeleClaude's checkpoint maintenance uses this project's overlay. The
 # platform-wide base supplies sync for docs and agents and install for setup.
-# This overlay adds the runtime-specific actions below.
+# A commit here activates nothing live: the platform runs from an installed
+# release, and a revision becomes the active release only through an install
+# (`telec app install`). The overlay therefore carries only the development
+# plumbing below.
 checkpoint:
   maintenance:
-    release-posture:
-      main_only: true
-      precedence: 5
-      command:
-        - '{interpreter}'
-        - -m
-        - teleclaude.deployment.release_checkout
-        - --after-sha
-        - '{after_sha}'
     plumbing-convergence:
       main_only: true
       precedence: 15
@@ -42,94 +36,6 @@ checkpoint:
         - '{interpreter}'
         - -m
         - teleclaude.project_setup.plumbing
-    restart:
-      main_only: true
-      precedence: 0
-      command:
-        - '{interpreter}'
-        - -m
-        - teleclaude.core.integration.daemon_window
-    # Deploying the service definitions installation renders is deferred on
-    # demand, so a manual run reports it instead; no scope binds it, so the
-    # commit boundary never runs it.
-    service-deploy:
-      main_only: true
-      precedence: 110
-      on_demand: defer
-      owed_probe:
-        - '{interpreter}'
-        - -m
-        - teleclaude.install.service_drift
-      command:
-        - make
-        - install
-    deps:
-      main_only: true
-      precedence: 20
-      command:
-        - uv
-        - sync
-    # Runs after deps and tui-reload: the runtime is available and the reloaded TUI reads the stored shape.
-    config-migrate:
-      main_only: true
-      precedence: 50
-      command:
-        - uv
-        - run
-        - --quiet
-        - python
-        - -m
-        - teleclaude.config.migrations
-    installation-migrations:
-      main_only: true
-      precedence: 35
-      command:
-        - '{interpreter}'
-        - -m
-        - teleclaude.deployment.migration_runner
-        - --before-sha
-        - '{before_sha}'
-        - --after-sha
-        - '{after_sha}'
-    declaration-views-discard:
-      main_only: true
-      precedence: 35
-      command:
-        - uv
-        - run
-        - --quiet
-        - python
-        - -m
-        - teleclaude.entrypoints.declaration_view
-        - discard
-        - --trigger
-        - maintenance
-    config-schemas:
-      main_only: true
-      precedence: 30
-      command:
-        - uv
-        - run
-        - --quiet
-        - python
-        - -m
-        - teleclaude.core.reconciliation.config_schemas
-      runs_while_serving: true
-    tui-reload:
-      main_only: true
-      precedence: 40
-      on_demand: defer
-      owed_probe:
-        - '{interpreter}'
-        - -m
-        - teleclaude.core.integration.deferred_probes
-        - tui-reload
-        - --tip
-        - '{after_sha}'
-      command:
-        - '{interpreter}'
-        - -m
-        - teleclaude.cli.tui.processes
     docs-layout-convergence:
       main_only: true
       precedence: 45
@@ -137,13 +43,6 @@ checkpoint:
         - '{interpreter}'
         - -m
         - teleclaude.entrypoints.docs_layout_convergence
-    self-update:
-      main_only: true
-      command:
-        - '{interpreter}'
-        - -m
-        - teleclaude.deployment.self_update
-        - '{event_file}'
   integrator_judgment:
     - log-check
   bindings:
@@ -155,22 +54,6 @@ checkpoint:
           - teleclaude/**/*.py
       actions:
         - log-check
-    - scope:
-        include:
-          - pyproject.toml
-          - requirements*.txt
-          - uv.lock
-      actions:
-        - deps
-    - scope:
-        include:
-          - teleclaude/install/**
-          - teleclaude/project_setup/**
-          - src/Launcher/**
-          - teleclaude/hooks/adapters/**
-          - templates/**
-      actions:
-        - install
     - scope:
         include:
           - templates/quality/githooks/**
@@ -186,46 +69,11 @@ checkpoint:
         - sync
     - scope:
         include:
-          - teleclaude/cli/tui/**
-      actions:
-        - tui-reload
-    - scope:
-        include:
-          - teleclaude/config/**
-            # The TUI reloads before the migration stores newer documents, so a reloaded
-            # TUI already runs the migration list that reads them.
-      actions:
-        - config-migrate
-        - tui-reload
-    - scope:
-        include:
           - teleclaude/docs_layout.py
           - teleclaude/docs_layout_effects.py
           - teleclaude/snippet_roots.py
       actions:
         - docs-layout-convergence
-    - scope:
-        include:
-          - teleclaude/**
-          - pyproject.toml
-          - uv.lock
-      actions:
-        - declaration-views-discard
-    - scope:
-        include:
-          - teleclaude/**/*.py
-          - teleclaude/mcp/teleclaude-mcp.schema.json
-      actions:
-        - config-schemas
-    - events:
-        - github.push
-        - github.release
-      actions:
-        - self-update
-    - activation: canonical_main
-      actions:
-        - release-posture
-        - installation-migrations
 jobs:
   - category: system
     name: temp-reaper

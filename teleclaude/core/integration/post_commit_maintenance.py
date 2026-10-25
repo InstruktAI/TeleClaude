@@ -18,7 +18,6 @@ from teleclaude.checkpoint_model import (
     fill_activation_range,
     fill_event_activation,
     load_checkpoint_model,
-    load_committed_checkpoint_model,
     main_only_maintenance_action_ids_for_model,
     triggered_action_ids,
 )
@@ -67,7 +66,6 @@ from teleclaude.core.integration.drain_window_boundary import (
 from teleclaude.core.integration.maintenance_output import secret_output_masker
 from teleclaude.core.integration.maintenance_trigger import DRAIN_HELD_ENV, DRAIN_HELD_VALUE, MaintenanceTrigger
 from teleclaude.core.project_state import resolve_project_state_root
-from teleclaude.deployment.release_checkout import is_release_installation, selected_revision
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, hook_free_environment
 from teleclaude.hooks.integrator_judgment_marker import (
@@ -185,31 +183,20 @@ def refusal_notice(recording: ActivationRecording) -> str | None:
 def selected_maintenance_revision(project_root: Path) -> str:
     """Resolve the committed source maintenance answers to, from the owning checkout including worktree callers.
 
-    A release installation runs the commit it has checked out, whatever local main names; every
-    other checkout answers to its committed main tip.
+    Maintenance answers to the committed main tip of the project's own checkout; no installed release
+    is a maintenance root.
     """
     root = resolve_project_state_root(project_root)
-    return selected_revision(root) or Repo(str(root)).commit(_CANONICAL_MAIN_REFERENCE).hexsha
+    return Repo(str(root)).commit(_CANONICAL_MAIN_REFERENCE).hexsha
 
 
 def maintenance_model(project_root: Path) -> CheckpointModel:
-    """The declaration a root's maintenance answers to.
-
-    A release installation answers to the declaration committed at the commit it runs, so an
-    uncommitted edit or another local branch cannot supply it a different action set; every other
-    checkout answers to its working-tree declaration.
-    """
-    root = project_root.resolve()
-    revision = selected_revision(root)
-    if revision is None:
-        return load_checkpoint_model(str(root))
-    return load_committed_checkpoint_model(root, revision)
+    """The declaration a root's maintenance answers to: the checkout's working-tree declaration."""
+    return load_checkpoint_model(str(project_root.resolve()))
 
 
-def _holds_eligible_posture(root: Path, repository: Repo) -> bool:
-    """Whether the checkout may carry canonical-main maintenance: the installed release, or main itself."""
-    if is_release_installation(root):
-        return True
+def _holds_eligible_posture(repository: Repo) -> bool:
+    """Whether the checkout may carry canonical-main maintenance: main itself, never a detached checkout."""
     return not repository.head.is_detached and repository.active_branch.name == _MAIN_BRANCH_NAME
 
 
@@ -224,7 +211,7 @@ def activation_range_action_paths(
         return None
     try:
         repository = Repo(str(root))
-        if not _holds_eligible_posture(root, repository):
+        if not _holds_eligible_posture(repository):
             return None
         if not _is_literal_range(repository, activation_range):
             return None
@@ -254,7 +241,7 @@ def record_activation(project_root: Path, activation_range: ActivationRange) -> 
         )
     try:
         repository = Repo(str(root))
-        if not _holds_eligible_posture(root, repository):
+        if not _holds_eligible_posture(repository):
             return _refuse(
                 activation_range,
                 root,
@@ -478,7 +465,7 @@ def observe_maintenance_action(project_root: Path, action_id: str) -> Maintenanc
 
 
 def eligible_maintenance_root(project_root: Path) -> Path | None:
-    """Require the canonical checkout on main, or the installed release checkout; return its root, or ``None``."""
+    """Require the canonical checkout on main; return its root, or ``None``."""
     root = project_root.resolve()
     canonical_root = resolve_project_state_root(root)
     if root != canonical_root:
@@ -486,7 +473,7 @@ def eligible_maintenance_root(project_root: Path) -> Path | None:
         return None
     try:
         repository = Repo(str(root))
-        if not _holds_eligible_posture(root, repository):
+        if not _holds_eligible_posture(repository):
             logger.warning(
                 _MAINTENANCE_SKIPPED_EVENT, reason=ActivationRefusal.INELIGIBLE_LOCATION, project_root=str(root)
             )

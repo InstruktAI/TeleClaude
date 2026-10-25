@@ -18,9 +18,8 @@ if [ -n "${PROJECT_ROOT:-}" ]; then
 else
     PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 fi
-# Host services may only be controlled from the main checkout — only it carries
-# the runtime .env, and a worktree-rooted service would pin host lifecycle to an
-# ephemeral branch checkout. Linked worktrees live at <main>/trees/<name>:
+# Host services may only be controlled from a main or release checkout — a
+# worktree-rooted service would pin host lifecycle to an ephemeral branch checkout. Linked worktrees live at <main>/trees/<name>:
 # refuse, loudly, however PROJECT_ROOT was resolved (derived or explicit).
 if [ "$(basename "$(dirname "$PROJECT_ROOT")")" = "trees" ]; then
     echo "[FATAL] daemon-control.sh invoked from a worktree ($PROJECT_ROOT). Controlling host services from a worktree is not allowed." >&2
@@ -39,7 +38,8 @@ _SYSTEMD_FAILED_STATE="failed"
 _SYSTEMD_UNKNOWN_STATE="unknown"
 
 # Configuration
-PID_FILE="$PROJECT_ROOT/teleclaude.pid"
+# The process record lives in the installation root, outside every release, so a release switch keeps it.
+PID_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/instrukt-ai/teleclaude/teleclaude.pid"
 LOG_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/instrukt-ai/teleclaude/teleclaude.log"
 API_SOCKET="/tmp/teleclaude-api.sock"
 # Startup soft warning threshold in seconds. Startup keeps waiting past this
@@ -129,7 +129,7 @@ normalize_required_config_path() {
 }
 
 require_config_files() {
-    local env_path="$PROJECT_ROOT/.env"
+    local env_path="${TELECLAUDE_HOME:-$HOME/.teleclaude}/.env"
     local config_path="${TELECLAUDE_HOME:-$HOME/.teleclaude}/config.yml"
     local normalized_env_path
     local normalized_config_path

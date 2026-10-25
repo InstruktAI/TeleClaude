@@ -9,8 +9,11 @@ from pathlib import Path
 
 # Agent CLIs invoke this file by path, so sys.path[0] is this directory and the
 # directory holding the teleclaude package is absent. Deriving that directory from
-# __file__ needs no import, which is what lets the package import below resolve.
-_PACKAGE_PARENT = Path(__file__).resolve().parents[3]
+# __file__ needs no import, which is what lets the package import below resolve. The path
+# is made absolute and left unresolved: invoked through the installation's ``current``
+# pointer, the interpreter it re-executes under is named through ``current`` as well, never
+# through the release folder the pointer happens to name.
+_PACKAGE_PARENT = Path(__file__).absolute().parents[3]
 if str(_PACKAGE_PARENT) not in sys.path:
     sys.path.append(str(_PACKAGE_PARENT))
 

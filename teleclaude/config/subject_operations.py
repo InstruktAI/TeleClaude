@@ -114,7 +114,7 @@ from teleclaude.invite import (
     invite_person,
     render_help_desk_links,
 )
-from teleclaude.paths import PROJECT_ENV_PATH
+from teleclaude.paths import ENV_PATH
 from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.project_setup.init_flow import (
     CompanyHomeDestination,
@@ -697,7 +697,7 @@ def _apply_environment(request: ConfigRequest, environment: ConfigEnvironment) -
 def _set_environment_value(request: ConfigRequest, environment: ConfigEnvironment, key: str, value: str) -> None:
     match environment:
         case ConfigEnvironment.MACHINE:
-            write_environment_value(PROJECT_ENV_PATH, key, value)
+            write_environment_value(ENV_PATH, key, value)
             os.environ[key] = value  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
         case ConfigEnvironment.GLOBAL:
             update_global_environment(key, value)
@@ -709,7 +709,7 @@ def _set_environment_value(request: ConfigRequest, environment: ConfigEnvironmen
 def _clear_environment_value(request: ConfigRequest, environment: ConfigEnvironment, key: str) -> None:
     match environment:
         case ConfigEnvironment.MACHINE:
-            mutate_environment_value(PROJECT_ENV_PATH, key, None)
+            mutate_environment_value(ENV_PATH, key, None)
             os.environ.pop(key, None)  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
         case ConfigEnvironment.GLOBAL:
             update_global_environment(key, None)

@@ -18,6 +18,8 @@
         <string>.venv/bin:{{PATH}}</string>
         <key>UV_NO_SYNC</key>
         <string>1</string>
+        <key>XDG_DATA_HOME</key>
+        <string>{{XDG_DATA_HOME}}</string>
     </dict>
     <key>SoftResourceLimits</key>
     <dict>

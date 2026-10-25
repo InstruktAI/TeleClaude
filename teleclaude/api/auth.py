@@ -143,7 +143,11 @@ def carried_caller(
             entry_point=EntryPoint.AGENT,
         )
 
-    carried = CarriedIdentity.from_headers(request.headers)
+    return caller_identity_of(CarriedIdentity.from_headers(request.headers))
+
+
+def caller_identity_of(carried: CarriedIdentity) -> CallerIdentity:
+    """Adapt the identity a client carries into the caller this computer judges, as the daemon edge does."""
     entry_point: EntryPoint | None = None
     if carried.entry_point is not None:
         try:

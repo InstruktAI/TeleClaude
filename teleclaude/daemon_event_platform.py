@@ -30,6 +30,7 @@ from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.procedure_routing import build_procedure_activation_consumer
 from teleclaude.core.reconciliation import FleetCapabilityMap, contraction_answer_from_live_map
+from teleclaude.core.reconciliation.installation_reaction import build_installation_reaction_consumer
 from teleclaude.core.runtime_event_consumers import RuntimeVoiceSurface, build_runtime_event_consumers
 from teleclaude.core.runtime_events import INTERNAL_RUNTIME_EVENT_STREAM
 from teleclaude.core.session_cleanup import terminate_session
@@ -236,6 +237,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             build_memory_closure_consumer(),
             build_procedure_activation_consumer(),
             build_event_bound_maintenance_consumer(),
+            build_installation_reaction_consumer(),
             build_ci_run_outcomes_consumer(self._event_producer),
             build_failed_check_bugs_consumer(),
             build_correlation_consumer(self._event_db, self._event_producer, CorrelationConfig()),

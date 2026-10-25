@@ -157,7 +157,7 @@ def _own_project_filter(job: str, dispatch: DispatchReporter) -> str | None:
         return job
     catalog = get_project_catalog_service()
     catalog.refresh()
-    own_project = catalog.get_by_root(_REPO_ROOT)
+    own_project = catalog.get_platform_project()
     if own_project is None:
         dispatch.refused(DispatchRefusal.NO_SUCH_JOB, detail=_OWN_PROJECT_UNREGISTERED)
         return None

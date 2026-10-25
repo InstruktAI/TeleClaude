@@ -26,7 +26,6 @@ from teleclaude.core.next_machine.marker_reconciliation import (
     reconcile_lifecycle_markers,
     restore_lifecycle_markers,
 )
-from teleclaude.core.todos_db._base import _generate_id
 from teleclaude.core.todos_db._errors import (
     DeliveryProvenanceRefused,
     HolderReconciliationRefused,
@@ -41,6 +40,7 @@ from teleclaude.core.todos_db._models import (
     TodoStateModel,
 )
 from teleclaude.core.todos_db._rows import TodoRow
+from teleclaude.core.todos_db._schema_bootstrap import _generate_id
 from teleclaude.core.todos_db._todo_documentation_transfer import (
     DocumentationTransferWriter,
     persist_documentation_transfers,

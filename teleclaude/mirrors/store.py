@@ -329,6 +329,11 @@ def _get_rw_engine(db: str | Path | None = None) -> Engine:
     return engine
 
 
+def ensure_mirrors_store(db: str | Path | None = None) -> None:
+    """Open the mirrors store, bringing its schema and stored revision to the current contract."""
+    _get_rw_engine(db)
+
+
 def _get_ro_engine(db: str | Path | None = None) -> Engine:
     """Return the cached read-only mirrors engine, bootstrapping schema via the RW engine."""
     path = _resolve_mirrors_db_path(db)

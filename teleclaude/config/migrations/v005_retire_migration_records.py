@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Final
 
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.core.migration_signal import MigrationStore, signal_migration_started
 from teleclaude.paths import STATE_DIR
 
 VERSION: Final = 5
@@ -26,4 +27,6 @@ def up(document: MutableMapping[str, object], _subject: SubjectRef) -> None:
 def retire(_subject: SubjectRef) -> None:
     """Remove every obsolete migration record when a computer migration run executes."""
     for path in _RETIRED_PATHS:
-        Path(path).unlink(missing_ok=True)
+        if Path(path).exists():
+            signal_migration_started(MigrationStore.CONFIGURATION)
+            Path(path).unlink(missing_ok=True)

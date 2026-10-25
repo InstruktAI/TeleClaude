@@ -3,6 +3,8 @@
 CRON_SMOKE_SINCE ?= 15m
 LEGACY_ACTIVATION ?= 0
 STOP_OUTCOME_FILE ?=
+# Where the platform's installation lives (install.sh and teleclaude/core/reconciliation/installation.py agree).
+INSTALLATION_ROOT := $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/instrukt-ai/teleclaude
 
 # Default target
 help:
@@ -38,21 +40,23 @@ clean:
 dev:
 	@tools/make/dev.sh
 
-# Daemon control commands (user-friendly aliases)
+# Daemon control commands (user-friendly aliases). The lifecycle belongs to the installation, not to the
+# checkout this Makefile sits in: each verb delegates to the installed `telec app`, and `kill` — the explicit
+# forced recovery `telec app` does not carry — to the installation's own lifecycle script.
 start:
-	@./bin/daemon-control.sh start
+	@telec app start
 
 stop:
-	@LEGACY_ACTIVATION="$(LEGACY_ACTIVATION)" STOP_OUTCOME_FILE="$(STOP_OUTCOME_FILE)" ./bin/daemon-control.sh stop
+	@LEGACY_ACTIVATION="$(LEGACY_ACTIVATION)" STOP_OUTCOME_FILE="$(STOP_OUTCOME_FILE)" telec app stop
 
 restart:
-	@LEGACY_ACTIVATION="$(LEGACY_ACTIVATION)" ./bin/daemon-control.sh restart
+	@LEGACY_ACTIVATION="$(LEGACY_ACTIVATION)" telec app restart
 
 kill:
-	@./bin/daemon-control.sh kill
+	@"$(INSTALLATION_ROOT)/current/bin/daemon-control.sh" kill
 
 status:
-	@./bin/daemon-control.sh status
+	@telec app status
 
 cron-smoke:
 	@CRON_SMOKE_SINCE="$(CRON_SMOKE_SINCE)" tools/make/cron-smoke.sh

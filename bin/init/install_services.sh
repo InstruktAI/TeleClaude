@@ -60,6 +60,13 @@ else
     PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 fi
 
+# The root every rendered definition names. A release of the installation is addressed through the
+# installation's `current` pointer, never through its own folder; any other root names itself.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/live_root.sh"
+SERVICE_ROOT="$(live_root_of "$PROJECT_ROOT")"
+SERVICE_DATA_HOME="$(installation_data_home)"
+
 # Platform detection: do not clobber a value the sourcing caller already set.
 if [ -z "${PLATFORM:-}" ]; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -286,10 +293,11 @@ After=network.target
 [Service]
 Type=simple
 User=$USER
-WorkingDirectory=$PROJECT_ROOT
-Environment="PATH=$PROJECT_ROOT/.venv/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+WorkingDirectory=$SERVICE_ROOT
+Environment="PATH=$SERVICE_ROOT/.venv/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="XDG_DATA_HOME=$SERVICE_DATA_HOME"
 # SSH_AUTH_SOCK sourced from keychain in wrapper
-ExecStart=$PROJECT_ROOT/bin/teleclaude-wrapper.sh
+ExecStart=$SERVICE_ROOT/bin/teleclaude-wrapper.sh
 # Relaunch after clean exits too, as launchd KeepAlive does: the daemon applies
 # restart-required config changes by shutting down gracefully. An explicit
 # `systemctl stop` is never restarted.
@@ -314,7 +322,7 @@ EOF
 Description=TeleClaude Config File Watcher
 
 [Path]
-PathModified=$PROJECT_ROOT/config.yml
+PathModified=$SERVICE_ROOT/config.yml
 Unit=${service_name}.service
 
 [Install]
@@ -368,8 +376,8 @@ install_systemd_cron_service() {
     # Run via the project venv interpreter (not `uv run`): the script's inline
     # PEP-723 metadata forces `uv run` into an isolated env without the project's
     # dependencies. Mirrors the launchd cron unit and the daemon service.
-    local command="$PROJECT_ROOT/.venv/bin/python scripts/cron_runner.py"
-    local service_path="$PROJECT_ROOT/.venv/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+    local command="$SERVICE_ROOT/.venv/bin/python scripts/cron_runner.py"
+    local service_path="$SERVICE_ROOT/.venv/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
 
     if [ ! -f "$service_template" ]; then
         log_error "Template file not found: $service_template"
@@ -383,7 +391,7 @@ install_systemd_cron_service() {
     local rendered_service
     rendered_service="$(mktemp)"
     render_template_or_die "$service_template" "$rendered_service" \
-        "COMMAND=$command" "WORKING_DIR=$PROJECT_ROOT" "PATH=$service_path"
+        "COMMAND=$command" "WORKING_DIR=$SERVICE_ROOT" "PATH=$service_path" "XDG_DATA_HOME=$SERVICE_DATA_HOME"
 
     local service_deployed=false
     local timer_deployed=false
@@ -435,7 +443,7 @@ install_launchd_service() {
     local rendered_file
     rendered_file="$(mktemp)"
     render_template_or_die "$template_file" "$rendered_file" \
-        "PYTHON_PATH=$PROJECT_ROOT/.venv/bin/python" "WORKING_DIR=$PROJECT_ROOT" "PATH=$launchd_path"
+        "PYTHON_PATH=$SERVICE_ROOT/.venv/bin/python" "WORKING_DIR=$SERVICE_ROOT" "PATH=$launchd_path" "XDG_DATA_HOME=$SERVICE_DATA_HOME"
 
     if ! deploy_or_die "$rendered_file" "$plist_file"; then
         rm -f "$rendered_file"
@@ -480,7 +488,7 @@ install_launchd_cron_service() {
     local rendered_file
     rendered_file="$(mktemp)"
     render_template_or_die "$template_file" "$rendered_file" \
-        "PYTHON_PATH=$PROJECT_ROOT/.venv/bin/python" "WORKING_DIR=$PROJECT_ROOT" "PATH=$launchd_path"
+        "PYTHON_PATH=$SERVICE_ROOT/.venv/bin/python" "WORKING_DIR=$SERVICE_ROOT" "PATH=$launchd_path" "XDG_DATA_HOME=$SERVICE_DATA_HOME"
 
     if ! deploy_or_die "$rendered_file" "$plist_file"; then
         rm -f "$rendered_file"

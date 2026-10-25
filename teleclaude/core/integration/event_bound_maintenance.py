@@ -20,7 +20,6 @@ from teleclaude.core.integration.post_commit_maintenance import (
     record_event_activation,
     start_drain_contender,
 )
-from teleclaude.deployment.release_checkout import selected_revision
 from teleclaude.events.consumers import Consumer, Interest
 from teleclaude.events.envelope import EventHomeKind, EventHomeRef, ReceivedEvent
 from teleclaude.events.type_pattern import ANY_TYPE
@@ -43,15 +42,10 @@ class DrainLaunchError(RuntimeError):
 
 @dataclass(frozen=True)
 class _DeclarationStamp:
-    """What identifies one state of a project's declaration without reading it.
-
-    A release installation answers to the declaration committed at the commit it runs, so that
-    commit is its identity; every other project answers to its declaration file as it stands.
-    """
+    """What identifies one state of a project's declaration without reading it: its file as it stands."""
 
     modified_ns: int
     size: int
-    revision: str | None
 
 
 @dataclass(frozen=True)
@@ -89,14 +83,11 @@ class _ProjectEventBindings:
 
 def _declaration_stamp(root: Path) -> _DeclarationStamp | None:
     """The declaration's identity, or ``None`` when the root carries none."""
-    revision = selected_revision(root)
-    if revision is not None:
-        return _DeclarationStamp(modified_ns=0, size=0, revision=revision)
     try:
         status = (root / ConfigFileName.OVERLAY).stat()
     except FileNotFoundError:
         return None
-    return _DeclarationStamp(modified_ns=status.st_mtime_ns, size=status.st_size, revision=None)
+    return _DeclarationStamp(modified_ns=status.st_mtime_ns, size=status.st_size)
 
 
 def build_event_bound_maintenance_consumer() -> Consumer:
