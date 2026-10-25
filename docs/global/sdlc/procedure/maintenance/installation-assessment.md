@@ -56,7 +56,7 @@ nothing in an integration queue.
 
 ## Outputs
 
-- Every owed install up to the assessed revision is discharged, with recovery
+- Every owed install up to the assessed install is discharged, with recovery
   performed or a bug or todo filed for what remains.
 
 ## Recovery
