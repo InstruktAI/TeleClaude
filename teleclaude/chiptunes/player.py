@@ -15,13 +15,28 @@ from teleclaude.chiptunes.sid_cpu import SIDDriver
 from teleclaude.chiptunes.sid_parser import SIDHeader, is_pal, parse_sid_file
 from teleclaude.chiptunes.sid_renderer import SIDRenderer
 
+_SOUNDDEVICE_UNAVAILABLE_TEMPLATE = (
+    "sounddevice is required for audio playback but could not be loaded ({reason}). "
+    "Install it with: pip install 'teleclaude[chiptunes]'. "
+    "On Linux it also needs the PortAudio library and a reachable audio server."
+)
+_sounddevice_unavailable_reason = ""
+
+# Importing sounddevice does more than load a Python package: it discovers the PortAudio native
+# library and initializes PortAudio. A host without the library fails with OSError, and a host whose
+# audio backend cannot initialize (for example no reachable PulseAudio server on a hosted Linux
+# runner) fails with sounddevice.PortAudioError, which cannot be named here because it is defined in
+# the module whose import failed. Audio is an optional capability, so every one of these failures
+# records audio as unavailable instead of aborting the load of this module and of the worker that
+# imports it; play() reports the retained reason.
 try:
     import sounddevice as sd
 
     _sounddevice_available = True
-except ImportError:
+except Exception as exc:
     _sounddevice_available = False
     sd = None
+    _sounddevice_unavailable_reason = f"{type(exc).__name__}: {exc}"
 
 logger = get_logger(__name__)
 
@@ -135,9 +150,7 @@ class ChiptunesPlayer:
     ) -> None:
         """Parse and start playing a SID file in the background."""
         if not _sounddevice_available:
-            raise ImportError(
-                "sounddevice is required for audio playback. Install it with: pip install 'teleclaude[chiptunes]'"
-            )
+            raise ImportError(_SOUNDDEVICE_UNAVAILABLE_TEMPLATE.format(reason=_sounddevice_unavailable_reason))
         self.stop()
 
         self._last_track_end_reason = None
