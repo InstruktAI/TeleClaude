@@ -222,6 +222,25 @@ And the refusal is the same whether or not that person is declared
 
 #### UC-3PR19:
 
+<!-- planned:target-view-hides-companion-on-pending-parent -->
+
+#### UC-3PR20: Phase-2 exposes a brand-new pending snippet only to a slug that delivers or reworks it
+
+```gherkin
+Given a brand-new snippet whose delivered_by names <owner-slug>
+And <rework-slug> carries a companion or planned material for that snippet
+When the caller runs telec docs get <id> without --target
+Then the pending snippet body is withheld
+When the caller runs telec docs get <id> --target <unrelated-slug>
+Then the pending snippet body is withheld
+When the caller runs telec docs get <id> --target <owner-slug>
+Then the owner's pending body is returned without any other slug's pending material
+When the caller runs telec docs get <id> --target <rework-slug>
+Then that slug's pending view is returned: its companion, or the pending body with its own planned material applied
+```
+
+<!-- /planned:target-view-hides-companion-on-pending-parent -->
+
 ### Cross-context references
 
 - **identity** — the resolved caller: a person with their platform role and the
