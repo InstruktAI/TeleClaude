@@ -1093,6 +1093,11 @@ def _unregistered_domain_refusals(unknown_ids: Iterable[str]) -> list[str]:
     return [str(unregistered_referent(ReferentKind.DOMAIN, domain)) for domain in sorted(domains)]
 
 
+def _target_lens_reaches(snippet: SnippetMeta, target_slug: str | None) -> bool:
+    """Whether a target slug's lens reaches the snippet: it delivers the snippet or reworks it."""
+    return target_slug in snippet.delivered_by or target_slug in snippet.superseded_by
+
+
 def _read_selected_snippet_body(
     snippet: SnippetMeta,
     *,
@@ -1101,7 +1106,7 @@ def _read_selected_snippet_body(
     global_snippets_root: Path,
     target_slug: str | None,
 ) -> str | None:
-    if snippet.delivered_by and target_slug not in snippet.delivered_by:
+    if snippet.delivered_by and not _target_lens_reaches(snippet, target_slug):
         return None
     try:
         source_path = _target_body_source_path(snippet.path, target_slug)
@@ -1682,15 +1687,12 @@ def _apply_content_selection_filters(
 
     if not snippet_ids and target_slug is not None:
         # Index --target: focus on one todo's pending work — both the not-yet-live
-        # NEW snippets it delivers and the LIVE snippets it reworks via planned
-        # sections / companions. Without a target the listing shows everything,
-        # flagging pending work inline via the (delivered by:) / (superseded by:)
-        # suffixes rather than hiding it.
-        snippets = [
-            snippet
-            for snippet in snippets
-            if target_slug in snippet.delivered_by or target_slug in snippet.superseded_by
-        ]
+        # NEW snippets it delivers and the snippets it reworks via planned
+        # sections / companions, live or still pending under another todo (the
+        # lens predicate shared with the body reader). Without a target the
+        # listing shows everything, flagging pending work inline via the
+        # (delivered by:) / (superseded by:) suffixes rather than hiding it.
+        snippets = [snippet for snippet in snippets if _target_lens_reaches(snippet, target_slug)]
         third_party_entries = []
 
     return snippets, third_party_entries
