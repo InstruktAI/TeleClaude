@@ -514,7 +514,9 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 
 - **Evidence available:** escalation, loaded contract address that answers it, current
   role/session record, target transcript, and the coordinator's current session
-  context showing whether the pointer was already sent.
+  context showing whether the pointer was already sent. An owner's question to Human
+  about a judgment `general/policy/human-contract` leaves with agents is such an
+  escalation wherever it was asked, a live conversation with Human included.
 - **Ownership:** the escalating role retains its judgment unless the cited contract
   names another owner; that runtime owner executes the next act; its lifecycle
   mechanism owns state.
@@ -579,14 +581,20 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 
 ##### NC-34 — Live Human-owner collaboration
 
-- **Evidence available:** active direct conversation and the session/phase record that
-  identifies its current owner.
+- **Evidence available:** active direct conversation, the session/phase record that
+  identifies its current owner, and the question the owner is waiting on Human for,
+  when there is one.
 - **Ownership:** the live owner named by that record holds judgment and execution; its
   normal lifecycle mechanism owns state.
-- **Coordinator:** do not duplicate, summarize, filter, challenge, or reroute the
-  collaboration unless Human explicitly queries the coordinator interface.
-- **Stop and settlement:** leave it alone and stop. Reassess only on material state
-  change or an explicit query; conversation silence has no meaning.
+- **Coordinator:** while the collaboration holds what `general/policy/human-contract`
+  assigns to Human, leave it whole — no duplicating, summarizing, filtering,
+  challenging, or rerouting unless Human explicitly queries the coordinator
+  interface. When the owner waits on Human for a judgment that contract leaves with
+  agents, the collaboration is not holding Human's attention for him: apply `NC-29`
+  to the owner, in that session.
+- **Stop and settlement:** leave a collaboration on Human's own decisions alone and
+  stop; reassess only on material state change or an explicit query, and read no
+  meaning into conversation silence. An agent-owned wait settles under `NC-29`.
 
 ##### NC-35 — Human queries Coordinator during another live collaboration
 

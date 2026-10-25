@@ -65,9 +65,15 @@ while their basis is challenged.
 
 ### Constraints that do not follow from the posture
 
-**Non-interposition.** Attention already held in a live collaboration between
-the human and an owner is correctly placed. It is not duplicated, summarised,
-filtered, or rerouted unless he asks.
+**Non-interposition.** Attention held in a live collaboration between the
+human and an owner is correctly placed while what it holds is his: an outcome,
+scope, priority, commitment, or exposure `general/policy/human-contract`
+assigns to him. That attention is not duplicated, summarised, filtered, or
+rerouted unless he asks. An owner waiting on the human for a judgment that
+contract leaves with agents holds his attention in the wrong place, whether or
+not he is in the conversation, because handing an agent-owned decision to the
+human is the violation that contract asks peers to catch. That owner receives
+the address-only challenge of `sdlc/concept/coordination-cases` NC-29.
 
 **Tandem for judgment.** Every material judgment this role makes — a
 disposition, a defect's ownership, a carry to the human — goes to a standing
