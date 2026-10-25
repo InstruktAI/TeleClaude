@@ -67,7 +67,7 @@ _CONFIG_FILENAME = "config.yml"
 _OWNER_ESTABLISHMENT_MODULE = "teleclaude.entrypoints.macos_setup"
 _CLI_EXECUTABLE = Path("bin") / "telec"
 _CLI_HELP_ARGUMENTS = ("--help",)
-_CLI_CODE_HELP_ARGUMENTS = ("code", "--help")
+_CLI_REPO_HELP_ARGUMENTS = ("repo", "--help")
 _CLI_VERSION_ARGUMENTS = ("version",)
 _PACKAGE_IMPORT_ISOLATED_OPTION = "-P"
 _PACKAGE_IMPORT_SCRIPT = Path("tools") / "ci" / "import_package_modules.py"
@@ -1538,7 +1538,7 @@ def _cold_entrypoint_scenario(
     """Exercise the reviewed cold public entry points from one prospective source tree."""
     command_rows = (
         ((str(_CLI_EXECUTABLE), *_CLI_HELP_ARGUMENTS), child_environment),
-        ((str(_CLI_EXECUTABLE), *_CLI_CODE_HELP_ARGUMENTS), child_environment),
+        ((str(_CLI_EXECUTABLE), *_CLI_REPO_HELP_ARGUMENTS), child_environment),
         ((str(_CLI_EXECUTABLE), *_CLI_VERSION_ARGUMENTS), child_environment),
     )
     evidence: list[CommandEvidence] = []
