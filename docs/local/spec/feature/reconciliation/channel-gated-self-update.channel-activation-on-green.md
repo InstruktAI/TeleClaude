@@ -26,7 +26,7 @@ An installation follows one source and one channel. Both are the installation's 
 
 ### Breaking releases
 
-A published release that crosses the active release's compatibility series never converges automatically. Reconciliation hands it to the installation's integrator, which carries out the release's upgrade instructions and then installs it through the same install act; a person is involved only for what only a person can supply (`general/policy/human-contract`). The installation keeps its active release until that install completes. Every installation has an integrator for this, including one with no development checkout beside it.
+A published release that crosses the active release's compatibility series never converges automatically. Reconciliation hands it to the installation's integrator, which carries out the release's upgrade instructions and then installs it through the same install act (`sdlc/procedure/maintenance/breaking-release-upgrade`); a person is involved only for what only a person can supply (`general/policy/human-contract`). The installation keeps its active release until that install completes. Every installation has an integrator for this, including one with no development checkout beside it.
 
 ### Installing the selected revision
 

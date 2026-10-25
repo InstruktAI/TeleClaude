@@ -265,6 +265,45 @@ rollback` invokes rollback; `telec app status` reads the install record. The
 
 <!-- /planned:platform-installation -->
 
+<!-- planned:channel-activation-on-green -->
+
+#### Channel convergence
+
+- **State.** Per installation: the followed source — the remote of its kept
+  repository — and the channel configuration declares; the newest admitted
+  edge revision not yet installed; the release held for the integrator, when a
+  release beyond the active release's compatibility series has been published;
+  and the most recent convergence decision with its reason. The compatibility
+  series is derived from the active release's version — the minor line while
+  the major is zero, the major line from 1.0 onward — and is never declared.
+- **Decision boundary (core).** One reconciliation core operation decides, for
+  each signal about the followed source, whether and to what the installation
+  converges. Signals from any other repository are outside its domain. On edge
+  it admits a main revision announced green
+  (`local/projects/teleclaude/spec/feature/integration/ci-run-outcomes`) whose
+  history contains the active release's source, and keeps only the newest such
+  revision, so a convergence always installs the newest green revision known
+  when it starts. On stable it admits a published release within the derived
+  series; a later release beyond it is never installed by this operation: the
+  operation holds the newest such release, records why, and emits the
+  held-release event once per release. The admitted target is installed through
+  the install operation; installing a revision at or beyond the held release
+  clears the hold.
+- **Signals.** Relayed green announcements and published releases of the
+  source reach the operation as platform events. On stable, the operation also
+  reads the source's published releases on a fixed interval through
+  `integration`'s GitHub client, so an installation outside the cluster whose
+  ingress receives the source's webhooks, or one that was not running when a
+  release was relayed, still converges. A pushed revision is no signal on any
+  channel.
+- **Consumers.** `telec app status` reads the convergence decision and any held
+  release. The held-release event activates
+  `sdlc/procedure/maintenance/breaking-release-upgrade` on the installation's
+  computer; that procedure installs the held release through `telec app
+install`.
+
+<!-- /planned:channel-activation-on-green -->
+
 #### Use cases (index of feature specs)
 
 - **project-plumbing-convergence** — `docs/local/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a root to its declaration: a project's installed git hooks, docs filter driver and help desk, and the masters and help desks the platform home seeds
@@ -287,6 +326,14 @@ rollback` invokes rollback; `telec app status` reads the install record. The
 
 Node presence events state the node as subject, and schema-governance events the
 schema proposal they concern; neither states an origin.
+
+<!-- planned:channel-activation-on-green -->
+
+The held-release event states as subject the release it holds — the followed
+source and the release's version — and states no origin: the installation's
+convergence happens in no registered project, person, or company.
+
+<!-- /planned:channel-activation-on-green -->
 
 ## See Also
 
