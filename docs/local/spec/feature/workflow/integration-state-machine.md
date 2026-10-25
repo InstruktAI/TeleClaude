@@ -550,7 +550,17 @@ its local lifecycle evidence and owned documentation reconciled under
 - The integration worktree prepares and publishes the candidate commit. That confirmed push is intermediate evidence and does not release dependencies. Repository-root main owns the sole documentation fold, the final content gate, the final push, and the recorded delivery SHA.
 - Repository-root main may contain committed work ahead of the intermediate candidate push. That committed state remains part of finalization. Any graph, conflict, or dirty-path condition that prevents safe synchronization or reconciliation blocks delivery and leaves uncommitted work untouched.
 - When the idle step is called with an explicit slug, only that slug is verified as ready; the FIFO scan is bypassed but ancestry and remote-branch existence checks still apply.
+
+<!-- planned-change:integrator-wakes-on-events -->
+
 - The normal enqueue path is event-triggered: the phase-advanced event (with `phase=finalize_ready` in its data) invokes the integration trigger cartridge, which spawns the singleton integrator only when no integrator session is open. Open integrators are left undisturbed and consume queued candidates on their next state-machine pass. The scanner remains the recovery path for missed events.
+
+<!-- change:integrator-wakes-on-events -->
+
+- The normal enqueue path is event-triggered: the finalize-ready event activates the integration procedure's standing agent for the todo's project, starting one when none stands and waking it otherwise; it consumes queued candidates on its next state-machine pass. The scanner remains the recovery path for missed events.
+
+<!-- /planned-change:integrator-wakes-on-events -->
+
 - Legacy entries are normalized so older persisted `finalize.status="handed_off"` reads back as `finalize.status="ready"` and is picked up by the same rule.
 
 - The loop limit exists so multi-phase advances (e.g., COMMITTED → DELIVERY_BOOKKEEPING → PUSH_SUCCEEDED → CLEANUP → CANDIDATE_DELIVERED → IDLE → next candidate) can complete in one call without forcing the agent back through `telec todo integrate` repeatedly.

@@ -135,7 +135,8 @@ contract governs only what happens when maintenance runs.
 
 - **Settlement announcement.** A commit activation of the canonical checkout
   is settled once every action it owes has a terminal outcome: success, or a
-  failure that stays recorded. Settling announces the activation's state as an
+  failure that stays recorded; an activation that owes no action settles when
+  it is registered. Settling announces the activation's state as an
   event of the `teleclaude.maintenance.activation` family in the checkout's
   project, with the activated tip as its subject: `failed` when any owed
   action failed terminally, otherwise `succeeded`, stating whether a
@@ -268,6 +269,8 @@ contract governs only what happens when maintenance runs.
   reason and its time are also recorded where `make status` reports them until
   a later window verifies a start.
 
+<!-- planned-change:integrator-wakes-on-events -->
+
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. The commit boundary
   records a checkout-scoped integrator judgment for every qualifying code
@@ -287,6 +290,29 @@ contract governs only what happens when maintenance runs.
   the relevant runtime evidence after owed actions complete, and owns bounded
   recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
+
+<!-- change:integrator-wakes-on-events -->
+
+- **Observation.** Every attempt and terminal outcome retains the immutable
+  activation and action identity in structured records. The commit boundary
+  records a checkout-scoped integrator judgment for every qualifying code
+  activation after its owed action records are durable, including a direct main
+  commit with no todo candidate. The judgment retains the activation time and
+  becomes eligible only after all owed actions succeed, the restart action
+  succeeding only on its window's verified start; whether the runtime then
+  behaves correctly belongs to the integrator's log judgment, not to the
+  action. The drain records the latest maintenance-ready time
+  on that marker; if interrupted before recording readiness, the judgment stays
+  outstanding for integrator recovery even when action files are absent. A log
+  read can discharge it only after that ready time
+  with a window covering the activation through completed maintenance. Operational
+  anomaly detection observes failed or stale actions. A regular committer has no
+  post-commit maintenance log judgment. The standing integrator is woken by the
+  activation's settlement announcement, judges the relevant runtime evidence
+  after owed actions complete, and owns bounded recovery. The log bug hunter remains a later anomaly backstop. Maintenance
+  completion sends no notification to the committer.
+
+<!-- /planned-change:integrator-wakes-on-events -->
 
 ### Use cases
 
@@ -447,6 +473,8 @@ And later anomalies remain discoverable by the log bug hunter
 But maintenance completion sends no prompt to the committer
 ```
 
+<!-- planned-change:integrator-wakes-on-events -->
+
 #### UC-PCM16: Direct main commits enter the integrator watch
 
 ```gherkin
@@ -457,6 +485,21 @@ Then it discovers the retained judgment for that commit even if maintenance has 
 And judges the changed runtime after the owed actions reach terminal success
 But the original committer receives no maintenance log-check obligation
 ```
+
+<!-- change:integrator-wakes-on-events -->
+
+#### UC-PCM16: Direct main commits reach the integrator through their settlement
+
+```gherkin
+Given a canonical-main commit was made without a todo candidate
+And its changed paths owe maintenance
+When its activation settles and the settlement announcement reaches the standing integrator
+Then it discovers the retained judgment for that commit even if maintenance has already completed
+And judges the changed runtime after the owed actions reach terminal success
+But the original committer receives no maintenance log-check obligation
+```
+
+<!-- /planned-change:integrator-wakes-on-events -->
 
 #### UC-PCM17: Early or narrow log evidence does not close integrator judgment
 
