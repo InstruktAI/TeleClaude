@@ -43,11 +43,9 @@ no further change.
 <!-- planned:removal-abandons-sole-pending-snippets -->
 
 Abandonment removes a pending document whose `delivered_by` names the abandoned
-slug and no other, because that whole document is material the abandoned slug
-alone owns. A pending document that also names another slug only loses the
-abandoned slug's membership and stays pending. A whole pending document that
-also carries another slug's pending markers or companion faults instead of
-being removed, as a retirement does.
+slug and no other, with everything it contains. A pending document that also
+names another slug only loses the abandoned slug's membership and stays
+pending.
 <!-- /planned:removal-abandons-sole-pending-snippets -->
 
 For integrated candidates, repository-root main is the sole documentation
