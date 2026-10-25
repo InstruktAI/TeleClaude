@@ -165,8 +165,12 @@ implementation remain the current appliance contract.
     message in that place whose handling has reached accepted input. It never
     passes a message whose handling has not. It is durable operational state,
     kept with the adapter's reflection state in the main runtime database.
-    Recovery reads only messages after the cursor, and a place without a cursor
-    has nothing to recover until its first message is accepted.
+    Every eligible place carries a cursor from the moment it becomes eligible.
+    A newly bound place starts at its newest message at binding. A place
+    already bound when the capability first runs is seeded once by the first
+    recovery pass, from the newest retained accepted input for that place
+    when one exists, and otherwise from its newest message. Recovery reads only
+    messages after the cursor.
   - **Ordering.** Recovered messages enter the live inbound path in posting
     order before that place's live input is classified.
   - **Recovered-input facts.** The normalized input carries the message's

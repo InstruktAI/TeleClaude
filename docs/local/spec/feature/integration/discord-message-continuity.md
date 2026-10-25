@@ -81,5 +81,8 @@ Scenario Outline: A message posted while the daemon restarts
   session. A message posted there while the daemon is away is not delivered.
 - Recovery reads Discord's copy. A message deleted from Discord before the
   daemon is back is not recovered.
-- Recovery in a place starts from the first message the daemon accepted there.
-  A place where no message has been accepted yet has nothing to recover.
+- Recovery cannot reach a message posted before TeleClaude first tracked its
+  place. Tracking starts when a place becomes bound to a session, or, for a
+  place already bound when this capability first runs, at that first run. From
+  then on every message posted there is covered, whether or not any message has
+  been accepted there since.
