@@ -156,9 +156,9 @@ Some conversation text is recovered by its channel after TeleClaude was
 offline, and carries the time it was originally posted. It reaches the agent
 followed by a platform notification that it was posted at that time while
 TeleClaude was offline. The text and its notification are accepted together
-as one conversation input, which keeps conversation authority. The accepted
-record, the delivered text and the transcript entry it is correlated with are
-the same text.
+as one conversation input, which keeps conversation authority. That input is
+delivered, marked and correlated with its transcript entry exactly as any
+other accepted conversation input is.
 
 <!-- /planned:discord-inbound-dropped-before-provisioning -->
 
