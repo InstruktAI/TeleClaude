@@ -37,8 +37,9 @@ state every installed release reads, and no release carries any of it.
 
 ### Releases
 
-- **A release** is a clean checkout of exactly one revision of the repository
-  it was installed from, with its own environment built in place. It depends
+- **A release** is a git worktree, at exactly one revision, of the one
+  repository the installation keeps — a clone of the repository it was
+  installed from — with its own environment built in place. It depends
   on no project checkout: the live platform keeps running, restarting,
   installing and rolling back when the project it came from is absent.
 - **The active release** is the one the services and the published `telec` run
