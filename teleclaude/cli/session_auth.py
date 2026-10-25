@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import Protocol
 
 import psutil
+from instrukt_ai_logging import get_logger
 
+from teleclaude.agent_registry import native_session_id_env_names
 from teleclaude.caller_identity import (
     CliCaller,
     NoIdentityCliCaller,
@@ -44,14 +46,21 @@ from teleclaude.constants import (
     MarkerState,
 )
 from teleclaude.core.roles import Capability, Role, UnknownRole, allows, is_worker_role, resolve_session_role
-from teleclaude.core.session_identity_facts import SessionIdentityFacts, read_session_identity_facts
+from teleclaude.core.session_identity_facts import (
+    SessionIdentityFacts,
+    read_live_session_id_by_native,
+    read_session_identity_facts,
+)
 from teleclaude.paths import MAIN_DB_PATH, invocation_cwd
 from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
 from teleclaude.session_identity import inspect_session_identity_marker
 from teleclaude.types.creation_record import EntryPoint
 
+logger = get_logger(__name__)
+
 SESSION_AUTH_DIR = _PATHS_SESSION_AUTH_DIR
 TUI_CARRIED_IDENTITY_ENV_KEY = "TELEC_TUI_IDENTITY"
+_OUTSIDE_AGENT_RESOLVED_EVENT = "outside_agent_resolved_to_headless_session"
 _NO_TERMINAL_ERROR = "No terminal detected: telec auth login must run from an interactive terminal."
 _DEVICE_ALLOCATION_KEY = "device_allocation"
 _DARWIN_PLATFORM = "darwin"
@@ -332,6 +341,9 @@ def resolve_cli_identity() -> ResolvedCliIdentity:
 
     marker_state, session_id = inspect_session_identity_marker()
     if marker_state is MarkerState.ABSENT:
+        outside_agent_session_id = _outside_agent_session_id()
+        if outside_agent_session_id is not None:
+            return _resolve_session_identity(outside_agent_session_id)
         email = read_current_session_email()
         person = person_entry_for_email(email) if email else None
         if person is None:
@@ -352,6 +364,33 @@ def resolve_cli_identity() -> ResolvedCliIdentity:
     if marker_state is MarkerState.INVALID:
         return _no_identity(True)
 
+    return _resolve_session_identity(session_id)
+
+
+def _outside_agent_session_id() -> str | None:
+    """Return the live session an agent running outside the platform names through its runtime.
+
+    A runtime exports its own native session id to the tool processes it spawns,
+    and the agent's first hook already recorded that id on a session. A call
+    carrying no session marker and not launched from the TUI resolves to that
+    session when one is live; any other call is a person's terminal and resolves
+    from the terminal login.
+    """
+    if os.environ.get(TUI_SESSION_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+        return None
+    for env_name in native_session_id_env_names():
+        native_session_id = os.environ.get(env_name)  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+        if native_session_id is None or not native_session_id.strip():
+            continue
+        live_session_id = read_live_session_id_by_native(str(MAIN_DB_PATH), native_session_id.strip())
+        if live_session_id is not None:
+            logger.info(_OUTSIDE_AGENT_RESOLVED_EVENT, session_id=live_session_id, env_name=env_name)
+            return live_session_id
+    return None
+
+
+def _resolve_session_identity(session_id: str | None) -> ResolvedCliIdentity:
+    """Resolve the identity of an admitted session, or an unresolved in-session caller."""
     facts = _admitted_session_record(_load_session_record(session_id))
     if facts is None:
         return _no_identity(True)

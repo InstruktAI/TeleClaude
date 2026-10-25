@@ -18,7 +18,11 @@ from teleclaude.api.agent_dispatch_errors import (
 )
 from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, carried_caller
 from teleclaude.api.run_session_refusals import RunSessionRefusal
-from teleclaude.api.session_route_helpers import build_metadata, dispatch_caller_command
+from teleclaude.api.session_route_helpers import (
+    build_metadata,
+    dispatch_caller_command,
+    resolve_caller_event_identity,
+)
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.api_session_actions_models import RunPersonalAssistantRequest
 from teleclaude.caller_identity import PersonCliCaller
@@ -105,12 +109,15 @@ async def run_personal_assistant(
     company = caller_session.company if caller_session is not None else None
     opening_input = request.brief
     metadata = build_metadata(project_path=str(workspace), company=company, human_email=caller.email)
-    metadata.launch_intent = SessionLaunchIntent(
+    launch_intent = SessionLaunchIntent(
         kind=SessionLaunchKind.AGENT_THEN_MESSAGE if opening_input is not None else SessionLaunchKind.AGENT,
         thinking_mode=RunSessionThinkingMode.SLOW.value,
         message=opening_input,
         dispatch_mode=dispatch_mode,
     )
+    if opening_input is not None and identity.session_id:
+        launch_intent.caller_header = (await resolve_caller_event_identity(identity.session_id)).header
+    metadata.launch_intent = launch_intent
     cmd = CommandMapper.map_api_input(
         _CREATE_COMMAND,
         {

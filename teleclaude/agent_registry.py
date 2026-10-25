@@ -27,6 +27,8 @@ _FLAG_SEPARATOR: Final[str] = " "
 _GEMINI_SANDBOX_FLAG: Final[str] = "--sandbox"
 _CLAUDE_HELP_DESK_PROFILE_FLAGS: Final[str] = "--setting-sources '' --strict-mcp-config --tools Bash,Read,Glob,Grep"
 _CLAUDE_RESTRICTED_DESK_PROFILE_FLAGS: Final[str] = f"{_CLAUDE_HELP_DESK_PROFILE_FLAGS} --disable-slash-commands"
+_CLAUDE_NATIVE_SESSION_ID_ENV: Final[str] = "CLAUDE_CODE_SESSION_ID"
+_CODEX_NATIVE_SESSION_ID_ENV: Final[str] = "CODEX_THREAD_ID"
 _CLAUDE_DISCORD_AVATAR_URL: Final[str] = "https://avatars.githubusercontent.com/u/81847?v=4"
 _CODEX_DISCORD_AVATAR_URL: Final[str] = "https://avatars.githubusercontent.com/u/267193182?v=4"
 
@@ -274,6 +276,10 @@ class AgentDefinition:
     # Private base profile flags used only while the daemon submits the declared
     # compaction command. This is separate from operator-editable profiles.
     compaction_launch_flags: str | None = None
+    # The environment variable through which the runtime exports its own native
+    # session id to the tool processes it spawns. ``None`` means the runtime
+    # exports none, so a tool process cannot name the session it runs in.
+    native_session_id_env: str | None = None
 
 
 @dataclass(frozen=True)
@@ -398,6 +404,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             desk_confinement=DeskConfinement.VERIFIED,
             compaction_command=_COMPACT_COMMAND,
             compaction_launch_flags=_CLAUDE_HELP_DESK_PROFILE_FLAGS,
+            native_session_id_env=_CLAUDE_NATIVE_SESSION_ID_ENV,
         ),
         AgentName.CODEX: AgentDefinition(
             key=AgentName.CODEX,
@@ -494,6 +501,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             one_shot=OneShotSupport.SUPPORTED,
             desk_confinement=DeskConfinement.NONE,
             compaction_command=_COMPACT_COMMAND,
+            native_session_id_env=_CODEX_NATIVE_SESSION_ID_ENV,
         ),
         AgentName.GEMINI: AgentDefinition(
             key=AgentName.GEMINI,
@@ -695,6 +703,15 @@ def _validate_desk_confinement(definitions: dict[AgentName, AgentDefinition]) ->
 
 
 AGENT_REGISTRY: dict[AgentName, AgentDefinition] = _validate_desk_confinement(_build_definitions(RESTRICTED_MOUNT_DIRS))
+
+
+def native_session_id_env_names() -> tuple[str, ...]:
+    """Return the environment variables through which runtimes export their native session id."""
+    return tuple(
+        definition.native_session_id_env
+        for definition in AGENT_REGISTRY.values()
+        if definition.native_session_id_env is not None
+    )
 
 
 def registry_digest() -> str:

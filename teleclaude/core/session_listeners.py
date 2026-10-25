@@ -30,6 +30,7 @@ from teleclaude.core.tmux_bridge import session_exists
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
 
@@ -269,6 +270,25 @@ async def register_listener(
     return is_new
 
 
+async def is_local_caller_reachable(caller: "Session | None") -> bool:
+    """Whether a local caller session can hear a notification handed to control delivery.
+
+    The caller must exist, be non-terminal, and receive hook delivery, which is
+    how a pending payload reaches it at its next boundary. A caller that also
+    receives terminal input additionally needs its host pane alive, since an idle
+    wake is typed there.
+    """
+    if (
+        caller is None
+        or is_session_terminal(lifecycle_status=caller.lifecycle_status, closed_at=caller.closed_at)
+        or not caller.receives_hook_delivery
+    ):
+        return False
+    if caller.receives_terminal_input:
+        return await session_exists(caller.tmux_session_name, log_missing=False)
+    return True
+
+
 async def establish_supervision(
     target_session_id: str,
     caller_session_id: str,
@@ -285,12 +305,7 @@ async def establish_supervision(
         return False
     if caller_computer == config.computer.name:
         caller = await db.get_session(caller_session_id)
-        if (
-            caller is None
-            or is_session_terminal(lifecycle_status=caller.lifecycle_status, closed_at=caller.closed_at)
-            or not caller.tmux_session_name
-            or not await session_exists(caller.tmux_session_name, log_missing=False)
-        ):
+        if caller is None or not await is_local_caller_reachable(caller):
             return False
         caller_tmux_session = caller.tmux_session_name
         caller_computer = caller.computer_name
@@ -545,13 +560,7 @@ async def _notify_listeners(
         if notification_kind is NotificationKind.SILENCE_OBSERVATION:
             if listener.caller_session_id == target_session_id:
                 continue
-            caller = await db.get_session(listener.caller_session_id)
-            if (
-                caller is None
-                or is_session_terminal(lifecycle_status=caller.lifecycle_status, closed_at=caller.closed_at)
-                or not caller.tmux_session_name
-                or not await session_exists(caller.tmux_session_name, log_missing=False)
-            ):
+            if not await is_local_caller_reachable(await db.get_session(listener.caller_session_id)):
                 continue
         # Suppress delivery while the caller holds an active direct link with the
         # target. The active-conversation channel supersedes passive notification
@@ -925,11 +934,7 @@ async def deliver_remote_distress_notification(
     caller = await db.get_session(caller_session_id)
     if caller is None or caller_session_id == target_session_id:
         return False
-    if silence_observation is not None and (
-        is_session_terminal(lifecycle_status=caller.lifecycle_status, closed_at=caller.closed_at)
-        or not caller.tmux_session_name
-        or not await session_exists(caller.tmux_session_name, log_missing=False)
-    ):
+    if silence_observation is not None and not await is_local_caller_reachable(caller):
         return False
     message = _parent_attention_message(
         target_session_id,
