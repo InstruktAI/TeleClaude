@@ -224,7 +224,7 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
 
 ### Audit at preparation entry
 
-- **Audit before deriving from `input`.** At Step 0a, read the mechanically
+- **Audit before deriving from `input`.** At preparation entry, read the mechanically
   stamped creation record and the current `input`, establish the owning
   project, repeat the bounded creation check, apply the governing creation and
   process-authority contracts, and confirm that functionality work carries its
@@ -262,10 +262,13 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
 
 - **Perform the kind's deeper landscape judgment at its actual phase.** These
   checks are not equivalent and do not all occur at creation:
-  - `feature` — intake Step 1.6 reconciles the broader todo landscape.
-  - `bug` — diagnose Step 1 retires an exact-defect duplicate before
-    investigation; plan-draft Step 1c later handles broader overlap.
-  - `change` — plan-draft Step 1c handles broader overlap before planning.
+  - `feature` — intake reconciles the broader todo landscape before scoping
+    (`sdlc/procedure/lifecycle/prepare/intake`).
+  - `bug` — diagnose triage retires an exact-defect duplicate before
+    investigation (`sdlc/procedure/lifecycle/prepare/diagnose`); plan drafting
+    later handles broader overlap (`sdlc/procedure/lifecycle/prepare/plan-draft`).
+  - `change` — plan drafting handles broader overlap before planning
+    (`sdlc/procedure/lifecycle/prepare/plan-draft`).
   - `task` — only the bounded entry audit exists; deep task-landscape
     reconciliation is not implemented.
 
@@ -288,7 +291,7 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
 
 - **A flag binds only a live claimant.** An unclaimed todo has no message-based
   flag path and consumes no active preparation effort; its next claimant must
-  apply the Step 0a entry audit before deriving from it. Creation lineage is
+  apply the entry audit before deriving from it. Creation lineage is
   audit evidence, not a guarantee that the creator is still reachable.
 
 - **The claimant pauses preparation immediately.** It advances no phase,
@@ -425,9 +428,9 @@ still necessary when that feedback path is provably unavailable, but it carries
 one narrow fact: future dispatch is paused. It says nothing about the current
 agent's state, so recovery remains a separate owned act.
 
-The prior contract named violations but gave an observer no consequence to
-trigger. A live-claimant flag closes that gap at the moment cost is being
-incurred: preparation pauses, while the claimant retains judgment over whether
+An observer who can name a violation needs a consequence it can trigger, or
+naming it changes nothing. A live-claimant flag supplies one at the moment cost
+is being incurred: preparation pauses, while the claimant retains judgment over whether
 to defend, hold, stand down, or retract. Restricting the flagger to addresses
 and one follow-up prevents a challenge from becoming a parallel
 orchestration. Holding an unresolved defense where it arose, with only what
