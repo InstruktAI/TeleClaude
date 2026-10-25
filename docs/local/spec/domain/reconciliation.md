@@ -263,8 +263,9 @@ rollback` invokes rollback; `telec app status` reads the install record. The
 
 <!-- planned:installation-activation-inspection -->
 
-- **Assessment owed.** The install record also holds the installs whose
-  assessment is owed and the most recent recorded assessment. The install
+- **Assessment owed.** Beside the install record, the installation keeps the
+  assessment record: the installs whose assessment is owed and the most recent
+  recorded assessment. The install
   operation records an install as owed once it has stopped the daemon; the
   daemon emits the owed-assessment event at each start while an install is
   owed; `telec app assessed` discharges the installs up to the one it names.

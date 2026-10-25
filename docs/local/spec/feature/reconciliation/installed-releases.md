@@ -118,7 +118,7 @@ runs after it, whichever route reached the install and whether or not the
 machine performs any source integration. Initial provisioning, which stops
 nothing, owes one for the release its first start serves.
 
-- **Owed before the restart.** The install record names the install as owed
+- **Owed before the restart.** The installation records the install as owed
   once the daemon has stopped, before any migration starts, so the obligation
   outlives the restart and every outcome the install can end in. An install
   that stops nothing — refused, unchanged, or failed while preparing — owes
