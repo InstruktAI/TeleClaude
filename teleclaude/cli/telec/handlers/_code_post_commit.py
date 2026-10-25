@@ -6,6 +6,7 @@ import sys
 
 from teleclaude.core.integration.activation_registration import resolve_post_commit_activation_range
 from teleclaude.core.integration.post_commit_maintenance import (
+    OwedSetEmpty,
     OwedSetRecorded,
     record_activation,
     refusal_notice,
@@ -27,7 +28,8 @@ def handle_code_post_commit(args: list[str]) -> None:
     activation_range = resolve_post_commit_activation_range(checkout_root)
     maintenance_root = checkout_root if checkout_root != canonical_root else canonical_root
     recording = record_activation(maintenance_root, activation_range)
-    if isinstance(recording, OwedSetRecorded):
+    if isinstance(recording, OwedSetRecorded | OwedSetEmpty):
+        # An activation owing nothing has settled at registration; its announcement is delivered by the contender.
         start_drain_contender(canonical_root)
         return
     notice = refusal_notice(recording)

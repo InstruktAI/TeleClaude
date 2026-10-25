@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from math import isfinite
+from typing import Final
 
 from teleclaude.core.dates import ensure_utc
 
@@ -70,7 +72,19 @@ class PrescribedReminderSlug(StrEnum):
     COORDINATOR_SWEEP = "coordinator-sweep"
     INTEGRATOR_MAIN_CLEARANCE = "integrator-main-clearance"
     INTEGRATOR_CANDIDATE_SETTLEDNESS = "integrator-candidate-settledness"
-    INTEGRATOR_QUEUE_WATCH = "integrator-queue-watch"
+
+
+RETIRED_PRESCRIBED_SLUGS: Final[Mapping[str, str]] = {
+    "integrator-queue-watch": (
+        "integrator-queue-watch is retired: the integrator is woken by its procedure's event "
+        "subscriptions; continue with the procedure's next step."
+    ),
+}
+"""Prescribed slugs their owner retired, each with the successor sentence the owner states.
+
+A retired slug stays reserved: setting it is refused with its successor instead of being accepted as a generic
+reminder or meeting a shape refusal that names no way forward.
+"""
 
 
 @dataclass(frozen=True)

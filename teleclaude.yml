@@ -25,8 +25,9 @@ business:
 # platform-wide base supplies sync for docs and agents and install for setup.
 # A commit here activates nothing live: the platform runs from an installed
 # release, and a revision becomes the active release only through an install
-# (`telec app install`). The overlay therefore carries only the development
-# plumbing below.
+# (`telec app install`). A commit here therefore owes no runtime log judgment:
+# each install's runtime is assessed by the installation inspector, never by the
+# integrator. The overlay carries only the development plumbing below.
 checkpoint:
   maintenance:
     plumbing-convergence:
@@ -43,17 +44,7 @@ checkpoint:
         - '{interpreter}'
         - -m
         - teleclaude.entrypoints.docs_layout_convergence
-  integrator_judgment:
-    - log-check
   bindings:
-    # The integrator checks logs for all daemon source. There is deliberately no
-    # checkpoint `code` overlay: it would bind `test`, which this project's test
-    # moratorium forbids. A generic binding keeps log-check without test.
-    - scope:
-        include:
-          - teleclaude/**/*.py
-      actions:
-        - log-check
     - scope:
         include:
           - templates/quality/githooks/**

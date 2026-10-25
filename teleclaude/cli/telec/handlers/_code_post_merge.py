@@ -6,6 +6,7 @@ import sys
 
 from teleclaude.core.integration.activation_registration import resolve_post_merge_activation_range
 from teleclaude.core.integration.post_commit_maintenance import (
+    OwedSetEmpty,
     OwedSetRecorded,
     record_activation,
     refusal_notice,
@@ -31,6 +32,10 @@ def handle_code_post_merge(args: list[str]) -> None:
         canonical_root = resolve_project_root(checkout_root)
         if start_drain_contender(canonical_root):
             print(_MAINTENANCE_STARTED_NOTICE, file=sys.stderr)
+        return
+    if isinstance(recording, OwedSetEmpty):
+        # An activation owing nothing has settled at registration; its announcement is delivered by the contender.
+        start_drain_contender(resolve_project_root(checkout_root))
         return
     notice = refusal_notice(recording)
     if notice is not None:

@@ -1,33 +1,14 @@
 """Bridge between orchestration lifecycle and the event platform.
 
 Provides typed emission helpers that construct typed events and publish
-them through the configured EventProducer. Also provides the integrator
-session spawn helper used by the integration trigger consumer.
+them through the configured EventProducer.
 """
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import TypedDict
 
-from instrukt_ai_logging import get_logger
-
-from teleclaude.config.machine import config
-from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.db import db
 from teleclaude.core.integration.checkpoint import ParkedCandidate
-from teleclaude.core.models import (
-    AgentDispatchMode,
-    SessionEntryPoint,
-    SessionLaunchIntent,
-    SessionLaunchKind,
-)
-from teleclaude.core.next_machine.lanes import LifecycleProcedure
-from teleclaude.core.origins import InputOrigin
-from teleclaude.core.procedure_entry import EntryContext, EntryRefusal, resolve_entry
-from teleclaude.core.roles import RoleName
 from teleclaude.events.envelope import EventHome, EventLevel, EventVisibility
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import SessionRef, TodoRef
@@ -48,9 +29,6 @@ from teleclaude.events.schemas.sdlc import (
 )
 from teleclaude.events.wire import LegacyFacts
 from teleclaude.session_identity import get_session_id
-from teleclaude.types.commands import CreateSessionCommand
-
-logger = get_logger(__name__)
 
 _SDLC_DOMAIN = "sdlc"
 _UNKNOWN_SESSION = "unknown"
@@ -243,97 +221,3 @@ async def emit_integration_drain_completed(
             description=_DRAIN_COMPLETED_DESCRIPTION.format(delivered_count=delivered_count, parked_count=len(parked)),
         ),
     )
-
-
-# ---------------------------------------------------------------------------
-class _SpawnResult(TypedDict, total=False):
-    status: str
-    slug: str
-
-
-# Integrator session spawn/wake
-# ---------------------------------------------------------------------------
-
-
-async def spawn_integrator_session(
-    slug: str,
-    branch: str,
-    sha: str,
-    caller_session_id: str,
-    project_path: str,
-) -> _SpawnResult | None:
-    """Spawn the per-project singleton integrator session when none is already open.
-
-    Checks if an integrator session is already running for this ``project_path``
-    via the DB directly. The singleton is scoped per project: an integrator
-    running in another project never blocks a spawn here.
-    If one is already running for this project, leaves it undisturbed; the
-    integrator state machine drains queued candidates on its next pass.
-    If none is running for this project, spawns a fresh integrator via the
-    command service.
-
-    Returns session info dict on spawn, or None if an integrator is already open
-    for this project.
-    Raises on spawn failure — the caller (the integration trigger consumer) is responsible for handling.
-    """
-    try:
-        sessions = await db.list_sessions()
-    except Exception:
-        logger.exception("Could not check for running integrator sessions for %s; refusing duplicate spawn", slug)
-        raise
-
-    integrator_session = next(
-        (s for s in sessions if s.role == RoleName.INTEGRATOR and s.project_path == project_path),
-        None,
-    )
-    if integrator_session:
-        logger.debug(
-            "integration.candidate.spawner_skipped_existing_integrator",
-            slug=slug,
-            branch=branch,
-            sha=sha[:8],
-            session_id=integrator_session.session_id,
-        )
-        return None
-
-    # Caller identity is only required when spawning a new integrator session
-    if not caller_session_id or caller_session_id == "unknown":
-        raise ValueError(f"Cannot spawn integrator for {slug}: missing caller session identity")
-    if not project_path:
-        raise ValueError(f"Cannot spawn integrator for {slug}: missing project_path")
-
-    session_id = str(uuid.uuid4())
-    try:
-        resolved = resolve_entry(
-            procedure_token=LifecycleProcedure.INTEGRATE.value,
-            arguments="",
-            project_root=Path(project_path),
-            caller=None,
-            entry=EntryContext(),
-            caller_mode=None,
-        )
-    except EntryRefusal as exc:
-        raise ValueError(f"Cannot spawn integrator for {slug}: {exc.detail}") from exc
-    cmd = CreateSessionCommand(
-        session_id=session_id,
-        project_path=project_path,
-        origin=InputOrigin.TERMINAL.value,
-        command=resolved.procedure_id,
-        initial_input=resolved.procedure_id,
-        launch_intent=SessionLaunchIntent(
-            kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-            thinking_mode=resolved.thinking_mode.value,
-            message=resolved.loader,
-            dispatch_mode=AgentDispatchMode.AUTOMATIC,
-            candidate_order=resolved.agents,
-            invocation=resolved.record,
-        ),
-        role=resolved.role.name.value,
-        entry_point=SessionEntryPoint.INTEGRATION,
-        skip_listener_registration=True,
-        initiator_session_id=caller_session_id,
-        initiator_computer=config.computer.name,
-    )
-    await get_command_service().create_session(cmd)
-    logger.info("Spawned integrator session for %s (caller=%s)", slug, caller_session_id)
-    return _SpawnResult(status="spawned", slug=slug)

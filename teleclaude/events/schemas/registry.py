@@ -9,6 +9,7 @@ from teleclaude.events.catalog import DeclaredEvent
 _DECLARATION_MODULES = (
     "teleclaude.events.schemas.system",
     "teleclaude.events.schemas.jobs",
+    "teleclaude.events.schemas.maintenance",
     "teleclaude.events.schemas.sdlc",
     "teleclaude.events.schemas.node",
     "teleclaude.events.schemas.deployment",

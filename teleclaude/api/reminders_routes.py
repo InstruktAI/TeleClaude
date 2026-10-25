@@ -27,6 +27,7 @@ from teleclaude.core.reminders import (
     ReminderSetRequest,
     accepted_prescribed_parameters,
 )
+from teleclaude.core.reminders.models import RETIRED_PRESCRIBED_SLUGS
 from teleclaude.core.reminders.presentation import format_mutation_acknowledgement
 
 if TYPE_CHECKING:
@@ -40,6 +41,8 @@ _reminder_service: ReminderService | None = None
 _DURATION_PART = re.compile(r"(?P<value>\d+(?:\.\d+)?)(?P<unit>[smhd])")
 _DURATION_MULTIPLIERS = {"s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0}
 _API_OUTCOME_EVENT = "reminder_api_outcome"
+_RETIRED_SLUG_REASON = "retired_profile"
+_REJECTED_OUTCOME = "rejected"
 _SERVICE_UNAVAILABLE = "reminder service is not configured"
 _SESSION_REQUIRED = "reminder commands require an authenticated caller session"
 _GENERIC_SHAPE_ERROR = "generic reminders require exactly one of after or at and an intent"
@@ -208,6 +211,12 @@ async def set_reminder(
 ) -> ReminderMutationResponseDTO:
     """Arm or replace a reminder owned by the authenticated session."""
     session_id = _session_id(identity)
+    successor = RETIRED_PRESCRIBED_SLUGS.get(body.slug)
+    if successor is not None:
+        _observe_outcome(
+            request, outcome=_REJECTED_OUTCOME, identity=identity, slug=body.slug, reason=_RETIRED_SLUG_REASON
+        )
+        raise HTTPException(status_code=422, detail=successor)
     try:
         prescribed = PrescribedReminderSlug(body.slug)
     except ValueError:

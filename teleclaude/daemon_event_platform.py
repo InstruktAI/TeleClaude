@@ -23,7 +23,6 @@ from teleclaude.core.integration.ci_run_outcomes import build_ci_run_outcomes_co
 from teleclaude.core.integration.event_bound_maintenance import build_event_bound_maintenance_consumer
 from teleclaude.core.integration.incident_alerts import build_incident_alerts_consumer
 from teleclaude.core.integration.subscribed_domain_events import build_subscribed_domain_events_consumer
-from teleclaude.core.integration.trigger_consumer import build_integration_trigger_consumer
 from teleclaude.core.internal_event_envelope import INTERNAL_EVENT_STREAM
 from teleclaude.core.next_machine.failed_check_bugs import build_failed_check_bugs_consumer
 from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router_consumer
@@ -230,19 +229,12 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         logger.info("EventProducer configured")
         return event_producer
 
-    def _build_integration_trigger(self) -> Consumer:
-        """Create the integration trigger consumer."""
-        from teleclaude.core.integration_bridge import spawn_integrator_session  # startup boundary
-
-        return build_integration_trigger_consumer(spawn_integrator_session)
-
     def _event_consumers(self) -> list[Consumer]:
         """The platform's own reactions to events, each an independent consumer on this computer."""
         assert self._event_db is not None  # initialized by _start_event_platform_prepare
         assert self._event_producer is not None  # configured by _start_event_platform_prepare
         assert self._event_catalog is not None  # built by _start_event_platform_prepare
         return [
-            self._build_integration_trigger(),
             build_lifecycle_router_consumer(),
             build_mirror_closure_consumer(),
             build_memory_closure_consumer(),

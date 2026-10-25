@@ -132,6 +132,11 @@ def _sync_artifact_provenance_subset_from_db(
 # Internal constants
 # ---------------------------------------------------------------------------
 
+_FINALIZE_READY_CALLER_REQUIRED = (
+    "finalize_ready stamp for {slug} requires a non-empty caller session ID; "
+    "the finalize-ready event needs an attributable worker_session_id."
+)
+
 # Valid prepare sub-phases that accept verdicts
 _PREPARE_VERDICT_PHASES = PREPARE_REVIEW_PHASES
 _PREPARE_VERDICT_VALUES = ("approve", "needs_work", "needs_decision")
@@ -180,21 +185,18 @@ def stamp_finalize_ready(cwd: str, slug: str, caller_session_id: str = "") -> di
 
     Writes a :class:`FinalizeModel` with ``status="ready"``, the current
     worktree HEAD as the candidate SHA, and the caller's session ID so the
-    later integration trigger event carries the worker's identity. Triple-ref
+    later finalize-ready event carries the worker's identity. Triple-ref
     validation (worktree HEAD == local branch ref == remote ref) and the
     lifecycle event emission happen in the work state machine when it
     observes the claim.
 
     The caller session identity is required: it becomes the
     ``worker_session_id`` field on the eventual ``todo_finalize_ready`` event,
-    which the integration trigger consumer uses to attribute the spawn.
+    which attributes the event to the worker that made the claim.
     Empty caller identity would propagate an unattributable event downstream.
     """
     if not caller_session_id:
-        raise RuntimeError(
-            f"finalize_ready stamp for {slug} requires a non-empty caller session ID; "
-            "the integration trigger event needs an attributable worker_session_id."
-        )
+        raise RuntimeError(_FINALIZE_READY_CALLER_REQUIRED.format(slug=slug))
 
     project_root = str(resolve_project_root(cwd))
     worktree_path = Path(project_root) / WORKTREE_DIR / slug

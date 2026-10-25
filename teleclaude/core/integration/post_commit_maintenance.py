@@ -34,6 +34,8 @@ from teleclaude.core.integration._maintenance_records import (
     MaintenanceActionRecord,
     MaintenanceActivation,
     MaintenanceRecordState,
+    PendingSettlement,
+    SettlementOutcome,
     activation_has_records,
     activation_key,
     commit_activation_key,
@@ -64,6 +66,11 @@ from teleclaude.core.integration.drain_window_boundary import (
     close_drain_window,
 )
 from teleclaude.core.integration.maintenance_output import secret_output_masker
+from teleclaude.core.integration.maintenance_settlement import (
+    SettlementWatch,
+    deliver_pending_settlements,
+    record_settlement,
+)
 from teleclaude.core.integration.maintenance_trigger import DRAIN_HELD_ENV, DRAIN_HELD_VALUE, MaintenanceTrigger
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.events.envelope import ReceivedEvent
@@ -285,6 +292,8 @@ def record_activation(project_root: Path, activation_range: ActivationRange) -> 
                 return _registration_outcome(registration)
             if action_ids:
                 write_owed_records(root, activation_range, action_ids, changed_files)
+            else:
+                record_settlement(root, PendingSettlement(activation_range, SettlementOutcome.SUCCEEDED, ()))
             write_activation_registration(root, activation_range.after_sha, action_ids)
     except (OSError, ValueError) as exc:
         return _refuse(activation_range, root, ActivationRefusal.RECORD_FAILED, str(exc))
@@ -387,6 +396,7 @@ def drain_maintenance(project_root: Path) -> bool:
         return False
     with maintenance_drain_lock(root):
         processed = _drain_locked(root)
+    deliver_pending_settlements(root)
     return processed and not any(record.state is MaintenanceRecordState.FAILED for record in read_records(root))
 
 
@@ -418,6 +428,7 @@ def retry_failed_action(project_root: Path, key: str, action_id: str) -> bool:
             action_id=action_id,
         )
         _drain_locked(root)
+    deliver_pending_settlements(root)
     return not record_path(root, key, action_id).exists()
 
 
@@ -492,6 +503,18 @@ def _drain_locked(project_root: Path) -> bool:
     window_open = False
     preferred_activation: MaintenanceActivation | None = None
     window_activations: list[MaintenanceActivation] = []
+    settlements = SettlementWatch(replay_command)
+
+    def settle_window(
+        window_root: Path,
+        activations: list[MaintenanceActivation],
+        result: WindowCloseResult,
+        is_window_action: Callable[[MaintenanceActionRecord], bool],
+    ) -> None:
+        _settle_window_records(window_root, activations, result, is_window_action)
+        if result.verified:
+            settlements.note_verified_window(activations)
+
     while True:
         activation: MaintenanceActivation | None = None
         activation_records: tuple[MaintenanceActionRecord, ...] = ()
@@ -501,6 +524,7 @@ def _drain_locked(project_root: Path) -> bool:
         close_boundary = False
         with maintenance_activation_registration_lock(root):
             records = read_records(root)
+            settlements.record_settled(root, records)
             all_actionable = tuple(
                 record
                 for record in records
@@ -535,7 +559,7 @@ def _drain_locked(project_root: Path) -> bool:
                 repository,
                 window_activations,
                 lambda after_sha: _register_tip_for_window_close(root, after_sha),
-                _settle_window_records,
+                settle_window,
                 is_window_action,
             )
             window_open = boundary.window_open
@@ -543,6 +567,7 @@ def _drain_locked(project_root: Path) -> bool:
             if boundary.decision is WindowBoundaryDecision.COMPLETE:
                 continue
             if boundary.decision is WindowBoundaryDecision.REFUSED:
+                settlements.record_settled(root, read_records(root))
                 return False
             continue
 
@@ -569,6 +594,7 @@ def _drain_locked(project_root: Path) -> bool:
                         **_activation_log_fields(activation),
                         reason=result.reason,
                     )
+                    settlements.record_settled(root, read_records(root))
                     return False
                 window_open = True
                 logger.info(

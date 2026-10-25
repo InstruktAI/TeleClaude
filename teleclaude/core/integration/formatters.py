@@ -57,16 +57,16 @@ _PARKED_CANDIDATES_SECTION = "\n\nParked candidates:\n{items}"
 _NO_PARKED_CANDIDATES = ""
 _QUEUE_EMPTY_WARNING_INSTRUCTION = "NEXT: Resolve the issues above before ending this session."
 _QUEUE_EMPTY_PUBLICATION_INSTRUCTION = (
-    "Before parking, inspect canonical local main against origin/main. If it is ahead, "
-    "complete its owed maintenance and any live-runtime log judgment first. If the "
-    "activated changes are sound, run `git push origin main:main` from the canonical "
-    "project root and verify origin/main contains the committed head. Other sessions' review "
-    "verdicts and unrelated uncommitted paths do not block this push. A material "
-    "failure keeps the commits local until recovery and a new judgment where owed.\n\n"
+    "Before parking, inspect canonical local main against origin/main. If it is ahead and its "
+    "activations have settled with no failed action and no outstanding integrator judgment "
+    "(as `telec repo maintenance status` reports), run `git push origin main:main` from the "
+    "canonical project root and verify origin/main contains the committed head. Other sessions' "
+    "review verdicts and unrelated uncommitted paths do not block this push. A failed action or "
+    "an outstanding judgment keeps the commits local until recovery; the activation's settlement "
+    "announcement routes the rest.\n\n"
 )
-_QUEUE_EMPTY_WATCH_INSTRUCTION = (
-    "NEXT: Keep `integrator-queue-watch` live (`telec reminders set integrator-queue-watch` "
-    "if it is not armed) and await the next candidates. Never cancel it; end only when directed."
+_QUEUE_EMPTY_PARK_INSTRUCTION = (
+    "NEXT: Park with no reminder armed; the next activating event resumes you. End only when directed."
 )
 _REPO_ROOT_PATH_LINE_SEPARATOR = "\n"
 _REPO_ROOT_NO_PATHS = "  (none)"
@@ -78,8 +78,7 @@ _REPO_ROOT_DIRTY_PATH_INSTRUCTION = (
     "Load the current integration procedure with `telec docs get "
     "sdlc/procedure/lifecycle/integrate` before following **Resolving a dirty path**. "
     "Run `telec repo owners` from `{project_root}` before routing a path; never broadcast "
-    "ownership questions. Keep `integrator-main-clearance` live, and `integrator-queue-watch` live "
-    "without ever cancelling it, and resolve each blocking path on its own. "
+    "ownership questions. Keep `integrator-main-clearance` live and resolve each blocking path on its own. "
     "Run each stranded-path commit with the tool working directory set to `{project_root}` "
     "and the exact-path `--only <path>` selection specified by that procedure; never use "
     "additive workspace-scope `--include`. On each clearance beat, re-enter "
@@ -314,7 +313,7 @@ def _format_queue_empty(
     next_line = (
         _QUEUE_EMPTY_WARNING_INSTRUCTION
         if has_warnings
-        else _QUEUE_EMPTY_PUBLICATION_INSTRUCTION + _QUEUE_EMPTY_WATCH_INSTRUCTION
+        else _QUEUE_EMPTY_PUBLICATION_INSTRUCTION + _QUEUE_EMPTY_PARK_INSTRUCTION
     )
     return f"""INTEGRATION COMPLETE: Queue empty
 

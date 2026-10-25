@@ -36,6 +36,8 @@ _OUTPUT_TAIL_FIELD = "output_tail"
 _WINDOW_FAILURE_FILENAME = "window-failure.json"
 _ACTIVATION_REGISTRATIONS_FILENAME = "activation-registrations.json"
 _MAX_ACTIVATION_REGISTRATIONS = 512
+_PENDING_SETTLEMENTS_FILENAME = "pending-settlements.json"
+_PENDING_SETTLEMENTS_LOCK_FILENAME = "pending-settlements.lock"
 
 
 class _CommitRecordPayload(BaseModel):
@@ -94,6 +96,34 @@ class _ActivationRegistrationsPayload(BaseModel):
     registrations: list[_ActivationRegistrationEntry]
 
 
+class _FailedActionEntry(BaseModel):
+    """One action that stayed failed in a settled activation, with the command that replays it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action_id: str
+    replay_command: str
+
+
+class _PendingSettlementEntry(BaseModel):
+    """One settled commit activation whose announcement is not yet delivered."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    before_sha: str | None
+    after_sha: str
+    outcome: str
+    failed_actions: list[_FailedActionEntry]
+
+
+class _PendingSettlementsPayload(BaseModel):
+    """The settlements awaiting delivery; each stays until the producer accepted its announcement."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    settlements: list[_PendingSettlementEntry]
+
+
 @dataclass(frozen=True)
 class WindowFailure:
     """The last refused window opening or unverified window close."""
@@ -127,6 +157,30 @@ class EventActivation:
 
 
 type MaintenanceActivation = ActivationRange | EventActivation
+
+
+class SettlementOutcome(StrEnum):
+    """How a commit activation settled: every owed action completed, or at least one stayed failed."""
+
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class FailedAction:
+    """An owed action that stayed failed, with the command that replays it for its activation."""
+
+    action_id: str
+    replay_command: str
+
+
+@dataclass(frozen=True)
+class PendingSettlement:
+    """The settlement of one commit activation, held until its announcement is delivered."""
+
+    activation: ActivationRange
+    outcome: SettlementOutcome
+    failed_actions: tuple[FailedAction, ...]
 
 
 @dataclass(frozen=True)
@@ -209,6 +263,82 @@ def write_activation_registration(project_root: str | Path, after_sha: str, acti
     bounded = retained[-_MAX_ACTIVATION_REGISTRATIONS:]
     payload = _ActivationRegistrationsPayload(registrations=bounded)
     _write_atomically(path, payload.model_dump_json())
+
+
+@contextmanager
+def _pending_settlements_lock(project_root: str | Path) -> Iterator[None]:
+    """Serialize reads and rewrites of the pending-settlement list; held only for the file operation itself."""
+    lock_path = maintenance_directory(project_root) / _PENDING_SETTLEMENTS_LOCK_FILENAME
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open(_LOCK_MODE, encoding=_TEXT_ENCODING) as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _read_pending_settlements_unlocked(path: Path) -> list[_PendingSettlementEntry]:
+    if not path.exists():
+        return []
+    return _PendingSettlementsPayload.model_validate_json(path.read_text(encoding=_TEXT_ENCODING)).settlements
+
+
+def _pending_settlement_from_entry(entry: _PendingSettlementEntry) -> PendingSettlement:
+    return PendingSettlement(
+        activation=ActivationRange(before_sha=entry.before_sha, after_sha=entry.after_sha),
+        outcome=SettlementOutcome(entry.outcome),
+        failed_actions=tuple(FailedAction(failed.action_id, failed.replay_command) for failed in entry.failed_actions),
+    )
+
+
+def _pending_settlement_entry(settlement: PendingSettlement) -> _PendingSettlementEntry:
+    return _PendingSettlementEntry(
+        before_sha=settlement.activation.before_sha,
+        after_sha=settlement.activation.after_sha,
+        outcome=settlement.outcome.value,
+        failed_actions=[
+            _FailedActionEntry(action_id=failed.action_id, replay_command=failed.replay_command)
+            for failed in settlement.failed_actions
+        ],
+    )
+
+
+def read_pending_settlements(project_root: str | Path) -> tuple[PendingSettlement, ...]:
+    """Read the settlements whose announcement is not yet delivered, oldest first."""
+    path = maintenance_directory(project_root) / _PENDING_SETTLEMENTS_FILENAME
+    with _pending_settlements_lock(project_root):
+        entries = _read_pending_settlements_unlocked(path)
+    return tuple(_pending_settlement_from_entry(entry) for entry in entries)
+
+
+def write_pending_settlement(project_root: str | Path, settlement: PendingSettlement) -> None:
+    """Hold one settlement for delivery; a repeat of the same settlement replaces its earlier copy."""
+    path = maintenance_directory(project_root) / _PENDING_SETTLEMENTS_FILENAME
+    entry = _pending_settlement_entry(settlement)
+    with _pending_settlements_lock(project_root):
+        retained = [
+            held
+            for held in _read_pending_settlements_unlocked(path)
+            if (held.after_sha, held.outcome) != (entry.after_sha, entry.outcome)
+        ]
+        retained.append(entry)
+        payload = _PendingSettlementsPayload(settlements=retained)
+        _write_atomically(path, payload.model_dump_json())
+
+
+def remove_pending_settlement(project_root: str | Path, settlement: PendingSettlement) -> None:
+    """Retire one settlement once its announcement is delivered."""
+    path = maintenance_directory(project_root) / _PENDING_SETTLEMENTS_FILENAME
+    with _pending_settlements_lock(project_root):
+        held = _read_pending_settlements_unlocked(path)
+        retained = [
+            entry
+            for entry in held
+            if (entry.after_sha, entry.outcome) != (settlement.activation.after_sha, settlement.outcome.value)
+        ]
+        if len(retained) != len(held):
+            _write_atomically(path, _PendingSettlementsPayload(settlements=retained).model_dump_json())
 
 
 def commit_activation_key(after_sha: str) -> str:

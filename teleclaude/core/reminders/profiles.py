@@ -36,11 +36,6 @@ _INTEGRATOR_CANDIDATE_SETTLEDNESS_INTENT = (
     "Recheck the integration queue after its caller-owned settledness interval. "
     "If a candidate is ready, continue the drain; otherwise follow the integration procedure's queue-empty outcome."
 )
-_INTEGRATOR_QUEUE_WATCH_INTENT = (
-    "Recheck the integration queue and outstanding canonical-main maintenance from current source truth. "
-    "Judge completed maintenance and recover failures within the integration lane; if a candidate is ready, "
-    "continue the drain, otherwise remain parked."
-)
 _DEFAULT_GOAL_DRIVE_INTENT = (
     "Reassess whether the current work remains aligned with the goal. "
     "If aligned, continue; otherwise correct course or stop."
@@ -50,7 +45,6 @@ _DEFAULT_ORCHESTRATION_SECONDS = 300.0
 _DEFAULT_COORDINATOR_SECONDS = 60.0
 _DEFAULT_MAIN_CLEARANCE_SECONDS = 150.0
 _DEFAULT_SETTLEDNESS_SECONDS = 30.0
-_DEFAULT_QUEUE_WATCH_SECONDS = 900.0
 
 
 @dataclass(frozen=True)
@@ -168,18 +162,6 @@ def _integrator_candidate_settledness(session_id: str, inputs: PrescribedReminde
     )
 
 
-def _integrator_queue_watch(session_id: str, inputs: PrescribedReminderInput) -> ReminderSetRequest:
-    interval = inputs.after_seconds or _DEFAULT_QUEUE_WATCH_SECONDS
-    slug = PrescribedReminderSlug.INTEGRATOR_QUEUE_WATCH
-    return ReminderSetRequest(
-        session_id=session_id,
-        slug=slug.value,
-        profile=slug,
-        intent=_INTEGRATOR_QUEUE_WATCH_INTENT,
-        schedule=ReminderSchedule.relative(after_seconds=interval, repeat=True),
-    )
-
-
 PROFILE_REGISTRY: dict[PrescribedReminderSlug, PrescribedReminderProfile] = {
     PrescribedReminderSlug.GOAL_DRIVE: PrescribedReminderProfile(_goal_drive, frozenset({"intent"}), sliding=True),
     PrescribedReminderSlug.HALT_TO_RESPOND: PrescribedReminderProfile(_halt_to_respond, frozenset()),
@@ -195,9 +177,6 @@ PROFILE_REGISTRY: dict[PrescribedReminderSlug, PrescribedReminderProfile] = {
     ),
     PrescribedReminderSlug.INTEGRATOR_CANDIDATE_SETTLEDNESS: PrescribedReminderProfile(
         _integrator_candidate_settledness, frozenset({"after"})
-    ),
-    PrescribedReminderSlug.INTEGRATOR_QUEUE_WATCH: PrescribedReminderProfile(
-        _integrator_queue_watch, frozenset({"after"})
     ),
 }
 
