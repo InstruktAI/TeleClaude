@@ -256,9 +256,8 @@ And the installed checkout still selects the later release in detached HEAD
 - A selected commit identifies repository source, not the outcome of migrations,
   publication or daemon startup. Healthy activation still requires the evidence
   owned by the channel-update contract.
-- Development-companion provisioning and compatibility-series enrollment have
-  their own contracts; release selection creates neither a development clone nor
-  a new enrollment policy.
+- Compatibility-series enrollment has its own contract; release selection
+  creates no development clone and no new enrollment policy.
 
 ## See Also
 
