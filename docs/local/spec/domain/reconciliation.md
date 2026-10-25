@@ -225,26 +225,30 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   folder: the kept repository of the source the installation follows, one
   release per installed revision as a worktree of it, the active-release
   pointer, and the install record — the active and previous release, whether
-  the most recent install ran migrations, and the outcome of the most recent
+  the most recent install migrated state and which stores moved, and the outcome of the most recent
   install or rollback with its reason. All of it lies outside the platform home
   and outside any project, and the membership predicate answers `outside` for
   it.
 - **Decision boundary (core).** One reconciliation core operation installs a
   revision: it refuses a target older than the active release under the release
   transitions of `local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`,
-  prepares the release while the daemon serves, establishes which migrations
-  the release's migration systems still owe the home, decides whether a failure
-  leaves the active release serving or the daemon stopped, switches the pointer,
-  and records the outcome. A second operation rolls back: it decides from the
-  install record whether the most recent install ran no migrations and a
+  prepares the release while the daemon serves, records each store's migration
+  state before stopping the daemon and compares it after the verified start to
+  decide whether the install migrated state, decides from that whether a failure
+  returns to the previously active release or leaves the daemon stopped for a
+  forward repair, switches the pointer, and records the outcome. A second
+  operation rolls back: it decides from the install record whether the most recent install migrated no state and a
   previous release exists, and otherwise refuses. Their observable contract is
   `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`.
 - **Infrastructure.** Git fetch and worktree operations, the release's
   environment build, the migration systems' own runners, and the atomic pointer
   switch execute behind ports the operations drive; they decide nothing. Each
-  migration system keeps its own applied state and rules
+  migration owner keeps its own applied state and rules
   (`local/projects/teleclaude/spec/feature/config/document-migration` for
-  configuration documents); the operation only asks what is pending and runs it.
+  configuration documents); the migration-state port reads only each store's
+  schema, version marker and migration ledger and each configuration document's
+  schema version — never domain data — and a store it cannot read counts as
+  migrated.
 - **Live-surface binding.** The installation's live surfaces — service
   definitions, the published `telec`, agent hook commands, home-level wrappers
   and links — address the active release through its pointer; their

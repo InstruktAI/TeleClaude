@@ -166,6 +166,20 @@ as a patch carrying the mask leaves its field
 (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`
 UC-KAC20).
 
+<!-- planned:platform-installation -->
+
+**While no daemon serves this machine, configuration commands execute in the
+invoking process.** When a request addresses this computer and no daemon serves
+it — before the platform's first start, or while it is stopped — the CLI and
+the TUI configuration view execute the same configuration commands through this
+context's own operations in their own process, under the same target clearance
+and editor contract. Nothing else about the command changes. Once a daemon
+serves the machine, every command executes in it, so the platform can be
+configured to the point where it starts
+(`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
+
+<!-- /planned:platform-installation -->
+
 #### Use cases (index of feature specs)
 
 - **project-registry** — `docs/local/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry

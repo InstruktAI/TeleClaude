@@ -55,8 +55,8 @@ state every installed release reads, and no release carries any of it.
 ### Installing
 
 Installing moves the platform forward to another revision; rollback, below, is
-the only other act that changes which release is active. Installing prepares the chosen revision as a new release beside the active one, stops the
-daemon, runs the new release's migrations, makes it the active release and
+the only other act that changes which release is active. Installing prepares
+the chosen revision as a new release beside the active one, stops the daemon, runs the new release's migrations, makes it the active release and
 starts the daemon on it, under the guarantees of
 `local/projects/teleclaude/policy/daemon-availability`.
 
@@ -68,10 +68,17 @@ starts the daemon on it, under the guarantees of
   contract supports.
 - **Idempotent.** Installing the revision that is already active changes
   nothing.
-- **Failure.** An install that fails before any migration changes state
-  leaves the previously active release active and serving, and reports why.
-  One that fails after a migration has changed state reports the failure and
-  which state moved, is never reported as complete, and is repaired forward.
+- **Migrated state.** An install migrated state when any store or document
+  the platform's migrations touch records a different schema, version marker
+  or migration ledger after the install than before it, whichever migration
+  owner changed it, and when that cannot be read. Every outcome below turns on
+  that observation, never on which migrations a release declares.
+- **Failure.** An install completes only once the daemon serves the new
+  release and its documentation and schemas are published. An install that
+  fails without having migrated state leaves the previously active release
+  active and serving, and reports why. One that fails after migrating state
+  reports the failure and which state moved, is never reported as complete,
+  and is repaired forward.
 - **Every route is this act.** The bootstrap, channel convergence and an
   explicit `telec app install` all reach the live platform through it. What a
   commit on a project's main owes is
@@ -81,8 +88,8 @@ starts the daemon on it, under the guarantees of
 ### Rollback
 
 Rollback makes the previous release active again and restarts the daemon on
-it, only when the most recent install ran no migrations. When that install ran
-migrations, or no previous release is installed, rollback refuses, names the
+it, only when the most recent install migrated no state. When that install
+migrated state, or no previous release is installed, rollback refuses, names the
 condition, and changes nothing. No state is backed up or restored.
 
 ### First install
@@ -136,14 +143,14 @@ Scenario: Installing an older revision
   Then the install is refused
   And the platform keeps running the active release
 
-Scenario: An install that fails before migrating
-  Given an install of a newer revision fails before any migration changed state
+Scenario: An install that fails without migrating state
+  Given an install of a newer revision fails without having migrated state
   When the operator looks at the installation's status
   Then the previously active release is still active and serving
   And the failure and its reason are reported
 
-Scenario: An install that fails after migrating
-  Given an install of a newer revision fails after a migration changed state
+Scenario: An install that fails after migrating state
+  Given an install of a newer revision fails after it migrated state
   When the operator looks at the installation's status
   Then the install is reported as failed, not complete
   And the report names which state moved
@@ -153,12 +160,12 @@ Scenario: An install that fails after migrating
 
 ```gherkin
 Scenario: The most recent install migrated nothing
-  Given the most recent install ran no migrations
+  Given the most recent install migrated no state
   When an agent acting for the operator rolls the installation back
   Then the platform runs the previously active release again
 
 Scenario: The most recent install migrated state
-  Given the most recent install ran migrations
+  Given the most recent install migrated state
   When an agent acting for the operator rolls the installation back
   Then the rollback is refused with that reason
   And the platform keeps running the active release

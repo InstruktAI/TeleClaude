@@ -48,7 +48,8 @@ contracts of the contexts it crosses. It owns none of their rules.
   `telec`, the agent hook commands, the home-level wrappers, shell setup and
   shared-script links, and every path the runtime composes for a session.
 - The install record: the active and previous release, whether the most recent
-  install ran migrations, and the outcome of the most recent act with its reason.
+  install migrated state and which stores moved, and the outcome of the most
+  recent act with its reason.
 
 ```mermaid
 flowchart LR
@@ -125,24 +126,31 @@ sequenceDiagram
   Caller->>Rec: install(target)
   Rec->>Rec: refuse when target is older than the active release
   Rec->>Rel: fetch, add worktree at target, build environment (daemon serving)
-  Rec->>Rel: which migrations are pending against the home?
+  Rec->>Home: record each store's migration state
   Rec->>Life: stop (preparation settles accepted work)
-  Rec->>Rel: run pending migrations of all migration systems
+  Rec->>Rel: run the release's migrations
   Rel->>Home: migrate stores
-  Rec->>Rec: switch current, record whether migrations ran
+  Rec->>Rec: switch current
   Rec->>Life: start; verify the daemon serves the new revision
+  Rel->>Home: startup migrations of the release's stores
   Rec->>Rel: publish documentation and schemas from the installed commit
-  Rec->>Rec: record outcome, prune releases older than the previous
+  Rec->>Home: compare each store's migration state with the record
+  Rec->>Rec: record outcome and whether state migrated, prune older releases
 ```
 
 - **Prepare while serving.** Fetching, adding the release worktree and building
   its environment happen while the daemon keeps serving on the active release.
-- **Pending migrations are known before the stop.** The new release reports,
-  per migration system, which of its migrations the home's state still lacks:
-  version-keyed installation migrations, configuration-document migrations
-  (`local/projects/teleclaude/spec/feature/config/document-migration`) and
-  database schema migrations. The record of whether the install ran migrations
-  comes from what actually ran, not from the prediction.
+- **Migrated is observed, not predicted.** Stores migrate through several
+  owners: version-keyed installation migrations, configuration-document
+  migrations (`local/projects/teleclaude/spec/feature/config/document-migration`),
+  the core database runner, and the event store, session mirrors and other
+  stores that migrate themselves when the daemon opens them. Before the stop the
+  install act records each store's migration state — its schema, its version
+  marker and its migration ledger, and each configuration document's schema
+  version — and after the verified start it compares them. Any difference means
+  the install migrated state; none means it did not. The comparison reads
+  schema and migration records only, never domain data, and each owner keeps
+  its own migration rules.
 - **Migrate inside a stopped window.** The daemon is stopped through the
   lifecycle contract's preparation before any migration runs, and the new
   release runs its own migrations with its own interpreter, so no older reader
@@ -151,17 +159,18 @@ sequenceDiagram
   definitions are deployed only when their rendered content changed, and the
   start is verified against the new revision with admission open, as the
   lifecycle contract verifies any start.
-- **Serving-tolerant steps after the start.** Publication of the installed
+- **Publication is part of the install.** Publication of the installed
   commit's documentation
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`)
   and of the configuration schemas
   (`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`)
-  run after the verified start while the daemon serves.
+  runs after the verified start while the daemon serves; the install completes
+  only once it has published.
 
 ### Rollback
 
-Rollback reads the install record. When the most recent install ran no
-migrations and a previous release is installed, it stops the daemon through the
+Rollback reads the install record. When the most recent install migrated no
+state and a previous release is installed, it stops the daemon through the
 lifecycle contract, switches `current` to the previous release, starts and
 verifies, and records that no further rollback is available. Otherwise it
 refuses and changes nothing.
@@ -185,12 +194,19 @@ outcome and the log window from that install onwards
 The bootstrap checks prerequisites, creates the installation, installs the
 source's latest release through the install act and publishes `telec`; services
 are installed and the daemon started by `telec app start` once the
-configuration is valid. On a machine running from its project checkout, one run
+configuration is valid. Until a daemon serves the machine, `telec config` and the
+terminal interface's configuration view execute configuration in their own
+process (`local/projects/teleclaude/spec/domain/config`), so the platform can be
+configured before its first start; the terminal interface then starts it. On a machine running from its project checkout, one run
 creates the installation, moves the machine environment file into the platform
 home, installs a release through the install act, and rebinds every live
 surface to `current`; the checkout stays a registered project.
 
 ## Failure modes
+
+Every failure after the stop is judged by the same comparison: an install that
+migrated no state returns to the previously active release, and one that did
+is repaired forward.
 
 - **Preparation fails** (fetch, worktree, build): nothing has stopped; the
   active release keeps serving and the failure is recorded.
@@ -198,21 +214,27 @@ surface to `current`; the checkout stays a registered project.
 - **Stop withheld** (preparation incomplete or withheld): no migration runs;
   the lifecycle contract's outcome is reported and the active release stays
   active.
-- **Migration fails before any migration changed state**: `current` is not
-  switched, the daemon is started again on the active release, and the failure
-  is recorded.
-- **Migration fails after a migration changed state**: `current` is not
-  switched and the daemon stays stopped, because neither release is known to
-  serve the partly migrated state; the install record names what moved, the
-  reason is reported where `telec app status` shows it, and recovery is a
-  forward repair followed by another install.
-- **Start does not verify**: the install is recorded as failed with the start's
-  reason, as any unverified start is reported; rollback remains available only
-  when that install migrated nothing.
-- **Publication fails after the start**: the daemon keeps serving the new
-  release; the failure is recorded and the publication is replayed.
+- **A failure after the stop, with no state migrated** — a migration that fails
+  before changing anything, a start that does not verify, or a publication that
+  fails: `current` is returned to the previously active release, the daemon is
+  started on it and verified, and the failure is recorded. The previous
+  release's publication is still the deployed one, because a failed publication
+  leaves the previous deployment in place.
+- **A failure after the stop, with state migrated, before a verified start**:
+  `current` stays where it is and the daemon stays stopped, because neither
+  release is known to serve the partly migrated state; the install record names
+  which stores moved, the reason is reported where `telec app status` shows it,
+  and recovery is a forward repair followed by another install.
+- **Publication fails after a verified start, with state migrated**: the daemon
+  keeps serving the new release, the install is recorded as failed, and the
+  publication is replayed.
+- **The comparison cannot read a store**: the install counts as having migrated
+  state, so rollback is never offered on an unknown.
 - **A release folder disappears**: nothing live names it, so only a rollback to
   it is affected, and rollback refuses with that reason.
+- **A migration that changes data without changing any schema, version marker
+  or ledger** is invisible to the comparison; every current migration owner
+  records its migrations in one of those.
 
 ## See Also
 
