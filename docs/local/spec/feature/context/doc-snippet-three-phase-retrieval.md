@@ -234,9 +234,9 @@ Then the snippet's content is withheld
 When the operator runs telec docs get <id> --target <todo-c> for a todo that neither introduces nor reworks it
 Then the snippet's content is withheld
 When the operator runs telec docs get <id> --target <todo-a>
-Then the snippet reads as <todo-a> will deliver it, without any other todo's proposed changes
+Then the operator reads <todo-a>'s version of the snippet, without any other todo's proposed changes
 When the operator runs telec docs get <id> --target <todo-b>
-Then the snippet reads as it will once <todo-b>'s rework lands on it
+Then the operator reads the snippet with <todo-b>'s rework applied
 ```
 
 <!-- /planned:target-view-hides-companion-on-pending-parent -->
