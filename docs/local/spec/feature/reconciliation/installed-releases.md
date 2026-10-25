@@ -124,21 +124,29 @@ route reached the install and whether or not the machine performs any source
 integration. For initial provisioning that is the release its first start
 serves.
 
-- **Owed before the restart.** The installation records the install as owed
-  when its stopped window opens, before any migration starts, so the
-  obligation outlives the restart and every outcome the install can end in. An
-  install that ends before its stopped window — refused, unchanged, failed
-  while preparing, or with its stop withheld — owes none.
-- **Announced at every start.** Each time the daemon starts while an install is
-  owed, it announces the owed assessment. The announcement activates the
-  integrator's installation assessment on the installation's own computer
+- **Owed before the restart.** The installation numbers the install and
+  records it as owed when its stopped window opens, before any migration
+  starts, so the obligation outlives the restart and every outcome the install
+  can end in. An install that ends before its stopped window — refused,
+  unchanged, failed while preparing, or with its stop withheld — owes none.
+- **Owed when performed by an older release.** An install is performed by the
+  release that was active when it began. When the daemon starts on a release
+  whose completed install the installation holds no obligation or assessment
+  for — an install performed by a release that records no assessment — that
+  install is owed from that start.
+- **Announced while owed.** Each time the daemon starts while an install is
+  owed, and again at a fixed interval for as long as one stays owed, it
+  announces the owed assessment, so an announcement that found no recipient is
+  repeated. The announcement activates the integrator's installation
+  assessment on the installation's own computer
   (`sdlc/procedure/maintenance/installation-assessment`), answered by one
   standing agent for the installation
   (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-standing-agent`).
-- **Recorded by the integrator.** `telec app assessed <revision>` records that
-  the install of that revision has been assessed. It discharges that install and
-  every earlier owed one; an install made after it stays owed. It refuses,
-  naming what is owed, when no owed install names that revision, and while the
+- **Recorded by the integrator.** `telec app assessed <install>` records that
+  the install `telec app status` shows under that number has been assessed. It
+  discharges that install and every earlier owed one; an install numbered after
+  it stays owed, a later attempt at the same revision included. It refuses,
+  naming what is owed, when no owed install carries that number, and while the
   daemon is not serving the active release.
 - **Never fabricated.** A queued install, an accepted restart or a completed
   install is not an assessment. An install whose daemon does not return stays
@@ -176,10 +184,10 @@ guarantees of `local/projects/teleclaude/policy/daemon-availability`.
 
 `telec app` operates the installation from any directory: `status`, `start`,
 `stop`, `restart`, `install [<revision>]`, `rollback` and
-`assessed <revision>`. Every verb acts on the installation, whatever checkout
+`assessed <install>`. Every verb acts on the installation, whatever checkout
 the caller stands in. `status` names the active release alongside the daemon's
-health, the installs whose assessment is owed, and the most recent recorded
-assessment. The lifecycle verbs keep the guarantees of
+health, the installs whose assessment is owed by number and revision, and
+the most recent recorded assessment. The lifecycle verbs keep the guarantees of
 `local/projects/teleclaude/policy/daemon-availability`.
 
 <!-- /planned-change:installation-activation-inspection -->

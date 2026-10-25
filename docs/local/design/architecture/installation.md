@@ -59,7 +59,7 @@ contracts of the contexts it crosses. It owns none of their rules.
   assessment is owed, and the most recent recorded assessment with the install
   it covered.
 - The owed-assessment announcement: a platform event, with no origin, emitted
-  by the daemon at each start while an install is owed.
+  by the daemon at each start and at a fixed interval while an install is owed.
 
 <!-- /planned:installation-activation-inspection -->
 
@@ -230,28 +230,39 @@ sequenceDiagram
   participant D as daemon
   participant I as integrator (platform home)
   Rec->>D: stop, when one serves
-  Rec->>IR: install owed an assessment
+  Rec->>IR: install numbered and owed
   Rec->>D: start on the release that serves
-  D->>IR: read owed installs
-  D-->>I: announce the owed assessment (no origin)
+  D->>IR: owe an unaccounted completed install, read owed installs
+  D-->>I: announce the owed assessment (no origin), at start and at an interval
   I->>I: status, log window from the earliest owed install, health
-  I->>IR: telec app assessed <revision>
+  I->>IR: telec app assessed <install>
 ```
 
-- **Owed inside the stopped window.** The install act writes the owed install
-  to the assessment record when its stopped window opens, before any
-  migration, so every outcome after that — completed, returned to the previous
-  release, or left stopped — leaves it owed.
-- **Announced at each start.** The daemon reads the assessment record when it
-  starts and, while an install is owed, emits the owed-assessment announcement.
+- **Owed inside the stopped window.** The install act numbers the install and
+  writes it as owed to the assessment record when its stopped window opens,
+  after the window has taken over what an earlier failed window left and
+  before any migration, so every outcome after that — completed, returned to
+  the previous release, or left stopped — leaves it owed. A write that fails
+  there is a failure inside the window and recovers as one: returned only when
+  no migration has started, the earlier window's included.
+- **Installs by an older installer.** The install act that runs is the active
+  release's, so the install that brings this capability is performed by a
+  release that writes no assessment record. The record notes the completed
+  install act it has accounted for. When the daemon starts and the install
+  record's completed install of the active release is later than that, the
+  daemon owes it before announcing.
+- **Announced while owed.** The daemon reads the assessment record when it
+  starts, and again at a fixed interval, and emits the owed-assessment
+  announcement each time an install is owed. The repetition covers an
+  announcement that reached no subscriber, as on a machine whose installation
+  publishes the assessment procedure only after the verified start.
   The announcement activates `sdlc/procedure/maintenance/installation-assessment`
   in the platform home of the computer that emitted it
   (`local/projects/teleclaude/design/architecture/procedure-activation`); its
-  one standing agent owns every owed assessment of the installation. A restart
-  while an install is still owed announces it again.
-- **Discharged by recording.** `telec app assessed <revision>` discharges the
-  install of that revision and every earlier owed one, and leaves a later
-  install owed. It refuses while the daemon does not serve the active release.
+  one standing agent owns every owed assessment of the installation.
+- **Discharged by recording.** `telec app assessed <install>` discharges the
+  install with that number and every earlier owed one, and leaves a later
+  install owed, including a later attempt at the same revision. It refuses while the daemon does not serve the active release.
 - **A daemon that does not return** announces nothing; the install stays owed
   in the assessment record and in `telec app status` beside the act's failure, and no
   assessment is recorded for a runtime nobody observed.
