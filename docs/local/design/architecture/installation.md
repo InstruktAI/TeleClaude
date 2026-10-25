@@ -128,6 +128,8 @@ flowchart LR
 The act is reconciliation's; each step consumes the owning context's contract
 and restates none of it.
 
+<!-- planned-change:docs-publish-on-commit -->
+
 ```mermaid
 sequenceDiagram
   participant Caller as bootstrap / channel reaction / telec app install
@@ -147,6 +149,30 @@ sequenceDiagram
   Rec->>Rec: record outcome and whether migrations ran, prune older releases
   Rec->>Rel: publish documentation and schemas from the installed commit
 ```
+
+<!-- change:docs-publish-on-commit -->
+
+```mermaid
+sequenceDiagram
+  participant Caller as bootstrap / channel reaction / telec app install
+  participant Rec as reconciliation (install act)
+  participant Rel as new release
+  participant Life as daemon lifecycle
+  participant Home as platform home
+  Caller->>Rec: install(target)
+  Rec->>Rec: refuse when target is older than the active release
+  Rec->>Rel: fetch, add worktree at target, build environment (daemon serving)
+  Rec->>Life: stop (preparation settles accepted work)
+  Rec->>Rel: run ledger migrations, then open every store the daemon opens
+  Rel-->>Rec: each owner: starting a migration
+  Rel->>Home: migrate stores
+  Rec->>Rec: switch current
+  Rec->>Life: start; verify the daemon serves the new revision
+  Rec->>Rec: record outcome and whether migrations ran, prune older releases
+  Rec->>Rel: publish schemas, and documentation where no platform checkout does
+```
+
+<!-- /planned-change:docs-publish-on-commit -->
 
 - **Prepare while serving.** Fetching, adding the release worktree and building
   its environment happen while the daemon keeps serving on the active release.
@@ -173,6 +199,9 @@ sequenceDiagram
   definitions are deployed only when their rendered content changed, and the
   start is verified against the new revision with admission open, as the
   lifecycle contract verifies any start. The install completes there.
+
+<!-- planned-change:docs-publish-on-commit -->
+
 - **Publication follows the install.** Publication of the installed commit's
   documentation
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`)
@@ -181,6 +210,22 @@ sequenceDiagram
   runs after the completed install while the daemon serves. Each keeps its own
   partial-outcome contract; a failure is reported and replayed and never
   changes which release is active.
+
+<!-- change:docs-publish-on-commit -->
+
+- **Publication follows the install.** Publication of the configuration
+  schemas
+  (`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`)
+  and of the installed commit's documentation and agent artifacts
+  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`)
+  runs after the completed install while the daemon serves. Each keeps its own
+  partial-outcome contract; a failure is reported and replayed and never
+  changes which release is active. The documentation is the installed
+  release's only on a machine with no project checkout of the platform; where
+  that checkout is registered, it publishes the platform's documentation from
+  its own commits on main, and an install leaves it in place.
+
+<!-- /planned-change:docs-publish-on-commit -->
 
 ### Rollback
 
@@ -311,3 +356,9 @@ checkout stays a registered project.
 - docs/local/policy/agent-service-control.md
 - docs/local/policy/daemon-availability.md
 - docs/local/adr/0130-the-platform-runs-from-an-installation-not-its-project.md — why the platform runs from an installation and a commit changes nothing live.
+
+<!-- planned:docs-publish-on-commit -->
+
+- docs/local/adr/0131-the-platforms-documentation-publishes-from-its-project-commits.md — why the platform's documentation publishes from its project's commits and from an install only where no platform checkout does.
+
+<!-- /planned:docs-publish-on-commit -->

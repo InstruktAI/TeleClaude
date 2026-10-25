@@ -74,3 +74,7 @@ the installation through `telec app` from any directory.
   already installs every pushed revision on its channel; a second path acts on
   the same revision again, races the first, and puts unadmitted revisions on
   machines whose channel does not take them.
+
+## Status
+
+Superseded in part by ADR-0131: the platform's published documentation and agent artifacts publish from its project's commits, and from an install only where no platform project checkout is registered.

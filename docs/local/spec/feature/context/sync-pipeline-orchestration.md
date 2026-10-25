@@ -20,6 +20,8 @@ tree.
 
 Three entry points run the same routine:
 
+<!-- planned-change:docs-publish-on-commit -->
+
 - **Commit-boundary maintenance** — a canonical-main activation whose changed
   paths owe publication publishes the homes it touched
   (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
@@ -38,6 +40,34 @@ Three entry points run the same routine:
   documentation matches the installed code. A release is not a home, so the
   install act publishes no local half. It holds the same publication
   serialization, and the install act acts only on its result.
+
+<!-- change:docs-publish-on-commit -->
+
+- **Commit-boundary maintenance** — a canonical-main activation whose changed
+  paths owe publication publishes the homes it touched
+  (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
+  The platform's own project publishes both halves this way, like every other
+  project, so a contract committed on its main is readable as soon as that
+  activation's maintenance has run.
+
+- **Installation** — on a machine where no project checkout of the platform is
+  registered, the install act publishes the platform's published documentation
+  and agent artifacts from the release it installed, when the platform home
+  does not already record that commit
+  (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
+  A fresh machine therefore serves the installed release's committed
+  documentation and agent artifacts before anything is committed on it. Its
+  source is the installed commit, never a project's `main` tip, and it deploys
+  that commit even when the home records a different one, so the deployed
+  documentation matches the installed code. A release is not a home, so the
+  install act publishes no local half. It holds the same publication
+  serialization, and the install act acts only on its result. Where a project
+  checkout of the platform is registered, that checkout publishes the
+  platform's documentation and agent artifacts through the other two entry
+  points; the installation entry point then publishes nothing and reports that
+  the checkout publishes them.
+
+<!-- /planned-change:docs-publish-on-commit -->
 
 - **`telec sync`** — the on-demand maintenance run
   (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`),
@@ -298,6 +328,8 @@ But a reference naming that domain's generated baseline bundle resolves against 
 And its absence before first deployment is not a finding
 ```
 
+<!-- planned-change:docs-publish-on-commit -->
+
 #### UC-SPO34: Installed publication uses the selected commit
 
 ```gherkin
@@ -308,6 +340,34 @@ Then the deployed documentation and agent artifacts are those committed at the i
 And the project's different main tip does not appear in those outputs
 And the install act is told whether publication completed, was already current, or was skipped with its build error
 ```
+
+<!-- change:docs-publish-on-commit -->
+
+#### UC-SPO34: Installed publication uses the selected commit
+
+```gherkin
+Given an operator's machine on which no project checkout of the platform is registered
+And its installation has just installed a release
+When the install act publishes the platform's documentation and agent artifacts
+Then the deployed documentation and agent artifacts are those committed at the installed release
+And the install act is told whether publication completed, was already current, or was skipped with its build error
+```
+
+<!-- /planned-change:docs-publish-on-commit -->
+
+<!-- planned:docs-publish-on-commit -->
+
+#### UC-SPO38: An install leaves the platform checkout's documentation in place
+
+```gherkin
+Given an operator's machine on which the platform's project checkout is registered
+And that checkout's committed main tip is published
+When its installation installs a release from another commit
+Then the deployed documentation and agent artifacts remain those of the checkout's committed main tip
+And the install act is told that the checkout publishes them
+```
+
+<!-- /planned:docs-publish-on-commit -->
 
 #### UC-SPO29: telec sync refuses outside a home
 
@@ -431,3 +491,14 @@ Then the legacy state is retired and refresh uses the proven per-home generation
 - Publication fails explicitly when its distribution implementation is
   unavailable; publication never reports success after omitting a
   runtime-output phase.
+
+<!-- planned:docs-publish-on-commit -->
+
+- On a machine with an installation, commit-boundary publication runs the
+  active release's code, which may be older than the committed source it
+  publishes. A home whose committed source only newer publication code can
+  build is skipped with its build error, and stays at its previous deployment
+  until a release carrying that code is installed and the checkout publishes
+  again — on its next activation that owes publication, or through `telec sync`.
+
+<!-- /planned:docs-publish-on-commit -->
