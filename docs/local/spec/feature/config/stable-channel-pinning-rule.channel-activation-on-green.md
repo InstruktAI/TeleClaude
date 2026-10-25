@@ -55,18 +55,6 @@ Repeating the migration preserves the recorded channel.
 
 #### UC-CFG-PIN-3: An operator chooses the channel their installation follows
 
-```gherkin
-Scenario Outline: An operator selects a channel
-  Given an operator selects the <channel> channel
-  When configuration is validated
-  Then the enrollment is accepted
-
-  Examples:
-    | channel |
-    | edge    |
-    | stable  |
-```
-
 #### UC-CFG-PIN-4: Beta enrollment requires no compatibility series
 
 #### UC-CFG-PIN-5: An omitted deployment declaration uses the configured default

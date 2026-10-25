@@ -20,10 +20,8 @@ two responsibilities, owned by two bounded contexts on different change axes:
   once, ending healthy.
 
 The ingress decides nothing about the reaction; the reaction is
-subscriber-driven. This separation is the recorded decision in ADR-0028
-(single-ingress termination) and ADR-0024 (reconciliation as its own bounded
-context); ADR-0055 supersedes ADR-0028's bind topology with proxy-fronted reuse
-of the localhost API server.
+subscriber-driven, and the ingress reuses the localhost API server behind its
+proxy.
 
 ### Ingress — `teleclaude/hooks/inbound.py`
 
@@ -33,15 +31,18 @@ the inbound path prefix. A project receives GitHub deliveries by declaring a
 GitHub source in its own configuration; the ingress verifies each delivery
 against that project's secret, translates it, and relays it. Webhook routes
 authenticate by signature alone and inherit no loopback identity-trust. One
-ingress terminates requests for every provider and every home. See
-`docs/local/spec/feature/integration/single-ingress-webhook-termination.md` and
-`docs/local/spec/feature/integration/inbound-webhook-endpoint-framework.md`.
+ingress terminates requests for every provider and every home: the ingress
+contract is `local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`,
+and per-home source declaration is
+`local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`.
 
 ### Cluster relay
 
 A verified delivery is published on the platform event stream at cluster scope
-as the platform event `github.<event>`, emitted on the ingress, with the
-declaring project as its origin. Every computer reads the stream through its own
+as a platform event of its provider's type — `github.<event>` for GitHub —
+emitted on the ingress, with the home that declared the source as its origin,
+or none for a source the platform itself declares
+(`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`). Every computer reads the stream through its own
 consumers. Only the ingress is publicly exposed. The relay is stateless, so a
 second ingress can be added without redesign.
 
@@ -69,15 +70,14 @@ beyond the series is held instead; its held-release event activates
 `sdlc/procedure/maintenance/breaking-release-upgrade` on that computer, which
 carries out the release's upgrade steps and installs it through the same act.
 Channel policy and the exactly-once / healthy-or-failed contract are owned by
-`docs/local/spec/feature/reconciliation/channel-gated-self-update.md`; the
-context model is in `docs/local/spec/domain/reconciliation.md`.
+`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`;
+the context model is `local/projects/teleclaude/spec/domain/reconciliation`.
 
 A deliberately multi-version fleet (edge ahead of stable) stays
 interoperable through the fleet capability map and feature-ID gating in
 `teleclaude/core/reconciliation/` — unaware nodes drop ignorable capabilities
 cleanly, and removal of a shared capability waits until every live node carries
-it. See
-`docs/local/spec/feature/reconciliation/fleet-cross-version-interop.md`.
+it (`local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`).
 
 ### Current implementation surface
 
@@ -87,7 +87,7 @@ convergence reaction is the installation's own event consumer, whose channel
 evaluation lives in `teleclaude/deployment/` and which invokes reconciliation's
 install act; the interval read goes through `integration`'s GitHub client.
 Channel configuration is the machine configuration's `deployment` block
-(`docs/local/spec/teleclaude-config.md`).
+(`local/projects/teleclaude/spec/teleclaude-config`).
 
 ### Immutable installed source
 

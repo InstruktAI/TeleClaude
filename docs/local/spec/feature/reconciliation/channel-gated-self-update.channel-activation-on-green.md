@@ -19,7 +19,7 @@ The behavioral contract for how an installation keeps its own running version cu
 
 ### Source and channel
 
-An installation follows one source and one channel. Both are the installation's own setting, held by configuration, and neither is a property of a particular machine or of the upstream repository. Only the followed source's changes and releases can start convergence.
+An installation follows one source and one channel. Both are the installation's own setting, and neither is a property of a particular machine or of the upstream repository: the source is the repository the installation was installed from (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`), and the channel is declared in its configuration (`local/projects/teleclaude/spec/feature/config/stable-channel-pinning-rule`). Only the followed source's changes and releases can start convergence.
 
 - **edge** — follows the source's main line and converges only to a revision announced green: every required check of the source has passed on it (`local/projects/teleclaude/spec/feature/integration/ci-run-outcomes`). It always converges to the newest green revision: activation begins when the install stops the daemon, and a green revision that a newer one overtakes before its activation begins is never activated. A revision with a red or missing required check is never selected. Edge revisions carry no release classification, so every selected edge revision converges automatically. While no green revision newer than the active release is known, the installation stays on its active release and its status names why it is not advancing. An installation learns its source's green revisions and releases whether or not it is in the cluster that receives the source's webhooks.
 - **stable** — follows the source's published releases. A release within the active release's compatibility series — the same minor while the major is zero, and the same major from 1.0 onward — converges automatically. Release classification owns the compatibility promise (`local/projects/teleclaude/spec/release-inspector-prompt`).
@@ -56,6 +56,12 @@ retains its pending evidence when that install is refused or fails, and the
 install's outcomes are owned by
 `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`.
 
+### Convergence guarantees
+
+- A target version is applied at most once; a signal for a version the installation already runs, or an older one it already contains, changes nothing.
+- Convergence is complete only when the installation runs healthy on the target; a failed step is recorded with its reason and leaves convergence incomplete until it is replayed, with the same original source and target identity.
+- A release is adopted at exactly the revision its tag names.
+
 ### Use cases
 
 #### UC-CSU-1: Edge converges to the newest green mainline revision
@@ -84,33 +90,15 @@ Scenario Outline: A stable installation meets a published release
   Then the installation's convergence decision is <decision>
 
   Examples:
-    | installed | candidate | decision                           |
-    | 0.8.3     | 0.8.4     | advance to the candidate           |
-    | 0.8.3     | 0.9.0     | hand the release to its integrator |
-    | 0.8.3     | 1.0.0     | hand the release to its integrator |
-    | 1.8.3     | 1.9.0     | advance to the candidate           |
-    | 1.8.3     | 2.0.0     | hand the release to its integrator |
-    | 2.3.1     | 2.4.0     | advance to the candidate           |
+    | installed | candidate | decision                 |
+    | 0.8.3     | 0.8.4     | advance to the candidate |
+    | 1.8.3     | 1.9.0     | advance to the candidate |
+    | 2.3.1     | 2.4.0     | advance to the candidate |
 ```
 
 #### UC-CSU-4: A target version is applied at most once
 
-```gherkin
-Given an installation has already converged to a target version
-When the same release becomes visible again
-Then the installation recognizes it is already at the desired version
-And performs no second update
-```
-
 #### UC-CSU-5: Convergence ends healthy or reports failure
-
-```gherkin
-Given an installation begins converging to a target version
-When the convergence steps run in order
-Then the installation is not considered converged until it is running and healthy on the target version
-And a step that fails is recorded with its reason and leaves convergence incomplete until an agent replays it
-And the installation does not silently come up in a partial or unhealthy state
-```
 
 #### UC-CSU-6: No manual operator action
 
@@ -139,48 +127,11 @@ Scenario Outline: An installation meets a change of some repository
 
 #### UC-CSU-8: Release adoption selects the exact admitted source
 
-```gherkin
-Given an operator's installation has selected an eligible published release
-And the installed checkout differs from that release
-When release activation completes
-Then the installed source is the selected release revision
-```
-
 #### UC-CSU-9: A replayed older release cannot reverse convergence
-
-```gherkin
-Given an operator's installation has adopted a newer eligible release
-When an older release announcement is replayed
-Then the installed revision remains unchanged
-```
 
 #### UC-CSU-11: An unsupported source transition preserves the installation
 
-```gherkin
-Scenario Outline: Refusing unsupported release source
-  Given an installation with an active release
-  And a channel-eligible target would require <transition>
-  When the installation attempts that transition
-  Then the active release remains active and unchanged
-  And convergence reports the unmet condition without claiming success
-  And its pending transition remains available for recovery
-
-  Examples:
-    | transition                                       |
-    | a non-ancestor release with an older version     |
-    | a newer release on a separate source history     |
-    | a different source with a non-increasing version |
-```
-
 #### UC-CSU-12: A failed install leaves convergence incomplete
-
-```gherkin
-Given convergence has selected its target revision
-When the install of that revision is refused or fails
-Then convergence reports that failure and retains its pending transition
-And it does not report the transition as complete
-And a later replay uses the same original source and target identity
-```
 
 #### UC-CSU-13: A breaking release reaches the operator's installation through its integrator
 
@@ -194,12 +145,10 @@ And the installation keeps running its active release until that release's insta
 
 ### Cross-context references
 
-- Owned by `reconciliation` (`@docs/local/spec/domain/reconciliation.md`); the version-convergence concern of that context.
-- The source's changes, releases and green announcements are supplied by `integration` (`@docs/local/spec/feature/integration/single-ingress-webhook-termination.md`, `@docs/local/spec/feature/integration/ci-run-outcomes.md`).
-
-- Source and channel inputs, and the migration of earlier enrollments, come from `config`.
-
-- Behaviour across a mixed-version fleet is governed by `@docs/local/spec/feature/reconciliation/fleet-cross-version-interop.md`.
+- Owned by `reconciliation` (`local/projects/teleclaude/spec/domain/reconciliation`); the version-convergence concern of that context.
+- The source's changes, releases and green announcements are supplied by `integration` (`local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`, `local/projects/teleclaude/spec/feature/integration/ci-run-outcomes`).
+- The channel input, and the migration of earlier enrollments, come from `config`; the source is the installation's own kept repository.
+- Behaviour across a mixed-version fleet is governed by `local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`.
 
 ## Known caveats
 

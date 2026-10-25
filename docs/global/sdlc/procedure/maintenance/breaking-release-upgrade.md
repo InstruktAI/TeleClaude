@@ -22,9 +22,9 @@ dispatch:
 
 ## Goal
 
-Bring the release the installation holds for its integrator
-(`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`)
-into the installation, on the installation's own computer, whether or not a
+Bring the release the installation holds for its integrator — a published
+release beyond its active release's compatibility series, which the
+installation never installs on its own — into the installation, on the installation's own computer, whether or not a
 development checkout exists there. A person is asked only for what only a
 person can supply (`general/policy/human-contract`).
 
@@ -58,9 +58,8 @@ person can supply (`general/policy/human-contract`).
    keep this session open for the answer. The installation keeps running its
    active release meanwhile. Nothing else is asked.
 5. **Install.** Run `telec app install` with the held release's version. The
-   install act prepares, migrates, switches and verifies, and owns every failure
-   outcome
-   (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
+   install act prepares, migrates, switches and verifies, and reports every
+   failure outcome through `telec app status`.
 6. **Verify.** Read `telec app status` and the logs from the install onwards.
    The upgrade is complete when the installation serves the held release and
    the hold is cleared.
