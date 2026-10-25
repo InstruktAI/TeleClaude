@@ -40,10 +40,12 @@ domain state, and `general/policy/human-contract` to the scope of the work.
 3. Read the current domain state and the procedure's durable progress. Establish
    what this event calls for now, including whether its work is already complete
    or has been superseded under the procedure's own rules.
-4. Apply the procedure's prerequisites, execution steps, evidence requirements,
-   and completion criteria to this event. Produce its prescribed outputs and
-   advance its progress only when those criteria are satisfied. A conclusion
-   that no further work is due follows the same checks.
+4. Follow the procedure's route for this event. When the route names a
+   sub-procedure, load it with `telec docs get <id>` now and apply it as part
+   of the procedure for this event. Apply the prerequisites, execution steps,
+   evidence requirements, and completion criteria to this event. Produce its
+   prescribed outputs and advance its progress only when those criteria are
+   satisfied. A conclusion that no further work is due follows the same checks.
 5. Continue with the remaining supplied events, preserving unfinished work
    through the procedure's own recovery contract. When the supplied work is
    accounted for, follow the procedure's turn and session lifecycle.

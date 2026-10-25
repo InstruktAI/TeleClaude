@@ -121,8 +121,10 @@ or agents, or starts another session. A worker's reach is focus, not integrity
 (`general/principle/trust-and-guardrails`): the todo's claim and the object
 owners still decide what it may change.
 
-Each procedure declares a role of its own, so a session's role names exactly
-the assignment it runs and two procedures never appear under one name.
+Each procedure a session is started into declares a role of its own, so a
+session's role names exactly the assignment it runs and two procedures never
+appear under one name. A sub-procedure its agent loads on a route declares no
+role and runs under the role of the procedure that loaded it.
 Procedures whose assignments need the same reach take it from a **composite
 role** the catalog declares: each procedure's role carries the composite's
 class, reach, capabilities and label, and adds nothing until the catalog gives

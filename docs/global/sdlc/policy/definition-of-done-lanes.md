@@ -548,6 +548,16 @@ snippet-body rules — and three checks do:
   acts that role excludes is this check's finding, unless it is that policy's
   counter for an act the reader is already invited to take.
 
+**Procedure composition check.** When a changed procedure carries root
+frontmatter, or its subscriptions or Required reads changed, the reviewer reads
+the frontmatter of every other procedure in the corpus, pending ones included,
+and applies the composition step of `general/procedure/doc-snippet-authoring`:
+its role is declared by no other procedure, an event or trigger whose
+responsibility a standing role already carries is a route in that role's entry
+procedure, and none of its own sub-procedures is a Required read. Each finding
+is **Important**. The check reads across todos because each delivery's own
+review sees only its own procedure.
+
 **Frontmatter liveness check.** `delivered_by` is authorship provenance, not a
 dispatch gate. The reviewer checks frontmatter shape and stale delivered
 relationships against `general/spec/snippet-authoring-schema`:

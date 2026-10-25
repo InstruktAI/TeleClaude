@@ -153,6 +153,27 @@ tooling.
     another context's decision through this snippet's surface is consumer
     restatement and is not written.
 
+16. **Compose procedures by standing role.** A procedure a session is started
+    into carries root frontmatter — `role`, `subscriptions`,
+    `activation_trigger` or `dispatch` (`general/spec/snippet-authoring-schema`).
+    Before authoring one, name the standing role whose responsibility the new
+    work is. When a role already carries it, the new event or trigger becomes a
+    route in that role's entry procedure: the entry procedure declares every
+    event its role answers, routes each one to the step that handles it, and
+    is the only procedure declaring that role. When no role carries it, the new
+    entry procedure declares a role of its own.
+
+    Handling too large to stay a step in the entry procedure becomes a
+    sub-procedure: a procedure in the group folder the entry procedure heads,
+    carrying none of the root frontmatter. The entry procedure's route instructs
+    its agent to load the sub-procedure with `telec docs get <id>` when that
+    route is taken, and never lists it in Required reads, which are inlined into
+    every activation. Shared handling that other procedures use as well, such as
+    the event-handling instructions, stays a Required read. One agent then holds
+    the focus and context its role's events share, and the handling of an event
+    enters its awareness only when that event arrives
+    (`general/principle/priming`).
+
 ## Outputs
 
 - New or updated snippet with correct structure.
