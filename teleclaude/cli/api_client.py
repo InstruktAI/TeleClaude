@@ -50,13 +50,14 @@ from teleclaude.cli.tool_client import (
     shutdown_refusal_message,
 )
 from teleclaude.cli.tui_clearance import clear_tui_bootstrap_pillars
-from teleclaude.constants import API_SOCKET_PATH
+from teleclaude.constants import API_SOCKET_PATH, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.daemon_lifecycle_identity import daemon_credential_headers
 from teleclaude.core.operation_caller_identity import get_caller_session_id
 from teleclaude.core.session_identity_facts import read_session_identity_facts
 from teleclaude.history.search_payload import HistorySearchPayload
 from teleclaude.paths import MAIN_DB_PATH
+from teleclaude.types.creation_record import EntryPoint
 
 if TYPE_CHECKING:
     from teleclaude.history.service import HistoryDetailPayload
@@ -84,6 +85,7 @@ _TODO_LIST_COMMAND = "todo list"
 _WS_QUERY_SEPARATOR = "?"
 _WS_CONNECTED_LOG = "WebSocket connected, streams: %s"
 _PROJECT_ADOPT_COMMAND = "telec config project adopt"
+_IDENTITY_MODES_EXCLUSIVE_MESSAGE = "daemon_credential and system_principal are mutually exclusive"
 _PROJECT_ADOPT_CLEARANCE = ClearanceScope.verb(_PROJECT_ADOPT_COMMAND)
 _HTTP_POST = HTTPMethod.POST
 
@@ -182,19 +184,41 @@ class APIError(Exception):
 class _TelecConnectionClient:
     """Async HTTP client for telec with WebSocket push support."""
 
-    def __init__(self, socket_path: str = API_SOCKET_PATH, *, daemon_credential: bool = False):
+    def __init__(
+        self,
+        socket_path: str = API_SOCKET_PATH,
+        *,
+        daemon_credential: bool = False,
+        system_principal: bool = False,
+    ):
         """Initialize client.
 
         Args:
             socket_path: Path to Unix socket
             daemon_credential: When True, identity headers carry the daemon's
                 own process-local credential — the mode the daemon uses for
-                the calls it makes into its own request surface.
+                the calls it makes into its own request surface. The credential
+                resolves only inside the daemon's own interpreter.
+            system_principal: When True, identity headers carry the platform's
+                system principal with no session or role — the mode a platform
+                process outside the daemon uses, because the daemon credential
+                does not resolve across interpreters.
+
+        Raises:
+            ValueError: If both identity modes are requested.
         """
+        if daemon_credential and system_principal:
+            raise ValueError(_IDENTITY_MODES_EXCLUSIVE_MESSAGE)
         self.socket_path = socket_path
         self._daemon_credential = daemon_credential
+        self._system_principal = system_principal
         self._http_state = _HTTPState()
         self._ws_state = _WebSocketState()
+
+    @property
+    def _carries_fixed_identity(self) -> bool:
+        """Whether identity is a fixed platform identity rather than a resolved CLI caller."""
+        return self._daemon_credential or self._system_principal
 
     def __getattr__(self, name: str) -> object:
         """Provide backwards-compatible access to internal state for tests."""
@@ -221,7 +245,7 @@ class _TelecConnectionClient:
     async def connect(self) -> None:
         """Connect to API socket."""
         transport = httpx.AsyncHTTPTransport(uds=self.socket_path)
-        if not self._daemon_credential:
+        if not self._carries_fixed_identity:
             from teleclaude.cli.session_auth import resolve_cli_identity  # noqa: PLC0415 - capture the client caller.
 
             self._http_state.clearance_identity = resolve_cli_identity()
@@ -289,7 +313,7 @@ class _TelecConnectionClient:
         if not allowed_subscriptions:
             return refusals
 
-        if not self._daemon_credential and self._http_state.clearance_identity is not None:
+        if not self._carries_fixed_identity and self._http_state.clearance_identity is not None:
             self._http_state.identity_headers = self._build_identity_headers(
                 refresh_cli_identity_role(self._http_state.clearance_identity)
             )
@@ -367,7 +391,7 @@ class _TelecConnectionClient:
     def _ws_connect_and_run(self) -> None:
         """Connect to WebSocket and process messages until disconnection."""
         logger.debug("Connecting to WebSocket at %s", self.socket_path)
-        identity_headers = {} if self._daemon_credential else self._http_state.identity_headers
+        identity_headers = {} if self._carries_fixed_identity else self._http_state.identity_headers
         ws = unix_connect(path=self.socket_path, uri=self._ws_uri(), additional_headers=identity_headers)
 
         with self._ws_state.lock:
@@ -468,11 +492,11 @@ class _TelecConnectionClient:
         method_enum = self._normalize_http_method(method)
         identity = (
             refresh_cli_identity_role(self._http_state.clearance_identity)
-            if not self._daemon_credential and self._http_state.clearance_identity is not None
+            if not self._carries_fixed_identity and self._http_state.clearance_identity is not None
             else self._http_state.clearance_identity
         )
 
-        refusal = None if self._daemon_credential else clearance_scope_refusal(options.clearance_scope, identity)
+        refusal = None if self._carries_fixed_identity else clearance_scope_refusal(options.clearance_scope, identity)
         if refusal is not None:
             raise APIError(refusal, work_feedback=refusal)
         identity_headers = (
@@ -546,6 +570,8 @@ class _TelecConnectionClient:
         """Build the carried caller headers from the invocation's resolved identity and the command it cleared."""
         if self._daemon_credential:
             return daemon_credential_headers()
+        if self._system_principal:
+            return CarriedIdentity(principal=SYSTEM_DAEMON_PRINCIPAL, entry_point=EntryPoint.AGENT.value).to_headers()
 
         operation_session_id = get_caller_session_id()
         if operation_session_id is not None:
