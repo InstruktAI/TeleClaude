@@ -46,17 +46,6 @@ arguments, entry kind and facts, and additional context. A scheduled run retains
 its configured job identity; an activation retains its home, subject, attendance
 and delivery settings. Those values remain available on continuation.
 
-<!-- planned-change:explicit-procedure-inputs-and-titles -->
-
-The session's generated title is its role name followed by its work subject.
-A direct invocation with a bound branch uses that branch as its subject;
-other direct invocations use their supplied arguments. A scheduled run shows
-its job name and an activation its home in that place. The full procedure ID
-and complete arguments remain recorded and inspectable in session details.
-Display abbreviation does not change dispatch, continuation or matching identity.
-
-<!-- change:explicit-procedure-inputs-and-titles -->
-
 The session's generated title is its role name followed by the arguments
 supplied to its assignment, as its persisted invocation records them; an
 assignment that was supplied no arguments is titled with its role name alone. The
@@ -67,8 +56,6 @@ activation's home — and the procedure ID never stand in for absent arguments;
 they remain recorded and inspectable in session details beside the complete
 arguments. Display abbreviation does not change dispatch, continuation or
 matching identity.
-
-<!-- /planned-change:explicit-procedure-inputs-and-titles -->
 
 A bound issue parameter identifies GitHub work when GitHub's issue lookup
 resolves it in the assignment's project. Session snapshots carry its verified
@@ -143,8 +130,4 @@ later lookup.
 - docs/local/spec/feature/agent_runtime/procedure-standing-agent.md
 - docs/local/spec/feature/agent_runtime/procedure-event-delivery.md
 
-<!-- planned:explicit-procedure-inputs-and-titles -->
-
 - docs/local/adr/0132-an-assignment-carries-only-the-inputs-its-caller-supplied.md
-
-<!-- /planned:explicit-procedure-inputs-and-titles -->
