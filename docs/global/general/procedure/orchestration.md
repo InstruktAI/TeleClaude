@@ -1,5 +1,5 @@
 ---
-description: 'Orchestration loop for the work state machine and worker session handling.'
+description: 'Orchestration loop for the lifecycle state machines and worker session handling.'
 visibility: 'public'
 ---
 
@@ -64,6 +64,12 @@ it into listing prose, remembered worker ids, or per-child commands. A failure
 blocks self-departure, while a non-terminal handoff or resume emits no bulk
 cleanup so the sessions needed for continuing work remain live.
 
+Between rounds a live worker stays open: the machine's dispatch reuses it for
+the next pass of its phase, carrying the worker's loaded context into the
+re-run. The terminal script is the one place this loop ends a worker; a worker
+the orchestrator must replace mid-phase is replaced through Agent Degradation
+Handling.
+
 A terminal handoff that passes the todo's next move to another owner releases
 the orchestrator's lifecycle claim on that todo at the handoff, so the next
 owner takes it up whether or not this session remains open. Successful worker
@@ -101,8 +107,7 @@ in your next message to it: name the boundary its brief sets and what it does
 instead, then record the departure in the todo `log`, where the phase's review
 reads it. An act its brief or your own instruction directs is inside it. An
 `active` status never makes an act acceptable, and the worker's own
-justification never widens its brief (`general/concept/orchestrator`,
-`sdlc/policy/peer-invocation`).
+justification never widens its brief (`sdlc/policy/peer-invocation`).
 
 Respond by `agent_status`:
 
@@ -258,7 +263,7 @@ credit, or instability:
    - `status="unavailable"` for time-bounded outages or rate limits.
    - Use `--clear` when recovered.
 2. Use the provider's stated recovery window for `--until`. Never invent a window.
-3. Re-run `telec todo work ...` after the status update.
+3. Re-enter the state machine after the status update.
 4. Do not delegate provider-status mutation to workers.
 
 ### Review Threshold Handling (Orchestrator-Owned)
@@ -305,20 +310,6 @@ tier blocks the verdict — there is no fourth tier and no deferral path.
 
 Reminder ownership follows `general/policy/reminder`; a crossed threshold never
 transfers the next move to the human.
-
-- Point workers to the kind-resolved approved intent artifact, optional
-  `architecture` when present, and `implementation-plan` for the execution
-  spine. Historical `requirements` artifacts are readable but never a live
-  fallback authority.
-
-- Reference project docs or standards.
-- Never dictate specific commands or code.
-
-The loop terminates when the work state machine returns:
-
-- `NO_CURRENT_WORK_SLUG` (no current slug was supplied; end the session)
-- `COMPLETE`
-- Non-recoverable error requiring intervention
 
 #### Reminder: orchestration-watch
 

@@ -111,7 +111,7 @@ prescribe speculative defenses.
 
 The review result carries findings, investigation leads, and the verdict. It
 names no owner, destination, or decision for another party: what follows a
-review is the dispatching orchestrator's (§6, `general/concept/orchestrator`).
+review is the dispatching orchestrator's (§6, `general/procedure/orchestration`).
 
 A finding is valid only when all four hold:
 
@@ -248,7 +248,7 @@ pass that crosses the threshold, and not again; the count keeps rendering
 afterwards. The count summons no one.
 
 The phase orchestrator owns continuation, as it owns the loop's lifecycle
-execution (`general/concept/orchestrator`); the reviewer keeps verdict
+execution (`general/procedure/orchestration`); the reviewer keeps verdict
 authority, and the producer keeps disposition and implementation authority.
 Before requesting another pass, the orchestrator establishes from the current
 delta and findings what remains unresolved and why the next act can resolve it

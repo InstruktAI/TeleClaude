@@ -14,7 +14,6 @@ dispatch:
 
 ## Required reads
 
-- @~/.teleclaude/docs/sdlc/concept/architect.md
 - @~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/review-build.md
 - @~/.teleclaude/docs/sdlc/policy/process-change-authority.md

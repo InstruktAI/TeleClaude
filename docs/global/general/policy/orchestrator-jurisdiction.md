@@ -1,5 +1,5 @@
 ---
-description: 'Enforces strict separation between process state management and system code modification for the Orchestrator role.'
+description: 'What an orchestrator writes: the process state of its slug, plus what its entry procedure assigns it; every other change reaches the repository through the session its state machine routes it to.'
 visibility: 'public'
 ---
 
@@ -7,30 +7,45 @@ visibility: 'public'
 
 ## Rules
 
-- **Domain Separation:** You manage **Process State** (todos, requirements, implementation plans, todo state (todos.db), and delivery logs). You NEVER touch **System State** (source code, tests, configuration, or operational scripts).
-- **Hard Ban:** You are STRICTLY FORBIDDEN from using `replace`, `write_file`, or `run_shell_command` to modify any file in the codebase or test suite.
-- **Bookkeeping Only:** Your tool usage is limited to the movement and maintenance of process artifacts.
-- **Task Isolation:** Your focus is narrowed EXCLUSIVELY to the active task slug. Assume all other changes are intentional and out of your jurisdiction.
+- **An orchestrator writes the process state of its slug.** It advances the
+  state machine, dispatches and assesses the sessions the machine routes, and
+  maintains the todo's artifacts, stamps, log and lifecycle state.
+- **Phase work reaches the repository through the session the machine routes it
+  to.** A dispatched worker produces its phase's code, tests, configuration and
+  scripts; when that work needs a change, the orchestrator returns it to that
+  worker with the evidence and governing addresses
+  (`general/procedure/orchestration`).
+- **An entry procedure may assign its orchestrator further writes.** What it
+  names — phase authoring the orchestrator performs itself, or a change it
+  executes on `main` — is inside the orchestrator's jurisdiction under that
+  procedure's own review routing, and nothing beyond what it names is.
+- **The active slug is the focus.** Changes elsewhere in the repository belong to
+  their own owners and are taken as intended.
 
 ## Rationale
 
-Manual intervention in code by the Orchestrator destroys the chain of custody and introduces regressions. The orchestrator's value is in maintaining process integrity — not in being a second implementation agent. Blurring this boundary produces conflicting changes, audit gaps, and unclear ownership when things go wrong.
+Every change keeps the session whose brief and review cover it. An orchestrator
+that writes a worker's output places that change outside the review its phase
+routes it through, and leaves the worker reasoning over state it did not
+produce. Where one session drives a whole lifecycle by design, its entry
+procedure carries that authoring together with its independent review, so the
+same chain of custody holds.
 
 ## Scope
 
-- Applies to all agents operating in the Orchestrator role.
-- Applies to all projects and all phases of the todo lifecycle.
+- Every session holding an orchestrator role in a lifecycle state machine, in
+  every project.
 
 ## Enforcement
 
-- Any orchestrator tool call that writes to source code, tests, or configuration is a policy violation.
-- Workers must reject orchestrator directives that instruct them to modify code outside their assigned scope.
+- Phase and commit reviewers read the todo log and the commits made under the
+  claim; a change produced outside the session its machine routed it to, and
+  outside what the entry procedure assigns, is a scope finding.
 
 ## Exceptions
 
-- None. Orchestrators that need code changes must dispatch a worker.
+- None.
 
 ## See Also
 
-- ~/.teleclaude/docs/general/concept/orchestrator.md
 - ~/.teleclaude/docs/general/procedure/orchestration.md

@@ -16,11 +16,9 @@ dispatch:
 
 - @~/.teleclaude/docs/sdlc/bundle.md
 - @~/.teleclaude/docs/general/principle/session-lifecycle.md
-- @~/.teleclaude/docs/general/concept/orchestrator.md
 - @~/.teleclaude/docs/general/procedure/orchestration.md
 - @~/.teleclaude/docs/general/concept/agent-characteristics.md
 - @~/.teleclaude/docs/sdlc/principle/architectural-defaults.md
-- @~/.teleclaude/docs/sdlc/concept/architect.md
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/overview.md
 - @~/.teleclaude/docs/sdlc/policy/process-change-authority.md
 - @~/.teleclaude/docs/general/policy/human-involvement-recording.md
