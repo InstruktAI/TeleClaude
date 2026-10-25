@@ -11,30 +11,26 @@ The Work state machine routes implementation through four sub-phases: **Build �
 
 **Entry point:** `telec todo work {slug}` for orchestrator-driven work
 **Implementation:** [`next_work()`](../../../../teleclaude/core/next_machine/core.py)
-**Terminal outputs:** `COMPLETE`, `NO_CURRENT_WORK_SLUG`, `FINALIZE_READY` (terminal Phase-B lifecycle phase; integration is triggered by the `TodosDb` write-state chokepoint when the phase is written, not by an in-machine handoff step)
+**Terminal output:** the finalize handoff (`FINALIZE HANDOFF COMPLETE`), returned once the lifecycle reaches `FINALIZE_READY` (terminal Phase-B lifecycle phase; integration is triggered by the `TodosDb` write-state chokepoint when the phase is written, not by an in-machine handoff step). Bare `telec todo work` returns a terminal self-end script.
 
 ### Referenced files
 
-| File                                                                                                               | Purpose                                      |
-| ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
-| [`teleclaude/core/next_machine/core.py`](../../../../teleclaude/core/next_machine/core.py)                         | State machine implementation (`next_work()`) |
-| [`docs/sdlc/procedure/lifecycle/work/build.md`](../../../sdlc/procedure/lifecycle/work/build.md)                   | Build procedure                              |
-| [`docs/sdlc/procedure/lifecycle/work/review-build.md`](../../../sdlc/procedure/lifecycle/work/review-build.md)     | Review procedure                             |
-| [`docs/sdlc/procedure/lifecycle/fix-review-findings.md`](../../../sdlc/procedure/lifecycle/fix-review-findings.md) | Fix review procedure                         |
-| [`docs/sdlc/procedure/lifecycle/work/finalize.md`](../../../sdlc/procedure/lifecycle/work/finalize.md)             | Finalize procedure                           |
-| [`docs/general/procedure/orchestration.md`](../../../general/procedure/orchestration.md)                           | Orchestration loop procedure                 |
+| File                                   | Purpose                                      |
+| -------------------------------------- | -------------------------------------------- |
+| `teleclaude/core/next_machine/work.py` | State machine implementation (`next_work()`) |
 
 ### Referenced doc snippets
 
-| Snippet ID                                     | Content                                                  |
-| ---------------------------------------------- | -------------------------------------------------------- |
-| `sdlc/procedure/lifecycle/work/build`          | Build phase — implement plan, commit per task            |
-| `sdlc/procedure/lifecycle/work/review`         | Review phase — parallel lanes, structured findings       |
-| `sdlc/procedure/lifecycle/fix-review-findings` | Fix phase — address findings, record dispositions        |
-| `sdlc/procedure/lifecycle/work/finalize`       | Finalize — two-stage: worker prepare, orchestrator apply |
-| `general/procedure/orchestration`              | Orchestration loop and dispatch rules                    |
-| `sdlc/policy/definition-of-done`               | Quality gates for completion                             |
-| `sdlc/policy/testing`                          | Pre-commit quality gates                                 |
+| Snippet ID                                     | Content                                                   |
+| ---------------------------------------------- | --------------------------------------------------------- |
+| `sdlc/procedure/lifecycle/work/build`          | Build phase — implement plan, commit per task             |
+| `sdlc/procedure/lifecycle/work/review-build`   | Review phase — parallel lanes, structured findings        |
+| `sdlc/procedure/lifecycle/work/deferrals`      | Deferrals — decide build observations, file admitted work |
+| `sdlc/procedure/lifecycle/fix-review-findings` | Fix phase — address findings, record dispositions         |
+| `sdlc/procedure/lifecycle/work/finalize`       | Finalize — two-stage: worker prepare, orchestrator apply  |
+| `general/procedure/orchestration`              | Orchestration loop and dispatch rules                     |
+| `sdlc/policy/definition-of-done`               | Quality gates for completion                              |
+| `sdlc/policy/testing`                          | Pre-commit quality gates                                  |
 
 ## Inputs/Outputs
 
@@ -140,11 +136,11 @@ flowchart TD
     ReadState["Read todo state (todos.db)"]
     PhaseCheck{"lifecycle_phase?"}
 
-    DispatchBuild["Dispatch /build"]
-    DispatchReview["Dispatch or reuse /review-build"]
+    DispatchBuild["Dispatch sdlc/procedure/lifecycle/work/build"]
+    DispatchReview["Dispatch or reuse sdlc/procedure/lifecycle/work/review-build"]
     DispatchFix["Orchestrator relays the review-findings artifact to the builder session"]
-    DispatchDefer["Dispatch /defer"]
-    DispatchFinalize["Dispatch /finalize"]
+    DispatchDefer["Dispatch sdlc/procedure/lifecycle/work/deferrals"]
+    DispatchFinalize["Dispatch sdlc/procedure/lifecycle/work/finalize"]
     Terminal["lifecycle_phase=finalize_ready written<br/>TodosDb chokepoint fires _on_phase_transition<br/>daemon translator emits todo_finalize_ready<br/>worker sessions end inside the step"]
 
     Start --> ReadState
@@ -188,10 +184,10 @@ sequenceDiagram
     participant I as Integration Queue
 
     O->>SM: telec todo work slug
-    SM-->>O: DISPATCH /build
+    SM-->>O: DISPATCH sdlc/procedure/lifecycle/work/build
 
     Note over O,B: Build Phase
-    O->>B: telec sessions run --command /build --args slug
+    O->>B: telec sessions run --command sdlc/procedure/lifecycle/work/build --args slug
     B->>B: Bind feature-spec scenarios, implement tasks, commit per task
     B->>B: Check all tasks [x], run scoped build gates, repo-wide lint/test when explicitly requested
     B-->>O: BUILD COMPLETE: slug
@@ -199,10 +195,10 @@ sequenceDiagram
     O->>O: telec sessions end builder-session
 
     O->>SM: telec todo work slug
-    SM-->>O: DISPATCH /review-build
+    SM-->>O: DISPATCH sdlc/procedure/lifecycle/work/review-build
 
     Note over O,R: Review Phase
-    O->>R: telec sessions run --command /review-build --args slug --mode slow
+    O->>R: telec sessions run --command sdlc/procedure/lifecycle/work/review-build --args slug
     R->>R: Run review lanes (code, tests, security, types, ...)
     R->>R: Write review-findings.md
     R-->>O: REVIEW COMPLETE: slug - Verdict: APPROVE
@@ -210,10 +206,10 @@ sequenceDiagram
 
     O->>SM: telec todo work slug
     SM->>SM: Read review-findings and reconcile verdict
-    SM-->>O: DISPATCH /finalize
+    SM-->>O: DISPATCH sdlc/procedure/lifecycle/work/finalize
 
     Note over O,F: Finalize Phase
-    O->>F: telec sessions run --command /finalize --args slug
+    O->>F: telec sessions run --command sdlc/procedure/lifecycle/work/finalize --args slug
     F->>F: git fetch origin main, git merge origin/main
     F->>F: git push origin HEAD:slug
     F-->>O: FINALIZE_READY: slug
@@ -244,10 +240,10 @@ sequenceDiagram
     participant F as Fixer
 
     O->>SM: telec todo work slug
-    SM-->>O: DISPATCH /review-build
+    SM-->>O: DISPATCH sdlc/procedure/lifecycle/work/review-build
 
     Note over O,F: Review Round 1
-    O->>R: telec sessions run --command /review-build --args slug --mode slow
+    O->>R: telec sessions run --command sdlc/procedure/lifecycle/work/review-build --args slug
     R-->>O: Verdict: REQUEST CHANGES (3 findings)
     O->>O: telec todo stamp slug --verdict changes_requested --phase build_review
 
@@ -261,7 +257,7 @@ sequenceDiagram
     F-->>O: FIX COMPLETE: slug (3/3 addressed)
 
     O->>SM: telec todo work slug
-    SM-->>O: REUSE LIVE REVIEWER or DISPATCH /review-build if none is alive
+    SM-->>O: REUSE LIVE REVIEWER or DISPATCH sdlc/procedure/lifecycle/work/review-build if none is alive
 
     Note over O,F: Review Round 2
     O->>R: telec sessions send reviewer-session "re-review: read the Dispositions and the fix commits"
@@ -271,14 +267,14 @@ sequenceDiagram
 
 ### Command dispatch map
 
-| Sub-Phase   | Command         | Worker Role  | Output                                                                                                                                  |
-| ----------- | --------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Build       | `/build`        | Builder      | Code, tests, commits                                                                                                                    |
-| Build (bug) | `/build`        | Builder      | Plan execution + reproduction test (RED→GREEN)                                                                                          |
-| Review      | `/review-build` | Reviewer     | `review-findings.md`, verdict                                                                                                           |
-| Fix         | _(no dispatch)_ | Fixer        | Orchestrator relays the review-findings artifact to the existing builder session, which records dispositions, applies fixes and commits |
-| Deferrals   | `/defer`        | Orchestrator | New todos from deferrals                                                                                                                |
-| Finalize    | `/finalize`     | Finalizer    | Branch pushed, FINALIZE_READY                                                                                                           |
+| Sub-Phase   | Command                                      | Worker Role | Output                                                                                                                                  |
+| ----------- | -------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Build       | `sdlc/procedure/lifecycle/work/build`        | Builder     | Code, tests, commits                                                                                                                    |
+| Build (bug) | `sdlc/procedure/lifecycle/work/build`        | Builder     | Plan execution + reproduction test (RED→GREEN)                                                                                          |
+| Review      | `sdlc/procedure/lifecycle/work/review-build` | Reviewer    | `review-findings.md`, verdict                                                                                                           |
+| Fix         | _(no dispatch)_                              | Fixer       | Orchestrator relays the review-findings artifact to the existing builder session, which records dispositions, applies fixes and commits |
+| Deferrals   | `sdlc/procedure/lifecycle/work/deferrals`    | Deferrer    | New todos from deferrals                                                                                                                |
+| Finalize    | `sdlc/procedure/lifecycle/work/finalize`     | Finalizer   | Branch pushed, FINALIZE_READY                                                                                                           |
 
 ### Lifecycle events
 
