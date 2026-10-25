@@ -21,11 +21,23 @@ project reaches a computer, every action bound to the event's type is performed
 in that computer's canonical checkout of the project, through the executor the
 commit boundary uses (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
 
+<!-- planned-change:platform-installation -->
+
 A relayed external event is one such event: a GitHub push or release to a
 project's repository arrives as `github.push` or `github.release` with that
 project as its home. The platform keeps itself current this way: its own
 repository binds those two events to the action that converges an installation
 to its channel (`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`).
+
+<!-- change:platform-installation -->
+
+A relayed external event is one such event: a GitHub push or release to a
+project's repository arrives as `github.push` or `github.release` with that
+project as its home. How the platform's installation keeps itself current is
+not an event binding of any project
+(`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`).
+
+<!-- /planned-change:platform-installation -->
 
 Reactions that need judgment belong to procedures, which wake a standing agent
 on the computer where the event originated. Event-bound maintenance runs a
@@ -54,12 +66,25 @@ project that did not declare it.
   home, selects no project's event binding. Routing reads only the event's type
   and home; the event's data is never consulted to select a binding.
 
+<!-- planned-change:platform-installation -->
+
 - **Where it runs.** Every computer holding the project's registered canonical
   checkout performs the selected actions there, whichever computer the event
   originated on. Eligibility follows the maintenance location contract in
   `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`,
   including the installed release checkout. A computer without an eligible
   checkout performs nothing. A worktree never performs event-bound maintenance.
+
+<!-- change:platform-installation -->
+
+- **Where it runs.** Every computer holding the project's registered canonical
+  checkout performs the selected actions there, whichever computer the event
+  originated on. Eligibility follows the maintenance location contract in
+  `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`.
+  A computer without an eligible checkout performs nothing. A worktree and the
+  platform's installation never perform event-bound maintenance.
+
+<!-- /planned-change:platform-installation -->
 
 - **What an action receives.** A command may name `{event_file}`, a file holding
   the whole event as the platform recorded it: its id, type, time, origin, home
@@ -186,6 +211,16 @@ And the event binding's actions are not performed
 
 ## See Also
 
+<!-- planned-change:platform-installation -->
+
 - docs/local/design/architecture/checkpoint-system.md — the registries and bindings these actions are declared in.
 - docs/local/spec/feature/integration/post-commit-maintenance.md — the executor that performs them.
 - docs/local/spec/feature/reconciliation/channel-gated-self-update.md — the platform's own use of an event binding.
+
+<!-- change:platform-installation -->
+
+- docs/local/design/architecture/checkpoint-system.md — the registries and bindings these actions are declared in.
+- docs/local/spec/feature/integration/post-commit-maintenance.md — the executor that performs them.
+- docs/local/spec/feature/reconciliation/channel-gated-self-update.md — how the platform's installation keeps itself current without an event binding.
+
+<!-- /planned-change:platform-installation -->

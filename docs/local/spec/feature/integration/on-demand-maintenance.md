@@ -34,11 +34,23 @@ Publication is one of those steps and keeps its own contract
 
 ## Canonical fields
 
+<!-- planned-change:platform-installation -->
+
 - **Location.** A run acts from an eligible maintenance checkout under
   `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`:
   canonical main or the identified installed release checkout. From any other
   checkout or a directory holding no `teleclaude.yml`, it refuses before any
   step runs and names the eligible location.
+
+<!-- change:platform-installation -->
+
+- **Location.** A run acts from an eligible maintenance checkout under
+  `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`:
+  canonical main. From any other checkout, the platform's installation or a
+  directory holding no `teleclaude.yml`, it refuses before any step runs and
+  names the eligible location.
+
+<!-- /planned-change:platform-installation -->
 
 - **Steps.** The owed steps run in the registry's declared order through the
   commit-boundary executor, with the same structured attempt and outcome
@@ -124,6 +136,8 @@ Publication is one of those steps and keeps its own contract
 - **Repetition.** A run repeated with nothing changed leaves deployed output and
   machine state as the previous run left them.
 
+<!-- planned-change:platform-installation -->
+
 ### Installed release source
 
 An on-demand run in an installed release checkout resolves its declaration and
@@ -132,9 +146,15 @@ committed-source consumers from the selected installed commit. Publication uses
 The on-demand run preserves the release checkout's selected source and its
 ordinary disruptive-step deferral contract.
 
+<!-- change:platform-installation -->
+
+<!-- /planned-change:platform-installation -->
+
 ### Use cases
 
 #### UC-ODM1: An operator runs the root’s maintenance on demand
+
+<!-- planned-change:platform-installation -->
 
 ```gherkin
 Scenario: Apply the root's declared maintenance
@@ -180,6 +200,48 @@ Scenario: Refuse a run from an ineligible checkout
   Then it refuses before any step runs
   And names an eligible maintenance checkout
 ```
+
+<!-- change:platform-installation -->
+
+```gherkin
+Scenario: Apply the root's declared maintenance
+  Given an operator wants to run maintenance from an eligible canonical checkout
+  When their agent runs `telec sync`
+  Then every maintenance step declared by that root is attempted in order
+  And the operator sees each step's result as it completes
+
+Scenario: Continue maintenance after a step fails
+  Given the root's maintenance has later steps still owed
+  When one step fails during the run
+  Then every later step is still attempted
+  And the run reports the failure and exits unsuccessfully
+
+Scenario: Keep uncommitted changes out of publication
+  Given the root's working tree has uncommitted edits
+  When an operator runs `telec sync`
+  Then the changed paths and known holders are reported before the first step
+  And publication uses committed source and does not publish the uncommitted edits
+
+Scenario: Leave other running services alone
+  Given installation would deploy a changed definition for another running service
+  When an operator runs `telec sync` outside the daemon-replacement window
+  Then the service remains running and its changed definition is reported as owed
+  And the report names the command that deploys it
+
+Scenario: See the recovery route for an earlier failure
+  Given an earlier commit-boundary maintenance run recorded a step as failed
+  When an operator runs `telec sync` in that root
+  Then the report names the failed step and its replay command
+  And the failed record remains and its owning integrator is named
+
+Scenario: Refuse a run from an ineligible checkout
+  Given an operator runs `telec sync` outside canonical main
+  When the command begins
+  Then it refuses before any step runs
+  And names an eligible maintenance checkout
+```
+
+<!-- /planned-change:platform-installation -->
 
 #### UC-ODM2: A failed step does not stop the rest
 

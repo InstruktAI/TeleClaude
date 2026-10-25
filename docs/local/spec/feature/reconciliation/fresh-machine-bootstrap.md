@@ -10,13 +10,31 @@ visibility: internal
 
 ## What it is
 
+<!-- planned-change:platform-installation -->
+
 Installation is the only step a fresh machine needs before it can run TeleClaude.
 When installation completes, the machine can be started with no further setup,
 has an owner who can administer it, and serves the documentation and agent
 artifacts of the checkout it was installed from.
 
+<!-- change:platform-installation -->
+
+Installation is the only step a fresh machine needs before it can run TeleClaude.
+It creates the machine's installation, installs the source's latest release
+through the install act of
+`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`, and
+publishes `telec` from it; it never turns the checkout it runs from into the
+live platform, and a project checkout it runs from stays an ordinary project.
+When installation completes, the machine can be started with no further setup,
+has an owner who can administer it, and serves the documentation and agent
+artifacts of its installed release.
+
+<!-- /planned-change:platform-installation -->
+
 Installation runs in one of two situations, and it reads which one from whether
 it has a terminal:
+
+<!-- planned-change:platform-installation -->
 
 - **A person at a terminal.** Installation may ask that person for what it
   needs, as it does today for its interactive choices.
@@ -26,6 +44,18 @@ it has a terminal:
   from inputs provisioned beforehand, or installation fails promptly and names
   the missing input and how to provide it. Installation never waits on a
   prompt or a dialog that nobody will answer.
+
+<!-- change:platform-installation -->
+
+- **A person at a terminal.** Installation may ask that person for what it
+  needs, as it does today for its interactive choices.
+- **No terminal.** Automation runs installation, for example a disposable
+  machine being provisioned. Nothing that installation needs may come from a
+  person. It comes from inputs provisioned beforehand, or installation fails
+  promptly and names the missing input and how to provide it. Installation
+  never waits on a prompt or a dialog that nobody will answer.
+
+<!-- /planned-change:platform-installation -->
 
 Installation is repeatable. A second run over an installed machine changes
 nothing that the first run already settled. It never duplicates, replaces or
@@ -96,6 +126,8 @@ Then the run adds whichever of the application and its companion service is abse
 And in every case, no optional application or companion service already present is removed
 ```
 
+<!-- planned-change:platform-installation -->
+
 #### UC-FMB4: A machine without environment settings becomes startable
 
 ```gherkin
@@ -113,6 +145,28 @@ Given a checkout whose environment settings file already exists
 When installation runs
 Then that file is unchanged
 ```
+
+<!-- change:platform-installation -->
+
+#### UC-FMB4: A machine without environment settings becomes startable
+
+```gherkin
+Given a machine whose platform home has no environment settings file
+When installation completes
+Then the platform home holds an environment settings file with local defaults
+And the machine starts with no further setup step
+And once started, the platform reports itself healthy
+```
+
+#### UC-FMB5: Existing environment settings are kept
+
+```gherkin
+Given a platform home whose environment settings file already exists
+When installation runs
+Then that file is unchanged
+```
+
+<!-- /planned-change:platform-installation -->
 
 #### UC-FMB6: The owner seed establishes the first administrator
 
@@ -172,6 +226,8 @@ When installation runs with no terminal and no owner seed
 Then owner establishment changes nothing and does not fail the installation
 ```
 
+<!-- planned-change:platform-installation -->
+
 #### UC-FMB12: Installation publishes the checkout's committed documentation
 
 ```gherkin
@@ -199,6 +255,38 @@ Given a machine whose home serves documentation from another commit
 When installation runs from a checkout of a release tag
 Then the home serves the documentation and agent artifacts committed at that release
 ```
+
+<!-- change:platform-installation -->
+
+#### UC-FMB12: Installation publishes the installed release's documentation
+
+```gherkin
+Given a fresh machine whose home has never received published documentation
+When installation completes
+Then the home serves the documentation and agent artifacts committed at the installed release's commit
+And a published snippet can be read through the documentation surface
+And the platform starts without failing to find its published documentation
+And uncommitted changes in the checkout installation ran from are not published
+```
+
+#### UC-FMB13: Installation that cannot publish does not succeed
+
+```gherkin
+Given installation reaches publication of the installed release's documentation
+When that documentation cannot be published
+Then installation does not report success
+And it names the cause publication reported
+```
+
+#### UC-FMB14: A release installed from a tag publishes that release
+
+```gherkin
+Given a machine whose home serves documentation from another commit
+When installation installs a release tag
+Then the home serves the documentation and agent artifacts committed at that release
+```
+
+<!-- /planned-change:platform-installation -->
 
 #### UC-FMB15: Installation exposes time spent in its stages
 
@@ -268,6 +356,14 @@ And the agent or person reads that the agent settings were not stored, with the 
   its result into settled, blocked or deferred, and failed, under
   `local/projects/teleclaude/spec/feature/context/documentation-layout-convergence`.
   Installation decides only how it completes on each class.
+
+<!-- planned:platform-installation -->
+
+- **reconciliation** — the installation, its releases and the install act
+  installation creates and invokes, under
+  `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`.
+
+<!-- /planned:platform-installation -->
 
 <!-- planned:installer-writes-machine-config-ahead-of-daemon-reach-gate -->
 

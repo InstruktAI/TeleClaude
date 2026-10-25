@@ -10,6 +10,8 @@ visibility: 'public'
 TeleClaude keeps a multi-machine fleet current automatically. The pipeline has
 two responsibilities, owned by two bounded contexts on different change axes:
 
+<!-- planned-change:platform-installation -->
+
 - **Ingress (`integration`)** — terminate external webhooks for the whole
   cluster at one public node, verify and normalize each payload, and relay it
   onto the cluster event bus unconditionally.
@@ -17,6 +19,18 @@ two responsibilities, owned by two bounded contexts on different change axes:
   canonical checkout reacts to the relayed pushes and releases of TeleClaude's
   own repository and drives its own actual state toward its desired state: the
   newest version its channel admits, applied exactly once, ending healthy.
+
+<!-- change:platform-installation -->
+
+- **Ingress (`integration`)** — terminate external webhooks for the whole
+  cluster at one public node, verify and normalize each payload, and relay it
+  onto the cluster event bus unconditionally.
+- **Convergence (`reconciliation`)** — every computer's installation reacts to
+  the relayed pushes and releases of TeleClaude's own repository and drives its
+  own actual state toward its desired state: the newest version its channel
+  admits, installed exactly once, ending healthy.
+
+<!-- /planned-change:platform-installation -->
 
 The ingress decides nothing about the reaction; the reaction is
 subscriber-driven. This separation is the recorded decision in ADR-0028
@@ -46,6 +60,8 @@ second ingress can be added without redesign.
 
 ### Convergence — `reconciliation`
 
+<!-- planned-change:platform-installation -->
+
 TeleClaude's own checkpoint overlay binds `github.push` and `github.release` to
 its `self-update` maintenance action. On every computer holding TeleClaude's
 canonical checkout, such an event whose origin is TeleClaude becomes an event
@@ -72,6 +88,29 @@ Channel policy and the exactly-once / healthy-or-failed contract are owned by
 context model (Installation, Convergence Run, Fleet Capability Map) is in
 `docs/local/spec/domain/reconciliation.md`.
 
+<!-- change:platform-installation -->
+
+The running daemon of every computer's installation consumes `github.push` and
+`github.release` events whose origin is TeleClaude, whether or not a project
+checkout of TeleClaude is registered on that computer. An event about any other
+project never starts it.
+
+The reaction reads the event and the computer's channel policy. On a match it
+selects the target the channel admits — the newest mainline for alpha, the
+published release for beta and stable — and installs it through the install act
+(`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`):
+the release is prepared beside the active one, the daemon is stopped, the
+release's pending migrations run, the active-release pointer is switched and
+the daemon is started and verified on the target
+(`local/projects/teleclaude/design/architecture/installation`). A target the
+installation already runs is not installed again. Whether the runtime then
+behaves correctly is the standing integrator's judgment.
+Channel policy and the exactly-once / healthy-or-failed contract are owned by
+`docs/local/spec/feature/reconciliation/channel-gated-self-update.md`; the
+context model is in `docs/local/spec/domain/reconciliation.md`.
+
+<!-- /planned-change:platform-installation -->
+
 A deliberately multi-version fleet (alpha ahead of beta ahead of stable) stays
 interoperable through the fleet capability map and feature-ID gating in
 `teleclaude/core/reconciliation/` — unaware nodes drop ignorable capabilities
@@ -81,6 +120,8 @@ it. See
 
 ### Current implementation surface
 
+<!-- planned-change:platform-installation -->
+
 The ingress (`teleclaude/hooks/inbound.py`) and the fleet capability map /
 feature-ID registry (`teleclaude/core/reconciliation/`) are in place. The
 convergence reaction is the `self-update` maintenance action, whose channel
@@ -89,7 +130,20 @@ standalone `reconciliation` control loop is the target owner of that reaction.
 Channel configuration is the machine configuration's `deployment` block
 (`docs/local/spec/teleclaude-config.md`).
 
+<!-- change:platform-installation -->
+
+The ingress (`teleclaude/hooks/inbound.py`) and the fleet capability map /
+feature-ID registry (`teleclaude/core/reconciliation/`) are in place. The
+convergence reaction is the installation's own event consumer, whose channel
+evaluation lives in `teleclaude/deployment/` and which invokes reconciliation's
+install act. Channel configuration is the machine configuration's `deployment`
+block (`docs/local/spec/teleclaude-config.md`).
+
+<!-- /planned-change:platform-installation -->
+
 ### Immutable installed source
+
+<!-- planned-change:platform-installation -->
 
 The deployment action pins the admitted immutable target for its convergence
 attempt under
@@ -99,6 +153,17 @@ The installation's actual source is assessed against that exact target rather
 than ancestry containment. Installed maintenance and publication consume the
 installed source identity; alpha retains ordinary main activation. This contract
 is independent of whether a development companion has been provisioned.
+
+<!-- change:platform-installation -->
+
+The convergence reaction pins the admitted immutable target for its attempt;
+each installed release selects exactly one revision under
+`local/projects/teleclaude/spec/feature/reconciliation/release-checkout`.
+Channel admission retains its current policy until its own delivery changes it.
+The install act and publication consume the installation's identity, on every
+channel alike.
+
+<!-- /planned-change:platform-installation -->
 
 <!-- planned:reviewed-pr-contributions -->
 
@@ -115,6 +180,8 @@ remain independently observable.
 ## Inputs/Outputs
 
 **Inputs:**
+
+<!-- planned-change:platform-installation -->
 
 - External provider webhooks (GitHub push to `main`, GitHub release published,
   other provider events) arriving at the single ingress.
@@ -133,6 +200,26 @@ remain independently observable.
   run, and the advance's commit-boundary maintenance performed, with every
   failure recorded with its reason.
 
+<!-- change:platform-installation -->
+
+- External provider webhooks (GitHub push to `main`, GitHub release published,
+  other provider events) arriving at the single ingress.
+
+- The machine configuration's `deployment.channel` and, for stable enrollment,
+  its compatibility series.
+
+- The relayed pushes and releases of TeleClaude's own repository, consumed by
+  every computer's installation.
+
+**Outputs:**
+
+- A verified, normalized event relayed onto the cluster event bus.
+- On each computer whose channel admits the target: the target installed as the
+  installation's active release through the install act, with every failure
+  recorded with its reason.
+
+<!-- /planned-change:platform-installation -->
+
 ## Invariants
 
 - **Single public surface.** Exactly one computer (the ingress) accepts
@@ -146,6 +233,8 @@ remain independently observable.
   matches its channel policy; `stable` ignores releases outside its
   compatibility series.
 
+<!-- planned-change:platform-installation -->
+
 - **Exactly-once per target version.** A target the checkout already contains is
   not applied again, and a replayed event performs nothing a second time.
 - **Healthy-or-failed.** A convergence is complete only when the daemon is
@@ -153,7 +242,20 @@ remain independently observable.
   where the standing integrator finds it and leaves the convergence incomplete
   until it is replayed, never a silent partial state.
 
+<!-- change:platform-installation -->
+
+- **Exactly-once per target version.** A target the installation already runs
+  is not installed again, and a replayed event performs nothing a second time.
+- **Healthy-or-failed.** A convergence is complete only when the daemon is
+  running and healthy on the target; a failed step is recorded with its reason
+  where the standing integrator finds it and leaves the convergence incomplete
+  until it is replayed, never a silent partial state.
+
+<!-- /planned-change:platform-installation -->
+
 ## Primary flows
+
+<!-- planned-change:platform-installation -->
 
 ```mermaid
 flowchart TD
@@ -172,7 +274,30 @@ flowchart TD
     P1 -->|no| S1[Complete without acting]
 ```
 
+<!-- change:platform-installation -->
+
+```mermaid
+flowchart TD
+    GH[External provider webhook] --> ING[Ingress: verify + normalize]
+    ING -->|relay unconditionally| BUS[Cluster event bus CLUSTER scope]
+    BUS --> N1[Computer A: installation's convergence reaction]
+    BUS --> N2[Computer B: installation's convergence reaction]
+    BUS --> N3[Computer C: installation's convergence reaction]
+    N1 --> O1{event about TeleClaude?}
+    O1 -->|no| S0[Nothing selected]
+    O1 -->|yes| P1{channel admits a target the installation does not run?}
+    P1 -->|yes| C1[Install act: prepare the release beside the active one]
+    C1 --> W1[Settle and stop the daemon]
+    W1 --> M1[Run the release's pending migrations, switch the active release]
+    M1 --> W2[Start the daemon and verify it on the target]
+    P1 -->|no| S1[Complete without acting]
+```
+
+<!-- /planned-change:platform-installation -->
+
 ## Failure modes
+
+<!-- planned-change:platform-installation -->
 
 - **Ingress down.** No external events are processed while it is down; the
   cluster is not otherwise broken. Recovery is the next release signal, a
@@ -193,6 +318,28 @@ flowchart TD
   action's failure.
 - **Idempotent migrations.** Installation migrations are tracked; re-running
   skips already-applied steps.
+
+<!-- change:platform-installation -->
+
+- **Ingress down.** No external events are processed while it is down; the
+  cluster is not otherwise broken. Recovery is the next release signal, a
+  periodic desired-state self-check, or a second stateless ingress.
+- **Unverified payload.** Signature verification fails at the ingress; nothing
+  is relayed and the sender receives a rejection response.
+- **A computer offline misses relayed events.** A computer that was not running
+  handles the events it missed while the stream still retains them; one that
+  returns after its retained window has moved on does not replay what it
+  missed. Recovery is the next signal or a periodic self-check.
+- **Convergence failure.** A failed install leaves convergence incomplete with
+  its pending target retained for replay; the install's own outcomes are
+  recorded under
+  `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`,
+  and the standing integrator judges the result. Config-load failure is
+  reported as the reaction's failure.
+- **Idempotent migrations.** Installation migrations are tracked; re-running
+  skips already-applied steps.
+
+<!-- /planned-change:platform-installation -->
 
 ## See Also
 

@@ -20,6 +20,16 @@ Installation deploys the units TeleClaude declares, content-gated so an unchange
 definition leaves its running service untouched. It runs at installation and nowhere
 else: no synchronization path installs, refreshes, or withdraws a launch unit.
 
+<!-- planned:platform-installation -->
+
+The declared units run the platform from the installation's active-release
+pointer, never from a release folder or a project checkout
+(`local/projects/teleclaude/design/architecture/installation`). Switching the
+active release therefore changes no rendered definition, and the content gate
+leaves every running unit untouched.
+
+<!-- /planned:platform-installation -->
+
 The docs-watch unit is not among the declared units. A host may still carry it
 deployed and loaded. Installation withdraws it from any host that does.
 
