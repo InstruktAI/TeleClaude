@@ -81,11 +81,38 @@ and runs the guardrails lane over the same scoped paths. A `make lint` with no
 `FILES_FROM` runs the whole suite. There is no `telec code → make → telec code`
 cycle.
 
+<!-- change:telec-repo-command-family -->
+
+`make lint` and `make test` are the project's own entrypoints; they run native
+tools directly and do NOT call back into `telec repo`. The delegation is
+one-directional: `telec repo lint` resolves scope and invokes `make lint`,
+passing the scoped file list as a **NUL-delimited `FILES_FROM` temp file** (the
+paths never travel on `make`'s command line, in `$@`/`$*`, or as a make goal),
+and runs the guardrails lane over the same scoped paths. A `make lint` with no
+`FILES_FROM` runs the whole suite. There is no `telec repo → make → telec repo`
+cycle.
+
+<!-- /planned-change:telec-repo-command-family -->
+
+<!-- planned-change:repo-hook-entry-verbs -->
+
 `telec code commit` formats `quality_paths` (the declared set filtered to
 existing files) and then runs `git commit`. The installed `.git/hooks/pre-commit`
 runs `telec code pre-commit`, which is the commit gate for every route into a
 commit: the partial-staging guard, then lint over the staged file set. No
 framework stash, no working-tree reset outside the declared set.
+
+<!-- change:repo-hook-entry-verbs -->
+
+`telec code commit` formats `quality_paths` (the declared set filtered to
+existing files) and then runs `git commit`. The installed `.git/hooks/pre-commit`
+runs `telec repo pre-commit`, which is the commit gate for every route into a
+commit: the partial-staging guard, then lint over the staged file set. No
+framework stash, no working-tree reset outside the declared set.
+
+<!-- /planned-change:repo-hook-entry-verbs -->
+
+<!-- planned-change:telec-repo-command-family -->
 
 Tool invocation is separate from file scoping. `telec code` decides which files
 are in play; the `make` recipes own how the native tools run, and the guardrails
@@ -101,21 +128,6 @@ then renders the resolved scope into a `make` invocation (and, for lint, the
 guardrails lane).
 
 <!-- change:telec-repo-command-family -->
-
-`make lint` and `make test` are the project's own entrypoints; they run native
-tools directly and do NOT call back into `telec repo`. The delegation is
-one-directional: `telec repo lint` resolves scope and invokes `make lint`,
-passing the scoped file list as a **NUL-delimited `FILES_FROM` temp file** (the
-paths never travel on `make`'s command line, in `$@`/`$*`, or as a make goal),
-and runs the guardrails lane over the same scoped paths. A `make lint` with no
-`FILES_FROM` runs the whole suite. There is no `telec repo → make → telec repo`
-cycle.
-
-`telec repo commit` formats `quality_paths` (the declared set filtered to
-existing files) and then runs `git commit`. The installed `.git/hooks/pre-commit`
-runs `telec repo pre-commit`, which is the commit gate for every route into a
-commit: the partial-staging guard, then lint over the staged file set. No
-framework stash, no working-tree reset outside the declared set.
 
 Tool invocation is separate from file scoping. `telec repo` decides which files
 are in play; the `make` recipes own how the native tools run, and the guardrails
@@ -444,16 +456,6 @@ telec code test (no args)
   → make test (unscoped — no 1:1 source→test map)
 ```
 
-```
-telec code commit (worktree detected)
-  → resolve dirty paths once
-  → git add dirty paths, including deletions
-  → quality_paths = staged set filtered to existing files
-  → handle_format(quality_paths)                          (before committing, no stash)
-  → git commit
-    → .git/hooks/pre-commit → telec code pre-commit (partial-staging guard, lint staged set)
-```
-
 <!-- change:telec-repo-command-family -->
 
 ```
@@ -469,8 +471,24 @@ telec repo test (no args)
   → make test (unscoped — no 1:1 source→test map)
 ```
 
+<!-- /planned-change:telec-repo-command-family -->
+
+<!-- planned-change:repo-hook-entry-verbs -->
+
 ```
-telec repo commit (worktree detected)
+telec code commit (worktree detected)
+  → resolve dirty paths once
+  → git add dirty paths, including deletions
+  → quality_paths = staged set filtered to existing files
+  → handle_format(quality_paths)                          (before committing, no stash)
+  → git commit
+    → .git/hooks/pre-commit → telec code pre-commit (partial-staging guard, lint staged set)
+```
+
+<!-- change:repo-hook-entry-verbs -->
+
+```
+telec code commit (worktree detected)
   → resolve dirty paths once
   → git add dirty paths, including deletions
   → quality_paths = staged set filtered to existing files
@@ -479,7 +497,7 @@ telec repo commit (worktree detected)
     → .git/hooks/pre-commit → telec repo pre-commit (partial-staging guard, lint staged set)
 ```
 
-<!-- /planned-change:telec-repo-command-family -->
+<!-- /planned-change:repo-hook-entry-verbs -->
 
 ### Shared branch flow (session available)
 
@@ -495,18 +513,6 @@ telec code lint (no args, not a worktree, session identity present)
   → join the checks and report their ordered outcomes
 ```
 
-```
-telec code commit (not a worktree, session identity present)
-  → resolve dirty paths once
-  → declared set = live declarations ∩ dirty paths  (--only narrows it)
-  → git add the declared set, including deletions
-  → quality_paths = declared set filtered to existing files
-  → handle_format(quality_paths)                          (before committing, no stash)
-  → git commit
-    → .git/hooks/pre-commit → telec code pre-commit (partial-staging guard, lint staged set)
-  → clear the declarations this commit carried
-```
-
 <!-- change:telec-repo-command-family -->
 
 ```
@@ -519,8 +525,26 @@ telec repo lint (no args, not a worktree, session identity present)
   → join the checks and report their ordered outcomes
 ```
 
+<!-- /planned-change:telec-repo-command-family -->
+
+<!-- planned-change:repo-hook-entry-verbs -->
+
 ```
-telec repo commit (not a worktree, session identity present)
+telec code commit (not a worktree, session identity present)
+  → resolve dirty paths once
+  → declared set = live declarations ∩ dirty paths  (--only narrows it)
+  → git add the declared set, including deletions
+  → quality_paths = declared set filtered to existing files
+  → handle_format(quality_paths)                          (before committing, no stash)
+  → git commit
+    → .git/hooks/pre-commit → telec code pre-commit (partial-staging guard, lint staged set)
+  → clear the declarations this commit carried
+```
+
+<!-- change:repo-hook-entry-verbs -->
+
+```
+telec code commit (not a worktree, session identity present)
   → resolve dirty paths once
   → declared set = live declarations ∩ dirty paths  (--only narrows it)
   → git add the declared set, including deletions
@@ -531,7 +555,7 @@ telec repo commit (not a worktree, session identity present)
   → clear the declarations this commit carried
 ```
 
-<!-- /planned-change:telec-repo-command-family -->
+<!-- /planned-change:repo-hook-entry-verbs -->
 
 ### Shared branch flow (no session)
 
@@ -577,7 +601,7 @@ telec repo lint <files...>
 
 ### Hook gate flow
 
-<!-- planned-change:telec-repo-command-family -->
+<!-- planned-change:repo-hook-entry-verbs -->
 
 ```
 git commit (raw, or invoked by telec code commit)
@@ -591,10 +615,10 @@ git commit (raw, or invoked by telec code commit)
   → exits non-zero on any finding; git produces no commit
 ```
 
-<!-- change:telec-repo-command-family -->
+<!-- change:repo-hook-entry-verbs -->
 
 ```
-git commit (raw, or invoked by telec repo commit)
+git commit (raw, or invoked by telec code commit)
   → .git/hooks/pre-commit → telec repo pre-commit
   → partial-staging check: exits non-zero if staged + unstaged overlap detected
   → lint the staged file set with the checks each path's owning home carries
@@ -605,7 +629,7 @@ git commit (raw, or invoked by telec repo commit)
   → exits non-zero on any finding; git produces no commit
 ```
 
-<!-- /planned-change:telec-repo-command-family -->
+<!-- /planned-change:repo-hook-entry-verbs -->
 
 ### Full-run flow
 

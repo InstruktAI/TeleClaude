@@ -365,6 +365,43 @@ todo worktree, a successful commit also publishes the todo's branch to
    "foreign-staged" check; the pathspec alone enforces the boundary. Agents
    must not unstage foreign files they see in the index.
 
+<!-- change:telec-repo-command-family -->
+
+1. **Lock serialisation.** `main_branch_lock()` (flock on
+   `GIT_MAIN_LOCK_PATH`) serialises commit execution and the staging mutation
+   performed by `telec repo add`. Both paths call
+   `wait_for_index_lock_clear()` while holding that lock before writing the
+   index. The lock auto-releases on process exit or crash.
+
+   Stale `.git/index.lock` self-heal uses the existing bounded holder and age
+   checks before removal. The flock and Git's index lock remain distinct; the
+   wait protects both operations from a prior Git process killed mid-write.
+
+2. **Workspace scope is authoritative — for pathspec construction, not staging.**
+   `resolve_workspace_scope_resolution()` is the single owner of
+   worktree-vs-shared-branch scope. The scope set drives the commit's
+   pathspec (with `--include` adding explicit, agent-declared paths and
+   untracked-not-staged files dropped); it does **not** drive staging.
+   Staging is a narrow follow-up step that runs only on the three cases
+   git's data model genuinely requires it for: untracked files in the
+   pathspec, unmerged-index files in the pathspec, and partial-staged
+   tracked files (handled via `telec repo add` recovery). Modified-tracked
+   files in the pathspec are committed straight from the working tree —
+   `git commit -- <path>` records the working-tree version.
+
+3. **Pathspec on commit IS the boundary.** The final `git commit` runs with an
+   explicit pathspec equal to `workspace scope plus --include paths` (minus
+   untracked-not-staged scope files). Anything else in the index — concurrent
+   stage from another session, crash residue from a prior failed commit,
+   human-staged files outside the agent's scope — is **invisible to the
+   pathspec** and stays staged for its owner. There is no separate
+   "foreign-staged" check; the pathspec alone enforces the boundary. Agents
+   must not unstage foreign files they see in the index.
+
+<!-- /planned-change:telec-repo-command-family -->
+
+<!-- planned-change:repo-hook-entry-verbs -->
+
 4. **The pre-commit hook runs the checks each staged path's owning home carries.**
    Whether the gate runs, and which checks it runs, follow the owning home of
    each staged path, never the directory the commit started from, under the
@@ -396,6 +433,44 @@ todo worktree, a successful commit also publishes the todo's branch to
    Deletion-only commits
    (empty `quality_paths`) skip formatting and the native leg; the documentation
    and agent-artifact validators still grade each owning home of a deleted path.
+
+<!-- change:repo-hook-entry-verbs -->
+
+4. **The pre-commit hook runs the checks each staged path's owning home carries.**
+   Whether the gate runs, and which checks it runs, follow the owning home of
+   each staged path, never the directory the commit started from, under the
+   capability rule in
+   `local/projects/teleclaude/spec/feature/config/project-capability-manifest`: the
+   gate runs where that home carries `code` or `docs`, a global, person, or
+   company home counting as `docs` and `agents` by its kind, and each capability contributes
+   only its own checks — `code` the native toolchain and TeleClaude's code
+   rules, `docs` snippet validation, `agents` artifact validation. A home
+   carrying neither is not gated, and nothing is applied in its place. The
+   checks run from `.git/hooks/pre-commit` (`telec repo pre-commit`) against
+   the commit's staged file set, after the partial-staging guard. Formatting is
+   checked, never rewritten. The documentation and agent-artifact validators
+   read the staged content against the rest of each owning home as committed;
+   the native leg runs on disk over the staged files. `telec code commit`
+   formats `quality_paths` (the commit pathspec filtered to existing files)
+   before staging and passes no `--no-verify`, so its commits pass the same
+   hook as a raw `git commit`. A home without `code` requires no native
+   toolchain contract at its root. The selected checks run in-process when the
+   checkout under commit is the installation or is not a TeleClaude checkout.
+   For any other TeleClaude checkout exactly the selected checks run in that
+   checkout's own code — a slug worktree against the worktree's home
+   (`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`), any other checkout
+   against a fresh scratch home — so a change is graded by the rules it carries
+   and undelivered code never runs against the live home; a checkout that cannot
+   run the selected checks in its own code, or a slug worktree whose home is
+   missing, is refused rather than graded by installed rules
+   (`local/projects/teleclaude/design/architecture/cli-invocation-boundary`).
+   Deletion-only commits
+   (empty `quality_paths`) skip formatting and the native leg; the documentation
+   and agent-artifact validators still grade each owning home of a deleted path.
+
+<!-- /planned-change:repo-hook-entry-verbs -->
+
+<!-- planned-change:telec-repo-command-family -->
 
 5. **Commit-first gate on main.** Non-integrator agents on main use the bare
    `telec code commit` invocation to surface commit-first and post-commit
@@ -491,69 +566,6 @@ todo worktree, a successful commit also publishes the todo's branch to
     and the last says nothing about it.
 
 <!-- change:telec-repo-command-family -->
-
-1. **Lock serialisation.** `main_branch_lock()` (flock on
-   `GIT_MAIN_LOCK_PATH`) serialises commit execution and the staging mutation
-   performed by `telec repo add`. Both paths call
-   `wait_for_index_lock_clear()` while holding that lock before writing the
-   index. The lock auto-releases on process exit or crash.
-
-   Stale `.git/index.lock` self-heal uses the existing bounded holder and age
-   checks before removal. The flock and Git's index lock remain distinct; the
-   wait protects both operations from a prior Git process killed mid-write.
-
-2. **Workspace scope is authoritative — for pathspec construction, not staging.**
-   `resolve_workspace_scope_resolution()` is the single owner of
-   worktree-vs-shared-branch scope. The scope set drives the commit's
-   pathspec (with `--include` adding explicit, agent-declared paths and
-   untracked-not-staged files dropped); it does **not** drive staging.
-   Staging is a narrow follow-up step that runs only on the three cases
-   git's data model genuinely requires it for: untracked files in the
-   pathspec, unmerged-index files in the pathspec, and partial-staged
-   tracked files (handled via `telec repo add` recovery). Modified-tracked
-   files in the pathspec are committed straight from the working tree —
-   `git commit -- <path>` records the working-tree version.
-
-3. **Pathspec on commit IS the boundary.** The final `git commit` runs with an
-   explicit pathspec equal to `workspace scope plus --include paths` (minus
-   untracked-not-staged scope files). Anything else in the index — concurrent
-   stage from another session, crash residue from a prior failed commit,
-   human-staged files outside the agent's scope — is **invisible to the
-   pathspec** and stays staged for its owner. There is no separate
-   "foreign-staged" check; the pathspec alone enforces the boundary. Agents
-   must not unstage foreign files they see in the index.
-
-4. **The pre-commit hook runs the checks each staged path's owning home carries.**
-   Whether the gate runs, and which checks it runs, follow the owning home of
-   each staged path, never the directory the commit started from, under the
-   capability rule in
-   `local/projects/teleclaude/spec/feature/config/project-capability-manifest`: the
-   gate runs where that home carries `code` or `docs`, a global, person, or
-   company home counting as `docs` and `agents` by its kind, and each capability contributes
-   only its own checks — `code` the native toolchain and TeleClaude's code
-   rules, `docs` snippet validation, `agents` artifact validation. A home
-   carrying neither is not gated, and nothing is applied in its place. The
-   checks run from `.git/hooks/pre-commit` (`telec repo pre-commit`) against
-   the commit's staged file set, after the partial-staging guard. Formatting is
-   checked, never rewritten. The documentation and agent-artifact validators
-   read the staged content against the rest of each owning home as committed;
-   the native leg runs on disk over the staged files. `telec repo commit`
-   formats `quality_paths` (the commit pathspec filtered to existing files)
-   before staging and passes no `--no-verify`, so its commits pass the same
-   hook as a raw `git commit`. A home without `code` requires no native
-   toolchain contract at its root. The selected checks run in-process when the
-   checkout under commit is the installation or is not a TeleClaude checkout.
-   For any other TeleClaude checkout exactly the selected checks run in that
-   checkout's own code — a slug worktree against the worktree's home
-   (`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`), any other checkout
-   against a fresh scratch home — so a change is graded by the rules it carries
-   and undelivered code never runs against the live home; a checkout that cannot
-   run the selected checks in its own code, or a slug worktree whose home is
-   missing, is refused rather than graded by installed rules
-   (`local/projects/teleclaude/design/architecture/cli-invocation-boundary`).
-   Deletion-only commits
-   (empty `quality_paths`) skip formatting and the native leg; the documentation
-   and agent-artifact validators still grade each owning home of a deleted path.
 
 5. **Commit-first gate on main.** Non-integrator agents on main use the bare
    `telec repo commit` invocation to surface commit-first and post-commit
@@ -656,7 +668,7 @@ Every walkthrough below traces an acting context whose declared tier carries pro
 
 ### Agent commit (worktree)
 
-<!-- planned-change:telec-repo-command-family -->
+<!-- planned-change:repo-hook-entry-verbs -->
 
 ```
 telec code commit --approved "feat(scope): subject"
@@ -682,10 +694,10 @@ telec code commit --approved "feat(scope): subject"
     → failure: report git's reason; the commit stands; exit status unchanged
 ```
 
-<!-- change:telec-repo-command-family -->
+<!-- change:repo-hook-entry-verbs -->
 
 ```
-telec repo commit --approved "feat(scope): subject"
+telec code commit --approved "feat(scope): subject"
   → commit gate satisfied (--approved present)
   → lock acquired
   → wait_for_index_lock_clear (self-heal any stale .git/index.lock)
@@ -708,11 +720,11 @@ telec repo commit --approved "feat(scope): subject"
     → failure: report git's reason; the commit stands; exit status unchanged
 ```
 
-<!-- /planned-change:telec-repo-command-family -->
+<!-- /planned-change:repo-hook-entry-verbs -->
 
 ### Agent commit on main
 
-<!-- planned-change:telec-repo-command-family -->
+<!-- planned-change:repo-hook-entry-verbs -->
 
 ```
 telec code commit --approved "chore(docs): update snippets [skip ci]"
@@ -728,10 +740,10 @@ telec code commit --approved "chore(docs): update snippets [skip ci]"
   → lock released
 ```
 
-<!-- change:telec-repo-command-family -->
+<!-- change:repo-hook-entry-verbs -->
 
 ```
-telec repo commit --approved "chore(docs): update snippets [skip ci]"
+telec code commit --approved "chore(docs): update snippets [skip ci]"
   → commit gate satisfied (--approved present)
   → lock acquired
   → workspace scope = SHARED_BRANCH → scoped dirty paths
@@ -744,11 +756,11 @@ telec repo commit --approved "chore(docs): update snippets [skip ci]"
   → lock released
 ```
 
-<!-- /planned-change:telec-repo-command-family -->
+<!-- /planned-change:repo-hook-entry-verbs -->
 
 ### Agent commit with declared extras (scope heuristic missed a file)
 
-<!-- planned-change:telec-repo-command-family -->
+<!-- planned-change:repo-hook-entry-verbs -->
 
 ```
 telec code commit --approved "fix(scope): subject" --include path/to/extra.py
@@ -766,10 +778,10 @@ telec code commit --approved "fix(scope): subject" --include path/to/extra.py
   → lock released
 ```
 
-<!-- change:telec-repo-command-family -->
+<!-- change:repo-hook-entry-verbs -->
 
 ```
-telec repo commit --approved "fix(scope): subject" --include path/to/extra.py
+telec code commit --approved "fix(scope): subject" --include path/to/extra.py
   → commit gate satisfied
   → lock acquired
   → workspace scope = SHARED_BRANCH → scoped dirty paths
@@ -784,7 +796,7 @@ telec repo commit --approved "fix(scope): subject" --include path/to/extra.py
   → lock released
 ```
 
-<!-- /planned-change:telec-repo-command-family -->
+<!-- /planned-change:repo-hook-entry-verbs -->
 
 ### Integration commit
 
@@ -816,7 +828,7 @@ pathspec-scoped `telec repo commit`.
 
 ### Agent commit during active merge (worktree)
 
-<!-- planned-change:telec-repo-command-family -->
+<!-- planned-change:repo-hook-entry-verbs -->
 
 ```
 telec code commit --approved "chore(<slug>): reconcile with origin/main"
@@ -837,10 +849,10 @@ telec code commit --approved "chore(<slug>): reconcile with origin/main"
   → lock released
 ```
 
-<!-- change:telec-repo-command-family -->
+<!-- change:repo-hook-entry-verbs -->
 
 ```
-telec repo commit --approved "chore(<slug>): reconcile with origin/main"
+telec code commit --approved "chore(<slug>): reconcile with origin/main"
   → commit gate satisfied (--approved present)
   → lock acquired
   → wait_for_index_lock_clear
@@ -848,7 +860,7 @@ telec repo commit --approved "chore(<slug>): reconcile with origin/main"
   → MERGE_HEAD detected (repo.git_dir)
   → repository root is not a declared non-project invocation context (single-owner tree)
      — otherwise the eligible set is preserved, or the commit is refused
-  → assert no remaining unmerged paths (all conflicts telec repo add-ed)
+  → assert no remaining unmerged paths (all conflicts telec code add-ed)
      — error, no commit, if any remain
   → quality_paths = full merge diff (merge-base..MERGE_HEAD), not the pathspec
 
@@ -858,7 +870,7 @@ telec repo commit --approved "chore(<slug>): reconcile with origin/main"
   → lock released
 ```
 
-<!-- /planned-change:telec-repo-command-family -->
+<!-- /planned-change:repo-hook-entry-verbs -->
 
 ## Failure modes
 
