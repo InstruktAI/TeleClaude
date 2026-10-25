@@ -182,20 +182,6 @@ abbreviated SHA, its subject and a comparison link when a baseline exists.
 Conventional-commit parsing, category filters and summary generation do not
 remove commits from that list (`general/principle/grounding`).
 
-<!-- planned-change:release-section-exceeds-body-size -->
-
-Automatic releases add the selected inspector's concise consumer-facing summary.
-Explicit-version releases also add an evidence-grounded AI summary when one is
-available. If neither provider supplies a valid summary, their deterministic
-commit notes remain publishable with the supplied version and full candidate
-proof. Summary generation cannot change that version or omit commits.
-The same generated section is committed into the candidate's cumulative
-changelog before verification and copied into its GitHub release body. Note
-rendering failures and output limits are visible failures; completeness is never
-represented by silently dropping commits. The workflow and git-cliff
-configuration own the pinned implementation and rendering template.
-<!-- change:release-section-exceeds-body-size -->
-
 Automatic releases add the selected inspector's concise consumer-facing summary.
 Explicit-version releases also add an evidence-grounded AI summary when one is
 available. If neither provider supplies a valid summary, their deterministic
@@ -212,7 +198,6 @@ the limit even in that form fails before verification. Note rendering failures
 and output limits are visible failures; completeness is never represented by
 silently dropping commits. The workflow and git-cliff configuration own the
 pinned implementation and rendering template.
-<!-- /planned-change:release-section-exceeds-body-size -->
 
 ### Candidate and proof
 
@@ -362,22 +347,6 @@ And publication requires successful lint and full installer proof of that candid
 And a later explicit version can use the same path for a subsequent release
 ```
 
-<!-- planned-change:release-section-exceeds-body-size -->
-
-#### UC-RP9: Both release paths retain the complete commit list
-
-```gherkin
-Given a release operator has a captured source and its completed baseline
-When notes are generated for an automatic or manually versioned candidate
-Then every commit in that interval has its subject and commit link in the notes
-And automatic notes also contain the selected inspector summary
-And manual notes also contain an AI summary when one is available
-And unavailable AI summary does not omit commits from manual notes
-And the proved candidate changelog and published release use the same section
-```
-
-<!-- change:release-section-exceeds-body-size -->
-
 #### UC-RP9: Both release paths retain the complete commit list
 
 ```gherkin
@@ -392,8 +361,6 @@ And the published release carries that section when it fits the release body
 And otherwise the published release carries its summary and commit count
 And links to the complete section in the changelog at the release tag
 ```
-
-<!-- /planned-change:release-section-exceeds-body-size -->
 
 #### UC-RP10: Explicit-version publication remains available without AI
 
