@@ -53,6 +53,15 @@ contracts of the contexts it crosses. It owns none of their rules.
   has started since the active release became active and in which stores, and
   the outcome of the most recent act with its reason.
 
+<!-- planned:installation-activation-inspection -->
+
+- The assessment state in the install record: the installs whose assessment is
+  owed, and the most recent recorded assessment with the install it covered.
+- The owed-assessment announcement: a platform event, with no origin, emitted
+  by the daemon at each start while an install is owed.
+
+<!-- /planned:installation-activation-inspection -->
+
 ```mermaid
 flowchart LR
   subgraph Project["Project checkout · development"]
@@ -190,12 +199,59 @@ selects the target under that contract, and invokes the install act. The
 pending convergence record keeps the target until the act completes, so a
 duplicate signal installs nothing twice.
 
+<!-- planned-change:installation-activation-inspection -->
+
 ### Interim integrator judgment
 
 The integrator integrates and pushes; the channel reaction installs the revision
 its channel admits; the integrator then judges the runtime from the install record's
 outcome and the log window from that install onwards
 (`sdlc/procedure/lifecycle/integrate`).
+
+<!-- change:installation-activation-inspection -->
+
+### Assessment after an install
+
+Every install that stops the daemon, and initial provisioning, owes the
+integrator's assessment of the release that runs after it
+(`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
+The obligation belongs to the installation, so the route that reached the act
+and whether the machine performs source integration make no difference.
+
+```mermaid
+sequenceDiagram
+  participant Rec as install act
+  participant IR as install record
+  participant D as daemon
+  participant I as integrator (platform home)
+  Rec->>D: stop
+  Rec->>IR: install owed an assessment
+  Rec->>D: start on the release that serves
+  D->>IR: read owed installs
+  D-->>I: announce the owed assessment (no origin)
+  I->>I: status, log window from the earliest owed install, health
+  I->>IR: telec app assessed <revision>
+```
+
+- **Owed inside the stopped window.** The install act writes the owed install
+  to the install record once the daemon has stopped, before any migration, so
+  every outcome after the stop — completed, returned to the previous release,
+  or left stopped — leaves it owed.
+- **Announced at each start.** The daemon reads the install record when it
+  starts and, while an install is owed, emits the owed-assessment announcement.
+  The announcement activates `sdlc/procedure/maintenance/installation-assessment`
+  in the platform home of the computer that emitted it
+  (`local/projects/teleclaude/design/architecture/procedure-activation`); its
+  one standing agent owns every owed assessment of the installation. A restart
+  while an install is still owed announces it again.
+- **Discharged by the record.** `telec app assessed <revision>` discharges the
+  install of that revision and every earlier owed one, and leaves a later
+  install owed. It refuses while the daemon does not serve the active release.
+- **A daemon that does not return** announces nothing; the install stays owed
+  in the record and in `telec app status` beside the act's failure, and no
+  assessment is recorded for a runtime nobody observed.
+
+<!-- /planned-change:installation-activation-inspection -->
 
 ### First install and the move off a checkout
 

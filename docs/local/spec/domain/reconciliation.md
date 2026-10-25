@@ -261,6 +261,18 @@ rollback` invokes rollback; `telec app status` reads the install record. The
   daemon's start, stop and verification are consumed from
   `local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`.
 
+<!-- planned:installation-activation-inspection -->
+
+- **Assessment owed.** The install record also holds the installs whose
+  assessment is owed and the most recent recorded assessment. The install
+  operation records an install as owed once it has stopped the daemon; the
+  daemon emits the owed-assessment event at each start while an install is
+  owed; `telec app assessed` discharges the installs up to the one it names.
+  The event activates `sdlc/procedure/maintenance/installation-assessment`
+  on the installation's computer.
+
+<!-- /planned:installation-activation-inspection -->
+
 <!-- planned:channel-activation-on-green -->
 
 #### Channel convergence
@@ -330,6 +342,14 @@ source and the release's version — and states no origin: the installation's
 convergence happens in no registered project, person, or company.
 
 <!-- /planned:channel-activation-on-green -->
+
+<!-- planned:installation-activation-inspection -->
+
+The owed-assessment event states as subject the newest owed install — its
+revision and when it stopped the daemon — and states no origin: the
+installation belongs to no registered project, person, or company.
+
+<!-- /planned:installation-activation-inspection -->
 
 ## See Also
 

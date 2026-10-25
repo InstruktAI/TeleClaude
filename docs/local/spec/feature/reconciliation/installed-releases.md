@@ -109,6 +109,38 @@ starts to the installation, whenever it starts. When a migration has started,
 or no previous release is installed, rollback refuses, names the condition, and
 changes nothing. No state is backed up or restored.
 
+<!-- planned:installation-activation-inspection -->
+
+### Assessment after an install
+
+Every install that stops the daemon owes one assessment of the release that
+runs after it, whichever route reached the install and whether or not the
+machine performs any source integration. Initial provisioning, which stops
+nothing, owes one for the release its first start serves.
+
+- **Owed before the restart.** The install record names the install as owed
+  once the daemon has stopped, before any migration starts, so the obligation
+  outlives the restart and every outcome the install can end in. An install
+  that stops nothing — refused, unchanged, or failed while preparing — owes
+  none.
+- **Announced at every start.** Each time the daemon starts while an install is
+  owed, it announces the owed assessment. The announcement activates the
+  integrator's installation assessment on the installation's own computer
+  (`sdlc/procedure/maintenance/installation-assessment`), answered by one
+  standing agent for the installation
+  (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-standing-agent`).
+- **Recorded by the integrator.** `telec app assessed <revision>` records that
+  the install of that revision has been assessed. It discharges that install and
+  every earlier owed one; an install made after it stays owed. It refuses,
+  naming what is owed, when no owed install names that revision, and while the
+  daemon is not serving the active release.
+- **Never fabricated.** A queued install, an accepted restart or a completed
+  install is not an assessment. An install whose daemon does not return stays
+  owed beside the failure `telec app status` reports, until a start serves
+  again and its assessment is recorded.
+
+<!-- /planned:installation-activation-inspection -->
+
 ### First install
 
 A bootstrap command checks the machine's prerequisites, installs the
@@ -126,11 +158,25 @@ with all its todos, worktrees and claims.
 
 ### Operating surface
 
+<!-- planned-change:installation-activation-inspection -->
+
 `telec app` operates the installation from any directory: `status`, `start`,
 `stop`, `restart`, `install [<revision>]` and `rollback`. Every verb acts on
 the installation, whatever checkout the caller stands in. `status` names the
 active release alongside the daemon's health. The lifecycle verbs keep the
 guarantees of `local/projects/teleclaude/policy/daemon-availability`.
+
+<!-- change:installation-activation-inspection -->
+
+`telec app` operates the installation from any directory: `status`, `start`,
+`stop`, `restart`, `install [<revision>]`, `rollback` and
+`assessed <revision>`. Every verb acts on the installation, whatever checkout
+the caller stands in. `status` names the active release alongside the daemon's
+health, the installs whose assessment is owed, and the most recent recorded
+assessment. The lifecycle verbs keep the guarantees of
+`local/projects/teleclaude/policy/daemon-availability`.
+
+<!-- /planned-change:installation-activation-inspection -->
 
 ### Use cases
 
@@ -220,3 +266,11 @@ And the project keeps every todo, worktree and claim where it was
   store the active release first opens later signals its migration then, and
   from that moment rollback is no longer offered. A started migration that
   changed nothing still withdraws rollback.
+
+<!-- planned:installation-activation-inspection -->
+
+- A recorded assessment states that an install was assessed, not what the
+  assessment concluded; its findings travel through the integrator's recovery
+  and the project's bug process.
+
+<!-- /planned:installation-activation-inspection -->
