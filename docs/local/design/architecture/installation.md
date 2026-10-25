@@ -243,3 +243,4 @@ surface to `current`; the checkout stays a registered project.
 - docs/local/spec/feature/reconciliation/installed-releases.md
 - docs/local/policy/agent-service-control.md
 - docs/local/policy/daemon-availability.md
+- docs/local/adr/0130-the-platform-runs-from-an-installation-not-its-project.md — why the platform runs from an installation and a commit changes nothing live.

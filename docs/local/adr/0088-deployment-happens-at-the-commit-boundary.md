@@ -40,3 +40,5 @@ The deploy command remains directly invocable; it loses its ambient caller, not 
 ## Status
 
 Superseded in part by ADR-0094: publication no longer keeps a directly invocable command or an unscoped bootstrap/recovery caller.
+
+Superseded in part by ADR-0130: the platform's published documentation and agent artifacts deploy from its installed release after an install, not from commits on its project.

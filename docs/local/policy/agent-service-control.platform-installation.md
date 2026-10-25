@@ -69,4 +69,5 @@ visibility: 'public'
 ## See Also
 
 - docs/local/adr/0041-agents-own-daemon-lifecycle-via-make.md
+- docs/local/adr/0130-the-platform-runs-from-an-installation-not-its-project.md — why agents operate the installation through `telec app`.
 - docs/local/design/architecture/installation.md

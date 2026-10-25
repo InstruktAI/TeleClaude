@@ -40,3 +40,5 @@ The checkpoint registry retains only actions whose substance is a judgment an ag
 ## Status
 
 Superseded in part by ADR-0100: the hook remains the automatic trigger, while maintenance execution no longer holds the Git command open.
+
+Superseded in part by ADR-0130: commit-boundary maintenance of the platform's project no longer activates the platform; installing a release does.
