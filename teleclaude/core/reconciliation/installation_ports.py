@@ -209,7 +209,7 @@ class LiveInstallPorts:
                 remove_release(self._layout, revision)
 
     def publish(self, revision: str) -> str | None:
-        """Publish the release's documentation, agent artifacts and configuration schemas through its own interpreter."""
+        """Publish the release's configuration schemas, and its documentation and agent artifacts where no platform checkout publishes them, through its own interpreter."""
         release = self._layout.release_path(revision)
         python = str(release / _RELEASE_PYTHON)
         for arguments in (

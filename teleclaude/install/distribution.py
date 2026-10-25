@@ -209,13 +209,12 @@ class PublicationHalves(StrEnum):
 
     The published half is what every session reads: the documentation generation and the global agent
     artifacts. The local half is what belongs to the project's own checkout: its project-local agent
-    artifacts. The platform's published half publishes when a release is installed; its project's
-    commit-boundary publication performs the local half only.
+    artifacts. The published half alone is what an install publishes on a machine without a platform
+    checkout; every commit-boundary and on-demand publication performs both.
     """
 
     BOTH = "both"
     PUBLISHED = "published"
-    LOCAL = "local"
 
 
 @dataclass(frozen=True)
@@ -2072,7 +2071,6 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
     deploy_root = os.path.abspath(os.path.expanduser(args.deploy_root)) if request is not None else project_root
     is_mother_project = agent_artifacts.is_mother_project(Path(project_root))
     halves = request.halves if request is not None else PublicationHalves.BOTH
-    publishes_published_half = halves is not PublicationHalves.LOCAL
     publishes_local_half = halves is not PublicationHalves.PUBLISHED
     project_root_path = Path(project_root)
     checkout_local_outputs: list[Path] = []
@@ -2099,7 +2097,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             _ARTIFACT_DISTRIBUTION_STARTED,
             process_correlation_id=observation.process_correlation_id,
         )
-    if deploy and docs_enabled and publishes_published_half:
+    if deploy and docs_enabled:
         previous_root = deploy_documentation(
             project_root_path,
             Path(docs_source_dir),
@@ -2521,19 +2519,18 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             )
 
     if deploy and is_mother_project:
-        if publishes_published_half:
-            checkout_local_outputs.extend(
-                compose_global_skill_catalog(
-                    project_root_path,
-                    partial(
-                        _render_global_skill_catalog,
-                        mother_root=project_root_path,
-                        warn_only=args.warn_only,
-                        observation=observation,
-                    ),
+        checkout_local_outputs.extend(
+            compose_global_skill_catalog(
+                project_root_path,
+                partial(
+                    _render_global_skill_catalog,
+                    mother_root=project_root_path,
+                    warn_only=args.warn_only,
+                    observation=observation,
                 ),
-            )
-            retired_pointers.append(retired_pointer_candidate(global_skill_source_root(project_root_path)))
+            ),
+        )
+        retired_pointers.append(retired_pointer_candidate(global_skill_source_root(project_root_path)))
         if agents_enabled:
             global_dist_context: AbstractContextManager[str]
             if publication_build:
@@ -2543,7 +2540,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             else:
                 global_dist_context = tempfile.TemporaryDirectory(prefix=_GLOBAL_DISTRIBUTION_TEMP_PREFIX)
             with global_dist_context as global_dist:
-                if global_sources and publishes_published_half:
+                if global_sources:
                     _run_phase(
                         sources=global_sources,
                         prefix_root=agents_root,

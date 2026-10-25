@@ -1,4 +1,9 @@
-"""Publish an installed release's committed documentation and agent artifacts."""
+"""Publish an installed release's committed documentation and agent artifacts where no platform checkout does.
+
+A machine with a registered checkout of the platform's own project receives its documentation and agent
+artifacts from that checkout's commits, so an install publishes none of them over it. A machine without
+one receives them from the release it installs.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +14,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.logging_config import setup_logging
+from teleclaude.services.project_catalog.service import get_project_catalog_service
 from teleclaude.sync import (
     HomePublicationOutcome,
     PublicationMode,
@@ -26,6 +32,10 @@ _FAILED_HOME_LINE = "{home}: failed ({error})"
 _PUBLICATION_FAILED = "Installed release publication failed: {error}"
 _RELEASE_OPTION = "--release"
 _INSTALL_PUBLICATION_FINISHED_EVENT = "install_publication_finished"
+_INSTALL_PUBLICATION_DEFERRED_EVENT = "install_publication_deferred"
+_CHECKOUT_PUBLISHES_LINE = (
+    "{root}: the registered platform checkout publishes the platform's documentation and agent artifacts"
+)
 _FAILED_EXIT_CODE = 1
 _SUCCEEDED_EXIT_CODE = 0
 _OUTCOME_LINES = {
@@ -37,7 +47,16 @@ _OUTCOME_LINES = {
 
 
 def run_install_publication(release_root: Path) -> int:
-    """Publish the platform's published half from the installed release at ``release_root`` and report every home outcome."""
+    """Publish the platform's published half from the installed release at ``release_root`` and report every home outcome.
+
+    Where a registered platform checkout publishes the platform's documentation and agent artifacts,
+    nothing is owed: the install succeeds without publishing them over that checkout's.
+    """
+    checkout = get_project_catalog_service().get_platform_project()
+    if checkout is not None:
+        print(_CHECKOUT_PUBLISHES_LINE.format(root=checkout.root.as_posix()))
+        logger.info(_INSTALL_PUBLICATION_DEFERRED_EVENT, checkout=checkout.root.as_posix())
+        return _SUCCEEDED_EXIT_CODE
     run = publish_homes(
         release_root,
         PublicationMode.OWED,

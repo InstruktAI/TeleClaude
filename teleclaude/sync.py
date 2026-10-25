@@ -400,11 +400,11 @@ def _publish_project_home(
 ) -> HomePublicationResult:
     """Build and install one repository-root project home as an undoable unit.
 
-    The platform's published documentation and agent artifacts publish when a release is installed; its
-    own project's commit-boundary publication performs the local half only, so a commit changes nothing
-    every session reads before it is installed.
+    A commit-boundary or on-demand publication performs both halves for every project, the platform's own
+    included, so a contract committed on main is readable right after the commit. Only an installed
+    release's publication performs the published half alone.
     """
-    halves = _publication_halves(snapshot_root, publication_source)
+    halves = _publication_halves(publication_source)
     distribution: DistributionBuild | None = None
     try:
         capabilities = resolve_capabilities(snapshot_root)
@@ -443,7 +443,7 @@ def _publish_project_home(
             canonical_root=canonical_root,
             candidates=distribution.retired_pointers,
         )
-        if capabilities.docs and halves is not PublicationHalves.LOCAL and is_mother_project(snapshot_root):
+        if capabilities.docs and is_mother_project(snapshot_root):
             failed_refreshes = refresh_home_entrypoints(TELECLAUDE_HOME)
             if failed_refreshes:
                 return HomePublicationResult(
@@ -462,12 +462,10 @@ def _publish_project_home(
     return HomePublicationResult(home, tip, mode, HomePublicationOutcome.PUBLISHED)
 
 
-def _publication_halves(snapshot_root: Path, publication_source: PublicationSource) -> PublicationHalves:
+def _publication_halves(publication_source: PublicationSource) -> PublicationHalves:
     """The half of a project home's publication this source performs."""
     if publication_source is PublicationSource.INSTALLED_COMMIT:
         return PublicationHalves.PUBLISHED
-    if is_mother_project(snapshot_root):
-        return PublicationHalves.LOCAL
     return PublicationHalves.BOTH
 
 
