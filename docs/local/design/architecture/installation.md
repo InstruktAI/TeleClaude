@@ -100,8 +100,8 @@ flowchart LR
   reaction, `telec app install` and the move off a project checkout all reach
   the live platform through it; a commit in any project reaches nothing live
   (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
-- **The installation reacts for itself.** The channel reaction to the source's
-  pushes and releases is the installation's own, served by the running daemon;
+- **The installation reacts for itself.** The channel reaction to its source is
+  the installation's own, served by the running daemon;
   it does not depend on a project checkout being registered on the machine.
 - **Lifecycle guarantees are unchanged.** `telec app` start, stop, restart and
   status carry the guarantees of
@@ -182,48 +182,16 @@ refuses and changes nothing.
 
 ### Channel reaction
 
-<!-- planned-change:channel-activation-on-green -->
-
-The running daemon receives the source's relayed pushes and releases, selects
-the target under the channel contract, and invokes the install act. The pending
-convergence record keeps the target until the act completes, so a duplicate
-signal installs nothing twice.
-
-<!-- change:channel-activation-on-green -->
-
-The running daemon receives the source's relayed green announcements and
-published releases, and reads the source on a fixed interval, so a machine
-outside the relaying cluster converges too. Reconciliation selects the target
-under the channel contract and invokes the install act; a release beyond the
-active release's compatibility series is held, and its held-release event starts
-or wakes the integrator's breaking-release procedure on this computer, which
-installs it through the same act once its upgrade steps are done. The pending
-convergence record keeps the target until the act completes, so a duplicate
-signal installs nothing twice.
-
-```mermaid
-sequenceDiagram
-  participant Int as integration
-  participant Rec as reconciliation (channel convergence)
-  participant Act as install act
-  participant Proc as breaking-release procedure (integrator)
-  Int-->>Rec: green announcement · published release · interval read
-  alt edge green, or stable within the series
-    Rec->>Act: install(newest admitted target)
-  else stable release beyond the series
-    Rec->>Rec: hold the release, record why
-    Rec-->>Proc: held-release event (activates on this computer)
-    Proc->>Proc: perform the upgrade guide's steps in order
-    Proc->>Act: telec app install <held release>
-  end
-```
-
-<!-- /planned-change:channel-activation-on-green -->
+The running daemon reacts to the signals its channel contract names
+(`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`),
+selects the target under that contract, and invokes the install act. The
+pending convergence record keeps the target until the act completes, so a
+duplicate signal installs nothing twice.
 
 ### Interim integrator judgment
 
-The integrator integrates and pushes; the channel reaction installs the pushed
-revision; the integrator then judges the runtime from the install record's
+The integrator integrates and pushes; the channel reaction installs the revision
+its channel admits; the integrator then judges the runtime from the install record's
 outcome and the log window from that install onwards
 (`sdlc/procedure/lifecycle/integrate`).
 
