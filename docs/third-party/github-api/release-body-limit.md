@@ -36,7 +36,8 @@ description: The GitHub Releases API rejects a release body over 125,000 charact
 
 - A reference implementation keeps the complete notes in the repository's
   changelog and publishes a bounded body: it holds back a safety margin below
-  the limit, cuts or omits content on line boundaries, states that the body is
+  the limit, cuts content on line boundaries (slicing a single line only when that
+  line alone exceeds the remaining budget), states that the body is
   shortened, links to the complete entry in the changelog at the release's
   commit, and asserts the final body against the real limit before the call.
 
