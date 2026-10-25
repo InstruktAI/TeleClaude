@@ -44,8 +44,8 @@ nothing above it, reaching anywhere in the fleet.
 
 A worker — a session whose role is of class `worker`
 (`local/projects/teleclaude/spec/feature/identity/agent-roles`) — acts on no
-other session: it neither messages, links to nor tails one, and its requests to
-do so are refused with a refusal that names its own output and artifacts as its
+other session, on its own computer or another: it neither messages, links to
+nor tails one, and its own computer refuses its requests to do so with a refusal that names its own output and artifacts as its
 reporting path. It reports through its own completed turn and its artifacts,
 and the session that dispatched it reads them and routes whatever must reach
 anyone else, so two workers never form a conversation of their own.
@@ -115,16 +115,6 @@ And targeting itself is not treated as an upward act
 - **Dispatch and notification are separate axes.** Suppressing a dispatcher's
   notifications does not remove the session above; removing the session above
   does not by itself silence a subscription taken out some other way.
-
-<!-- planned:review-fix-loop-through-artifacts -->
-
-- **A worker is refused where it runs.** A request a worker addresses to a
-  session on another computer is authorized there from its principal alone,
-  because no agent role crosses a computer boundary
-  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
-  so the computer holding the target does not refuse it for the worker's role.
-
-<!-- /planned:review-fix-loop-through-artifacts -->
 
 ## See Also
 

@@ -187,6 +187,9 @@ receipt that crossed back from another computer is read and followed there.
   recorded caller session that is still live is woken with an address — operation identity,
   outcome, and where to read the record — and never with the record's contents. A
   caller-less operation wakes nobody and loses nothing, because the row stands on its own.
+
+<!-- planned-change:review-fix-loop-through-artifacts -->
+
 - **Every request addressed to a computer executes there.** The API boundary reads the
   computer a request names before any route runs. A request naming this computer, or
   none, runs here. A request naming another computer is carried whole to that computer
@@ -199,6 +202,25 @@ receipt that crossed back from another computer is read and followed there.
   Opening or closing a direct conversation with a session on another computer is not
   relayed; it stays on its existing path
   (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`).
+
+<!-- change:review-fix-loop-through-artifacts -->
+
+- **Every request addressed to a computer executes there.** The API boundary reads the
+  computer a request names before any route runs. A request naming this computer, or
+  none, runs here. A request naming another computer is carried whole to that computer
+  as one relay command and executes there through the same route, under that computer's
+  own clearance and against that computer's own state; its complete response crosses
+  back unchanged. Routes therefore run only against local state, and no route holds a
+  remote path of its own. The caller is authenticated at the edge; the relay
+  carries the request without sender-side authorization, apart from a worker's
+  session-to-session acts, which the worker's own computer refuses
+  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
+  Opening or closing a direct conversation with a session on another computer is not
+  relayed; it stays on its existing path
+  (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`).
+
+<!-- /planned-change:review-fix-loop-through-artifacts -->
+
 - **The request names its computer in one place.** The computer a request addresses is
   its `computer` query parameter, on every route alike. Session creation and run also
   accept it in their body, and the boundary reads it there too, so a request carrying
