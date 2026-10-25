@@ -46,15 +46,6 @@ and authentication paths. It does not inherit live host credentials or adapters.
 Terminal authentication uses a real terminal. Runtime isolation belongs to the
 harness; agents invoking it do not redirect their own home or platform home.
 
-<!-- planned:main-full-acceptance-fails -->
-
-The full profile obtains its runtime the way a machine first installs the
-platform: the install act's initial provisioning
-(`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`)
-installs the checked revision from the checked source, and the machine
-convergence then runs from that release.
-<!-- /planned:main-full-acceptance-fails -->
-
 The fast profile covers cold CLI startup, version/help entry paths, the
 installer's safe entry path, and the import of every module of the `teleclaude`
 package in one fresh interpreter. It runs once against the materialized
