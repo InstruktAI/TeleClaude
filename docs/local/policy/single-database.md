@@ -41,7 +41,8 @@ visibility: 'public'
 - **Each domain's store reports the migrations it runs.** Whether a migration
   runs from a ledger or when the store is opened, the owning domain reports,
   before the migration changes anything, that it is beginning one, and
-  afterwards whether everything it began completed. The install act decides
+  afterwards what it did: changed the store, left it unchanged as the owner
+  can establish, or had effects the owner cannot establish. The install act decides
   whether an install ran migrations, and how a failed install recovers, from
   those reports alone
   (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).

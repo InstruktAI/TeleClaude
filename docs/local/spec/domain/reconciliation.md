@@ -225,8 +225,8 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   folder: the kept repository of the source the installation follows, one
   release per installed revision as a worktree of it, the active-release
   pointer, and the install record — the active and previous release, whether
-  the most recent install ran migrations and, on a failure, which stores they
-  reached, and the outcome of the most recent
+  the most recent install migrated state and, on a failure, which stores were
+  changed or are unknown, and the outcome of the most recent
   install or rollback with its reason. All of it lies outside the platform home
   and outside any project, and the membership predicate answers `outside` for
   it.
@@ -235,11 +235,11 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   transitions of `local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`,
   prepares the release while the daemon serves, runs the release's migrations
   and opens its stores inside the stopped window, decides from the store owners'
-  reports whether the install ran migrations and whether a failure came before
-  any owner began one — returning to the previously active release — or after,
-  leaving the daemon stopped for a
+  reports whether the install migrated state — a begun migration that changed
+  its store or whose effects are unknown — and from that whether a failure
+  returns to the previously active release or leaves the daemon stopped for a
   forward repair, switches the pointer, and records the outcome. A second
-  operation rolls back: it decides from the install record whether the most recent install ran no migrations and a
+  operation rolls back: it decides from the install record whether the most recent install migrated no state and a
   previous release exists, and otherwise refuses. Their observable contract is
   `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`.
 - **Infrastructure.** Git fetch and worktree operations, the release's
@@ -248,9 +248,10 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   migration owner keeps its own applied state and rules
   (`local/projects/teleclaude/spec/feature/config/document-migration` for
   configuration documents) and reports, before it changes anything, that it is
-  beginning a migration and afterwards whether everything it began completed —
-  for ledger-recorded migrations and for those that run when its store is
-  opened; an owner that cannot report counts as having begun. The operation
+  beginning a migration and afterwards whether it changed its store, left it
+  established unchanged, or had unknown effects — for ledger-recorded
+  migrations and for those that run when its store is opened; an owner that
+  cannot report counts as unknown. The operation
   opens each store through its owner's initialization and reads no domain data.
 - **Live-surface binding.** The installation's live surfaces — service
   definitions, the published `telec`, agent hook commands, home-level wrappers

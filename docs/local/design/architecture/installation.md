@@ -48,7 +48,8 @@ contracts of the contexts it crosses. It owns none of their rules.
   `telec`, the agent hook commands, the home-level wrappers, shell setup and
   shared-script links, and every path the runtime composes for a session.
 - The install record: the active and previous release, whether the most recent
-  install ran migrations and, on a failure, which stores they reached, and the
+  install migrated state and, on a failure, which stores were changed or are
+  unknown, and the
   outcome of the most recent act with its reason.
 
 ```mermaid
@@ -128,7 +129,7 @@ sequenceDiagram
   Rec->>Rel: fetch, add worktree at target, build environment (daemon serving)
   Rec->>Life: stop (preparation settles accepted work)
   Rec->>Rel: run ledger migrations, then open every store the daemon opens
-  Rel-->>Rec: each owner: beginning a migration / all it began completed
+  Rel-->>Rec: each owner: beginning / changed, unchanged or unknown
   Rel->>Home: migrate stores
   Rec->>Rec: switch current
   Rec->>Life: start; verify the daemon serves the new revision
@@ -148,12 +149,15 @@ sequenceDiagram
   session mirrors and hook outbox among them — and every registered project's
   todo store, so open-time schema and data migrations run while no older reader
   serves. Each owner reports to the install act before it changes anything that
-  it is beginning a migration, and afterwards whether everything it began
-  completed; an owner that cannot report counts as having begun
+  it is beginning a migration, and afterwards what it did: changed its store,
+  left it unchanged as the owner establishes, or had effects it cannot
+  establish; an owner that cannot report counts as unknown
   (`local/projects/teleclaude/policy/single-database`). Configuration documents
-  report through their per-document run outcome, where a document found below
-  the current version counts as begun. The install ran migrations exactly when
-  some owner began one. Until the first such report,
+  report through their per-document run outcome: migrated outcomes — committed,
+  left uncommitted, written untracked — count as changed; current, withheld,
+  restored after a refused commit, and failed outcomes whose contract leaves
+  the document's bytes unchanged count as unchanged. The install migrated state
+  exactly when some begun migration changed its store or is unknown; until then,
   no state has changed.
 - **Switch, start, verify.** `current` is switched atomically, the service
   definitions are deployed only when their rendered content changed, and the
@@ -170,8 +174,8 @@ sequenceDiagram
 
 ### Rollback
 
-Rollback reads the install record. When the most recent install ran no
-migrations and a previous release is installed, it stops the daemon through the
+Rollback reads the install record. When the most recent install migrated no
+state and a previous release is installed, it stops the daemon through the
 lifecycle contract, switches `current` to the previous release, starts and
 verifies, and records that no further rollback is available. Otherwise it
 refuses and changes nothing.
@@ -211,15 +215,17 @@ surface to `current`; the checkout stays a registered project.
 - **Stop withheld** (preparation incomplete or withheld): no migration runs;
   the lifecycle contract's outcome is reported and the active release stays
   active.
-- **A failure after the stop before any owner began a migration** — including
-  a start that does not verify after an install in which no migration began:
+- **A failure after the stop while no state has migrated** — including a
+  refused migration whose owner establishes its store unchanged, and a start
+  that does not verify after an install that migrated no state:
   `current`
   returns to the previously active release, the daemon is started on it and
   verified, and the failure is recorded.
-- **A failure after an owner began a migration**: `current`
+- **A failure after state migrated** — a begun migration changed its store or
+  its effects are unknown: `current`
   is left where the failure found it and the daemon stays stopped, because
   neither release is known to serve the partly migrated state; the install
-  record names which stores the migrations reached, the reason is reported
+  record names which stores were changed or are unknown, the reason is reported
   where `telec app status` shows it, and recovery is a forward repair followed
   by another install.
 - **Publication fails after a completed install**: the daemon keeps serving the

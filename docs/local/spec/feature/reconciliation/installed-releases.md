@@ -68,17 +68,21 @@ starts the daemon on it, under the guarantees of
   contract supports.
 - **Idempotent.** Installing the revision that is already active changes
   nothing.
-- **Ran migrations.** An install ran migrations when any store owner began a
-  migration during it. Every owner whose store the platform migrates — through
+- **Ran migrations.** Every owner whose store the platform migrates — through
   a migration ledger or when the store is opened — reports, before it changes
-  anything, that it is beginning a migration, and afterwards whether everything
-  it began completed. An owner that cannot report counts as having begun. A
-  migrating install is never undone by rollback.
+  anything, that it is beginning a migration, and afterwards what that
+  migration did: changed its store, left it unchanged as the owner can
+  establish, or had effects it cannot establish. An install migrated state when
+  any begun migration changed its store or had unknown effects, or when an
+  owner could not report. An install ran migrations when it migrated state; a
+  migration refused with its store established unchanged is not one. An install
+  that ran migrations is never undone by rollback.
 - **Failure.** An install completes once the daemon is verified serving the new
-  release. An install that fails before any owner began a migration leaves the
+  release. An install that fails without having migrated state — including one
+  whose begun migrations all left their stores unchanged — leaves the
   previously active release active and serving, and reports why. One that fails
-  after an owner began a migration reports the failure and which stores were
-  reached, is never reported as complete, and is repaired forward.
+  after it migrated state reports the failure and which stores were changed or
+  are unknown, is never reported as complete, and is repaired forward.
 - **Publication follows the install.** Publishing the installed release's
   documentation and schemas
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`)
@@ -148,17 +152,17 @@ Scenario: Installing an older revision
   Then the install is refused
   And the platform keeps running the active release
 
-Scenario: An install that fails before any migration began
-  Given an install of a newer revision fails before any store owner began a migration
+Scenario: An install that fails without having migrated state
+  Given an install of a newer revision fails while no migration has changed a store or had unknown effects
   When the operator looks at the installation's status
   Then the previously active release is still active and serving
   And the failure and its reason are reported
 
-Scenario: An install that fails after a migration began
-  Given an install of a newer revision fails after a store owner began a migration
+Scenario: An install that fails after it migrated state
+  Given an install of a newer revision fails after a migration changed a store or had unknown effects
   When the operator looks at the installation's status
   Then the install is reported as failed, not complete
-  And the report names which stores the migrations reached
+  And the report names which stores were changed or are unknown
 ```
 
 #### UC-IR3: An agent returns the platform to the previous release
@@ -202,7 +206,7 @@ And the project keeps every todo, worktree and claim where it was
   contract; a side project keeps its own checkout and deploy.
 - Rollback returns one step only. After an install that ran migrations the way
   back is a forward repair.
-- Whether an install ran migrations is what the store owners report while it
+- Whether an install migrated state is what the store owners report while it
   runs. The install opens, inside its stopped window, every store the daemon
   opens at startup and every registered project's todo store, so their
   migrations run and report there; a store first opened later migrates outside
