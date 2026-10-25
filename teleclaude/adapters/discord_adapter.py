@@ -26,6 +26,7 @@ from teleclaude.adapters.discord.conversation_turns import ConversationTurnsMixi
 from teleclaude.adapters.discord.escalation_threads import EscalationThreadsMixin
 from teleclaude.adapters.discord.forum_sessions import ForumSessionsMixin
 from teleclaude.adapters.discord.help_desk_categories import DeskForums, HelpDeskCategoriesMixin
+from teleclaude.adapters.discord.inbound_continuity import InboundContinuity
 from teleclaude.adapters.discord.launcher_clicks import LauncherClicksMixin
 from teleclaude.adapters.discord.listen_control import ListenHereView
 from teleclaude.adapters.discord.voice_room import VoiceRoom
@@ -200,6 +201,9 @@ class DiscordAdapter(
         # on_ready fires on initial connect AND on RESUME failure — re-running
         # provisioning with a stale guild cache creates duplicate categories.
         self._infrastructure_provisioned = False
+
+        # Keeps a person's messages from being lost across a restart: ordering, the live gate and recovery.
+        self._continuity = InboundContinuity(self, db)
 
         # Output QoS scheduler: coalesces stale payloads (coalesce_only mode by default).
         qos_policy = discord_policy(config.discord.qos)

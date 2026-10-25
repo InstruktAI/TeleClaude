@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
+from datetime import datetime
 from enum import Enum
 from typing import Optional, TypedDict, cast
 from uuid import uuid4
@@ -334,6 +335,8 @@ class ProcessMessageCommand(InternalCommand):
     caller_origin_suffix_len: int | None = None
     command_input_mode: CommandInputMode = CommandInputMode.ORDINARY
     sender_human_role: str | None = None
+    # Set when a channel recovered this input after the platform was offline: the time it was originally posted.
+    recovered_posted_at: datetime | None = None
 
     def __init__(
         self,
@@ -362,6 +365,7 @@ class ProcessMessageCommand(InternalCommand):
         caller_origin_suffix_len: int | None = None,
         command_input_mode: CommandInputMode = CommandInputMode.ORDINARY,
         sender_human_role: str | None = None,
+        recovered_posted_at: datetime | None = None,
     ):
         super().__init__(command_type=CommandType.PROCESS_MESSAGE, request_id=request_id)
         self.session_id = session_id
@@ -393,6 +397,7 @@ class ProcessMessageCommand(InternalCommand):
         self.caller_origin_suffix_len = caller_origin_suffix_len
         self.command_input_mode = command_input_mode
         self.sender_human_role = sender_human_role
+        self.recovered_posted_at = recovered_posted_at
 
     @property
     def caller_session_id(self) -> str | None:
@@ -483,6 +488,7 @@ class HandleVoiceCommand(InternalCommand):
     notice_message_id: str | None = None
     media_ref: MediaRef | None = None
     source_message_id: str | None = None
+    recovered_posted_at: datetime | None = None
 
     def __init__(
         self,
@@ -501,6 +507,7 @@ class HandleVoiceCommand(InternalCommand):
         notice_message_id: str | None = None,
         media_ref: MediaRef | None = None,
         source_message_id: str | None = None,
+        recovered_posted_at: datetime | None = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.HANDLE_VOICE, request_id=request_id)
@@ -518,6 +525,7 @@ class HandleVoiceCommand(InternalCommand):
         self.notice_message_id = notice_message_id
         self.media_ref = media_ref
         self.source_message_id = source_message_id
+        self.recovered_posted_at = recovered_posted_at
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -562,6 +570,7 @@ class HandleFileCommand(InternalCommand):
     origin: str | None = None
     actor_id: str | None = None
     source_message_id: str | None = None
+    recovered_posted_at: datetime | None = None
 
     def __init__(
         self,
@@ -575,6 +584,7 @@ class HandleFileCommand(InternalCommand):
         origin: str | None = None,
         actor_id: str | None = None,
         source_message_id: str | None = None,
+        recovered_posted_at: datetime | None = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.HANDLE_FILE, request_id=request_id)
@@ -587,6 +597,7 @@ class HandleFileCommand(InternalCommand):
         self.origin = origin
         self.actor_id = actor_id
         self.source_message_id = source_message_id
+        self.recovered_posted_at = recovered_posted_at
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {

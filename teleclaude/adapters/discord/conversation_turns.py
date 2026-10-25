@@ -10,12 +10,15 @@ to its conversation once however many parts the message has
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord.gateway_handlers import sender_role_for_session
+from teleclaude.adapters.discord.inbound_continuity import await_conclusion
 from teleclaude.adapters.discord.team_channels import team_channel_conversation
 from teleclaude.cli.config_handlers import get_person_config
 from teleclaude.core.command_input import CommandInputMode
@@ -120,8 +123,8 @@ class ConversationTurnsMixin:
     - _discord_actor_avatar_url(author) -> str | None
     - _metadata(**kwargs) -> MessageMetadata
     - _dispatch_command(session, message_id, metadata, command_name, payload, handler) (async)
-    - _dispatch_voice_attachment(session, message, attachment) (async)
-    - _dispatch_file_attachments(session, message, attachments) (async)
+    - _dispatch_voice_attachment(session, message, attachment, *, recovered_at) -> Task | None (async)
+    - _dispatch_file_attachments(session, message, attachments, *, recovered_at) (async)
     """
 
     if TYPE_CHECKING:
@@ -146,10 +149,12 @@ class ConversationTurnsMixin:
             handler: Callable[[], Awaitable[object]],
         ) -> object: ...
 
-        async def _dispatch_voice_attachment(self, session: Session, message: object, attachment: object) -> None: ...
+        async def _dispatch_voice_attachment(
+            self, session: Session, message: object, attachment: object, *, recovered_at: datetime | None = None
+        ) -> asyncio.Task[object] | None: ...
 
         async def _dispatch_file_attachments(
-            self, session: Session, message: object, attachments: list[object]
+            self, session: Session, message: object, attachments: list[object], *, recovered_at: datetime | None = None
         ) -> None: ...
 
     def _message_sender(self, message: object) -> _MessageSender | None:
@@ -170,7 +175,13 @@ class ConversationTurnsMixin:
         )
 
     async def _deliver_message_text(
-        self, session: Session, message: object, text: str, sender: _MessageSender, channel_id: int
+        self,
+        session: Session,
+        message: object,
+        text: str,
+        sender: _MessageSender,
+        channel_id: int,
+        recovered_at: datetime | None = None,
     ) -> None:
         """Dispatch the text of a conversation message to its session as one input."""
         message_id = str(getattr(message, _ID_ATTR, _NO_TEXT)).strip()
@@ -188,6 +199,7 @@ class ConversationTurnsMixin:
             source_channel_id=str(channel_id),
             command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
             sender_human_role=sender_role_for_session(sender.identity, session),
+            recovered_posted_at=recovered_at,
         )
         metadata = self._metadata(
             platform_message_id=message_id or None,
@@ -205,19 +217,32 @@ class ConversationTurnsMixin:
         )
 
     async def _deliver_message_input(
-        self, session: Session, message: object, content: _MessageInput, sender: _MessageSender, channel_id: int
-    ) -> None:
+        self,
+        session: Session,
+        message: object,
+        content: _MessageInput,
+        sender: _MessageSender,
+        channel_id: int,
+        recovered_at: datetime | None = None,
+    ) -> list[asyncio.Task[object]]:
         """Deliver everything one Discord message carries to its resolved conversation session, once.
 
         The text accompanies the first file as its caption, and stands alone as its own input only
-        when no file carries it. Each part is accepted under its provider identity.
+        when no file carries it. Each part is accepted under its provider identity. The transcriptions of
+        its voice attachments run on, and their tasks are returned for a caller that must wait for them.
         """
         if content.text and not content.files:
-            await self._deliver_message_text(session, message, content.text, sender, channel_id)
+            await self._deliver_message_text(session, message, content.text, sender, channel_id, recovered_at)
         if content.files:
-            await self._dispatch_file_attachments(session, message, list(content.files))
+            await self._dispatch_file_attachments(session, message, list(content.files), recovered_at=recovered_at)
+        transcriptions: list[asyncio.Task[object]] = []
         for attachment in content.audio:
-            await self._dispatch_voice_attachment(session, message, attachment)
+            transcription = await self._dispatch_voice_attachment(
+                session, message, attachment, recovered_at=recovered_at
+            )
+            if transcription is not None:
+                transcriptions.append(transcription)
+        return transcriptions
 
     async def _handle_discord_dm(self, message: object) -> None:
         """Hand one direct message to the conversation seam: an identifier is an entry, else an ordinary turn.
@@ -277,11 +302,14 @@ class ConversationTurnsMixin:
             )
         )
 
-    async def _handle_team_channel_message(self, message: object, channel_id: int, person_slug: str) -> None:
+    async def _handle_team_channel_message(
+        self, message: object, channel_id: int, person_slug: str, *, recovered_at: datetime | None = None
+    ) -> None:
         """Hand one message of a provisioned Team assistant channel to the conversation seam.
 
         Provisioning designates the channel for ``person_slug``; the core admits the message only from
-        that person and decides, with every other computer receiving it, which one answers.
+        that person and decides, with every other computer receiving it, which one answers. The message is
+        concluded once its voice attachments have been accepted or have failed.
         """
         sender = self._message_sender(message)
         if sender is None:
@@ -300,8 +328,12 @@ class ConversationTurnsMixin:
         if guild_id is not None:
             origin_metadata[DiscordMetadataField.GUILD_ID.value] = guild_id
 
+        transcriptions: list[asyncio.Task[object]] = []
+
         async def _deliver(session: Session) -> None:
-            await self._deliver_message_input(session, message, content, sender, channel_id)
+            transcriptions.extend(
+                await self._deliver_message_input(session, message, content, sender, channel_id, recovered_at)
+            )
 
         async def _reply(reply_text: str) -> None:
             if channel is not None:
@@ -325,6 +357,7 @@ class ConversationTurnsMixin:
                 designated_person=person_slug,
             )
         )
+        await await_conclusion(transcriptions)
 
     def _bind_discord_invite(self, message: object, user_id: str, person_slug: str) -> BindOutcome:
         """Bind the Discord account to the invited person, unless another account holds the invitation."""

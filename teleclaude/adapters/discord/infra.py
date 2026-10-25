@@ -32,6 +32,8 @@ from teleclaude.services.project_catalog import get_project_catalog_service
 
 if TYPE_CHECKING:
     from types import ModuleType
+
+    from teleclaude.adapters.discord.inbound_continuity import InboundContinuity
 from teleclaude.adapters.discord.session_launcher import (
     LauncherEvent,
     LauncherInteractionSource,
@@ -102,6 +104,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
     _registered_launcher_message_ids: set[int]
 
     if TYPE_CHECKING:
+        _continuity: InboundContinuity
         _discord: ModuleType
         _client: object
         _all_sessions_channel_id: int | None
@@ -452,6 +455,8 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         self._project_forum_map = dict(entries)
         self._forum_project_map = {forum_id: project_path for project_path, forum_id in entries}
         logger.info("Discord project forum map: %d entries", len(self._project_forum_map))
+        # Input a place received while its forum was unrouted was left unprocessed; recover it now.
+        self._continuity.request_recovery()
 
     def _resolve_project_from_forum(self, forum_id: int) -> str | None:
         return self._forum_project_map.get(forum_id)

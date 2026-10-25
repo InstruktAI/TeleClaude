@@ -10,6 +10,7 @@ it never supplies a role or documentation reads of its own.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -361,10 +362,13 @@ class InlineInvocation:
     loader: str
 
 
-def resolve_inline_entry(*, procedure_token: str, arguments: str, project_root: Path) -> InlineInvocation:
+def resolve_inline_entry(
+    *, procedure_token: str, arguments: str, project_root: Path, entry_facts: Mapping[str, str] | None = None
+) -> InlineInvocation:
     """Resolve a procedure named inside an existing session into a loader for it.
 
-    The session keeps its role and authority: nothing is dispatched and no role is stated.
+    The session keeps its role and authority: nothing is dispatched and no role is stated. ``entry_facts``
+    are facts about how the input arrived, which the loader states.
     """
     procedure_id = normalize_procedure_id(procedure_token)
     published = _published_entry(procedure_id, project_root)
@@ -374,7 +378,9 @@ def resolve_inline_entry(*, procedure_token: str, arguments: str, project_root: 
         procedure_id=procedure_id,
         arguments=text,
         working_slug=dict(parameters).get(SLUG_PARAMETER),
-        loader=render_reference_loader(procedure_id, None, text, dict(parameters), {}, NO_ADDITIONAL_CONTEXT),
+        loader=render_reference_loader(
+            procedure_id, None, text, dict(parameters), dict(entry_facts or {}), NO_ADDITIONAL_CONTEXT
+        ),
     )
 
 

@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
 from teleclaude.adapters.discord.help_desk_categories import DeskForums
+from teleclaude.adapters.discord.inbound_continuity import InboundContinuity, await_conclusion
 from teleclaude.adapters.discord.session_launcher import (
     LauncherComponentGeneration,
     LauncherEvent,
@@ -67,6 +68,7 @@ _ID_ATTR = "id"
 _MENTIONS_ATTR = "mentions"
 _USER_ATTR = "user"
 _NO_TEXT = ""
+_GATEWAY_READY_EVENT = "READY"
 
 
 def sender_role_for_session(identity: IdentityContext | None, session: Session) -> str | None:
@@ -94,6 +96,7 @@ class GatewayHandlersMixin:
     - _infrastructure_provisioned: bool
     - _ready_event: asyncio.Event
     - _forum_routing_ready: asyncio.Event
+    - _continuity: InboundContinuity
     - _project_forum_map: dict[str, int]
     - _all_sessions_channel_id: int | None
     - _team_channel_map: dict[int, str]
@@ -108,13 +111,13 @@ class GatewayHandlersMixin:
     - _handle_launcher_click(interaction, agent_name, launcher_forum_id) (async)
     - _register_session_launcher_view(forum_id, message_id) -> bool
     - _handle_discord_dm(message) (async)
-    - _handle_team_channel_message(message, channel_id, person_slug) (async)
+    - _handle_team_channel_message(message, channel_id, person_slug, *, recovered_at) (async)
     - _is_managed_message(message) -> bool
     - _is_bot_message(message) -> bool
     - _is_customer_session(session) -> bool
     - _resolve_or_create_discord_session(message) -> tuple[Session | None, bool] (async)
-    - _handle_voice_attachment(message, attachment) (async)
-    - _handle_file_attachments(message, attachments) (async)
+    - _handle_voice_attachment(message, attachment, *, recovered_at) -> Task | None (async)
+    - _handle_file_attachments(message, attachments, *, recovered_at) (async)
     - _extract_audio_attachment(message) -> object | None
     - _extract_file_attachments(message) -> list[object]
     - _discord_actor_name(author, user_id) -> str
@@ -141,6 +144,7 @@ class GatewayHandlersMixin:
         _infrastructure_provisioned: bool
         _ready_event: asyncio.Event
         _forum_routing_ready: asyncio.Event
+        _continuity: InboundContinuity
         _voice_room: VoiceRoom | None
 
         def _parse_optional_int(self, value: object) -> int | None: ...
@@ -175,7 +179,9 @@ class GatewayHandlersMixin:
 
         async def _handle_discord_dm(self, message: object) -> None: ...
 
-        async def _handle_team_channel_message(self, message: object, channel_id: int, person_slug: str) -> None: ...
+        async def _handle_team_channel_message(
+            self, message: object, channel_id: int, person_slug: str, *, recovered_at: datetime | None = None
+        ) -> None: ...
 
         def _is_managed_message(self, message: object) -> bool: ...
 
@@ -187,9 +193,13 @@ class GatewayHandlersMixin:
         @staticmethod
         def _extract_file_attachments(message: object) -> list[object]: ...
 
-        async def _handle_voice_attachment(self, message: object, attachment: object) -> None: ...
+        async def _handle_voice_attachment(
+            self, message: object, attachment: object, *, recovered_at: datetime | None = None
+        ) -> asyncio.Task[object] | None: ...
 
-        async def _handle_file_attachments(self, message: object, attachments: list[object]) -> None: ...
+        async def _handle_file_attachments(
+            self, message: object, attachments: list[object], *, recovered_at: datetime | None = None
+        ) -> None: ...
 
         async def _resolve_or_create_discord_session(
             self, message: object, *, first_message: str | None = None
@@ -276,7 +286,13 @@ class GatewayHandlersMixin:
             await self._voice_room.handle_voice_state(member, before, after)
 
     async def _handle_socket_event_type(self, event_type: str) -> None:
-        """Observe selected Gateway events without enabling raw-payload debug dispatch."""
+        """Observe selected Gateway events without enabling raw-payload debug dispatch.
+
+        READY opens a new gateway session, which replays nothing posted before it. The event is delivered
+        before the messages that follow it, so the continuity holds them until their place is recovered.
+        """
+        if event_type == _GATEWAY_READY_EVENT:
+            self._continuity.begin_gateway_session()
         if event_type in {"VOICE_STATE_UPDATE", "READY", "INTERACTION_CREATE"}:
             logger.info("discord_gateway_event_received", event_type=event_type, guild_id=self._guild_id)
 
@@ -348,6 +364,8 @@ class GatewayHandlersMixin:
         logger.info("Discord adapter ready as %s", user)
         # Mark gateway readiness immediately; follow-up bootstrap can be slow.
         self._ready_event.set()
+        # Every gateway session recovers what was posted before it, once its routing attempt has completed.
+        self._continuity.request_recovery()
 
         if self._voice_room is not None:
             await self._voice_room.verify_configured_identities(self._discord)
@@ -448,7 +466,9 @@ class GatewayHandlersMixin:
             await self._handle_escalation_thread_message(message)
             return
 
-        # Channel gating: only process messages from managed forums
+        # Channel gating: only process messages from managed forums. Until the run's routing attempt has
+        # completed, the routing is unknown rather than absent, so the message waits for it.
+        await self._forum_routing_ready.wait()
         if not self._is_managed_message(message):
             channel = getattr(message, "channel", None)
             ch_id = self._parse_optional_int(getattr(channel, "id", None))
@@ -463,23 +483,33 @@ class GatewayHandlersMixin:
             )
             return
 
+        await self._continuity.hand_off_live(message)
+
+    async def _handle_managed_message(self, message: object, recovered_at: datetime | None) -> None:
+        """Handle a message of a managed place; a live message and a recovered one take this one path.
+
+        ``recovered_at`` is the time a recovered message was originally posted, absent for a live one.
+        """
+        channel = getattr(message, "channel", None)
+
         # A provisioned Team channel is a designated conversation channel: its messages are conversation turns.
         team_channel_id = self._parse_optional_int(getattr(channel, _ID_ATTR, None))
         team_person = self._team_channel_map.get(team_channel_id) if team_channel_id is not None else None
         if team_channel_id is not None and team_person is not None:
-            await self._handle_team_channel_message(message, team_channel_id, team_person)
+            await self._handle_team_channel_message(message, team_channel_id, team_person, recovered_at=recovered_at)
             return
 
         # Voice/audio attachment — handle before the text guard
         audio_attachment = self._extract_audio_attachment(message)
         if audio_attachment is not None:
-            await self._handle_voice_attachment(message, audio_attachment)
+            voice_task = await self._handle_voice_attachment(message, audio_attachment, recovered_at=recovered_at)
+            await await_conclusion([voice_task])
             return
 
         # Handle image/file attachments (non-audio)
         file_attachments = self._extract_file_attachments(message)
         if file_attachments:
-            await self._handle_file_attachments(message, file_attachments)
+            await self._handle_file_attachments(message, file_attachments, recovered_at=recovered_at)
 
         text = getattr(message, "content", None)
         if not isinstance(text, str) or not text.strip():
@@ -540,6 +570,7 @@ class GatewayHandlersMixin:
             source_channel_id=channel_id_str,
             command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
             sender_human_role=sender_role_for_session(sender_identity, session),
+            recovered_posted_at=recovered_at,
         )
         await self._dispatch_command(  # type: ignore[attr-defined]
             session,
@@ -672,17 +703,20 @@ class GatewayHandlersMixin:
         return False
 
     def _is_managed_message(self, message: object) -> bool:
-        """Check if a message originates from a managed channel.
+        """Check if a message originates from a managed channel."""
+        return self._is_managed_channel(getattr(message, "channel", None))
+
+    def _is_managed_channel(self, channel: object) -> bool:
+        """Check if a channel is managed.
 
         Managed channels include: all-sessions, project forums, and team text
         channels. A help desk's forums and team chat are not managed, so a post
-        there reaches no session. When no guild is configured, all messages are
+        there reaches no session. When no guild is configured, all channels are
         accepted (dev/test mode).
         """
         if self._guild_id is None:
             return True
 
-        channel = getattr(message, "channel", None)
         channel_id = self._parse_optional_int(getattr(channel, "id", None))
 
         # Team text channels are managed

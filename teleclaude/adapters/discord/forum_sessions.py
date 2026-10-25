@@ -6,7 +6,9 @@ voice and file attachments to it.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -76,8 +78,8 @@ class ForumSessionsMixin:
     - _resolve_forum_context(message) -> tuple[str, str | None]
     - _is_thread_channel(channel) -> bool
     - _discord_errors() -> tuple[type[Exception], ...] (from InputHandlersMixin)
-    - _dispatch_voice_attachment(session, message, attachment) (async; from InputHandlersMixin)
-    - _dispatch_file_attachments(session, message, attachments) (async; from InputHandlersMixin)
+    - _dispatch_voice_attachment(session, message, attachment, *, recovered_at) -> Task | None (async; from InputHandlersMixin)
+    - _dispatch_file_attachments(session, message, attachments, *, recovered_at) (async; from InputHandlersMixin)
     """
 
     if TYPE_CHECKING:
@@ -93,10 +95,12 @@ class ForumSessionsMixin:
 
         def _discord_errors(self) -> tuple[type[Exception], ...]: ...
 
-        async def _dispatch_voice_attachment(self, session: Session, message: object, attachment: object) -> None: ...
+        async def _dispatch_voice_attachment(
+            self, session: Session, message: object, attachment: object, *, recovered_at: datetime | None = None
+        ) -> asyncio.Task[object] | None: ...
 
         async def _dispatch_file_attachments(
-            self, session: Session, message: object, attachments: list[object]
+            self, session: Session, message: object, attachments: list[object], *, recovered_at: datetime | None = None
         ) -> None: ...
 
     async def resolve_or_create_session(self, message: object, *, first_message: str | None = None) -> Session | None:
@@ -129,19 +133,26 @@ class ForumSessionsMixin:
         forum_project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
         return forum_project_path or context.project_path
 
-    async def _handle_voice_attachment(self, message: object, attachment: object) -> None:
-        """Resolve the message's session through the legacy resolver, then dispatch the voice attachment."""
+    async def _handle_voice_attachment(
+        self, message: object, attachment: object, *, recovered_at: datetime | None = None
+    ) -> asyncio.Task[object] | None:
+        """Resolve the message's session through the legacy resolver, then dispatch the voice attachment.
+
+        Returns the transcription task, so a caller that must know when the input was accepted can wait for it.
+        """
         recoverable_errors = self._discord_errors()
         try:
             session = await self._resolve_or_create_session(message)
         except recoverable_errors as exc:
             logger.error(_VOICE_RESOLUTION_FAILED_TEMPLATE, exc, exc_info=True)
-            return
+            return None
         if not session:
-            return
-        await self._dispatch_voice_attachment(session, message, attachment)
+            return None
+        return await self._dispatch_voice_attachment(session, message, attachment, recovered_at=recovered_at)
 
-    async def _handle_file_attachments(self, message: object, attachments: list[object]) -> None:
+    async def _handle_file_attachments(
+        self, message: object, attachments: list[object], *, recovered_at: datetime | None = None
+    ) -> None:
         """Resolve the message's session through the legacy resolver, then dispatch the file attachments."""
         recoverable_errors = self._discord_errors()
         try:
@@ -151,7 +162,7 @@ class ForumSessionsMixin:
             return
         if not session:
             return
-        await self._dispatch_file_attachments(session, message, attachments)
+        await self._dispatch_file_attachments(session, message, attachments, recovered_at=recovered_at)
 
     async def _resolve_or_create_session(
         self,

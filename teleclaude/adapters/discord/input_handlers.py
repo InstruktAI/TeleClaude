@@ -7,7 +7,9 @@ session. Callers are the forum entry in `forum_sessions.py` and the conversation
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,6 +19,7 @@ from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_asyn
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.file_handler import sanitize_filename
 from teleclaude.core.inbound import resolve_binding_key
+from teleclaude.core.integration.discord_inbound_cursor import PART_IDENTITY_TEMPLATE
 from teleclaude.core.models import Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
@@ -31,7 +34,6 @@ _ID_FIELD = "id"
 _USER_ID_FIELD = "user_id"
 _AUTHOR_ATTR = "author"
 _NO_TEXT = ""
-_PART_IDENTITY_TEMPLATE = "{message_id}:{part_id}"
 # Each audio attachment of a message is downloaded to a file of its own while it awaits transcription.
 _VOICE_TEMP_FILE_TEMPLATE = "voice_{part}{ext}"
 
@@ -93,7 +95,7 @@ class InputHandlersMixin:
         message_id = str(getattr(message, "id", _NO_TEXT)).strip()
         if not message_id:
             return None
-        return _PART_IDENTITY_TEMPLATE.format(message_id=message_id, part_id=getattr(attachment, "id", None) or index)
+        return PART_IDENTITY_TEMPLATE.format(message_id=message_id, part_id=getattr(attachment, "id", None) or index)
 
     async def _process_attachment(
         self,
@@ -103,6 +105,7 @@ class InputHandlersMixin:
         caption: str | None,
         actor_id: str | None,
         source_message_id: str | None = None,
+        recovered_at: datetime | None = None,
     ) -> None:
         """Save one Discord attachment and dispatch it through the command service."""
         filename, file_path, is_image = self._prepare_attachment_target(session, attachment, index)
@@ -118,6 +121,7 @@ class InputHandlersMixin:
                 origin=InputOrigin.DISCORD.value,
                 actor_id=actor_id,
                 source_message_id=source_message_id,
+                recovered_posted_at=recovered_at,
             )
         )
 
@@ -154,8 +158,14 @@ class InputHandlersMixin:
     # Attachment Handlers
     # =========================================================================
 
-    async def _dispatch_voice_attachment(self, session: Session, message: object, attachment: object) -> None:
-        """Download a voice/audio attachment and dispatch it for transcription to ``session``."""
+    async def _dispatch_voice_attachment(
+        self, session: Session, message: object, attachment: object, *, recovered_at: datetime | None = None
+    ) -> asyncio.Task[object] | None:
+        """Download a voice/audio attachment and dispatch it for transcription to ``session``.
+
+        The transcription runs as a task of its own, returned so a caller that must know when the input has
+        been accepted can wait for it; the other callers ignore it. ``None`` when the download failed.
+        """
         recoverable_errors = self._discord_errors()
         message_id = str(getattr(message, "id", ""))
         part_identity = self._attachment_part_identity(message, attachment, 0)
@@ -208,19 +218,24 @@ class InputHandlersMixin:
                 ),
                 actor_avatar_url=self._discord_actor_avatar_url(getattr(message, "author", None)),
                 source_message_id=part_identity,
+                recovered_posted_at=recovered_at,
             )
             registry = getattr(self, "task_registry", None)
             if registry is None:
                 raise RuntimeError("Discord voice handling requires task_registry")
-            registry.spawn(
+            transcription: asyncio.Task[object] = registry.spawn(
                 self.answer_refusal_of(session.session_id, get_command_service().handle_voice(cmd)),  # type: ignore[attr-defined]
                 name=f"voice-{message_id}",
             )
+            return transcription
         except recoverable_errors as exc:
             error_msg = str(exc) if str(exc).strip() else "Unknown error"
             logger.error("Failed to process Discord voice message: %s", error_msg, exc_info=True)
+        return None
 
-    async def _dispatch_file_attachments(self, session: Session, message: object, attachments: list[object]) -> None:
+    async def _dispatch_file_attachments(
+        self, session: Session, message: object, attachments: list[object], *, recovered_at: datetime | None = None
+    ) -> None:
         """Download file/image attachments and dispatch them for processing to ``session``."""
         recoverable_errors = self._discord_errors()
 
@@ -240,6 +255,7 @@ class InputHandlersMixin:
                     caption,
                     sender_key,
                     self._attachment_part_identity(message, attachment, index),
+                    recovered_at,
                 )
             except ShutdownRefusal:
                 await self.answer_shutdown_refusal(session.session_id)  # type: ignore[attr-defined]

@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Final, NotRequired, TypedDict
 
 from instrukt_ai_logging import get_logger
 
@@ -73,6 +73,7 @@ from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, Pro
 from ._delivery_notices import notify_delivery_exhausted as notify_delivery_exhausted
 from ._message_acceptance import record_accepted_input_metadata
 from ._message_delivery import inject_inbound_text
+from ._recovered_input import recovered_entry_facts, recovered_posted_at_stamp, with_recovered_notice
 from ._utils import STARTUP_GATE_POLL_INTERVAL_S, STARTUP_GATE_TIMEOUT_S, StartPollingFunc
 
 if TYPE_CHECKING:
@@ -82,6 +83,7 @@ logger = get_logger(__name__)
 _LEGACY_RESTRICTED_SESSION_REFUSED_EVENT = "legacy_restricted_session_refused"
 _INBOUND_ORIGIN_METADATA_KEY = "origin_metadata"
 _INBOUND_COMMAND_INPUT_KEY = "command_input"
+_INBOUND_RECOVERED_POSTED_AT_KEY: Final = "recovered_posted_at"
 _COMMAND_INPUT_SOURCE_TEXT_KEY = "source_text"
 _COMMAND_INPUT_COMMAND_KEY = "command"
 _COMMAND_INPUT_ARGS_KEY = "args"
@@ -110,6 +112,7 @@ class _InboundPayload(TypedDict, total=False):
 
     origin_metadata: Mapping[str, object]
     command_input: _InboundCommandInput
+    recovered_posted_at: str
 
 
 class _PeerAttentionHandoffOutcome(StrEnum):
@@ -228,15 +231,18 @@ async def _handoff_peer_attention(
 def _encode_inbound_payload(
     origin_metadata: Mapping[str, object] | None,
     command_input: _InboundCommandInput | None,
+    recovered_posted_at: datetime | None = None,
 ) -> str | None:
     """Serialize queue-side metadata needed at delivery time."""
-    if origin_metadata is None and command_input is None:
+    if origin_metadata is None and command_input is None and recovered_posted_at is None:
         return None
     payload: _InboundPayload = {}
     if origin_metadata:
         payload["origin_metadata"] = dict(origin_metadata)
     if command_input is not None:
         payload["command_input"] = command_input
+    if recovered_posted_at is not None:
+        payload[_INBOUND_RECOVERED_POSTED_AT_KEY] = recovered_posted_at_stamp(recovered_posted_at)
     if not payload:
         return None
     return json.dumps(payload)
@@ -463,6 +469,7 @@ async def handle_voice(
         actor_avatar_url=cmd.actor_avatar_url,
         origin_metadata=cmd.origin_metadata,
         source_message_id=cmd.source_message_id,
+        recovered_posted_at=cmd.recovered_posted_at,
     )
     try:
         await accept_inbound_message(transcript_command, message_type=InboundMessageType.VOICE)
@@ -517,6 +524,7 @@ async def handle_file(
             occurrence_key=cmd.source_message_id,
             actor_id=cmd.actor_id,
             source_message_id=cmd.source_message_id,
+            recovered_posted_at=cmd.recovered_posted_at,
         ),
         message_type=InboundMessageType.FILE,
     )
@@ -913,6 +921,9 @@ async def accept_inbound_message(
                 procedure_token=resolved_input.command,
                 arguments=resolved_input.args,
                 project_root=project_root,
+                entry_facts=(
+                    recovered_entry_facts(cmd.recovered_posted_at) if cmd.recovered_posted_at is not None else None
+                ),
             )
         except (CommandInputError, EntryRefusal) as exc:
             raise SessionMessageRejectedError(
@@ -922,6 +933,8 @@ async def accept_inbound_message(
             ) from exc
         content = inline.loader
         command_input = {"source_text": cmd.text, "command": inline.procedure_id, "args": inline.arguments}
+    elif cmd.recovered_posted_at is not None:
+        content = with_recovered_notice(content, cmd.recovered_posted_at)
 
     async def _record_after_insert(_row_id: int) -> None:
         await record_accepted_input_metadata(
@@ -948,7 +961,7 @@ async def accept_inbound_message(
         text_kind=cmd.text_kind,
         source_feature=cmd.source_feature,
         occurrence_key=cmd.occurrence_key,
-        payload_json=_encode_inbound_payload(cmd.origin_metadata, command_input),
+        payload_json=_encode_inbound_payload(cmd.origin_metadata, command_input, cmd.recovered_posted_at),
         actor_id=cmd.actor_id,
         actor_name=cmd.actor_name,
         actor_avatar_url=cmd.actor_avatar_url,

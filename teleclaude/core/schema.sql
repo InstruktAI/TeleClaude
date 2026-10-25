@@ -541,6 +541,14 @@ CREATE TABLE IF NOT EXISTS discord_reflection_state (
 CREATE INDEX IF NOT EXISTS idx_discord_reflection_scope
     ON discord_reflection_state (provider, scope_kind, scope_value);
 
+-- The newest Discord message of one place (a session thread or a Team channel) whose handling has concluded.
+-- Recovery after the daemon was away reads a place's history after this message.
+CREATE TABLE IF NOT EXISTS discord_inbound_cursors (
+    place_id INTEGER PRIMARY KEY,
+    message_id INTEGER NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 -- Memory observations and FTS
 CREATE TABLE IF NOT EXISTS memory_observations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord._channel_lookup import find_existing_text_channel_id
 from teleclaude.cli.config_handlers import get_person_config
+from teleclaude.core.db import db
 from teleclaude.core.inbound import ConversationRef
 from teleclaude.core.inbound.conversation import reconcile_designated_conversation
 from teleclaude.core.inbound.models import DISCORD_DM_KEY_FIELD
@@ -20,6 +21,8 @@ from teleclaude.slug import normalize_slug
 
 if TYPE_CHECKING:
     from types import ModuleType
+
+    from teleclaude.adapters.discord.inbound_continuity import InboundContinuity
 
 logger = get_logger(__name__)
 
@@ -86,6 +89,7 @@ class TeamChannelsMixin:
     _team_channel_map: dict[int, str]
 
     if TYPE_CHECKING:
+        _continuity: InboundContinuity
         _discord: ModuleType
         _client: object
 
@@ -141,6 +145,8 @@ class TeamChannelsMixin:
             # Ensure permissions are correct on existing channels too
             if create and ch_id is not None and discord_user_id is not None:
                 await self._ensure_channel_private(ch_id, guild, discord_user_id)
+        # Input a Team channel received before it was routed was left unprocessed; recover it now.
+        self._continuity.request_recovery()
 
     async def _reconcile_team_channels(self) -> None:
         """Settle each provisioned Team channel's conversation: adoption on the master, cutover on every computer.
@@ -151,6 +157,8 @@ class TeamChannelsMixin:
         for channel_id, person_slug in self._team_channel_map.items():
             try:
                 await reconcile_designated_conversation(team_channel_conversation(channel_id), person_slug)
+                if await db.get_conversation_binding(InputOrigin.DISCORD.value, DISCORD_DM_KEY_FIELD, str(channel_id)):
+                    await self._continuity.start_cursor_at_newest(channel_id)
             # Reconciliation is best-effort at startup: its failure must not abort adapter readiness,
             # and the channel's next use reconciles it again.
             except Exception as exc:

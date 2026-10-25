@@ -17,7 +17,12 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config.project_models import TodoStoreBackend
-from teleclaude.constants import REMOVED_TODO_RETENTION_WINDOW, RESTART_CONTINUATION_STIMULUS, TodoStatus
+from teleclaude.constants import (
+    REMOVED_TODO_RETENTION_WINDOW,
+    RESTART_CONTINUATION_STIMULUS,
+    RUNTIME_RECORD_RETENTION_WINDOW,
+    TodoStatus,
+)
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_availability import launch_ownership
@@ -510,7 +515,7 @@ class MaintenanceService:
                 await session_cleanup.cleanup_orphan_session_tmpdirs()
                 await asyncio.to_thread(prune_session_map)
                 now = datetime.now(UTC)
-                runtime_cutoff_iso = (now - timedelta(days=7)).isoformat()
+                runtime_cutoff_iso = (now - RUNTIME_RECORD_RETENTION_WINDOW).isoformat()
                 now_iso = now.isoformat()
                 await db.cleanup_stale_voice_assignments()
                 await db.cleanup_terminal_voice_transcriptions(runtime_cutoff_iso)

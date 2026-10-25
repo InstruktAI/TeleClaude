@@ -31,7 +31,7 @@ from teleclaude.core.session_utils import get_short_project_name
 from teleclaude.services.project_catalog import get_project_catalog_service
 
 if TYPE_CHECKING:
-    pass
+    from teleclaude.adapters.discord.inbound_continuity import InboundContinuity
 
 logger = get_logger(__name__)
 
@@ -166,6 +166,8 @@ class ChannelOperationsMixin:
     _resolve_parent_forum_id: Callable[[object | None], int | None]
 
     if TYPE_CHECKING:
+        _continuity: InboundContinuity
+
         # Provided by UiAdapter base; declared here so pyright resolves it
         # when methods on this mixin call self.display_title(session).
         def display_title(self, session: Session) -> str: ...
@@ -373,6 +375,9 @@ class ChannelOperationsMixin:
                     DiscordMetadataField.THREAD_TOPPER_MESSAGE_ID: topper_message_id,
                 },
             )
+            topper_id = self._parse_optional_int(topper_message_id)
+            if topper_id is not None:
+                await self._continuity.start_cursor(thread_id, topper_id)
             return str(thread_id)
 
         if discord_meta.channel_id is not None:

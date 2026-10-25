@@ -187,6 +187,17 @@ class DiscordReflectionRow(SQLModel, table=True):
     verified_at: datetime | None = None
 
 
+class DiscordInboundCursorRow(SQLModel, table=True):
+    """The newest Discord message of one place (a session thread or a Team channel) whose handling has concluded."""
+
+    __tablename__ = "discord_inbound_cursors"
+    __table_args__ = {"extend_existing": True}
+
+    place_id: int = Field(primary_key=True)
+    message_id: int
+    updated_at: str
+
+
 class ConversationBindingRow(SQLModel, table=True):
     """The mesh master's binding of one shared-adapter conversation to its latest session."""
 
