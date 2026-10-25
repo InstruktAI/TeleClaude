@@ -123,8 +123,8 @@ installation's channel reaction installs that revision once. The activation the
 integrator judges is that install. It reads the install's recorded outcome with
 `telec app status` and the log window from that install onwards, recovers within
 the integration lane, and routes remaining breakage for a forward fix through
-the normal bug process. Returning to the previous release after an install that
-migrated nothing is `telec app rollback`.
+the normal bug process. Where the installation still offers a return to the
+previous release, `telec app rollback` is part of that recovery.
 
 <!-- /planned:platform-installation -->
 
