@@ -151,8 +151,6 @@ implementation remain the current appliance contract.
   (`config`); a desk session's lifecycle or its escalation relay
   (`agent_runtime`).
 
-<!-- planned:ci-results-as-events -->
-
 - **Owns (CI run outcomes):** translating a project's relayed GitHub
   workflow-run completions into run outcomes and main-revision green
   announcements
@@ -180,8 +178,6 @@ implementation remain the current appliance contract.
   bug records (`workflow`); whether an installation activates a green revision
   (its channel's activation contract); the shape of the CI declaration
   (`config`).
-
-<!-- /planned:ci-results-as-events -->
 
 ## See Also
 

@@ -60,8 +60,6 @@ feature specs remain the current contract.
   groupings by role name; the catalog composes the roles and decides nothing
   about lanes (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
 
-<!-- planned:ci-results-as-events -->
-
 - **Also owns (failed-check bugs):** the filer that turns failed required CI
   checks into bugs
   (`local/projects/teleclaude/spec/feature/workflow/failed-check-bugs`). One
@@ -83,8 +81,6 @@ feature specs remain the current contract.
   A green required-check run on a branch appends that branch's recovery to every
   open bug whose record holds a failure of that check on that branch since its
   last recovery there.
-
-<!-- /planned:ci-results-as-events -->
 
 ### Preparation completion provenance
 

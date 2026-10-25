@@ -78,13 +78,6 @@ bus, not a public endpoint.
   its secret as a reference resolved from that project's `.env`, on the ingress
   computer (`local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`).
 
-<!-- planned-change:ci-results-as-events -->
-
-- Register the project's endpoint URL and the same secret at the provider, and
-  subscribe TeleClaude's repository webhook to its push and release events.
-
-<!-- change:ci-results-as-events -->
-
 - Register the project's endpoint URL and the same secret at the provider, and
   subscribe TeleClaude's repository webhook to its push, release and workflow
   run events. Workflow runs carry its CI results
@@ -94,8 +87,6 @@ bus, not a public endpoint.
   contents. The platform publishes that project's CI run outcomes, and needs the
   access to name a failed run's jobs and steps and the commits since the last
   green run.
-
-<!-- /planned-change:ci-results-as-events -->
 
 ### Monitoring
 

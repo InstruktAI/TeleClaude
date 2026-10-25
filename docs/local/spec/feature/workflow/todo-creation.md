@@ -7,15 +7,7 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:ci-results-as-events -->
-
-The Todo aggregate inside the `workflow` bounded context is created through one CLI entrypoint that calls a single server-side route, plus a creative-machine entrypoint that does not itself create todo entries:
-
-<!-- change:ci-results-as-events -->
-
 The Todo aggregate inside the `workflow` bounded context is created through one CLI entrypoint that calls a single server-side route, and through the platform's filing of failed required CI checks, plus a creative-machine entrypoint that does not itself create todo entries:
-
-<!-- /planned-change:ci-results-as-events -->
 
 - **`telec todo create <slug> <content> --kind <kind>`** — the single creation command. Both `<slug>` and `<content>` are required positionals; an empty or whitespace-only `<content>` is rejected before any request is made. `--kind` is required. The workflow service writes the todo entry, the default state, and an artifact in one transaction. Flags:
   - `--kind <kind>` — **required**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (diagnosis → plan lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). The kind maps one-to-one onto the todo's lifecycle lane from creation. A creation request without a kind is refused before anything is written, and the refusal names the four kinds. A wrong kind is corrected with `telec todo update <slug> --kind <kind>`.
@@ -37,11 +29,7 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
 
 - **`telec todo design [<slug>]`** — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
 
-<!-- planned:ci-results-as-events -->
-
 - **Failed required-check filing** — no command. The workflow's failed-check filer creates a `bug` through the same single creation transaction as `create`: the todo entry, the default state, the `input` artifact and the todo-created event. Its creation record's lineage root is the platform's system principal, with no acting session. It faces no interrogation gate, because `sdlc/policy/todo-creation-discipline` admits a failed required check's filing without one. What it files, and when it adds to an open bug instead, is `local/projects/teleclaude/spec/feature/workflow/failed-check-bugs`.
-
-<!-- /planned:ci-results-as-events -->
 
 The Todo aggregate's invariants — unique kebab-case slug, a canonical kind present from creation, `after` dependencies validated against the todo list — are enforced before the entry is written. The workflow service is the single emission point for the todo-created event.
 
@@ -95,17 +83,8 @@ The workflow service emits the event with this payload:
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
 
-<!-- planned-change:ci-results-as-events -->
-
-- `lineage` — the complete creation lineage in one value: the chain-root authority plus, when an agent session was the hands, that acting session. A direct human filing carries the human root alone; an agent filing under human lineage carries both the human root and the acting session in the same value; a root with no human is legitimate only for a job-runner filing. The human root is denormalized in the value so it stays resolvable after the acting session is garbage-collected. Never null: a create whose caller identity resolves to neither a human nor a session fails loudly.
-- `entry_point` — the creation door, stamped mechanically by the door itself: `tui`, `cli`, `agent`, or `split`. Never declared by the caller. A todo created while an agent processes deferrals records `agent` like any other agent filing — the door records how the todo came into existence, not which todo preceded it.
-
-<!-- change:ci-results-as-events -->
-
 - `lineage` — the complete creation lineage in one value: the chain-root authority plus, when an agent session was the hands, that acting session. A direct human filing carries the human root alone; an agent filing under human lineage carries both the human root and the acting session in the same value; a root with no human is legitimate only for a job-runner filing or the platform's failed-check filing, which records the system daemon principal with no acting session. The human root is denormalized in the value so it stays resolvable after the acting session is garbage-collected. Never null: a create whose caller identity resolves to neither a human nor a session fails loudly.
 - `entry_point` — the creation door, stamped mechanically by the door itself: `tui`, `cli`, `agent`, `split`, or `platform`, which is the platform's failed-check filing. Never declared by the caller. A todo created while an agent processes deferrals records `agent` like any other agent filing — the door records how the todo came into existence, not which todo preceded it.
-
-<!-- /planned-change:ci-results-as-events -->
 
 - `human_involved` — boolean. Derived `true` for the human doors (`tui`, `cli`). For the `agent` door it defaults to `false` and becomes `true` only when this creation call carries a declaration and the acting session's observed human input is recent. It is never inherited from the session, lineage, parent todo, or any preceding act.
 - `context` — door-specific reference data, never identity: the parent todo slug for the `split` door, derived from its `--group` signal; absent for every other door.

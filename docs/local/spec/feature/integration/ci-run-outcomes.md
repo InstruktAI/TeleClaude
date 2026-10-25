@@ -1,7 +1,7 @@
 ---
-delivered_by:
-  - ci-results-as-events
-description: Every completed CI run on a project's repository reaches the platform as an outcome bound to its revision, and a main revision whose declared required checks have all passed is announced as green.
+description: Every completed CI run on a project's repository reaches the platform
+  as an outcome bound to its revision, and a main revision whose declared required
+  checks have all passed is announced as green.
 visibility: internal
 ---
 

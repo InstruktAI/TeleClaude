@@ -1,7 +1,7 @@
 ---
-delivered_by:
-  - ci-results-as-events
-description: A red required CI check on main or on a dependency update files one bug per failing job and step in the project's work, adds later failures to it, and records the check's recovery, all without an agent.
+description: A red required CI check on main or on a dependency update files one bug
+  per failing job and step in the project's work, adds later failures to it, and records
+  the check's recovery, all without an agent.
 visibility: internal
 ---
 

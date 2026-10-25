@@ -268,8 +268,6 @@ description: Decide whether a todo should exist, audit that decision at preparat
 
 <!-- /planned-change:telec-repo-command-family -->
 
-<!-- planned:ci-results-as-events -->
-
 - **A failed required check files its own bug.** When a required CI check fails
   on main or on a dependency update, the platform files a bug from that result
   without interrogation, because the filing carries no judgment to face: it
@@ -279,8 +277,6 @@ description: Decide whether a todo should exist, audit that decision at preparat
   the open bug instead of filed again, and a green run on the same branch is
   recorded on it as the recovery. Which change or component is at fault, and
   whether the check itself is wrong, is the ordinary bug lane's diagnosis.
-
-<!-- /planned:ci-results-as-events -->
 
 ### Ground every defect claim in evidence
 
@@ -546,15 +542,11 @@ actively prepared work, where a claimant exists and effort is being spent.
 Unclaimed work is protected by the mandatory entry audit when preparation
 next begins.
 
-<!-- planned:ci-results-as-events -->
-
 A red check on main or on a dependency update otherwise reaches nobody: no agent
 watches CI, and a failure that waits to be noticed lets the next deliveries
 build on a broken revision. Interrogation exists to make a filer face a
 judgment, and a failed check's filing contains none; the judgment it needs is
 the diagnosis that follows.
-
-<!-- /planned:ci-results-as-events -->
 
 ## Scope
 
