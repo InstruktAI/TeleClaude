@@ -70,20 +70,6 @@ proposal operation before any mainline queue watcher or integration call.
 
 ### Runtimes activated by an install
 
-<!-- planned-change:installation-activation-inspection -->
-
-Where a project's live runtime runs from an installation that installs pushed
-revisions through its channel, a canonical-main advancement activates nothing:
-its maintenance replaces no runtime and owes no log window before publication.
-The integrator publishes the integrated head and installs nothing itself; the
-installation's channel reaction installs that revision once. The activation the
-integrator judges is that install. It reads the install's recorded outcome with
-`telec app status` and the log window from that install onwards, recovers within
-the integration lane, and routes remaining breakage for a forward fix through
-the normal bug process. Where the installation still offers a return to the
-previous release, `telec app rollback` is part of that recovery.
-<!-- change:installation-activation-inspection -->
-
 Where a project's live runtime runs from an installation that installs pushed
 revisions through its channel, a canonical-main advancement activates nothing:
 its maintenance replaces no runtime and owes no log window before publication.
@@ -93,7 +79,6 @@ does not judge that install: every install's assessment is owned by the
 installation inspector on the installation's computer
 (`sdlc/procedure/maintenance/installation/overview`), so each install has one
 assessor.
-<!-- /planned-change:installation-activation-inspection -->
 
 ## Steps
 
@@ -115,24 +100,6 @@ assessor.
    live-runtime judgment with the integrator. Continue observing those actions
    on `integrator-queue-watch` beats when they outlive this drain.
 
-<!-- planned-change:installation-activation-inspection -->
-
-After each activation, read that delivery's log window with knowledge of
-the change. Investigate anomalies, handle bounded recovery, and route
-remaining breakage for a forward fix through the normal bug process.
-For direct commits on canonical local main, judge any owed log window before
-publication. If the activated change is sound, push the current committed
-main head to origin/main from the project root with `git push origin main:main`
-and verify origin/main contains that exact head. A material activation failure leaves it local until recovery
-and a new log judgment; a successful log command alone is not a soundness
-verdict. A direct commit with no live-runtime log judgment is published after
-its owed maintenance succeeds. The committer owns review and remediation under
-`general/policy/commits`; the integrator does not inspect or wait for other
-sessions' review verdicts. Uncommitted repo-root paths are not part of the
-push and do not block it. The candidate pre-push checks in step 5 do not gate
-direct-main publication.
-<!-- change:installation-activation-inspection -->
-
 Where a canonical-main advancement activates the live runtime, read that
 delivery's log window after the activation with knowledge of the change.
 Investigate anomalies, handle bounded recovery, and route remaining breakage
@@ -151,7 +118,6 @@ remediation under `general/policy/commits`; the integrator does not inspect
 or wait for other sessions' review verdicts. Uncommitted repo-root paths are
 not part of the push and do not block it. The candidate pre-push checks in
 step 5 do not gate direct-main publication.
-<!-- /planned-change:installation-activation-inspection -->
 
 `telec repo maintenance status` reports the checkout's outstanding actions,
 terminal failures, and integrator judgment, each with its recovery command.

@@ -53,15 +53,11 @@ contracts of the contexts it crosses. It owns none of their rules.
   has started since the active release became active and in which stores, and
   the outcome of the most recent act with its reason.
 
-<!-- planned:installation-activation-inspection -->
-
 - The assessment record, beside the install record: the installs whose
   assessment is owed, and the most recent recorded assessment with the install
   it covered.
 - The owed-assessment announcement: a platform event, with no origin, emitted
   by the daemon at each start and at a fixed interval while an install is owed.
-
-<!-- /planned:installation-activation-inspection -->
 
 ```mermaid
 flowchart LR
@@ -204,17 +200,6 @@ selects the target under that contract, and invokes the install act. The
 pending convergence record keeps the target until the act completes, so a
 duplicate signal installs nothing twice.
 
-<!-- planned-change:installation-activation-inspection -->
-
-### Interim integrator judgment
-
-The integrator integrates and pushes; the channel reaction installs the revision
-its channel admits; the integrator then judges the runtime from the install record's
-outcome and the log window from that install onwards
-(`sdlc/procedure/lifecycle/integrate`).
-
-<!-- change:installation-activation-inspection -->
-
 ### Assessment after an install
 
 Every install that opens its stopped window, initial provisioning included,
@@ -264,8 +249,6 @@ sequenceDiagram
 - **A daemon that does not return** announces nothing; the install stays owed
   in the assessment record and in `telec app status` beside the act's failure, and no
   assessment is recorded for a runtime nobody observed.
-
-<!-- /planned-change:installation-activation-inspection -->
 
 ### First install and the move off a checkout
 

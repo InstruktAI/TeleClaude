@@ -1,8 +1,9 @@
 ---
-description: "Assess the release an install made live on the installation's own computer: read its status, the log window from the earliest owed install through the verified start, and its health; repair forward or roll back while that is still offered; record the assessment."
-visibility: 'public'
-delivered_by:
-  - installation-activation-inspection
+description: "Assess the release an install made live on the installation's own computer:
+  read its status, the log window from the earliest owed install through the verified
+  start, and its health; repair forward or roll back while that is still offered;
+  record the assessment."
+visibility: public
 ---
 
 # Installation Assessment — Procedure

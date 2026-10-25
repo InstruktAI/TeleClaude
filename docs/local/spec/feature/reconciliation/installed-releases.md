@@ -114,8 +114,6 @@ starts to the installation, whenever it starts. When a migration has started,
 or no previous release is installed, rollback refuses, names the condition, and
 changes nothing. No state is backed up or restored.
 
-<!-- planned:installation-activation-inspection -->
-
 ### Assessment after an install
 
 Every install that opens its stopped window — the daemon stopped, or none
@@ -150,8 +148,6 @@ serves.
   owed beside the failure `telec app status` reports, until a start serves
   again and its assessment is recorded.
 
-<!-- /planned:installation-activation-inspection -->
-
 ### First install
 
 A bootstrap command checks the machine's prerequisites, installs the
@@ -169,16 +165,6 @@ with all its todos, worktrees and claims.
 
 ### Operating surface
 
-<!-- planned-change:installation-activation-inspection -->
-
-`telec app` operates the installation from any directory: `status`, `start`,
-`stop`, `restart`, `install [<revision>]` and `rollback`. Every verb acts on
-the installation, whatever checkout the caller stands in. `status` names the
-active release alongside the daemon's health. The lifecycle verbs keep the
-guarantees of `local/projects/teleclaude/policy/daemon-availability`.
-
-<!-- change:installation-activation-inspection -->
-
 `telec app` operates the installation from any directory: `status`, `start`,
 `stop`, `restart`, `install [<revision>]`, `rollback` and
 `assessed <install>`. Every verb acts on the installation, whatever checkout
@@ -186,8 +172,6 @@ the caller stands in. `status` names the active release alongside the daemon's
 health, the installs whose assessment is owed by number and revision, and
 the most recent recorded assessment. The lifecycle verbs keep the guarantees of
 `local/projects/teleclaude/policy/daemon-availability`.
-
-<!-- /planned-change:installation-activation-inspection -->
 
 ### Use cases
 
@@ -278,10 +262,6 @@ And the project keeps every todo, worktree and claim where it was
   from that moment rollback is no longer offered. A started migration that
   changed nothing still withdraws rollback.
 
-<!-- planned:installation-activation-inspection -->
-
 - A recorded assessment states that an install was assessed, not what the
   assessment concluded; its findings travel through the inspector's recovery
   and the project's bug process.
-
-<!-- /planned:installation-activation-inspection -->
