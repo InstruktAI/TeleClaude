@@ -11,9 +11,11 @@ description: A procedure assignment's inputs and its title are exactly what its 
 A procedure declares the arguments it takes at launch. The declaration schema
 let an optional argument carry a literal default, which the launch bound as
 though the caller had supplied it and which continuation re-bound for a
-session recorded before procedure entry. No published procedure declares one,
-so the capability has no user; it exists to let a declaration put a business
-value into an assignment nobody gave it.
+session recorded before procedure entry. A survey of every procedure declaring
+`parameters` — in the platform repository, its published documentation, the
+people and company homes and the other workspace projects — found none that
+declares a default, so the capability has no user; it exists to let a
+declaration put a business value into an assignment nobody gave it.
 
 The session title showed the role followed by a work subject chosen per entry
 kind: a bound `branch` parameter for a direct invocation, the job name for a
