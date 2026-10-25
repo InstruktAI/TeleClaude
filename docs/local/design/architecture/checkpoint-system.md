@@ -320,12 +320,15 @@ Commit-boundary installation deploys and reloads those services as before
 
 <!-- change:platform-installation -->
 
-TeleClaude's overlay declares no action that installs, migrates, restarts,
-reloads or publishes the platform: its project's commits and on-demand runs
-change nothing live, and installing a release performs those effects
+TeleClaude's overlay declares no action that migrates, restarts, reloads or
+publishes the platform: its project's commits and on-demand runs change nothing
+live, and installing a release performs those effects
 (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
-The overlay therefore declares no `restart` action, and an on-demand run in the
-platform's project opens no stopped-daemon window.
+The base `install` action still runs in the platform's project, at the commit
+boundary and on demand, and there the project's installer prepares only that
+checkout's own development environment and touches no live surface. The
+overlay declares no `restart` action, so an on-demand run in the platform's
+project opens no stopped-daemon window.
 
 <!-- /planned-change:platform-installation -->
 

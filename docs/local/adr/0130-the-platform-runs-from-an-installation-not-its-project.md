@@ -56,9 +56,9 @@ the installation through `telec app` from any directory.
 - **Keep the checkout live and guard it.** Every guard leaves the coupling in
   place; one missed path still brings development to the live platform.
 - **Declare the existing checkout the installation and add a second
-  development checkout beside it.** Delivered and reverted: it made the project
-  the special case and left an installation that showed up as a project with
-  work hanging under it.
+  development checkout beside it.** It makes the project the special case, and
+  the installation remains a registered checkout that shows up as a project
+  with work hanging under it.
 - **Place the installation inside the platform home.** Mixes installed code
   with the configuration and state every release reads, and couples the home's
   history to code versions.
