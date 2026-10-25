@@ -550,6 +550,8 @@ Then the agent receives no companion-drift action for that parent
 
 ## Known caveats
 
+<!-- planned-change:telec-repo-command-family -->
+
 - Session-scoped flag markers live in a per-session temporary directory;
   identifiers that contain unsafe characters are hashed to a digest
   component for the filesystem path. The integrator-maintenance marker is
@@ -594,6 +596,55 @@ Then the agent receives no companion-drift action for that parent
 - The checkpoint message is prefixed so the receiver's system-prompt
   filter can drop the echoed prompt when the agent re-submits it on
   the next turn.
+
+<!-- change:telec-repo-command-family -->
+
+- Session-scoped flag markers live in a per-session temporary directory;
+  identifiers that contain unsafe characters are hashed to a digest
+  component for the filesystem path. The integrator-maintenance marker is
+  the one exception: it is addressed by the canonical checkout, so it lives
+  under a checkout-derived component and is reachable by every session
+  working from that checkout.
+
+- The clear flag is turn-scoped: it skips checkpoints for the current turn
+  and is hard-cleared at the next non-system user-prompt-submit. A checkpoint
+  that recurs across turns is a
+  signal that the heuristics are over-tight — the agent surfaces it to the
+  human rather than re-setting the flag. The recheck loop-guard is the
+  involuntary backstop against an evidence-miss spinning forever.
+- The main-branch post-commit review gate is driven by a session-scoped
+  authored-main-commit latch recorded by `telec repo commit` only for
+  commits whose pathspec includes code, then consumed when the review
+  action surfaces. The latch triggers only the review gate — never the
+  action or evidence ledger. It is not SHA-keyed, so rebases and peer HEAD
+  movement do not re-arm it; doc-only commits do not arm it; raw
+  `git commit` does not mark authorship.
+
+- An integration fast-forward that produces no repository-root commit invokes
+  deterministic maintenance directly from canonical root. The checkout-scoped
+  marker carries only ranges awaiting log judgment, so a successor integrator
+  inherits the judgment without repeating maintenance.
+
+- Heuristics are zero-LLM and deterministic — pattern matching on
+  version-control state and the transcript, no API calls.
+- The engine is project-aware: it may short-circuit early for projects
+  outside the supported set (the engine's project-allowlist policy
+  lives in the engine itself).
+- Worktree-aware path resolution composes the project path with the worktree
+  subdirectory so branch detection evaluates the actual checkout. Mechanical
+  actions never surface from checkpoint location rules; the integrator receives
+  only checkout-scoped log judgment after canonical-root maintenance.
+- Unknown agent names fall back to the default agent — a pragmatic
+  guard against unrecognized agent values.
+- All three v1 adapters support hook checkpoints. Claude and Codex
+  emit block decisions; Gemini emits a deny decision. The shape
+  differences track each agent CLI's stdin protocol for blocking
+  continuations.
+- The checkpoint message is prefixed so the receiver's system-prompt
+  filter can drop the echoed prompt when the agent re-submits it on
+  the next turn.
+
+<!-- /planned-change:telec-repo-command-family -->
 
 ## See Also
 
