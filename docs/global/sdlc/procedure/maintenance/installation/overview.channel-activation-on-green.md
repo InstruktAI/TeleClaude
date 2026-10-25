@@ -1,6 +1,8 @@
 ---
-description: "The installation's standing inspector on its own computer: answers every installation event its role carries and routes each to the procedure that handles it, working on the installation's own state."
-visibility: 'public'
+description: "The installation's standing inspector on its own computer: answers
+  every installation event its role carries and routes each to the procedure that
+  handles it, working on the installation's own state."
+visibility: public
 subscriptions:
   - teleclaude.installation.assessment.owed
   - teleclaude.installation.release.held
@@ -9,7 +11,9 @@ event_delivery: sequential
 interruptible: false
 role: installation-inspector
 dispatch:
-  agent: [claude, codex]
+  agent:
+    - claude
+    - codex
   thinking_mode: slow
 ---
 
