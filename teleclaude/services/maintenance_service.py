@@ -10,7 +10,7 @@ from enum import StrEnum
 from functools import partial
 from pathlib import Path
 from time import perf_counter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
@@ -61,7 +61,13 @@ from teleclaude.core.workflow_store.selection import inspect_workflow_store_pres
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.core.workflow_store.types import StorePresenceKind
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
-from teleclaude.docs_reconcile import SnippetWriteResult, reconcile_snippets_for_purged_slugs
+from teleclaude.docs_reconcile import (
+    ReconciliationMode,
+    ReconciliationPlan,
+    ReconciliationWrite,
+    apply_reconciliation_plan,
+    plan_snippet_reconciliation,
+)
 from teleclaude.events import get_event_db
 from teleclaude.events.consumers import HANDLED_RECORD_RETENTION
 from teleclaude.hooks.session_map import prune_session_map
@@ -98,6 +104,13 @@ PURGE_REASON_GIT_ADD_FAILURE = "git_add_failure"
 PURGE_REASON_GIT_COMMAND_FAILURE = "git_command_failure"
 PURGE_REASON_LAYER_2_STAGED_SET_MISMATCH = "layer_2_staged_set_mismatch"
 PURGE_REASON_LAYER_3_POST_COMMIT_VERIFICATION_FAILURE = "layer_3_post_commit_verification_failure"
+_UTF8_ENCODING = "utf-8"
+_ROW_SLUG_KEY: Final = "slug"
+_NO_STAGING_ERROR = ""
+_GIT_ADD_PATHS_ARGS = ("add", "--")
+_GIT_REMOVE_CACHED_PATHS_ARGS = ("rm", "--cached", "--quiet", "--ignore-unmatch", "--")
+_PURGE_WRITE_VERIFICATION_FAILED_TEMPLATE = "Snippet purge write verification failed for {path}"
+_PURGE_COMMIT_MESSAGE_TEMPLATE = "chore(todo): purge {slug}; reconcile pending documentation in {count} paths"
 _RESTORE_TMUX_FAILURE_LOG = "Automatic tmux restoration reached terminal outcome"
 _TMUX_RESTORE_WORK = "tmux-restore"
 
@@ -131,13 +144,6 @@ class _RestoreTmuxRetryDisposition(StrEnum):
 
     STOPPED_HEADLESS = "stopped_headless"
     PANE_SURVIVES = "pane_survives"
-
-
-def _repo_relative_path(project_root: Path, path: Path | str) -> str:
-    path_obj = Path(path)
-    if not path_obj.is_absolute():
-        return path_obj.as_posix()
-    return path_obj.relative_to(project_root).as_posix()
 
 
 def _log_git_name_set_failure(args: list[str], stderr: str, *, project_root: Path) -> None:
@@ -181,18 +187,37 @@ def _paths_match_head(project_root: Path, paths: list[str]) -> bool:
     return rc == 0
 
 
-def _write_snippet_plans(plans: list[SnippetWriteResult]) -> None:
-    for plan in plans:
-        if not plan.write_required and plan.path.read_text(encoding="utf-8") == plan.rendered_content:
-            continue
-        plan.path.write_text(plan.rendered_content, encoding="utf-8")
-        if plan.path.read_text(encoding="utf-8") != plan.rendered_content:
-            raise RuntimeError(f"Snippet purge write verification failed for {plan.path}")
+def _write_matches_plan(write: ReconciliationWrite) -> bool:
+    if write.rendered_content is None:
+        return not write.path.exists()
+    return write.path.read_text(encoding=_UTF8_ENCODING) == write.rendered_content
 
 
-def _plans_for_paths(plans: list[SnippetWriteResult], paths: list[str], project_root: Path) -> list[SnippetWriteResult]:
+def _apply_purge_writes(plan: ReconciliationPlan, writes: list[ReconciliationWrite]) -> None:
+    apply_reconciliation_plan(ReconciliationPlan(plan.slug, plan.mode, tuple(writes)))
+    for write in writes:
+        if not _write_matches_plan(write):
+            raise RuntimeError(_PURGE_WRITE_VERIFICATION_FAILED_TEMPLATE.format(path=write.path))
+
+
+def _writes_for_paths(plan: ReconciliationPlan, paths: list[str]) -> list[ReconciliationWrite]:
     wanted = set(paths)
-    return [plan for plan in plans if _repo_relative_path(project_root, plan.path) in wanted]
+    return [write for write in plan.writes if write.relative_path in wanted]
+
+
+def _stage_pending_paths(project_root: Path, pending_paths: list[str]) -> tuple[int, str]:
+    """Stage exactly the pending paths; a deletion stages repeatably, whether or not it is already staged."""
+    present = [path for path in pending_paths if (project_root / path).exists()]
+    absent = [path for path in pending_paths if path not in present]
+    if present:
+        rc, _stdout, stderr = _run_git_cmd([*_GIT_ADD_PATHS_ARGS, *present], cwd=str(project_root))
+        if rc != 0:
+            return rc, stderr
+    if absent:
+        rc, _stdout, stderr = _run_git_cmd([*_GIT_REMOVE_CACHED_PATHS_ARGS, *absent], cwd=str(project_root))
+        if rc != 0:
+            return rc, stderr
+    return 0, _NO_STAGING_ERROR
 
 
 def _voice_temp_audio_dir() -> Path:
@@ -336,7 +361,7 @@ async def _commit_and_finalize_removed_row(
     if pre_staged is None:
         return None
 
-    rc, _stdout, stderr = _run_git_cmd(["add", "--", *pending_paths], cwd=str(project_root))
+    rc, stderr = _stage_pending_paths(project_root, pending_paths)
     if rc != 0:
         logger.info(
             "Removed-todo purge retained pending paths",
@@ -366,7 +391,7 @@ async def _commit_and_finalize_removed_row(
         )
         return None
 
-    message = f"chore(todo): purge {row['slug']}; reconcile delivered_by in {len(pending_paths)} snippets"
+    message = _PURGE_COMMIT_MESSAGE_TEMPLATE.format(slug=row[_ROW_SLUG_KEY], count=len(pending_paths))
     rc, _stdout, stderr = _run_git_cmd(["commit", "-m", message, "--", *pending_paths], cwd=str(project_root))
     if rc != 0:
         logger.info(
@@ -408,8 +433,8 @@ async def _cleanup_removed_todo_row(
                 return None
             return await _finalize_removed_row(todos_db, row)
 
-        plans = reconcile_snippets_for_purged_slugs(project_root, [row["slug"]], todo_status_map)
-        _write_snippet_plans(_plans_for_paths(plans, pending_paths, project_root))
+        plan = plan_snippet_reconciliation(project_root, row[_ROW_SLUG_KEY], ReconciliationMode.ABANDON)
+        _apply_purge_writes(plan, _writes_for_paths(plan, pending_paths))
         return await _commit_and_finalize_removed_row(
             project_root,
             todos_db,
@@ -417,8 +442,8 @@ async def _cleanup_removed_todo_row(
             pending_paths=pending_paths,
         )
 
-    plans = reconcile_snippets_for_purged_slugs(project_root, [row["slug"]], todo_status_map)
-    candidate_paths = [_repo_relative_path(project_root, plan.path) for plan in plans]
+    plan = plan_snippet_reconciliation(project_root, row[_ROW_SLUG_KEY], ReconciliationMode.ABANDON)
+    candidate_paths = [write.relative_path for write in plan.writes]
     if not candidate_paths:
         return await todos_db.purge_one_removed(row["id"])
 
@@ -438,7 +463,7 @@ async def _cleanup_removed_todo_row(
 
     await todos_db.set_pending_purge_paths(row["id"], candidate_paths)
     row["pending_purge_paths"] = candidate_paths
-    _write_snippet_plans(plans)
+    _apply_purge_writes(plan, list(plan.writes))
     return await _commit_and_finalize_removed_row(
         project_root,
         todos_db,

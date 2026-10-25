@@ -7,24 +7,12 @@ from pydantic import BaseModel, ConfigDict
 from teleclaude.core.operations._kinds import OperationFailedEvent, OperationSucceededEvent
 
 
-class OperationStatusBlockingSnippetPayload(BaseModel):
-    """Machine-readable snippet blocker payload exposed by operation DTOs."""
-
-    model_config = ConfigDict(frozen=True)
-
-    path: str
-    slug_role: str
-    live_deliverer_count: int
-    other_removed_deliverers: list[str]
-
-
 class OperationStatusErrorPayload(BaseModel):
     """Machine-readable operation failure payload exposed by API DTOs."""
 
     model_config = ConfigDict(frozen=True)
 
     kind: str | None = None
-    blocking_snippets: list[OperationStatusBlockingSnippetPayload] | None = None
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, dict):

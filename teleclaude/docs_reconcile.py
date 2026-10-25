@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal, TypedDict, cast
+from typing import TypedDict, cast
 
 import yaml
 
@@ -41,6 +41,7 @@ _DELIVERY_RETIREMENT_REASON = "delivery retires parent and companion"
 _DELIVERY_REPLACEMENT_REASON = "delivery replaces parent with companion"
 _RENAME_COMPANION_REASON = "rename moves companion identity"
 _ABANDON_COMPANION_REASON = "abandon removes undelivered companion"
+_ABANDON_DOCUMENT_REASON = "abandon removes pending document only this slug delivers"
 
 
 class ReconciliationMode(StrEnum):
@@ -142,32 +143,12 @@ class SnippetDeliveredByRewriteResult:
 
 
 @dataclass(frozen=True)
-class SnippetWriteResult:
-    """A planned snippet frontmatter write."""
-
-    path: Path
-    rendered_content: str
-    removed_slugs: tuple[str, ...]
-    write_required: bool
-
-
-@dataclass(frozen=True)
 class SnippetMarkerCleanupPlan:
     """An exact-source rewrite that abandons one slug's pending markers."""
 
     path: Path
     original_content: str
     cleaned_content: str
-
-
-@dataclass(frozen=True)
-class BlockingSnippet:
-    """Snippet that would lose every live deliverer if a slug is removed."""
-
-    path: str
-    slug_role: Literal["sole", "last_live_among_removed"]
-    live_deliverer_count: int
-    other_removed_deliverers: list[str]
 
 
 class SnippetFrontmatter(TypedDict, total=False):
@@ -328,6 +309,14 @@ def _rewrite_delivered_by_content(content: str, old_slug: str, new_slug: str | N
     return _render_frontmatter(next_metadata, body)
 
 
+def _is_sole_deliverer(content: str, slug: str) -> bool:
+    """Return whether ``slug`` is the only lifecycle owner named by the document's frontmatter."""
+    parsed = _split_frontmatter(content)
+    if parsed is None:
+        return False
+    return set(_delivered_by(parsed[0])) == {slug}
+
+
 def _render_mode(content: str, slug: str, mode: ReconciliationMode, new_slug: str | None) -> str:
     """Render the mechanical carrier transformation for one source document."""
     if mode is ReconciliationMode.DELIVER:
@@ -469,6 +458,19 @@ def plan_snippet_reconciliation(
     companion_writes, contents = _plan_companion_reconciliation(project_root, files, contents, slug, mode, new_slug)
     writes: list[ReconciliationWrite] = list(companion_writes.values())
     for path, original in contents.items():
+        if mode is ReconciliationMode.ABANDON and _is_sole_deliverer(original, slug):
+            writes.append(
+                ReconciliationWrite(
+                    path=path,
+                    relative_path=_relative_path(project_root, path),
+                    original_content=original,
+                    rendered_content=None,
+                    line=_first_line(original, slug),
+                    carrier=ReconciliationCarrier.DELIVERED_BY,
+                    reason=_ABANDON_DOCUMENT_REASON,
+                )
+            )
+            continue
         rendered = _render_mode(original, slug, mode, new_slug)
         # Compare against the file on disk, never against ``original``. A companion-replaced
         # parent carries the companion body here, not its own bytes, so comparing the two
@@ -578,48 +580,6 @@ def has_pending_material(content: str) -> bool:
     return bool(_PENDING_MARKER_PATTERN.search(_mask_marker_examples(body)))
 
 
-def _is_live_deliverer(slug: str, todo_status_map: Mapping[str, str]) -> bool:
-    status = todo_status_map.get(slug)
-    return status is not None and status != TodoStatus.REMOVED
-
-
-def scan_remove_orphans(
-    project_root: Path,
-    candidate_slug: str,
-    todo_status_map: Mapping[str, str],
-) -> list[BlockingSnippet]:
-    """Return snippets that would be orphaned by removing ``candidate_slug``."""
-    blockers: list[BlockingSnippet] = []
-    for snippet_path in _iter_snippet_files(project_root):
-        content = snippet_path.read_text(encoding="utf-8")
-        parsed = _split_frontmatter(content)
-        if parsed is None:
-            continue
-        metadata, _body = parsed
-        delivered_by = _delivered_by(metadata)
-        if candidate_slug not in delivered_by:
-            continue
-
-        live_after_remove = [
-            slug for slug in delivered_by if slug != candidate_slug and _is_live_deliverer(slug, todo_status_map)
-        ]
-        if live_after_remove:
-            continue
-
-        other_removed = [
-            slug for slug in delivered_by if slug != candidate_slug and todo_status_map.get(slug) == TodoStatus.REMOVED
-        ]
-        blockers.append(
-            BlockingSnippet(
-                path=str(snippet_path),
-                slug_role="last_live_among_removed" if other_removed else "sole",
-                live_deliverer_count=0,
-                other_removed_deliverers=other_removed,
-            )
-        )
-    return blockers
-
-
 def plan_marker_cleanup_for_removed_slug(project_root: Path, slug: str) -> list[SnippetMarkerCleanupPlan]:
     """Plan byte-preserving abandonment of one removed slug's in-body markers."""
     plans: list[SnippetMarkerCleanupPlan] = []
@@ -637,66 +597,6 @@ def plan_marker_cleanup_for_removed_slug(project_root: Path, slug: str) -> list[
             )
         )
     return plans
-
-
-def reconcile_snippets_for_purged_slugs(
-    project_root: Path,
-    purged_slugs: Iterable[str],
-    todo_status_map: Mapping[str, str],
-) -> list[SnippetWriteResult]:
-    """Plan snippet rewrites that retire a hard-purged todo's pending material.
-
-    For each purged slug this clears it from ``delivered_by`` frontmatter and folds
-    its in-body markers with *abandon* semantics — the work was never delivered, so a
-    ``planned`` ADD block drops with its content and a ``planned-change`` block reverts
-    to its original side. A snippet is rewritten when either surface changes. Clearing
-    a ``delivered_by`` slug that would leave the snippet with no live deliverer is
-    refused: that case is already blocked at soft-remove, so reaching it signals a
-    contract breach rather than routine cleanup.
-    """
-    purged = tuple(dict.fromkeys(purged_slugs))
-    if not purged:
-        return []
-    purged_set = set(purged)
-    results: list[SnippetWriteResult] = []
-    for snippet_path in _iter_snippet_files(project_root):
-        content = snippet_path.read_text(encoding="utf-8")
-        parsed = _split_frontmatter(content)
-        if parsed is None:
-            continue
-        metadata, body = parsed
-
-        delivered_by = _delivered_by(metadata)
-        removed_slugs = tuple(slug for slug in delivered_by if slug in purged_set)
-        next_metadata = metadata
-        if removed_slugs:
-            remaining = [slug for slug in delivered_by if slug not in purged_set]
-            live_remaining = [slug for slug in remaining if _is_live_deliverer(slug, todo_status_map)]
-            if not live_remaining:
-                raise RuntimeError(
-                    f"Cannot purge snippet lifecycle deliverer(s) {', '.join(removed_slugs)} from {snippet_path}: "
-                    "zero live deliverers would remain"
-                )
-            next_metadata = cast(SnippetFrontmatter, dict(metadata))
-            next_metadata["delivered_by"] = remaining
-
-        next_body = body
-        for slug in purged:
-            next_body = drop_planned_additions(next_body, slug)
-            next_body = resolve_planned_change_for_abandon(next_body, slug)
-
-        if next_metadata is metadata and next_body == body:
-            continue
-        rendered = _render_frontmatter(next_metadata, next_body)
-        results.append(
-            SnippetWriteResult(
-                path=snippet_path,
-                rendered_content=rendered,
-                removed_slugs=removed_slugs,
-                write_required=rendered != content,
-            )
-        )
-    return results
 
 
 class ResidualMarkerError(RuntimeError):
