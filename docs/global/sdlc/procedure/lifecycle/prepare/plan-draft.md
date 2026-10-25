@@ -14,10 +14,9 @@ dispatch:
 
 ## Required reads
 
+- @~/.teleclaude/docs/sdlc/bundle.md
 - @~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
-- @~/.teleclaude/docs/sdlc/procedure/blast-radius-discovery.md
 - @~/.teleclaude/docs/sdlc/policy/quality-predicate-registry.md
-- @~/.teleclaude/docs/sdlc/policy/definition-of-done.md
 - @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
 - @~/.teleclaude/docs/sdlc/principle/module-depth.md
 

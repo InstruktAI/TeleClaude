@@ -233,6 +233,20 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   entry point, human involvement, and door-specific context; it does not prove
   which sources or todo queries the creator consulted.
 
+- **Recover what the summary lost.** The audit reads the sessions that shaped
+  `input` — every artifact writer other than the auditing session — and
+  compares outcome-level substance. A requirement present in a human's own
+  turns and absent from `input` is a compression loss, repaired in place. The
+  repair states the requirement and defends it on its merits; it never records
+  that a human said, decided, or asked for anything
+  (`general/policy/human-contract`). No repair is made, and the audit says so,
+  when the shaping conversation is unavailable or incompletely recorded for the
+  relevant range, is still forming, later superseded the clause, reads
+  ambiguously between different works, concerns mechanism rather than outcome,
+  or meets a question a standing contract already settles. A comparison
+  repeated after the auditing session rewrote `input` checks its own
+  compression and carries that much less weight.
+
 - **Repair before retiring.** Correct the project, input, missing
   documentation, dependencies, or other repairable omission in place. Retire
   only a confirmed duplicate, an owner that cannot be corrected in place,
@@ -372,7 +386,10 @@ work or speculative infrastructure.
 Creation stays intentionally cheap. Its bounded check prevents obvious waste
 without forcing every creator to perform the preparation worker's deeper
 landscape analysis. The entry audit then reads the actual todo and current
-landscape before the input becomes authority for derived work. Picking up
+landscape before the input becomes authority for derived work. An `input` is
+a summary of a conversation, and a summary drops what the work is for first;
+the sessions that wrote it still hold the conversation, so reading them is the
+one way to restore that meaning without asking anyone to restate it. Picking up
 parked intent re-grounds it against the code and docs as they then stand, so
 keeping it in step while parked is work that preparation repeats.
 
