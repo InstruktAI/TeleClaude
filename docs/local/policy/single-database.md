@@ -36,12 +36,35 @@ visibility: 'public'
   production state.
 - The daemon must not create ad-hoc database files outside recognized domain boundaries.
 
+<!-- planned:platform-installation -->
+
+- **Each domain's store reports the migrations it runs.** Whether a migration
+  runs from a ledger or when the store is opened, the owning domain reports,
+  before the migration changes anything, that it is beginning one, and
+  afterwards whether everything it began completed. The install act decides
+  whether an install ran migrations, and how a failed install recovers, from
+  those reports alone
+  (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
+
+<!-- /planned:platform-installation -->
+
 ## Rationale
 
 - Domain separation reflects real architectural boundaries. Cramming unrelated data
   into one file because "fewer files = simpler" ignores access patterns, lifecycle
   differences, and operational concerns.
 - The event platform naturally separated because it IS a different domain.
+
+<!-- planned:platform-installation -->
+
+- Only the owning domain knows, before it acts, that a migration is about to
+  change its store; a ledger is written after the migration's effects and a
+  source change does not mean a migration ran, so neither can stand in for the
+  owner's report when an install decides whether the previous release can still
+  read what it leaves behind.
+
+<!-- /planned:platform-installation -->
+
 - The retention-finalization carve-out reduces data-loss risk rather than
   increasing it: it replaces an immediate irreversible destroy with a
   recoverable grace period followed by automatic cleanup. Session records are

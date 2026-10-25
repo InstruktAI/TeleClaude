@@ -68,19 +68,17 @@ starts the daemon on it, under the guarantees of
   contract supports.
 - **Idempotent.** Installing the revision that is already active changes
   nothing.
-- **Migrating install.** An install runs migrations when the change from the
-  active release to the target touches any migration of a store the platform
-  keeps, as each store owner declares where its migrations live in the
-  release — schema and data migrations alike, whether they run from a ledger or
-  when the store is opened. Whether an install is a migrating one is known
-  before the daemon stops. A migrating install is never undone by rollback.
+- **Ran migrations.** An install ran migrations when any store owner began a
+  migration during it. Every owner whose store the platform migrates — through
+  a migration ledger or when the store is opened — reports, before it changes
+  anything, that it is beginning a migration, and afterwards whether everything
+  it began completed. An owner that cannot report counts as having begun. A
+  migrating install is never undone by rollback.
 - **Failure.** An install completes once the daemon is verified serving the new
-  release. An install that fails before any migration changed state — every
-  failure of an install that runs no migrations, and a failure of a migrating
-  install before its first migration applied — leaves the previously active
-  release active and serving, and reports why. One that fails after a migration
-  applied reports the failure and which stores it reached, is never reported as
-  complete, and is repaired forward.
+  release. An install that fails before any owner began a migration leaves the
+  previously active release active and serving, and reports why. One that fails
+  after an owner began a migration reports the failure and which stores were
+  reached, is never reported as complete, and is repaired forward.
 - **Publication follows the install.** Publishing the installed release's
   documentation and schemas
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`)
@@ -150,17 +148,17 @@ Scenario: Installing an older revision
   Then the install is refused
   And the platform keeps running the active release
 
-Scenario: An install that fails before any migration applied
-  Given an install of a newer revision fails before any migration changed state
+Scenario: An install that fails before any migration began
+  Given an install of a newer revision fails before any store owner began a migration
   When the operator looks at the installation's status
   Then the previously active release is still active and serving
   And the failure and its reason are reported
 
-Scenario: An install that fails after a migration applied
-  Given an install of a newer revision fails after one of its migrations applied
+Scenario: An install that fails after a migration began
+  Given an install of a newer revision fails after a store owner began a migration
   When the operator looks at the installation's status
   Then the install is reported as failed, not complete
-  And the report names which stores its migrations reached
+  And the report names which stores the migrations reached
 ```
 
 #### UC-IR3: An agent returns the platform to the previous release
@@ -204,7 +202,8 @@ And the project keeps every todo, worktree and claim where it was
   contract; a side project keeps its own checkout and deploy.
 - Rollback returns one step only. After an install that ran migrations the way
   back is a forward repair.
-- Whether an install runs migrations is read from where the store owners
-  declare their migrations. A change to a declared migration counts even when
-  it finds nothing to migrate, and a migration placed outside its owner's
-  declared paths is not seen.
+- Whether an install ran migrations is what the store owners report while it
+  runs. The install opens, inside its stopped window, every store the daemon
+  opens at startup and every registered project's todo store, so their
+  migrations run and report there; a store first opened later migrates outside
+  that account.

@@ -126,9 +126,9 @@ sequenceDiagram
   Caller->>Rec: install(target)
   Rec->>Rec: refuse when target is older than the active release
   Rec->>Rel: fetch, add worktree at target, build environment (daemon serving)
-  Rec->>Rel: does the change touch a declared migration path?
   Rec->>Life: stop (preparation settles accepted work)
-  Rec->>Rel: run the release's migrations: ledger runners, then open every store
+  Rec->>Rel: run ledger migrations, then open every store the daemon opens
+  Rel-->>Rec: each owner: beginning a migration / all it began completed
   Rel->>Home: migrate stores
   Rec->>Rec: switch current
   Rec->>Life: start; verify the daemon serves the new revision
@@ -138,22 +138,23 @@ sequenceDiagram
 
 - **Prepare while serving.** Fetching, adding the release worktree and building
   its environment happen while the daemon keeps serving on the active release.
-- **A migrating install is known before the stop.** Stores migrate through
-  several owners: version-keyed installation migrations, configuration-document
-  migrations (`local/projects/teleclaude/spec/feature/config/document-migration`),
-  the core database runner, and the event store, session mirrors, todo stores
-  and hook outbox, which migrate schema and data when they are opened. Each
-  owner declares, in the release, the paths that hold its migrations. An install
-  whose change from the active release touches any of them is a migrating
-  install; one that touches none runs no migrations, and the previous release
-  can still read everything it leaves behind.
-- **Migrate inside a stopped window.** The daemon is stopped through the
-  lifecycle contract's preparation before any migration runs. The new release
-  then runs its ledger-recorded migrations and afterwards opens every store it
-  migrates through that store's own initialization, so open-time migrations run
-  while no older reader serves and before anything is switched. Until the first
-  ledger records an applied migration and before any store is opened, no state
-  has changed.
+- **Migrate inside a stopped window, and let the owners say what ran.** The
+  daemon is stopped through the lifecycle contract's preparation before any
+  migration runs. The new release then runs its ledger-recorded migrations —
+  installation migrations, configuration-document migrations
+  (`local/projects/teleclaude/spec/feature/config/document-migration`) and the
+  core database runner — and afterwards opens, through each store's own
+  initialization, every store the daemon opens at startup — the event store,
+  session mirrors and hook outbox among them — and every registered project's
+  todo store, so open-time schema and data migrations run while no older reader
+  serves. Each owner reports to the install act before it changes anything that
+  it is beginning a migration, and afterwards whether everything it began
+  completed; an owner that cannot report counts as having begun
+  (`local/projects/teleclaude/policy/single-database`). Configuration documents
+  report through their per-document run outcome, where a document found below
+  the current version counts as begun. The install ran migrations exactly when
+  some owner began one. Until the first such report,
+  no state has changed.
 - **Switch, start, verify.** `current` is switched atomically, the service
   definitions are deployed only when their rendered content changed, and the
   start is verified against the new revision with admission open, as the
@@ -210,13 +211,12 @@ surface to `current`; the checkout stays a registered project.
 - **Stop withheld** (preparation incomplete or withheld): no migration runs;
   the lifecycle contract's outcome is reported and the active release stays
   active.
-- **A failure after the stop before any migration changed state** — every
-  failure of an install that runs no migrations, including a start that does
-  not verify, and a failure of a migrating install before its first ledger
-  records an applied migration and before any store is opened: `current`
+- **A failure after the stop before any owner began a migration** — including
+  a start that does not verify after an install in which no migration began:
+  `current`
   returns to the previously active release, the daemon is started on it and
   verified, and the failure is recorded.
-- **A failure of a migrating install after a migration applied**: `current`
+- **A failure after an owner began a migration**: `current`
   is left where the failure found it and the daemon stays stopped, because
   neither release is known to serve the partly migrated state; the install
   record names which stores the migrations reached, the reason is reported
@@ -227,9 +227,10 @@ surface to `current`; the checkout stays a registered project.
   outcome and replayed.
 - **A release folder disappears**: nothing live names it, so only a rollback to
   it is affected, and rollback refuses with that reason.
-- **A migration outside its owner's declared paths** is not seen, so an install
-  carrying it counts as running no migrations; owners keep migrations inside
-  their declared paths, and the declaration is reviewed with the migration.
+- **A store first opened after the install completes** migrates outside the
+  install's account; the stopped window opens every store the daemon opens at
+  startup and every registered project's todo store so that this does not
+  happen for the stores the platform keeps.
 
 ## See Also
 

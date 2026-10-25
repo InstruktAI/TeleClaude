@@ -233,11 +233,11 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **Decision boundary (core).** One reconciliation core operation installs a
   revision: it refuses a target older than the active release under the release
   transitions of `local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`,
-  prepares the release while the daemon serves, decides before stopping the
-  daemon whether the install runs migrations — whether the change from the
-  active release touches a path a store owner declares for its migrations —
-  decides from that and from the migrations' own ledgers whether a failure
-  returns to the previously active release or leaves the daemon stopped for a
+  prepares the release while the daemon serves, runs the release's migrations
+  and opens its stores inside the stopped window, decides from the store owners'
+  reports whether the install ran migrations and whether a failure came before
+  any owner began one — returning to the previously active release — or after,
+  leaving the daemon stopped for a
   forward repair, switches the pointer, and records the outcome. A second
   operation rolls back: it decides from the install record whether the most recent install ran no migrations and a
   previous release exists, and otherwise refuses. Their observable contract is
@@ -247,10 +247,11 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   switch execute behind ports the operations drive; they decide nothing. Each
   migration owner keeps its own applied state and rules
   (`local/projects/teleclaude/spec/feature/config/document-migration` for
-  configuration documents) and declares in the release the paths that hold
-  its migrations, schema and data alike; the operation reads those
-  declarations and the ledgers, runs the migrations, and opens each store
-  through its owner's initialization. It reads no domain data.
+  configuration documents) and reports, before it changes anything, that it is
+  beginning a migration and afterwards whether everything it began completed —
+  for ledger-recorded migrations and for those that run when its store is
+  opened; an owner that cannot report counts as having begun. The operation
+  opens each store through its owner's initialization and reads no domain data.
 - **Live-surface binding.** The installation's live surfaces — service
   definitions, the published `telec`, agent hook commands, home-level wrappers
   and links — address the active release through its pointer; their
