@@ -199,17 +199,19 @@ outcome and the log window from that install onwards
 ### First install and the move off a checkout
 
 The bootstrap checks prerequisites, creates the installation, installs the
-source's latest release through the install act and publishes `telec`. With no
-release active before it, that first install has no daemon to stop or verify:
-it prepares the release, creates its stores, switches `current` and publishes
+source's latest release through the install act and publishes `telec`. On a machine
+where no daemon serves, that first install has nothing to stop or verify: it
+prepares the release, creates its stores, switches `current` and publishes
 `telec`. Services are installed and the daemon started by `telec app start` once
 the configuration is valid. Until a daemon serves the machine, `telec config` and the
 terminal interface's configuration view execute configuration in their own
 process (`local/projects/teleclaude/spec/domain/config`), so the platform can be
 configured before its first start; the terminal interface then starts it. On a machine running from its project checkout, one run
 creates the installation, moves the machine environment file into the platform
-home, installs a release through the install act, and rebinds every live
-surface to `current`; the checkout stays a registered project.
+home, installs a release through the install act — a controlled restart: the
+checkout's daemon is stopped through its lifecycle, the release migrates,
+every live surface is rebound to `current`, and the start is verified — and the
+checkout stays a registered project.
 
 ## Failure modes
 

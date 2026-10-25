@@ -78,8 +78,10 @@ starts the daemon on it, under the guarantees of
   migration refused with its store established unchanged is not one. An install
   that ran migrations is never undone by rollback.
 - **Failure.** An install completes once the daemon is verified serving the new
-  release; the first install, with no release active before it, completes once
-  its release is active and `telec` is published, because no daemon runs yet. An install that fails without having migrated state — including one
+  release. An install on a machine where no daemon serves — the bootstrap's
+  first install — completes once its release is active and `telec` is
+  published; the move off a project checkout, where that checkout's daemon
+  serves, completes like any other install. An install that fails without having migrated state — including one
   whose begun migrations all left their stores unchanged — leaves the
   previously active release active and serving, and reports why. One that fails
   after it migrated state reports the failure and which stores were changed or
