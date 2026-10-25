@@ -167,19 +167,6 @@ And it does not report the transition as complete
 And a later replay uses the same original source and target identity
 ```
 
-<!-- planned:installation-activation-inspection -->
-
-#### UC-CSU-10: Recorded maintenance alone does not complete adoption
-
-```gherkin
-Given an operator's installation has activated its selected release
-When its maintenance is recorded but its runtime assessment is incomplete
-Then the operator can observe the adoption as incomplete
-And completion awaits the assessment of the actual running revision
-```
-
-<!-- /planned:installation-activation-inspection -->
-
 ### Cross-context references
 
 - Owned by `reconciliation` (`@docs/local/spec/domain/reconciliation.md`); the version-convergence concern of that context.
