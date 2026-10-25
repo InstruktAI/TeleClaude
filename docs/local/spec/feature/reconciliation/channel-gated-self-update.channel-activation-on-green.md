@@ -56,11 +56,9 @@ retains its pending evidence when that install is refused or fails, and the
 install's outcomes are owned by
 `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`.
 
-### Convergence guarantees
+### Release identity
 
-- A target version is applied at most once; a signal for a version the installation already runs, or an older one it already contains, changes nothing.
-- Convergence is complete only when the installation runs healthy on the target; a failed step is recorded with its reason and leaves convergence incomplete until it is replayed, with the same original source and target identity.
-- A release is adopted at exactly the revision its tag names.
+A release is adopted at exactly the revision its tag names.
 
 ### Use cases
 
