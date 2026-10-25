@@ -111,6 +111,23 @@ PR acceptance as a separate fact. Its source handoff uses that contract's
 proposal operation before any mainline queue watcher or integration call.
 <!-- /planned:reviewed-pr-contributions -->
 
+<!-- planned:platform-installation -->
+
+### Runtimes activated by an install
+
+Where a project's live runtime runs from an installation that installs pushed
+revisions through its channel, a canonical-main advancement activates nothing:
+its maintenance replaces no runtime and owes no log window before publication.
+The integrator publishes the integrated head and installs nothing itself; the
+installation's channel reaction installs that revision once. The activation the
+integrator judges is that install. It reads the install's recorded outcome with
+`telec app status` and the log window from that install onwards, recovers within
+the integration lane, and routes remaining breakage for a forward fix through
+the normal bug process. Returning to the previous release after an install that
+migrated nothing is `telec app rollback`.
+
+<!-- /planned:platform-installation -->
+
 ## Steps
 
 <!-- @include: docs/snippets/step-role-read.md -->
