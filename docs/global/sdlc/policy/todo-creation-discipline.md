@@ -375,25 +375,11 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
 
 ### Reconcile a flagged live todo
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
 - **Any observer may flag a policy conflict to a todo's live claimant.** A
   flag is a challenge, never a verdict. The first message is complete: it
   identifies the todo, the source address grounding the concern, the section
   of this policy under challenge, and this reconciliation section. It carries
   addresses, not rewritten instructions or a proposed outcome.
-
-<!-- change:review-fix-loop-through-artifacts -->
-
-- **Any session other than a dispatched worker may flag a policy conflict to a
-  todo's live claimant.** A worker's observation reaches its governing session
-  instead, under the rule above. A
-  flag is a challenge, never a verdict. The first message is complete: it
-  identifies the todo, the source address grounding the concern, the section
-  of this policy under challenge, and this reconciliation section. It carries
-  addresses, not rewritten instructions or a proposed outcome.
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 - **Communication precedes a dispatch brake.** When the todo already has a live
   claimant, deliver the complete flag to that claimant first — through the
