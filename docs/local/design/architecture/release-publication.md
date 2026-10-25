@@ -278,8 +278,22 @@ its own lint, runtime acceptance and installer proof.
 
 - Invalid or non-increasing manual versions fail before candidate publication;
   an existing target tag belongs to publication recovery or is a conflict.
+
+<!-- planned-change:release-section-exceeds-body-size -->
+
 - Note generation errors, incomplete output or size limits stop the candidate
   rather than silently filtering its commit denominator.
+
+<!-- change:release-section-exceeds-body-size -->
+
+- Note generation errors and incomplete output stop the candidate rather than
+  silently filtering its commit denominator. A section too large for the release
+  body is published as its summary, commit count and a link to the complete
+  section in the changelog at the release tag; a release body that exceeds the
+  provider limit even in that form stops the candidate.
+
+<!-- /planned-change:release-section-exceeds-body-size -->
+
 - Provider failure remains visible after successful fallback. An unexpected fault
   remains repair work; fallback does not erase it. With no complete valid report,
   an automatic attempt cannot prepare a release candidate. An explicit-version
