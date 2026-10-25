@@ -308,9 +308,9 @@ On each `integrator-main-clearance` beat, run `telec repo owners` once, then tak
 each blocking path on its own. Each path keeps its own history of what was sent and
 claimed; a set of paths is never treated as one unit.
 
-1. **Declared.** A path with a live declaring session belongs to that session. Send
-   each owner one message listing all of its blocking paths, using step 4's message,
-   and never send it the same path again. Wait for its commit.
+1. **Declared.** A path with a live declaring session belongs to that session. Route
+   its blocking paths through step 4's activity check and contact rule. Wait for
+   its commit.
 2. **Recently written.** An undeclared path last modified within the current reminder
    interval is being worked on. Leave it for a later beat: its writer's own
    checkpoint may yet turn it into a declaration.
@@ -318,13 +318,20 @@ claimed; a set of paths is never treated as one unit.
    a pending marker naming a todo slug — a `planned:<slug>` or
    `planned-change:<slug>` block, a `<stem>.<slug>.md` companion, or a
    `delivered_by` entry — that todo's prepare orchestrator wrote it. Find that
-   session from the todo's state (`telec todo show <slug>`). If it is live, send it
-   the path under step 4's message. If it is gone, read its transcript
+   session from the todo's state (`telec todo show <slug>`). If it is live, route
+   the path through step 4. If it is gone, read its transcript
    (`telec history show <session-id>`) together with the todo's state and resolve
    the path from that evidence under step 6.
-4. **Ask the writer.** For every other quiet undeclared path, find the sessions whose
-   history touched it with `telec history search <path> --project <project>`. Send
-   each live session found, once, one message listing its paths:
+4. **Ask an idle or blocked writer once.** For every other quiet undeclared path,
+   find the sessions whose history touched it with
+   `telec history search <path> --project <project>`. Before contacting any live
+   owner or writer identified in steps 1, 3 or here, read its current state with
+   `telec sessions show <session-id>`. An idle or blocked session receives one
+   message listing its blocking paths. An active session keeps its working
+   context; keep `integrator-main-clearance` live and recheck on a later beat
+   (`general/principle/trust-and-guardrails`). Contact eligibility depends on
+   the observed state, not an inactivity duration. When the state cannot be
+   established, keep waiting for a later observation. Send the eligible session:
    `These paths are dirty on main and block integration: <paths>. If you were in the middle of work, arm halt-to-respond first. Then: for each path that is yours, commit it now if it is ready and released for commit, otherwise reply that you are still working on it; if none are yours, end your turn with NOOP.`
    No other session is asked. When the search finds no live session, the path goes
    to step 6.
@@ -338,12 +345,13 @@ claimed; a set of paths is never treated as one unit.
    was abandoned, such as a path whose pending-doc markers name a todo that is removed
    or delivered while its prepare orchestrator's transcript shows the work was
    dropped. When that history cannot be read, commit and never revert.
-7. **Escalate** to the human, once per path, only when an owner or claimant leaves its
-   path uncommitted for three consecutive beats after it was messaged or claimed, or
-   when a path's diff is unintelligible. Report each escalated path once, leave it
-   untouched, and hold as its blocker beacon. `integrator-queue-watch` beats keep
-   re-entering the state machine, and the drain resumes on the first beat after the
-   path is committed.
+7. **Escalate** to the human, once per path, only when an owner or claimant remains
+   idle or blocked with its path uncommitted for three consecutive beats after it
+   was messaged, or when a path's diff is unintelligible. An active owner or
+   claimant stays on the reminder's wait path. Report each escalated path once,
+   leave it untouched, and hold as its blocker beacon. `integrator-queue-watch`
+   beats keep re-entering the state machine, and the drain resumes on the first
+   beat after the path is committed.
 
 #### Reminder: integrator-main-clearance
 
