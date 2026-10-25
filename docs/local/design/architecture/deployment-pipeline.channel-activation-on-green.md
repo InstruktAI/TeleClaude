@@ -1,5 +1,5 @@
 ---
-description: 'Architecture of the deployment pipeline: a single ingress terminates external webhooks and relays them to the cluster bus, and each installation converges by its channel — reacting to relayed signals and reading its source on an interval — with breaking releases held for its integrator.'
+description: 'Architecture of the deployment pipeline: a single ingress terminates external webhooks and relays them to the cluster bus, and each installation converges by its channel — reacting to relayed signals and reading its source on an interval — with breaking releases held for its installation inspector.'
 visibility: 'public'
 ---
 
@@ -65,10 +65,11 @@ release's pending migrations run, the active-release pointer is switched and
 the daemon is started and verified on the target
 (`local/projects/teleclaude/design/architecture/installation`). A target the
 installation already runs is not installed again. Whether the runtime then
-behaves correctly is the standing integrator's judgment. A stable release
+behaves correctly is the installation inspector's assessment. A stable release
 beyond the series is held instead; its held-release event activates
-`sdlc/procedure/maintenance/breaking-release-upgrade` on that computer, which
-carries out the release's upgrade steps and installs it through the same act.
+`sdlc/procedure/maintenance/installation/overview` on that computer, whose
+held-release route carries out the release's upgrade steps and installs it
+through the same act.
 Channel policy and the exactly-once / healthy-or-failed contract are owned by
 `local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`;
 the context model is `local/projects/teleclaude/spec/domain/reconciliation`.
@@ -145,7 +146,7 @@ remain independently observable.
   is not installed again, and a replayed event performs nothing a second time.
 - **Healthy-or-failed.** A convergence is complete only when the daemon is
   running and healthy on the target; a failed step is recorded with its reason
-  where the standing integrator finds it and leaves the convergence incomplete
+  where the installation inspector finds it and leaves the convergence incomplete
   until it is replayed, never a silent partial state.
 
 ## Primary flows
@@ -161,7 +162,7 @@ flowchart TD
     N1 --> O1{signal about the followed repository?}
     O1 -->|no| S0[Nothing selected]
     O1 -->|yes| B1{stable release beyond the series?}
-    B1 -->|yes| H1[Hold it; held-release event wakes the integrator's upgrade procedure]
+    B1 -->|yes| H1[Hold it; held-release event wakes the installation inspector]
     B1 -->|no| P1{channel admits a target the installation does not run?}
     P1 -->|yes| C1[Install act: prepare the release beside the active one]
     C1 --> W1[Settle and stop the daemon]
@@ -185,11 +186,11 @@ flowchart TD
   its pending target retained for replay; the install's own outcomes are
   recorded under
   `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`,
-  and the standing integrator judges the result. Config-load failure is
+  and the installation inspector assesses the result. Config-load failure is
   reported as the reaction's failure.
 - **Breaking release held.** A stable release beyond the series stays held,
-  with the installation on its active release, until the integrator's upgrade
-  procedure installs it; `telec app status` names the hold.
+  with the installation on its active release, until the installation
+  inspector's upgrade route installs it; `telec app status` names the hold.
 - **Idempotent migrations.** Installation migrations are tracked; re-running
   skips already-applied steps.
 

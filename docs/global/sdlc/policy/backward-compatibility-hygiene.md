@@ -34,7 +34,7 @@ Shapes with no independent consumer: persisted aggregate state, config documents
 
 ### Upgrade steps a migration cannot take — record them with the version
 
-- A change that a running installation cannot absorb through its forward migrations alone — a new required setting or credential, an outside system to prepare, a data conversion that needs a backup first — records its steps in the project's upgrade guide, `UPGRADING.md` at the repository root, under the version that ships it, in the order they must run. The installation's integrator performs exactly those steps before installing that release; a step that is written nowhere is a step no installation performs.
+- A change that a running installation cannot absorb through its forward migrations alone — a new required setting or credential, an outside system to prepare, a data conversion that needs a backup first — records its steps in the project's upgrade guide, `UPGRADING.md` at the repository root, under the version that ships it, in the order they must run. The installation's inspector performs exactly those steps before installing that release; a step that is written nowhere is a step no installation performs.
 
 <!-- /planned:channel-activation-on-green -->
 

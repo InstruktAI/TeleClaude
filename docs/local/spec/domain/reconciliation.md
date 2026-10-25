@@ -282,7 +282,8 @@ rollback` invokes rollback; `telec app status` reads the install record. The
 
 - **State.** Per installation: the followed source — the remote of its kept
   repository — and the channel configuration declares; the newest admitted
-  edge revision not yet installed; the release held for the integrator, when a
+  edge revision not yet installed; the release held for the installation
+  inspector, when a
   release beyond the active release's compatibility series has been published;
   and the most recent convergence decision with its reason. The compatibility
   series is derived from the active release's version — the minor line while
@@ -313,9 +314,9 @@ rollback` invokes rollback; `telec app status` reads the install record. The
   still converges. A pushed revision is no signal on any channel.
 - **Consumers.** `telec app status` reads the convergence decision and any held
   release. The held-release event activates
-  `sdlc/procedure/maintenance/breaking-release-upgrade` on the installation's
-  computer; that procedure installs the held release through `telec app
-install`.
+  `sdlc/procedure/maintenance/installation/overview` on the installation's
+  computer; its held-release route carries out the release's upgrade and
+  installs it through `telec app install`.
 
 <!-- /planned:channel-activation-on-green -->
 

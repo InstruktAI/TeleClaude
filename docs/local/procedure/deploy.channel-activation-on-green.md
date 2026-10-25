@@ -26,10 +26,10 @@ itself on the newest revision its channel admits without a manual command.
 Each installation follows the repository it was installed from — upstream or a
 fork — on a channel declared in `config.yml`:
 
-| Channel  | Converges to                                                        | Notes                                                                 |
-| -------- | ------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `edge`   | The newest main revision every required check has passed            | Never a red or unchecked revision                                     |
-| `stable` | Published releases within the active release's compatibility series | A release beyond the series is held and carried out by the integrator |
+| Channel  | Converges to                                                        | Notes                                                                             |
+| -------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `edge`   | The newest main revision every required check has passed            | Never a red or unchecked revision                                                 |
+| `stable` | Published releases within the active release's compatibility series | A release beyond the series is held and carried out by the installation inspector |
 
 The declaration and its default are owned by
 `local/projects/teleclaude/spec/feature/config/stable-channel-pinning-rule`, and
@@ -66,8 +66,8 @@ outside the cluster — another person's computer — converges as well. On a ma
 it installs the target through the install act exactly once
 (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
 A release beyond a stable installation's compatibility series is held and its
-upgrade is carried out by the integrator on that computer
-(`sdlc/procedure/maintenance/breaking-release-upgrade`). A computer behind a
+upgrade is carried out by the installation inspector on that computer
+(`sdlc/procedure/maintenance/installation/overview`). A computer behind a
 home router stays private and still updates.
 
 ### Operator setup (ingress only, one-time)
@@ -99,7 +99,7 @@ the most recent convergence decision and any held release.
 
 - Each installation converges to the newest revision its channel admits,
   restarting healthy — without operator action — and a breaking release is
-  carried out by its integrator.
+  carried out by its installation inspector.
 - Only the ingress is publicly exposed; every other computer reacts privately
   through the cluster or its own interval read.
 

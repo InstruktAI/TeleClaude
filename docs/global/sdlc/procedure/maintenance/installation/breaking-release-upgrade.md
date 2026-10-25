@@ -3,35 +3,22 @@ description: "Carry a published release that crosses an installation's compatibi
 visibility: 'public'
 delivered_by:
   - channel-activation-on-green
-subscriptions:
-  - teleclaude.installation.release.held
-subscription_home: platform
-event_delivery: sequential
-interruptible: false
-role: integrator
-dispatch:
-  agent: [claude, codex]
-  thinking_mode: slow
 ---
 
 # Breaking Release Upgrade — Procedure
 
-## Required reads
-
-- @~/.teleclaude/docs/general/procedure/event-handling/overview.md
-
 ## Goal
 
-Bring the release the installation holds for its integrator — a published
-release beyond its active release's compatibility series, which the
-installation never installs on its own — into the installation, on the installation's own computer, whether or not a
-development checkout exists there. A person is asked only for what only a
+Bring the release the installation holds — a published release beyond its
+active release's compatibility series, which the installation never installs on
+its own — into the installation, on the installation's own computer, whether or
+not a development checkout exists there. A person is asked only for what only a
 person can supply (`general/policy/human-contract`).
 
 ## Preconditions
 
-- The activating event names the held release: the followed source and the
-  release's version.
+- The installation inspector's held-release route loaded this procedure for a
+  held-release event that names the followed source and the release's version.
 - `telec app status` names the active release, the channel and the held
   release.
 - `telec app install`, `telec app status`, `instrukt-ai-logs` and
@@ -41,7 +28,7 @@ person can supply (`general/policy/human-contract`).
 
 1. **Confirm the hold is current.** Read `telec app status`. When the active
    release is already at or beyond the held release, or no release is held,
-   the event is satisfied; end the activation.
+   the event is satisfied.
 2. **Read the upgrade instructions.** Read the repository's upgrade guide —
    `UPGRADING.md` at the repository root — at the held release's revision in
    the installation's kept repository, together with the release's published
@@ -54,9 +41,11 @@ person can supply (`general/policy/human-contract`).
    `telec config`, never by editing the installed release.
 4. **Ask for what only a person can supply.** When a step needs a credential,
    an outside account or a decision that is a person's own, send one message
-   through `telec message` that names exactly what is needed and why, and
-   keep this session open for the answer. The installation keeps running its
-   active release meanwhile. Nothing else is asked.
+   through `telec message` that names exactly what is needed and why. End the
+   turn with the session open: the answer resumes the upgrade at the step that
+   needed it, and other events the inspector answers are handled as they arrive.
+   The installation keeps running its active release meanwhile. Nothing else is
+   asked.
 5. **Install.** Run `telec app install` with the held release's version. The
    install act prepares, migrates, switches and verifies, and reports every
    failure outcome through `telec app status`.
@@ -66,9 +55,9 @@ person can supply (`general/policy/human-contract`).
 
 ## Outputs
 
-- The installation runs the held release, with every upgrade step performed,
-  or the activation ends having stated what it waits for, or why the install
-  failed and what it left.
+- The installation runs the held release, with every upgrade step performed;
+  or the upgrade waits on a person's answer with what it needs stated; or it
+  states why the install failed and what it left.
 
 ## Recovery
 
@@ -79,6 +68,6 @@ person can supply (`general/policy/human-contract`).
 - **The install fails after migrating state.** The daemon stays stopped with
   the stores that changed named in `telec app status`; repair forward and
   install again. Rollback is not available after migrated state.
-- **No answer arrives from a person.** The release stays held and the
-  installation keeps serving its active release; the next held-release event
-  resumes this procedure.
+- **No answer arrives from a person.** The release stays held, the
+  installation keeps serving its active release, and the question stays open in
+  the inspector's session until it is answered.
