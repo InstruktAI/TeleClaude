@@ -1,5 +1,5 @@
 ---
-description: 'How TeleClaude updates propagate to computers: one public ingress terminates external webhooks and relays them to the cluster, where every computer self-updates by its channel.'
+description: 'How TeleClaude updates propagate to computers: one public ingress terminates external webhooks and relays them to the cluster, and every installation converges by the channel it follows — edge to green main revisions, stable to releases — reading its source directly where no relay reaches it.'
 visibility: 'public'
 ---
 
@@ -7,33 +7,33 @@ visibility: 'public'
 
 ## Goal
 
-Understand how code updates reach TeleClaude computers under the
+Understand how code updates reach TeleClaude installations under the
 single-ingress + reconciliation model: one computer terminates external
-webhooks for the whole cluster and relays them, and every computer keeps
-itself on the newest release for its channel without a manual command.
+webhooks for the whole cluster and relays them, and every installation keeps
+itself on the newest revision its channel admits without a manual command.
 
 ## Preconditions
 
 - Deployment is fully automated. One computer is the cluster's **ingress** —
-  the single publicly reachable node for inbound webhooks. Every other
-  computer reacts by subscription and self-updates based on its configured
-  deployment channel. No manual `telec deploy` command is needed.
+  the single publicly reachable node for inbound webhooks. Every installation
+  reacts to the relayed signals and to its own interval read of its source, and
+  converges by its configured channel. No manual deploy command is needed.
 
 ## Steps
 
 ### Deployment channels
 
-Each computer declares a channel in `config.yml`:
+Each installation follows the repository it was installed from — upstream or a
+fork — on a channel declared in `config.yml`:
 
-| Channel  | Trigger                                 | Notes                                    |
-| -------- | --------------------------------------- | ---------------------------------------- |
-| `alpha`  | Every push to `main`                    | Latest code, may be unstable             |
-| `beta`   | GitHub release published                | Tagged releases only                     |
-| `stable` | Release within its compatibility series | Requires a declared compatibility series |
+| Channel  | Converges to                                                        | Notes                                                                             |
+| -------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `edge`   | The newest main revision every required check has passed            | Never a red or unchecked revision                                                 |
+| `stable` | Published releases within the active release's compatibility series | A release beyond the series is held and carried out by the installation inspector |
 
-The stable series declaration is owned by
+The declaration and its default are owned by
 `local/projects/teleclaude/spec/feature/config/stable-channel-pinning-rule`, and
-which releases a series admits by
+what each channel admits by
 `local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`.
 
 ### The ingress terminates external webhooks for the cluster
@@ -46,8 +46,8 @@ internet:
    A reverse proxy on the same computer is the public surface: it terminates
    TLS and forwards the inbound path prefix to the ingress. Any local reverse
    proxy works.
-2. An external provider (GitHub releases, provider webhooks) sends a webhook;
-   it arrives only at the ingress.
+2. An external provider (GitHub releases, workflow runs, provider webhooks)
+   sends a webhook; it arrives only at the ingress.
 3. The ingress verifies each request against the secret of the home that
    declared its source, translates it into a platform event, and relays it to
    the cluster **unconditionally** — regardless of its own channel or whether
@@ -56,18 +56,19 @@ internet:
 No other computer accepts external webhooks; the cluster's single public
 surface is the ingress alone.
 
-### Every computer self-updates by its channel
+### Every installation converges by its channel
 
-TeleClaude's own checkpoint overlay binds the relayed pushes and releases of its
-repository to its `self-update` maintenance action
-(`local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`).
-Every computer whose TeleClaude checkout is its canonical checkout on the main
-branch performs that action on its own checkout. The action evaluates the event
-against the computer's channel policy and, on a match, advances main to that
-version **exactly once**; the maintenance that advance owes installs and
-restarts the computer onto the new version. A computer behind a home router
-stays private and still updates, because the event reaches it over the cluster
-bus, not a public endpoint.
+Each installation's running daemon reacts to its source's relayed green
+announcements
+(`local/projects/teleclaude/spec/feature/integration/ci-run-outcomes`) and
+published releases, and reads its source on a fixed interval, so a machine
+outside the cluster — another person's computer — converges as well. On a match
+it installs the target through the install act exactly once
+(`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
+A release beyond a stable installation's compatibility series is held and its
+upgrade is carried out by the installation inspector on that computer
+(`sdlc/procedure/maintenance/installation/overview`). A computer behind a
+home router stays private and still updates.
 
 ### Operator setup (ingress only, one-time)
 
@@ -90,35 +91,38 @@ bus, not a public endpoint.
 
 ### Monitoring
 
-After a push or release, verify computers updated via `make status` or by
-checking the daemon version: `telec version`.
+After a green revision or a release, verify installations updated with
+`telec app status` on each computer: it names the active release, the channel,
+the most recent convergence decision and any held release.
 
 ## Outputs
 
-- Each subscribed computer converges to the newest version its channel admits,
-  restarting healthy — without operator action.
+- Each installation converges to the newest revision its channel admits,
+  restarting healthy — without operator action — and a breaking release is
+  carried out by its installation inspector.
 - Only the ingress is publicly exposed; every other computer reacts privately
-  through the cluster.
+  through the cluster or its own interval read.
 
 ## Recovery
 
-If a computer received the event but did not update, run
-`telec repo maintenance status` in its TeleClaude checkout: a failed
-`self-update`, or a failed step of the maintenance its advance owes, is listed
-with the replay that recovers it once its cause is fixed.
+If an installation did not update, run `telec app status` on that computer: the
+convergence decision names why — no newer green revision, a held release, or a
+failed install with the stores it changed — and a failed install is recovered
+under `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`.
 
-If a computer fails to auto-update, fall back to SSH for that one machine:
+If an installation cannot converge by itself, install a revision on that one
+machine over SSH:
 
 ```bash
-ssh -A {user}@{host} 'cd <teleclaude-path> && git pull --ff-only origin main && make restart && make status'
+ssh -A {user}@{host} 'telec app install <revision> && telec app status'
 ```
 
-(See `config.yml` for computer list, host names, and teleclaude paths.)
+(See `telec computers list` for the computer list and host names.)
 
 If the ingress itself is down, the cluster processes no external events but is
-not otherwise broken; it recovers on the next release signal (or a periodic
-self-check). The relay is stateless, so a second ingress can be added without
-redesign.
+not otherwise broken; every installation still converges through its interval
+read of its source. The relay is stateless, so a second ingress can be added
+without redesign.
 
 ## See Also
 

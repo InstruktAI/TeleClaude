@@ -30,13 +30,9 @@ Shapes with no independent consumer: persisted aggregate state, config documents
 - A test never pins a superseded owned shape. Tests assert the current contract; each `vN → vN+1` migration step carries its own golden-fixture test. A test asserting a retired shape makes the dead path load-bearing and is removed with it.
 - Where a forward migration is genuinely not yet available and a tolerance branch is unavoidable, it is interim debt isolated behind the migration boundary, never a permanent fork.
 
-<!-- planned:channel-activation-on-green -->
-
 ### Upgrade steps a migration cannot take — record them with the version
 
 - A change that a running installation cannot absorb through its forward migrations alone — a new required setting or credential, an outside system to prepare, a data conversion that needs a backup first — records its steps in the project's upgrade guide, `UPGRADING.md` at the repository root, under the version that ships it, in the order they must run. The installation's inspector performs exactly those steps before installing that release; a step that is written nowhere is a step no installation performs.
-
-<!-- /planned:channel-activation-on-green -->
 
 ## Rationale
 

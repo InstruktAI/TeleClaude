@@ -134,24 +134,11 @@ document reaches the current version, and what reads and writes it, is
 exposure levels described below, which govern which `config.yml` fields reach
 the operator surface.
 
-<!-- planned-change:channel-activation-on-green -->
-
-Release-channel settings (`deployment.channel` and the stable compatibility
-series declared under
-`local/projects/teleclaude/spec/feature/config/stable-channel-pinning-rule`) are
-not project-level keys. They govern TeleClaude's own self-update — a machine-wide
-concern — and live on the machine runtime `config.yml` (the `TeleclaudeConfig`
-aggregate), marked `tier=public` (wizard exposure stays a later refinement).
-
-<!-- change:channel-activation-on-green -->
-
 The release-channel setting (`deployment.channel`, declared under
 `local/projects/teleclaude/spec/feature/config/stable-channel-pinning-rule`) is
 not a project-level key. It governs TeleClaude's own self-update — a machine-wide
 concern — and lives on the machine runtime `config.yml` (the `TeleclaudeConfig`
 aggregate), marked `tier=public` (wizard exposure stays a later refinement).
-
-<!-- /planned-change:channel-activation-on-green -->
 
 ### Configuration tiers — public vs internal
 

@@ -272,8 +272,6 @@ rollback` invokes rollback; `telec app status` reads the install record. The
   The event activates `sdlc/procedure/maintenance/installation/overview`
   on the installation's computer.
 
-<!-- planned:channel-activation-on-green -->
-
 #### Channel convergence
 
 - **State.** Per installation: the followed source — the remote of its kept
@@ -314,8 +312,6 @@ rollback` invokes rollback; `telec app status` reads the install record. The
   computer; its held-release route carries out the release's upgrade and
   installs it through `telec app install`.
 
-<!-- /planned:channel-activation-on-green -->
-
 #### Use cases (index of feature specs)
 
 - **project-plumbing-convergence** — `docs/local/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a root to its declaration: a project's installed git hooks, docs filter driver and help desk, and the masters and help desks the platform home seeds
@@ -335,13 +331,9 @@ rollback` invokes rollback; `telec app status` reads the install record. The
 Node presence events state the node as subject, and schema-governance events the
 schema proposal they concern; neither states an origin.
 
-<!-- planned:channel-activation-on-green -->
-
 The held-release event states as subject the release it holds — the followed
 source and the release's version — and states no origin: the installation's
 convergence happens in no registered project, person, or company.
-
-<!-- /planned:channel-activation-on-green -->
 
 The owed-assessment event states as subject the newest owed install — its
 number, revision and when it became owed — and states no origin: the

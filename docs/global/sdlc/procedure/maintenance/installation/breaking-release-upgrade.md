@@ -1,8 +1,8 @@
 ---
-description: "Carry a published release that crosses an installation's compatibility series into that installation: perform its upgrade instructions in order, install it, verify it, and involve a person only for what only a person can supply."
-visibility: 'public'
-delivered_by:
-  - channel-activation-on-green
+description: "Carry a published release that crosses an installation's compatibility
+  series into that installation: perform its upgrade instructions in order, install
+  it, verify it, and involve a person only for what only a person can supply."
+visibility: public
 ---
 
 # Breaking Release Upgrade — Procedure

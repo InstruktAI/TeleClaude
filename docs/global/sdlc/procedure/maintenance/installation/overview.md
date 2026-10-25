@@ -5,6 +5,7 @@ description: "The installation's standing inspector on its own computer: answers
 visibility: public
 subscriptions:
   - teleclaude.installation.assessment.owed
+  - teleclaude.installation.release.held
 subscription_home: platform
 event_delivery: sequential
 interruptible: false
@@ -43,7 +44,12 @@ that project as a bug or todo, where the project's own lifecycle fixes it.
    - **`teleclaude.installation.assessment.owed`** — an install is owed an
      assessment. Load `sdlc/procedure/maintenance/installation/assessment` with
      `telec docs get` and apply it to this event.
-2. **End the activation** when every supplied event is accounted for.
+   - **`teleclaude.installation.release.held`** — the installation holds a
+     release beyond its compatibility series. Load
+     `sdlc/procedure/maintenance/installation/breaking-release-upgrade` with
+     `telec docs get` and apply it to this event.
+2. **End the activation** when every supplied event is accounted for: handled,
+   or waiting on a person's answer its route asked for.
 
 ## Outputs
 
