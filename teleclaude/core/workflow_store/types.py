@@ -223,7 +223,11 @@ class CommitReviewRecord:
 
 @dataclass(frozen=True)
 class ReviewedDocumentationSource:
-    """A carrier path proven to match an independently reviewed source commit."""
+    """A carrier's owned pending content proven to match an independently reviewed source commit.
+
+    ``blob_id`` is the reviewed blob and ``carrier_blob_id`` the current one; they differ when the owner's
+    pending unit is bounded regions and other bytes of the carrier changed.
+    """
 
     owner_slug: str
     source_sha: str

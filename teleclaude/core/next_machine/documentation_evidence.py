@@ -15,7 +15,7 @@ from teleclaude.core.workflow_store.types import (
     DocumentationTransferRecord,
     ReviewedDocumentationSource,
 )
-from teleclaude.docs_reconcile import pending_document_carriers
+from teleclaude.docs_reconcile import owned_pending_regions, pending_document_carriers
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.types.todos import CommitReviewVerdict
 
@@ -28,6 +28,7 @@ _TRAILER_LOG_FORMAT = (
 _DIFF_TREE_ARGS = ("--no-commit-id", "--name-only", "-r")
 _INDEX_ARGS = ("--stage", "--")
 _HASH_ARGS = ("--path",)
+_BLOB_READ_ARGS = ("blob",)
 _TRAILER_VALUE_SEPARATOR = ","
 _STAGE_ZERO = "0"
 _ANCESTOR_ARGUMENT = "--is-ancestor"
@@ -217,7 +218,9 @@ async def require_reviewed_pending_documentation(
             if transfer is None:
                 reviewed_blob = repo.git.rev_parse(_COMMIT_TREE_PATH_TEMPLATE.format(sha=sha, path=path)).strip()
                 current_blob = _current_indexed_blob(repo, path)
-                if reviewed_blob != current_blob:
+                if reviewed_blob != current_blob and not _owned_regions_unchanged(
+                    repo, project_root / path, owner, reviewed_blob, current_blob
+                ):
                     raise DocumentationEvidenceRefused(
                         _REFUSAL_TEMPLATE.format(path=path, reason=_STALE_CONTENT.format(sha=sha))
                     )
@@ -264,6 +267,18 @@ async def require_reviewed_pending_documentation(
         RuntimeError,
     ) as exc:
         raise DocumentationEvidenceRefused(_UNREADABLE.format(detail=exc)) from exc
+
+
+def _owned_regions_unchanged(repo: Repo, path: Path, owner: str, reviewed_blob: str, current_blob: str) -> bool:
+    """Return whether the owner's bounded pending regions are identical in two differing carrier blobs."""
+    reviewed_regions = owned_pending_regions(path, _read_blob(repo, reviewed_blob), owner)
+    current_regions = owned_pending_regions(path, _read_blob(repo, current_blob), owner)
+    return reviewed_regions is not None and reviewed_regions == current_regions
+
+
+def _read_blob(repo: Repo, blob_id: str) -> str:
+    """Read a Git blob verbatim, so both sides of a comparison decode identically."""
+    return cast(str, repo.git.cat_file(*_BLOB_READ_ARGS, blob_id, strip_newline_in_stdout=False))
 
 
 def _current_indexed_blob(repo: Repo, path: str) -> str:
