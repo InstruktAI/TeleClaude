@@ -171,7 +171,8 @@ def _entry(
 
 
 # The set every worker-class role starts from. It holds no capability that observes the fleet or starts,
-# revives, restarts or ends another session (``local/projects/teleclaude/spec/feature/identity/agent-roles``).
+# revives, restarts or ends another session, and sends to and tails no other session: a worker reports through
+# its own output and artifacts (``local/projects/teleclaude/spec/feature/identity/agent-roles``).
 _WORKER_BASELINE: frozenset[Capability] = frozenset(
     {
         Capability.DOCS_READ,
@@ -184,7 +185,6 @@ _WORKER_BASELINE: frozenset[Capability] = frozenset(
         Capability.CODE,
         Capability.CODE_CHECK,
         Capability.MCP,
-        Capability.PEER_TALK,
         Capability.SELF_ACTS,
         Capability.OPERATION_READ,
     }

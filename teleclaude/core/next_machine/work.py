@@ -4,9 +4,10 @@ Reads the canonical ``lifecycle_phase`` from persisted state and dispatches the
 current work step. The only local mutation it owns is the transparent
 ``prepared`` to ``build_started`` handoff on first work entry.
 
-Review fix loops preserve the peer-conversation contract: "send fixer and
-reviewer session IDs to each other with --direct to let them iterate without
-context-destroying churn."
+Review fix loops run through the review-findings artifact: the orchestrator
+sends the live builder to the findings, the builder records its dispositions
+there and commits its fixes, and the orchestrator sends the reviewer to
+re-review from those dispositions and commits. Workers never message each other.
 """
 
 from __future__ import annotations

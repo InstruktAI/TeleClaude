@@ -43,7 +43,7 @@ from teleclaude.constants import (
     TUI_SESSION_ENV_KEY,
     MarkerState,
 )
-from teleclaude.core.roles import Capability, Role, UnknownRole, allows, resolve_session_role
+from teleclaude.core.roles import Capability, Role, UnknownRole, allows, is_worker_role, resolve_session_role
 from teleclaude.core.session_identity_facts import SessionIdentityFacts, read_session_identity_facts
 from teleclaude.paths import MAIN_DB_PATH, invocation_cwd
 from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
@@ -147,6 +147,17 @@ _SESSION_SHOW_PATH = "sessions show"
 _CALLER_INDEPENDENT_COMMAND_REFUSAL = "Unknown command path or missing command authorization."
 _DESK_COMMAND_REFUSAL_TEMPLATE = "permission denied — {command_path} is not available at a help desk"
 _PERMISSION_REFUSAL_TEMPLATE = "permission denied — role '{role}' is not permitted to call {command_path}"
+_WORKER_REPORTING_PATH_TEMPLATE = (
+    "{refusal}. A worker reports through its own output and artifacts, which the session that dispatched it routes."
+)
+
+
+def _permission_refusal(identity: ResolvedCliIdentity, role: str, command_path: str) -> str:
+    """The not-permitted refusal; a worker's also names where its result belongs."""
+    refusal = _PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path)
+    if is_worker_role(identity.role):
+        return _WORKER_REPORTING_PATH_TEMPLATE.format(refusal=refusal)
+    return refusal
 
 
 def _detect_ancestor_tty() -> str | None:
@@ -429,6 +440,10 @@ def cli_clearance(
         return CliClearance(identity=identity, refusal=no_identity_refusal(identity))
 
     if relayed_request:
+        # The holding computer never receives a role, so a worker's session acts are refused here, before relay.
+        if is_worker_role(identity.role) and auth.capability is Capability.PEER_TALK:
+            role = identity.role or _UNAUTHORIZED_ROLE
+            return CliClearance(identity=identity, refusal=_permission_refusal(identity, role, command_path))
         return CliClearance(identity=identity, refusal=None)
 
     if identity.principal == SYSTEM_DAEMON_PRINCIPAL and identity.role is None:
@@ -458,7 +473,7 @@ def cli_clearance(
             role = identity.role or identity.caller.human_role or "unauthorized"
             return CliClearance(
                 identity=identity,
-                refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
+                refusal=_permission_refusal(identity, role, command_path),
             )
 
     agent_role = resolve_session_role(identity.role, identity.session_id)
@@ -472,7 +487,7 @@ def cli_clearance(
         role = identity.role or _UNAUTHORIZED_ROLE
         return CliClearance(
             identity=identity,
-            refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
+            refusal=_permission_refusal(identity, role, command_path),
         )
 
     resolved_role_target = role_target or _fallback_role_target(auth, identity, target_session_id)
@@ -497,7 +512,7 @@ def cli_clearance(
         role = identity.role or person_role or _UNAUTHORIZED_ROLE
     return CliClearance(
         identity=identity,
-        refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
+        refusal=_permission_refusal(identity, role, command_path),
     )
 
 

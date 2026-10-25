@@ -14,7 +14,6 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
-import shlex
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -57,7 +56,6 @@ from teleclaude.core.next_machine.output_formatting import (
     format_worker_redispatch,
 )
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _derive_project_root
-from teleclaude.core.next_machine.runtime.scripts import format_reviewer_direct_fix_message
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.unclaim import ClaimReleaseOutcome, unclaim_todo_for_caller
@@ -119,6 +117,44 @@ _REVIEW_EVIDENCE_UNDETERMINED_MESSAGE = (
     "No review evidence was consumed or revoked."
 )
 _REVIEW_EVIDENCE_RETRY_COMMAND_TEMPLATE = "telec todo work {slug}"
+_WORK_ADVANCE_COMMAND_TEMPLATE = "telec todo work {slug}"
+_FIX_ROUND_SCRIPT_TEMPLATE = "{header}\n\n{relay_script}"
+_FIX_ROUND_BRIEF_TEMPLATE = (
+    "Review requested changes for {slug}. "
+    "Findings artifact: `review-findings`. Target: source code in the worktree. "
+    "Required read: sdlc/procedure/lifecycle/fix-review-findings "
+    "Address every Requirement-Violation, Critical, and Important finding — "
+    "anything less keeps the verdict at REQUEST CHANGES per the severity schema "
+    "in lifecycle/work/review. Requirement-Violation findings in particular "
+    "indicate a stated requirement's success criteria are not satisfied in the "
+    "delivery; resolve them by making the code satisfy the full criterion — or, "
+    "when the requirement itself is wrong, by bouncing the todo to prepare — "
+    "never by narrowing, weakening, or editing a prepare artifact. "
+    "Do not argue severity. "
+    "Record each finding's disposition in the Dispositions section of the `review-findings` "
+    "artifact, naming the fix commit for each fixed finding. "
+    "When every finding is resolved, commit the fixes and run "
+    "`telec todo stamp {slug} --build-complete`. "
+    "Read findings via: telec todo artifacts read {slug} review-findings"
+)
+_FIX_ROUND_UNSTAMPED_HEADER_TEMPLATE = (
+    "FIX WORK NOT STAMPED: {slug}\n\n"
+    "Builder session {builder_id} has commits after reviewed head {reviewed_head} "
+    "at HEAD {head_sha}, but has not stamped build completion. "
+    "Send it the fix brief again so it records its dispositions and stamps."
+)
+_FIX_ROUND_RELAY_HEADER_TEMPLATE = (
+    "REVIEW CHANGES REQUESTED: {slug}\n\n"
+    "Relay the findings artifact to builder session {builder_id}. "
+    "The reviewer and the builder do not converse; the builder answers in the "
+    "review-findings Dispositions section and its commits."
+)
+_RE_REVIEW_DISPOSITIONS_CLAUSE = (
+    "The builder recorded its disposition for each finding in the Dispositions section of "
+    "`review-findings` and named the fix commits there; read that section and verify each "
+    "disposition against the diff since the baseline, judging by the code rather than the "
+    "builder's account. "
+)
 
 
 # ---------------------------------------------------------------------------
@@ -495,6 +531,7 @@ async def _work_step_build_complete(
             f"Read `telec todo artifacts read {slug} review-findings` first — your re-review "
             f"must verify the unresolved Requirement-Violation, Critical, and Important "
             f"findings from the prior round are now delivered by the new commits. "
+            f"{_RE_REVIEW_DISPOSITIONS_CLAUSE}"
             f"Per the severity schema in lifecycle/work/review, Requirement-Violation "
             f"findings cannot be deferred — the verdict is APPROVE only when all three "
             f"counts are zero. Stamp verdict with "
@@ -559,8 +596,6 @@ async def _work_step_review_changes_requested(
 
     # Fix not yet committed: relay findings to live builder.
     builder_id = await find_live_session_for_slug(db, slug, LifecycleProcedure.BUILD.value)
-    reviewer_id = await find_live_session_for_slug(db, slug, LifecycleProcedure.REVIEW_BUILD.value)
-
     if builder_id is None:
         return False, format_error(
             "BUILDER_NOT_ALIVE",
@@ -571,67 +606,21 @@ async def _work_step_review_changes_requested(
             ),
             next_call=f"telec todo work {slug}",
         )
-    if reviewer_id is None:
-        return False, format_error(
-            "REVIEWER_NOT_ALIVE",
-            (
-                f"Review requested changes for {slug}, but no live reviewer session exists "
-                f"to initiate the direct fix conversation. The reviewer should remain alive "
-                f"across review rounds. Manual intervention required."
-            ),
-            next_call=f"telec todo work {slug}",
+
+    relay_script = format_worker_redispatch(
+        builder_id,
+        slug=slug,
+        message=_FIX_ROUND_BRIEF_TEMPLATE.format(slug=slug),
+        advance_call=_WORK_ADVANCE_COMMAND_TEMPLATE.format(slug=slug),
+    )
+    header = (
+        _FIX_ROUND_UNSTAMPED_HEADER_TEMPLATE.format(
+            slug=slug, builder_id=builder_id, reviewed_head=reviewed_head, head_sha=head_sha
         )
-
-    message = (
-        f"Review requested changes for {slug}. "
-        f"Findings artifact: `review-findings`. Target: source code in the worktree. "
-        f"Required read: sdlc/procedure/lifecycle/fix-review-findings "
-        f"Address every Requirement-Violation, Critical, and Important finding — "
-        f"anything less keeps the verdict at REQUEST CHANGES per the severity schema "
-        f"in lifecycle/work/review. Requirement-Violation findings in particular "
-        f"indicate a stated requirement's success criteria are not satisfied in the "
-        f"delivery; resolve them by making the code satisfy the full criterion — or, "
-        f"when the requirement itself is wrong, by bouncing the todo to prepare — "
-        f"never by narrowing, weakening, or editing a prepare artifact. "
-        f"Do not argue severity. "
-        f"When every finding is resolved, commit the fixes and run "
-        f"`telec todo stamp {slug} --build-complete`. "
-        f"Read findings via: telec todo artifacts read {slug} review-findings"
+        if change_since_review == TodoChangeSinceReview.CHANGED
+        else _FIX_ROUND_RELAY_HEADER_TEMPLATE.format(slug=slug, builder_id=builder_id)
     )
-    reviewer_message = format_reviewer_direct_fix_message(
-        fixer_session_id=builder_id,
-        task_context=message,
-        completion_clause=(
-            f"Collaborate until all findings are resolved, then persist the full review-findings artifact "
-            f"with telec todo artifacts write {slug} review-findings <content> and set the verdict "
-            f"by arithmetic: APPROVE only when unresolved Requirement-Violation, Critical, and Important "
-            f"counts are all zero. "
-            f"Report FIX COMPLETE."
-        ),
-    )
-    quoted_reviewer_message = shlex.quote(reviewer_message)
-
-    if change_since_review == TodoChangeSinceReview.CHANGED:
-        return False, (
-            f"FIX WORK NOT STAMPED: {slug}\n\n"
-            f"Builder session {builder_id} has commits after reviewed head {reviewed_head} "
-            f"at HEAD {head_sha}, but has not stamped build completion.\n\n"
-            f"Tell the reviewer to start a direct conversation with the fixer:\n"
-            f"telec sessions send {reviewer_id} {quoted_reviewer_message} (you will use regular send, NOT --direct)\n\n"
-            f"Wait for it to run `telec todo stamp {slug} --build-complete`, "
-            f"then call telec todo work {slug}."
-        )
-
-    return False, (
-        f"REVIEW CHANGES REQUESTED: {slug}\n\n"
-        f"Execute in order:\n\n"
-        f"Tell the reviewer to start a direct conversation with the fixer:\n"
-        f"telec sessions send {reviewer_id} {quoted_reviewer_message} (you will use regular send, NOT --direct)\n\n"
-        f"{format_orchestration_watch_instruction(slug=slug, restart_cadence=True)}\n"
-        f"Wait passively for fixer to complete (the reminder re-engages you; never poll).\n"
-        f"Wait for reviewer session {reviewer_id} to report idle.\n"
-        f"When the signal arrives, call telec todo work {slug}."
-    )
+    return False, _FIX_ROUND_SCRIPT_TEMPLATE.format(header=header, relay_script=relay_script)
 
 
 async def _handle_finalize_ready_claim(
