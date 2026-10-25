@@ -7,12 +7,6 @@ parameters:
 dispatch:
   agent: [codex, claude, gemini, deepseek]
   thinking_mode: slow
-subscriptions:
-  - sdlc.planning.todo_finalize_ready
-  - teleclaude.maintenance.activation.*
-subscription_home: project
-event_delivery: sequential
-interruptible: false
 ---
 
 # Integration — Procedure
@@ -20,7 +14,6 @@ interruptible: false
 ## Required reads
 
 - @~/.teleclaude/docs/general/principle/session-lifecycle.md
-- @~/.teleclaude/docs/general/procedure/event-handling/overview.md
 
 ## Goal
 
@@ -29,8 +22,7 @@ each decision point until the queue is drained.
 
 ## Preconditions
 
-- Candidate branches exist in the FIFO queue, or the activating event names a settled
-  canonical-main maintenance activation, which needs no candidate.
+- Candidate branches exist in the FIFO queue.
 - No other integrator session holds the lease.
 - The integrator operates in a persistent worktree at `trees/_integration/` (detached HEAD
   from `origin/main`), created on first run and reused across subsequent runs. Reset to
@@ -87,13 +79,6 @@ assessor.
    enter the state machine. The watch stays live for as long as this session is the
    integrator; never cancel it. It is the integrator's standing way back to the
    state machine, and a session that ends removes it.
-
-   When an event activated or woke this session, route it by its type before that
-   call. `sdlc.planning.todo_finalize_ready` names a ready candidate and needs no
-   prior work. `teleclaude.maintenance.activation.failed` and
-   `teleclaude.maintenance.activation.succeeded` name a settled canonical-main
-   activation: apply step 3a to it, recovering each failed action the event names
-   with the replay command it names, then direct-main publication.
 
 2. The call returns an operation receipt and does not wait for the machine. Yield;
    when the operation's outcome wakes this session, read the instruction block
