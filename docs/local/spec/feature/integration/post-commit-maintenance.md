@@ -698,6 +698,8 @@ But the original committer receives no maintenance log-check obligation
 
 #### UC-PCM17: Early or narrow log evidence does not close integrator judgment
 
+<!-- planned-change:integrator-log-check-ignores-functions-exec -->
+
 ```gherkin
 Given a canonical-main change still has an owed maintenance action pending
 When the standing integrator reads logs before that action succeeds
@@ -705,6 +707,19 @@ Then the live-runtime judgment for that change remains outstanding
 And after every owed action succeeds, a log read whose window covers the activation and completed maintenance may close it
 But a read whose window misses that interval does not close it
 ```
+
+<!-- change:integrator-log-check-ignores-functions-exec -->
+
+```gherkin
+Given a canonical-main change still has an owed maintenance action pending
+When the standing integrator reads logs before that action succeeds
+Then the live-runtime judgment for that change remains outstanding
+And after every owed action succeeds, a log read whose window covers the activation and completed maintenance may close it
+And a later drain that completes no owed action for that change does not make that read too early
+But a read whose window misses that interval does not close it
+```
+
+<!-- /planned-change:integrator-log-check-ignores-functions-exec -->
 
 #### UC-PCM18: A master commit in the platform home owes publication
 

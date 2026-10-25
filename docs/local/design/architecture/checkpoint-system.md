@@ -383,6 +383,25 @@ installation reacts to its source's pushes and releases itself
 
 <!-- /planned-change:platform-installation -->
 
+<!-- planned:integrator-log-check-ignores-functions-exec -->
+
+### Invariant 31 — Stable maintenance readiness
+
+An integrator judgment marker's maintenance-ready time records when the
+condition of Invariant 19 became met: the end of the drain that left every owed
+action for the marker's activations with terminal success. A later drain that
+completes no owed action for those activations leaves an established ready time
+unchanged, whether it runs only event activations, retries another activation's
+action, or finds nothing to run. Only a new qualifying activation clears the
+ready time, and the next time the accumulated activations become ready replaces
+it. A covering log read made after the ready time therefore stays admissible
+until the marker discharges: no owed maintenance completed after it, so its
+window already covers the activation through completed maintenance, and a drain
+that adds no work for the activations never turns completed judgment back into
+owed judgment.
+
+<!-- /planned:integrator-log-check-ignores-functions-exec -->
+
 ## Primary flows
 
 ### 0. Context-aware checkpoint builder
