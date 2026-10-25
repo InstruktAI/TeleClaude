@@ -23,9 +23,11 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict, JsonValue
+from teleclaude.core.session_transcript import SessionTranscript
 
 from ._checkpoint_anchors import find_last_checkpoint_anchor
 from ._parsers import normalize_transcript_entry_message
+from ._turn_completion import TURN_COMPLETION_TAIL_ENTRIES, claude_turn_completion
 from ._user_turns import find_last_turn_start, is_turn_start_entry
 from ._utils import CHECKPOINT_JSONL_TAIL_READ_BYTES, _apply_tail_limit, _apply_tail_limit_codex, _parse_timestamp
 from .source_views import TranscriptEntries, read_transcript_entries
@@ -94,6 +96,7 @@ __all__ = [
     "_iter_jsonl_entries_tail",
     "_iter_jsonl_entry_windows",
     "_start_index_after_timestamp_or_rotation",
+    "read_turn_completion",
 ]
 
 
@@ -894,7 +897,8 @@ class TranscriptReader:
 
     ``checkpoint_window`` normalizes a raw JSONL suffix window for runtimes
     whose transcripts can be read from their tail; a runtime without one is
-    always read whole.
+    always read whole. ``turn_completion`` reads the raw tail as the time the
+    latest turn ended; a runtime without one has no native completion evidence.
     """
 
     display_name: str
@@ -905,12 +909,18 @@ class TranscriptReader:
     document_records: Callable[[JsonValue], Iterable[JsonDict]] = _document_record
     append_anchor: Callable[[JsonDict], bool] | None = None
     format_mismatch_agent: str | None = None
+    turn_completion: Callable[[Sequence[JsonDict]], datetime | None] | None = None
 
 
 TRANSCRIPT_READERS: Mapping[AgentName, TranscriptReader] = MappingProxyType(
     {
         AgentName.CLAUDE: TranscriptReader(
-            "Claude Code", _read_claude, _apply_tail_limit, _claude_checkpoint_window, _native_records
+            "Claude Code",
+            _read_claude,
+            _apply_tail_limit,
+            _claude_checkpoint_window,
+            _native_records,
+            turn_completion=claude_turn_completion,
         ),
         AgentName.CODEX: TranscriptReader(
             "Codex",
@@ -958,6 +968,15 @@ def _get_entries_for_agent(
             return None
         return list(TRANSCRIPT_READERS[agent_name].read(path, tail_entries))
     return _cached_entries(path, agent_name)
+
+
+def read_turn_completion(transcript: SessionTranscript) -> datetime | None:
+    """Return when the bound transcript's latest turn ended, or ``None`` without native evidence."""
+    turn_completion = TRANSCRIPT_READERS[transcript.agent].turn_completion
+    if turn_completion is None:
+        return None
+    entries = _get_entries_for_agent(transcript.path, transcript.agent, tail_entries=TURN_COMPLETION_TAIL_ENTRIES)
+    return turn_completion(entries) if entries else None
 
 
 def _get_checkpoint_entries_for_agent(transcript_path: str, agent_name: AgentName) -> list[JsonDict] | None:

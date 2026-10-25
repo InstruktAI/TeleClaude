@@ -15,6 +15,8 @@ from teleclaude.core.agent_status import (
     AgentEventCause,
     AgentStatusTransition,
     DeliveryObservedBlock,
+    TurnEndEvidence,
+    reconcile_turn_end,
     transition_agent_status,
 )
 from teleclaude.core.agents import AgentName
@@ -92,6 +94,7 @@ _AGENT_IDLE_MANUAL_NATIVE_COMMAND_REASON = "manual_native_command"
 _AGENT_TURN_FAILED_OBSERVED_EVENT = "agent_turn_failed_observed"
 _AGENT_TURN_FAILED_OBSERVED_OUTCOME = "recorded"
 _AGENT_TURN_FAILED_BOUNDARY_REASON = "agent_turn_failed"
+_AGENT_TURN_END_RECONCILED_EVENT = "agent_turn_end_reconciled"
 
 
 class AgentCoordinator(
@@ -305,6 +308,24 @@ class AgentCoordinator(
             native_session_id=payload.session_id,
         )
         await wake_if_pending(session_id=context.session_id, boundary=TurnEndBoundary.AGENT_IDLE)
+
+    async def reconcile_native_turn_end(self, session_id: str, evidence: TurnEndEvidence) -> bool:
+        """Record a turn end the provider completed but whose Stop never arrived, then wake pending work.
+
+        Nothing is recorded or woken when the session moved after the evidence
+        was read: the newer state owns its own boundary.
+        """
+        transition = await reconcile_turn_end(db, session_id, evidence)
+        if transition is None:
+            return False
+        logger.info(
+            _AGENT_TURN_END_RECONCILED_EVENT,
+            session_id=session_id,
+            completed_at=evidence.completed_at.isoformat(),
+            previous_status=transition.previous.value,
+        )
+        await wake_if_pending(session_id=session_id, boundary=TurnEndBoundary.AGENT_IDLE)
+        return True
 
     async def handle_agent_distress(self, context: AgentEventContext, notification_kind: NotificationKind) -> None:
         """Notify watchers when a provider reports a blocked or failed turn.

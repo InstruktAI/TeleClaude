@@ -8,20 +8,23 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol, TypedDict, cast
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import func, or_, select, text, update
-from sqlalchemy.orm import aliased
+from sqlalchemy import String, func, or_, select, text, type_coerce, update
+from sqlalchemy.orm import InstrumentedAttribute, aliased
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.config.machine import config
 from teleclaude.core import db_models
 from teleclaude.core.agent_status import (
+    RECONCILED_TURN_END_CAUSE,
     AgentEventCause,
     AgentRunStart,
     AgentStatusCause,
     AgentStatusCommit,
     AgentStatusIntegrityError,
+    TurnEndEvidence,
     _attempted_transition,
 )
+from teleclaude.core.dates import ensure_utc
 from teleclaude.core.models import SessionField
 from teleclaude.core.runtime_events import publish_session_source_change
 from teleclaude.core.session_status import (
@@ -65,6 +68,7 @@ _EMPTY_TEXT = ""
 _EMPTY_JSON_ARRAY = "[]"
 _SILENCE_CLAIM_CONFLICT_EVENT = "silence_observation_claim_rejected"
 _SILENCE_OBSERVATION_CLAIMED_EVENT = "silence_observation_claimed"
+_RAW_TEXT_LABEL = "raw_%s"
 
 logger = get_logger(__name__)
 
@@ -154,6 +158,11 @@ def _session_open() -> object:
         db_models.Session.lifecycle_status.is_(None),
         db_models.Session.lifecycle_status.not_in(terminal_statuses),
     )
+
+
+def _unchanged_raw_text_or_null(column: InstrumentedAttribute[datetime | None], raw_text: str | None) -> object:
+    """Match a column against the exact stored text just read, so no date parsing happens in SQL."""
+    return column.is_(None) if raw_text is None else type_coerce(column, String) == raw_text
 
 
 def _silence_observation_predicate(
@@ -358,6 +367,100 @@ class AgentStatusPersistenceMixin:
         if current.closed_at is not None or current.lifecycle_status in TERMINAL_LIFECYCLE_STATUSES:
             return AgentStatusCommit.SESSION_TERMINAL
         return AgentStatusCommit.VERSION_MOVED
+
+    async def commit_reconciled_turn_end(
+        self,
+        session_id: str,
+        *,
+        evidence: TurnEndEvidence,
+        status: AgentStatusValue,
+        reason: AgentStatusReason | None,
+        since: datetime | None,
+        runtime_activity_at: datetime | None,
+        open_tool_calls: frozenset[str],
+        runtime_run_id: str | None,
+        runtime_turn_id: str | None,
+    ) -> bool:
+        """Record a reconciled turn end only while every fact of the snapshot it was judged on still holds.
+
+        The guarded timestamps are read and compared to the snapshot as datetimes
+        here, then the write is conditional on each column still holding the exact
+        stored text just read, so equality is never derived by SQL date functions.
+        """
+        snapshot = evidence.snapshot
+        guarded = (
+            db_models.Session.last_message_sent_at,
+            db_models.Session.last_agent_stop_at,
+            db_models.Session.last_agent_idle_at,
+            db_models.Session.runtime_activity_at,
+        )
+        expected = (
+            snapshot.last_message_sent_at,
+            snapshot.last_agent_stop_at,
+            snapshot.last_agent_idle_at,
+            snapshot.runtime_activity_at,
+        )
+        async with cast(_AgentStatusDatabase, self)._session() as db_session:
+            stored = (
+                await db_session.exec(
+                    select(
+                        *guarded,
+                        *(type_coerce(column, String).label(_RAW_TEXT_LABEL % column.key) for column in guarded),
+                    ).where(db_models.Session.session_id == session_id)
+                )
+            ).first()
+            if stored is None:
+                return False
+            typed, raw_texts = stored[: len(guarded)], stored[len(guarded) :]
+            if any(
+                (ensure_utc(value) if value is not None else None) != snapshot_value
+                for value, snapshot_value in zip(typed, expected, strict=True)
+            ):
+                return False
+            statement = (
+                update(db_models.Session)
+                .where(
+                    db_models.Session.session_id == session_id,
+                    db_models.Session.agent_status_version == snapshot.agent_status_version,
+                    *(
+                        _unchanged_raw_text_or_null(column, raw_text)
+                        for column, raw_text in zip(guarded, raw_texts, strict=True)
+                    ),
+                    _session_open(),
+                )
+                .values(
+                    agent_status=status.value,
+                    agent_status_reason=reason.value if reason else _EMPTY_TEXT,
+                    agent_status_since=since,
+                    runtime_activity_at=runtime_activity_at,
+                    open_tool_calls=encode_open_tool_calls(open_tool_calls),
+                    runtime_run_id=runtime_run_id,
+                    runtime_turn_id=runtime_turn_id,
+                    last_agent_idle_at=evidence.completed_at,
+                    agent_status_version=db_models.Session.agent_status_version + 1,
+                )
+                .returning(db_models.Session.session_id)
+            )
+            result = await db_session.exec(statement)
+            rows = result.all()
+            await db_session.commit()
+        if len(rows) > 1:
+            raise AgentStatusIntegrityError(
+                session_id, _attempted_transition(RECONCILED_TURN_END_CAUSE, status), len(rows)
+            )
+        if not rows:
+            return False
+        await _emit_agent_status_updated(
+            session_id,
+            status=status,
+            reason=reason,
+            since=since,
+            runtime_activity_at=runtime_activity_at,
+            open_tool_calls=open_tool_calls,
+            runtime_run_id=runtime_run_id,
+            runtime_turn_id=runtime_turn_id,
+        )
+        return True
 
     async def list_silence_observation_candidates(self, rule: SilenceRule, *, at: datetime) -> list[str]:
         """List targets matching the current run, activity, and supervisor relationship."""

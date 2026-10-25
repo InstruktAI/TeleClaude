@@ -830,6 +830,14 @@ class DbControlDeliveryMixin:
             value = (await db_session.exec(statement)).one()
         return int(value)
 
+    async def fetch_sessions_with_pending_control_payloads(self) -> list[str]:
+        """Return the sessions holding at least one undelivered control payload."""
+        statement = (
+            select(db_models.ControlDelivery.session_id).where(db_models.ControlDelivery.outcome.is_(None)).distinct()
+        )
+        async with self._session() as db_session:
+            return list((await db_session.exec(statement)).all())
+
     async def discard_pending_control_payloads(self, *, session_id: str) -> int:
         """Delete only undelivered payloads for a closing session."""
         statement = (

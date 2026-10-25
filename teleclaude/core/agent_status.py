@@ -14,6 +14,8 @@ from teleclaude.core.session_status import (
     TERMINAL_LIFECYCLE_STATUSES,
     AgentStatusReason,
     AgentStatusValue,
+    is_agent_turn_running,
+    is_session_terminal,
 )
 from teleclaude.core.status_contract import serialize_status_event
 
@@ -91,6 +93,14 @@ class AgentStatusTransition:
     entered: AgentStatusValue
 
 
+@dataclass(frozen=True)
+class TurnEndEvidence:
+    """A provider-reported turn completion and the session snapshot it was judged against."""
+
+    completed_at: datetime
+    snapshot: Session
+
+
 class AgentStatusStore(Protocol):
     """Persistence operations required by the agent-status owner."""
 
@@ -111,6 +121,20 @@ class AgentStatusStore(Protocol):
         runtime_run_id: str | None,
         runtime_turn_id: str | None,
     ) -> AgentStatusCommit: ...
+
+    async def commit_reconciled_turn_end(
+        self,
+        session_id: str,
+        *,
+        evidence: TurnEndEvidence,
+        status: AgentStatusValue,
+        reason: AgentStatusReason | None,
+        since: datetime | None,
+        runtime_activity_at: datetime | None,
+        open_tool_calls: frozenset[str],
+        runtime_run_id: str | None,
+        runtime_turn_id: str | None,
+    ) -> bool: ...
 
 
 AgentStatusRule = tuple[AgentStatusValue, AgentStatusReason | None]
@@ -346,6 +370,61 @@ async def transition_agent_status(
         return None
 
     raise AgentStatusContentionError(session_id, attempted_transition)
+
+
+RECONCILED_TURN_END_CAUSE = AgentEventCause(event=AgentHookEvents.AGENT_IDLE)
+
+
+async def reconcile_turn_end(
+    store: AgentStatusStore,
+    session_id: str,
+    evidence: TurnEndEvidence,
+) -> AgentStatusTransition | None:
+    """Record a turn end whose Stop never reached the coordinator, once and only against its snapshot.
+
+    The idle boundary is written at the provider's completion time, so input
+    accepted afterwards stays newer than it. Unlike ``transition_agent_status``
+    there is no retry: a snapshot that moved means newer state exists, and
+    re-applying the end to it could mark a newer turn idle.
+    """
+    snapshot = evidence.snapshot
+    if is_session_terminal(lifecycle_status=snapshot.lifecycle_status, closed_at=snapshot.closed_at):
+        return None
+    last_input_at = snapshot.last_message_sent_at
+    if not is_agent_turn_running(
+        last_input_at=last_input_at,
+        last_agent_stop_at=snapshot.last_agent_stop_at,
+        last_agent_idle_at=snapshot.last_agent_idle_at,
+    ):
+        return None
+    if last_input_at is None or evidence.completed_at <= last_input_at:
+        return None
+    if snapshot.runtime_activity_at is not None and snapshot.runtime_activity_at > evidence.completed_at:
+        return None
+    (
+        status,
+        reason,
+        since,
+        runtime_activity_at,
+        open_tool_calls,
+        runtime_run_id,
+        runtime_turn_id,
+    ) = _event_status_record(snapshot, RECONCILED_TURN_END_CAUSE, evidence.completed_at)
+    committed = await store.commit_reconciled_turn_end(
+        session_id,
+        evidence=evidence,
+        status=status,
+        reason=reason,
+        since=since,
+        runtime_activity_at=runtime_activity_at,
+        open_tool_calls=open_tool_calls,
+        runtime_run_id=runtime_run_id,
+        runtime_turn_id=runtime_turn_id,
+    )
+    if not committed:
+        return None
+    await _publish_status(session_id, status, reason, evidence.completed_at, runtime_activity_at)
+    return AgentStatusTransition(previous=snapshot.agent_status, entered=status)
 
 
 async def _publish_status(

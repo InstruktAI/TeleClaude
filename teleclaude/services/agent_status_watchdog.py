@@ -1,4 +1,9 @@
-"""Periodic host for stored agent-status silence watchdogs."""
+"""Periodic host for stored agent-status watchdogs.
+
+Each scan runs two isolated phases: claiming missing-signal observations for
+silent targets, and reconciling a turn end the runtime completed but never
+reported while control payloads wait on it.
+"""
 
 from __future__ import annotations
 
@@ -11,11 +16,15 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.machine import config
 from teleclaude.core import tmux_bridge
+from teleclaude.core.agent_status import TurnEndEvidence
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentAttentionObservation
 from teleclaude.core.session_listeners import NotificationKind, SessionListener
+from teleclaude.core.session_status import is_agent_turn_running, is_session_terminal
+from teleclaude.core.session_transcript import session_transcript
 from teleclaude.core.silence_audience import resolve_silence_audience
 from teleclaude.core.supervisory_silence import SILENCE_RULES, SilenceClaim, SilenceObservation, SilenceRule
+from teleclaude.utils.transcript._iterators import read_turn_completion
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -37,10 +46,11 @@ class WatchdogScanPhase(StrEnum):
     """One isolated phase of an agent-status watchdog scan."""
 
     CLAIM = "claim"
+    RECONCILE = "reconcile"
 
 
 class AgentStatusNotifier(Protocol):
-    """Coordinator surface used to deliver an inferred stall to its audience."""
+    """Coordinator surface used to deliver an inferred stall and to record a reconciled turn end."""
 
     async def _notify_session_distress(
         self,
@@ -53,6 +63,8 @@ class AgentStatusNotifier(Protocol):
         occurrence_key: str | None = None,
         silence_audience: list[SessionListener] | None = None,
     ) -> bool: ...
+
+    async def reconcile_native_turn_end(self, session_id: str, evidence: TurnEndEvidence) -> bool: ...
 
 
 async def _capture_pane_tail(session: Session) -> str | None:
@@ -180,14 +192,56 @@ async def _claim_silence_observations(coordinator: AgentStatusNotifier, *, at: d
     return claimed_count
 
 
+async def _reconcile_lost_turn_ends(coordinator: AgentStatusNotifier) -> int:
+    """Record the provider-completed turn end of each session still believed running with payloads waiting.
+
+    The snapshot is read first, then the native evidence, then the hook-ingress
+    answer, so the coordinator's conditional commit rejects anything that
+    happened after the snapshot.
+    """
+    reconciled_count = 0
+    for session_id in await db.fetch_sessions_with_pending_control_payloads():
+        try:
+            session = await db.get_session(session_id)
+            if (
+                session is None
+                or session.computer_name != config.computer.name
+                or not session.receives_terminal_input
+                or is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at)
+                or not is_agent_turn_running(
+                    last_input_at=session.last_message_sent_at,
+                    last_agent_stop_at=session.last_agent_stop_at,
+                    last_agent_idle_at=session.last_agent_idle_at,
+                )
+            ):
+                continue
+            transcript = session_transcript(session)
+            if transcript is None:
+                continue
+            completed_at = await asyncio.to_thread(read_turn_completion, transcript)
+            if completed_at is None or await db.has_undispatched_hook_events(session_id):
+                continue
+            if await coordinator.reconcile_native_turn_end(session_id, TurnEndEvidence(completed_at, session)):
+                reconciled_count += 1
+        except Exception as exc:
+            logger.exception(
+                _WATCHDOG_ROW_FAILED_EVENT,
+                session_id=session_id,
+                phase=WatchdogScanPhase.RECONCILE.value,
+                reason=str(exc),
+            )
+    return reconciled_count
+
+
 async def scan_agent_status_once(
     coordinator: AgentStatusNotifier,
     *,
     now: datetime | None = None,
 ) -> int:
-    """Claim and deliver current missing-signal observations per target."""
+    """Claim current missing-signal observations per target, then reconcile lost turn ends."""
     observed_at = now or datetime.now(UTC)
-    return await _claim_silence_observations(coordinator, at=observed_at)
+    claimed_count = await _claim_silence_observations(coordinator, at=observed_at)
+    return claimed_count + await _reconcile_lost_turn_ends(coordinator)
 
 
 async def run_agent_status_watchdog(

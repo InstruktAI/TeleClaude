@@ -305,6 +305,13 @@ class DbHooksMixin:
                 for row in rows
             ]
 
+    async def has_undispatched_hook_events(self, session_id: str) -> bool:
+        """Return whether the session still has hook events the dispatcher has not settled."""
+        stmt = select(db_models.HookOutbox.id).where(db_models.HookOutbox.session_id == session_id).limit(1)
+        async with self._outbox_session() as db_session:
+            result = await db_session.exec(stmt)
+            return result.first() is not None
+
     async def claim_hook_outbox(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
         """Claim a hook outbox row for processing."""
         stmt = (
