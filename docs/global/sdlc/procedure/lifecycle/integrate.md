@@ -70,6 +70,8 @@ proposal operation before any mainline queue watcher or integration call.
 
 ### Runtimes activated by an install
 
+<!-- planned-change:installation-activation-inspection -->
+
 Where a project's live runtime runs from an installation that installs pushed
 revisions through its channel, a canonical-main advancement activates nothing:
 its maintenance replaces no runtime and owes no log window before publication.
@@ -80,6 +82,17 @@ integrator judges is that install. It reads the install's recorded outcome with
 the integration lane, and routes remaining breakage for a forward fix through
 the normal bug process. Where the installation still offers a return to the
 previous release, `telec app rollback` is part of that recovery.
+<!-- change:installation-activation-inspection -->
+
+Where a project's live runtime runs from an installation that installs pushed
+revisions through its channel, a canonical-main advancement activates nothing:
+its maintenance replaces no runtime and owes no log window before publication.
+The integrator publishes the integrated head and installs nothing itself; the
+installation's channel reaction installs that revision once. The integrator
+does not judge that install: every install's assessment is owned by
+`sdlc/procedure/maintenance/installation-assessment` on the installation's
+computer, so each install has one assessor.
+<!-- /planned-change:installation-activation-inspection -->
 
 ## Steps
 
