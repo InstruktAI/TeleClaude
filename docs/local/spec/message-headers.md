@@ -93,8 +93,6 @@ occupies it, and that reservation is what makes control recognition sound: a
 control test can never match authored content, and content can never be mistaken
 for machine text.
 
-<!-- planned-change:agent-input-identity-envelope -->
-
 | Header                                                                  | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
 | ----------------------------------------------------------------------- | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
 | `[TeleClaude Notification]`                                             | legacy notification entries   | control  | paired      | no               | no                         |
@@ -110,27 +108,6 @@ for machine text.
 | `[Tasker (session) on computer · utc-minute · occurrence-key]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[Job Runner (session) on computer · utc-minute · occurrence-key]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[Agent - <agent> (session) on computer · utc-minute · occurrence-key]` | caller-origin identity header | identity | paired      | yes              | yes                        |
-
-<!-- change:agent-input-identity-envelope -->
-
-| Header                                                                  | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
-| ----------------------------------------------------------------------- | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
-| `[TeleClaude Notification]`                                             | legacy notification entries   | control  | paired      | no               | no                         |
-| `[TeleClaude Wake]`                                                     | control-delivery idle wake    | control  | auto-closed | no               | no                         |
-| `[TeleClaude Restart Continuation]`                                     | historical restart entries    | control  | paired      | no               | no                         |
-| `[TeleClaude Handoff]`                                                  | agent handoff continuation    | control  | paired      | no               | no                         |
-| `[TeleClaude Checkpoint]`                                               | checkpoint surface            | control  | paired      | no               | no                         |
-| `[Peer (session · author-token · utc-minute)]`                          | peer segment header           | identity | paired      | yes              | yes                        |
-| `[Orchestrator (session) on computer · utc-minute · occurrence-key]`    | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Integrator (session) on computer · utc-minute · occurrence-key]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[System (session) on computer · utc-minute · occurrence-key]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Worker (session) on computer · utc-minute · occurrence-key]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Tasker (session) on computer · utc-minute · occurrence-key]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Job Runner (session) on computer · utc-minute · occurrence-key]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Agent - <agent> (session) on computer · utc-minute · occurrence-key]` | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Outside Agent (one-way) on computer · utc-minute · occurrence-key]`   | outside-agent identity header | identity | paired      | yes              | yes                        |
-
-<!-- /planned-change:agent-input-identity-envelope -->
 
 Restart continuation is a semantic control envelope at the runtime hook
 boundary. Its paired bracket form is recognized for historical transcript
@@ -152,20 +129,6 @@ the opaque durable key already owned by the accepted input row; it correlates th
 envelope to that occurrence and carries no author fields or attribution authority.
 Both values are rendered once into the opening and the paired close is derived
 from it, so the two never disagree.
-
-<!-- planned:agent-input-identity-envelope -->
-
-The outside-agent identity header wraps what an agent running outside the
-platform sends through the `telec` CLI session commands. It names the computer
-the CLI ran on and carries `utc-minute` and `occurrence-key` like a
-caller-origin header. It names no session: no platform session holds that
-agent, so no reply is ever relayed to it, and `one-way` states that to its
-reader. Its accepted row records an agent author with no session. Neither the
-header nor the row references the headless session the platform keeps for that
-agent's hooks; that session plays no part in the message and remains available
-only for a person to adopt.
-
-<!-- /planned:agent-input-identity-envelope -->
 
 During mixed-version operation, the caller opening recognizer accepts both the
 keyed and preceding keyless shape. An upgraded target canonicalizes a keyless

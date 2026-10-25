@@ -161,11 +161,28 @@ without listing people; it is absent for any other caller.
 Authorization happens once, in the client process that serves the caller, before
 the client sends any request:
 
+<!-- planned-change:agent-input-identity-envelope -->
+
 - the caller resolves from the identity it carries, never from a claim it
   supplies: a caller inside a session resolves from its session record, reached
   through the session id its identity document names, and a principal copied into
   that document is never trusted; a caller outside any session resolves from its
   terminal login, and the TUI from the identity it was launched with,
+
+<!-- change:agent-input-identity-envelope -->
+
+- the caller resolves from the identity it carries, never from a claim it
+  supplies: a caller inside a session resolves from its session record, reached
+  through the session id its identity document names, and a principal copied into
+  that document is never trusted; an agent running outside the platform resolves
+  from the headless session the platform keeps for it, found by the native
+  session id its runtime exports to the agent's tool processes
+  (`local/projects/teleclaude/spec/session-identity-truth`), and is cleared as
+  that session; any other caller outside a session resolves from its terminal
+  login, and the TUI from the identity it was launched with,
+
+<!-- /planned-change:agent-input-identity-envelope -->
+
 - a session's principal resolves through the principal-resolution capability; its
   person role for a command is that person's effective role at the command's scope
   (`local/projects/teleclaude/design/architecture/scoped-roles`), read from the people registry and

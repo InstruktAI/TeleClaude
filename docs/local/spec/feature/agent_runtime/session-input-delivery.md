@@ -164,25 +164,12 @@ declared once on its canonical agent entry
 (`local/projects/teleclaude/spec/feature/agent_runtime/agent-vocabulary`), so a
 supported runtime without a declaration cannot exist.
 
-<!-- planned-change:agent-input-identity-envelope -->
-
 Input a person enters at the terminal or the TUI, including what the TUI and
 the `telec` CLI send through the platform's API, and platform-authored text —
 envelopes, command loaders, continuations — keep full interface control and are
 submitted as written. The platform's API is a local socket that records
 terminal origin; a conversation channel delivers through its own adapter
 ingress, which records the channel.
-
-<!-- change:agent-input-identity-envelope -->
-
-Input a person enters at the terminal or the TUI, what the TUI and the `telec`
-CLI send through the platform's API, and platform-authored text — envelopes,
-command loaders, continuations — keep full interface control and are submitted
-as written. The platform's API is a local socket that records terminal origin;
-a conversation channel delivers through its own adapter ingress, which records
-the channel.
-
-<!-- /planned-change:agent-input-identity-envelope -->
 
 The platform never alters transcript or prompt-hook text to remove the mark; a
 runtime records it or drops it. Accepted-input correlation recognizes a
@@ -348,13 +335,22 @@ recovery continues to use this surface's durable accepted-input evidence.
 
 <!-- change:agent-input-identity-envelope -->
 
-- **Origin wrapping identifies every agent-originated message.** One wrapping step prepends an identity header to every message an agent sends into a session or starts one with: a plain send, a session start message, the final message of a direct link's close, and a personal assistant's opening brief. A caller whose session runs an agent is named by that agent as the author, qualified by the caller's role name when one exists; a caller whose session runs no agent is named by its role's header label from the agent role catalog (`local/projects/teleclaude/spec/feature/identity/agent-roles`), drawn from the closed label vocabulary. The role is read from the session record's single role field; authorship on the accepted row is unchanged. A caller whose session resolves to no machine role, such as a top-level interactive session, is named as an agent and identified by its active agent and session id; it is delivered, not refused. Command-dispatched startup input keeps its command form. The human whose account the session runs under is lineage, not authorship, and never appears in the header. The `telec` CLI session commands are an agent surface: a send or start through them that carries no caller session id comes from an agent running outside the platform, and the same step wraps it in the one-way outside-agent header (`local/projects/teleclaude/spec/message-headers`). Only human input entered at the terminal, in the TUI, or through a conversation channel is delivered unwrapped. The carried caller session is taken as given and read from this computer, where the caller runs; no fabricated role, agent, or host attribution is ever substituted to force a header.
+- **Origin wrapping identifies every agent-originated message.** One wrapping step prepends an identity header to every message an agent sends into a session or starts one with: a plain send, a session start message, the final message of a direct link's close, and a personal assistant's opening brief. A caller whose session runs an agent is named by that agent as the author, qualified by the caller's role name when one exists; a caller whose session runs no agent is named by its role's header label from the agent role catalog (`local/projects/teleclaude/spec/feature/identity/agent-roles`), drawn from the closed label vocabulary. The role is read from the session record's single role field; authorship on the accepted row is unchanged. A caller whose session resolves to no machine role, such as a top-level interactive session, is named as an agent and identified by its active agent and session id; it is delivered, not refused. Command-dispatched startup input keeps its command form. The human whose account the session runs under is lineage, not authorship, and never appears in the header. An agent running outside the platform carries the headless session the platform keeps for it as its caller session (`local/projects/teleclaude/spec/identity-and-auth`, §6), so its messages are wrapped as that session's. Only genuine human direct input, which carries no caller session id, is delivered unwrapped. The carried caller session is taken as given and read from this computer, where the caller runs; no fabricated role, agent, or host attribution is ever substituted to force a header.
 
 <!-- /planned-change:agent-input-identity-envelope -->
 
 - **The origin header carries no attribution authority.** The header is what the receiving agent reads; it is not what downstream surfaces attribute from. Authorship for a session-originated send is carried structurally on the accepted row and its transcript binding, so the header can be absent, altered, or imitated without moving attribution.
 
+<!-- planned-change:agent-input-identity-envelope -->
+
 - **Auto-registered one-shot listener is best-effort.** When a non-self caller with a host pane sends a work-mode message, the agent_runtime service attempts a one-shot listener registration so the caller sees the response. Failures are swallowed at debug and never block delivery.
+
+<!-- change:agent-input-identity-envelope -->
+
+- **Auto-registered one-shot listener is best-effort.** When a non-self caller session that receives control delivery sends a work-mode message, the agent_runtime service attempts a one-shot listener registration so the caller sees the response. A host pane is not required: the response reaches the caller through control delivery (`local/projects/teleclaude/spec/feature/agent_runtime/control-delivery`), so the headless session of an agent running outside the platform hears back like any other caller. Failures are swallowed at debug and never block delivery.
+
+<!-- /planned-change:agent-input-identity-envelope -->
+
 - **No payload size cap at this layer.** The buffer-load step reads from stdin so the host-pane argument-length limit does not apply, but very large payloads still pay paste-time cost in the agent's terminal renderer.
 
 ## See Also
