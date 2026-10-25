@@ -20,7 +20,6 @@ from teleclaude.core.next_machine.marker_reconciliation import (
     restore_lifecycle_markers,
 )
 from teleclaude.core.todos_db._errors import HolderWriteRefused
-from teleclaude.core.todos_db._exceptions import RemoveRefused
 from teleclaude.core.todos_db._identity_pin import apply_todo_identity_pin
 from teleclaude.core.todos_db._models import (
     TODO_DEPS_TABLE,
@@ -48,7 +47,6 @@ from teleclaude.docs_reconcile import (
     ReconciliationMode,
     ReconciliationPlan,
     ReconciliationWrite,
-    scan_remove_orphans,
 )
 
 _SOFT_REMOVE_LOCKS: dict[str, asyncio.Lock] = {}
@@ -228,7 +226,9 @@ class TodosDbTodoSoftDeleteMixin:
         artifacts, and artifact version history are intentionally retained.
 
         Before the DB mutation commits, the owner-session path snapshots and
-        applies this slug's pending documentation marker cleanup. After the
+        applies this slug's pending documentation abandonment: markers fold to
+        their undelivered side and a pending document only this slug delivers is
+        deleted, both captured for reactivation. After the
         durable removal lands, it conditionally commits that exact-path cleanup
         only when every affected path was pre-clean, then runs slug-keyed
         filesystem teardown through :func:`cleanup_delivered_slug` (worktree +
@@ -267,10 +267,6 @@ class TodosDbTodoSoftDeleteMixin:
                         await db_session.rollback()
                     return False
 
-                todo_status_map = await cast(Any, self)._todo_status_map(db_session)
-                blocking_snippets = scan_remove_orphans(Path(cwd), slug, todo_status_map)
-                if blocking_snippets:
-                    raise RemoveRefused(slug=slug, blocking_snippets=blocking_snippets)
                 if owns_session:
                     receipt = reconcile_lifecycle_markers(Path(cwd), slug, MarkerMoment.ABANDON)
                     if not receipt.succeeded or receipt.plan is None:

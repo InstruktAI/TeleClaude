@@ -233,18 +233,6 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
             )
         return state_model
 
-    async def _todo_status_map(self, session: SqlAsyncSession) -> dict[str, str]:
-        """Return a slug-status map where any non-removed row outranks removed history."""
-        rows = await session.exec(select(TODO_TABLE.c.slug, TODO_TABLE.c.status))
-        status_map: dict[str, str] = {}
-        for slug, status in rows.all():
-            if not isinstance(slug, str) or not isinstance(status, str):
-                continue
-            current = status_map.get(slug)
-            if current is None or (current == "removed" and status != "removed"):
-                status_map[slug] = status
-        return status_map
-
     async def _list_todo_models(
         self,
         *,
