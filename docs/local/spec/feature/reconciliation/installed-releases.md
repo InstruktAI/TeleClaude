@@ -67,8 +67,10 @@ starts the daemon on it, under the guarantees of
   contract supports.
 - **Idempotent.** Installing the revision that is already active changes
   nothing.
-- **Failure.** An install that cannot complete leaves the previously active
-  release active and serving, and reports why.
+- **Failure.** An install that fails before any migration changes state
+  leaves the previously active release active and serving, and reports why.
+  One that fails after a migration has changed state reports the failure and
+  which state moved, is never reported as complete, and is repaired forward.
 - **Every route is this act.** The bootstrap, channel convergence and an
   explicit `telec app install` all reach the live platform through it. What a
   commit on a project's main owes is
@@ -93,9 +95,8 @@ and starts the daemon; the terminal interface starts it by itself.
 ### Moving off a project checkout
 
 On a machine where the platform runs from its project checkout, one run
-creates the installation with the revision the platform already runs as its
-active release and moves the services, the published `telec` and the
-home-level links to it. The checkout stays where it is, an ordinary project
+creates the installation, installs a release through the install act, and
+moves the services, the published `telec` and the home-level links to it. The checkout stays where it is, an ordinary project
 with all its todos, worktrees and claims.
 
 ### Operating surface
@@ -134,11 +135,17 @@ Scenario: Installing an older revision
   Then the install is refused
   And the platform keeps running the active release
 
-Scenario: An install that cannot complete
-  Given an install of a newer revision fails part-way
+Scenario: An install that fails before migrating
+  Given an install of a newer revision fails before any migration changed state
   When the operator looks at the installation's status
   Then the previously active release is still active and serving
   And the failure and its reason are reported
+
+Scenario: An install that fails after migrating
+  Given an install of a newer revision fails after a migration changed state
+  When the operator looks at the installation's status
+  Then the install is reported as failed, not complete
+  And the report names which state moved
 ```
 
 #### UC-IR3: An agent returns the platform to the previous release
@@ -172,7 +179,7 @@ And nothing in the project checkout is run or changed
 Given a machine whose platform runs from the operator's project checkout
 And that project holds todos, worktrees and claims
 When the operator runs the move once
-Then the platform runs from an installation on the revision it ran before
+Then the platform runs from an installation
 And the project keeps every todo, worktree and claim where it was
 ```
 
