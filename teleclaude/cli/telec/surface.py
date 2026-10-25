@@ -2020,7 +2020,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         auth=CommandAuth(capability=Capability.CODE, human=_HR_MEMBER),
     ),
     "app": CommandDef(
-        desc="Operate the installed platform: its status, lifecycle, installs and rollback",
+        desc="Operate the installed platform: its status, lifecycle, installs, rollback and assessments",
         flags=[F.FLAG_HELP],
         notes=[
             "Every verb acts on the machine's installation, whatever directory the caller stands in; nothing in a project checkout is run or changed.",
@@ -2028,7 +2028,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         ],
         subcommands={
             "status": CommandDef(
-                desc="Show the daemon's health, the active release and the last install or rollback",
+                desc="Show the daemon's health, the active release, the last install or rollback and the installs owed an assessment",
                 flags=[F.FLAG_HELP],
                 examples=["telec app status"],
                 auth=CommandAuth(
@@ -2073,6 +2073,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Refused, naming the condition, when a migration has started since the active release became active."
                 ],
                 examples=["telec app rollback"],
+                auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+            ),
+            "assessed": CommandDef(
+                desc="Record that an install's running release has been assessed",
+                args="<install>",
+                flags=[F.FLAG_HELP],
+                notes=[
+                    "`<install>` is the number `telec app status` lists for an owed install. It discharges that install and every earlier owed one.",
+                    "A later install stays owed, a later attempt at the same revision included.",
+                    "Refuses, naming the owed installs, when none carries that number, and while the daemon does not serve the active release.",
+                ],
+                examples=["telec app assessed 3"],
                 auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
             ),
         },
@@ -2207,6 +2219,7 @@ APP_STOP = CLI_SURFACE["app"].subcommands["stop"]
 APP_RESTART = CLI_SURFACE["app"].subcommands["restart"]
 APP_INSTALL = CLI_SURFACE["app"].subcommands["install"]
 APP_ROLLBACK = CLI_SURFACE["app"].subcommands["rollback"]
+APP_ASSESSED = CLI_SURFACE["app"].subcommands["assessed"]
 
 CONTENT_DUMP = CLI_SURFACE["content"].subcommands["dump"]
 

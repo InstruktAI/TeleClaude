@@ -40,6 +40,7 @@ class ReferenceKind(StrEnum):
     MEMORY_SCOPE = "memory_scope"
     CI_RUN = "ci_run"
     COMMIT = "commit"
+    INSTALL = "install"
 
 
 @dataclass(frozen=True)
@@ -220,3 +221,10 @@ class CommitRef(TypedRef):
     """A commit of a repository, by ``<repository_id>/<sha>``."""
 
     KIND: ClassVar[ReferenceKind] = ReferenceKind.COMMIT
+
+
+@dataclass(frozen=True)
+class InstallRef(TypedRef):
+    """An install of a release on a computer, by ``<computer>/<number>``; the number is the installation's own."""
+
+    KIND: ClassVar[ReferenceKind] = ReferenceKind.INSTALL

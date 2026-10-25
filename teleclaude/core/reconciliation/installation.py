@@ -31,6 +31,7 @@ _REPOSITORY_DIRECTORY = "repository"
 _RELEASES_DIRECTORY = "releases"
 _CURRENT_POINTER = "current"
 _RECORD_FILENAME = "install-record.json"
+_ASSESSMENT_RECORD_FILENAME = "assessment-record.json"
 _UNRECORDED_START_FILENAME = "unrecorded-migration-start"
 # The marker content that names the active release rather than an install target.
 _MARKER_ACTIVE_RELEASE = ""
@@ -298,6 +299,11 @@ class InstallationLayout:
     def record_path(self) -> Path:
         """The install record."""
         return self.root / _RECORD_FILENAME
+
+    @property
+    def assessment_record_path(self) -> Path:
+        """The assessment record: a sibling file, so a release that predates it never reads a record carrying it."""
+        return self.root / _ASSESSMENT_RECORD_FILENAME
 
     @property
     def unrecorded_start_paths(self) -> tuple[Path, ...]:

@@ -30,6 +30,8 @@ from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.procedure_routing import build_procedure_activation_consumer
 from teleclaude.core.reconciliation import FleetCapabilityMap, contraction_answer_from_live_map
+from teleclaude.core.reconciliation.installation import InstallationLayout
+from teleclaude.core.reconciliation.installation_assessment import AssessmentAnnouncer
 from teleclaude.core.reconciliation.installation_reaction import build_installation_reaction_consumer
 from teleclaude.core.runtime_event_consumers import RuntimeVoiceSurface, build_runtime_event_consumers
 from teleclaude.core.runtime_events import INTERNAL_RUNTIME_EVENT_STREAM
@@ -99,6 +101,8 @@ _RETIRED_GROUP_TEMPLATE = "{group}-{computer}"
 _RETIRED_GROUP_DESTROYED_EVENT = "Retired system pipeline consumer group destroyed"
 _RETIRED_GROUP_ABSENT_EVENT = "No stream yet; no retired system pipeline consumer group to destroy"
 _TASK_SCHEDULE_CLOCK_TASK_NAME = "task-schedule-clock"
+_ASSESSMENT_ANNOUNCER_TASK_NAME = "installation-assessment-announcer"
+_ASSESSMENT_ANNOUNCER_STARTED_EVENT = "Installation assessment announcer started"
 _EVENT_CONSUMERS_STARTED_EVENT = "Event consumer runtime started"
 _MEMORY_TRANSITION_TASK_NAME = "memory-transition"
 _MEMORY_TRANSITION_LOG_TASK_NAME = "memory_transition"
@@ -142,6 +146,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _runtime_consumer_runtime: ConsumerRuntime | None
         _relay_delivery_processor: EventProcessor[Any] | None
         _task_schedule_clock_task: SupervisedTask | None
+        _assessment_announcer_task: SupervisedTask | None
         _hook_dispatcher: HookDispatcher | None
         cache: DaemonCache
 
@@ -422,6 +427,14 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         )
         logger.info("Task schedule minute clock started")
 
+    def _start_assessment_announcer(self, event_producer: EventProducer) -> None:
+        """Start the announcer that repeats the owed installation assessment while an install is owed."""
+        announcer = AssessmentAnnouncer(event_producer, InstallationLayout(), config.computer.name)
+        self._assessment_announcer_task = self.task_registry.supervise(
+            _ASSESSMENT_ANNOUNCER_TASK_NAME, partial(announcer.run, self.shutdown_event), restart=True
+        )
+        logger.info(_ASSESSMENT_ANNOUNCER_STARTED_EVENT)
+
     async def _start_event_platform_prepare(self) -> None:
         """Prepare the owned producer, both reader positions, and ingress boundary before startup producers run."""
         redis_configured = bool(config.redis.url)
@@ -486,6 +499,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         )
         await self._emit_daemon_restarted_event(event_producer, computer_label)
         self._start_task_schedule_clock(event_producer)
+        self._start_assessment_announcer(event_producer)
 
     async def _init_webhook_service(self) -> None:
         """Prepare the hook dispatcher, inbound routes and its reader position before startup producers run."""
