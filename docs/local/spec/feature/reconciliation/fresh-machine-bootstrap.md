@@ -32,8 +32,7 @@ publishes `telec` from it; it never turns the checkout it runs from into the
 live platform, and a project checkout it runs from stays an ordinary project.
 When installation completes, the machine can be started with no further setup,
 has an owner who can administer it, and serves the documentation and agent
-artifacts of its installed release — or, where a project checkout of the
-platform is registered, those that checkout publishes
+artifacts the platform's publication deploys for it
 (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
 
 <!-- /planned-change:docs-publish-on-commit -->
@@ -211,16 +210,6 @@ And uncommitted changes in the checkout installation ran from are not published
 
 #### UC-FMB12: Installation publishes the installed release's documentation
 
-```gherkin
-Given a fresh machine whose home has never received published documentation
-And no project checkout of the platform is registered on it
-When installation completes
-Then the home serves the documentation and agent artifacts committed at the installed release's commit
-And a published snippet can be read through the documentation surface
-And the platform starts without failing to find its published documentation
-And uncommitted changes in the checkout installation ran from are not published
-```
-
 <!-- /planned-change:docs-publish-on-commit -->
 
 #### UC-FMB13: Installation that cannot publish does not succeed
@@ -245,13 +234,6 @@ Then the home serves the documentation and agent artifacts committed at that rel
 <!-- change:docs-publish-on-commit -->
 
 #### UC-FMB14: A release installed from a tag publishes that release
-
-```gherkin
-Given a machine whose home serves documentation from another commit
-And no project checkout of the platform is registered on it
-When installation installs a release tag
-Then the home serves the documentation and agent artifacts committed at that release
-```
 
 <!-- /planned-change:docs-publish-on-commit -->
 
