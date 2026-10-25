@@ -104,19 +104,9 @@ lane's section and, when no Important-or-higher finding remains, its clean-pass
 evidence — with the verdict, to the caller. Then stamp the verdict on exactly
 the named SHAs:
 
-<!-- planned-change:telec-repo-command-family -->
-
-```bash
-telec code stamp <sha1>,<sha2>,... --verdict approve|request_changes
-```
-
-<!-- change:telec-repo-command-family -->
-
 ```bash
 telec repo stamp <sha1>,<sha2>,... --verdict approve|request_changes
 ```
-
-<!-- /planned-change:telec-repo-command-family -->
 
 The stamp resolves its todo, if any, from the session that started this
 review. Do not select a todo or write a todo artifact.

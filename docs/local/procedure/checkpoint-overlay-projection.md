@@ -101,24 +101,6 @@ left in place. The `.gitattributes` docs line stays a one-time additive install
 at onboard — disabling a capability edits no project-tracked file other than
 the declaration carrying the toggle.
 
-<!-- planned-change:telec-repo-command-family -->
-
-A greenfield project — no pre-existing git hooks — has nothing to assess here:
-convergence installs the TeleClaude-owned set cleanly. A brownfield project's
-existing hooks are assessed one at a time, by one test: does this hook's logic
-already have a checkpoint or maintenance equivalent? If yes, translate it into
-a binding (Steps 1–3) and remove the project hook so plumbing installs
-TeleClaude's in its slot; this is the default outcome. If the logic has no
-equivalent at all, leave the hook in place unmodified — plumbing never
-overwrites a hook it did not write
-(`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`). Only
-when neither holds — logic with no equivalent that must still coexist with
-TeleClaude's own dispatch — hand-author the hook without the sentinel, having
-it itself call `telec code <hook-name>` alongside the project's own steps, and
-name it explicitly in the assessment's output.
-
-<!-- change:telec-repo-command-family -->
-
 A greenfield project — no pre-existing git hooks — has nothing to assess here:
 convergence installs the TeleClaude-owned set cleanly. A brownfield project's
 existing hooks are assessed one at a time, by one test: does this hook's logic
@@ -132,8 +114,6 @@ when neither holds — logic with no equivalent that must still coexist with
 TeleClaude's own dispatch — hand-author the hook without the sentinel, having
 it itself call `telec repo <hook-name>` alongside the project's own steps, and
 name it explicitly in the assessment's output.
-
-<!-- /planned-change:telec-repo-command-family -->
 
 Verify convergence's result rather than its log lines alone: a project's own
 pre-existing convention can redirect a platform-installed target that must

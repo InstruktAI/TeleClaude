@@ -45,52 +45,6 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 ## Invariants
 
-<!-- planned-change:telec-repo-command-family -->
-
-1. **Unified turn timer**: `turn_start = max(last_message_sent_at, last_checkpoint_at)`. The most recent input event (real user message or previous checkpoint) marks when the agent's current work period began. If `now - turn_start < 30s`, the checkpoint is skipped. This works identically for all agent types and both delivery paths.
-
-2. **Checkpoint messages are invisible to session state**: They never persist as user input. `handle_user_prompt_submit` returns early (before notification clearing or DB writes). The native session transcript retains them as ground truth.
-
-3. **Notification flag preservation**: Checkpoint injections do not clear the notification flag. Only real user input clears it. This prevents users from missing notifications about completed agent work.
-
-4. **Per-turn clearing**: `handle_user_prompt_submit` clears `last_checkpoint_at` and `last_tool_use_at` on real user input so each turn starts fresh.
-
-5. **Atomic, time-anchored checkpoint-cycle scope**: Checkpoint action selection and evidence — what judgment remains and what was observed — are scoped from the latest TeleClaude checkpoint emitted by the `Stop` hook. Before any checkpoint exists in the work, the scope falls back to the latest real user input. Dirty files from the broader user turn are filtered through this checkpoint-cycle transcript slice, so old dirty files cannot trigger new checkpoint actions after a reset. A commit records and starts deterministic maintenance at its own boundary and creates no later checkpoint maintenance obligation. Git is consulted only as the category oracle, never as the arbiter of in-scope or done.
-
-6. **TTS dedup**: Agent output extracted at `agent_stop` is compared against `last_output_raw` in the session. If identical, summarization and TTS are skipped. This prevents double-speaking when a checkpoint-induced `agent_stop` re-extracts the same output.
-
-7. **DB-persisted state**: Checkpoint state lives in the sessions table (`last_checkpoint_at`, `last_message_sent_at`). No in-memory state. Survives daemon restarts.
-
-8. **Post-restart unconditional injection**: After an agent restart via the API, checkpoint injection bypasses the 30-second threshold but still waits for agent prompt readiness before sending the continuation prompt or checkpoint.
-
-9. **Turn-scoped hook escape hatch**: The receiver honors a per-session clear marker file (`teleclaude_checkpoint_clear`) in the session temp directory. If present, `agent_stop` passes through immediately for the current turn; the marker is hard-cleared at the next `user_prompt_submit`, so a manual clear lasts one turn only. The involuntary recheck loop-guard (re-entry limiter) is retained as the hard backstop against an evidence-miss spinning forever. Otherwise, every `agent_stop` evaluates the current checkpoint-cycle scope; repeated stop events are acceptable because the latest checkpoint prompt resets files, evidence, and errors together.
-
-10. **Hook stop suppression**: When `_maybe_checkpoint_output` fires for Claude/Gemini/Codex, the receiver prints blocking JSON and exits without enqueuing the `agent_stop` event. The daemon never sees the blocked stop, so no output extraction, TTS, or listener notifications fire for checkpoint turns.
-
-11. **Suppressibility**: Every judgment-action heuristic checks for positive evidence in the checkpoint-cycle tool-call timeline. If the expected judgment action was already performed in that cycle (for example, a log check or targeted test), its instruction is suppressed. `telec code commit` output that reaches the main-branch classification gate is evidence that the commit-options step was performed, even though no approved commit occurred. When all instructions are suppressed and no observations remain, the checkpoint is "all-clear".
-
-12. **Two-layer error detection**: Layer 1 (structural gate) only fires for tool results with `is_error: true`. Layer 2 (content enrichment) pattern-matches the result snippet to produce targeted feedback. Successful commands with error-like output (e.g., log viewers showing tracebacks) never trigger observations.
-
-13. **Fail-open design**: Git unavailable → generic Phase 1 message. Transcript unavailable → file-based instructions only (no suppression). Any exception in the builder → generic Phase 1 message. The checkpoint never blocks due to infrastructure failure.
-
-14. **Delivery parity**: Claude, Gemini, and Codex all call the same `get_checkpoint_content()` entry point through the hook receiver, ensuring identical heuristic output regardless of agent runtime.
-
-15. **Dynamic log-check window**: An ordinary turn-local log action derives its window from the turn start (`max(last_message_sent_at, last_checkpoint_at)`), rounded up to minutes with a minimum of `2m`. An integrator-maintenance marker instead anchors the log window at or before its earliest recorded activation and accepts only a log read made after its latest maintenance-ready time. A later parked watch therefore covers the activation and the post-maintenance interval rather than inheriting the short turn-local window.
-
-16. **Commit-options checkpoint policy**: Checkpoints may require running `telec code commit` to surface the commit classification/options flow, but they must not force an approved commit at `agent_stop`. Commit decisions belong to task-completion flow and human/review gates.
-
-17. **Silent housekeeping + short debrief policy**: Checkpoint payloads instruct agents to execute checkpoint-required housekeeping silently, then provide a short user-relevant debrief focused on task outcome, blocker, or decision request. Checkpoint chore details are omitted from user-facing messages.
-
-18. **Code-scoped post-commit review gate**: The session-scoped authored-main-commit latch is armed by `telec code commit` only when the committed pathspec includes code. The latch triggers only the post-commit review gate — never the action or evidence ledger; commit-action suppression derives from commit evidence in the timeline, not from the latch. Doc-only main commits commit but do not arm the review gate — under doc-first, documentation is reviewed in the lifecycle, not at the post-commit review gate.
-
-19. **Integrator post-advance judgment**: Every canonical-main advancement records the tailored deterministic maintenance resolved for its immutable activation and starts the one-shot drain. A root commit enters through post-commit; a merge or fast-forward enters through post-merge. After the action records are durable, that same commit boundary records a checkout-scoped marker when the changed paths owe `log-check`, including a direct main commit with no todo candidate. The marker accumulates qualifying activations, each with its activation time, and carries no mechanical action id. It becomes eligible for log judgment only after every owed action for those activations has terminal success, where the restart action succeeds only once its stopped-daemon window has verified the started daemon (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`) and the runtime's behavior after it is judged by the log read rather than by the action; a pending, failed, or interrupted action keeps the marker outstanding. The executor records the latest maintenance-ready time on the marker when this condition is met. An absent ready time also keeps the marker outstanding for integrator recovery if the executor was interrupted after removing its last action file. The integrator then reads structured results and runtime logs covering the earliest activation through the post-maintenance interval. A log read made before that ready time or with a window beginning after activation never discharges the marker. Its recurring watch discovers the marker even when an action's success file was removed before the watch fired. Ordinary committing sessions do not receive this repository's maintenance log judgment; delayed anomalies remain eligible for the log bug hunter. Checkout addressing lets a successor integrator inherit an unfinished judgment without repeating mechanical maintenance.
-
-20. **The commit boundary records what a commit's paths owe**: A sealed `telec code commit` on the canonical checkout's main branch records and starts the maintenance its committed paths owe (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`) before returning. The checkpoint engine carries no mechanical maintenance obligation against that commit: action records and structured outcomes belong to the one-shot executor, not transcript substring matching. Tests remain cycle-local advisories on the dirty tree. In this repository, the file-based checkpoint does not surface `log-check` to an ordinary committing session; the standing integrator owns the post-maintenance judgment. The commit remains the attributing action for files the agent committed but did not itself Edit or Write. The post-commit review latch of Invariant 18 is unaffected — routing review is a judgment, not a command, and the latch that arms it is independent of maintenance completion.
-
-21. **Companion-drift detection**: when a turn's changed files include a live parent doc snippet (`<stem>.md`) whose non-empty pending companion sibling (`<stem>.<slug>.md`) exists on disk but is absent from the changed set, the engine surfaces an action to mirror the parent edit into the companion — catching, at agent_stop, the edit that the companion would otherwise clobber when it replaces the parent at delivery. An empty companion retires its parent instead of replacing it (`general/spec/snippet-authoring-schema`), so no edit is clobbered and it is never a mirror target. The check is a filename-derived presence and size test (reusing the companion-detection helpers the doc index uses); companion in the changed set suppresses it for free. It mechanizes only the question code may answer (presence); whether the companion is a correct mirror stays with the reviewer (intelligence-boundaries).
-
-<!-- change:telec-repo-command-family -->
-
 1. **Unified turn timer**: `turn_start = max(last_message_sent_at, last_checkpoint_at)`. The most recent input event (real user message or previous checkpoint) marks when the agent's current work period began. If `now - turn_start < 30s`, the checkpoint is skipped. This works identically for all agent types and both delivery paths.
 
 2. **Checkpoint messages are invisible to session state**: They never persist as user input. `handle_user_prompt_submit` returns early (before notification clearing or DB writes). The native session transcript retains them as ground truth.
@@ -132,8 +86,6 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 20. **The commit boundary records what a commit's paths owe**: A sealed `telec repo commit` on the canonical checkout's main branch records and starts the maintenance its committed paths owe (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`) before returning. The checkpoint engine carries no mechanical maintenance obligation against that commit: action records and structured outcomes belong to the one-shot executor, not transcript substring matching. Tests remain cycle-local advisories on the dirty tree. In this repository, the file-based checkpoint does not surface `log-check` to an ordinary committing session; the standing integrator owns the post-maintenance judgment. The commit remains the attributing action for files the agent committed but did not itself Edit or Write. The post-commit review latch of Invariant 18 is unaffected — routing review is a judgment, not a command, and the latch that arms it is independent of maintenance completion.
 
 21. **Companion-drift detection**: when a turn's changed files include a live parent doc snippet (`<stem>.md`) whose non-empty pending companion sibling (`<stem>.<slug>.md`) exists on disk but is absent from the changed set, the engine surfaces an action to mirror the parent edit into the companion — catching, at agent_stop, the edit that the companion would otherwise clobber when it replaces the parent at delivery. An empty companion retires its parent instead of replacing it (`general/spec/snippet-authoring-schema`), so no edit is clobbered and it is never a mirror target. The check is a filename-derived presence and size test (reusing the companion-detection helpers the doc index uses); companion in the changed set suppresses it for free. It mechanizes only the question code may answer (presence); whether the companion is a correct mirror stays with the reviewer (intelligence-boundaries).
-
-<!-- /planned-change:telec-repo-command-family -->
 
 ### Invariant 22 — Base ⊕ overlay action set
 
@@ -195,37 +147,6 @@ the resulting evaluation owes no commit action.
 
 ### Invariant 28 — Undeclared-write question
 
-<!-- planned-change:telec-repo-command-family -->
-
-On a shared branch, the engine derives advisory candidates from the same
-checkpoint-cycle timeline as Invariant 5: dirty paths the stopping session has
-not declared that appear, as an exact path, at a write target of a successful
-shell command of that cycle. A write target is a redirection destination, a
-path a file-writing command creates, modifies, or removes (not a path it only
-reads, such as a copy source), or the destination of a recognized write call
-in an interpreter script. That destination is read from the call's own
-destination expression, following a bare name to the single assignment that
-binds it; a known dirty path named there is a target, and the call's content
-and the script's other literals are data. A destination that cannot be read
-this way, such as one computed through calls or loops, yields no target,
-because the engine never evaluates code. A path that appears only in a quoted
-argument of a command
-that writes nothing, in heredoc data fed to a command that is not an
-interpreter, as data inside a script, or in other non-target text is not at a
-write target, so a
-command that writes one file while carrying another path as data raises no
-question about that other path. The candidates are rendered as a named question
-inviting `telec code add`; they never join the effective file set, never write a
-declaration, and never raise an obligation. Edit-tool writes are not
-candidates: the hook receiver declares them when the call succeeds
-(`sdlc/design/workspace-scoping`). When the effective set is empty but
-candidates exist, the engine still produces a decision carrying the question.
-Locating write targets from shell syntax outside quotes and heredoc data, and
-matching a known dirty path there, is structural; the engine never derives a
-path from command text that is not already a known dirty path.
-
-<!-- change:telec-repo-command-family -->
-
 On a shared branch, the engine derives advisory candidates from the same
 checkpoint-cycle timeline as Invariant 5: dirty paths the stopping session has
 not declared that appear, as an exact path, at a write target of a successful
@@ -252,8 +173,6 @@ candidates exist, the engine still produces a decision carrying the question.
 Locating write targets from shell syntax outside quotes and heredoc data, and
 matching a known dirty path there, is structural; the engine never derives a
 path from command text that is not already a known dirty path.
-
-<!-- /planned-change:telec-repo-command-family -->
 
 ### Invariant 29 — On-demand disposition
 

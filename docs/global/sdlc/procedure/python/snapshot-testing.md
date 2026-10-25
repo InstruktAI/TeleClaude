@@ -21,18 +21,6 @@ Implement the generic snapshot-testing contract in Python with syrupy, pytest ex
 
 ## Steps
 
-<!-- planned-change:telec-repo-command-family -->
-
-1. Receive `snapshot: SnapshotAssertion` and compare the complete emitted value with `assert rendered == snapshot`.
-2. Keep snapshots inline by default. Use a file snapshot when the captured output is large enough that the test becomes difficult to scan.
-3. Normalize unstable properties with syrupy's `path_type` or `path_value` matchers before comparison. Keep the normalization narrowly scoped to the unstable field.
-4. For a non-empty boundary guard, assert the value's truthiness through a typed helper; do not inspect its wording.
-5. Represent protocol identifiers and closed vocabularies with the production-owned enum or nominal type. Import that member into the test for identity comparison, and snapshot its serialized schema value separately when that wire value is contractual.
-6. Replace equality, membership, prefix, suffix, search, and regex assertions over emitted text with a syrupy snapshot. Assert raised failures with `pytest.raises(<ExceptionType>)`, not their message text.
-7. Run `telec code test`, read every snapshot diff, and only then run `telec code test --update-snapshots` when the delta matches intent.
-
-<!-- change:telec-repo-command-family -->
-
 1. Receive `snapshot: SnapshotAssertion` and compare the complete emitted value with `assert rendered == snapshot`.
 2. Keep snapshots inline by default. Use a file snapshot when the captured output is large enough that the test becomes difficult to scan.
 3. Normalize unstable properties with syrupy's `path_type` or `path_value` matchers before comparison. Keep the normalization narrowly scoped to the unstable field.
@@ -40,8 +28,6 @@ Implement the generic snapshot-testing contract in Python with syrupy, pytest ex
 5. Represent protocol identifiers and closed vocabularies with the production-owned enum or nominal type. Import that member into the test for identity comparison, and snapshot its serialized schema value separately when that wire value is contractual.
 6. Replace equality, membership, prefix, suffix, search, and regex assertions over emitted text with a syrupy snapshot. Assert raised failures with `pytest.raises(<ExceptionType>)`, not their message text.
 7. Run `telec repo test`, read every snapshot diff, and only then run `telec repo test --update-snapshots` when the delta matches intent.
-
-<!-- /planned-change:telec-repo-command-family -->
 
 ## Outputs
 

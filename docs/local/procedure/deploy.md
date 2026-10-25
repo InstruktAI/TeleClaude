@@ -102,21 +102,10 @@ checking the daemon version: `telec version`.
 
 ## Recovery
 
-<!-- planned-change:telec-repo-command-family -->
-
-If a computer received the event but did not update, run
-`telec code maintenance status` in its TeleClaude checkout: a failed
-`self-update`, or a failed step of the maintenance its advance owes, is listed
-with the replay that recovers it once its cause is fixed.
-
-<!-- change:telec-repo-command-family -->
-
 If a computer received the event but did not update, run
 `telec repo maintenance status` in its TeleClaude checkout: a failed
 `self-update`, or a failed step of the maintenance its advance owes, is listed
 with the replay that recovers it once its cause is fixed.
-
-<!-- /planned-change:telec-repo-command-family -->
 
 If a computer fails to auto-update, fall back to SSH for that one machine:
 

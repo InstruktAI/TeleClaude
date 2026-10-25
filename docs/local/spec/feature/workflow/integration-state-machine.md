@@ -70,23 +70,11 @@ And finalization-push recovery synchronizes and retries repository-root main wit
 And delivery remains withheld until the folded repository-root head is confirmed on origin/main
 ```
 
-<!-- planned-change:telec-repo-command-family -->
-
-Push rejection is classified by cause. A rejection whose output carries the pre-push
-content-gate marker (`telec code lint --all` failed on the squash content) is a
-content-gate rejection; it routes to the logical-conflict path (UC-WISM5), never to
-rebase recovery. Every other rejection is treated as a fast-forward race, recoverable
-by the rebase-and-re-push instruction above.
-
-<!-- change:telec-repo-command-family -->
-
 Push rejection is classified by cause. A rejection whose output carries the pre-push
 content-gate marker (`telec repo lint --all` failed on the squash content) is a
 content-gate rejection; it routes to the logical-conflict path (UC-WISM5), never to
 rebase recovery. Every other rejection is treated as a fast-forward race, recoverable
 by the rebase-and-re-push instruction above.
-
-<!-- /planned-change:telec-repo-command-family -->
 
 #### UC-WISM1: Integrator-maintenance marker emission at delivery
 

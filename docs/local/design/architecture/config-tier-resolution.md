@@ -145,19 +145,6 @@ answer:
   integration checkpoints, the sync deploy root, checkpoint flags, and the todo
   API routes.
 
-<!-- planned-change:telec-repo-command-family -->
-
-The `telec code` capability gate reads the declaration of the context the
-invocation acts in. From a slug worktree that is the worktree's own declaration:
-its tier and its subscriptions describe the change the worktree carries, so the
-code grading the change and the declaration it reads come from the same checkout
-(`local/projects/teleclaude/design/architecture/command-scope`). The checkpoint's project-support
-gate is evaluated by the daemon, on the installed code, for the live project; it
-reads the declaration of the checkout that owns the worktree, so the installed
-code and the declaration it reads again come from the same checkout.
-
-<!-- change:telec-repo-command-family -->
-
 The `telec repo` capability gate reads the declaration of the context the
 invocation acts in. From a slug worktree that is the worktree's own declaration:
 its tier and its subscriptions describe the change the worktree carries, so the
@@ -166,8 +153,6 @@ code grading the change and the declaration it reads come from the same checkout
 gate is evaluated by the daemon, on the installed code, for the live project; it
 reads the declaration of the checkout that owns the worktree, so the installed
 code and the declaration it reads again come from the same checkout.
-
-<!-- /planned-change:telec-repo-command-family -->
 
 The docs retrieval surface asks both questions for a project context: the
 context question identifies the invocation as a project invocation, and the

@@ -7,29 +7,6 @@ visibility: 'public'
 
 ## Rules
 
-<!-- planned-change:telec-repo-command-family -->
-
-1. **Use uv as the Python project tool boundary.** In a uv-managed repository,
-   Python project tools must be invoked through `uv run`.
-2. **Use tool entrypoints by default.** Invoke Python dev tools as
-   `uv run <tool> ...` unless the tool's documentation or project config
-   requires a different command.
-3. **Do not use bare project tools.** Commands such as `pytest`, `mypy`,
-   `pyright`, `ruff`, or project scripts must not be invoked by bare executable
-   name from daemon code, hooks, jobs, or TeleClaude quality wrappers.
-4. **Do not bind project tools to the TeleClaude runtime interpreter.**
-   `sys.executable -m <tool>` is not the default for project quality tooling
-   in uv-managed repositories because the TeleClaude runtime interpreter and
-   the project tool environment are separate concerns.
-5. **Keep command wrappers thin.** `telec code lint`, `telec code test`, hooks,
-   and Make targets may choose targets, flags, and ordering, but tool versions
-   and executable resolution belong to the uv-managed project environment.
-6. **Centralize exceptions.** If a tool cannot be run through `uv run <tool>`,
-   document the reason at the wrapper site and in the relevant project tooling
-   policy before adding an exception.
-
-<!-- change:telec-repo-command-family -->
-
 1. **Use uv as the Python project tool boundary.** In a uv-managed repository,
    Python project tools must be invoked through `uv run`.
 2. **Use tool entrypoints by default.** Invoke Python dev tools as
@@ -48,8 +25,6 @@ visibility: 'public'
 6. **Centralize exceptions.** If a tool cannot be run through `uv run <tool>`,
    document the reason at the wrapper site and in the relevant project tooling
    policy before adding an exception.
-
-<!-- /planned-change:telec-repo-command-family -->
 
 Default invocations:
 

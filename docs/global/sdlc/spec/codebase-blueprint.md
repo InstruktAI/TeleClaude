@@ -15,19 +15,9 @@ can affect — instead of grepping and re-reading files. When and how to consult
 it is codified in `sdlc/procedure/blast-radius-discovery`; this
 spec is the canonical reference for what it is and where it lives.
 
-<!-- planned-change:telec-repo-command-family -->
-
-Its object is the repository's own source. Its agent surface lives in the
-`telec code` namespace, and this spec is its contract. The engine is the
-Graphify CLI, adopted as-is behind the `graph.json` data-contract seam.
-
-<!-- change:telec-repo-command-family -->
-
 Its object is the repository's own source. Its agent surface lives in the
 `telec repo` namespace, and this spec is its contract. The engine is the
 Graphify CLI, adopted as-is behind the `graph.json` data-contract seam.
-
-<!-- /planned-change:telec-repo-command-family -->
 
 ## Canonical fields
 
@@ -110,22 +100,6 @@ One maintenance owner and reuse of the existing executor follow
 
 ### Command surface
 
-<!-- planned-change:telec-repo-command-family -->
-
-The agent-facing surface is **`telec code blueprint affected <changed-files>`** —
-the one value-add primitive (changed-files → symbol node-ids → `affected` →
-union, freshness-checked against the manifest), which exists because `graphify
-affected` resolves only unique symbol seeds and Graphify has no file→dependents
-primitive of its own. It requires the `code` capability. Blueprint generation is
-not a public verb. For discovery
-and reachability against the same baseline, use `graphify query "<terms>"`,
-`graphify explain "<symbol>"`, and `graphify path "<A>" "<B>"`. `query` and a
-few other subcommands are functional but omitted from `graphify --help`'s
-listing — verify with the command itself, not the help text, if a subcommand
-appears to be missing.
-
-<!-- change:telec-repo-command-family -->
-
 The agent-facing surface is **`telec repo blueprint affected <changed-files>`** —
 the one value-add primitive (changed-files → symbol node-ids → `affected` →
 union, freshness-checked against the manifest), which exists because `graphify
@@ -137,8 +111,6 @@ and reachability against the same baseline, use `graphify query "<terms>"`,
 few other subcommands are functional but omitted from `graphify --help`'s
 listing — verify with the command itself, not the help text, if a subcommand
 appears to be missing.
-
-<!-- /planned-change:telec-repo-command-family -->
 
 <!-- planned:code-uc-blueprint-traceability -->
 

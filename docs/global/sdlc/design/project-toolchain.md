@@ -7,19 +7,6 @@ visibility: 'public'
 
 ## Purpose
 
-<!-- planned-change:telec-repo-command-family -->
-
-TeleClaude offers shared functionality — the `telec code` commands, the checkpoint
-engine, the blessed default configs — that runs on each adopted project's **own**
-machinery (its `Makefile`, configs, tools). Nothing is copied into the project. **The
-only thing the platform mandates is the `Makefile`** (the operational plug); every
-tool and config behind it is detected and plugged onto, never prescribed. A project
-stays installable and testable with no TeleClaude present; TeleClaude adds workspace
-scoping, agent-facing simplification, and _offered_ best-practice defaults on top of
-what the project already wires up.
-
-<!-- change:telec-repo-command-family -->
-
 TeleClaude offers shared functionality — the `telec repo` commands, the checkpoint
 engine, the blessed default configs — that runs on each adopted project's **own**
 machinery (its `Makefile`, configs, tools). Nothing is copied into the project. **The
@@ -28,8 +15,6 @@ tool and config behind it is detected and plugged onto, never prescribed. A proj
 stays installable and testable with no TeleClaude present; TeleClaude adds workspace
 scoping, agent-facing simplification, and _offered_ best-practice defaults on top of
 what the project already wires up.
-
-<!-- /planned-change:telec-repo-command-family -->
 
 ## Inputs/Outputs
 
@@ -54,17 +39,8 @@ default where it helps. Tools are never mandated.
 - **TypeScript / node** — pnpm · tsc (typecheck) · vitest (test) · and a linter/formatter the agent picks by heuristic: **ESLint + Prettier** for Next.js/React (framework + React-Compiler lints) or **Biome** for framework-agnostic projects — both shipped as defaults. Frontend deps via corepack + lockfile-detected manager.
 - **Rust** — cargo fmt / clippy / test
 
-<!-- planned-change:telec-repo-command-family -->
-
-**TeleClaude offers, never copies in:** the `telec code` orchestration layer, agent
-instructions (the checkpoint), and the offered skeleton defaults (the steward).
-
-<!-- change:telec-repo-command-family -->
-
 **TeleClaude offers, never copies in:** the `telec repo` orchestration layer, agent
 instructions (the checkpoint), and the offered skeleton defaults (the steward).
-
-<!-- /planned-change:telec-repo-command-family -->
 
 **Recipes delegate; they carry no inline logic.** A `Makefile` target is a thin
 convention name: its recipe is a single delegation to a script or typed module
@@ -77,25 +53,6 @@ module, never inline. Satellites are offered the convention, never mandated — 
 carry an executable body.
 
 ## Invariants
-
-<!-- planned-change:telec-repo-command-family -->
-
-1. The `Makefile` (`install` / `test` / `lint` / `format`) is the **only** thing the
-   platform mandates; the tools and configs behind those targets are detected and
-   offered, never prescribed.
-2. TeleClaude tooling is never copied into a project; a project invokes the shared
-   `telec code` commands, which act on the project's own machinery.
-3. A project remains installable and testable standalone via its own `make` targets,
-   with no TeleClaude present.
-4. `telec code` only ever runs the project's own configured tools / make targets; it
-   embeds no toolchain of its own (beyond TeleClaude-flavored policy checks layered on
-   top where TeleClaude is present).
-5. `make install` is the prerequisite for `telec code`.
-
-6. `make test` is never file-scoped — the spec-anchored model has no 1:1 source→test
-   map.
-
-<!-- change:telec-repo-command-family -->
 
 1. The `Makefile` (`install` / `test` / `lint` / `format`) is the **only** thing the
    platform mandates; the tools and configs behind those targets are detected and
@@ -112,33 +69,7 @@ carry an executable body.
 6. `make test` is never file-scoped — the spec-anchored model has no 1:1 source→test
    map.
 
-<!-- /planned-change:telec-repo-command-family -->
-
 ## Primary flows
-
-<!-- planned-change:telec-repo-command-family -->
-
-`telec code` is the scoping / orchestration layer; it delegates execution to the
-project's `make`:
-
-- `telec code lint` → resolve workspace scope → `make lint FILES_FROM=<tmpfile>`.
-
-- `telec code test` → `make test` (unscoped).
-
-- `telec code format` → `make format FILES_FROM=<tmpfile>` (unscoped only when no scope resolves).
-
-Workspace scoping (which files are in play for this session/worktree) is resolved by
-`telec code` per `sdlc/design/workspace-scoping`, then handed to
-`make lint` and `make format` as `FILES_FROM` — the path to a temp file holding the
-scoped paths, **NUL-terminated**. The paths never travel on `make`'s command line, in
-`$@`/`$*`, or as a make goal; `FILES_FROM` is the only scope channel. Honoring it is
-required. A recipe that ignores it, or that treats an unreadable `FILES_FROM` as
-unscoped, lints the whole tree and violates
-`sdlc/design/workspace-scoping` invariant 3. TeleClaude-flavored policy
-checks (guardrails, snapshot-testing) layer on top of the project's own linters where
-TeleClaude is present.
-
-<!-- change:telec-repo-command-family -->
 
 `telec repo` is the scoping / orchestration layer; it delegates execution to the
 project's `make`:
@@ -160,25 +91,7 @@ unscoped, lints the whole tree and violates
 checks (guardrails, snapshot-testing) layer on top of the project's own linters where
 TeleClaude is present.
 
-<!-- /planned-change:telec-repo-command-family -->
-
 ## Failure modes
-
-<!-- planned-change:telec-repo-command-family -->
-
-- **No Makefile / missing target.** `telec code <verb>` has nothing to delegate to —
-  it reports the missing target and points at the steward
-  (`sdlc/procedure/code-config-assessment`) to wire it up.
-- **Toolchain not installed.** `make install` (which the checkpoint flags when a
-  package manifest changes on main) provisions it. A project
-  that runs `make test` before `make install` fails on missing binaries — that is the
-  prerequisite ordering, surfaced by the checkpoint flag, not a defect in the runner.
-- **Project diverges from a default.** The steward raises the floor and respects the
-  ceiling: it offers a default where the project is **missing or weaker**, leaves
-  **deliberate, project-owned** config untouched, and asks the human only on a genuine
-  conflict — never silently overwrites intent.
-
-<!-- change:telec-repo-command-family -->
 
 - **No Makefile / missing target.** `telec repo <verb>` has nothing to delegate to —
   it reports the missing target and points at the steward
@@ -191,5 +104,3 @@ TeleClaude is present.
   ceiling: it offers a default where the project is **missing or weaker**, leaves
   **deliberate, project-owned** config untouched, and asks the human only on a genuine
   conflict — never silently overwrites intent.
-
-<!-- /planned-change:telec-repo-command-family -->

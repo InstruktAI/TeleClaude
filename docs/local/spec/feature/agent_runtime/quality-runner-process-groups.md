@@ -11,21 +11,10 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:telec-repo-command-family -->
-
-`telec code test`, `telec code lint`, and `telec code format` run the
-project's selected native checks. Each invocation owns its spawned command
-processes and reaps their descendants before returning, on success, failure, or
-cancellation; the command's original result or error remains the outcome.
-
-<!-- change:telec-repo-command-family -->
-
 `telec repo test`, `telec repo lint`, and `telec repo format` run the
 project's selected native checks. Each invocation owns its spawned command
 processes and reaps their descendants before returning, on success, failure, or
 cancellation; the command's original result or error remains the outcome.
-
-<!-- /planned-change:telec-repo-command-family -->
 
 Guardrail subprocesses use the checked-out TeleClaude runtime independently of
 the launching interpreter. Native Python checks use the already prepared
@@ -41,19 +30,9 @@ not change the check outcome.
 
 ### Use cases
 
-<!-- planned-change:telec-repo-command-family -->
-
-#### UC-CQD1: telec code test reaps a suite-spawned descendant on a normal-exit (session_timeout) interrupt
-
-#### UC-CQD2: telec code lint runs a guardrails step under the bundled interpreter regardless of the launching interpreter
-
-<!-- change:telec-repo-command-family -->
-
 #### UC-CQD1: telec repo test reaps a suite-spawned descendant on a normal-exit (session_timeout) interrupt
 
 #### UC-CQD2: telec repo lint runs a guardrails step under the bundled interpreter regardless of the launching interpreter
-
-<!-- /planned-change:telec-repo-command-family -->
 
 #### UC-CQD3: routine lint does not execute CLI help paths
 

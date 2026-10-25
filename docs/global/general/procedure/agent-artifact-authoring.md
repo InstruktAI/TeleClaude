@@ -74,12 +74,4 @@ for supported CLIs.
 
 ## Recovery
 
-<!-- planned-change:telec-repo-command-family -->
-
-- If the commit gate reports artifact validation findings, fix them and rerun `telec code commit`.
-
-<!-- change:telec-repo-command-family -->
-
 - If the commit gate reports artifact validation findings, fix them and rerun `telec repo commit`.
-
-<!-- /planned-change:telec-repo-command-family -->

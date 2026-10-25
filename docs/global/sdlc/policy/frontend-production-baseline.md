@@ -98,25 +98,12 @@ test · test:visual · test:visual:update · test:smoke
 shadcn:add · shadcn:remove        (when shadcn is in play)
 ```
 
-<!-- planned-change:telec-repo-command-family -->
-
-A five-line Makefile shim maps the TeleClaude contract onto them
-(`lint:`/`format:`/`test:` delegate to the package scripts, `e2e:` runs the
-heavy suites) so `telec code` and shared CI pipelines work identically across
-all repos. Component libraries are vendored through their CLI (pinned as a
-devDependency, driven via the scripts) — registry components are never
-hand-reconstructed.
-
-<!-- change:telec-repo-command-family -->
-
 A five-line Makefile shim maps the TeleClaude contract onto them
 (`lint:`/`format:`/`test:` delegate to the package scripts, `e2e:` runs the
 heavy suites) so `telec repo` and shared CI pipelines work identically across
 all repos. Component libraries are vendored through their CLI (pinned as a
 devDependency, driven via the scripts) — registry components are never
 hand-reconstructed.
-
-<!-- /planned-change:telec-repo-command-family -->
 
 ## Rationale
 

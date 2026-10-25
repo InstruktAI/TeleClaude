@@ -25,19 +25,6 @@ caps, and the human is involved only where their lane is crossed.
 
 ## Preconditions
 
-<!-- planned-change:telec-repo-command-family -->
-
-- The required reads above are loaded. When the human explicitly invokes
-  collaborative exploration, the `grill-me` skill must be available; otherwise
-  this procedure has no skill dependency.
-- The bounded contexts of the codebase are known from its domain specs
-  (`docs/local/spec/domain/*`), or their absence is recorded.
-- Blueprint facts (`telec code blueprint affected`, co-change history) are
-  available and their coverage limits are known; unsupported edge classes are
-  never read as "no dependents".
-
-<!-- change:telec-repo-command-family -->
-
 - The required reads above are loaded. When the human explicitly invokes
   collaborative exploration, the `grill-me` skill must be available; otherwise
   this procedure has no skill dependency.
@@ -46,8 +33,6 @@ caps, and the human is involved only where their lane is crossed.
 - Blueprint facts (`telec repo blueprint affected`, co-change history) are
   available and their coverage limits are known; unsupported edge classes are
   never read as "no dependents".
-
-<!-- /planned-change:telec-repo-command-family -->
 
 ## Steps
 
