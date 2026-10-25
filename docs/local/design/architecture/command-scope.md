@@ -45,20 +45,6 @@ the root from the same resolution. No command derives a worktree or project root
 the raw invocation directory, from the repository root of the code that happens to run,
 or from the daemon's own working directory.
 
-<!-- planned-change:repo-hook-entry-verbs -->
-
-```mermaid
-flowchart LR
-    Dir[invocation directory] --> R[scope resolution]
-    R --> W[worktree root<br/>the change]
-    R --> P[project root<br/>the invocation's project, exists once]
-    W --> Wc[code lint / format / test / add<br/>code commit: commit and gate<br/>code pre-commit<br/>telec code capability switches]
-    P --> Pc[todo, docs, bugs, jobs report,<br/>content dump, mcp project overlay,<br/>config project adopt, code maintenance]
-    S[daemon and live home] --> Sc[sessions, reminders, agents, computers,<br/>operations, message, auth,<br/>events, signals, history, memories,<br/>projects list, config by kind and slug]
-```
-
-<!-- change:repo-hook-entry-verbs -->
-
 ```mermaid
 flowchart LR
     Dir[invocation directory] --> R[scope resolution]
@@ -68,8 +54,6 @@ flowchart LR
     P --> Pc[todo, docs, bugs, jobs report,<br/>content dump, mcp project overlay,<br/>config project adopt, code maintenance]
     S[daemon and live home] --> Sc[sessions, reminders, agents, computers,<br/>operations, message, auth,<br/>events, signals, history, memories,<br/>projects list, config by kind and slug]
 ```
-
-<!-- /planned-change:repo-hook-entry-verbs -->
 
 <!-- planned:reviewed-pr-contributions -->
 
@@ -169,25 +153,12 @@ the upstream-mainline publication path.
 
 ### Commands that act on the worktree root
 
-<!-- planned-change:repo-hook-entry-verbs -->
-
-| Command                                               | Acts on                                               |
-| ----------------------------------------------------- | ----------------------------------------------------- |
-| `telec code lint`, `format`, `test`, `add`            | The change's files, under the worktree's own rules    |
-| `telec code commit` — the commit and its quality gate | The worktree's branch, graded by the worktree's rules |
-| `telec code pre-commit`                               | The worktree's own index                              |
-| The `telec code` capability switches                  | The worktree's own declaration                        |
-
-<!-- change:repo-hook-entry-verbs -->
-
 | Command                                               | Acts on                                               |
 | ----------------------------------------------------- | ----------------------------------------------------- |
 | `telec code lint`, `format`, `test`, `add`            | The change's files, under the worktree's own rules    |
 | `telec code commit` — the commit and its quality gate | The worktree's branch, graded by the worktree's rules |
 | `telec repo pre-commit`, `telec code pre-commit`      | The worktree's own index                              |
 | The `telec code` capability switches                  | The worktree's own declaration                        |
-
-<!-- /planned-change:repo-hook-entry-verbs -->
 
 ### Commands that act on the project root
 
@@ -238,23 +209,11 @@ the upstream-mainline publication path.
 
 ### Commands that act on both
 
-<!-- planned-change:repo-hook-entry-verbs -->
-
-| Command                                     | Worktree part                                          | Project part                                                                      |
-| ------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| `telec code commit`                         | The commit and its quality gate                        | Checkpoint markers and maintenance records                                        |
-| `telec code blueprint affected`             | The changed files it is asked about                    | The dependency graph, built on the project root                                   |
-| `telec code post-commit`, `code post-merge` | The checkout whose commit or merge activated the range | The maintenance drain on the project root, or on the platform home when run there |
-
-<!-- change:repo-hook-entry-verbs -->
-
 | Command                                                                   | Worktree part                                          | Project part                                                                      |
 | ------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | `telec code commit`                                                       | The commit and its quality gate                        | Checkpoint markers and maintenance records                                        |
 | `telec code blueprint affected`                                           | The changed files it is asked about                    | The dependency graph, built on the project root                                   |
 | `telec repo post-commit`, `repo post-merge`, and their `telec code` forms | The checkout whose commit or merge activated the range | The maintenance drain on the project root, or on the platform home when run there |
-
-<!-- /planned-change:repo-hook-entry-verbs -->
 
 The platform home is a commit-boundary root without being a project. Its installed
 hooks drain maintenance on the home itself

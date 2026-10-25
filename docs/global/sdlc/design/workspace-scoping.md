@@ -94,23 +94,11 @@ cycle.
 
 <!-- /planned-change:telec-repo-command-family -->
 
-<!-- planned-change:repo-hook-entry-verbs -->
-
-`telec code commit` formats `quality_paths` (the declared set filtered to
-existing files) and then runs `git commit`. The installed `.git/hooks/pre-commit`
-runs `telec code pre-commit`, which is the commit gate for every route into a
-commit: the partial-staging guard, then lint over the staged file set. No
-framework stash, no working-tree reset outside the declared set.
-
-<!-- change:repo-hook-entry-verbs -->
-
 `telec code commit` formats `quality_paths` (the declared set filtered to
 existing files) and then runs `git commit`. The installed `.git/hooks/pre-commit`
 runs `telec repo pre-commit`, which is the commit gate for every route into a
 commit: the partial-staging guard, then lint over the staged file set. No
 framework stash, no working-tree reset outside the declared set.
-
-<!-- /planned-change:repo-hook-entry-verbs -->
 
 <!-- planned-change:telec-repo-command-family -->
 
@@ -473,20 +461,6 @@ telec repo test (no args)
 
 <!-- /planned-change:telec-repo-command-family -->
 
-<!-- planned-change:repo-hook-entry-verbs -->
-
-```
-telec code commit (worktree detected)
-  → resolve dirty paths once
-  → git add dirty paths, including deletions
-  → quality_paths = staged set filtered to existing files
-  → handle_format(quality_paths)                          (before committing, no stash)
-  → git commit
-    → .git/hooks/pre-commit → telec code pre-commit (partial-staging guard, lint staged set)
-```
-
-<!-- change:repo-hook-entry-verbs -->
-
 ```
 telec code commit (worktree detected)
   → resolve dirty paths once
@@ -496,8 +470,6 @@ telec code commit (worktree detected)
   → git commit
     → .git/hooks/pre-commit → telec repo pre-commit (partial-staging guard, lint staged set)
 ```
-
-<!-- /planned-change:repo-hook-entry-verbs -->
 
 ### Shared branch flow (session available)
 
@@ -527,22 +499,6 @@ telec repo lint (no args, not a worktree, session identity present)
 
 <!-- /planned-change:telec-repo-command-family -->
 
-<!-- planned-change:repo-hook-entry-verbs -->
-
-```
-telec code commit (not a worktree, session identity present)
-  → resolve dirty paths once
-  → declared set = live declarations ∩ dirty paths  (--only narrows it)
-  → git add the declared set, including deletions
-  → quality_paths = declared set filtered to existing files
-  → handle_format(quality_paths)                          (before committing, no stash)
-  → git commit
-    → .git/hooks/pre-commit → telec code pre-commit (partial-staging guard, lint staged set)
-  → clear the declarations this commit carried
-```
-
-<!-- change:repo-hook-entry-verbs -->
-
 ```
 telec code commit (not a worktree, session identity present)
   → resolve dirty paths once
@@ -554,8 +510,6 @@ telec code commit (not a worktree, session identity present)
     → .git/hooks/pre-commit → telec repo pre-commit (partial-staging guard, lint staged set)
   → clear the declarations this commit carried
 ```
-
-<!-- /planned-change:repo-hook-entry-verbs -->
 
 ### Shared branch flow (no session)
 
@@ -601,22 +555,6 @@ telec repo lint <files...>
 
 ### Hook gate flow
 
-<!-- planned-change:repo-hook-entry-verbs -->
-
-```
-git commit (raw, or invoked by telec code commit)
-  → .git/hooks/pre-commit → telec code pre-commit
-  → partial-staging check: exits non-zero if staged + unstaged overlap detected
-  → lint the staged file set with the checks each path's owning home carries
-    (independent checks may overlap after preparation; formatting checked,
-    never rewritten; documentation and agent-artifact
-    validators read the staged content against the rest of each owning home
-    as committed; the native leg runs on disk over the staged files)
-  → exits non-zero on any finding; git produces no commit
-```
-
-<!-- change:repo-hook-entry-verbs -->
-
 ```
 git commit (raw, or invoked by telec code commit)
   → .git/hooks/pre-commit → telec repo pre-commit
@@ -628,8 +566,6 @@ git commit (raw, or invoked by telec code commit)
     as committed; the native leg runs on disk over the staged files)
   → exits non-zero on any finding; git produces no commit
 ```
-
-<!-- /planned-change:repo-hook-entry-verbs -->
 
 ### Full-run flow
 
