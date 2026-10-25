@@ -22,6 +22,12 @@ The ignition intro carries the shared no-output guidance, so an agent with nothi
 
 The link is an associative aggregate of a link record and its member records, persisted durably by agent_runtime; it survives service restarts and is the canonical record of "these sessions are currently talking to each other."
 
+<!-- planned:review-fix-loop-through-artifacts -->
+
+No link holds two workers. A worker ignites no link and closes none, because it acts on no other session (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`), and a link whose members include two worker sessions is closed for all of them.
+
+<!-- /planned:review-fix-loop-through-artifacts -->
+
 When an opening message has no resolved peer member, it is delivered to the originally addressed target; a resolved member that is missing or closed is skipped.
 
 Each cross-share preserves the source, author, and occurrence time carried by a complete peer envelope and suppresses it only when that source is the destination. The original segment order is retained; a trailing peer segment is not local-human input, and delivery progress is independent of the carried occurrence time and advances only after successful handoff. Other spans remain their source session's content, while control, command-loader, runtime-artifact, and teammate instructions are not forwarded. An unrecognized envelope-like span does not block adjacent content. A turn consisting solely of `NOOP` produces no peer message but still advances its completed-turn position.
