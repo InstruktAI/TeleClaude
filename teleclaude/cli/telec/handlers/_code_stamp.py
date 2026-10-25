@@ -1,4 +1,4 @@
-"""Handler for ``telec code stamp``, split out of code.py to respect module size."""
+"""Handler for ``telec repo stamp``, split out of code.py to respect module size."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import TypedDict
 
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, parse_command_args
-from teleclaude.cli.telec.surface import CODE_STAMP
+from teleclaude.cli.telec.surface import REPO_STAMP
 from teleclaude.cli.tool_client import print_json, tool_api_call
 from teleclaude.hooks.checkpoint_flags import consume_authored_main_commit_flag
 from teleclaude.project_root import resolve_invocation_cwd
@@ -16,8 +16,8 @@ __all__ = ["handle_code_stamp"]
 
 _STAMP_ROUTE = "/code/stamp"
 _SHA_SEPARATOR = ","
-_ERR_NO_SHAS = "telec code stamp requires at least one commit SHA"
-_ERR_NO_VERDICT = "telec code stamp requires --verdict approve|request_changes"
+_ERR_NO_SHAS = "telec repo stamp requires at least one commit SHA"
+_ERR_NO_VERDICT = "telec repo stamp requires --verdict approve|request_changes"
 _ERR_BAD_VERDICT = "--verdict must be one of: {allowed}; got {given!r}"
 _VERDICT_SEPARATOR = ", "
 _OUTCOME_TEMPLATE = "Stamped {verdict} on {count} commit(s); {target}"
@@ -35,7 +35,7 @@ class _StampBody(TypedDict):
 
 def handle_code_stamp(args: list[str]) -> None:
     """Record a commit-review outcome on each SHA and discharge the stamped sessions' review gate."""
-    parsed = parse_command_args(CODE_STAMP, args)
+    parsed = parse_command_args(REPO_STAMP, args)
     shas = [sha for token in parsed.positionals for sha in token.split(_SHA_SEPARATOR) if sha]
     if not shas:
         raise CliUsageError(_ERR_NO_SHAS)

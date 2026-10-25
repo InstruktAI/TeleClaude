@@ -1,9 +1,9 @@
-"""Handler for the ``telec code blueprint`` command."""
+"""Handler for the ``telec repo blueprint`` command."""
 
 from __future__ import annotations
 
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
-from teleclaude.cli.telec.surface import CODE_BLUEPRINT_AFFECTED
+from teleclaude.cli.telec.surface import REPO_BLUEPRINT_AFFECTED
 from teleclaude.core.blueprint.affected import AffectedResult, compute_affected, load_graph
 from teleclaude.core.blueprint.query import BlueprintQueryState, query_current_blueprint
 from teleclaude.core.integration.post_commit_maintenance import ON_DEMAND_MAINTENANCE_COMMAND
@@ -11,15 +11,15 @@ from teleclaude.project_root import resolve_invocation_roots
 
 __all__ = ["handle_code_blueprint"]
 
-_BLUEPRINT_USAGE = "Usage: telec code blueprint affected <changed-files>"
-_AFFECTED_USAGE = "Usage: telec code blueprint affected <changed-files>"
+_BLUEPRINT_USAGE = "Usage: telec repo blueprint affected <changed-files>"
+_AFFECTED_USAGE = "Usage: telec repo blueprint affected <changed-files>"
 _FALLBACK_PREFIX = "blueprint unavailable — fall back to manual exploration"
 _RECOVERY_LINE = "Recover with: {reference}"
 _UNAVAILABLE_RESULT_TEMPLATE = "{prefix}: {reason}"
 
 
 def handle_code_blueprint(args: list[str]) -> None:
-    """Handle ``telec code blueprint`` commands."""
+    """Handle ``telec repo blueprint`` commands."""
     if not args or args[0] in ("-h", "--help"):
         print(_BLUEPRINT_USAGE)
         return
@@ -48,7 +48,7 @@ def _format_result(result: AffectedResult, *, changed_count: int) -> str:
 
 
 def _handle_blueprint_affected(args: list[str]) -> None:
-    parsed = parse_command_args(CODE_BLUEPRINT_AFFECTED, args)
+    parsed = parse_command_args(REPO_BLUEPRINT_AFFECTED, args)
     changed_files = [a for a in parsed.positionals if a]
     if not changed_files:
         print("At least one changed file is required.")

@@ -8,7 +8,9 @@ from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError
 from teleclaude.constants import (
     CHECKPOINT_BLAST_RADIUS_THRESHOLD,
     CHECKPOINT_COMMIT_EVIDENCE,
+    CHECKPOINT_COMMIT_EVIDENCE_COMMAND,
     CHECKPOINT_REVIEW_DISPATCH_EVIDENCE,
+    CHECKPOINT_TEST_EVIDENCE_COMMAND,
     CheckpointScope,
 )
 from teleclaude.core.next_machine.lanes import LifecycleProcedure
@@ -276,10 +278,10 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
         return head == "make" and "status" in rest
     if evidence == "make test":
         return head == "make" and "test" in rest
-    if evidence == "telec code test":
-        return matches_command_prefix(segment, ("telec", "code", "test"))
-    if evidence == "telec code commit":
-        return matches_command_prefix(segment, ("telec", "code", "commit"))
+    if evidence == CHECKPOINT_TEST_EVIDENCE_COMMAND:
+        return matches_command_prefix(segment, tuple(CHECKPOINT_TEST_EVIDENCE_COMMAND.split()))
+    if evidence == CHECKPOINT_COMMIT_EVIDENCE_COMMAND:
+        return matches_command_prefix(segment, tuple(CHECKPOINT_COMMIT_EVIDENCE_COMMAND.split()))
     if evidence == "uv sync":
         return head == "uv" and "sync" in rest
     if evidence == "pytest":

@@ -35,7 +35,7 @@ jobs:
         timeout-minutes: 5
 
       - name: Run lint
-        run: telec code lint --all
+        run: telec repo lint --all
         timeout-minutes: 5
 
   runtime-acceptance:

@@ -178,7 +178,7 @@ def resolve_workspace_scope_resolution(
     # foreign deletions into this session's scope (agent A deletes foo.py;
     # agent B's scope picks up the deletion and B's commit silently records
     # A's work). A deletion the session did not declare is the sanctioned
-    # channel's job to cover: `telec code commit --approved '<msg>' --include
+    # channel's job to cover: `telec repo commit --approved '<msg>' --include
     # <deleted-path>`.
     scoped_dirty = tuple(sorted(set(declared) & dirty_path_set))
     scoped = tuple(sorted(path for path in declared if path in dirty_existing))

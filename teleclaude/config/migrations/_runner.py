@@ -68,7 +68,7 @@ _HEAD_REFERENCE = "HEAD"
 _TELEC_EXECUTABLE = "telec"
 _TELEC_INVOCATION_CWD = "TELEC_INVOCATION_CWD"
 _PROCESS_CWD = "PWD"
-_TELEC_CODE_COMMIT_ARGS = ("code", "commit")
+_TELEC_REPO_COMMIT_ARGS = ("repo", "commit")
 _TELEC_APPROVED_FLAG = "--approved"
 _TELEC_ONLY_FLAG = "--only"
 _TELEC_NOT_FOUND = "The canonical telec executable is unavailable"
@@ -447,7 +447,7 @@ def _commit_migration_document(
     environment[_PROCESS_CWD] = str(working_root)
     arguments = [
         str(executable),
-        *_TELEC_CODE_COMMIT_ARGS,
+        *_TELEC_REPO_COMMIT_ARGS,
         message,
         _TELEC_APPROVED_FLAG,
         _TELEC_ONLY_FLAG,

@@ -82,8 +82,8 @@ while read -r local_ref _local_sha remote_ref _remote_sha; do
     # Allow candidate pushes from the persistent integration worktree after lint passes; exclude deletions.
     if [ "$REPO_ROOT" = "$CANONICAL_ROOT/trees/_integration" ] \
         && [ "$local_ref" != "(delete)" ]; then
-        if ! telec code lint --all; then
-            echo "ERROR: Integration push blocked — telec code lint --all failed." >&2
+        if ! telec repo lint --all; then
+            echo "ERROR: Integration push blocked — telec repo lint --all failed." >&2
             echo "Fix all lint violations before pushing to origin/main." >&2
             exit 1
         fi

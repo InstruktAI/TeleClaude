@@ -1,4 +1,4 @@
-"""Resolved invocation context shared by the ``telec code`` commit-path commands."""
+"""Resolved invocation context shared by the ``telec repo`` commit-path commands."""
 
 from __future__ import annotations
 

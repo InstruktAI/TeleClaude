@@ -80,7 +80,7 @@ run_legs() {
 
 print_format_recovery() {
     local path
-    printf 'telec code format'
+    printf 'telec repo format'
     for path in "$@"; do
         printf ' %q' "$path"
     done

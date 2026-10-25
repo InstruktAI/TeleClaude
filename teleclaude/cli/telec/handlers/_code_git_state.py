@@ -1,4 +1,4 @@
-"""Working-tree and index inspection for the ``telec code`` commit path.
+"""Working-tree and index inspection for the ``telec repo`` commit path.
 
 Read-only git state queries: what is untracked, staged, unstaged, unmerged, or
 partially staged, and which branch is checked out. Kept apart from the command
@@ -12,6 +12,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from teleclaude.git import Repo
+
+PATH_ARGUMENT_SEPARATOR = " "
+PARTIAL_STAGING_RECOVERY_TEMPLATE = (
+    "\n`git commit -- <path>` would commit the working-tree version, sweeping\n"
+    "in unstaged hunks you did not declare. Fully (re)stage each file via the\n"
+    "sealed recovery path (`telec repo add` accepts partial-staged tracked\n"
+    "files for exactly this case), then re-run telec repo commit:\n"
+    "  telec repo add {paths}"
+)
 
 
 def get_untracked_files(project_root: Path) -> list[str]:
@@ -30,7 +39,7 @@ def get_untracked_files(project_root: Path) -> list[str]:
 def _get_staged_files(project_root: Path, *, include_deletions: bool = False) -> list[str]:  # pyright: ignore[reportUnusedFunction]
     """Return list of staged file paths (those currently in the index).
 
-    Used to distinguish "agent explicitly staged this via `telec code add`"
+    Used to distinguish "agent explicitly staged this via `telec repo add`"
     from "untouched-untracked, drop from pathspec." Not currently called
     from the commit hot path (replaced by ``working_tree_snapshot``);
     retained for test suites and external callers.
@@ -181,12 +190,7 @@ def _check_partial_staging(project_root: Path, *, pathspec: list[str]) -> None: 
     for f in sorted(overlap):
         print(f"  {f}", file=sys.stderr)
     print(
-        "\n`git commit -- <path>` would commit the working-tree version, sweeping\n"
-        "in unstaged hunks you did not declare. Fully (re)stage each file via the\n"
-        "sealed recovery path (`telec code add` accepts partial-staged tracked\n"
-        "files for exactly this case), then re-run telec code commit:\n"
-        "  telec code add " + " ".join(sorted(overlap)),
-        file=sys.stderr,
+        PARTIAL_STAGING_RECOVERY_TEMPLATE.format(paths=PATH_ARGUMENT_SEPARATOR.join(sorted(overlap))), file=sys.stderr
     )
     raise SystemExit(1)
 

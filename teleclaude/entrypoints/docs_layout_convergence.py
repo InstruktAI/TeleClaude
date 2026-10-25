@@ -2,7 +2,7 @@
 
 Composition root for ``teleclaude.docs_layout``: walks the project registry (or
 the roots named on the command line), resolves an attributable commit party
-before touching anything, and wires the sealed ``telec code commit`` and a
+before touching anything, and wires the sealed ``telec repo commit`` and a
 bounded fetch into each root's convergence, under a per-repository lock. Prints
 one line per root and one run line, and exits ``0`` when every root is settled,
 a dedicated status when some root is blocked or deferred and none failed, and
@@ -52,7 +52,7 @@ logger = get_logger(__name__)
 _COMMIT_MESSAGE: Final = "docs(layout): converge to docs/local, agents/local and qualified identities"
 _TELEC_EXECUTABLE: Final = "telec"
 _BIN_DIRNAME: Final = "bin"
-_TELEC_CODE_COMMIT_ARGS: Final = ("code", "commit")
+_TELEC_REPO_COMMIT_ARGS: Final = ("repo", "commit")
 _TELEC_APPROVED_FLAG: Final = "--approved"
 _TELEC_ONLY_FLAG: Final = "--only"
 _TELEC_INVOCATION_CWD: Final = "TELEC_INVOCATION_CWD"
@@ -218,7 +218,7 @@ def _telec_executable() -> Path:
 
 
 def sealed_committer(root: Path, paths: Sequence[str]) -> None:
-    """Commit exactly ``paths`` in ``root`` through the sealed ``telec code commit``."""
+    """Commit exactly ``paths`` in ``root`` through the sealed ``telec repo commit``."""
     executable = _telec_executable()
     if not executable.is_file():
         raise LayoutCommitRefused(str(executable))
@@ -228,7 +228,7 @@ def sealed_committer(root: Path, paths: Sequence[str]) -> None:
     environment[_PROCESS_CWD] = str(working_root)
     arguments = [
         str(executable),
-        *_TELEC_CODE_COMMIT_ARGS,
+        *_TELEC_REPO_COMMIT_ARGS,
         _COMMIT_MESSAGE,
         _TELEC_APPROVED_FLAG,
         _TELEC_ONLY_FLAG,

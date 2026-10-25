@@ -1,4 +1,4 @@
-"""Lint runner and pipeline — the ``telec code lint`` implementation.
+"""Lint runner and pipeline — the ``telec repo lint`` implementation.
 
 Orchestrates context-aware file scoping, concurrent checks and ordered
 outcomes for language-aware linting. See design doc
@@ -66,6 +66,14 @@ _CONTENT_ROOT_FLAG = "--content-root"
 _PLATFORM_HOME_SUBJECT_FLAG = "--platform-home-subject"
 _SKIP_SNIPPETS_FLAG = "--skip-snippets"
 _FULL_RUN_FLAG = "--full-run"
+_WORKSPACE_SCOPE_UNAVAILABLE_MESSAGE = (
+    "Workspace scope unavailable. Pass files explicitly: telec repo lint <files...>\nReason: %s"
+)
+_NOTHING_DECLARED_DIRTY_TREE_MESSAGE = (
+    "Nothing declared, and the workspace holds dirty paths. Declare what you "
+    "are working on with `telec repo add <path>...`, or pass files explicitly: "
+    "telec repo lint <files...>"
+)
 _CONTENT_ROOT_FULL_RUN_ERROR = "A content-root validation must be path-scoped."
 _CONTENT_ROOT_GRADING_ROOT_MISSING_ERROR = "Candidate validation has no readable repository grading root."
 _EMPTY_STRING = ""
@@ -602,7 +610,7 @@ class LintRunner:
             return resolve_workspace_scope_resolution(self._project_root)
         except (RuntimeError, OSError) as exc:
             logger.error(
-                "Workspace scope unavailable. Pass files explicitly: telec code lint <files...>\nReason: %s",
+                _WORKSPACE_SCOPE_UNAVAILABLE_MESSAGE,
                 exc,
             )
             sys.exit(1)
@@ -613,11 +621,7 @@ class LintRunner:
             return []
 
         if scope_resolution.declared_nothing_over_dirty_tree:
-            logger.error(
-                "Nothing declared, and the workspace holds dirty paths. Declare what you "
-                "are working on with `telec code add <path>...`, or pass files explicitly: "
-                "telec code lint <files...>"
-            )
+            logger.error(_NOTHING_DECLARED_DIRTY_TREE_MESSAGE)
             sys.exit(1)
 
         targets = validate_scoped_paths(list(scope_resolution.scoped_existing_paths), self._project_root)

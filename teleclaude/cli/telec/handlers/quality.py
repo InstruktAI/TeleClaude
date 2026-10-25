@@ -1,4 +1,4 @@
-"""CLI handlers for ``telec code lint``, ``telec code test``, and ``telec code format``."""
+"""CLI handlers for ``telec repo lint``, ``telec repo test``, and ``telec repo format``."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from teleclaude.capabilities import resolve_tier_permissions
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._code_invocation import resolve_invocation_state
-from teleclaude.cli.telec.surface import CODE_FORMAT, CODE_LINT, CODE_TEST
+from teleclaude.cli.telec.surface import REPO_FORMAT, REPO_LINT, REPO_TEST
 from teleclaude.config.tree_homes import OwningHome, group_paths_by_owning_home
 from teleclaude.git import Repo
 from teleclaude.git_tree import TreeSource, list_tree_paths
@@ -36,10 +36,11 @@ from teleclaude.runtime.command_runner import run_concurrent_operations
 
 _EMPTY_SCOPE_ERROR = (
     "ERROR: none of your declared paths are dirty, so there is nothing in your scope. "
-    "Declare what you are working on with `telec code add <path>...`, or pass files explicitly."
+    "Declare what you are working on with `telec repo add <path>...`, or pass files explicitly."
 )
-_LINT_GATE_UNAVAILABLE = "ERROR: telec code lint requires a code or documentation gate in this context."
+_LINT_GATE_UNAVAILABLE = "ERROR: telec repo lint requires a code or documentation gate in this context."
 _LINT_FAILURE_TEMPLATE = "ERROR: {reason}"
+_TEST_FILE_OPERANDS_ERROR = "ERROR: telec repo test does not accept file operands"
 _FULL_LINT_UNBORN_HEAD = (
     "ERROR: full lint needs a committed tree to discover owning homes. "
     "Pass files explicitly or commit the initial staged set through the commit gate."
@@ -50,14 +51,14 @@ _MAKE_FORMAT_TARGET = "format"
 
 
 def handle_lint(args: list[str]) -> None:
-    """Handle the ``telec code lint`` command.
+    """Handle the ``telec repo lint`` command.
 
     Scoped and full runs select checks from each owning home's capabilities.
     Native checks run only for code homes; TeleClaude checks are split by
     code, docs, and agents subscriptions. Full/CI runs are check-only and use
     a Git-derived inventory.
     """
-    parsed = parse_command_args(CODE_LINT, args)
+    parsed = parse_command_args(REPO_LINT, args)
     run_all = parsed.has(F.FLAG_CODE_ALL_LINT)
     files = list(parsed.positionals)
     state = resolve_invocation_state()
@@ -205,13 +206,13 @@ def _raise_for_lint_failures(results: list[LintGateResult]) -> None:
 
 
 def handle_test(args: list[str]) -> None:
-    """Handle the ``telec code test`` command.
+    """Handle the ``telec repo test`` command.
 
     ``--update-snapshots`` → accept reviewed snapshot diffs.
     """
-    parsed = parse_command_args(CODE_TEST, args)
+    parsed = parse_command_args(REPO_TEST, args)
     if parsed.positionals:
-        print("ERROR: telec code test does not accept file operands", file=sys.stderr)
+        print(_TEST_FILE_OPERANDS_ERROR, file=sys.stderr)
         raise SystemExit(2)
     update_snapshots = parsed.has(F.FLAG_CODE_UPDATE_SNAPSHOTS)
     project_root = resolve_invocation_roots().repository_root
@@ -222,13 +223,13 @@ def handle_test(args: list[str]) -> None:
 
 
 def handle_format(args: list[str]) -> None:
-    """Handle the ``telec code format`` command.
+    """Handle the ``telec repo format`` command.
 
-    Scoped like ``telec code lint``: explicit files, else the workspace scope
+    Scoped like ``telec repo lint``: explicit files, else the workspace scope
     (the session's declared dirty files on a shared branch); ``--all``, CI, or a
     no-session shared branch runs the full project-native make format.
     """
-    parsed = parse_command_args(CODE_FORMAT, args)
+    parsed = parse_command_args(REPO_FORMAT, args)
     run_all = parsed.has(F.FLAG_CODE_ALL_FORMAT)
     project_root = resolve_invocation_roots().repository_root
     files = list(parsed.positionals)

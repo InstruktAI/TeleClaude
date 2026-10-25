@@ -9,7 +9,7 @@ Modes:
 Scans the selected mode (relative to the calling project's cwd) for
 ``/Users/<user>/.teleclaude/...`` or ``/home/<user>/.teleclaude/...`` patterns
 that should be ``~/.teleclaude/...`` instead. ``@``-prefixed resource refs are
-managed by the ``teleclaude-docs`` git filter and are allowed. Used by `telec code lint`
+managed by the ``teleclaude-docs`` git filter and are allowed. Used by `telec repo lint`
 and as a raw pre-commit backstop.
 
 Project root is derived from cwd, never from this script's filesystem

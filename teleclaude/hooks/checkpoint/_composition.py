@@ -11,13 +11,13 @@ __all__ = ["_commit_instruction", "_compose_checkpoint_message", "_undeclared_wr
 
 # The bare call surfaces the commit gate on every branch; the approval flag is
 # the committing agent's own act and never part of a checkpoint instruction.
-_COMMIT_INSTRUCTION = "Execute `telec code commit` (no flags) to surface the commit flow."
+_COMMIT_INSTRUCTION = "Execute `telec repo commit` (no flags) to surface the commit flow."
 _UNDECLARED_WRITE_QUESTION_TEMPLATE = (
     "Possible undeclared shell writes?\n"
     "These dirty files were named by successful shell commands: {paths}\n"
     "Do any of these belong to your shell work? If so, declare only those files with `{command}`."
 )
-_CODE_ADD_COMMAND_PREFIX = ("telec", "code", "add")
+_REPO_ADD_COMMAND_PREFIX = ("telec", "repo", "add")
 _CHECKPOINT_SECTION_SEPARATOR = "\n\n"
 _CHECKPOINT_LINE_SEPARATOR = "\n"
 _PATH_LIST_SEPARATOR = ", "
@@ -34,7 +34,7 @@ def _commit_instruction() -> str:
 
 def _undeclared_write_question(paths: tuple[str, ...]) -> str:
     """Render the unnumbered advisory question for matched dirty paths."""
-    command = shlex.join((*_CODE_ADD_COMMAND_PREFIX, *paths))
+    command = shlex.join((*_REPO_ADD_COMMAND_PREFIX, *paths))
     return _UNDECLARED_WRITE_QUESTION_TEMPLATE.format(paths=_PATH_LIST_SEPARATOR.join(paths), command=command)
 
 

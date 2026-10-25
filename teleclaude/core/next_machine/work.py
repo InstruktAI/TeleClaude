@@ -107,6 +107,14 @@ _WORK_ENTRY_ROUTED_EVENT = "todo_work_entry_routed"
 _WORK_ENTRY_ACCEPTED_MESSAGE = "todo work entry accepted"
 _WORK_ENTRY_ROUTED_MESSAGE = "todo work entry routed"
 _PREPARE_HANDOFF_OUTCOME = "prepare_handoff"
+_MERGE_MAIN_RECOVERY_MESSAGE_TEMPLATE = (
+    "The orchestrator hit a merge failure while running `telec todo work {slug}` against your worktree. "
+    "You did not encounter this directly; the orchestrator is routing the work-entry failure back to you.\n\n"
+    "Recover the worktree: preserve accepted origin/main behavior as the leading baseline, reapply this todo's "
+    "prepared intent from implementation-plan and PRD/input on top, resolve the conflicts, run relevant focused "
+    "tests plus telec repo test and telec repo lint, commit the resolution, then {completion_clause}\n\n"
+    "Work-entry merge failure:\n{merge_error}"
+)
 _NO_CALLER_SESSION_MESSAGE = "work entry returned the todo to preparation without a calling session to end"
 _RESOURCE_ACTION_PRESERVE = "preserve"
 _EMPTY_TEXT = ""
@@ -409,13 +417,8 @@ async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str, *, li
 
     completion_clause = _merge_main_recovery_completion_clause(slug, lifecycle_phase)
     wait_clause = _merge_main_recovery_wait_clause(slug, lifecycle_phase)
-    message = (
-        f"The orchestrator hit a merge failure while running `telec todo work {slug}` against your worktree. "
-        "You did not encounter this directly; the orchestrator is routing the work-entry failure back to you.\n\n"
-        "Recover the worktree: preserve accepted origin/main behavior as the leading baseline, reapply this todo's "
-        "prepared intent from implementation-plan and PRD/input on top, resolve the conflicts, run relevant focused "
-        f"tests plus telec code test and telec code lint, commit the resolution, then {completion_clause}\n\n"
-        f"Work-entry merge failure:\n{merge_error}"
+    message = _MERGE_MAIN_RECOVERY_MESSAGE_TEMPLATE.format(
+        slug=slug, completion_clause=completion_clause, merge_error=merge_error
     )
     return (
         f"MERGE MAIN RECOVERY REQUIRED: {slug}\n\n"

@@ -47,7 +47,7 @@ def _is_content_gate_rejection(rejection_reason: str) -> bool:
     """Classify a push rejection as content-gate (vs. fast-forward race).
 
     The pre-push hook (``.githooks/pre-push``, ``trees/_integration`` branch)
-    prints this stable marker when ``telec code lint --all`` fails on the
+    prints this stable marker when ``telec repo lint --all`` fails on the
     squash content. That failure is invariant under rebase — a fast-forward
     race is the only other rejection cause and is rebase-recoverable.
     """

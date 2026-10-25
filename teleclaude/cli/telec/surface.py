@@ -120,7 +120,7 @@ _HOOK_ENTRY_DESCRIPTIONS: dict[HookEntryVerb, str] = {
 
 
 def _hook_entry_commands() -> dict[str, CommandDef]:
-    """Declare the git-hook entry verbs shared by ``telec code`` and ``telec repo``.
+    """Declare the git-hook entry verbs of ``telec repo``.
 
     Returns fresh nodes per call: surface post-processing may mutate a node per path.
     """
@@ -1835,8 +1835,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
         },
     ),
-    "code": CommandDef(
-        desc="Code quality and commit tools",
+    "repo": CommandDef(
+        desc="Repository quality and commit tools",
         notes=[
             "test, format, install, and blueprint require the code capability.",
             "lint is available where code or docs is enabled; each check family follows its owning home's configuration.",
@@ -1860,7 +1860,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "never returns stale dependents as a current answer.",
                         ],
                         examples=[
-                            "telec code blueprint affected teleclaude/core/foo.py teleclaude/api/bar.py",
+                            "telec repo blueprint affected teleclaude/core/foo.py teleclaude/api/bar.py",
                         ],
                         auth=CommandAuth(capability=Capability.CODE_CHECK, human=frozenset(), caller_independent=True),
                     ),
@@ -1898,7 +1898,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "  (2) Unmerged-index files (post-conflict) — must be marked resolved before commit.",
                     "  (3) Partial-staged tracked files (staged hunks + later working-tree delta) — "
                     "must be fully (re)staged so the pathspec commit does not silently sweep in "
-                    "unstaged hunks. The partial-staging guard in `telec code commit` directs agents "
+                    "unstaged hunks. The partial-staging guard in `telec repo commit` directs agents "
                     "here for recovery.",
                     "A successful call from inside the session's checkout declares its paths to "
                     "session-scoping. Invoked from a different repository it stages as usual, declares "
@@ -1911,7 +1911,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "NEW files in scope are NOT auto-committed; this is the explicit declaration step. "
                     "Without it, untracked files stay untracked (safety net for temp/scratch artifacts "
                     "the agent may have created incidentally).",
-                    "Alternative one-shot form: telec code commit --approved '<msg>' --include <path>.",
+                    "Alternative one-shot form: telec repo commit --approved '<msg>' --include <path>.",
                 ],
                 auth=CommandAuth(capability=Capability.CODE, human=frozenset(), caller_independent=True),
             ),
@@ -1922,7 +1922,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Prints one path-keyed JSON object for every dirty path of the project's canonical checkout.",
                     "A value lists the live sessions that declared the path, or null when no live session declared it.",
                 ],
-                examples=["telec code owners"],
+                examples=["telec repo owners"],
                 auth=CommandAuth(capability=Capability.INTEGRATION, human=_HR_MEMBER),
             ),
             "commit": CommandDef(
@@ -1940,7 +1940,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Accepts one quoted message, --approved, --todo <slug>, --human-involved <reason>, --include <path> ..., and --only <path> ... .",
                     "Use --todo <slug> to associate the commit with existing or planned work; this creates no todo.",
                     "Modified-tracked files in scope are auto-committed via pathspec straight from the working tree — no staging needed.",
-                    "NEW (untracked) files in scope are NOT auto-committed by default; declare them via `telec code add`, `--include`, or `--only` (safety net against incidental temp/scratch artifacts).",
+                    "NEW (untracked) files in scope are NOT auto-committed by default; declare them via `telec repo add`, `--include`, or `--only` (safety net against incidental temp/scratch artifacts).",
                     "--only commits exactly the declared paths and is mutually exclusive with --include.",
                     "Unmerged-index files in pathspec are staged internally for the integrator conflict path.",
                     "Without --approved on main: prints commit-first and review-routing guidance and exits.",
@@ -1967,8 +1967,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Every SHA must be a commit reachable from main; otherwise nothing is recorded.",
                 ],
                 examples=[
-                    "telec code stamp 1a2b3c4,5d6e7f8 --verdict approve",
-                    "telec code stamp 1a2b3c4 --verdict approve --reason 'removes a retired section'",
+                    "telec repo stamp 1a2b3c4,5d6e7f8 --verdict approve",
+                    "telec repo stamp 1a2b3c4 --verdict approve --reason 'removes a retired section'",
                 ],
                 auth=CommandAuth(capability=Capability.STAMP, human=_HR_MEMBER),
             ),
@@ -2002,12 +2002,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 },
             ),
         },
-    ),
-    "repo": CommandDef(
-        desc="Repository hook entry points",
-        flags=[F.FLAG_HELP],
-        hidden=True,
-        subcommands=_hook_entry_commands(),
     ),
     "sync": CommandDef(
         desc="Run this root's maintenance on demand: the fallback for commit-boundary maintenance",
@@ -2158,17 +2152,17 @@ MCP_LIST = CLI_SURFACE["mcp"].subcommands["list"]
 MCP_LIST_TOOLS = CLI_SURFACE["mcp"].subcommands["list-tools"]
 MCP_CALL = CLI_SURFACE["mcp"].subcommands["call"]
 
-CODE_BLUEPRINT_AFFECTED = CLI_SURFACE["code"].subcommands["blueprint"].subcommands["affected"]
-CODE_LINT = CLI_SURFACE["code"].subcommands["lint"]
-CODE_TEST = CLI_SURFACE["code"].subcommands["test"]
-CODE_FORMAT = CLI_SURFACE["code"].subcommands["format"]
-CODE_ADD = CLI_SURFACE["code"].subcommands["add"]
-CODE_OWNERS = CLI_SURFACE["code"].subcommands["owners"]
-CODE_COMMIT = CLI_SURFACE["code"].subcommands["commit"]
-CODE_STAMP = CLI_SURFACE["code"].subcommands["stamp"]
-CODE_MAINTENANCE_STATUS = CLI_SURFACE["code"].subcommands["maintenance"].subcommands["status"]
-CODE_MAINTENANCE_DRAIN = CLI_SURFACE["code"].subcommands["maintenance"].subcommands["drain"]
-CODE_MAINTENANCE_RETRY = CLI_SURFACE["code"].subcommands["maintenance"].subcommands["retry"]
+REPO_BLUEPRINT_AFFECTED = CLI_SURFACE["repo"].subcommands["blueprint"].subcommands["affected"]
+REPO_LINT = CLI_SURFACE["repo"].subcommands["lint"]
+REPO_TEST = CLI_SURFACE["repo"].subcommands["test"]
+REPO_FORMAT = CLI_SURFACE["repo"].subcommands["format"]
+REPO_ADD = CLI_SURFACE["repo"].subcommands["add"]
+REPO_OWNERS = CLI_SURFACE["repo"].subcommands["owners"]
+REPO_COMMIT = CLI_SURFACE["repo"].subcommands["commit"]
+REPO_STAMP = CLI_SURFACE["repo"].subcommands["stamp"]
+REPO_MAINTENANCE_STATUS = CLI_SURFACE["repo"].subcommands["maintenance"].subcommands["status"]
+REPO_MAINTENANCE_DRAIN = CLI_SURFACE["repo"].subcommands["maintenance"].subcommands["drain"]
+REPO_MAINTENANCE_RETRY = CLI_SURFACE["repo"].subcommands["maintenance"].subcommands["retry"]
 
 CONFIG_TTS_DEPROVISION = CLI_SURFACE["config"].subcommands["tts"].subcommands["deprovision"]
 CONFIG_VALIDATE = CLI_SURFACE["config"].subcommands["validate"]

@@ -90,7 +90,7 @@ def _read_raw(record_path: Path, session_id: str) -> dict[str, str]:
         return {}
     except (OSError, ValueError) as exc:
         # Degrade to the same nothing-declared-yet state as an absent record:
-        # raising here would strand this session's own telec code surface
+        # raising here would strand this session's own telec repo surface
         # (lint/commit/owners) until the file is manually removed.
         logger.warning("Unreadable declaration record", session_id=session_id, error=str(exc))
         return {}

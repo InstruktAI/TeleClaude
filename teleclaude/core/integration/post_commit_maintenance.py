@@ -109,8 +109,8 @@ _WINDOW_START_UNVERIFIED = "daemon did not verify healthy with admission open on
 _WINDOW_FAILURE_OUTPUT = "{reason}\n{output_tail}"
 _UNKNOWN_ACTION_EXIT_CODE = 127
 _SUCCESS_OUTCOME = "success"
-_REPLAY_COMMIT_COMMAND = "telec code maintenance retry --after-sha {after_sha} --action {action_id}"
-_REPLAY_EVENT_COMMAND = "telec code maintenance retry --event-id {event_id} --action {action_id}"
+_REPLAY_COMMIT_COMMAND = "telec repo maintenance retry --after-sha {after_sha} --action {action_id}"
+_REPLAY_EVENT_COMMAND = "telec repo maintenance retry --event-id {event_id} --action {action_id}"
 ON_DEMAND_MAINTENANCE_COMMAND = "telec sync"
 _GIT_FAILURES = (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError, TypeError, ValueError)
 

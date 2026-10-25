@@ -1,4 +1,4 @@
-"""Commit-gate continuation guidance: the printed card `telec code commit` shows
+"""Commit-gate continuation guidance: the printed card `telec repo commit` shows
 before `--approved`, plus the scope/diffstat/review-lane helpers it composes from.
 """
 
@@ -47,6 +47,34 @@ _REVIEW_VERDICT_GUIDANCE = (
     "   you for evidence-based rejection or in-scope remediation and re-review. What\n"
     "   you and the reviewer cannot resolve, you hold: go idle with it and route it\n"
     "   nowhere (general/principle/autonomy).\n"
+)
+_COMMIT_GATE_CARD_TEMPLATE = (
+    "COMMIT GATE ACTIVE — CONTINUE NOW\n"
+    "\n"
+    "This output is not informational. Follow it until one terminal state:\n"
+    "- a commit is created and its review routing is decided, then completed or started as instructed; or\n"
+    "- a concrete blocker is reached.\n"
+    "\n"
+    "{scope_diffstat}\n"
+    "\n"
+    "Required next steps:\n"
+    "1. Declare what you are working on, if you have not already:\n"
+    "  telec repo add <path> [<path> ...]\n"
+    "   The declared set is your authoritative commit scope. Late declaration is fine —\n"
+    "   declare the moment you notice a path isn't declared yet.\n"
+    "\n"
+    "2. Commit the declared work yourself. Never ask the human before committing.\n"
+    "   If your declared set contains multiple separable intents, split with --only:\n"
+    "  telec repo commit --approved '<msg>' --only <path> [<path> ...]\n"
+    "   A tracked file you wrote from a shell command also needs `telec repo add`:\n"
+    "   only declared paths are committed, so an undeclared shell write is outside\n"
+    "   scope and will not be committed.\n"
+    "\n"
+    "   Foreign staged files are excluded by pathspec. Do not unstage them.\n"
+    "\n"
+    "{review_decision_step}\n"
+    "{review_dispatch}"
+    "{review_verdict_guidance}"
 )
 _UNCLASSIFIED_ARTIFACT_LANE_TEMPLATE = (
     "Malformed agent-artifact path(s) could not be classified: {paths}. "
@@ -107,7 +135,7 @@ def _resolve_open_commit_reviewers(project_root: Path) -> tuple[tuple[str, str],
     Advisory only — this backs a printed hint, never a gate. Any resolution
     failure (no session identity, no runtime, an unreachable database) yields
     an empty result so the caller falls back to the start-only form; resolving
-    this hint can never become a new way for ``telec code commit`` to fail.
+    this hint can never become a new way for ``telec repo commit`` to fail.
 
     Every open reviewer is reported with its mode rather than one arbitrary
     holder: mode is part of the review subject, so a bare session id could
@@ -200,7 +228,7 @@ def _print_commit_review_guidance(project_root: Path, context_root: Path | None)
     """Print the active commit-gate continuation instructions for shared main.
 
     The sealed contract makes ``--approved`` the single gate for any commit on
-    main; the bare ``telec code commit`` invocation enters the commit gate. The
+    main; the bare ``telec repo commit`` invocation enters the commit gate. The
     caller owns the exit code, but the printed surface is a continuation
     instruction: commit or reach a concrete blocker before reporting done.
     """
@@ -236,31 +264,11 @@ def _print_commit_review_guidance(project_root: Path, context_root: Path | None)
         standalone_prose_patterns=standalone_prose_patterns,
     )
     print(
-        "COMMIT GATE ACTIVE — CONTINUE NOW\n"
-        "\n"
-        "This output is not informational. Follow it until one terminal state:\n"
-        "- a commit is created and its review routing is decided, then completed or started as instructed; or\n"
-        "- a concrete blocker is reached.\n"
-        "\n"
-        f"{scope_diffstat}\n"
-        "\n"
-        "Required next steps:\n"
-        "1. Declare what you are working on, if you have not already:\n"
-        "  telec code add <path> [<path> ...]\n"
-        "   The declared set is your authoritative commit scope. Late declaration is fine —\n"
-        "   declare the moment you notice a path isn't declared yet.\n"
-        "\n"
-        "2. Commit the declared work yourself. Never ask the human before committing.\n"
-        "   If your declared set contains multiple separable intents, split with --only:\n"
-        "  telec code commit --approved '<msg>' --only <path> [<path> ...]\n"
-        "   A tracked file you wrote from a shell command also needs `telec code add`:\n"
-        "   only declared paths are committed, so an undeclared shell write is outside\n"
-        "   scope and will not be committed.\n"
-        "\n"
-        "   Foreign staged files are excluded by pathspec. Do not unstage them.\n"
-        "\n"
-        f"{review_decision_step}\n"
-        f"{review_dispatch}"
-        f"{_REVIEW_VERDICT_GUIDANCE}",
+        _COMMIT_GATE_CARD_TEMPLATE.format(
+            scope_diffstat=scope_diffstat,
+            review_decision_step=review_decision_step,
+            review_dispatch=review_dispatch,
+            review_verdict_guidance=_REVIEW_VERDICT_GUIDANCE,
+        ),
         file=sys.stderr,
     )

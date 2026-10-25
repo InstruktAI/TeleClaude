@@ -51,7 +51,7 @@ os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = GIT_EXECUTABLE  # fmt: skip  # guard: 
 #
 # GitPython calls bypass the bash wrapper because GIT_PYTHON_GIT_EXECUTABLE
 # points at the real binary. Without this hook, every git operation invoked
-# from Python (telec code commit, state machine, daemon git_ops) is invisible
+# from Python (telec repo commit, state machine, daemon git_ops) is invisible
 # to the central log. Errors like "Unable to create .git/index.lock" then
 # surface only in the calling agent's stderr and disappear.
 #

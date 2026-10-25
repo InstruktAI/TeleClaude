@@ -1,4 +1,4 @@
-"""CLI handlers for ``telec code`` namespace."""
+"""CLI handlers for ``telec repo`` namespace."""
 
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ from teleclaude.cli.telec.handlers._code_commit_guidance import (
 )
 from teleclaude.cli.telec.handlers._code_commit_success import record_commit_success
 from teleclaude.cli.telec.handlers._code_git_state import (
+    PARTIAL_STAGING_RECOVERY_TEMPLATE,
+    PATH_ARGUMENT_SEPARATOR,
     dirty_paths,
     get_unmerged_files,
     get_untracked_files,
@@ -38,7 +40,7 @@ from teleclaude.cli.telec.handlers._code_post_merge import handle_code_post_merg
 from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commit
 from teleclaude.cli.telec.handlers._code_stamp import handle_code_stamp
 from teleclaude.cli.telec.help import _usage
-from teleclaude.cli.telec.surface import CODE_COMMIT, CODE_OWNERS
+from teleclaude.cli.telec.surface import REPO_COMMIT, REPO_OWNERS
 from teleclaude.cli.telec.surface_types import HookEntryVerb, TelecCommand
 from teleclaude.commit_identity import (
     PLANNED_TODO_TRAILER_KEY,
@@ -83,11 +85,10 @@ _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|r
 # worktree commit must never touch it. Deliberately narrower than
 # `_NON_CODE_DOCUMENTATION_PATTERNS` so the guard only refuses the doc layer
 # itself, not incidental prose elsewhere in the tree.
-_CODE_NAMESPACE = "code"
-_CODE_OWNERS_NO_POSITIONALS = "telec code owners takes no positional arguments"
-_CODE_OWNERS_QUERY_FAILURE = "telec code owners failed: {error}"
-_CODE_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code capability"
-_COMMIT_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code or docs capability"
+_CODE_OWNERS_NO_POSITIONALS = "telec repo owners takes no positional arguments"
+_CODE_OWNERS_QUERY_FAILURE = "telec repo owners failed: {error}"
+_CODE_CAPABILITY_REQUIRED = "ERROR: telec repo {command} requires the code capability"
+_COMMIT_CAPABILITY_REQUIRED = "ERROR: telec repo {command} requires the code or docs capability"
 _MERGE_WORKTREE_DIFF_ARGUMENTS = ("--name-only", "-z", "--")
 _NUL_CHARACTER = "\x00"
 _ERR_TODO_LOOKUP = "ERROR: cannot resolve todo association for {slug!r}: {error}"
@@ -105,8 +106,51 @@ _AGENT_ARTIFACT_WORKTREE_GUIDANCE = (
     "remove these paths from the worktree commit and route the artifact change to that session."
 )
 _WORKTREE_REFUSAL_PATH_TEMPLATE = "  {path}"
+_ADD_UNKNOWN_FLAG_TEMPLATE = "ERROR: unknown flag: {token}\nUsage: telec repo add <path> [<path> ...]"
+_ADD_USAGE = (
+    "Usage: telec repo add <path> [<path> ...]\n"
+    "\n"
+    "Declares paths for the next `telec repo commit`; NEW files are also staged.\n"
+    "Modified tracked files are declared without staging because pathspec commits\n"
+    "them directly from the working tree. Clean and not-yet-created paths are\n"
+    "declared the same way — declare as you start on a file, or the moment you\n"
+    "notice one isn't declared."
+)
+_COMMIT_MESSAGE_COUNT_ERROR = (
+    "ERROR: telec repo commit accepts exactly one quoted message.\n"
+    "If a path was consumed as part of the message, place path flags after "
+    "the message (or after --approved):\n"
+    '  telec repo commit --approved "<message>" --only <path> ...'
+)
+_COMMIT_ONLY_WITH_INCLUDE_ERROR = (
+    "ERROR: --only cannot be combined with --include.\n"
+    '  telec repo commit --approved "<message>" --only <path> [<path> ...]'
+)
+_COMMIT_GATE_HELP = (
+    "telec repo commit is the sealed canonical commit interface.\n"
+    "Use --approved to acknowledge the agent-owned commit gate:\n"
+    '  telec repo commit --approved "type(scope): subject"'
+)
+_COMMIT_MESSAGE_REQUIRED_ERROR = (
+    'ERROR: --approved requires a quoted commit message.\n  telec repo commit --approved "type(scope): subject"'
+)
+_UNTRACKED_DECLARE_GUIDANCE_TEMPLATE = (
+    "\nIf intentional, declare them:\n"
+    "  telec repo add {paths}  # then re-run commit\n"
+    "  telec repo commit --approved '<msg>' --include {paths}\n"
+    "If temp/scratch, leave them — they stay untracked.\n"
+)
+_NOTHING_DECLARED_DIRTY_TREE_ERROR = (
+    "ERROR: nothing declared, and the workspace holds dirty paths. This commit "
+    "would silently record nothing. Declare what you are working on with "
+    "`telec repo add <path>...`, or pass `--include <path>` here."
+)
+_NOTHING_IN_SCOPE_ERROR = (
+    "Nothing in workspace scope to commit. For NEW files, declare them with "
+    "`telec repo add <path>` first, or pass `--include <path>` here."
+)
 _ADD_SESSION_CHECKOUT_UNRESOLVED = (
-    "ERROR: telec code add could not resolve the checkout of session {session_id}; nothing was staged or declared."
+    "ERROR: telec repo add could not resolve the checkout of session {session_id}; nothing was staged or declared."
 )
 _ADD_NOT_DECLARED_FOREIGN_CHECKOUT = (
     "Not declared: the invocation repository {invocation} is not the session checkout {checkout}.\n"
@@ -140,7 +184,7 @@ _COMMIT_SUBCOMMANDS = frozenset(
 )
 
 
-_HOOK_ENTRY_HANDLERS: dict[HookEntryVerb, Callable[[list[str], TelecCommand], None]] = {
+_HOOK_ENTRY_HANDLERS: dict[HookEntryVerb, Callable[[list[str]], None]] = {
     HookEntryVerb.PRE_COMMIT: handle_code_pre_commit,
     HookEntryVerb.POST_COMMIT: handle_code_post_commit,
     HookEntryVerb.POST_MERGE: handle_code_post_merge,
@@ -155,28 +199,19 @@ def _hook_entry_verb(args: list[str]) -> HookEntryVerb | None:
         return None
 
 
-def handle_repo(args: list[str]) -> None:
-    """Route ``telec repo <hook-entry verb>`` to the operations ``telec code`` runs for the same verbs."""
-    verb = _hook_entry_verb(args)
-    if verb is None:
-        print(_usage(TelecCommand.REPO))
-        return
-    _HOOK_ENTRY_HANDLERS[verb](args[1:], TelecCommand.REPO)
-
-
 def handle_code(args: list[str]) -> None:
-    """Route ``telec code <subcommand>`` to the correct handler."""
+    """Route ``telec repo <subcommand>`` to the correct handler."""
     if not args:
-        print(_usage(_CODE_NAMESPACE))
+        print(_usage(TelecCommand.REPO))
         return
     verb = _hook_entry_verb(args)
     if verb is not None:
-        _HOOK_ENTRY_HANDLERS[verb](args[1:], TelecCommand.CODE)
+        _HOOK_ENTRY_HANDLERS[verb](args[1:])
         return
     try:
         sub = CodeSubcommand(args[0])
     except ValueError:
-        print(_usage(_CODE_NAMESPACE))
+        print(_usage(TelecCommand.REPO))
         return
     rest = args[1:]
     _require_code_capability(sub)
@@ -231,7 +266,7 @@ def _require_code_capability(command: CodeSubcommand) -> None:
 
 def handle_code_owners(args: list[str]) -> None:
     """Print declaration owners for every dirty path of the canonical checkout."""
-    parsed = parse_command_args(CODE_OWNERS, args)
+    parsed = parse_command_args(REPO_OWNERS, args)
     if parsed.positionals:
         raise CliUsageError(_CODE_OWNERS_NO_POSITIONALS)
 
@@ -256,7 +291,7 @@ def handle_code_add(args: list[str]) -> None:
        git refuses a commit while the index has unmerged entries; the
        file must be marked resolved via ``git add``.
     3. **Partial-staged tracked files** (staged hunks + later working-tree
-       delta) — the partial-staging guard in ``telec code commit`` blocks
+       delta) — the partial-staging guard in ``telec repo commit`` blocks
        these because ``git commit -- <path>`` would otherwise sweep
        unstaged hunks. This command is that guard's prescribed recovery:
        running ``git add`` fully restages the file so the staged version
@@ -275,23 +310,14 @@ def handle_code_add(args: list[str]) -> None:
     for token in args:
         if token.startswith("-"):
             print(
-                f"ERROR: unknown flag: {token}\nUsage: telec code add <path> [<path> ...]",
+                _ADD_UNKNOWN_FLAG_TEMPLATE.format(token=token),
                 file=sys.stderr,
             )
             raise SystemExit(2)
         positionals.append(token)
 
     if not positionals:
-        print(
-            "Usage: telec code add <path> [<path> ...]\n"
-            "\n"
-            "Declares paths for the next `telec code commit`; NEW files are also staged.\n"
-            "Modified tracked files are declared without staging because pathspec commits\n"
-            "them directly from the working tree. Clean and not-yet-created paths are\n"
-            "declared the same way — declare as you start on a file, or the moment you\n"
-            "notice one isn't declared.",
-            file=sys.stderr,
-        )
+        print(_ADD_USAGE, file=sys.stderr)
         raise SystemExit(2)
 
     state = resolve_invocation_state()
@@ -311,7 +337,7 @@ def handle_code_add(args: list[str]) -> None:
     unmerged = set(get_unmerged_files(project_root))
     dirty = dirty_paths(project_root)
     # Partial-staging: file has BOTH staged changes AND a later working-tree
-    # delta. `telec code add` is the recovery path the partial-staging guard
+    # delta. `telec repo add` is the recovery path the partial-staging guard
     # points at, so it must accept these files and fully (re)stage them.
     repo = Repo(str(project_root))
     staged_now = set(repo.git.diff("--cached", "--name-only").strip().splitlines())
@@ -422,7 +448,7 @@ def handle_code_commit(args: list[str]) -> None:
     Safety primitives:
     1. Orchestrator restriction.
     2. main-branch lock serialises all ``_commit_under_lock`` bodies.
-    3. ``telec code commit`` formats native-code paths before invoking Git.
+    3. ``telec repo commit`` formats native-code paths before invoking Git.
     4. Git's pre-commit hook runs the selected staged-content quality gate for
        every route into a commit.
     5. ``--approved`` is the commit gate; bare invocation prints the
@@ -440,16 +466,10 @@ def handle_code_commit(args: list[str]) -> None:
     separated from it by ``--approved``, since a GREEDY flag would otherwise
     swallow it as a path.
     """
-    parsed = parse_command_args(CODE_COMMIT, args)
+    parsed = parse_command_args(REPO_COMMIT, args)
     positionals = parsed.positionals
     if len(positionals) > 1:
-        print(
-            "ERROR: telec code commit accepts exactly one quoted message.\n"
-            "If a path was consumed as part of the message, place path flags after "
-            "the message (or after --approved):\n"
-            '  telec code commit --approved "<message>" --only <path> ...',
-            file=sys.stderr,
-        )
+        print(_COMMIT_MESSAGE_COUNT_ERROR, file=sys.stderr)
         raise SystemExit(2)
 
     approved = parsed.has(F.FLAG_COMMIT_APPROVED)
@@ -459,11 +479,7 @@ def handle_code_commit(args: list[str]) -> None:
     todo_slug = parsed.value(F.FLAG_COMMIT_TODO)
 
     if includes and only:
-        print(
-            "ERROR: --only cannot be combined with --include.\n"
-            '  telec code commit --approved "<message>" --only <path> [<path> ...]',
-            file=sys.stderr,
-        )
+        print(_COMMIT_ONLY_WITH_INCLUDE_ERROR, file=sys.stderr)
         raise SystemExit(2)
 
     message = positionals[0] if positionals else None
@@ -485,21 +501,12 @@ def handle_code_commit(args: list[str]) -> None:
         if current_branch == "main" and caller_identity.role != RoleName.INTEGRATOR.value:
             _print_commit_review_guidance(project_root, state.context_root)
             raise SystemExit(1 if forgot_gate else 0)
-        print(
-            "telec code commit is the sealed canonical commit interface.\n"
-            "Use --approved to acknowledge the agent-owned commit gate:\n"
-            '  telec code commit --approved "type(scope): subject"',
-            file=sys.stderr,
-        )
+        print(_COMMIT_GATE_HELP, file=sys.stderr)
         raise SystemExit(2 if forgot_gate else 0)
 
     # --approved → commit. Message required.
     if message is None:
-        print(
-            "ERROR: --approved requires a quoted commit message.\n"
-            '  telec code commit --approved "type(scope): subject"',
-            file=sys.stderr,
-        )
+        print(_COMMIT_MESSAGE_REQUIRED_ERROR, file=sys.stderr)
         raise SystemExit(2)
 
     try:
@@ -644,27 +651,17 @@ def _commit_under_lock(
         for path in untracked_unstaged_in_scope:
             print(f"  {path}", file=sys.stderr)
         print(
-            "\nIf intentional, declare them:\n"
-            "  telec code add " + " ".join(untracked_unstaged_in_scope) + "  # then re-run commit\n"
-            "  telec code commit --approved '<msg>' --include " + " ".join(untracked_unstaged_in_scope) + "\n"
-            "If temp/scratch, leave them — they stay untracked.\n",
+            _UNTRACKED_DECLARE_GUIDANCE_TEMPLATE.format(
+                paths=PATH_ARGUMENT_SEPARATOR.join(untracked_unstaged_in_scope)
+            ),
             file=sys.stderr,
         )
 
     if not pathspec:
         if scope_resolution.declared_nothing_over_dirty_tree:
-            print(
-                "ERROR: nothing declared, and the workspace holds dirty paths. This commit "
-                "would silently record nothing. Declare what you are working on with "
-                "`telec code add <path>...`, or pass `--include <path>` here.",
-                file=sys.stderr,
-            )
+            print(_NOTHING_DECLARED_DIRTY_TREE_ERROR, file=sys.stderr)
             raise SystemExit(1)
-        print(
-            "Nothing in workspace scope to commit. For NEW files, declare them with "
-            "`telec code add <path>` first, or pass `--include <path>` here.",
-            file=sys.stderr,
-        )
+        print(_NOTHING_IN_SCOPE_ERROR, file=sys.stderr)
         raise SystemExit(1)
 
     # Only untracked/unmerged entries need staging; tracked paths use pathspec.
@@ -695,11 +692,7 @@ def _commit_under_lock(
         for path in sorted(overlap):
             print(f"  {path}", file=sys.stderr)
         print(
-            "\n`git commit -- <path>` would commit the working-tree version, sweeping\n"
-            "in unstaged hunks you did not declare. Fully (re)stage each file via the\n"
-            "sealed recovery path (`telec code add` accepts partial-staged tracked\n"
-            "files for exactly this case), then re-run telec code commit:\n"
-            "  telec code add " + " ".join(sorted(overlap)),
+            PARTIAL_STAGING_RECOVERY_TEMPLATE.format(paths=PATH_ARGUMENT_SEPARATOR.join(sorted(overlap))),
             file=sys.stderr,
         )
         raise SystemExit(1)

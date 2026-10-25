@@ -9,9 +9,9 @@ from pathlib import Path
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.surface import (
-    CODE_MAINTENANCE_DRAIN,
-    CODE_MAINTENANCE_RETRY,
-    CODE_MAINTENANCE_STATUS,
+    REPO_MAINTENANCE_DRAIN,
+    REPO_MAINTENANCE_RETRY,
+    REPO_MAINTENANCE_STATUS,
 )
 from teleclaude.core.integration._maintenance_records import (
     EventActivation,
@@ -30,15 +30,15 @@ from teleclaude.core.integration.post_commit_maintenance import (
 )
 from teleclaude.project_root import resolve_invocation_roots
 
-_USAGE = "Usage: telec code maintenance {status|drain|retry}"
-_RETRY_USAGE = "Usage: telec code maintenance retry (--after-sha <sha> | --event-id <id>) --action <id>"
+_USAGE = "Usage: telec repo maintenance {status|drain|retry}"
+_RETRY_USAGE = "Usage: telec repo maintenance retry (--after-sha <sha> | --event-id <id>) --action <id>"
 _NO_ACTION_RECORDS = "No outstanding or failed maintenance action records."
 _NO_JUDGMENT_MARKER = "No integrator judgment is pending."
 _MISSING_VALUE = "none"
 _INVALID_COMMAND = "Unknown maintenance command."
-_RETRY_REQUIRES_FAILED = "Retry requires a failed action record; inspect with telec code maintenance status."
+_RETRY_REQUIRES_FAILED = "Retry requires a failed action record; inspect with telec repo maintenance status."
 _DRAIN_FAILED = "Maintenance drain is ineligible here or a terminal failure remains; inspect status."
-_RETRY_FAILED = "Maintenance action remains failed after retry; inspect telec code maintenance status."
+_RETRY_FAILED = "Maintenance action remains failed after retry; inspect telec repo maintenance status."
 _RETRY_SUCCEEDED = "Maintenance action retry completed."
 _ACTIVATION_LINE = "Activation {after_sha} (queued {queued_at})"
 _EVENT_ACTIVATION_LINE = "Event activation {event_type} {event_id} (queued {queued_at})"
@@ -46,7 +46,7 @@ _RECORD_LINE = "  {action_id}: {state}; exit_code={exit_code}; finished_at={fini
 _RECORD_RECOVERY_LINE = "  Recover with: {command}"
 _MARKER_ACTIVATION_LINE = "  {after_sha} activated_at={activated_at}"
 _MARKER_READINESS_LINE = "Integrator judgment ready_at={ready_at}"
-_MARKER_RECOVERY_LINE = "  Resume with: telec code maintenance drain"
+_MARKER_RECOVERY_LINE = "  Resume with: telec repo maintenance drain"
 
 
 class MaintenanceCommand(StrEnum):
@@ -70,14 +70,14 @@ def handle_code_maintenance(args: list[str]) -> None:
         raise SystemExit(2) from None
     operands = args[1:]
     if command is MaintenanceCommand.STATUS:
-        parsed = parse_command_args(CODE_MAINTENANCE_STATUS, operands)
+        parsed = parse_command_args(REPO_MAINTENANCE_STATUS, operands)
         if parsed.positionals:
             print(_USAGE, file=sys.stderr)
             raise SystemExit(2)
         _print_status(maintenance_status(_invocation_root()))
         return
     if command is MaintenanceCommand.DRAIN:
-        parsed = parse_command_args(CODE_MAINTENANCE_DRAIN, operands)
+        parsed = parse_command_args(REPO_MAINTENANCE_DRAIN, operands)
         if parsed.positionals:
             print(_USAGE, file=sys.stderr)
             raise SystemExit(2)
@@ -95,7 +95,7 @@ def _invocation_root() -> Path:
 
 def _retry(args: list[str]) -> None:
     """Validate a failed record, retry it, and report any remaining failure."""
-    parsed = parse_command_args(CODE_MAINTENANCE_RETRY, args)
+    parsed = parse_command_args(REPO_MAINTENANCE_RETRY, args)
     after_values = parsed.values(F.FLAG_MAINTENANCE_AFTER_SHA)
     event_values = parsed.values(F.FLAG_MAINTENANCE_EVENT_ID)
     action_values = parsed.values(F.FLAG_MAINTENANCE_ACTION)

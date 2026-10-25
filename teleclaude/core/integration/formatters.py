@@ -17,7 +17,40 @@ from teleclaude.core.integration.git_ops import RepoRootSyncOutcome, RepoRootSyn
 # the handler), so their commit instruction goes straight to --approved with
 # a quoted message. Single source of truth — referenced by every integration
 # decision template that ends with a commit step.
-_COMMIT_CMD_INSTRUCTION = "telec code commit --approved '<your message>'"
+_COMMIT_CMD_INSTRUCTION = "telec repo commit --approved '<your message>'"
+_COMMIT_DECISION_NEXT = "NEXT: Compose and execute telec repo commit, then call telec todo integrate"
+_CONFLICT_DECISION_NEXT = (
+    "NEXT: Resolve conflicts, stage, commit with telec repo commit, then call telec todo integrate"
+)
+_CONTENT_GATE_CONFLICT_TEMPLATE = """INTEGRATION DECISION: CONTENT-GATE CONFLICT — INTEGRATOR-OWNED
+
+Candidate: {slug} (branch: {branch})
+
+Push from the integration worktree to origin/main was rejected by the
+pre-push content gate (`telec repo lint --all` failed on the squash content).
+This is invariant under rebase — treat it as a logical merge conflict on a
+repo-wide invariant, in the same class as a textual merge conflict. No
+upstream owner exists once a candidate is in the integration pipeline: you own
+this conflict.
+
+Rejection output:
+{rejection_reason}
+
+## Your Two Actions
+
+1. **Groundable — fix and re-push.** Reproduce: cd {worktree} && telec repo lint --all.
+   Resolve it there — for example, for a double-bound scenario, read both tests
+   and drop the redundant binding when they observe the same behavior, or
+   author the distinct scenario and retag. Write into the live contract body
+   only, never inside a pending planned-change region. Stage and commit:
+   {commit_command}. Call telec todo integrate to re-push.
+2. **Ungroundable — abandon and park.** Run: telec todo integrate --abandon.
+   The state machine resets the integration worktree to the frozen abandon
+   target {pre_merge_head} and parks the candidate as an
+   ungroundable-content-gate concern, continuing the drain with every
+   independent candidate.
+
+NEXT: Fix and commit, or run telec todo integrate --abandon"""
 _PARKED_CANDIDATE_LINE = "- {slug}: {reason}"
 _PARKED_CANDIDATE_SEPARATOR = "\n"
 _PARKED_CANDIDATES_SECTION = "\n\nParked candidates:\n{items}"
@@ -44,7 +77,7 @@ _REPO_ROOT_DIRTY_PATH_INSTRUCTION = (
     "by the integration procedure's evidenced revert. "
     "Load the current integration procedure with `telec docs get "
     "sdlc/procedure/lifecycle/integrate` before following **Resolving a dirty path**. "
-    "Run `telec code owners` from `{project_root}` before routing a path; never broadcast "
+    "Run `telec repo owners` from `{project_root}` before routing a path; never broadcast "
     "ownership questions. Keep `integrator-main-clearance` live, and `integrator-queue-watch` live "
     "without ever cancelling it, and resolve each blocking path on its own. "
     "Run each stranded-path commit with the tool working directory set to `{project_root}` "
@@ -161,7 +194,7 @@ Staged changes are ready for commit.
 3. Run: {_COMMIT_CMD_INSTRUCTION}
 4. Then call: telec todo integrate
 
-NEXT: Compose and execute telec code commit, then call telec todo integrate""" + _format_anomalies(warnings or [])
+{_COMMIT_DECISION_NEXT}""" + _format_anomalies(warnings or [])
 
 
 def _format_conflict_decision(
@@ -203,9 +236,7 @@ If the conflict cannot be grounded confidently, abandon this candidate:
 This parks the candidate and its dependents for the current drain, then continues
 with every independent candidate.
 
-NEXT: Resolve conflicts, stage, commit with telec code commit, then call telec todo integrate""" + _format_anomalies(
-        warnings or []
-    )
+{_CONFLICT_DECISION_NEXT}""" + _format_anomalies(warnings or [])
 
 
 def _format_content_gate_conflict(
@@ -217,35 +248,14 @@ def _format_content_gate_conflict(
     *,
     warnings: list[str] | None = None,
 ) -> str:
-    return f"""INTEGRATION DECISION: CONTENT-GATE CONFLICT — INTEGRATOR-OWNED
-
-Candidate: {slug} (branch: {branch})
-
-Push from the integration worktree to origin/main was rejected by the
-pre-push content gate (`telec code lint --all` failed on the squash content).
-This is invariant under rebase — treat it as a logical merge conflict on a
-repo-wide invariant, in the same class as a textual merge conflict. No
-upstream owner exists once a candidate is in the integration pipeline: you own
-this conflict.
-
-Rejection output:
-{rejection_reason}
-
-## Your Two Actions
-
-1. **Groundable — fix and re-push.** Reproduce: cd {worktree} && telec code lint --all.
-   Resolve it there — for example, for a double-bound scenario, read both tests
-   and drop the redundant binding when they observe the same behavior, or
-   author the distinct scenario and retag. Write into the live contract body
-   only, never inside a pending planned-change region. Stage and commit:
-   {_COMMIT_CMD_INSTRUCTION}. Call telec todo integrate to re-push.
-2. **Ungroundable — abandon and park.** Run: telec todo integrate --abandon.
-   The state machine resets the integration worktree to the frozen abandon
-   target {pre_merge_head} and parks the candidate as an
-   ungroundable-content-gate concern, continuing the drain with every
-   independent candidate.
-
-NEXT: Fix and commit, or run telec todo integrate --abandon""" + _format_anomalies(warnings or [])
+    return _CONTENT_GATE_CONFLICT_TEMPLATE.format(
+        slug=slug,
+        branch=branch,
+        rejection_reason=rejection_reason,
+        worktree=worktree,
+        pre_merge_head=pre_merge_head,
+        commit_command=_COMMIT_CMD_INSTRUCTION,
+    ) + _format_anomalies(warnings or [])
 
 
 def _format_push_rejected(rejection_reason: str, slug: str, worktree: str, *, warnings: list[str] | None = None) -> str:

@@ -1592,9 +1592,9 @@ Show personal-preference observations around an anchor ID.
 - `--after`: Observations after anchor (default: 3)
 - `--project`: Filter by project name
 
-## `telec code`
+## `telec repo`
 
-Code quality and commit tools
+Repository quality and commit tools
 
 **Notes:**
 
@@ -1602,22 +1602,22 @@ Code quality and commit tools
 - lint is available where code or docs is enabled; each check family follows its owning home's configuration.
 - add, commit, and owners remain available when either code or docs is subscribed.
 
-### `telec code blueprint`
+### `telec repo blueprint`
 
 Query the codebase Blueprint (structural blast-radius)
 
-#### `telec code blueprint affected`
+#### `telec repo blueprint affected`
 
 Print the blast-radius dependents of changed files
 
-**Usage:** `telec code blueprint affected <changed-files>`
+**Usage:** `telec repo blueprint affected <changed-files>`
 
 **Notes:**
 
 - Maps each changed file to its symbols, runs a transitive reverse dependency traversal over the Blueprint, and prints the union of dependents with file:line.
 - Waits briefly for recorded Blueprint maintenance when committed main has advanced. If no complete generation matching committed main can be established, prints unavailability and its recovery command; it never returns stale dependents as a current answer.
 
-### `telec code lint`
+### `telec repo lint`
 
 Run checks selected by each owning home's configuration
 
@@ -1625,7 +1625,7 @@ Run checks selected by each owning home's configuration
 
 - `--all`: Run against all configured sources, skip workspace scoping
 
-### `telec code test`
+### `telec repo test`
 
 Run native make test
 
@@ -1634,7 +1634,7 @@ Run native make test
 - `--all`: Run all tests, skip workspace scoping
 - `--update-snapshots`: Update snapshot files after reading diffs. Use only when test failures show snapshot deltas that match your intended change.
 
-### `telec code format`
+### `telec repo format`
 
 Run native make format
 
@@ -1642,24 +1642,24 @@ Run native make format
 
 - `--all`: Format all configured sources, skip workspace scoping
 
-### `telec code add`
+### `telec repo add`
 
 Declare files for the next commit (stages NEW, unmerged, or partial-staged tracked)
 
-**Usage:** `telec code add <path> [<path> ...]`
+**Usage:** `telec repo add <path> [<path> ...]`
 
 **Notes:**
 
 - Sealed equivalent of 'git add' for the three cases git's data model genuinely requires staging:
--   (1) NEW (untracked) files — must enter the index before commit pathspec can match.
--   (2) Unmerged-index files (post-conflict) — must be marked resolved before commit.
--   (3) Partial-staged tracked files (staged hunks + later working-tree delta) — must be fully (re)staged so the pathspec commit does not silently sweep in unstaged hunks. The partial-staging guard in `telec code commit` directs agents here for recovery.
+- (1) NEW (untracked) files — must enter the index before commit pathspec can match.
+- (2) Unmerged-index files (post-conflict) — must be marked resolved before commit.
+- (3) Partial-staged tracked files (staged hunks + later working-tree delta) — must be fully (re)staged so the pathspec commit does not silently sweep in unstaged hunks. The partial-staging guard in `telec repo commit` directs agents here for recovery.
 - A successful call from inside the session's checkout declares its paths to session-scoping. Invoked from a different repository it stages as usual, declares nothing, and reports the paths as not declared. Modified-tracked files that are NOT partial-staged don't need staging — pathspec commits them straight from the working tree.
 - A clean tracked path or a path that does not exist yet is declared the same way — declaring is bookkeeping for work about to start, not a claim about current git state, so declaring ahead of the first touch always succeeds.
 - NEW files in scope are NOT auto-committed; this is the explicit declaration step. Without it, untracked files stay untracked (safety net for temp/scratch artifacts the agent may have created incidentally).
-- Alternative one-shot form: telec code commit --approved '<msg>' --include <path>.
+- Alternative one-shot form: telec repo commit --approved '<msg>' --include <path>.
 
-### `telec code owners`
+### `telec repo owners`
 
 Print live declaration owners for every dirty path in the canonical checkout
 
@@ -1668,11 +1668,11 @@ Print live declaration owners for every dirty path in the canonical checkout
 - Prints one path-keyed JSON object for every dirty path of the project's canonical checkout.
 - A value lists the live sessions that declared the path, or null when no live session declared it.
 
-### `telec code commit`
+### `telec repo commit`
 
 Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)
 
-**Usage:** `telec code commit "<message>" [--approved] [--human-involved <reason>] [--include <path> ...] [--only <path> ...]`
+**Usage:** `telec repo commit "<message>" [--approved] [--human-involved <reason>] [--include <path> ...] [--only <path> ...]`
 
 **Flags:**
 
@@ -1685,7 +1685,7 @@ Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git for
 
 - Accepts only: one quoted message, --approved, --human-involved <reason>, --include <path> ..., and --only <path> ... .
 - Modified-tracked files in scope are auto-committed via pathspec straight from the working tree — no staging needed.
-- NEW (untracked) files in scope are NOT auto-committed by default; declare them via `telec code add`, `--include`, or `--only` (safety net against incidental temp/scratch artifacts).
+- NEW (untracked) files in scope are NOT auto-committed by default; declare them via `telec repo add`, `--include`, or `--only` (safety net against incidental temp/scratch artifacts).
 - --only commits exactly the declared paths and is mutually exclusive with --include.
 - Unmerged-index files in pathspec are staged internally for the integrator conflict path.
 - Without --approved on main: prints commit-first and review-routing guidance and exits.
@@ -1693,11 +1693,11 @@ Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git for
 - The commit author is stamped as the resolved agent's bot identity (git --author); the message gains the branding line, Session:, and Human-Involved: — no Co-Authored-By trailer is ever added.
 - In a todo worktree, a successful commit also publishes the branch to origin; a failed publish leaves the commit in place.
 
-### `telec code stamp`
+### `telec repo stamp`
 
 Record a commit-review outcome on commits that landed on main
 
-**Usage:** `telec code stamp <sha>[,<sha>...] --verdict approve|request_changes [--reason <text>]`
+**Usage:** `telec repo stamp <sha>[,<sha>...] --verdict approve|request_changes [--reason <text>]`
 
 **Flags:**
 
@@ -1731,4 +1731,3 @@ Run this root's maintenance on demand: the fallback for commit-boundary maintena
 - Runs only from the canonical checkout on main, in a directory holding its own teleclaude.yml; elsewhere it refuses and names where to run it.
 - A step that an earlier commit-boundary run recorded as failed is named with its replay command; the standing integrator owns that replay.
 - With --list, it prints the steps a run would perform and runs nothing.
-

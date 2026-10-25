@@ -28,7 +28,7 @@
 #   RESTRICTED   — orchestrator cannot commit on any branch
 #
 # Commit-producing subcmds (commit, cherry-pick, rebase, merge) are gated:
-#   commit (any branch)              → use 'telec code commit'.
+#   commit (any branch)              → use 'telec repo commit'.
 #   cherry-pick/rebase/merge on main → integrator role bypass, otherwise
 #                                       set TELECLAUDE_OVERRIDE_APPROVED=1
 #   cherry-pick/rebase/merge on other branches → pass through
@@ -881,17 +881,17 @@ if { [ "$_commit_enabled" -eq 1 ] || [ "$_sealed_invocation_context" -eq 1 ]; } 
 ERROR: 'git add' is not used by agents. Staging is owned by telec.
 
 For NEW files (untracked), stage them explicitly:
-  telec code add <path> [<path> ...]
+  telec repo add <path> [<path> ...]
   (This is the sealed equivalent of 'git add' for the only case that needs it.)
 
 For EXISTING modified files, no staging is needed at all. Declare what
 you're working on and the commit's pathspec takes it straight from the
 working tree:
-  telec code add <path> [<path> ...]       # declare what you're working on
-  telec code commit                        # surface commit-first review-routing guidance
+  telec repo add <path> [<path> ...]       # declare what you're working on
+  telec repo commit                        # surface commit-first review-routing guidance
 
 NEW files in scope are intentionally NOT auto-committed (catches temp/
-scratch artifacts). If you don't `telec code add` them, they stay
+scratch artifacts). If you don't `telec repo add` them, they stay
 untracked. That's by design.
 
 Inspection tools (git diff, git status, git log) remain available.
@@ -902,13 +902,13 @@ fi
 if { [ "$_commit_enabled" -eq 1 ] || [ "$_sealed_invocation_context" -eq 1 ]; } && [ "$_subcmd" = "commit" ]; then
     _log_block commit_redirect
     cat >&2 <<'MSG'
-ERROR: Use 'telec code commit' instead of 'git commit'.
+ERROR: Use 'telec repo commit' instead of 'git commit'.
 
-telec code commit owns staging, scoping, the pathspec commit, and the
+telec repo commit owns staging, scoping, the pathspec commit, and the
 mandated trailer.
 
 Start with no flags:
-  telec code commit
+  telec repo commit
 
 That surfaces the commit-first review-routing gate. Commit autonomously
 with --approved once the gate is understood, then route any review from the
@@ -921,7 +921,7 @@ fi
 # Block commit-producing replays on main without explicit approval.
 # cherry-pick / rebase / merge produce commits via paths whose outer subcmd
 # is not 'commit', so the gate above doesn't see them. Without this, replays
-# can land on main bypassing telec code commit's main-branch lock and the
+# can land on main bypassing telec repo commit's main-branch lock and the
 # commit-first review-routing gate.
 if [ "$_code_enabled" -eq 1 ] || [ "$_sealed_invocation_context" -eq 1 ]; then
 case "$_subcmd" in
@@ -945,9 +945,9 @@ case "$_subcmd" in
                 if [ "$_role" != "integrator" ]; then
                     _log_block "replay_main_unauthorized_${_subcmd}"
                     cat >&2 <<MSG
-ERROR: 'git $_subcmd' on main produces commits without going through telec code commit.
+ERROR: 'git $_subcmd' on main produces commits without going through telec repo commit.
 
-This bypasses telec code commit's main-branch lock, scope checks, and the
+This bypasses telec repo commit's main-branch lock, scope checks, and the
 commit-first review-routing gate.
 
 To proceed (explicit override, one-shot):

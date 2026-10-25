@@ -16,7 +16,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.agent_artifacts import AGENT_ARTIFACT_ROOT_DIRNAME
 from teleclaude.cli.telec.handlers._code_git_state import working_tree_snapshot
-from teleclaude.cli.telec.surface_types import TelecCommand
 from teleclaude.git import (
     BadName,
     GitCommandError,
@@ -62,7 +61,7 @@ _GIT_STAGED_DIFF_ARGUMENTS = (_CACHED, _NAME_STATUS, _NO_RENAMES, _NUL, _DIFF_FI
 _GIT_PATHSPEC_SEPARATOR = "--"
 _PARTIAL_STAGING_ERROR = "ERROR: partially staged files detected:"
 _PRE_COMMIT_GIT_ERROR = "ERROR: pre-commit safety check failed: {error}"
-_PRE_COMMIT_USAGE = "Usage: telec {family} pre-commit"
+_PRE_COMMIT_USAGE = "Usage: telec repo pre-commit"
 _PRE_COMMIT_GATE_ERROR = "ERROR: commit quality gate failed: {reason}"
 _PRE_COMMIT_GATE_EVENT = "commit_quality_gate"
 _PRE_COMMIT_HOOK_NAME = "pre-commit"
@@ -72,7 +71,7 @@ _STAGED_PATH_RECORD_MALFORMED = "Git returned a malformed staged path status rec
 _STAGED_PATH_STATUS_INVALID = "Git returned an unsupported staged path status: {status}"
 _STAGED_MARKDOWN_SUFFIX = ".md"
 _FORMAT_SCOPED = False
-_RESTAGE_INSTRUCTION = "Fully restage via: telec code add <file>"
+_RESTAGE_INSTRUCTION = "Fully restage via: telec repo add <file>"
 _PATH_PREFIX = "  "
 _GIT_FAILURES = (
     BadName,
@@ -137,13 +136,10 @@ class GateDecision:
     exit_code: int = 1
 
 
-def handle_code_pre_commit(args: list[str], family: TelecCommand) -> None:
-    """Run the hook gate on staged paths, refusing every failed validation.
-
-    ``family`` is the command family the caller invoked; it names the usage line.
-    """
+def handle_code_pre_commit(args: list[str]) -> None:
+    """Run the hook gate on staged paths, refusing every failed validation."""
     if args:
-        print(_PRE_COMMIT_USAGE.format(family=family.value), file=sys.stderr)
+        print(_PRE_COMMIT_USAGE, file=sys.stderr)
         raise SystemExit(2)
     project_root = resolve_git_root(resolve_invocation_cwd())
     decision = GateDecision(repository_root=str(project_root))

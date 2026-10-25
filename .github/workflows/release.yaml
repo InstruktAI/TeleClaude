@@ -653,7 +653,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          telec code lint --all > "$RUNNER_TEMP/candidate-lint.log" 2>&1
+          telec repo lint --all > "$RUNNER_TEMP/candidate-lint.log" 2>&1
           result=$?
           cat "$RUNNER_TEMP/candidate-lint.log"
           echo "exit_code=$result" >> "$GITHUB_OUTPUT"

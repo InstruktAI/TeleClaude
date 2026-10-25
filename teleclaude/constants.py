@@ -519,7 +519,9 @@ class CheckpointModel:
     activation_bindings: tuple[CheckpointActivationBinding, ...] = ()
 
 
-CHECKPOINT_COMMIT_EVIDENCE = ["telec code commit"]
+CHECKPOINT_TEST_EVIDENCE_COMMAND = "telec repo test"
+CHECKPOINT_COMMIT_EVIDENCE_COMMAND = "telec repo commit"
+CHECKPOINT_COMMIT_EVIDENCE = [CHECKPOINT_COMMIT_EVIDENCE_COMMAND]
 # A fresh run of review-commits (with an optional leading slash, qualified or
 # bare) dispatches a post-commit review. A send to an already-open reviewer is
 # recognized by its target session, not by text (see the checkpoint evidence).
@@ -537,7 +539,7 @@ COMMIT_REVIEW_INTENT_TEST = (
     "reviewed where it was written, a validation or mechanical repair, a rename or move, formatting, "
     "and wording or prompt prose whose effect is presentation, including wording a human shaped with you."
 )
-COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE = "telec code stamp {sha} --verdict approve --reason <text>"
+COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE = "telec repo stamp {sha} --verdict approve --reason <text>"
 COMMIT_REVIEW_DISCARD_PLACEHOLDER = "<sha>"
 
 # Universal base judgment actions (the verbs). TeleClaude owns this registry; every
@@ -557,7 +559,7 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
     "test": CheckpointAction(
         id="test",
         run="Run targeted tests for only YOUR changed behavior",
-        evidence=("pytest", "make test", "telec code test"),
+        evidence=("pytest", "make test", CHECKPOINT_TEST_EVIDENCE_COMMAND),
         precedence=60,
     ),
 }
