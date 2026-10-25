@@ -383,8 +383,6 @@ installation reacts to its source's pushes and releases itself
 
 <!-- /planned-change:platform-installation -->
 
-<!-- planned:integrator-log-check-ignores-functions-exec -->
-
 ### Invariant 31 — Stable maintenance readiness
 
 An integrator judgment marker's maintenance-ready time records when the
@@ -399,8 +397,6 @@ until the marker discharges: no owed maintenance completed after it, so its
 window already covers the activation through completed maintenance, and a drain
 that adds no work for the activations never turns completed judgment back into
 owed judgment.
-
-<!-- /planned:integrator-log-check-ignores-functions-exec -->
 
 ## Primary flows
 
