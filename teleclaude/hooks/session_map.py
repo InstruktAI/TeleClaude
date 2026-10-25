@@ -22,6 +22,7 @@ from teleclaude import paths as tc_paths
 from teleclaude.constants import HookSourceKind, MarkerState
 from teleclaude.core import db_models
 from teleclaude.core.db.connection_factory import create_sync_db_engine
+from teleclaude.core.session_identity_facts import read_live_session_id_by_native
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.hooks.main_db import main_sync_engine
 from teleclaude.identity_reach import Reach, ReachResolutionError
@@ -403,42 +404,10 @@ def _find_live_session_id_by_native(native_session_id: str | None) -> str | None
     window must not be attributed to it. Kept separate from
     `_find_session_id_by_native` because that helper is also used by the headless
     route and the existing TMUX-mismatch fallback, which keep their broader
-    non-closed lookup semantics.
+    non-closed lookup semantics. The selection rule has one implementation,
+    `read_live_session_id_by_native`, which the CLI's outside-agent resolution shares.
     """
-    if not native_session_id:
-        return None
-
-    try:
-        sqlmodel_module = _get_sqlmodel_module()
-        with sqlmodel_module.Session(main_sync_engine()) as session:
-            statement = sqlmodel_module.select(db_models.Session)
-            statement = (
-                statement.where(db_models.Session.native_session_id == native_session_id)
-                .where(db_models.Session.closed_at.is_(None))  # type: ignore[union-attr]
-                .order_by(db_models.Session.created_at.desc())  # type: ignore[union-attr]
-                .options(
-                    load_only(
-                        cast(QueryableAttribute[Any], db_models.Session.session_id),
-                        cast(QueryableAttribute[Any], db_models.Session.lifecycle_status),
-                        cast(QueryableAttribute[Any], db_models.Session.closed_at),
-                        raiseload=True,
-                    )
-                )
-                .limit(1)
-            )
-            row = session.exec(statement).first()
-    except SQLAlchemyError as exc:
-        logger.error(
-            "Native session lookup failed; reporting no session for this native id",
-            native_session_id=native_session_id,
-            error=str(exc),
-        )
-        return None
-    if not row:
-        return None
-    if is_session_terminal(lifecycle_status=row.lifecycle_status, closed_at=row.closed_at):
-        return None
-    return row.session_id
+    return read_live_session_id_by_native(str(tc_paths.MAIN_DB_PATH), native_session_id)
 
 
 def _find_live_session_id(session_id: str | None) -> str | None:

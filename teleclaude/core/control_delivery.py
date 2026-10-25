@@ -32,6 +32,8 @@ IDLE_WAKE_TEXT = render_bracket_envelope(wake_envelope())
 _CONTROL_DELIVERY_PAYLOAD_SUPERSEDED_EVENT = "control_delivery_payload_superseded"
 _CONTROL_DELIVERY_TURN_END_WAKE_EVENT = "control_delivery_turn_end_wake"
 _CONTROL_DELIVERY_TURN_END_WAKE_REJECTED_EVENT = "control_delivery_turn_end_wake_rejected"
+_CONTROL_DELIVERY_WAKE_SKIPPED_EVENT = "control_delivery_wake_skipped"
+_NO_TERMINAL_INPUT_REASON = "no_terminal_input"
 _WAKE_OCCURRENCE_KEY_TEMPLATE = "control-delivery:{row_id}"
 _WAKE_ACTOR_NAME = "system"
 
@@ -158,7 +160,8 @@ async def wake_if_pending(*, session_id: str, boundary: TurnEndBoundary) -> None
             source_feature=InjectedTextSourceFeature.LISTENER,
         )
     except SessionMessageRejectedError as exc:
-        # The payload stays pending. A closed or vanished session discards it at close. An active
+        # The payload stays pending. A hook-only session is never woken here (see `_wake_for_payload`):
+        # its next hook boundary delivers the payload. A closed or vanished session discards it at close. An active
         # session whose pane is missing is restored by maintenance: a successful restore hands off a
         # continuation that always wakes the session, draining every pending payload at that boundary,
         # and a failed restore is logged as a terminal restore failure.
@@ -174,7 +177,17 @@ async def wake_if_pending(*, session_id: str, boundary: TurnEndBoundary) -> None
 
 
 async def _wake_for_payload(*, session_id: str, row_id: int, source_feature: InjectedTextSourceFeature) -> None:
-    """Type the content-free wake, keyed by the payload it serves so a repeat is accepted once."""
+    """Type the content-free wake, keyed by the payload it serves so a repeat is accepted once.
+
+    A session without terminal input is never typed into: typed input would adopt a
+    hook-only session. Its payload stays pending for its next hook boundary.
+    """
+    session = await db.get_session(session_id)
+    if session is not None and not session.receives_terminal_input:
+        logger.info(
+            _CONTROL_DELIVERY_WAKE_SKIPPED_EVENT, session_id=session_id, row_id=row_id, reason=_NO_TERMINAL_INPUT_REASON
+        )
+        return
     wake_key = _WAKE_OCCURRENCE_KEY_TEMPLATE.format(row_id=row_id)
     await get_command_service().process_message(
         ProcessMessageCommand(

@@ -6,6 +6,13 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
+
+from teleclaude.core.session_status import is_session_terminal
+
+logger = get_logger(__name__)
+
+_NATIVE_LOOKUP_FAILED_EVENT = "native_session_lookup_failed"
 _IDENTITY_QUERY = """SELECT session_id, computer_name, principal, human_email, human_role,
 role, working_slug, job, initiator_session_id, company, closed_at, project_path,
 json_extract(origin_metadata, '$.confinement.profile'), tmux_session_name, deleted_at
@@ -15,6 +22,9 @@ role, working_slug, job, initiator_session_id, closed_at, project_path
 FROM sessions WHERE session_id = ?"""  # guard: raw-sql
 _COMPANY_COLUMN_MISSING = "no such column: company"
 _ACTIVE_AGENT_QUERY = "SELECT active_agent FROM sessions WHERE session_id = ?"  # guard: raw-sql
+_LIVE_NATIVE_QUERY = """SELECT session_id, lifecycle_status FROM sessions
+WHERE native_session_id = ? AND closed_at IS NULL
+ORDER BY created_at DESC LIMIT 1"""  # guard: raw-sql
 
 
 @dataclass(frozen=True)
@@ -88,5 +98,25 @@ def read_session_active_agent(db_path: str, session_id: str) -> str | None:
     except sqlite3.Error:
         return None
     if row is None or not row[0]:
+        return None
+    return str(row[0])
+
+
+def read_live_session_id_by_native(db_path: str, native_session_id: str | None) -> str | None:
+    """Return the newest live session recorded for a native session id, else ``None``.
+
+    The single selection rule for a native id: newest row holding that id whose
+    ``closed_at`` is unset and whose lifecycle status is not terminal, so a row
+    already ``closing`` is never attributed. A read failure reports no session.
+    """
+    if not native_session_id or not Path(db_path).is_file():
+        return None
+    try:
+        with sqlite3.connect(db_path, timeout=0.2) as connection:
+            row = connection.execute(_LIVE_NATIVE_QUERY, (native_session_id,)).fetchone()
+    except sqlite3.Error as error:
+        logger.error(_NATIVE_LOOKUP_FAILED_EVENT, native_session_id=native_session_id, error=str(error))
+        return None
+    if row is None or is_session_terminal(lifecycle_status=row[1], closed_at=None):
         return None
     return str(row[0])

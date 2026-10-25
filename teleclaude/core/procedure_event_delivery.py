@@ -94,6 +94,9 @@ async def wake_procedure_events_if_pending(*, session_id: str) -> None:
         last_agent_idle_at=session.last_agent_idle_at,
     ):
         return
+    if not session.receives_terminal_input:
+        # A wake is typed input, which would adopt a hook-only session; its pending events wait for its next hook boundary.
+        return
     occurrence_id = await db.prepare_procedure_event_wake_opportunity(session_id=session_id)
     if occurrence_id is None:
         return

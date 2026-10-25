@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -49,7 +48,11 @@ from teleclaude.api.session_reminder_summary import attach_next_reminders, obser
 from teleclaude.api.session_remote import is_remote_create_target, is_remote_target
 from teleclaude.api.session_route_helpers import build_metadata as _build_metadata
 from teleclaude.api.session_route_helpers import close_accepted as _close_accepted
-from teleclaude.api.session_route_helpers import dispatch_caller_command
+from teleclaude.api.session_route_helpers import (
+    dispatch_caller_command,
+    envelope_caller_message,
+    resolve_caller_event_identity,
+)
 from teleclaude.api.session_route_helpers import resolve_created_session_transport as _resolve_created_session_transport
 from teleclaude.api.session_view_models import project_session_dtos
 from teleclaude.api.sessions_actions_routes import guard_generic_create_session
@@ -65,19 +68,12 @@ from teleclaude.config.machine import config
 from teleclaude.core.agent_dispatch import AgentDispatchReason
 from teleclaude.core.command_input import CommandInputError, CommandInputMode, ResolvedCommandInput
 from teleclaude.core.command_mapper import CommandMapper
-from teleclaude.core.conversation_messages import (
-    format_identity_conversation,
-    format_identity_header,
-    machine_role_label,
-    resolve_session_event_author,
-)
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import (
     DirectLinkExclusivityError,
     SessionMessageRejectedError,
     UnidentifiableCallerError,
 )
-from teleclaude.core.injected_text import MachineRoleLabel
 from teleclaude.core.interactive_procedure_input import (
     InteractiveBinding,
     bind_interactive_input,
@@ -134,19 +130,11 @@ _WORKTREE_SUBDIR_TEMPLATE = "trees/{slug}"
 _WORKTREE_DIRECTORY_MISSING_TEMPLATE = "required worktree directory does not exist: {worktree_dir}"
 
 
-@dataclass(frozen=True)
-class ResolvedSessionEventIdentity:
-    author: MessageAuthor
-    job_role: str | None
-    header: str
-
-
 _CONFIG_UNSET = object()
 _LIST_SESSIONS_READ = "list_sessions"
 _INCLUDE_CLOSED_FIELD = "include_closed"
 
 _STATE = SimpleNamespace(client=None, cache=None, reminder_service=None)
-_SESSION_EVENT_IDENTITY_RESOLVED_EVENT = "session_event_identity_resolved"
 
 router = APIRouter()
 
@@ -277,7 +265,7 @@ async def _prepare_create_session(
         effective_thinking_mode,
     )
     if launch_intent is not None and launch_intent.kind is SessionLaunchKind.AGENT_THEN_MESSAGE and identity.session_id:
-        launch_intent.caller_header = (await _resolve_caller_event_identity(identity.session_id)).header
+        launch_intent.caller_header = (await resolve_caller_event_identity(identity.session_id)).header
     metadata.launch_intent = launch_intent
     return metadata, initiator_session_id, initial_input, launch_intent, direct_caller_session
 
@@ -611,73 +599,21 @@ async def end_session(
         raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e
 
 
-async def _resolve_caller_event_identity(caller_session_id: str) -> ResolvedSessionEventIdentity:
-    """Compose the identity of the carried caller session from its record on this computer.
-
-    The caller runs on the computer whose request surface it called, and its
-    carried session is taken as given (caller verification). A request another
-    computer carried here names a caller session that computer holds: only its
-    address is known, so its identity is the generic machine author at that address.
-    """
-    caller = await db.get_session(caller_session_id)
-    if caller is None:
-        relayed = get_relayed_caller()
-        assert relayed is not None and relayed.session_id == caller_session_id
-        role, agent, thinking_mode, job_role, computer = None, None, None, None, relayed.computer
-    else:
-        role = caller.role
-        agent = caller.active_agent
-        thinking_mode = caller.thinking_mode
-        job_role = caller.role
-        computer = caller.computer_name
-    author = resolve_session_event_author(
-        session_id=caller_session_id,
-        role=role,
-        active_agent=agent,
-        thinking_mode=thinking_mode,
-    )
-    category_parts = [part for part in (agent.title() if agent else None, job_role) if part]
-    header = format_identity_header(
-        role=MachineRoleLabel.AGENT if agent else machine_role_label(role),
-        category=" · ".join(category_parts) or None,
-        session_id=caller_session_id,
-        computer=computer or config.computer.name,
-        occurred_at=datetime.now(UTC),
-    )
-    logger.info(
-        _SESSION_EVENT_IDENTITY_RESOLVED_EVENT,
-        source_session_id=caller_session_id,
-        author_kind=author.kind.value,
-        agent_runtime=author.agent_runtime,
-        job_role=job_role,
-        machine_role=author.machine_role,
-    )
-    return ResolvedSessionEventIdentity(author=author, job_role=job_role, header=header)
-
-
 async def _resolve_caller_event_author(caller_session_id: str) -> tuple[MessageAuthor, str | None]:
-    identity = await _resolve_caller_event_identity(caller_session_id)
+    identity = await resolve_caller_event_identity(caller_session_id)
     return identity.author, identity.job_role
-
-
-def _wrap_message_with_origin(
-    message_text: str,
-    event_identity: ResolvedSessionEventIdentity | None,
-    occurrence_key: str | None = None,
-) -> tuple[str, int, int]:
-    if event_identity is None:
-        return message_text, 0, 0
-    return format_identity_conversation(header=event_identity.header, body=message_text, occurrence_key=occurrence_key)
 
 
 def _listener_caller(identity: CallerIdentity, caller_session: Session | None) -> tuple[str, str] | None:
     """Where a one-shot listener reaches the caller: its tmux session and computer.
 
-    A caller session another computer holds has no tmux session here; its listener is
-    recorded against the computer its relay named, and the outcome is delivered there.
+    A caller that receives hook delivery is reachable without a host pane; a session
+    with none records the empty pane value. A caller session another computer holds
+    has no tmux session here; its listener is recorded against the computer its relay
+    named, and the outcome is delivered there.
     """
     if caller_session is not None:
-        if not caller_session.tmux_session_name:
+        if not caller_session.receives_hook_delivery:
             return None
         return caller_session.tmux_session_name, caller_session.computer_name
     relayed = get_relayed_caller()
@@ -733,7 +669,9 @@ async def _handle_close_link_request(
         return SendMessageResponseDTO(status="error", message="no active direct link found")
 
     if request.message:
-        await _process_api_message(session_id, request.message, _build_metadata(), identity)
+        metadata = _build_metadata()
+        message_text, occurrence_key = await envelope_caller_message(metadata, identity, request.message)
+        await _process_api_message(session_id, message_text, metadata, identity, occurrence_key)
 
     closed_link_id = await close_link_for_member(
         caller_session_id=identity.session_id,
@@ -860,25 +798,7 @@ async def send_message_endpoint(
                     "One-shot listener registration failed: caller=%s target=%s", identity.session_id, session_id
                 )
 
-        event_identity = await _resolve_caller_event_identity(identity.session_id) if identity.session_id else None
-        if event_identity is not None:
-            caller_author = event_identity.author
-            metadata.caller_session_id = identity.session_id
-            metadata.caller_author_kind = caller_author.kind.value
-            metadata.caller_author_display = caller_author.display
-            metadata.caller_agent_runtime = caller_author.agent_runtime
-            metadata.caller_thinking_mode = caller_author.thinking_mode
-            metadata.caller_machine_role = caller_author.machine_role
-            metadata.caller_job_role = event_identity.job_role
-        occurrence_key = uuid4().hex if event_identity is not None else None
-        message_text, caller_prefix_len, caller_suffix_len = _wrap_message_with_origin(
-            request.message,
-            event_identity,
-            occurrence_key,
-        )
-        if event_identity is not None:
-            metadata.caller_origin_prefix_len = caller_prefix_len
-            metadata.caller_origin_suffix_len = caller_suffix_len
+        message_text, occurrence_key = await envelope_caller_message(metadata, identity, request.message)
         await _process_api_message(session_id, message_text, metadata, identity, occurrence_key)
         return SendMessageResponseDTO(status="success", mode="work")
     except (SessionMessageRejectedError, UnidentifiableCallerError) as exc:

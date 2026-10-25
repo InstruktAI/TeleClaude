@@ -443,7 +443,9 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     if initiator_session_id and initiator_session_id != session_id and not cmd.skip_listener_registration:
         caller_tmux = parent_session.tmux_session_name if parent_session else None
         caller_computer = initiator_computer or config.computer.name
-        if caller_tmux or caller_computer != config.computer.name:
+        if (parent_session is not None and parent_session.receives_hook_delivery) or (
+            caller_computer != config.computer.name
+        ):
             try:
                 established = await establish_supervision(
                     target_session_id=session_id,

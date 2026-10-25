@@ -536,6 +536,16 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
         return {}
 
     @property
+    def receives_hook_delivery(self) -> bool:
+        """Whether the session runs an agent whose hooks drain pending control payloads at its boundaries."""
+        return bool(self.active_agent)
+
+    @property
+    def receives_terminal_input(self) -> bool:
+        """Whether the session is bound to a host pane that input can be typed into."""
+        return bool(self.tmux_session_name)
+
+    @property
     def confinement_profile(self) -> str | None:
         """The launch profile this session was confined to when it was created, if any."""
         profile = self.get_origin_section(CONFINEMENT_SECTION).get(CONFINEMENT_PROFILE_KEY)
