@@ -74,8 +74,6 @@ How the store maps onto the repository is owned by
 - **Delivery and removal:** delivery closes the issue as completed. Removal
   closes it as not planned; reactivation reopens it.
 
-<!-- planned:github-pr-collaboration -->
-
 - **Pull request:** from the moment an item's build starts until it is
   delivered or removed, its branch has one draft pull request, linked to its
   issue by its opening envelope `[action:pull-request issue:<n>]` and opened
@@ -87,8 +85,6 @@ How the store maps onto the repository is owned by
   `[session:<id> role:reviewer action:review round:<n>]`. Delivery closes it
   with `[action:delivered commit:<sha>]`; removal closes it. The platform
   merges on its own machine, never on GitHub.
-
-<!-- /planned:github-pr-collaboration -->
 
 - **Labels in the repository:** every label the platform sets exists in the
   repository with its colour and its one-sentence description below. No other
@@ -131,16 +127,6 @@ How the store maps onto the repository is owned by
   belong to the project rather than one item, are appended to one
   platform-opened ledger issue.
 
-<!-- planned-change:github-pr-collaboration -->
-
-- **Authority:** only what the platform App writes is the record. Labels,
-  titles, bodies, types, relations, assignments, comments and edits by anyone
-  else are visible on GitHub but never change the workflow, and the platform
-  sets its own values again; a person steers the work through TeleClaude, not
-  by editing the issue.
-
-<!-- change:github-pr-collaboration -->
-
 - **Authority:** only what the platform's Apps write is the record. Labels,
   titles, bodies, types, relations, assignments, reviews, merges, comments and
   edits by anyone else are visible on GitHub but never change the workflow, and
@@ -148,8 +134,6 @@ How the store maps onto the repository is owned by
   or review reaches the session working the item as their message
   (`local/projects/teleclaude/spec/feature/integration/github-comment-routing`);
   the work changes only through that session.
-
-<!-- /planned-change:github-pr-collaboration -->
 
 ### Use cases
 
@@ -192,8 +176,6 @@ Scenario: The assignment clears when the work moves on
   Then the issue is no longer assigned to them
 ```
 
-<!-- planned:github-pr-collaboration -->
-
 #### UC-GWR3: Follow a build on its pull request
 
 ```gherkin
@@ -204,8 +186,6 @@ Scenario: A collaborator follows a build and its reviews on GitHub
   And each review the platform's reviewer made, on the commit it reviewed, with its verdict and findings
   And the pull request closes naming the delivered commit when the item is delivered
 ```
-
-<!-- /planned:github-pr-collaboration -->
 
 ## Known caveats
 
@@ -226,20 +206,9 @@ Scenario: A collaborator follows a build and its reviews on GitHub
   when GitHub applied the change; the change appears once the store next
   refreshes from GitHub.
 
-<!-- planned-change:github-pr-collaboration -->
-
-- An answer the person gives on the issue itself does not reach the session
-  and does not clear the assignment.
-- Labels, types, relations and assignments follow a change within the store's
-  next refresh when the write that reflects them fails.
-
-<!-- change:github-pr-collaboration -->
-
 - An answer the person gives on GitHub reaches the session holding the item's
   claim, not necessarily the session that asked; when another session asked,
   the issue stays assigned until the item moves to its next phase.
 - Labels, types, relations, assignments, the pull request and its reviews
   follow a change within the store's next refresh when the write that reflects
   them fails.
-
-<!-- /planned-change:github-pr-collaboration -->

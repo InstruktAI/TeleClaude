@@ -15,8 +15,6 @@ visibility: 'public'
 
 Every Todo that enters Phase B work runs in its own isolated git worktree at `trees/<slug>/`. The worktree is created on demand whenever the work state machine asks for it and none exists: a Todo whose build has not started is branched from the latest `origin/main` and its branch opens with an empty commit of its own. Every later commit of the Todo descends from that opening commit, so the commit recorded when its build starts belongs to this Todo alone. A branch carrying the Todo's name that an earlier Todo left behind — when its delivery or removal cleanup did not complete — is never adopted and never discarded while it holds work: on `origin` it stays untouched, and locally it stops the ensure until an agent resolves it; a local leftover holding no work gives way to the new branch. A Todo whose build has started resumes from its branch on `origin` when that branch contains its build-start commit and the commit is not on `origin/main`, so work continues from its last published commit on whichever computer holds the Todo. A Todo whose build-start commit is on `origin/main` and that has no branch under its name, locally or on `origin`, has no work to resume: it starts over like a Todo whose build has not started, and the ensure logs a warning. A build-start commit off `origin/main` with no branch to hold it keeps refusing. A JSON prep marker recorded inside the worktree at `.teleclaude/worktree-prep-state.json` tracks the digest of the inputs that affect dependency installation. On every subsequent entry the digest is recomputed and compared against the marker: unchanged digests skip preparation entirely, changed digests (or a missing or corrupt marker) trigger re-prep. Concurrent ensure-and-prep on the same `(project_root, slug)` pair is serialized through a single-flight lock so two work sessions never race the same worktree. When the Todo is delivered, cleanup archives binary artifact directories out of `workspace/<slug>/` into long-term storage, removes the worktree, deletes the local and remote branches, and clears the workspace symlink — every step idempotent so a re-run on already-cleaned state is a no-op.
 
-<!-- planned:github-pr-collaboration -->
-
 Starting a Todo's build publishes its branch, from the opening commit on, to
 `origin` before the build is recorded as started, so the branch exists where
 others can follow it from the first moment of the build. A publication that
@@ -24,8 +22,6 @@ fails does not stop the build: it is logged, and the branch reaches `origin`
 with the Todo's next published commit. What a GitHub-backed project shows for
 the branch from then on is owned by
 `local/projects/teleclaude/design/architecture/workflow-store`.
-
-<!-- /planned:github-pr-collaboration -->
 
 ## Canonical fields
 

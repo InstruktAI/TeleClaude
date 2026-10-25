@@ -53,18 +53,6 @@ its job name and an activation its home in that place. The full procedure ID
 and complete arguments remain recorded and inspectable in session details.
 Display abbreviation does not change dispatch, continuation or matching identity.
 
-<!-- planned-change:github-pr-collaboration -->
-
-A bound issue parameter identifies GitHub work when GitHub's issue lookup
-resolves it in the assignment's project. Session snapshots carry its verified
-number, URL, and bound work subject as an optional structured reference,
-including for sessions started before the display was opened. Repository
-selection follows the GitHub CLI used by the assignment. The reference is
-independent of the session title and work-slug claim; an assignment without an
-identified GitHub issue carries none. An unavailable optional lookup leaves
-the session visible and eligible for a later lookup.
-<!-- change:github-pr-collaboration -->
-
 A bound issue parameter identifies GitHub work when GitHub's issue lookup
 resolves it in the assignment's project. Session snapshots carry its verified
 number, URL, and bound work subject as an optional structured reference,
@@ -80,7 +68,6 @@ repository is identified when one of the platform's Apps can read it. The refere
 claim; an assignment without an identified GitHub issue carries none. An
 unavailable optional lookup leaves the session visible and eligible for a
 later lookup.
-<!-- /planned-change:github-pr-collaboration -->
 
 ### Resolution
 

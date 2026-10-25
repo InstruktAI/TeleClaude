@@ -1,7 +1,7 @@
 ---
-delivered_by:
-  - github-pr-collaboration
-description: A configured person's comment or review on a GitHub-backed work item's issue or pull request reaches the session that holds the item's claim as that person's message, with its author and a link back; nobody else's does.
+description: A configured person's comment or review on a GitHub-backed work item's
+  issue or pull request reaches the session that holds the item's claim as that person's
+  message, with its author and a link back; nobody else's does.
 visibility: internal
 ---
 

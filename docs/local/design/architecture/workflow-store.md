@@ -24,18 +24,10 @@ Local is the default. `todos.store: github` selects the GitHub adapter, which
 serves the whole port with the project's repository as its system of record;
 what a reader of that repository sees is owned by
 `local/projects/teleclaude/spec/feature/workflow/github-work-record`.
-<!-- planned-change:github-pr-collaboration -->
-
-The
-GitHub adapter module also serves the identity reads and the native target
-projection below, none of which is a port operation. Consumers do not select a
-backend, open a connection, inspect tables, or carry storage paths.
-<!-- change:github-pr-collaboration -->
 
 The GitHub adapter module also serves the identity reads and the work item
 lookup below, none of which is a port operation. Consumers do not select a
 backend, open a connection, inspect tables, or carry storage paths.
-<!-- /planned-change:github-pr-collaboration -->
 
 ## Inputs/Outputs
 
@@ -69,38 +61,6 @@ and preserve their current ownership and interpretation.
   from `todos.store` (#124 INV-B1). `WorkflowStore.capabilities` only gates
   operations; no consumer reads the backend from it.
 
-<!-- planned-change:github-pr-collaboration -->
-
-- **Native target projection.** The GitHub adapter module supplies a pure
-  projection from the project's repository identity and an item's
-  (`WorkItemId`, `StoreAddress`) pair to a session's native GitHub target.
-  It makes no provider call and reads no workflow state outside the selected
-  store. The projected target names no branch or base. The projection is not a
-  port operation: the seven-part port gains no operation and carries no GitHub
-  type.
-  The target's repository and project are the repository identity's. Its work
-  item is the `WorkItemId` itself, and its issue number is the one that key
-  encodes; a key that is not a canonical positive decimal issue number is
-  refused, never read leniently. The target has no address field: the
-  projection carries no `StoreAddress` into it and neither decodes nor checks
-  it, so the projection establishes repository, issue and work-item identity;
-  that the address names the same item is the port's identity invariant.
-
-- **Repository identity.** The GitHub adapter module resolves a project's
-  repository identity from the project's committed repository declaration
-  (`local/projects/teleclaude/spec/teleclaude-config`) and from nothing else:
-  never from a git remote, clone path, checkout name, slug or origin metadata.
-  Its repository facts are the declared stable repository ID and canonical
-  owner/name. Its project path is the canonical shared-state root the project
-  resolver resolves for the requested path, the root the selected store is
-  resolved for, and resolution requires that root to be a project registered
-  and present on this computer whose selected backend is `github`. Every linked
-  worktree of a checkout resolves that checkout's identity; every clone resolves
-  its own root with the same repository facts. The native target projection
-  copies that project path into the target unchanged.
-
-<!-- change:github-pr-collaboration -->
-
 - **Repository identity.** The GitHub adapter module resolves a project's
   repository identity from the project's committed repository declaration
   (`local/projects/teleclaude/spec/teleclaude-config`) and from nothing else:
@@ -113,8 +73,6 @@ and preserve their current ownership and interpretation.
   worktree of a checkout resolves that checkout's identity; every clone resolves
   its own root with the same repository facts.
 
-<!-- /planned-change:github-pr-collaboration -->
-
 - **Item identity read.** For a `WorkItemId`, the GitHub adapter module reads
   the issue that key encodes from the repository identity's repository and
   returns the `WorkItemId` with that issue's node ID as its `StoreAddress`, both
@@ -124,8 +82,6 @@ and preserve their current ownership and interpretation.
   The read retains nothing: no cached pair, no local record, no local fallback.
   It is a module call with no API, command-line or relayed surface.
 
-<!-- planned:github-pr-collaboration -->
-
 - **Work item lookup.** For a repository ID and an issue or pull request
   number, the GitHub adapter module answers which registered GitHub-backed
   project on this computer declares that repository, which of its items the
@@ -133,8 +89,6 @@ and preserve their current ownership and interpretation.
   for it — and which session holds that item's claim. It reads only the
   working copies on this computer and makes no provider call; a number that
   belongs to no item answers none.
-
-<!-- /planned:github-pr-collaboration -->
 
 The seven operation parts are realized by the current state and artifact
 operations:
@@ -170,19 +124,6 @@ distinct from the local backend's database, that the GitHub-backed project
 never treats as its record. Every rule the local implementation decides is
 decided there once; the GitHub adapter owns only the mapping between the
 working copy and the repository.
-
-<!-- planned-change:github-pr-collaboration -->
-
-- **Platform identity.** Every GitHub read and write is made as the App the
-  project's store declaration names, using that App profile from the
-  machine's App inventory (`local/projects/teleclaude/spec/teleclaude-config`).
-  The identity owner's credential component issues a repository-scoped
-  installation credential with issue write access for the declared
-  repository; the adapter keeps it in process memory until shortly before its
-  expiry and never persists it. No session actor, person account or ambient
-  token is used.
-
-<!-- change:github-pr-collaboration -->
 
 - **Platform identity.** Every GitHub read and write is made as the App the
   project's store declaration names, using that App profile from the
@@ -227,8 +168,6 @@ working copy and the repository.
     round, so a rebuilt working copy neither opens a second pull request nor
     posts a review twice, and an item that reuses a delivered or removed
     item's slug never adopts that item's pull request.
-
-<!-- /planned-change:github-pr-collaboration -->
 
 - **Repository work.** Only repository work is published: an item whose
   kind is `task`, or whose workflow state carries a creative-track section,
@@ -493,14 +432,6 @@ sequenceDiagram
   refuse, and rebuild refuses store resolution naming the item. No working
   copy is ever published in its place.
 
-<!-- planned-change:github-pr-collaboration -->
-
-- The native target projection reads an issue number from a `WorkItemId`;
-  the GitHub adapter's port identities are working-copy identities, so the
-  projection receives no store-produced key it accepts.
-
-<!-- change:github-pr-collaboration -->
-
 - A role mapping that names no App for `builder` or `reviewer`, or an App not
   installed on the repository with pull request write access, leaves the
   pull request reflections owed with that cause; the issue and the workflow
@@ -508,8 +439,6 @@ sequenceDiagram
 - A pull request someone merges on GitHub, or a review someone else posts,
   changes nothing in the record: the item is still delivered only by the
   integrator, and only the reviewer's stamped verdict counts.
-
-<!-- /planned-change:github-pr-collaboration -->
 
 - Work that is not repository work exists only in the working copy of the
   computer that holds it; a lost working copy loses it, as a lost local
