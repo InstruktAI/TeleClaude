@@ -209,24 +209,6 @@ artifact quality policy. Do not add an intent-formation lane to the delivery
 review catalogue; build and commit review validate delivery against already
 approved intent and must not re-litigate it.
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-`input` is the basis this comparison rests on, so establish whether it was
-corroborated before you weigh the plan against it. `telec todo artifacts list
-{slug}` names each artifact's writers. When the claimant is not among
-`input`'s writers, the entry audit in
-`sdlc/procedure/lifecycle/prepare/overview` corroborated it;
-record that and add nothing. When the claimant is among them — including a todo
-created with `--plan`, where the earliest artifact authored from a conversation
-is `implementation-plan` rather than `input` — that content was authored by the
-session under review and no entry audit could reach it. Tail that session, read
-the human turns as the entry audit does, and compare substance. A requirement
-present in the conversation and absent from the artifact is returned to the
-intent path as a single question, on the same terms as any other divergence
-above: noticing it is the task, not adjudicating it.
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 `input` is the basis this comparison rests on, so establish whether it was
 corroborated before you weigh the plan against it. `telec todo artifacts list
 {slug}` names each artifact's writers. When the claimant is not among
@@ -241,8 +223,6 @@ entry audit does, and compare substance. A requirement
 present in the conversation and absent from the artifact is returned to the
 intent path as a single question, on the same terms as any other divergence
 above: noticing it is the task, not adjudicating it.
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 ### 4. Plan-specific quality
 

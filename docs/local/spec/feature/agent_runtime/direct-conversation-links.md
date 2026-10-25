@@ -22,11 +22,7 @@ The ignition intro carries the shared no-output guidance, so an agent with nothi
 
 The link is an associative aggregate of a link record and its member records, persisted durably by agent_runtime; it survives service restarts and is the canonical record of "these sessions are currently talking to each other."
 
-<!-- planned:review-fix-loop-through-artifacts -->
-
 No link holds two workers: a link whose members include two worker sessions is closed for all of them. Which sessions may ignite or close a link is `local/projects/teleclaude/spec/feature/agent_runtime/session-authority`.
-
-<!-- /planned:review-fix-loop-through-artifacts -->
 
 When an opening message has no resolved peer member, it is delivered to the originally addressed target; a resolved member that is missing or closed is skipped.
 

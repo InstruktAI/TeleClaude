@@ -17,15 +17,7 @@ per-slug orchestration contract.
 
 Task execution is a separate non-SDLC lane. The lifecycle runner starts `sdlc/procedure/lifecycle/task/run-task <slug>` for a prepared, authorized task; the Phase B build/review/finalize machine does not handle task execution and does not create a worktree. `sdlc/procedure/lifecycle/task/run-task` reads and grooms `task-plan`, performs the authorized work, records results in the task-plan, and ends on a `success` firing — a recurring task is re-run as a fresh `sdlc/procedure/lifecycle/task/run-task` at its next due instant — while an `error` firing stays alive for human follow-up; it never self-ends through finalize-ready cleanup.
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. `origin/main` is also the only baseline the worktree references afterwards: an agent inside `trees/<slug>` does not name the local `main` branch in any git invocation, for any subcommand. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff — the peer-conversation contract that lets builders and reviewers iterate directly without context-destroying churn. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. `origin/main` is also the only baseline the worktree references afterwards: an agent inside `trees/<slug>` does not name the local `main` branch in any git invocation, for any subcommand. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. The work state machine owns the work-entry drift path end-to-end. When a tracked artifact's collapsed drift status is `pending`, work does NOT mutate work-state and does NOT create or touch a worktree; its bounce returns a script that dispatches the `sdlc/procedure/lifecycle/prepare/drift-analyze` worker and tells the orchestrator to re-enter `telec todo work {slug}` once the analyzer idles — this path never enters the prepare machine. The analyzer stamps its `--drift-reviewed` verdict and drives no transition. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. On re-entry the work machine reads the stamped verdict. A `cosmetic` verdict is non-blocking: work proceeds to worktree creation and build dispatch. A `substantive` verdict returns the Todo to preparation through the lifecycle runner: the work machine releases the Todo's lifecycle claim, and the platform ends the slug's work-lane sessions — every session the calling work orchestrator started, then the work orchestrator itself — only after the machine has answered the orchestrator's call. The worktree, local and remote branch, workspace directory, and build commits remain. No session changes lanes: the lifecycle runner dispatches a fresh prepare orchestrator, which re-derives the affected artifact; at `prepared` that orchestrator ends like any other and releases the claim, and the lifecycle runner dispatches a fresh work orchestrator, which continues the existing build against the changed plan (UC-WSM10). Neither lifecycle machine adopts a session that holds the slug in the other lane; each refuses it instead. The cosmetic path attempts no artifact write, so it never contends with the write-authority guard.
 
@@ -161,19 +153,6 @@ And on fail relays the gate output back to the live builder session via "telec s
 And does NOT advance the lifecycle_phase until the builder restamps build-complete with a passing gate
 ```
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-```
-Given a Todo at lifecycle_phase=build_complete whose reviewer Stamped verdict=changes_requested
-When the orchestrator calls "telec todo work my-feature"
-Then the machine advances lifecycle_phase to review_changes_requested
-And relays the review-findings to the live builder session via the reviewer's direct-fix message
-And refuses to dispatch a fresh reviewer until the builder restamps build-complete from the new HEAD
-And on every re-review round the reviewer is re-dispatched against the merge-base diff, not the full diff
-```
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 ```
 Given a Todo at lifecycle_phase=build_complete whose reviewer Stamped verdict=changes_requested
 When the orchestrator calls "telec todo work my-feature"
@@ -182,8 +161,6 @@ And directs the orchestrator to point the live builder session at the review-fin
 And refuses to dispatch a fresh reviewer until the builder restamps build-complete from the new HEAD
 And on every re-review round the reviewer is re-dispatched against the merge-base diff, not the full diff, and directed to the builder's dispositions and fix commits
 ```
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 ```
 Given a Todo at lifecycle_phase=review_approved with no pending deferrals
@@ -377,15 +354,7 @@ And the refusal names the sanctioned path: P completes its prepare lifecycle, wh
 
 - `integration` — on any owned write that lands `lifecycle_phase=finalize_ready`, the workflow phase-transition chokepoint emits the todo's finalize-ready event. That event's id is derived from `(slug, sha, worker_session_id)`, so the consumer framework hands the integration trigger consumer each logical transition once before it spawns the singleton integrator; the periodic scanner remains the safety net for daemon-down or caller-owned transaction paths.
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-- `session_ledger` — the caller's session identity is propagated through the work entry, recorded on the finalize state, and used by the peer-conversation contract that lets the reviewer relay findings directly to the live builder.
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 - `session_ledger` — the caller's session identity is propagated through the work entry and recorded on the finalize state.
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 - `daemon runner` — future unattended pickup may choose the next slug outside the
   work orchestrator session. The Phase B orchestrator remains per-slug and

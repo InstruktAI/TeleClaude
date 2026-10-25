@@ -26,20 +26,6 @@ The Work state machine routes implementation through four sub-phases: **Build �
 
 ### Referenced doc snippets
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-| Snippet ID                                     | Content                                                  |
-| ---------------------------------------------- | -------------------------------------------------------- |
-| `sdlc/procedure/lifecycle/work/build`          | Build phase — implement plan, commit per task            |
-| `sdlc/procedure/lifecycle/work/review`         | Review phase — parallel lanes, structured findings       |
-| `sdlc/procedure/lifecycle/fix-review-findings` | Fix phase — address findings, peer conversation          |
-| `sdlc/procedure/lifecycle/work/finalize`       | Finalize — two-stage: worker prepare, orchestrator apply |
-| `general/procedure/orchestration`              | Orchestration loop and dispatch rules                    |
-| `sdlc/policy/definition-of-done`               | Quality gates for completion                             |
-| `sdlc/policy/testing`                          | Pre-commit quality gates                                 |
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 | Snippet ID                                     | Content                                                  |
 | ---------------------------------------------- | -------------------------------------------------------- |
 | `sdlc/procedure/lifecycle/work/build`          | Build phase — implement plan, commit per task            |
@@ -49,8 +35,6 @@ The Work state machine routes implementation through four sub-phases: **Build �
 | `general/procedure/orchestration`              | Orchestration loop and dispatch rules                    |
 | `sdlc/policy/definition-of-done`               | Quality gates for completion                             |
 | `sdlc/policy/testing`                          | Pre-commit quality gates                                 |
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 ## Inputs/Outputs
 
@@ -150,33 +134,6 @@ stateDiagram-v2
 
 The machine reads `todo state (todos.db)` and routes from the canonical `lifecycle_phase`:
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-```mermaid
-flowchart TD
-    Start(["telec todo work [slug]"])
-    ReadState["Read todo state (todos.db)"]
-    PhaseCheck{"lifecycle_phase?"}
-
-    DispatchBuild["Dispatch /build"]
-    DispatchReview["Dispatch or reuse /review-build"]
-    DispatchFix["Reviewer opens direct fix conversation with the builder session"]
-    DispatchDefer["Dispatch /defer"]
-    DispatchFinalize["Dispatch /finalize"]
-    Terminal["lifecycle_phase=finalize_ready written<br/>TodosDb chokepoint fires _on_phase_transition<br/>daemon translator emits todo_finalize_ready<br/>worker sessions end inside the step"]
-
-    Start --> ReadState
-    ReadState --> PhaseCheck
-
-    PhaseCheck -->|"build_started"| DispatchBuild
-    PhaseCheck -->|"build_complete"| DispatchReview
-    PhaseCheck -->|"review_changes_requested"| DispatchFix
-    PhaseCheck -->|"review_approved"| DispatchFinalize
-    PhaseCheck -->|"finalize_ready"| Terminal
-```
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 ```mermaid
 flowchart TD
     Start(["telec todo work [slug]"])
@@ -199,8 +156,6 @@ flowchart TD
     PhaseCheck -->|"review_approved"| DispatchFinalize
     PhaseCheck -->|"finalize_ready"| Terminal
 ```
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 ### Precondition checks
 
@@ -275,58 +230,11 @@ sequenceDiagram
 
 ### Review/fix loop (sequence diagram)
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-When the reviewer requests changes, the machine reuses the live builder and keeps the
-reviewer session as the review owner for follow-up. The builder and reviewer may
-communicate directly via peer conversation protocol.
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 When the reviewer requests changes, the machine reuses the live builder and keeps the
 reviewer session as the review owner for follow-up. The builder and the reviewer never
 talk to each other: the orchestrator points the builder at the review-findings artifact,
 the builder records each finding's disposition there and commits its fixes, and the
 orchestrator points the reviewer at those dispositions and commits for re-review.
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
-
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-```mermaid
-sequenceDiagram
-    participant O as Orchestrator
-    participant SM as Work Machine
-    participant R as Reviewer
-    participant F as Fixer
-
-    O->>SM: telec todo work slug
-    SM-->>O: DISPATCH /review-build
-
-    Note over O,F: Review Round 1
-    O->>R: telec sessions run --command /review-build --args slug --mode slow
-    R-->>O: Verdict: REQUEST CHANGES (3 findings)
-    O->>O: telec todo stamp slug --verdict changes_requested --phase build_review
-
-    O->>SM: telec todo work slug
-    SM->>SM: Read review-findings and reconcile verdict
-    SM-->>O: RELAY FINDINGS TO EXISTING BUILDER
-
-    Note over O,F: Fix Round 1
-    O->>F: telec sessions send builder-session "address findings"
-    Note over R,F: Peer conversation protocol:<br/>Fixer and Reviewer may DM<br/>each other via --direct link
-    F-->>O: FIX COMPLETE: slug (3/3 addressed)
-
-    O->>SM: telec todo work slug
-    SM-->>O: REUSE LIVE REVIEWER or DISPATCH /review-build if none is alive
-
-    Note over O,F: Review Round 2
-    O->>R: telec sessions send reviewer-session "ground shifted / please continue" or wait on existing review
-    R-->>O: Verdict: APPROVE
-    O->>O: telec todo stamp slug --verdict approve --phase build_review
-```
-
-<!-- change:review-fix-loop-through-artifacts -->
 
 ```mermaid
 sequenceDiagram
@@ -361,22 +269,7 @@ sequenceDiagram
     O->>O: telec todo stamp slug --verdict approve --phase build_review
 ```
 
-<!-- /planned-change:review-fix-loop-through-artifacts -->
-
 ### Command dispatch map
-
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-| Sub-Phase   | Command         | Worker Role  | Thinking Mode      | Output                                                                                                     |
-| ----------- | --------------- | ------------ | ------------------ | ---------------------------------------------------------------------------------------------------------- |
-| Build       | `/build`        | Builder      | `med`              | Code, tests, commits                                                                                       |
-| Build (bug) | `/build`        | Builder      | `med`              | Plan execution + reproduction test (RED→GREEN)                                                             |
-| Review      | `/review-build` | Reviewer     | `slow` (mandatory) | `review-findings.md`, verdict                                                                              |
-| Fix         | _(no dispatch)_ | Fixer        | _(reused)_         | Reviewer opens a direct conversation with the existing builder session, which applies findings and commits |
-| Deferrals   | `/defer`        | Orchestrator | —                  | New todos from deferrals                                                                                   |
-| Finalize    | `/finalize`     | Finalizer    | `med`              | Branch pushed, FINALIZE_READY                                                                              |
-
-<!-- change:review-fix-loop-through-artifacts -->
 
 | Sub-Phase   | Command         | Worker Role  | Thinking Mode      | Output                                                                                                                                  |
 | ----------- | --------------- | ------------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
@@ -386,8 +279,6 @@ sequenceDiagram
 | Fix         | _(no dispatch)_ | Fixer        | _(reused)_         | Orchestrator relays the review-findings artifact to the existing builder session, which records dispositions, applies fixes and commits |
 | Deferrals   | `/defer`        | Orchestrator | —                  | New todos from deferrals                                                                                                                |
 | Finalize    | `/finalize`     | Finalizer    | `med`              | Branch pushed, FINALIZE_READY                                                                                                           |
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 ### Lifecycle events
 

@@ -24,21 +24,6 @@ project registry, reads the object's scope from its own records, and applies the
 command's person band and the object's rules as one decision
 (`local/projects/teleclaude/spec/feature/identity/command-clearance`).
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-The caller's computer establishes who is calling and carries only the caller's
-principal across as identity. It never carries a role or a scope as authority: a
-role that travels inside a message's author label is projection, read on the
-holding computer for display and record and by no clearance. A session identity is a
-handle local to the computer that holds that session, never authority on another.
-Authentication completes at the edge. Every identified caller's computer-addressed
-request is relayed to the owning computer, which authorizes it. The sending
-computer applies no command-role, dispatch-privilege, or dispatch-chain
-authorization to a relayed request
-(`local/projects/teleclaude/spec/identity-and-auth`).
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 The caller's computer establishes who is calling and carries only the caller's
 principal across as identity. It never carries a role or a scope as authority: a
 role that travels inside a message's author label is projection, read on the
@@ -51,8 +36,6 @@ authorization to a relayed request
 (`local/projects/teleclaude/spec/identity-and-auth`), with one exception: it
 refuses a worker's request to message, link to or tail a session before relaying
 it (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`).
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 A session listing or a history read sent to another computer reaches objects whose
 owner decides, object by object, whether the caller reaches them. The holding

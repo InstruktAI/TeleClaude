@@ -173,18 +173,6 @@ the client sends any request:
   session's next command, and a gate grants a session no role its principal does
   not resolve to; a session acting for a person is also bounded by that role,
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-- a `telec` command executing locally is cleared against its verb band
-  (`local/projects/teleclaude/design/cli-authorization-matrix`) once, before the
-  first request leaves its process; a command addressed to another computer
-  authenticates its caller at the edge and is relayed without sender-side
-  authorization. The owning computer authorizes the relayed principal.
-  The TUI follows the same boundary for each action
-  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 - a `telec` command executing locally is cleared against its verb band
   (`local/projects/teleclaude/design/cli-authorization-matrix`) once, before the
   first request leaves its process; a command addressed to another computer
@@ -195,8 +183,6 @@ the client sends any request:
   The owning computer authorizes the relayed principal.
   The TUI follows the same boundary for each action
   (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 - a caller that resolves to no person and no system principal is refused before
   any request is sent; a role outside the band is refused with the not-permitted

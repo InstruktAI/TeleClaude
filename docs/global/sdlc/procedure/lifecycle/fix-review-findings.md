@@ -120,22 +120,10 @@ procedure is ever dispatched.
 6. **Stamp build completion** after code-review fixes: `telec todo stamp {slug} --build-complete`.
    For non-code prepare artifact fixes, use the verdict or artifact stamp named in the dispatch message instead.
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-7. **Close the review link, then report FIX COMPLETE.** If a `--direct` link with a
-   reviewer session is open (the work build-review fix loop), close it before reporting:
-   `telec sessions send <reviewer_session_id> --close-link`. Then report FIX COMPLETE in
-   your session output. Your failure mode is scope expansion — address each finding
-   precisely without improving adjacent code.
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 7. **Report FIX COMPLETE.** Report FIX COMPLETE in your session output. The reviewer
    reads your Dispositions section and your commits; you message no other session.
    Your failure mode is scope expansion — address each finding precisely without
    improving adjacent code.
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 ## Outputs
 

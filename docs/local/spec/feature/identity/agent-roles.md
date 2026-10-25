@@ -53,43 +53,6 @@ own identity and is never a session role.
 
 ### Capabilities
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-| Capability             | Reach                                                                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `docs-read`            | Reading documentation.                                                                                                   |
-| `todo-read`            | Listing and showing todos and bugs.                                                                                      |
-| `todo-write`           | Creating, updating, freezing, removing and delivering todos; filing bugs and suppressions.                               |
-| `artifact-read`        | Reading and diffing todo artifacts.                                                                                      |
-| `artifact-write`       | Writing and removing todo artifacts.                                                                                     |
-| `stamp`                | Stamping todo state and commit-review verdicts.                                                                          |
-| `todo-orchestration`   | Driving a todo state machine.                                                                                            |
-| `integration`          | Integrating deliveries to canonical main and reading dirty-path ownership.                                               |
-| `maintenance-recovery` | Inspecting and recovering canonical-main maintenance.                                                                    |
-| `memory-curation`      | Curating memories and prospects from conversation extractions.                                                           |
-| `session-observe`      | Listing and showing sessions, searching history, and reading the fleet's computers, projects and agents.                 |
-| `transcript-read`      | Showing the transcript of a named session.                                                                               |
-| `operation-read`       | Reading the outcome of an operation one's session started or one's reach admits.                                         |
-| `session-act`          | Starting, running, reviving, restarting, ending and messaging sessions other than one's own.                             |
-| `self-acts`            | Results, files, unsubscribing, ending and restarting for one's own session.                                              |
-| `messaging`            | Messaging a person.                                                                                                      |
-| `audio`                | Transcribing supplied audio to text.                                                                                     |
-| `jobs`                 | Enabling, disabling and running jobs.                                                                                    |
-| `jobs-read`            | Listing jobs and their runtime status.                                                                                   |
-| `job-report`           | Reporting the result of a job run.                                                                                       |
-| `config`               | Changing configuration, and reading person and company configuration.                                                    |
-| `config-read`          | Reading and validating machine, global and project configuration.                                                        |
-| `reminders`            | Arming, listing and cancelling reminders.                                                                                |
-| `code-check`           | Inspecting code: blast radius, lint and tests.                                                                           |
-| `code`                 | Formatting, file declarations and commits.                                                                               |
-| `mcp`                  | Listing and calling MCP tools.                                                                                           |
-| `peer-talk`            | Sending to and tailing a peer session: the builder a reviewer reviews, the claimant that dispatched it.                  |
-| `memories-read`        | Listing, searching, deleting and tracing a person's own memories outside an extraction.                                  |
-| `memories-save`        | Saving a memory observation when the human the session works for asks it to. Every role reaches it; no role composes it. |
-| `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                                      |
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 | Capability             | Reach                                                                                                                    |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `docs-read`            | Reading documentation.                                                                                                   |
@@ -123,8 +86,6 @@ own identity and is never a session role.
 | `memories-save`        | Saving a memory observation when the human the session works for asks it to. Every role reaches it; no role composes it. |
 | `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                                      |
 
-<!-- /planned-change:review-fix-loop-through-artifacts -->
-
 The command families are the catalog's vocabulary; which command declares
 which family is the CLI surface schema's.
 
@@ -147,23 +108,6 @@ The label is the role's name in a caller-origin identity header, drawn from
 
 ### Assignment-specific command focus
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-Each role's explicit set represents the commands needed by the procedures that
-declare that role, including their required reads and supported entry duties.
-Every role of class `worker` composes the worker baseline the catalog declares
-and adds to it what its own assignment needs. The baseline gives each worker
-the reach to record its task's outcome, return its result, and commit assigned
-work. It holds no capability that observes the fleet or starts, revives,
-restarts or ends another session, directly or by running a job; peer talk with
-the sessions a worker serves stays in it. No worker lists
-sessions, searches history, reads the fleet's computers, projects or agents, or
-starts another session. A worker's reach is focus, not integrity
-(`general/principle/trust-and-guardrails`): the todo's claim and the object
-owners still decide what it may change.
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 Every role of class `worker` composes the worker baseline the catalog declares
 and adds to it what its own assignment needs. The baseline gives each worker
 the reach to record its task's outcome, return its result, and commit assigned
@@ -176,8 +120,6 @@ worker lists sessions, searches history, reads the fleet's computers, projects
 or agents, or starts another session. A worker's reach is focus, not integrity
 (`general/principle/trust-and-guardrails`): the todo's claim and the object
 owners still decide what it may change.
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 Each procedure declares a role of its own, so a session's role names exactly
 the assignment it runs and two procedures never appear under one name.
@@ -196,25 +138,12 @@ a shared label alone supplies no command membership. The catalog owns the sets,
 and command declarations own capability membership, under
 `local/projects/teleclaude/design/cli-authorization-matrix`.
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-Capabilities distinguish commands whose assignment needs differ. Beyond the
-worker baseline, a role that needs inspection or verification does not acquire
-unrelated mutation commands merely because those commands share a broad
-namespace. Ordinary startup, documentation retrieval, reporting, peer
-communication and completion remain available wherever the role's procedure
-requires them.
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 Capabilities distinguish commands whose assignment needs differ. Beyond the
 worker baseline, a role that needs inspection or verification does not acquire
 unrelated mutation commands merely because those commands share a broad
 namespace. Ordinary startup, documentation retrieval, reporting and
 completion remain available wherever the role's procedure requires them; peer
 communication remains available only outside the worker class.
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 The focused set remains explicit for a full-reach role. Full reach broadens
 permission independently of that focused set; it never expands the focused set

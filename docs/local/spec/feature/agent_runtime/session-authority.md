@@ -34,14 +34,6 @@ chain, because the act would reach past its own mandate into the one that
 dispatched it. Upward reporting needs no act — a completed turn already wakes
 the session above.
 
-<!-- planned-change:review-fix-loop-through-artifacts -->
-
-Peers are unaffected: a reviewer and a builder, and a driver and the peer it
-dispatched, all keep talking. So does a session with
-nothing above it, reaching anywhere in the fleet.
-
-<!-- change:review-fix-loop-through-artifacts -->
-
 A worker — a session whose role is of class `worker`
 (`local/projects/teleclaude/spec/feature/identity/agent-roles`) — acts on no
 other session, on its own computer or another: it neither messages, links to
@@ -51,8 +43,6 @@ and the session that dispatched it reads them and routes whatever must reach
 anyone else, so two workers never form a conversation of their own.
 Orchestrating and standing sessions keep acting downward and sideways, and so
 does a session with nothing above it, reaching anywhere in the fleet.
-
-<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 Standing sessions have no dispatch parent or human-origin identity; they resolve
 to the platform principal. Adopting a live session into a standing role clears
