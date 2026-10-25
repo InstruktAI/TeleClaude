@@ -136,15 +136,19 @@ contract governs only what happens when maintenance runs.
 - **Settlement announcement.** A commit activation of the canonical checkout
   is settled once every action it owes has a terminal outcome: success, or a
   failure that stays recorded; an activation that owes no action settles when
-  it is registered. Settling announces the activation's state as an
+  it is registered. A restart obligation whose window start verified counts as
+  succeeded, even while the window keeps it beside an action that failed inside
+  that window. Settling announces the activation's state as an
   event of the `teleclaude.maintenance.activation` family in the checkout's
   project, with the activated tip as its subject: `failed` when any owed
-  action failed terminally, otherwise `succeeded`, stating whether a
-  stopped-daemon window replaced the daemon for it. A replay that completes the
+  action failed terminally, naming each failed action with the command that
+  replays it, otherwise `succeeded`. A replay that completes the
   failed actions settles the activation again and announces `succeeded` for the
-  same subject. An activation that settles while no daemon serves is announced
-  once one does, and a repeated announcement of one settlement carries the same
-  event id. Event activations are not announced.
+  same subject. Every settled activation's announcement stays held until it is
+  published, and holding a later one never drops an earlier one. An activation
+  that settles while no daemon serves is announced once one does. A repeated
+  announcement of one settlement carries the same event id, and settlements of
+  different projects never share one. Event activations are not announced.
 
 <!-- /planned:integrator-wakes-on-events -->
 

@@ -462,7 +462,7 @@ And an empty queue leaves the watcher live until an explicit lifecycle condition
 Given the singleton integrator completes a drain with no eligible candidate remaining
 When the state machine returns its queue-empty outcome
 Then the outcome instructs the integrator to inspect canonical local main for direct commits ahead of origin/main
-And any such head is published after its owed maintenance and any live-runtime log judgment are complete
+And any such head is published once its activations have settled with no failed action and no outstanding integrator judgment
 And other sessions' review state and unrelated uncommitted paths do not delay that push
 And the integrator verifies origin/main contains the committed head before parking
 And the outcome instructs the integrator to park with no reminder armed

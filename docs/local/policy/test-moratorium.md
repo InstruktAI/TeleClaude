@@ -1,5 +1,5 @@
 ---
-description: Python verification permits one bounded black-box CLI acceptance harness, independent review, and integrator judgment of runtime logs.
+description: Python verification permits one bounded black-box CLI acceptance harness, independent review, and agent judgment of runtime logs.
 ---
 
 # Test Moratorium — Policy
@@ -29,11 +29,23 @@ more than doubled through journeys added by unrelated feature deliveries. Its
 author also grades the work it delivered. Keeping additions to work whose
 purpose is the harness keeps its size a decision someone makes.
 
+<!-- planned-change:integrator-wakes-on-events -->
+
 An uneventful log window does not prove every specified behavior occurred.
 Build review judges conformance to the specifications, the logging policy
 exposes significant operations and failures, and the integrator judges anomalies
 after activation. The CLI journeys supply evidence for the behavior they
 exercise; unvisited behavior is outside that evidence.
+
+<!-- change:integrator-wakes-on-events -->
+
+An uneventful log window does not prove every specified behavior occurred.
+Build review judges conformance to the specifications, the logging policy
+exposes significant operations and failures, and the installation inspector
+judges anomalies after each install. The CLI journeys supply evidence for the
+behavior they exercise; unvisited behavior is outside that evidence.
+
+<!-- /planned-change:integrator-wakes-on-events -->
 
 Disposable runtime isolation protects the operator's configuration, credentials
 and services. Shared cold and full profiles concentrate verification on the
@@ -53,9 +65,20 @@ This repository only. Satellite projects keep their own testing contract, declar
 
 ## Enforcement
 
+<!-- planned-change:integrator-wakes-on-events -->
+
 - The `code` overlay block is absent from this repository's `teleclaude.yml`; the equivalent scope remains a generic binding carrying `log-check` alone. The binding identifies which changed paths owe integrator judgment, and the overlay assigns `log-check` to the standing integrator (`local/projects/teleclaude/design/architecture/checkpoint-system`), so the ordinary committing session's file-based checkpoint does not surface that action. A re-authored overlay keeps that assignment.
 - **The quality-configuration assessment does not author a `code` block for this repository.** The checkpoint overlay is authored at assess-time — `sdlc/procedure/code-config-assessment` writes it and feeds `agent_stop` with `test` + `log-check` — and every session started with `/projects-assess-config` reaches that path. A re-authored `code` block silently re-binds `test` and voids this policy. Until a guardrails check enforces this, the absence of that block is a contract, not an oversight — an agent that finds it missing leaves it missing. The project-analysis procedure (`/projects-analyze`) never touches the overlay and is not a door to this failure.
 - **Log judgment is the integrator's.** The `log-check` action records that the integrator read the activated delivery's log window. Its assessment and recovery remain intelligence work per `general/principle/intelligence-boundaries`.
+
+<!-- change:integrator-wakes-on-events -->
+
+- The `code` overlay block is absent from this repository's `teleclaude.yml`, and no binding there owes `log-check`: a commit in this repository activates nothing live (`local/projects/teleclaude/policy/agent-service-control`), so it owes no runtime log judgment. A re-authored overlay binds no `log-check`.
+- **The quality-configuration assessment does not author a `code` block for this repository.** The checkpoint overlay is authored at assess-time — `sdlc/procedure/code-config-assessment` writes it and feeds `agent_stop` with `test` + `log-check` — and every session started with `/projects-assess-config` reaches that path. A re-authored `code` block silently re-binds `test` and voids this policy. Until a guardrails check enforces this, the absence of that block is a contract, not an oversight — an agent that finds it missing leaves it missing. The project-analysis procedure (`/projects-analyze`) never touches the overlay and is not a door to this failure.
+- **Runtime log judgment follows the install.** The installation inspector's assessment of an install is the judgment of the runtime's log window after it. Its assessment and recovery remain intelligence work per `general/principle/intelligence-boundaries`.
+
+<!-- /planned-change:integrator-wakes-on-events -->
+
 - Reviewers treat test files, runners, and dependencies outside the bounded CLI acceptance allowance as blocking findings. The harness consumes independently reviewed scenarios from before implementation; its author does not bless a captured failure as the expected result.
 - Reviewers assess the complete verification mechanism against the assignment and the existing harness, not its filename or claimed membership in the harness. An unauthorized infrastructure expansion is a scope finding even when each of its components has been reviewed individually. A delivery whose stated purpose is not the harness and that changes it is a scope finding as well.
 
