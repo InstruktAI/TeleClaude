@@ -1,5 +1,5 @@
 ---
-description: 'Integration phase. Drive the integration state machine, handle squash commits, conflicts, push rejections, and lease contention.'
+description: 'Integration phase. Answer finalize-ready and canonical-main maintenance events: drive the integration state machine, recover failed maintenance, publish settled direct commits, and handle squash commits, conflicts, push rejections, and lease contention.'
 visibility: 'public'
 role: integrator
 parameters:
@@ -7,6 +7,12 @@ parameters:
 dispatch:
   agent: [codex, claude, gemini, deepseek]
   thinking_mode: slow
+subscriptions:
+  - sdlc.planning.todo_finalize_ready
+  - teleclaude.maintenance.activation.*
+subscription_home: project
+event_delivery: sequential
+interruptible: false
 ---
 
 # Integration — Procedure
@@ -14,15 +20,18 @@ dispatch:
 ## Required reads
 
 - @~/.teleclaude/docs/general/principle/session-lifecycle.md
+- @~/.teleclaude/docs/general/procedure/event-handling/overview.md
 
 ## Goal
 
-Merge candidate branches to canonical main via the integration state machine, handling
-each decision point until the queue is drained.
+Merge candidate branches to canonical main via the integration state machine, recover
+failed canonical-main maintenance, and publish settled direct commits, each as the
+activating event routes it, handling every decision point until no routed work remains.
 
 ## Preconditions
 
-- Candidate branches exist in the FIFO queue.
+- The activating event names the work: a finalize-ready candidate, or a settled
+  canonical-main maintenance activation. A maintenance activation needs no candidate.
 - No other integrator session holds the lease.
 - The integrator operates in a persistent worktree at `trees/_integration/` (detached HEAD
   from `origin/main`), created on first run and reused across subsequent runs. Reset to
@@ -68,54 +77,72 @@ The integrator publishes the integrated head and installs nothing itself; the
 installation's channel reaction installs that revision once. The integrator
 does not judge that install: every install's assessment is owned by the
 installation inspector on the installation's computer
-(`sdlc/procedure/maintenance/installation/overview`), so each install has one
-assessor.
+(`sdlc/procedure/maintenance/installation/overview`), which its
+`teleclaude.installation.assessment.owed` event wakes, so each install has one
+assessor. Installation events never wake the integrator.
 
 ## Steps
 
 <!-- @include: docs/snippets/step-role-read.md -->
 
-1. Set `integrator-queue-watch` first, then call `telec todo integrate [slug]` to
-   enter the state machine. The watch stays live for as long as this session is the
-   integrator; never cancel it. It is the integrator's standing way back to the
-   state machine, and a session that ends removes it.
+1. Route each activating event as step 1a states. Every route ends by calling
+   `telec todo integrate [slug]` once, so a drain that is idle, parked, or held at a
+   checkpoint resumes from the state machine's durable checkpoint.
+
+   1a. **Route the activating event by its type.**
+   - **`sdlc.planning.todo_finalize_ready`** — a candidate is ready. No prior work;
+     the closing `telec todo integrate` call enters or resumes the drain.
+   - **`teleclaude.maintenance.activation.failed`** — a canonical-main activation
+     settled with owed maintenance actions failed. For each failed action the event
+     names, judge the recorded failure (`telec repo maintenance status`), address its
+     cause within the integration lane, and replay it with the command the event
+     names. A replay that completes the activation's failed actions settles it
+     again, and its `succeeded` announcement routes the rest. A failure whose cause
+     lies in the project's source becomes a bug through the normal bug process.
+   - **`teleclaude.maintenance.activation.succeeded`** — a canonical-main activation
+     settled with every owed action completed. When `telec repo maintenance status`
+     reports a ready integrator judgment for the checkout — the post-maintenance
+     judgment the project's checkpoint declaration assigns to the integrator — read
+     the logs it names from a window beginning no later than the earliest activation
+     recorded on that judgment, with knowledge of the change. An earlier or narrower
+     read does not discharge it. Investigate anomalies, handle bounded recovery, and
+     route remaining breakage through the normal bug process. Then apply direct-main
+     publication (step 3a).
 
 2. The call returns an operation receipt and does not wait for the machine. Yield;
    when the operation's outcome wakes this session, read the instruction block
    with `telec operations get <operation_id>` and execute it verbatim.
 
 3. After executing, call `telec todo integrate` again to advance.
-   3a. After a canonical-main advancement, inspect the maintenance actions recorded
-   for that activation. Treat pending actions as pending, judge terminal
-   failures and recover within the integration lane, and keep outstanding
-   live-runtime judgment with the integrator. Continue observing those actions
-   on `integrator-queue-watch` beats when they outlive this drain.
 
-Where a canonical-main advancement activates the live runtime, read that
-delivery's log window after the activation with knowledge of the change.
-Investigate anomalies, handle bounded recovery, and route remaining breakage
-for a forward fix through the normal bug process. For direct commits on
-canonical local main, judge that owed log window before publication. Where
-the live runtime runs from an installation, the advancement activates
-nothing and owes no log window here; the installation assessment judges the
-install that follows (Runtimes activated by an install). If the advanced
-head is sound, push the current committed main head to origin/main from the
-project root with `git push origin main:main` and verify origin/main
-contains that exact head. A material activation failure leaves it local
-until recovery and a new log judgment; a successful log command alone is not
-a soundness verdict. A direct commit with no live-runtime log judgment is
-published after its owed maintenance succeeds. The committer owns review and
-remediation under `general/policy/commits`; the integrator does not inspect
-or wait for other sessions' review verdicts. Uncommitted repo-root paths are
-not part of the push and do not block it. The candidate pre-push checks in
-step 5 do not gate direct-main publication.
+   3a. A canonical-main advancement owes no observation in the drain. Its maintenance
+   announces itself when it settles, and step 1a routes the recovery, judgment, and
+   publication it owes. The live platform's runtime is assessed only by the
+   installation inspector, on the assessment an install owes (Runtimes activated by
+   an install); this procedure carries no judgment of it.
 
-`telec repo maintenance status` reports the checkout's outstanding actions,
-terminal failures, and integrator judgment, each with its recovery command.
-After the cause of a terminal failure is addressed, `telec repo maintenance
-retry` replays that action for its original activation; `telec repo
-maintenance drain` resumes interrupted work and records maintenance
-readiness when no owed action remains. 4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY). 5. Before a candidate push from the integration worktree, run repo-wide verification:
+   **Direct-main publication.** When canonical local main is ahead of origin/main
+   and its activations have settled with no failed action and no outstanding
+   integrator judgment, push the current committed main head to origin/main from
+   the project root with `git push origin main:main` and verify origin/main
+   contains that exact head. A failed action or an outstanding judgment leaves it
+   local until recovery; a successful log command alone is not a soundness
+   verdict. The committer owns review and remediation under
+   `general/policy/commits`; the integrator does not inspect or wait for other
+   sessions' review verdicts. Uncommitted repo-root paths are not part of the push
+   and do not block it. The candidate pre-push checks in step 5 do not gate
+   direct-main publication.
+
+   `telec repo maintenance status` reports the checkout's outstanding actions,
+   terminal failures, and integrator judgment, each with its recovery command.
+   After the cause of a terminal failure is addressed,
+   `telec repo maintenance retry` replays that action for its original activation;
+   `telec repo maintenance drain` resumes interrupted work and records maintenance
+   readiness when no owed action remains.
+
+4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
+
+5. Before a candidate push from the integration worktree, run repo-wide verification:
 
 - `telec repo lint --all`
 - `telec repo test --all`
@@ -165,8 +192,7 @@ Parking does not invalidate the plan or finalize handoff. For a corrected input,
 route the findings to an orchestrator that can start an authentic work session.
 That session independently grounds an explicit `--kickback` before invoking
 `todo work`; work entry releases the hold and must not come first. Confirm the
-kickback before releasing the hold for preparation. Keep the integration queue
-watch live and continue unrelated candidates.
+kickback before releasing the hold for preparation. Continue unrelated candidates.
 
 ### CONFLICT RESOLUTION REQUIRED
 
@@ -307,9 +333,10 @@ claimed; a set of paths is never treated as one unit.
    idle or blocked with its path uncommitted for three consecutive beats after it
    was messaged, or when a path's diff is unintelligible. An active owner or
    claimant stays on the reminder's wait path. Report each escalated path once,
-   leave it untouched, and hold as its blocker beacon. `integrator-queue-watch`
-   beats keep re-entering the state machine, and the drain resumes on the first
-   beat after the path is committed.
+   leave it untouched, and hold as its blocker beacon. Committing the path advances
+   canonical main, and its settlement announcement re-enters the state machine
+   through step 1a, so the drain resumes then; input from the human the escalation
+   reached resumes it the same way.
 
 #### Reminder: integrator-main-clearance
 
@@ -328,39 +355,12 @@ claimed; a set of paths is never treated as one unit.
   reports when its history is split.
 - **Cancellation:** cancel when main clears, the integration session reaches a
   terminal outcome, the human explicitly supersedes the wait, or every remaining
-  dirty path has been escalated. `integrator-queue-watch` stays live in every case
-  and keeps re-entering the state machine.
+  dirty path has been escalated. After cancellation, the drain resumes when the
+  next activating event arrives: committing a held path advances canonical main,
+  and its settlement announcement (an activation owing nothing settles when it is
+  registered) routes back into step 1. Input from the human the escalation reached
+  resumes it the same way.
 - **Invocation:** `telec reminders set integrator-main-clearance`.
-
-#### Reminder: integrator-queue-watch
-
-- **Owner:** Integration procedure and its queue-empty state-machine formatter.
-- **Parameters:** optional `after` override; the queue and integrator session
-  derive from the authenticated caller.
-- **Activation anchor:** session entry, before the first state-machine call.
-- **Duration:** 15 minutes by default; an explicit caller interval replaces the
-  default without changing this profile's intent.
-- **Recurrence:** recurring for as long as this session is the integrator —
-  through drains, blocks, escalations, and parked queues alike.
-- **Arm condition:** set first, unconditionally. Setting it again replaces it
-  atomically without an unarmed gap.
-- **Intent:** `Recheck the integration queue and outstanding canonical-main maintenance from current source truth. Judge completed maintenance and recover failures within the integration lane; if a candidate is ready, continue the drain, otherwise remain parked.`
-- **Firing behavior:** inspect checkout-scoped integrator judgment markers,
-  outstanding maintenance records, and structured terminal outcomes for
-  canonical-main activations, including direct commits with no todo candidate,
-  through `telec repo maintenance status`.
-  Keep the judgment pending while any owed action is unfinished or failed.
-  After terminal success, read logs from a
-  window beginning no later than the earliest activation recorded on the
-  marker; an earlier or narrower read does not discharge it. Retain unresolved
-  judgment across reminder beats and route terminal failures through bounded
-  recovery. Apply the standing post-activation log judgment and direct-main
-  publication in step 3a before invoking the integration state machine once,
-  then execute the returned instruction verbatim.
-- **Cancellation:** none while this session is the integrator (step 1). The
-  reminder is removed when the session ends, and only the human ends an
-  integrator.
-- **Invocation:** `telec reminders set integrator-queue-watch`.
 
 #### Reminder: integrator-candidate-settledness
 
@@ -400,37 +400,37 @@ logs `integration.candidate.already_merged` and moves on.
 
 All candidates have been processed. The queue-empty result does not publish
 ordinary direct commits on repository-root main. Inspect local main against
-origin/main before parking. If local main is ahead, complete its owed maintenance
-and any live-runtime log judgment, push the committed head from the project
+origin/main before parking. If local main is ahead, apply direct-main
+publication (step 3a): once its activations have settled with no failed action
+and no outstanding integrator judgment, push the committed head from the project
 root, and verify origin/main contains it. Other sessions' review state and
 unrelated uncommitted repo-root paths are not publication gates. A rejected push
 or split history follows REPO ROOT SYNC REQUIRED; only paths that block that
 reconciliation enter its dirty-path procedure.
 
-Park after bookkeeping completes, with `integrator-queue-watch` live, and end only
-when directed.
+Park after bookkeeping completes with no reminder armed; the next activating
+event resumes the integrator. End only when directed.
 
 ### When to end, when to wait, when to beacon
 
-The integrator's terminal behavior has three shapes — do not collapse them. In
-every shape `integrator-queue-watch` stays live.
+The integrator's terminal behavior has three shapes — do not collapse them.
 
-- **Queue drained (INTEGRATION COMPLETE):** park on `integrator-queue-watch` and
-  await the next candidates. The integrator is a
-  singleton and is not re-dispatched; end only when directed.
+- **Queue drained (INTEGRATION COMPLETE):** park until the next activating event.
+  The integrator is one standing agent per project, which its events reach or
+  start; end only when directed.
 - **Transient block (dirty main):** do not end and do not idle — keep
   `integrator-main-clearance` live and resolve each dirty path until main clears,
   then continue the drain (see **REPO ROOT SYNC REQUIRED**).
 - **Unrecoverable block (genuine human decision):** stay alive as a beacon, but only
   after recovery and the retry window are exhausted, so the human sees and intervenes.
-  The queue watch keeps re-entering the state machine, so the drain resumes on the
-  first beat after the human acts.
+  The next activating event or the human's input re-enters the state machine, so
+  the drain resumes after the human acts.
 
 ## Outputs
 
 - Merged candidates on canonical main (pushed from integration worktree).
 - Direct commits on repository-root main published after their maintenance and
-  any owed log judgment, with the checked head confirmed on origin/main.
+  any outstanding integrator judgment, with the checked head confirmed on origin/main.
 - Cleaned worktrees and branches.
 - `integration.*` lifecycle events at each state transition.
 

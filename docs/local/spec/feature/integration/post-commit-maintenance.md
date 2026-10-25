@@ -131,8 +131,6 @@ contract governs only what happens when maintenance runs.
   An interrupted attempt remains eligible for retry; each action converges
   safely when repeated after its effect preceded record removal.
 
-<!-- planned:integrator-wakes-on-events -->
-
 - **Settlement announcement.** A commit activation of the canonical checkout
   is settled once every action it owes has a terminal outcome: success, or a
   failure that stays recorded; an activation that owes no action settles when
@@ -149,8 +147,6 @@ contract governs only what happens when maintenance runs.
   that settles while no daemon serves is announced once one does. A repeated
   announcement of one settlement carries the same event id, and settlements of
   different projects never share one. Event activations are not announced.
-
-<!-- /planned:integrator-wakes-on-events -->
 
 - **One-shot drain.** Every hook that records owed work starts a contender. One OS-owned file lock
   admits a single active drain; contenders wait for that lock, process pending
@@ -273,30 +269,6 @@ contract governs only what happens when maintenance runs.
   reason and its time are also recorded where `make status` reports them until
   a later window verifies a start.
 
-<!-- planned-change:integrator-wakes-on-events -->
-
-- **Observation.** Every attempt and terminal outcome retains the immutable
-  activation and action identity in structured records. The commit boundary
-  records a checkout-scoped integrator judgment for every qualifying code
-  activation after its owed action records are durable, including a direct main
-  commit with no todo candidate. The judgment retains the activation time and
-  becomes eligible only after all owed actions succeed, the restart action
-  succeeding only on its window's verified start; whether the runtime then
-  behaves correctly belongs to the integrator's log judgment, not to the
-  action. The drain records the latest maintenance-ready time
-  on that marker; if interrupted before recording readiness, the judgment stays
-  outstanding for integrator recovery even when action files are absent. A log
-  read can discharge it only after that ready time
-  with a window covering the activation through completed maintenance. Operational
-  anomaly detection observes failed or stale actions. A regular committer has no
-  post-commit maintenance log judgment. The standing integrator inspects
-  outstanding and terminal maintenance through its recurring watch, judges
-  the relevant runtime evidence after owed actions complete, and owns bounded
-  recovery. The log bug hunter remains a later anomaly backstop. Maintenance
-  completion sends no notification to the committer.
-
-<!-- change:integrator-wakes-on-events -->
-
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. The commit boundary
   records a checkout-scoped integrator judgment for every qualifying code
@@ -315,8 +287,6 @@ contract governs only what happens when maintenance runs.
   activation's settlement announcement, judges the relevant runtime evidence
   after owed actions complete, and owns bounded recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
-
-<!-- /planned-change:integrator-wakes-on-events -->
 
 ### Use cases
 
@@ -477,21 +447,6 @@ And later anomalies remain discoverable by the log bug hunter
 But maintenance completion sends no prompt to the committer
 ```
 
-<!-- planned-change:integrator-wakes-on-events -->
-
-#### UC-PCM16: Direct main commits enter the integrator watch
-
-```gherkin
-Given a canonical-main commit was made without a todo candidate
-And its changed paths owe maintenance
-When the standing integrator's recurring watch runs
-Then it discovers the retained judgment for that commit even if maintenance has already completed
-And judges the changed runtime after the owed actions reach terminal success
-But the original committer receives no maintenance log-check obligation
-```
-
-<!-- change:integrator-wakes-on-events -->
-
 #### UC-PCM16: Direct main commits reach the integrator through their settlement
 
 ```gherkin
@@ -502,8 +457,6 @@ Then it discovers the retained judgment for that commit even if maintenance has 
 And judges the changed runtime after the owed actions reach terminal success
 But the original committer receives no maintenance log-check obligation
 ```
-
-<!-- /planned-change:integrator-wakes-on-events -->
 
 #### UC-PCM17: Early or narrow log evidence does not close integrator judgment
 
