@@ -233,11 +233,18 @@ def mark_integrator_judgment_ready(
     outstanding: Callable[[str], bool],
     ready_at: str,
 ) -> bool:
-    """Record readiness only when no activation still has an action record."""
+    """Record readiness when the stored activations first have no action record.
+
+    An established ready time is kept until a new activation clears it, so a drain
+    that completes no owed action never moves it. Returns True only when this call
+    recorded readiness.
+    """
     path = _marker_path(project_root)
     with _marker_lock(path):
         marker = _read_unlocked(path, project_root)
         if marker is None or any(outstanding(activation.after_sha) for activation in marker.activations):
+            return False
+        if marker.ready_at is not None:
             return False
         updated = replace(marker, ready_at=ready_at)
         _write_marker(path, updated)
