@@ -46,7 +46,8 @@ How that is shown to the agent belongs to
 `local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`.
 
 Messages from one place reach the session in the order they were posted. A
-message is handed on only once the one posted before it has been accepted. A
+message is handed on only once the one posted before it has been accepted, or
+its handling has failed for good with the failure reported as it is today. A
 text sent right after a voice message therefore waits for that voice message's
 transcription.
 
