@@ -291,6 +291,8 @@ And the same holds for a project that subscribes neither code nor docs
 
 ## Known caveats
 
+<!-- planned-change:telec-repo-command-family -->
+
 - A master convergence seeds is not recorded by it. Its entrypoint is compiled
   by the publication that follows the commit recording it in its home
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
@@ -307,3 +309,31 @@ And the same holds for a project that subscribes neither code nor docs
   project initialization path; between one installation and the next the
   home's plumbing can lag a changed hook template exactly as a project's can,
   until an installation or an on-demand maintenance run in the home converges it.
+
+<!-- change:telec-repo-command-family -->
+
+- A master convergence seeds is not recorded by it. Its entrypoint is compiled
+  by the publication that follows the commit recording it in its home
+  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
+- A changed master template reaches no existing master: convergence seeds only
+  absent masters, so an existing master changes only by its home's edit.
+- A changed hook template reaches a machine's registered roots when that change
+  reaches the machine's canonical checkout, so installed plumbing lags only
+  between a template change and its arrival there; a machine that has not
+  received it has nothing newer to install. The capability declaration itself
+  needs no reinstallation to take effect, because the installed plumbing reads
+  it on each invocation.
+- The TeleClaude checkout's own hooks and filter driver, and the platform
+  home's, are installed by the machine installation target, which is not a
+  project initialization path; between one installation and the next the
+  home's plumbing can lag a changed hook template exactly as a project's can,
+  until an installation or an on-demand maintenance run in the home converges it.
+- A hook installed from a template older than the `telec repo` command family
+  execs `telec code pre-commit`, `telec code post-commit` or `telec code
+post-merge`, and runs against the current code before convergence replaces
+  it. Those three hidden entry verbs therefore also answer under `telec code`,
+  a deprecation window for callers that cannot be rolled forward atomically
+  (`sdlc/policy/backward-compatibility-hygiene`). Every other `telec code`
+  invocation is refused, naming the `telec repo` command that replaces it.
+
+<!-- /planned-change:telec-repo-command-family -->
