@@ -47,9 +47,9 @@ contracts of the contexts it crosses. It owns none of their rules.
 - Live surfaces bound to `current`: the service definitions, the published
   `telec`, the agent hook commands, the home-level wrappers, shell setup and
   shared-script links, and every path the runtime composes for a session.
-- The install record: the active and previous release, whether the most recent
-  install migrated state and, on a failure, which stores were changed or are
-  unknown, and the
+- The install record: the active and previous release, whether state has
+  migrated since the active release became active and which stores were
+  changed or are unknown, and the
   outcome of the most recent act with its reason.
 
 ```mermaid
@@ -174,8 +174,10 @@ sequenceDiagram
 
 ### Rollback
 
-Rollback reads the install record. When the most recent install migrated no
-state and a previous release is installed, it stops the daemon through the
+Rollback reads the install record. Store owners report every migration the
+active release begins to that record, during the install and whenever the
+active release first opens a store afterwards. When no migration has changed
+state or had unknown effects since the active release became active, and a previous release is installed, it stops the daemon through the
 lifecycle contract, switches `current` to the previous release, starts and
 verifies, and records that no further rollback is available. Otherwise it
 refuses and changes nothing.
@@ -233,10 +235,13 @@ surface to `current`; the checkout stays a registered project.
   outcome and replayed.
 - **A release folder disappears**: nothing live names it, so only a rollback to
   it is affected, and rollback refuses with that reason.
-- **A store first opened after the install completes** migrates outside the
-  install's account; the stopped window opens every store the daemon opens at
-  startup and every registered project's todo store so that this does not
-  happen for the stores the platform keeps.
+- **A store first opened after the install completes** migrates when the
+  active release opens it; its owner reports that migration to the install
+  record, and from then on rollback refuses. The stopped window opens every
+  store the daemon opens at startup and every registered project's todo store,
+  so that most migrations run inside it.
+- **An owner cannot report to the install record**: the migration counts as
+  having unknown effects, and rollback refuses.
 
 ## See Also
 

@@ -225,8 +225,8 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   folder: the kept repository of the source the installation follows, one
   release per installed revision as a worktree of it, the active-release
   pointer, and the install record — the active and previous release, whether
-  the most recent install migrated state and, on a failure, which stores were
-  changed or are unknown, and the outcome of the most recent
+  state has migrated since the active release became active and which stores
+  were changed or are unknown, and the outcome of the most recent
   install or rollback with its reason. All of it lies outside the platform home
   and outside any project, and the membership predicate answers `outside` for
   it.
@@ -239,7 +239,7 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   its store or whose effects are unknown — and from that whether a failure
   returns to the previously active release or leaves the daemon stopped for a
   forward repair, switches the pointer, and records the outcome. A second
-  operation rolls back: it decides from the install record whether the most recent install migrated no state and a
+  operation rolls back: it decides from the install record whether no migration has changed state or had unknown effects since the active release became active and a
   previous release exists, and otherwise refuses. Their observable contract is
   `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`.
 - **Infrastructure.** Git fetch and worktree operations, the release's
@@ -251,7 +251,9 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   beginning a migration and afterwards whether it changed its store, left it
   established unchanged, or had unknown effects — for ledger-recorded
   migrations and for those that run when its store is opened; an owner that
-  cannot report counts as unknown. The operation
+  cannot report counts as unknown. Owners report every migration the active
+  release begins, during an install or when it first opens a store afterwards,
+  to the install record. The operation
   opens each store through its owner's initialization and reads no domain data.
 - **Live-surface binding.** The installation's live surfaces — service
   definitions, the published `telec`, agent hook commands, home-level wrappers

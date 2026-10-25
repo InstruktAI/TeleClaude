@@ -42,9 +42,10 @@ visibility: 'public'
   runs from a ledger or when the store is opened, the owning domain reports,
   before the migration changes anything, that it is beginning one, and
   afterwards what it did: changed the store, left it unchanged as the owner
-  can establish, or had effects the owner cannot establish. The install act decides
-  whether an install ran migrations, and how a failed install recovers, from
-  those reports alone
+  can establish, or had effects the owner cannot establish — whenever the
+  migration runs, during an install or when the active release first opens the
+  store. The install act decides how a failed install recovers, and whether
+  rollback is still offered, from those reports alone
   (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
 
 <!-- /planned:platform-installation -->

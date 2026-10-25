@@ -97,9 +97,13 @@ starts the daemon on it, under the guarantees of
 ### Rollback
 
 Rollback makes the previous release active again and restarts the daemon on
-it, only when the most recent install ran no migrations. When that install
-ran migrations, or no previous release is installed, rollback refuses, names the
-condition, and changes nothing. No state is backed up or restored.
+it, only while no migration has changed state or had unknown effects since the
+active release became active — neither during its install nor afterwards, when
+the active release first opens a store. Store owners report every migration the
+active release begins to the installation, whenever it begins. When a migration
+has changed state or its effects are unknown, or no previous release is
+installed, rollback refuses, names the condition, and changes nothing. No state
+is backed up or restored.
 
 ### First install
 
@@ -168,13 +172,13 @@ Scenario: An install that fails after it migrated state
 #### UC-IR3: An agent returns the platform to the previous release
 
 ```gherkin
-Scenario: The most recent install ran no migrations
-  Given the most recent install ran no migrations
+Scenario: The active release has migrated nothing
+  Given no migration has changed state since the active release became active
   When an agent acting for the operator rolls the installation back
   Then the platform runs the previously active release again
 
-Scenario: The most recent install ran migrations
-  Given the most recent install ran migrations
+Scenario: The active release has migrated state
+  Given a migration has changed state since the active release became active
   When an agent acting for the operator rolls the installation back
   Then the rollback is refused with that reason
   And the platform keeps running the active release
@@ -206,8 +210,8 @@ And the project keeps every todo, worktree and claim where it was
   contract; a side project keeps its own checkout and deploy.
 - Rollback returns one step only. After an install that ran migrations the way
   back is a forward repair.
-- Whether an install migrated state is what the store owners report while it
-  runs. The install opens, inside its stopped window, every store the daemon
-  opens at startup and every registered project's todo store, so their
-  migrations run and report there; a store first opened later migrates outside
-  that account.
+- Whether state migrated is what the store owners report. The install opens,
+  inside its stopped window, every store the daemon opens at startup and every
+  registered project's todo store, so their migrations run there; a store the
+  active release first opens later reports its migration then, and from that
+  moment rollback is no longer offered.
