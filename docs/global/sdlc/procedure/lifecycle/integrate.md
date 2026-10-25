@@ -113,44 +113,68 @@ computer, so each install has one assessor.
    failures and recover within the integration lane, and keep outstanding
    live-runtime judgment with the integrator. Continue observing those actions
    on `integrator-queue-watch` beats when they outlive this drain.
-   After each activation, read that delivery's log window with knowledge of
-   the change. Investigate anomalies, handle bounded recovery, and route
-   remaining breakage for a forward fix through the normal bug process.
-   For direct commits on canonical local main, judge any owed log window before
-   publication. If the activated change is sound, push the current committed
-   main head to origin/main from the project root with `git push origin main:main`
-   and verify origin/main contains that exact head. A material activation failure leaves it local until recovery
-   and a new log judgment; a successful log command alone is not a soundness
-   verdict. A direct commit with no live-runtime log judgment is published after
-   its owed maintenance succeeds. The committer owns review and remediation under
-   `general/policy/commits`; the integrator does not inspect or wait for other
-   sessions' review verdicts. Uncommitted repo-root paths are not part of the
-   push and do not block it. The candidate pre-push checks in step 5 do not gate
-   direct-main publication.
-   `telec repo maintenance status` reports the checkout's outstanding actions,
-   terminal failures, and integrator judgment, each with its recovery command.
-   After the cause of a terminal failure is addressed, `telec repo maintenance
+
+<!-- planned-change:installation-activation-inspection -->
+
+After each activation, read that delivery's log window with knowledge of
+the change. Investigate anomalies, handle bounded recovery, and route
+remaining breakage for a forward fix through the normal bug process.
+For direct commits on canonical local main, judge any owed log window before
+publication. If the activated change is sound, push the current committed
+main head to origin/main from the project root with `git push origin main:main`
+and verify origin/main contains that exact head. A material activation failure leaves it local until recovery
+and a new log judgment; a successful log command alone is not a soundness
+verdict. A direct commit with no live-runtime log judgment is published after
+its owed maintenance succeeds. The committer owns review and remediation under
+`general/policy/commits`; the integrator does not inspect or wait for other
+sessions' review verdicts. Uncommitted repo-root paths are not part of the
+push and do not block it. The candidate pre-push checks in step 5 do not gate
+direct-main publication.
+<!-- change:installation-activation-inspection -->
+
+Where a canonical-main advancement activates the live runtime, read that
+delivery's log window after the activation with knowledge of the change.
+Investigate anomalies, handle bounded recovery, and route remaining breakage
+for a forward fix through the normal bug process. For direct commits on
+canonical local main, judge that owed log window before publication. Where
+the live runtime runs from an installation, the advancement activates
+nothing and owes no log window here; the installation assessment judges the
+install that follows (Runtimes activated by an install). If the advanced
+head is sound, push the current committed main head to origin/main from the
+project root with `git push origin main:main` and verify origin/main
+contains that exact head. A material activation failure leaves it local
+until recovery and a new log judgment; a successful log command alone is not
+a soundness verdict. A direct commit with no live-runtime log judgment is
+published after its owed maintenance succeeds. The committer owns review and
+remediation under `general/policy/commits`; the integrator does not inspect
+or wait for other sessions' review verdicts. Uncommitted repo-root paths are
+not part of the push and do not block it. The candidate pre-push checks in
+step 5 do not gate direct-main publication.
+<!-- /planned-change:installation-activation-inspection -->
+
+`telec repo maintenance status` reports the checkout's outstanding actions,
+terminal failures, and integrator judgment, each with its recovery command.
+After the cause of a terminal failure is addressed, `telec repo maintenance
 retry` replays that action for its original activation; `telec repo
 maintenance drain` resumes interrupted work and records maintenance
-   readiness when no owed action remains.
-4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
-5. Before a candidate push from the integration worktree, run repo-wide verification:
-   - `telec repo lint --all`
-   - `telec repo test --all`
-     If either command fails, fix the failures, rerun both, then resume the state machine.
-     Use the `telec repo` verbs, not raw `make`: `telec repo lint --all` runs the native
-     `make lint` leg **and** the TeleClaude guardrails lane (raw `make lint` skips the
-     guardrails), matching exactly what the pre-push hook enforces.
-   - The pre-push hook enforces `telec repo lint --all` automatically. If the hook blocks
-     the push with `ERROR: Integration push blocked — telec repo lint --all failed.`,
-     resolve the reported lint violations and retry.
-   - The canonical source is `templates/quality/githooks/pre-push` — edit this to change
-     behavior. The tracked `.githooks/pre-push` is a compatibility entrypoint that resolves
-     the repository root and execs the canonical source; it carries no behavior of its own,
-     so it needs no syncing and neither does any per-worktree copy of it. The active
-     `.git/hooks/pre-push` that git executes is deployed from the canonical source. The CI
-     `make lint` check is a redundant post-push catch layer; the pre-push guard is the
-     primary enforcement surface.
+readiness when no owed action remains. 4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY). 5. Before a candidate push from the integration worktree, run repo-wide verification:
+
+- `telec repo lint --all`
+- `telec repo test --all`
+  If either command fails, fix the failures, rerun both, then resume the state machine.
+  Use the `telec repo` verbs, not raw `make`: `telec repo lint --all` runs the native
+  `make lint` leg **and** the TeleClaude guardrails lane (raw `make lint` skips the
+  guardrails), matching exactly what the pre-push hook enforces.
+- The pre-push hook enforces `telec repo lint --all` automatically. If the hook blocks
+  the push with `ERROR: Integration push blocked — telec repo lint --all failed.`,
+  resolve the reported lint violations and retry.
+- The canonical source is `templates/quality/githooks/pre-push` — edit this to change
+  behavior. The tracked `.githooks/pre-push` is a compatibility entrypoint that resolves
+  the repository root and execs the canonical source; it carries no behavior of its own,
+  so it needs no syncing and neither does any per-worktree copy of it. The active
+  `.git/hooks/pre-push` that git executes is deployed from the canonical source. The CI
+  `make lint` check is a redundant post-push catch layer; the pre-push guard is the
+  primary enforcement surface.
 
 The state machine returns one of the following instruction blocks at each step.
 
