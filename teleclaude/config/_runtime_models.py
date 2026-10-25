@@ -248,6 +248,9 @@ class ReleaseChannel(StrEnum):
     STABLE = "stable"
 
 
+_EARLIER_CHANNEL_SPELLINGS = {"alpha": ReleaseChannel.EDGE, "beta": ReleaseChannel.STABLE}
+
+
 class DeploymentConfig(ClosedModel):
     """Release channel for TeleClaude self-update.
 
@@ -255,6 +258,9 @@ class DeploymentConfig(ClosedModel):
     once per host, not per project. ``edge`` follows the newest green main revision of the
     followed source; ``stable`` follows its published releases and stays inside the compatibility
     series the active release derives. A configuration that declares no channel follows ``stable``.
+    Earlier channel spellings read as their current channel, including when they arrive through an
+    environment reference no configuration migration can rewrite; ``_EARLIER_CHANNEL_SPELLINGS``
+    owns the table.
     """
 
     channel: ReleaseChannel = ReleaseChannel.STABLE
@@ -267,8 +273,9 @@ class DeploymentConfig(ClosedModel):
     @field_validator("channel", mode="before")
     @classmethod
     def _parse_release_channel(cls, value: object) -> ReleaseChannel:
+        spelling = str(value)
         try:
-            return ReleaseChannel(str(value))
+            return _EARLIER_CHANNEL_SPELLINGS.get(spelling) or ReleaseChannel(spelling)
         except ValueError:
             channels = [channel.value for channel in ReleaseChannel]
             raise ValueError(_DEPLOYMENT_CHANNEL_ERROR.format(channels=channels)) from None
