@@ -35,7 +35,9 @@ _MAX_RELEASES = _PER_PAGE * _MAX_RELEASE_PAGES
 _MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 _MAX_UNPACKED_BYTES = 1024 * 1024 * 1024
 _MAX_ARCHIVE_FILES = 20_000
-_MAX_RELEASE_BODY_BYTES = 256 * 1024
+RELEASE_BODY_LIMIT = 125_000
+_RELEASE_BODY_ENCODING = "utf-16-le"
+_RELEASE_BODY_UNIT_BYTES = 2
 _ARCHIVE_CHUNK_BYTES = 1024 * 1024
 _REQUEST_TIMEOUT_SECONDS = 30.0
 _DOWNLOAD_TIMEOUT_SECONDS = 120.0
@@ -84,7 +86,7 @@ _WORKFLOW_FILE = "release.yaml"
 _MAIN_BRANCH = "main"
 _BRANCH_QUERY_KEY = "branch"
 _EVENT_QUERY_KEY = "event"
-_MAX_BODY_BYTES = "GitHub release notes exceed their configured limit."
+_RELEASE_BODY_TOO_LONG = "GitHub release notes exceed their configured limit."
 _RELEASE_CONFLICT = "GitHub release metadata does not match the proved candidate."
 
 
@@ -400,8 +402,8 @@ class GitHubArtifactClient:
         body: str,
     ) -> GitHubRelease:
         """Create a published release only after the caller's proved refs are verified."""
-        if len(body.encode(_UTF8_ENCODING)) > _MAX_RELEASE_BODY_BYTES:
-            raise GitHubArtifactError(_MAX_BODY_BYTES)
+        if release_body_length(body) > RELEASE_BODY_LIMIT:
+            raise GitHubArtifactError(_RELEASE_BODY_TOO_LONG)
         route = _RELEASE_CREATE_ROUTE.format(repository=quote(repository, safe=_PATH_SEPARATOR))
         try:
             response = self._client.post(
@@ -650,6 +652,11 @@ class GitHubArtifactClient:
         if received != artifact.size_in_bytes:
             destination.unlink(missing_ok=True)
             raise GitHubArtifactError(_ARTIFACT_DOWNLOAD_FAILED)
+
+
+def release_body_length(text: str) -> int:
+    """Measure a release body in UTF-16 code units, never fewer than its code points."""
+    return len(text.encode(_RELEASE_BODY_ENCODING)) // _RELEASE_BODY_UNIT_BYTES
 
 
 def artifact_name_for_attempt(name: str, expected: ExpectedWorkflowAttempt) -> str:

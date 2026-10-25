@@ -11,6 +11,7 @@ import argparse
 import re
 import sys
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
@@ -54,7 +55,11 @@ _SOURCE_OPTION = "--source"
 _BASELINE_OPTION = "--baseline"
 _NOTES_OPTION = "--notes"
 _REVERSE_LOG_OPTION = "--reverse"
-MAX_RELEASE_BODY_BYTES = 128 * 1024
+_BODY_EXCEEDS_LIMIT = "The release body exceeds the provider limit even without the commit list."
+_COMPLETE_LIST_TEMPLATE = (
+    "The complete list of {} commits exceeds the release-body limit. "
+    "It is recorded in [CHANGELOG.md]({}/blob/{}/CHANGELOG.md)."
+)
 
 
 def verify_commit_notes(
@@ -123,6 +128,37 @@ def assemble_section(
             ]
         )
     return _NEWLINE.join(lines)
+
+
+def compose_release_body(
+    section: str,
+    provenance: str,
+    tag: str,
+    limit: int,
+    measure: Callable[[str], int],
+    repo_url: str = _DEFAULT_REPOSITORY_URL,
+) -> str:
+    """Publish the complete section when it fits, otherwise the section pointing to the changelog at the tag."""
+    complete = section + provenance
+    if measure(complete) <= limit:
+        return complete
+    lines: list[str] = []
+    entries = 0
+    pointer_index = 0
+    for line in section.split(_NEWLINE):
+        if _COMMIT_NOTE_ENTRY_PATTERN.fullmatch(line) is None:
+            lines.append(line)
+            continue
+        if entries == 0:
+            pointer_index = len(lines)
+            lines.append(_EMPTY)
+        entries += 1
+    if entries:
+        lines[pointer_index] = _COMPLETE_LIST_TEMPLATE.format(entries, repo_url, tag)
+    compact = _NEWLINE.join(lines) + provenance
+    if measure(compact) > limit:
+        raise ValueError(_BODY_EXCEEDS_LIMIT)
+    return compact
 
 
 def prepend_to_changelog(section: str, path: Path) -> None:

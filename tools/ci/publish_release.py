@@ -31,8 +31,13 @@ from tools.release.attempt import (
     release_decision_digest,
     validate_runtime_acceptance_evidence,
 )
-from tools.release.changelog import MAX_RELEASE_BODY_BYTES, verify_commit_notes
-from tools.release.github_artifacts import GitHubArtifactClient, GitHubArtifactError
+from tools.release.changelog import compose_release_body, verify_commit_notes
+from tools.release.github_artifacts import (
+    RELEASE_BODY_LIMIT,
+    GitHubArtifactClient,
+    GitHubArtifactError,
+    release_body_length,
+)
 from tools.release.project_metadata import (
     normalize_release_owned_file,
     normalized_tree_digest,
@@ -455,9 +460,8 @@ def _release_body(
         + "/attempts/"
         + str(attempt.workflow_run_attempt)
     )
-    body = (
-        section
-        + "\n\n## Provenance\n\n"
+    provenance = (
+        "\n\n## Provenance\n\n"
         + "- Source: `"
         + attempt.source_sha
         + "`\n"
@@ -477,9 +481,13 @@ def _release_body(
         + ")\n\n"
         + _release_marker(candidate, proof)
     )
-    if len(body.encode(_UTF8)) > MAX_RELEASE_BODY_BYTES:
-        raise ValueError(_RELEASE_NOTES_MISMATCH)
-    return body
+    return compose_release_body(
+        section,
+        provenance,
+        candidate.version,
+        RELEASE_BODY_LIMIT,
+        release_body_length,
+    )
 
 
 def _release_marker(candidate: CandidateIdentity, proof: ProofIdentity) -> str:

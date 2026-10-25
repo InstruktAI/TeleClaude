@@ -29,11 +29,12 @@ from tools.release.attempt import (
     validate_attempt_checkout,
 )
 from tools.release.changelog import (
-    MAX_RELEASE_BODY_BYTES,
     assemble_section,
+    compose_release_body,
     prepend_to_changelog,
     verify_commit_notes,
 )
+from tools.release.github_artifacts import RELEASE_BODY_LIMIT, release_body_length
 from tools.release.project_metadata import (
     normalize_release_owned_file,
     normalized_tree_digest,
@@ -102,7 +103,11 @@ _STATUS_CLEAN = ""
 _NO_BASELINE = "A normal release candidate requires its captured publication baseline."
 _MANUAL_DECISION_VERSION_MISMATCH = "The requested candidate version does not match its captured manual decision."
 _COMMIT_NOTES_REQUIRED = "The verified shared generated commit notes are required before preparing a candidate."
-_RELEASE_SECTION_TOO_LARGE = "The complete generated release section exceeds the supported release-body size."
+# The publish step appends a provenance block of fixed-width commit ids and digests, a run URL, the tag and
+# the release marker, together well under one KiB. Reserving four times that guarantees a section that passes
+# here fits the provider limit in at least its compact form once the real provenance is appended.
+_PROVENANCE_RESERVE_CHARACTERS = 4096
+_PROVENANCE_RESERVE_FILLER = " "
 _WORKTREE_DIRTY = "Candidate preparation requires the captured source checkout to be clean."
 _REPORT_INVALID = "The selected inspection record is incomplete or inconsistent."
 _VERSION_MISMATCH = "The requested candidate version does not match the selected classification."
@@ -189,8 +194,13 @@ def prepare_candidate(
         summary,
         attempt.baseline_tag,
     )
-    if len(section.encode(_UTF8)) > MAX_RELEASE_BODY_BYTES:
-        raise ValueError(_RELEASE_SECTION_TOO_LARGE)
+    compose_release_body(
+        section,
+        _PROVENANCE_RESERVE_FILLER * _PROVENANCE_RESERVE_CHARACTERS,
+        version_tag,
+        RELEASE_BODY_LIMIT,
+        release_body_length,
+    )
     prepend_to_changelog(section, root / _CHANGELOG)
     provenance = {
         _SCHEMA_VERSION_KEY: 2,
