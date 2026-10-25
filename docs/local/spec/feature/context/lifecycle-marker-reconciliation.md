@@ -40,13 +40,10 @@ and leaving its parent live. Every operation is slug-scoped: unrelated pending
 material stays byte-identical, and repeating a completed reconciliation makes
 no further change.
 
-<!-- planned:removal-abandons-sole-pending-snippets -->
-
 Abandonment removes a pending document whose `delivered_by` names the abandoned
 slug and no other, with everything it contains. A pending document that also
 names another slug only loses the abandoned slug's membership and stays
 pending.
-<!-- /planned:removal-abandons-sole-pending-snippets -->
 
 For integrated candidates, repository-root main is the sole documentation
 reconciliation surface. The integration worktree publishes candidate code but
