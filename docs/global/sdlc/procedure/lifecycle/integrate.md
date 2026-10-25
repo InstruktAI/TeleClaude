@@ -68,8 +68,6 @@ PR acceptance as a separate fact. Its source handoff uses that contract's
 proposal operation before any mainline queue watcher or integration call.
 <!-- /planned:reviewed-pr-contributions -->
 
-<!-- planned:platform-installation -->
-
 ### Runtimes activated by an install
 
 Where a project's live runtime runs from an installation that installs pushed
@@ -82,8 +80,6 @@ integrator judges is that install. It reads the install's recorded outcome with
 the integration lane, and routes remaining breakage for a forward fix through
 the normal bug process. Where the installation still offers a return to the
 previous release, `telec app rollback` is part of that recovery.
-
-<!-- /planned:platform-installation -->
 
 ## Steps
 

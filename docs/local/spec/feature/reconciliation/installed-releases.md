@@ -1,8 +1,10 @@
 ---
-description: The platform runs from installed releases of a project's repository, kept under the XDG data directory apart from the project and the platform home, so development changes nothing live until a revision is installed; `telec app` installs forward, rolls back one migration-free step, and operates the live platform from any directory.
+description: The platform runs from installed releases of a project's repository,
+  kept under the XDG data directory apart from the project and the platform home,
+  so development changes nothing live until a revision is installed; `telec app` installs
+  forward, rolls back one migration-free step, and operates the live platform from
+  any directory.
 visibility: internal
-delivered_by:
-  - platform-installation
 ---
 
 # Installed Releases — Spec

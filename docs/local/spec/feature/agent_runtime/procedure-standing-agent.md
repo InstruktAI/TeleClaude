@@ -32,19 +32,6 @@ patterns overlap remain distinct responsibilities with distinct agents, and
 editing a procedure's patterns changes what its agent listens to without
 changing which agent it is.
 
-<!-- planned-change:platform-installation -->
-
-A standing agent works in its home on the computer that emitted the activating
-event: a company's home folder, a person's folder, a project's checkout, or, for
-the platform, the platform's own checkout. A named home that does not exist on
-that computer fails the activation; the work is never moved to another home or
-computer. An agent for a company home has the session's company set to that
-company; an agent for a person, a project, or the platform has no company,
-because location never supplies one
-(`local/projects/teleclaude/spec/feature/agent_runtime/company-scoped-session-context`).
-
-<!-- change:platform-installation -->
-
 A standing agent works in its home on the computer that emitted the activating
 event: a company's home folder, a person's folder, a project's checkout, or, for
 the platform, the platform home. A named home that does not exist on
@@ -53,8 +40,6 @@ computer. An agent for a company home has the session's company set to that
 company; an agent for a person, a project, or the platform has no company,
 because location never supplies one
 (`local/projects/teleclaude/spec/feature/agent_runtime/company-scoped-session-context`).
-
-<!-- /planned-change:platform-installation -->
 
 A standing agent is started by an event, so it runs under the platform's system
 principal with the origin the event's producer stated. The principal is
@@ -96,17 +81,8 @@ person's folder carries no human identity and acts as no person.
 **Activation home**
 : The one company, person, or project an activation concerns, as the event's origin names it by kind and slug, or the platform for an event whose origin is none.
 
-<!-- planned-change:platform-installation -->
-
-**Home folder**
-: Where a standing agent works on the emitting computer — the company's home folder, the person's folder, the project's checkout, or the platform's own checkout.
-
-<!-- change:platform-installation -->
-
 **Home folder**
 : Where a standing agent works on the emitting computer — the company's home folder, the person's folder, the project's checkout, or the platform home.
-
-<!-- /planned-change:platform-installation -->
 
 **Standing agent**
 : The single live session that continues a procedure's work for one activation home.

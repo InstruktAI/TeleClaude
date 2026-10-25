@@ -1,5 +1,5 @@
 ---
-description: 'How daemon lifecycle and setup operations use make targets for automatic commit-boundary maintenance and agent-operated recovery.'
+description: 'Where the live platform runs and how agents operate it: through `telec app` on the installation, from any directory, never through a checkout, raw host primitives, or edits inside the installation.'
 visibility: 'public'
 ---
 
@@ -7,24 +7,20 @@ visibility: 'public'
 
 ## Rules
 
-- **Agents operate the daemon through `make` targets, never through raw host primitives.** The `make` targets own every host-level service mechanic internally: `make install` deploys the launchd/systemd service definitions, and `make start`/`stop`/`restart`/`kill`/`status` operate the services already deployed.
-- **Service definition deployment belongs to `make install`; `bin/daemon-control.sh` operates lifecycle only.** Deployment is content-gated — a definition is rewritten and its unit reloaded only when the content rendered from the template differs from what is deployed. An unchanged definition leaves its running service untouched, and a corrected template reaches every host on that host's next `make install`.
-
-- **On-demand maintenance defers service deployment.** Run as a step of `telec sync` (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`), `make install` deploys none of the service definitions it renders and stops, restarts or reloads no running service, though it may still start a service that is not running; the run instead reports a plain `make install` as owed whenever a deployed definition differs from what installation would deploy, or a service is due for withdrawal.
-
-- **Maintenance leaves the tmux server running.** Run as a step of any maintenance run, commit-boundary or on-demand, `make install` deploys no changed tmux server definition and names the deferred change instead, so the sessions the tmux server hosts survive the run's controlled restart. Deploying that definition is a plain `make install` outside maintenance, which ends those sessions.
-
-- **Lifecycle and setup `make` targets are first-class agent commands:** `make restart`, `make start`, `make stop`, `make status`, `make install`, alongside `telec config wizard`. `make stop`/`make start` cover the case where a restart is insufficient.
-
-- **Commit-boundary maintenance and agent-operated recovery use the same targets.** The deterministic maintenance a canonical-main advancement owes — `make install` after setup changes, and `make stop` before and `make start` after a run that replaces the daemon — is performed automatically from the canonical checkout (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). An agent does not repeat completed maintenance. When separate operational or recovery work requires the same effect, the agent invokes the applicable `make` target and never substitutes a raw host primitive — even when that target internally deploys or reloads a service definition.
-
-- **Checks:** `make status`, `instrukt-ai-logs teleclaude --since <window> --grep <str>`.
-- **Do not hand-invoke host service primitives directly** — `bin/daemon-control.sh`, `bin/init/install_services.sh`, `launchctl`, `systemctl`, raw service bootout/bootstrap/unload/load. Route every service operation through the `make` targets, which wrap these safely. This is a use-the-sanctioned-wrapper rule, not an approval gate.
+- **The live platform is the installation, not a checkout.** The platform runs from its installation under the XDG data directory (`local/projects/teleclaude/design/architecture/installation`); `telec app status` names the active release and where it lives. Live questions go through the installed tools — the global `telec`, `instrukt-ai-logs teleclaude`, `telec app status`. Code under construction runs only through a worktree's own `bin/telec` (`local/projects/teleclaude/spec/feature/agent_runtime/checkout-code-selection`).
+- **Nothing inside the installation is edited.** Its releases are installed revisions; a change reaches them by being committed in a project, pushed, and installed.
+- **Agents operate the installation through `telec app`, never through raw host primitives.** `telec app status`, `start`, `stop`, `restart`, `install [<revision>]` and `rollback` act on the installation from any directory and own every host-level service mechanic internally (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`). In a project checkout the `make` lifecycle targets delegate to the installation and never operate a checkout.
+- **Service definition deployment belongs to the installation.** The install act and `telec app start` deploy the launchd/systemd definitions, content-gated: a definition is rewritten and its unit reloaded only when the content rendered for the active-release pointer differs from what is deployed. Because the definitions address the pointer, switching releases leaves them unchanged.
+- **Installing leaves the tmux server running.** The install act deploys no changed tmux server definition and names the deferred change instead, so the sessions the tmux server hosts survive its controlled restart. Deploying that definition is a deliberate re-run of the bootstrap, which ends those sessions.
+- **First-class agent commands:** the `telec app` verbs, alongside `telec config wizard`. `telec app stop`/`telec app start` cover the case where a restart is insufficient.
+- **A commit activates nothing; agents do not repeat an install.** A commit in a project changes nothing live (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). The channel reaction installs a pushed revision once; an agent installs explicitly only for a revision no reaction installs, and never a second time.
+- **Checks:** `telec app status`, `instrukt-ai-logs teleclaude --since <window> --grep <str>`.
+- **Do not hand-invoke host service primitives directly** — the installation's lifecycle and service scripts, `launchctl`, `systemctl`, raw service bootout/bootstrap/unload/load. Route every service operation through `telec app`, which wraps these safely. This is a use-the-sanctioned-wrapper rule, not an approval gate.
 
 ### Graceful lifecycle operations
 
 - **Ordinary stop and restart prepare the observed daemon before replacing it.**
-  The lifecycle targets implement the accepted-work settlement contract
+  `telec app stop` and `telec app restart` implement the accepted-work settlement contract
   (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`). They
   require positive preparation support and a drained acknowledgment belonging to
   the same process instance before the service-manager action. An observation
@@ -32,8 +28,8 @@ visibility: 'public'
   draining state; once its accepted work settles, the daemon completes the
   shutdown itself and the service manager relaunches it, so a timed-out restart
   owes no further call. A timed-out stop is relaunched the same way, and
-  keeping the daemon down then takes another `make stop`. Forced termination
-  remains an explicitly selected recovery action through `make kill`.
+  keeping the daemon down then takes another `telec app stop`. Forced termination
+  remains an explicitly selected recovery action through `make kill`, which acts on the installation's daemon.
 
 - **Initial activation of a legacy runtime is explicit.** A daemon without the
   preparation protocol is reported as unsupported by ordinary stop/restart.
@@ -53,9 +49,10 @@ visibility: 'public'
 
 ## Rationale
 
-- The `make` targets are the safe, idempotent service interface: they encapsulate the platform-specific launchd/systemd mechanics, so agents need no host-level judgement and routine service operations need no human gate. Automatic maintenance and agent-operated recovery share that interface, limiting accidental downtime and keeping host mechanics out of callers.
-
-- Deployment belongs with the target that already runs on every setup change, and it is safe there only because it is content-gated: without the content comparison, the `make install` every setup change triggers would bounce every service on every run. Gating on existence instead of content is what lets a corrected template sit undeployed indefinitely on a host that already has the old file.
+- An agent standing in a project cannot restart or reconfigure the live platform with code under construction when the command it uses does not depend on where it stands. Operating the installation through one location-independent surface removes that path rather than forbidding it.
+- `telec app` is the safe, idempotent service interface: it encapsulates the platform-specific launchd/systemd mechanics, so agents need no host-level judgement and routine service operations need no human gate.
+- Content-gated deployment against a pointer keeps a release switch from bouncing services: without the content comparison every install would reload every unit, and without the pointer every install would rewrite them.
+- Edits inside an installed release would be lost at the next install and would make the running code differ from any revision anyone reviewed.
 
 ## Scope
 
@@ -63,8 +60,7 @@ visibility: 'public'
 
 ## Enforcement
 
-- An agent that substitutes a raw host primitive for an applicable `make` target is in violation.
-- Review agent logs for direct host-primitive invocation (`launchctl`, `systemctl`, raw `bin/daemon-control.sh`); route those operations through the `make` targets instead.
+- Reviewers and the integrator's log reading flag direct host-primitive invocation, lifecycle operations aimed at a checkout, and edits inside the installation; the remedy is the `telec app` verb.
 
 ## Exceptions
 
@@ -73,3 +69,5 @@ visibility: 'public'
 ## See Also
 
 - docs/local/adr/0041-agents-own-daemon-lifecycle-via-make.md
+- docs/local/adr/0130-the-platform-runs-from-an-installation-not-its-project.md — why agents operate the installation through `telec app`.
+- docs/local/design/architecture/installation.md

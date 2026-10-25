@@ -24,8 +24,6 @@ The behavioral contract for how an installation keeps its own running version cu
 
 - **stable** — converges to later published releases within the selected compatibility series: the same minor while the major is zero, and the same major from 1.0 onward. Crossing that boundary requires explicit enrollment in the next series. Configuration owns the series declaration (`local/projects/teleclaude/spec/feature/config/stable-channel-pinning-rule`); release classification owns the compatibility promise (`local/projects/teleclaude/spec/release-inspector-prompt`).
 
-<!-- planned:platform-installation -->
-
 ### Installing the selected revision
 
 Convergence installs its selected revision into the installation through the
@@ -37,23 +35,7 @@ relayed changes and releases is the installation's own, served by its running
 daemon, whether or not a project checkout of the platform is registered on the
 machine.
 
-<!-- /planned:platform-installation -->
-
 ### Supported release transitions
-
-<!-- planned-change:platform-installation -->
-
-A beta or stable source advance selects a strictly later release whose committed
-history contains the installed source. Repeating the exact selected release
-normalizes its checkout posture without changing source. An older announcement
-already contained in the installed history leaves the installation unchanged.
-Other backward, sideways or locally diverged source transitions remain
-incomplete, retain the current checkout and local history, and report the unmet
-condition. Channel enrollment supplies no missing data transition. Source and
-data preservation follow `sdlc/policy/version-control-safety` and
-`sdlc/policy/backward-compatibility-hygiene`.
-
-<!-- change:platform-installation -->
 
 A source advance selects a strictly later revision whose committed history
 contains the active release's source; for a published release its committed
@@ -64,26 +46,11 @@ incomplete, keep the active release, and report the unmet condition. Channel
 enrollment supplies no missing data transition. Data preservation follows
 `sdlc/policy/backward-compatibility-hygiene`.
 
-<!-- /planned-change:platform-installation -->
-
-<!-- planned-change:platform-installation -->
-
-A resumed transition uses its retained original source and immutable target.
-Reaching the target commit does not by itself complete the handoff to maintenance.
-Convergence retains its pending evidence when that handoff is refused or fails;
-only an explicitly recorded owed set or an explicitly empty owed set completes
-the recording step. Workflow owns those recording outcomes under
-`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`.
-
-<!-- change:platform-installation -->
-
 A resumed transition uses its retained original source and immutable target.
 Convergence is complete only when the install of its target completes; it
 retains its pending evidence when that install is refused or fails, and the
 install's outcomes are owned by
 `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`.
-
-<!-- /planned-change:platform-installation -->
 
 ### Use cases
 
@@ -180,39 +147,6 @@ When an older release announcement is replayed
 Then the installed revision remains unchanged
 ```
 
-<!-- planned-change:platform-installation -->
-
-#### UC-CSU-11: An unsupported source transition preserves the installation
-
-```gherkin
-Scenario Outline: Refusing unsupported release source
-  Given a beta or stable installation with a retained installed source
-  And a channel-eligible release would require <transition>
-  When the installation attempts that release transition
-  Then the current source and local branch history remain unchanged
-  And convergence reports the unmet condition without claiming success
-  And its pending transition remains available for recovery
-
-  Examples:
-    | transition                                            |
-    | a non-ancestor release with an older version           |
-    | a newer release on a separate source history          |
-    | leaving attached main with unpublished divergent work |
-    | a different source with a non-increasing version      |
-```
-
-#### UC-CSU-12: A refused maintenance handoff leaves convergence incomplete
-
-```gherkin
-Given an admitted release transition has reached its retained target commit
-When recording its owed activation maintenance is refused or fails
-Then convergence reports that failure and retains its pending transition
-And it does not report the transition as complete
-And a later replay uses the same original source and target identity
-```
-
-<!-- change:platform-installation -->
-
 #### UC-CSU-11: An unsupported source transition preserves the installation
 
 ```gherkin
@@ -241,8 +175,6 @@ And it does not report the transition as complete
 And a later replay uses the same original source and target identity
 ```
 
-<!-- /planned-change:platform-installation -->
-
 ### Cross-context references
 
 - Owned by `reconciliation` (`@docs/local/spec/domain/reconciliation.md`); the version-convergence concern of that context.
@@ -254,22 +186,10 @@ And a later replay uses the same original source and target identity
 
 ## Known caveats
 
-<!-- planned-change:platform-installation -->
-
-- A deliberate enrollment into older source needs a supported data transition;
-  unsupported transitions leave the current installation intact and report the
-  unmet condition. Selecting a channel alone supplies no backward data migration.
-  Installed/development source selection follows
-  `local/projects/teleclaude/spec/feature/reconciliation/release-checkout`.
-
-<!-- change:platform-installation -->
-
 - A deliberate enrollment into older source is refused: the install act only
   moves forward, and selecting a channel supplies no backward data migration.
   A release's source posture follows
   `local/projects/teleclaude/spec/feature/reconciliation/release-checkout`.
-
-<!-- /planned-change:platform-installation -->
 
 - **Version-agnostic by construction.** This spec names no transport, language, or build tool. Detection (webhook vs poll), fetch (pull vs download), build, and restart mechanics live in the domain spec and the delivering implementation, not here. The swap test applies: every scenario must hold if the entire implementation is replaced.
 - **Exactly-once is per target version, not per signal.** Duplicate or replayed signals are expected and must be absorbed idempotently.

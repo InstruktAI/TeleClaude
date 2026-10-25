@@ -217,8 +217,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **Published result.** The result of a run that keeps a created launch
   profile names that profile as created.
 
-<!-- planned:platform-installation -->
-
 #### Installation
 
 - **State.** Per machine, under the XDG data directory in the platform's own
@@ -262,8 +260,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 rollback` invokes rollback; `telec app status` reads the install record. The
   daemon's start, stop and verification are consumed from
   `local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`.
-
-<!-- /planned:platform-installation -->
 
 <!-- planned:channel-activation-on-green -->
 
@@ -320,11 +316,7 @@ install`.
 
 - **deepseek-stack-convergence** — `docs/local/spec/feature/reconciliation/deepseek-stack-convergence.md` — moving the DeepSeek runtime, its TUI and every plugin to the newest mutually compatible set, verified and restorable, without pinning or dropping a plugin
 
-<!-- planned:platform-installation -->
-
 - **installed-releases** — `docs/local/spec/feature/reconciliation/installed-releases.md` — running the platform from installed releases apart from the project and the platform home, installing forward, rolling back one migration-free step, and operating the installation through `telec app`
-
-<!-- /planned:platform-installation -->
 
 ### Event subjects and origins
 

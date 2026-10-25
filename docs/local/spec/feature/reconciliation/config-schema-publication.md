@@ -42,22 +42,11 @@ reference each file carries is fixed by its tier
 - **Conflict.** Any other non-directory entry at the target fails publication,
   names the target, and leaves it untouched.
 
-<!-- planned-change:platform-installation -->
-
-- **Triggers.** Machine installation from the canonical TeleClaude checkout, and
-  that checkout's main-only commit-boundary maintenance when TeleClaude's source
-  changes. A worktree and a non-canonical commit publish nothing, so the home
-  describes the code the machine runs.
-
-<!-- change:platform-installation -->
-
 - **Triggers.** The install act that makes a release active publishes from that
   release's source
   (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
   A commit in any project, a project checkout and a worktree publish nothing,
   so the home describes the code the machine runs.
-
-<!-- /planned-change:platform-installation -->
 
 ### Use cases
 

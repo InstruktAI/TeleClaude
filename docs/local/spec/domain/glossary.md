@@ -32,8 +32,6 @@ separately governed replacement program.
   person keeps inside their home's folder is a foreign root of the global home.
 - **Tier:** the code's name for the kind of a company or person home.
 
-<!-- planned:platform-installation -->
-
 ### Installation
 
 - **Installation:** what the platform runs on a machine — installed releases
@@ -47,8 +45,6 @@ separately governed replacement program.
   **rollback** is the act that returns to the previous release after an install
   that ran no migrations
   (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
-
-<!-- /planned:platform-installation -->
 
 ### Maintenance and authority
 

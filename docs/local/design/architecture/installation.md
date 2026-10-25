@@ -1,8 +1,10 @@
 ---
-description: The deployment shape that separates a project from the platform it runs — one installation per machine under the XDG data directory, whose releases are worktrees of one kept repository, every live surface bound through the active-release pointer, runtime state kept outside every release, and the install act as the one path by which a revision becomes live.
+description: The deployment shape that separates a project from the platform it runs
+  — one installation per machine under the XDG data directory, whose releases are
+  worktrees of one kept repository, every live surface bound through the active-release
+  pointer, runtime state kept outside every release, and the install act as the one
+  path by which a revision becomes live.
 visibility: internal
-delivered_by:
-  - platform-installation
 ---
 
 # Installation — Design

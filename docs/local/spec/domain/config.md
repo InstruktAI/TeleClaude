@@ -166,8 +166,6 @@ as a patch carrying the mask leaves its field
 (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`
 UC-KAC20).
 
-<!-- planned:platform-installation -->
-
 **While no daemon serves this machine, configuration commands execute in the
 invoking process.** When a request addresses this computer and no daemon serves
 it — before the platform's first start, or while it is stopped — the CLI and
@@ -178,8 +176,6 @@ serves the machine, every command executes in it, so the platform can be
 configured to the point where it starts
 (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
 
-<!-- /planned:platform-installation -->
-
 #### Use cases (index of feature specs)
 
 - **project-registry** — `docs/local/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry
@@ -189,24 +185,6 @@ configured to the point where it starts
 ### Installation registration and environment defaults
 
 Installation submits two named operations to the config context:
-
-<!-- planned-change:platform-installation -->
-
-- **First-person registration.** It writes the person's registry entry and the
-  person's declaration under the same lock, validation and atomic replacement as
-  every configuration mutation, and creates nothing else in the person's home.
-  It accepts only an empty registry and refuses otherwise, leaving the registry
-  unchanged. The home's template layer belongs to installation's home
-  materialization. Initializing a person through `telec config` still scaffolds
-  that person's home
-  (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`
-  UC-KAC12).
-- **Environment defaults.** When the checkout has no environment settings file,
-  it creates one through the atomic environment writer
-  (`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`), holding
-  only the supplied local-service defaults. An existing file is never touched.
-
-<!-- change:platform-installation -->
 
 - **First-person registration.** It writes the person's registry entry and the
   person's declaration under the same lock, validation and atomic replacement as
@@ -222,8 +200,6 @@ Installation submits two named operations to the config context:
   reads, never inside a code tree — through the atomic environment writer
   (`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`), holding
   only the supplied local-service defaults. An existing file is never touched.
-
-<!-- /planned-change:platform-installation -->
 
 Neither operation passes configuration clearance: their caller is installation,
 not a configuration-surface caller.

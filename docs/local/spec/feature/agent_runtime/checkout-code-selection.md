@@ -1,8 +1,8 @@
 ---
-description: Which checkout's code a telec invocation runs — the installed canonical
-  checkout for the global command, a checkout's own code only through its own wrapper
-  and, from a slug worktree, never against the live home — and how a worktree's change
-  is still graded by its own rules.
+description: Which code a telec invocation runs — the installation's active release
+  for the global command, a checkout's own code only through its own wrapper and, from
+  a slug worktree, never against the live home — and how a worktree's change is still
+  graded by its own rules.
 visibility: internal
 ---
 
@@ -14,10 +14,12 @@ visibility: internal
 
 ## What it is
 
-An agent reaches TeleClaude through `telec`. The global command runs the installed
-canonical checkout's code wherever it is called from, so an ordinary call made while
-standing in a slug worktree behaves exactly like the same call made from the canonical
-checkout, and undelivered code never reaches the live home through it.
+An agent reaches TeleClaude through `telec`. The global command runs the code of the
+installation's active release wherever it is called from
+(`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`), so an
+ordinary call made while standing in the project checkout or in a slug worktree behaves
+exactly like the same call made from anywhere else, and code under construction never
+reaches the live home through it.
 
 A checkout's own `bin/telec` runs that checkout's code. That is how an agent exercises
 its own change by hand, calling the wrapper and nothing more. From a slug worktree the
@@ -49,9 +51,9 @@ The path this behavior sits on is described in
 #### UC-CCS1: An ordinary call from a slug worktree runs the installed code
 
 ```gherkin
-Given a slug worktree whose code differs from the installed canonical checkout
+Given a slug worktree whose code differs from the installation's active release
 When an agent standing in the slug worktree invokes the global telec
-Then the command runs the installed canonical checkout's code
+Then the command runs the active release's code
 And the command acts on the directory the agent invoked it from
 ```
 
@@ -98,7 +100,7 @@ And the owning checkout's declaration is not consulted for that decision
 #### UC-CCS8: The version report describes one checkout
 
 ```gherkin
-Given an agent standing in a slug worktree whose HEAD differs from the installed canonical checkout
+Given an agent standing in a slug worktree whose HEAD differs from the installation's active release
 When the agent runs telec version
 Then the reported version and commit both describe the checkout whose code runs
 ```

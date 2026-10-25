@@ -129,16 +129,12 @@ The authoring rules every migration obeys are
   document; it supplies no instance or registration standing. A migration
   reads the subject, never the document's location.
 
-<!-- planned:platform-installation -->
-
 - **Migration start signal.** Before a run changes a document — before its
   pending carries, upcasts or replacement — it signals that a migration is
   starting for that document, whatever triggers the run: installation, a
   writer or maintenance. The signal names the document and carries no outcome;
   the installation counts it as a change
   (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
-
-<!-- /planned:platform-installation -->
 
 - **Migration run outcome.** One structured record per document naming the
   document, its subject, the version found, the version reached, and one

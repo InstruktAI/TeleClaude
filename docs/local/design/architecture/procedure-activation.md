@@ -14,21 +14,6 @@ answers. On the computer that emitted a matching event, the event starts that
 procedure's standing agent for the home its event's origin names, or wakes the one already
 running.
 
-<!-- planned-change:platform-installation -->
-
-An event states its source computer, its subject — the one thing it is about —
-and its home: a registered company, person, or project, none, or unknown
-(`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`). A home
-of none makes the event a platform event. The home decides which agent answers
-and where it works — the company's home, the person's folder, the project's
-checkout, or, for a platform event, the platform's own checkout. The source
-decides which computer does the work. The subject describes the event to the
-agent that receives it, and for a procedure that declares subject identity it
-also chooses which of that procedure's agents in the home answers: the one
-bound to that subject.
-
-<!-- change:platform-installation -->
-
 An event states its source computer, its subject — the one thing it is about —
 and its home: a registered company, person, or project, none, or unknown
 (`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`). A home
@@ -39,8 +24,6 @@ decides which computer does the work. The subject describes the event to the
 agent that receives it, and for a procedure that declares subject identity it
 also chooses which of that procedure's agents in the home answers: the one
 bound to that subject.
-
-<!-- /planned-change:platform-installation -->
 
 This document owns only the relationship among the participating contexts. Each
 rule it relies on is stated by its owner:
@@ -210,26 +193,6 @@ rule it relies on is stated by its owner:
 
 ### Reused mechanisms
 
-<!-- planned-change:platform-installation -->
-
-| Step                                     | Existing mechanism                                                                      | Relation                                                                                                                   |
-| ---------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Event reaches the consumer               | The consumer runtime on the platform event stream                                       | Reused: activation is one consumer, interested in every type, its own computer's events, and known homes                   |
-| Source, subject, and home travel with it | Event envelope attributes set by the producer                                           | Reused unchanged                                                                                                           |
-| Repeat suppression per event             | The consumer runtime's duplicate protection by event id                                 | Reused unchanged                                                                                                           |
-| Pattern matching and validation          | The event catalog's type-pattern matcher                                                | Reused at declaration, publication, and matching                                                                           |
-| Subscription becomes matchable           | Publication index read                                                                  | Adapted: entries carry patterns, the declared home kind, and the publishing tier; re-read when the published index changes |
-| Start or wake crosses into the runtime   | Local command dispatch with a durable operation receipt                                 | Adapted: the request identity is derived from the event, procedure, and home instead of minted per submission              |
-| Find or create the standing agent        | Inbound resolve-or-create seam used by WhatsApp and Discord                             | Adapted: serialized per procedure and home                                                                                 |
-| Locate the home                          | Registered company, person, and project folders; the platform's own checkout            | Reused through `config`'s answer and the platform checkout's existing owner                                                |
-| Start                                    | The procedure-entry contract, as the scheduled-job runner uses                          | Reused with the home and delivery facts carried as entry context                                                           |
-| Event delivery on start and wake         | Durable hook delivery with a content-free idle wake                                     | Adapted: eligibility and cardinality follow the procedure declaration; activation identity absorbs replay                  |
-| Outcome record                           | Durable operation outcomes, receipt-first                                               | Reused: the procedure-activation completed/failed event pair                                                               |
-| Company on the session                   | Session record                                                                          | Reused for a company home                                                                                                  |
-| Company for tools inside the session     | Caller resolution from the session identity document's session id (`telec auth whoami`) | Reused unchanged                                                                                                           |
-
-<!-- change:platform-installation -->
-
 | Step                                     | Existing mechanism                                                                      | Relation                                                                                                                   |
 | ---------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | Event reaches the consumer               | The consumer runtime on the platform event stream                                       | Reused: activation is one consumer, interested in every type, its own computer's events, and known homes                   |
@@ -245,8 +208,6 @@ rule it relies on is stated by its owner:
 | Outcome record                           | Durable operation outcomes, receipt-first                                               | Reused: the procedure-activation completed/failed event pair                                                               |
 | Company on the session                   | Session record                                                                          | Reused for a company home                                                                                                  |
 | Company for tools inside the session     | Caller resolution from the session identity document's session id (`telec auth whoami`) | Reused unchanged                                                                                                           |
-
-<!-- /planned-change:platform-installation -->
 
 ### Activation
 

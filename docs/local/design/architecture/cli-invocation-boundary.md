@@ -40,88 +40,6 @@ design owns only the path that connects them.
 
 ## Invariants
 
-<!-- planned-change:platform-installation -->
-
-1. **The wrapper's location selects the code.** The global `telec` runs the installed
-   canonical checkout from any working directory. A checkout's own `bin/telec` runs
-   that checkout. The caller's working directory never selects code; handlers still
-   receive it as the directory the command acts on.
-2. **Worktree code never runs against the live home.** Code loaded from a
-   slug worktree runs against the worktree's home — a clone of the home
-   repository the platform provisions with the worktree
-   (`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`) — whatever
-   `TELECLAUDE_HOME` says, and refuses at startup, naming that home, when it
-   is missing. The worktree's `bin/telec` creates no home. The integration
-   worktree is not a slug worktree.
-3. **`telec repo` grades a change with the change's own code.** Lint lanes, guardrail
-   allowlists, schemas and the rendered command surface that judge a worktree's change
-   come from that worktree, while `telec repo` itself runs installed code. A slug
-   worktree's grading code runs against its worktree home and is refused when that
-   home is missing; any other checkout's grading code runs against a fresh scratch
-   home holding a copy of the machine configuration, discarded when grading ends.
-   Neither runs against the live home. Grading runs exactly the checks the acting
-   invocation context selects (`local/projects/teleclaude/design/code-commit`), no more and no fewer.
-   A worktree that cannot run the selected checks in its own code is refused,
-   never graded by installed rules instead. Bookkeeping commands run installed
-   code and read and write the live home as usual.
-4. **Only the auth gate precedes dispatch.** Before a handler runs, the CLI reads the
-   command surface to identify the command and passes the caller through one gate.
-   Nothing else runs, loads, or validates first.
-5. **The gate is narrow.** It reads the auth the command surface declares for
-   the command, and resolves the caller from the session identity marker, one session
-   row, the people roster, and the organization facts the command's scope needs — the
-   person's company memberships and the ownership declaration of the registered
-   project the command acts on. It reads them through the configuration loader every
-   other consumer uses, so they are migrated, resolved and validated the same way
-   (`local/projects/teleclaude/spec/feature/config/yaml-env-var-expansion`). A value
-   whose reference has no value on this computer is absent rather than invalid, so
-   only a genuinely invalid document refuses: when the global configuration does not
-   load, a command that resolves a caller is refused naming that document, and a
-   company or project declaration that does not load contributes no membership or
-   ownership. A session row is admitted by the marker that names it. The gate reads
-   the machine configuration only to decide whether a computer the command names is
-   this one, and loads no ORM. The gate completes person-band clearance when the acted-on object is
-   known from the command or an identity record. When a command names a project by
-   its machine-configured trusted-directory name, the gate resolves the caller and
-   enforces any agent band without loading machine configuration. The handler
-   resolves that name through the typed configuration and completes the same
-   command's person-band clearance on the exact directory it will use, before
-   the command's project operation or any daemon request. An unknown name is
-   checked at platform scope before available names are shown. A command declared
-   independent of its caller (`local/projects/teleclaude/design/cli-authorization-matrix`) passes
-   the gate without any caller resolution.
-6. **A command pays only for its own dependencies.** Configuration, the ORM, the daemon
-   API client, history, mirrors, summarizers and the LLM SDKs load inside the handler
-   of a command that needs them. A module shared by several commands imports nothing
-   at module scope that one of those commands does not need. The daemon API client is
-   loaded only by commands that act through the daemon, and carries no history,
-   summarizer or LLM dependency.
-7. **The pre-dispatch path stays lean by composition.** It loads only the modules the
-   gate's own job needs, composed per `sdlc/policy/python/core`; review keeps it that
-   way, and no guardrail pins the set. Help, usage and completion are answered by the
-   router alone, and so is a command every caller is cleared for (caller-independent and
-   desk-safe): the entry seam loads the gate only for a command whose clearance depends on
-   who calls. A caller-independent command that is not desk-safe still resolves its caller,
-   because an anonymous help-desk visitor is refused it. A command whose own work is trivial completes in
-   roughly 200 ms from the shell; the figure is the target that shows invariants 4–6
-   hold, not a limit a change is graded against.
-
-8. **Execution locality follows the operation, not the command.** Two allowances
-   govern a handler that acts in its own process, and they are distinct. A read of
-   state this computer owns — a project's todo store, the mirrors, the configuration
-   files, git, documentation, the terminal login — may run locally, because the
-   store is the truth and a read leaves nothing for the daemon to observe. A write
-   outside the daemon process is permitted only on state the daemon does not serve
-   from its cache, or whose commit the daemon observes, as it observes configuration
-   files through its watcher. A handler that mutates state the daemon serves from
-   its cache without such observation — a todo's lifecycle state — calls the daemon's
-   route for this computer exactly as it does for another; the computer named only
-   selects the route's target. The route and the handler invoke the same domain
-   operation; the handler is never a second implementation of it
-   (`local/projects/teleclaude/design/architecture/api-server`).
-
-<!-- change:platform-installation -->
-
 1. **The wrapper's location selects the code.** The global `telec` runs the
    installation's active release from any working directory. A checkout's own
    `bin/telec` runs that checkout. The caller's working directory never selects code;
@@ -200,8 +118,6 @@ design owns only the path that connects them.
    operation; the handler is never a second implementation of it
    (`local/projects/teleclaude/design/architecture/api-server`).
 
-<!-- /planned-change:platform-installation -->
-
 ## Primary flows
 
 ### Configuration command execution
@@ -239,31 +155,6 @@ the directory the selected action receives.
 
 ### Invocation
 
-<!-- planned-change:platform-installation -->
-
-```mermaid
-flowchart TD
-    Shell[shell] --> Which{which wrapper?}
-    Which -->|global telec| Installed[installed canonical checkout]
-    Which -->|checkout bin/telec| Own[that checkout]
-    Own --> Slug{slug worktree?}
-    Slug -->|no| Interp
-    Slug -->|yes| WHome{worktree home exists?}
-    WHome -->|yes| Interp
-    WHome -->|no| Refuse[refused at startup, naming the missing home]
-    Installed --> Interp[interpreter]
-    Interp --> Surface[read command surface]
-    Surface --> Gate[auth gate: marker, session row, roster]
-    Gate -->|target known and cleared| Handler[handler loads its own dependencies]
-    Gate -->|trusted-directory name; caller and agent admitted| NamedHandler[handler resolves name through typed config]
-    NamedHandler --> TargetCheck[person band at selected directory]
-    TargetCheck -->|admitted| Act[project operation or daemon request]
-    TargetCheck -->|refused| Deny[refused before action]
-    Gate -->|refused| Deny
-```
-
-<!-- change:platform-installation -->
-
 ```mermaid
 flowchart TD
     Shell[shell] --> Which{which wrapper?}
@@ -284,8 +175,6 @@ flowchart TD
     TargetCheck -->|refused| Deny[refused before action]
     Gate -->|refused| Deny
 ```
-
-<!-- /planned-change:platform-installation -->
 
 ### Exercising one's own change from a worktree
 

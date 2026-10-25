@@ -218,27 +218,6 @@ root. TeleClaude's overlay overrides `plumbing-convergence` by id with fleet
 convergence, bound to its hook templates and to its help-desk and home master
 templates, the latter also owing publication.
 
-<!-- planned-change:platform-installation -->
-
-TeleClaude's overlay declares `tui-reload` `defer`. Its probe reads the
-commit each live TUI started from, and reports the action owed when that commit
-is older than the converged tip and the changed paths between the two owe the
-action under the root's own bindings, through the same scope matcher
-(Invariant 25). A start commit that is not an ancestor of the tip is a
-cannot-tell, one that already contains the tip owes nothing, and no live TUI
-owes nothing. The overlay's `restart` action is performed by an on-demand run
-as the run's stopped-daemon window, not as a step
-(`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`).
-The overlay also declares `service-deploy`, deferred
-and bound to no scope, whose command is `make install` and whose probe names
-each service whose definition TeleClaude's installation renders and whose
-deployed definition differs from the rendered one, and each service
-installation would withdraw.
-Commit-boundary installation deploys and reloads those services as before
-(`local/projects/teleclaude/policy/agent-service-control`).
-
-<!-- change:platform-installation -->
-
 TeleClaude's overlay declares no action that migrates, restarts, reloads or
 publishes the platform: its project's commits and on-demand runs change nothing
 live, and installing a release performs those effects
@@ -248,8 +227,6 @@ boundary and on demand, and there the project's installer prepares only that
 checkout's own development environment and touches no live surface. The
 overlay declares no `restart` action, so an on-demand run in the platform's
 project opens no stopped-daemon window.
-
-<!-- /planned-change:platform-installation -->
 
 An on-demand run fills a command without a range. `{after_sha}` takes the
 converged tip, the `--before-sha {before_sha}` pair is omitted, and the
@@ -283,24 +260,11 @@ alone does not activate the agent-stop engine (Invariant 26). An action that
 only event bindings name is not a step of an on-demand run (Invariant 29): it
 is owed by an event alone.
 
-<!-- planned-change:platform-installation -->
-
-An event activation fills `{event_file}`, `{event_type}` and `{event_id}`; the
-commit-range placeholders are omitted, each with the flag that precedes it. TeleClaude's overlay declares the
-`self-update` maintenance action and binds `github.push` and `github.release`
-to it; the action converges the installation to its channel
-(`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`)
-from the event file it receives.
-
-<!-- change:platform-installation -->
-
 An event activation fills `{event_file}`, `{event_type}` and `{event_id}`; the
 commit-range placeholders are omitted, each with the flag that precedes it. The
 platform's channel convergence is not an event binding of its project: the
 installation reacts to its source's pushes and releases itself
 (`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`).
-
-<!-- /planned-change:platform-installation -->
 
 ### Invariant 31 — Stable maintenance readiness
 
