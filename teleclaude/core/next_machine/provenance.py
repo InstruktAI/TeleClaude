@@ -172,6 +172,11 @@ def clear_artifact_provenance(writer: StateWriter, slug: str, artifact_name: str
     _clear_rewrite_drift_state(writer, artifact_name)
 
 
+def read_owned_snippet_ids(slug: str, *, repo_root: str) -> list[str]:
+    """Read IDs of snippets whose delivered_by membership names this todo, resolvable or not."""
+    return _snippet_ids_delivered_by(slug, repo_root=repo_root)
+
+
 async def read_owned_snippet_digests(
     todos_db: WorkflowStore,
     slug: str,

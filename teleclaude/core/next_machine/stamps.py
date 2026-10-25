@@ -46,6 +46,7 @@ from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine._types import upstream_keys_for
 from teleclaude.core.next_machine.claim_authority import ClaimOwnership, classify_claim_ownership
 from teleclaude.core.next_machine.git_ops import (
+    DRIFT_COSMETIC,
     dependency_artifact_evidence,
     get_head_commit,
     get_origin_main_sha,
@@ -57,6 +58,7 @@ from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, rec
 from teleclaude.core.next_machine.provenance import (
     read_dependency_artifact_snapshot,
     read_owned_snippet_digests,
+    read_owned_snippet_ids,
     read_referenced_snippet_digests,
     sync_artifact_provenance,
 )
@@ -131,6 +133,9 @@ _KICKBACK_APPLIED_OUTCOME = "plan_invalidated"
 _KICKBACK_CLAIM_REASON = "work_orchestrator_claim"
 _KICKBACK_REASON = "kickback"
 _DEPENDENCY_GATE_CLOSED = "closed"
+_DRIFT_REASON_SEPARATOR = "; "
+_BOOTSTRAP_BASELINE_REASON = "bootstrap: established baseline anchor for sync-written artifact"
+_REKEYED_OWNED_BASELINE_REASON = "re-keyed owned snippet baseline to the reviewed identity set"
 
 
 class HumanGateStamp(StrEnum):
@@ -703,12 +708,24 @@ async def _apply_drift_reviewed_stamp(
             entry.dependency_artifact_digests,
             dependency_snapshot,
         )
-    if not entry.async_provenance_complete:
+    bootstrap = not entry.async_provenance_complete
+    # A cosmetic verdict reviews the todo's current owned snippets. When an owned snippet changed identity after
+    # provenance was captured, the recorded keys can never be compared with that review, so the verdict could never
+    # settle the class. Re-key the baseline to the reviewed set, unless an owned ID is unresolvable (fail-safe: stays
+    # pending). A substantive verdict is not re-keyed: it routes to re-derivation and the rewrite re-captures provenance.
+    rekey_owned = (
+        not bootstrap
+        and verdict == DRIFT_COSMETIC
+        and set(entry.owned_snippet_digests) != set(owned_snippets)
+        and set(owned_snippets) == set(read_owned_snippet_ids(slug, repo_root=repo_root))
+    )
+    if bootstrap or rekey_owned:
         entry.owned_snippet_digests = owned_snippets
+        baseline_reason = _BOOTSTRAP_BASELINE_REASON if bootstrap else _REKEYED_OWNED_BASELINE_REASON
+        reason = _DRIFT_REASON_SEPARATOR.join((reason, baseline_reason)) if reason.strip() else baseline_reason
+    if bootstrap:
         entry.referenced_snippet_digests = referenced_snippets
         entry.async_provenance_complete = True
-        bootstrap_reason = "bootstrap: established baseline anchor for sync-written artifact"
-        reason = f"{reason}; {bootstrap_reason}" if reason.strip() else bootstrap_reason
     ApprovalsManager(writer).drift_reviewed(
         artifact=artifact_name,
         verdict=verdict,
