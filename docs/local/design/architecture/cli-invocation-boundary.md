@@ -239,6 +239,8 @@ the directory the selected action receives.
 
 ### Invocation
 
+<!-- planned-change:platform-installation -->
+
 ```mermaid
 flowchart TD
     Shell[shell] --> Which{which wrapper?}
@@ -259,6 +261,31 @@ flowchart TD
     TargetCheck -->|refused| Deny[refused before action]
     Gate -->|refused| Deny
 ```
+
+<!-- change:platform-installation -->
+
+```mermaid
+flowchart TD
+    Shell[shell] --> Which{which wrapper?}
+    Which -->|global telec| Installed[installation's active release]
+    Which -->|checkout bin/telec| Own[that checkout]
+    Own --> Slug{slug worktree?}
+    Slug -->|no| Interp
+    Slug -->|yes| WHome{worktree home exists?}
+    WHome -->|yes| Interp
+    WHome -->|no| Refuse[refused at startup, naming the missing home]
+    Installed --> Interp[interpreter]
+    Interp --> Surface[read command surface]
+    Surface --> Gate[auth gate: marker, session row, roster]
+    Gate -->|target known and cleared| Handler[handler loads its own dependencies]
+    Gate -->|trusted-directory name; caller and agent admitted| NamedHandler[handler resolves name through typed config]
+    NamedHandler --> TargetCheck[person band at selected directory]
+    TargetCheck -->|admitted| Act[project operation or daemon request]
+    TargetCheck -->|refused| Deny[refused before action]
+    Gate -->|refused| Deny
+```
+
+<!-- /planned-change:platform-installation -->
 
 ### Exercising one's own change from a worktree
 

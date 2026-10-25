@@ -176,6 +176,8 @@ UC-KAC20).
 
 Installation submits two named operations to the config context:
 
+<!-- planned-change:platform-installation -->
+
 - **First-person registration.** It writes the person's registry entry and the
   person's declaration under the same lock, validation and atomic replacement as
   every configuration mutation, and creates nothing else in the person's home.
@@ -189,6 +191,25 @@ Installation submits two named operations to the config context:
   it creates one through the atomic environment writer
   (`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`), holding
   only the supplied local-service defaults. An existing file is never touched.
+
+<!-- change:platform-installation -->
+
+- **First-person registration.** It writes the person's registry entry and the
+  person's declaration under the same lock, validation and atomic replacement as
+  every configuration mutation, and creates nothing else in the person's home.
+  It accepts only an empty registry and refuses otherwise, leaving the registry
+  unchanged. The home's template layer belongs to installation's home
+  materialization. Initializing a person through `telec config` still scaffolds
+  that person's home
+  (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`
+  UC-KAC12).
+- **Environment defaults.** When the platform home has no machine environment
+  settings file, it creates one there — a real file every installed release
+  reads, never inside a code tree — through the atomic environment writer
+  (`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`), holding
+  only the supplied local-service defaults. An existing file is never touched.
+
+<!-- /planned-change:platform-installation -->
 
 Neither operation passes configuration clearance: their caller is installation,
 not a configuration-surface caller.

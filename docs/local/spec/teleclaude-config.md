@@ -292,6 +292,8 @@ company or person that no registry knows refuses composition with a clear
 result naming the unresolved owner; no partial owner state reaches consumers.
 The contract is `local/projects/teleclaude/spec/feature/config/project-ownership`.
 
+<!-- planned-change:platform-installation -->
+
 `env_allow_list` is an explicit pass-through list for agent sessions. It is the
 authorization/filter surface: a name not listed in the effective allow list must
 not enter agent tmux sessions, even if it exists in `.env` or in the daemon
@@ -305,6 +307,25 @@ mechanism, not an authorization mechanism. The regular project `.env` remains
 the source for application/runtime secrets. Those values enter agent sessions
 only when their names are also listed in the effective `env_allow_list` and are
 present in the daemon environment.
+
+<!-- change:platform-installation -->
+
+`env_allow_list` is an explicit pass-through list for agent sessions. It is the
+authorization/filter surface: a name not listed in the effective allow list must
+not enter agent tmux sessions, even if it exists in `.env` or in the daemon
+environment. At tmux session creation, TeleClaude combines the global allow list
+from `~/.teleclaude/teleclaude.yml` with project additions from
+`<project>/teleclaude.yml`, reads those names from the daemon process
+environment, and exports only the names that are configured and present. The
+values are loaded into the pane through the session's private TMPDIR env file,
+not through tmux command-line `-e` arguments; that private file is a delivery
+mechanism, not an authorization mechanism. The machine `.env` — a real file in the
+platform home that every installed release reads, never inside a code tree —
+remains the source for application/runtime secrets. Those values enter agent sessions
+only when their names are also listed in the effective `env_allow_list` and are
+present in the daemon environment.
+
+<!-- /planned-change:platform-installation -->
 
 ### Global-only keys (`GlobalConfig` adds these)
 

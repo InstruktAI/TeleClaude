@@ -50,6 +50,16 @@ visibility: 'public'
 
 - Speech-to-text CLI mapping: `telec audio stt --url <url>` or `telec audio stt --path <path>`, with an optional `--language <code>`, prints the transcript of the supplied audio (`local/projects/teleclaude/spec/feature/integration/speech-to-text`).
 
+<!-- planned:platform-installation -->
+
+- Installation CLI mappings, at platform scope, each acting on the machine's installation whatever directory the caller stands in (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`):
+  - `telec app status` reports the daemon's health and the active release.
+  - `telec app start`, `telec app stop` and `telec app restart` operate the installation's daemon under `local/projects/teleclaude/policy/daemon-availability`; `start` also installs the services.
+  - `telec app install [<revision>]` installs the named revision, or without one the target the installation's channel resolves.
+  - `telec app rollback` returns the installation to its previous release.
+
+<!-- /planned:platform-installation -->
+
 ## Known caveats
 
 - Some commands are adapter-specific (e.g., Telegram-only UX actions).
