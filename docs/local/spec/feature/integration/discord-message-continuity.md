@@ -35,14 +35,20 @@ an unknown is never treated as an absence.
 
 **What the daemon did not receive is recovered from Discord.** Once the daemon
 is back, it reads Discord's own copy of every thread and Team channel bound to a
-still-active session. Each message a person posted there that has not yet
-reached the session then reaches it through the same path a live message takes.
+still-active session. Each message a person posted there since the last
+message the daemon processed there reaches the session through the same path a
+live message takes.
 The live path's checks apply unchanged to recovered messages: who may post,
 which session the place belongs to, and how voice and file attachments are
 handled. A recovered message keeps its original posting time and is identified
 as recovered, so the session can tell it was posted while TeleClaude was away.
 How that is shown to the agent belongs to
 `local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`.
+
+Messages from one place reach the session in the order they were posted. A
+message is handed on only once the one posted before it has been accepted. A
+text sent right after a voice message therefore waits for that voice message's
+transcription.
 
 Messages in channels the daemon does not manage keep their current handling.
 
@@ -69,8 +75,8 @@ Scenario Outline: A message posted while the daemon restarts
 
 - **Recovery scope:** the threads and Team channels bound to sessions that are
   still active when the daemon is back.
-- **Recovery reach:** every message a person posted in such a place that has
-  not yet reached its session, with no age cutoff.
+- **Recovery reach:** every message a person posted in such a place since the
+  last message the daemon processed there, with no age cutoff.
 - **Recovered-message facts:** the original posting time, and the fact that the
   message was recovered rather than received live.
 
@@ -81,8 +87,8 @@ Scenario Outline: A message posted while the daemon restarts
   session. A message posted there while the daemon is away is not delivered.
 - Recovery reads Discord's copy. A message deleted from Discord before the
   daemon is back is not recovered.
-- Recovery cannot reach a message posted before TeleClaude first tracked its
-  place. Tracking starts when a place becomes bound to a session, or, for a
-  place already bound when this capability first runs, at that first run. From
-  then on every message posted there is covered, whether or not any message has
-  been accepted there since.
+- Before this capability is installed, a place's last processed message is
+  known from retained accepted input. Where none is retained, the session's last
+  accepted input stands in for it. A message lost in an outage before
+  installation, and followed in that session by later accepted input, is not
+  recovered.

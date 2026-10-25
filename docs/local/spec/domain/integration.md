@@ -155,24 +155,35 @@ implementation remain the current appliance contract.
 
 - **Owns (Discord message continuity):** the inbound behavior of
   `local/projects/teleclaude/spec/feature/integration/discord-message-continuity`.
-  - **Startup classification.** A guild post is classified as managed or
-    unmanaged only after the run's routing attempt has completed.
-  - **Recovery after each new gateway session.** The adapter recovers, from
-    Discord's history, every thread and Team channel bound to a still-active
-    session. This runs after the first connection and after every later
-    connection that does not resume the previous gateway session.
+  - **Live classification gate.** A guild post is classified as managed or
+    unmanaged only once the run's routing attempt has completed and no
+    recovery pass is in progress.
+  - **Recovery passes.** A pass runs after the routing attempt of each new
+    gateway session: the first connection, and every later connection that
+    does not resume the previous gateway session. A pass also runs after every
+    later publication of routing within the same gateway session. A pass
+    covers every thread and Team channel bound to a still-active session, taken
+    from the sessions' durable bindings rather than from the routing maps. Each
+    recovered message enters the live handling path after classification, with
+    the live checks on sender, guild and session.
+  - **Ordered handoff.** In a managed place, recovered or live, each input is
+    handed to handling only after the handling of the input posted before it
+    has concluded: the input was accepted, or its handling failed
+    definitively.
   - **The per-place recovery cursor.** The cursor is the newest Discord
-    message in that place whose handling has reached accepted input. It never
-    passes a message whose handling has not. It is durable operational state,
-    kept with the adapter's reflection state in the main runtime database.
-    Every eligible place carries a cursor from the moment it becomes eligible.
-    A newly bound place starts at its newest message at binding. A place
-    already bound when the capability first runs is seeded once by the first
-    recovery pass, from the newest retained accepted input for that place
-    when one exists, and otherwise from its newest message. Recovery reads only
-    messages after the cursor.
-  - **Ordering.** Recovered messages enter the live inbound path in posting
-    order before that place's live input is classified.
+    message in that place whose handling has concluded. It never passes a
+    message whose handling has not concluded. A message discarded as
+    unmanaged while routing is unknown leaves the cursor where it is, so the
+    next pass recovers it. The cursor is durable operational state, kept with
+    the adapter's reflection state in the main runtime database, and recovery
+    reads only messages after it.
+    - A newly bound place starts its cursor at its newest message at binding.
+    - A place already bound when the capability is installed is seeded by the
+      installation's storage migration. The seed is the place's newest retained
+      accepted Discord input when one exists, and otherwise the session's last
+      accepted input time. Nothing is accepted while the daemon is down, so
+      everything posted during the installation's own outage stays after the
+      seed.
   - **Recovered-input facts.** The normalized input carries the message's
     original posting time and a recovered mark.
 - **Does not own (Discord message continuity):** duplicate suppression at
