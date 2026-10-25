@@ -217,6 +217,46 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **Published result.** The result of a run that keeps a created launch
   profile names that profile as created.
 
+<!-- planned:platform-installation -->
+
+#### Installation
+
+- **State.** Per machine, under the XDG data directory in the platform's own
+  folder: the kept repository of the source the installation follows, one
+  release per installed revision as a worktree of it, the active-release
+  pointer, and the install record — the active and previous release, whether
+  the most recent install ran migrations, and the outcome of the most recent
+  install or rollback with its reason. All of it lies outside the platform home
+  and outside any project, and the membership predicate answers `outside` for
+  it.
+- **Decision boundary (core).** One reconciliation core operation installs a
+  revision: it refuses a target older than the active release under the release
+  transitions of `local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`,
+  prepares the release while the daemon serves, establishes which migrations
+  the release's migration systems still owe the home, decides whether a failure
+  leaves the active release serving or the daemon stopped, switches the pointer,
+  and records the outcome. A second operation rolls back: it decides from the
+  install record whether the most recent install ran no migrations and a
+  previous release exists, and otherwise refuses. Their observable contract is
+  `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`.
+- **Infrastructure.** Git fetch and worktree operations, the release's
+  environment build, the migration systems' own runners, and the atomic pointer
+  switch execute behind ports the operations drive; they decide nothing. Each
+  migration system keeps its own applied state and rules
+  (`local/projects/teleclaude/spec/feature/config/document-migration` for
+  configuration documents); the operation only asks what is pending and runs it.
+- **Live-surface binding.** The installation's live surfaces — service
+  definitions, the published `telec`, agent hook commands, home-level wrappers
+  and links — address the active release through its pointer; their
+  relationship is `local/projects/teleclaude/design/architecture/installation`.
+- **Consumers.** The bootstrap, the move off a project checkout, the channel
+  reaction and `telec app install` invoke the install operation; `telec app
+rollback` invokes rollback; `telec app status` reads the install record. The
+  daemon's start, stop and verification are consumed from
+  `local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`.
+
+<!-- /planned:platform-installation -->
+
 #### Use cases (index of feature specs)
 
 - **project-plumbing-convergence** — `docs/local/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a root to its declaration: a project's installed git hooks, docs filter driver and help desk, and the masters and help desks the platform home seeds
@@ -228,6 +268,12 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **fresh-machine-bootstrap** — `docs/local/spec/feature/reconciliation/fresh-machine-bootstrap.md` — taking a fresh machine, with or without a person present, to a startable, owned TeleClaude that serves its published documentation
 
 - **deepseek-stack-convergence** — `docs/local/spec/feature/reconciliation/deepseek-stack-convergence.md` — moving the DeepSeek runtime, its TUI and every plugin to the newest mutually compatible set, verified and restorable, without pinning or dropping a plugin
+
+<!-- planned:platform-installation -->
+
+- **installed-releases** — `docs/local/spec/feature/reconciliation/installed-releases.md` — running the platform from installed releases apart from the project and the platform home, installing forward, rolling back one migration-free step, and operating the installation through `telec app`
+
+<!-- /planned:platform-installation -->
 
 ### Event subjects and origins
 

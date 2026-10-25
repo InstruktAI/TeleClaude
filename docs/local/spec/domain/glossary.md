@@ -32,6 +32,24 @@ separately governed replacement program.
   person keeps inside their home's folder is a foreign root of the global home.
 - **Tier:** the code's name for the kind of a company or person home.
 
+<!-- planned:platform-installation -->
+
+### Installation
+
+- **Installation:** what the platform runs on a machine — installed releases
+  of the repository it follows, under the XDG data directory, apart from every
+  project and from the platform home. It is never a home and never a project.
+- **Release:** one installed revision: a worktree, at that revision, of the
+  repository the installation keeps, with its own environment.
+- **Active release:** the release the services and the published `telec` run
+  from, addressed through the installation's pointer.
+- **Install:** the act that makes a newer revision the active release;
+  **rollback** is the act that returns to the previous release after an install
+  that ran no migrations
+  (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
+
+<!-- /planned:platform-installation -->
+
 ### Maintenance and authority
 
 - **v1 appliance:** this Python repository and its running daemon, the operating
