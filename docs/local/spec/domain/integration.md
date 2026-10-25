@@ -169,7 +169,12 @@ implementation remain the current appliance contract.
   - **Ordered handoff.** In a managed place, recovered or live, each input is
     handed to handling only after the handling of the input posted before it
     has concluded: the input was accepted, or its handling failed
-    definitively.
+    definitively. A place's live input is handed on only once that place's
+    recovery has completed in the current gateway session. A place whose
+    history read fails holds its live input and retries its recovery, and
+    nothing but that recovery moves its cursor.
+  - **Exhaustive reads.** A place's recovery has completed only when Discord's
+    history after its cursor has been read to the end.
   - **The per-place recovery cursor.** The cursor is the newest Discord
     message in that place whose handling has concluded. It never passes a
     message whose handling has not concluded. A message discarded as
@@ -178,6 +183,8 @@ implementation remain the current appliance contract.
     the adapter's reflection state in the main runtime database, and recovery
     reads only messages after it.
     - A newly bound place starts its cursor at its newest message at binding.
+    - A place a recovery pass finds without a cursor is seeded by the
+      installation rule below, never earlier than the time it became bound.
     - A place already bound when the capability is installed is seeded by the
       installation's storage migration, from that place's own acceptance
       record. The seed is the place's newest Discord input that the inbound
