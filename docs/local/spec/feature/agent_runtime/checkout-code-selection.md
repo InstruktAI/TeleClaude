@@ -14,23 +14,10 @@ visibility: internal
 
 ## What it is
 
-<!-- planned-change:platform-installation -->
-
 An agent reaches TeleClaude through `telec`. The global command runs the installed
 canonical checkout's code wherever it is called from, so an ordinary call made while
 standing in a slug worktree behaves exactly like the same call made from the canonical
 checkout, and undelivered code never reaches the live home through it.
-
-<!-- change:platform-installation -->
-
-An agent reaches TeleClaude through `telec`. The global command runs the code of the
-installation's active release wherever it is called from
-(`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`), so an
-ordinary call made while standing in the project checkout or in a slug worktree behaves
-exactly like the same call made from anywhere else, and code under construction never
-reaches the live home through it.
-
-<!-- /planned-change:platform-installation -->
 
 A checkout's own `bin/telec` runs that checkout's code. That is how an agent exercises
 its own change by hand, calling the wrapper and nothing more. From a slug worktree the
@@ -59,8 +46,6 @@ The path this behavior sits on is described in
 
 ### Use cases
 
-<!-- planned-change:platform-installation -->
-
 #### UC-CCS1: An ordinary call from a slug worktree runs the installed code
 
 ```gherkin
@@ -69,19 +54,6 @@ When an agent standing in the slug worktree invokes the global telec
 Then the command runs the installed canonical checkout's code
 And the command acts on the directory the agent invoked it from
 ```
-
-<!-- change:platform-installation -->
-
-#### UC-CCS1: An ordinary call from a slug worktree runs the installed code
-
-```gherkin
-Given a slug worktree whose code differs from the installation's active release
-When an agent standing in the slug worktree invokes the global telec
-Then the command runs the active release's code
-And the command acts on the directory the agent invoked it from
-```
-
-<!-- /planned-change:platform-installation -->
 
 #### UC-CCS3: A worktree's own wrapper runs against its worktree's home
 
@@ -123,8 +95,6 @@ Then whether the command runs, and which checks its quality gate runs, follow th
 And the owning checkout's declaration is not consulted for that decision
 ```
 
-<!-- planned-change:platform-installation -->
-
 #### UC-CCS8: The version report describes one checkout
 
 ```gherkin
@@ -132,18 +102,6 @@ Given an agent standing in a slug worktree whose HEAD differs from the installed
 When the agent runs telec version
 Then the reported version and commit both describe the checkout whose code runs
 ```
-
-<!-- change:platform-installation -->
-
-#### UC-CCS8: The version report describes one checkout
-
-```gherkin
-Given an agent standing in a slug worktree whose HEAD differs from the installation's active release
-When the agent runs telec version
-Then the reported version and commit both describe the checkout whose code runs
-```
-
-<!-- /planned-change:platform-installation -->
 
 #### UC-CCS9: Authorized worktree grading reaches its checks
 

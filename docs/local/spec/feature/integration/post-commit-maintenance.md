@@ -32,6 +32,8 @@ contract governs only what happens when maintenance runs.
 
 ## Canonical fields
 
+<!-- planned-change:platform-installation -->
+
 - **Trigger.** A recorded commit on canonical main, or a successful canonical-main
   merge operation, including a fast-forward. Maintenance is not conditioned on
   who or what advanced main, nor on whether a session is present.
@@ -275,6 +277,249 @@ contract governs only what happens when maintenance runs.
   the relevant runtime evidence after owed actions complete, and owns bounded
   recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
+
+<!-- change:platform-installation -->
+
+- **Trigger.** A recorded commit on canonical main, or a successful canonical-main
+  merge operation, including a fast-forward. Maintenance is not conditioned on
+  who or what advanced main, nor on whether a session is present.
+- **Immutable activation range.** Hook ingress resolves symbolic Git names to
+  object ids before action selection or logging. An ordinary commit records its
+  parent and committed tip; a root commit records an absent parent and its tip;
+  a merge or fast-forward records the resolved pre-activation and post-activation
+  tips. Changed-file resolution, command expansion, outcomes, and replay all use
+  those immutable fields.
+
+- **Owed set.** The main-only maintenance actions selected by the merged
+  registry's path bindings and canonical-main activation bindings. An
+  activation binding applies even when the commit changes no paths. The shared
+  matcher owns this selection under
+  `local/projects/teleclaude/design/architecture/checkpoint-system`. Actions run
+  in declared precedence waves, where a precedence orders an action after the
+  actions whose effects it needs and after nothing else; a failure does not
+  cancel later waves. An owed restart action is not a wave: it is the
+  stopped-daemon window the other owed actions run inside, except the actions
+  the registry declares to run while the daemon serves — Blueprint maintenance,
+  publication and configuration-schema publication — which run after the
+  window's verified start.
+
+- **Recording outcome.** The activation boundary distinguishes an owed set
+  durably recorded, an explicitly empty owed set, and a refused activation with
+  its reason. Repeating an already-recorded owed set remains a recorded outcome.
+  Ineligible location, an invalid immutable range, unavailable Git state and a
+  storage failure are not evidence of an empty owed set or completed recording.
+  Consumers use that outcome rather than inferring success from absent action
+  files. The immutable-range and source-preservation requirements follow
+  `sdlc/policy/version-control-safety`.
+
+- **Blueprint.** In code-enabled projects, every canonical-main activation
+  owes the Blueprint action. Its committed snapshot, current-query guarantee,
+  and recovery are owned by `sdlc/spec/codebase-blueprint` and realized by
+  `local/projects/teleclaude/spec/feature/workflow/blueprint-freshness`.
+
+- **Location.** Maintenance performs the owed `main_only` actions from canonical
+  main. A detached development clone, an integration worktree and an
+  installation's release gain no eligibility; the integration worktree can
+  create a delivery, but its commits and merges perform no maintenance.
+
+- **Reporting.** Every attempt and every outcome is emitted through the
+  structured logging boundary, carrying the commit, the resolved action set,
+  and each action's result. The record, not an inference over a transcript, is
+  what establishes whether maintenance ran. A failed action is reported at error
+  level with the tail of its own combined output, so the reason it gave travels
+  with its result; an action that succeeds keeps its output to itself. The
+  whole output is masked before its tail is taken: every value the
+  configuration declares sensitive (a field marked sensitive in the machine,
+  global, project, person or company configuration, or a company service
+  credential) is replaced, whatever its length, and every other value stays
+  readable. A value an action obtains from anywhere else is not declared a
+  secret and is not masked. When that configuration does not load, the
+  secrets are unknown and the output is withheld, naming why. On-demand
+  maintenance captures nothing: its actions write to the terminal of whoever
+  ran it.
+- **Failure posture.** The commit is already recorded before maintenance
+  begins. A failing action is reported and the remaining actions still run;
+  no failure withdraws, amends, or blocks the commit.
+
+- **Committed source.** A publication action is selected by its recorded range
+  and consumes the committed-source selection owned by
+  `local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`:
+  canonical-main publication reads the committed main tip. Every other
+  repository remains at its previously activated revision until its own
+  maintenance or `telec sync` runs. Working-tree files are never inputs.
+
+- **Recovery.** A failed action is replayed through this executor for its
+  original recorded range and action id, with the same attempt and outcome
+  records as the first run. Publication uses the current committed source
+  selected for that checkout, never its working tree or a different checkout's
+  branch. Where no action was recorded, or maintenance did not run or left a root
+  unconverged, `telec sync` in the affected root performs that root's maintenance
+  on demand through this executor
+  (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`).
+
+- **Absence.** A commit made where the hook is not installed performs no
+  maintenance and raises no signal. Nothing detects that absence here:
+  installed plumbing is machine state whose comparison against the project's
+  declaration is already owned by project plumbing convergence, and a second
+  detector would make this contract a second owner of that state.
+
+- **Quick-return activation.** After resolving an immutable activation and its
+  owed action set, the hook records each owed action durably, starts a one-shot
+  drain contender, and returns without waiting for action completion. A later
+  commit adds its own owed records while an earlier drain is running.
+  A successful post-merge handoff prints a concise terminal notice that automatic
+  maintenance has started in the background, may take some time, and needs no
+  manual installation. No start notice is printed when no work is owed or the
+  background process could not be started.
+- **Per-action state.** Each gitignored record is keyed by the activated tip
+  and action id and retains the pre-activation revision and queued time. A
+  confirmed success removes its record. A terminal failure remains marked
+  failed, with its exit code and the tail of its output, for structured-log and
+  anomaly review, without an automatic retry loop.
+  An interrupted attempt remains eligible for retry; each action converges
+  safely when repeated after its effect preceded record removal.
+- **One-shot drain.** Every hook that records owed work starts a contender. One OS-owned file lock
+  admits a single active drain; contenders wait for that lock, process pending
+  activations in Git ancestry order and actions by declared precedence, then
+  exit when no pending work remains. Lock-file presence never means ownership.
+
+- **On-demand runs.** An on-demand run holds the same lock for its whole run, so
+  a drain and an on-demand run never perform a step at the same time. Its
+  attempts and outcomes are marked as on-demand in the structured records. A
+  drain never executes an on-demand run's steps, and an on-demand run never
+  executes, replaces or clears a recorded activation's actions; it reads a
+  terminal failure only to name it with its replay.
+
+- **Execution.** No maintenance action and no drain contender goes through the
+  `telec` command surface. An action that runs TeleClaude's own code runs a
+  module entrypoint of the installed checkout under the interpreter of the
+  draining process, and the hook starts the drain contender the same way, so
+  maintenance depends on no caller identity and on no command existing. A
+  failed action is replayed with `telec repo maintenance retry`, which re-runs
+  the recorded action through this executor.
+
+- **Event activations.** The executor also performs the actions a project's
+  event bindings owe for one event
+  (`local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`).
+  An event activation is identified by its event and the project, carries no
+  activation range, and keeps the event it reacts to for as long as any of its
+  action records remains. Its records sit beside the commit activations' records
+  under the same drain lock, a drain takes event activations in the order they
+  were recorded, and its attempts and outcomes are marked as event activations
+  in the structured records. A failed event action is replayed with
+  `telec repo maintenance retry` for its original event activation, and
+  `telec repo maintenance status` names each event activation with that replay.
+  An event activation records no integrator judgment: the maintenance an advance
+  of canonical main owes is that advance's own activation.
+
+- **Replacement owed.** In a root whose registry declares the restart action,
+  every activation whose changed paths select any maintenance action other than
+  one the registry declares to run while the daemon serves owes the restart
+  action, whatever its bindings name. An activation whose changed paths select
+  only such actions — publication among them — or nothing, a
+  documentation-only change among them, owes no restart and runs, together
+  with the actions every canonical-main activation owes, while the daemon keeps
+  serving. A root that declares no restart action has no window.
+
+- **Stopped-daemon window.** An activation whose owed set includes the
+  restart action replaces the daemon inside a stopped-daemon window, a
+  controlled restart under `local/projects/teleclaude/policy/daemon-availability`.
+  The window opens before any of the activation's owed actions that run inside
+  it. It first waits, admission still open, until the daemon holds no accepted work,
+  up to a bound the window owns; an integration whose commit owes the restart
+  is accepted work like any other, so its own window never closes admission
+  while it is still running. It then stops the daemon through `make stop`,
+  whose preparation settles the work accepted until then
+  (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).
+  A preparation that does not complete within its observation window is
+  reported, and the window keeps waiting and stopping again until the daemon
+  has stopped; no owed action runs while the daemon serves. With the daemon
+  stopped, every owed action that runs inside the window runs in its
+  precedence waves; installation inside the window leaves the tmux server running
+  (`local/projects/teleclaude/policy/agent-service-control`). The window
+  closes after the last of them: it starts the daemon through `make start` and
+  verifies, within a bound it owns, that the started daemon answers its health
+  read with admission open and reports the checkout's current tip as the commit
+  it started from. The restart action succeeds only on that verification.
+
+- **Actions after the start.** The registry declares which actions run while
+  the daemon serves
+  (`local/projects/teleclaude/design/architecture/checkpoint-system`), and the
+  platform base declares Blueprint maintenance and publication so, and this
+  repository's overlay configuration-schema publication. Such an
+  action never runs inside a window and never holds the daemon stopped. When a
+  window covers its activation, it runs after that window's start has
+  verified, in its precedence waves, while the started daemon serves; when the
+  start does not verify, it stays recorded and a later drain performs it while
+  no window is open. Its failure is reported like any other action's and
+  leaves the daemon serving.
+
+- **Window extent.** A drain that opened a window keeps the daemon stopped
+  while any recorded action that runs inside a window remains actionable,
+  activations recorded while the window is open included. It starts the daemon
+  only on the checkout's tip, once no such action remains actionable and that
+  tip's own advancement is registered — its owed set resolved by the commit
+  boundary, empty or not.
+  Registration waits from that final check until the window has closed, so an
+  advancement registered before the close runs inside the window and the daemon
+  starts once, after its actions; one registered after the close runs in a
+  window of its own. When the tip's advancement is not yet registered at the
+  final check, the window registers it itself through the commit boundary's
+  recording, over the range from the checkout's previous position to the tip —
+  the range that advancement's own hook resolves — and a later recording of the
+  same advancement is a repeated recording. A registration the window cannot
+  complete leaves the daemon stopped: each restart action the window covered
+  ends failed with that refusal's reason, the reason and its time are recorded
+  where `make status` reports them, and replaying a restart action once the
+  cause is resolved reopens the window on the stopped daemon. When the
+  checkout's tip moved after the final check, the window registers that
+  advancement in the same way; if it owes the restart action, the start it
+  overtook is stopped again within the same window, which runs that
+  advancement's actions and starts the daemon from it after them, so the daemon
+  is never left serving an advancement whose owed actions that run inside a
+  window have not run. An
+  advancement that owes no restart runs after the close while the daemon
+  serves, as any such activation does. An activation that
+  owed the restart action keeps that obligation while any of its records for an
+  action that runs inside a window remains, so replaying one of those failed
+  actions runs inside a window of its own; replaying a failed action that runs
+  while the daemon serves leaves the daemon serving.
+
+- **Window failure.** The window opens only on the outcome `make stop` records
+  as stopped — the daemon exited and its relaunch suppressed — including a stop
+  that also reports a managed-unit cleanup failure, which is reported with the
+  opening (`local/projects/teleclaude/policy/daemon-availability`). Any other
+  outcome than stopped or incomplete preparation leaves the window unopened:
+  nothing starts, stops or replaces the daemon further, the activation's
+  actions stay recorded and unperformed, the refusal is reported at error level
+  with its reason, and the reason and its time are recorded where `make status`
+  reports them. A failed action inside an open window is reported and the
+  window still closes. A start that does not verify
+  is the restart action's terminal failure, carrying the start's reason; the
+  reason and its time are also recorded where `make status` reports them until
+  a later window verifies a start.
+
+- **Observation.** Every attempt and terminal outcome retains the immutable
+  activation and action identity in structured records. The commit boundary
+  records a checkout-scoped integrator judgment for every qualifying code
+  activation after its owed action records are durable, including a direct main
+  commit with no todo candidate. The judgment retains the activation time and
+  becomes eligible only after all owed actions succeed, the restart action
+  succeeding only on its window's verified start; whether the runtime then
+  behaves correctly belongs to the integrator's log judgment, not to the
+  action. The drain records the latest maintenance-ready time
+  on that marker; if interrupted before recording readiness, the judgment stays
+  outstanding for integrator recovery even when action files are absent. A log
+  read can discharge it only after that ready time
+  with a window covering the activation through completed maintenance. Operational
+  anomaly detection observes failed or stale actions. A regular committer has no
+  post-commit maintenance log judgment. The standing integrator inspects
+  outstanding and terminal maintenance through its recurring watch, judges
+  the relevant runtime evidence after owed actions complete, and owns bounded
+  recovery. The log bug hunter remains a later anomaly backstop. Maintenance
+  completion sends no notification to the committer.
+
+<!-- /planned-change:platform-installation -->
 
 ### Use cases
 
