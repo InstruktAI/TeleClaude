@@ -7,6 +7,7 @@ import hashlib
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,7 @@ from pathlib import Path
 import yaml
 
 from teleclaude.constants import API_SOCKET_PATH
+from teleclaude.core.reconciliation.install_act import InstallStatus
 from tools.ci.terminal import CommandResult, PersistentTerminal
 
 from .probes import TELEC_RELATIVE_PATH, ProbeFailure, run_role_and_identity_probes
@@ -46,7 +48,6 @@ _GIT_HEAD_COMMIT_REF = "HEAD^{commit}"
 _GIT_HEAD_REF = "HEAD"
 _GIT_MAIN_REF = "main"
 _MAKE_CHANGE_DIRECTORY_OPTION = "-C"
-_INSTALL_TARGET = "install"
 _START_TARGET = "start"
 _STOP_TARGET = "stop"
 _STATUS_TARGET = "status"
@@ -76,10 +77,10 @@ _OWNER_EMAIL_ENV = "TELECLAUDE_OWNER_EMAIL"
 _SEED_DIRECTORY = "seed"
 _CHECKOUT_FOLDER = Path("Workspace") / "InstruktAI" / "TeleClaude"
 _GLOBAL_CONFIG_RELATIVE_PATH = _PLATFORM_HOME_DIRECTORY / _GLOBAL_CONFIG_FILENAME
-_PROJECT_ENV_FILENAME = ".env"
+_MACHINE_ENV_RELATIVE_PATH = _PLATFORM_HOME_DIRECTORY / ".env"
 _FILE_FINGERPRINT_FAILED = "Could not fingerprint {path}: {error}"
 _DIRECTORY_CREATE_FAILED = "Could not create {path}: {error}"
-_SETTLED_FILES_CHANGED = "The repeat install changed the people registry or project environment file."
+_SETTLED_FILES_CHANGED = "The repeat install changed the people registry or machine environment file."
 _PROJECT_LOG_ARGUMENT = "teleclaude"
 _LOG_LOOKBACK_ARGUMENT = "--since"
 _COLLECTED_LOG_FILENAME = "collected-teleclaude-logs.txt"
@@ -114,6 +115,9 @@ _STATUS_CHECKOUT_PARENT = "create canonical runner checkout parent"
 _STATUS_BUNDLE_CLONE = "clone repository bundle into canonical checkout"
 _STATUS_BUNDLE_CHECKOUT = "select bundled candidate commit"
 _STATUS_INSTALL = "unattended install with owner seed"
+_INSTALL_ACT_STEP = "{name}: install act"
+_ACTIVE_RELEASE_STEP = "{name}: resolve the installed release"
+_CONVERGE_STEP = "{name}: converge from the installed release"
 _STATUS_START = "make start"
 _STATUS_HEALTH = "make status health"
 _STATUS_LOGIN = "seeded administrator terminal login"
@@ -121,17 +125,35 @@ _STATUS_VERSION = "telec version"
 _STATUS_DOCS = "published documentation read"
 _STATUS_CONFIG = "seeded administrator config validation"
 _STATUS_PROBES = "role and identity probes"
-_STATUS_SETTLED_FILES_SNAPSHOT = "fingerprint the people registry and project environment"
-_STATUS_SETTLED_FILES = "first repeat install preserves the roster and environment"
+_STATUS_SETTLED_FILES_SNAPSHOT = "fingerprint the people registry and machine environment"
+_STATUS_SETTLED_FILES = "first repeat install preserves the roster and machine environment"
 _STATUS_REPEAT_INSTALL = "repeat unattended install with a populated roster"
 _STATUS_RESTART = "installed services stop and start"
 _STATUS_SERVICE_STOP = "make stop"
 _STATUS_RESTART_INSTALL = "post-restart unattended install"
-_STATUS_POST_RESTART_FILES = "post-restart install preserves the roster and environment"
+_STATUS_POST_RESTART_FILES = "post-restart install preserves the roster and machine environment"
 _STATUS_LOGS = "install and daemon log collection"
 _HEALTHY_STATUS_TOKEN = "HEALTHY"
 _DOCS_PROBE_ID = "general/principle/grounding"
 _DOCS_RETURNED_ID_LINE = "id: {snippet_id}"
+_PYTHON_PATH_ENVIRONMENT_VARIABLE = "PYTHONPATH"
+_PYTHON_ISOLATED_OPTION = "-P"
+_PYTHON_MODULE_OPTION = "-m"
+_PYTHON_COMMAND_OPTION = "-c"
+_INSTALL_ACT_MODULE = "teleclaude.core.reconciliation.installation_move"
+_INSTALL_ACT_BOOTSTRAP_VERB = "bootstrap"
+_INSTALL_ACT_SOURCE_OPTION = "--source"
+_INSTALL_ACT_REVISION_OPTION = "--revision"
+_INSTALL_RESULT_LINE = "{status}: {revision}"
+_ACTIVE_RELEASE_QUERY = (
+    "from teleclaude.core.reconciliation.installation import InstallationLayout; "
+    "print(InstallationLayout().active_release())"
+)
+_CONVERGENCE_INSTALLER = Path("bin") / "install.sh"
+_UV_EXECUTABLE = "uv"
+_UV_MISSING = "The hosted proof runner has no uv, which the installation act needs to build the release."
+_ACTIVE_RELEASE_INVALID = "The installation reported no usable active release folder: {reported!r}"
+_ACTIVE_RELEASE_UNRESOLVED = "The installed release is read before the install act resolved it."
 _RUN_ENV_BASE = {
     _PATH_ENVIRONMENT_VARIABLE: "/usr/bin:/bin:/usr/sbin:/sbin",
     _LANG_ENVIRONMENT_VARIABLE: "en_US.UTF-8",
@@ -281,6 +303,14 @@ def _runner_environment() -> dict[str, str]:
     if result.returncode != 0 or not result.stdout.strip():
         raise HarnessFailure(_PATH_HELPER_FAILED)
     environment[_PATH_ENVIRONMENT_VARIABLE] = _path_from_helper(result.stdout)
+    # The installation act builds the release with uv; the hosted job pins it on the controller's PATH, and
+    # only its directory crosses into this otherwise closed environment.
+    uv = shutil.which(_UV_EXECUTABLE)
+    if uv is None:
+        raise HarnessFailure(_UV_MISSING)
+    environment[_PATH_ENVIRONMENT_VARIABLE] = os.pathsep.join(
+        (str(Path(uv).parent), environment[_PATH_ENVIRONMENT_VARIABLE])
+    )
     return environment
 
 
@@ -298,6 +328,7 @@ class BootstrapHarness:
         self._bundle_path = self._run_directory / _BUNDLE_FILENAME
         self._head_commit = _EMPTY_VALUE
         self._project_checkout = self._home / _CHECKOUT_FOLDER
+        self._active_release: Path | None = None
         self._step_number = 0
 
     def run(self) -> None:
@@ -307,7 +338,7 @@ class BootstrapHarness:
         self._create_bundle()
         self._prepare_checkout()
         owner_seed = _load_owner_seed()
-        self._install(owner_seed)
+        self._install(owner_seed, expected_status=InstallStatus.COMPLETED)
         self._start_and_check_health()
         self._admin_readiness_probes(owner_seed)
         self._role_and_identity_probes(owner_seed)
@@ -328,8 +359,15 @@ class BootstrapHarness:
 
     @property
     def project_root(self) -> str:
-        """Return the candidate checkout's canonical installation path."""
+        """Return the candidate checkout's canonical path, the source the installation was made from."""
         return str(self._project_checkout)
+
+    @property
+    def active_release(self) -> Path:
+        """Return the installed release folder the install act made active."""
+        if self._active_release is None:
+            raise HarnessFailure(_ACTIVE_RELEASE_UNRESOLVED)
+        return self._active_release
 
     def cleanup(self, installer_succeeded: bool) -> bool:
         """Confirm the hosted runner owns no separate machine requiring disposal."""
@@ -399,7 +437,7 @@ class BootstrapHarness:
 
     def snapshot_settled_files(self) -> tuple[str, ...]:
         global_config = self._home / _GLOBAL_CONFIG_RELATIVE_PATH
-        environment_file = self._project_checkout / _PROJECT_ENV_FILENAME
+        environment_file = self._home / _MACHINE_ENV_RELATIVE_PATH
         digests: list[str] = []
         for path in (global_config, environment_file):
             try:
@@ -499,13 +537,62 @@ class BootstrapHarness:
             cwd=self._home,
         )
 
-    def _install(self, owner_seed: OwnerSeed, step_name: str = _STATUS_INSTALL) -> None:
+    def _install(
+        self, owner_seed: OwnerSeed, step_name: str = _STATUS_INSTALL, *, expected_status: InstallStatus
+    ) -> None:
+        """Install the candidate as the bootstrap does: the install act, then convergence from the installed release."""
+        act_environment = {_PYTHON_PATH_ENVIRONMENT_VARIABLE: str(self._project_checkout)}
         self.run_command(
-            step_name,
-            [_MAKE_BINARY, _MAKE_CHANGE_DIRECTORY_OPTION, str(self._project_checkout), _INSTALL_TARGET],
+            _INSTALL_ACT_STEP.format(name=step_name),
+            [
+                sys.executable,
+                _PYTHON_ISOLATED_OPTION,
+                _PYTHON_MODULE_OPTION,
+                _INSTALL_ACT_MODULE,
+                _INSTALL_ACT_BOOTSTRAP_VERB,
+                _INSTALL_ACT_SOURCE_OPTION,
+                str(self._project_checkout),
+                _INSTALL_ACT_REVISION_OPTION,
+                self._head_commit,
+            ],
+            _INSTALL_TIMEOUT_SECONDS,
+            environment=act_environment,
+            expected_text=_INSTALL_RESULT_LINE.format(status=expected_status, revision=self._head_commit),
+        )
+        first_installation = self._active_release is None
+        if self._active_release is None:
+            self._active_release = self._resolve_active_release(step_name, act_environment)
+        self.run_command(
+            _CONVERGE_STEP.format(name=step_name),
+            [str(self._active_release / _CONVERGENCE_INSTALLER)],
             _INSTALL_TIMEOUT_SECONDS,
             environment={_OWNER_NAME_ENV: owner_seed.name, _OWNER_EMAIL_ENV: owner_seed.email},
         )
+        if first_installation:
+            # install.sh exports the publication directory only into its own process, which cannot reach this
+            # harness; the later make, terminal and probe commands resolve the published telec through this PATH.
+            publication_directory = str(self._home / TELEC_RELATIVE_PATH.parent)
+            self._environment[_PATH_ENVIRONMENT_VARIABLE] = os.pathsep.join(
+                (publication_directory, self._environment[_PATH_ENVIRONMENT_VARIABLE])
+            )
+
+    def _resolve_active_release(self, step_name: str, environment: Mapping[str, str]) -> Path:
+        """Ask the installation layout, in the installation's own environment, which release is active."""
+        name = _ACTIVE_RELEASE_STEP.format(name=step_name)
+        output = self.run_command(
+            name,
+            [sys.executable, _PYTHON_ISOLATED_OPTION, _PYTHON_COMMAND_OPTION, _ACTIVE_RELEASE_QUERY],
+            _HOST_COMMAND_TIMEOUT_SECONDS,
+            environment=environment,
+        )
+        lines = output.strip().splitlines()
+        reported = lines[-1].strip() if lines else _EMPTY_VALUE
+        release = Path(reported)
+        if not release.is_absolute() or not (release / _CONVERGENCE_INSTALLER).is_file():
+            detail = _ACTIVE_RELEASE_INVALID.format(reported=reported)
+            self._record_verdict(name, False, detail)
+            raise HarnessFailure(detail)
+        return release
 
     def _start_and_check_health(self) -> None:
         self.run_command(
@@ -545,7 +632,7 @@ class BootstrapHarness:
 
     def _repeat_install(self, owner_seed: OwnerSeed) -> None:
         before = self.snapshot_settled_files()
-        self._install(owner_seed, _STATUS_REPEAT_INSTALL)
+        self._install(owner_seed, _STATUS_REPEAT_INSTALL, expected_status=InstallStatus.UNCHANGED)
         after = self.snapshot_settled_files()
         self._record_verdict(_STATUS_SETTLED_FILES, before == after)
         if before != after:
@@ -568,7 +655,7 @@ class BootstrapHarness:
 
     def _install_after_restart(self, owner_seed: OwnerSeed) -> None:
         before = self.snapshot_settled_files()
-        self._install(owner_seed, _STATUS_RESTART_INSTALL)
+        self._install(owner_seed, _STATUS_RESTART_INSTALL, expected_status=InstallStatus.UNCHANGED)
         after = self.snapshot_settled_files()
         self._record_verdict(_STATUS_POST_RESTART_FILES, before == after)
         if before != after:

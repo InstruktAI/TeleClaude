@@ -429,7 +429,7 @@ def _remove_person(harness: BootstrapHarness, telec: str, person: ProbePerson, o
 
 def _report_full_disk_access(harness: BootstrapHarness, owner_email: str, telec: str) -> None:
     """Report the existing permissions probe as a capability line, outside the health verdict."""
-    python = str(Path(harness.project_root) / _VENV_PYTHON)
+    python = str(harness.active_release / _VENV_PYTHON)
     with harness.terminal(_PERMISSIONS_COMMAND_TIMEOUT_SECONDS) as terminal:
         login = terminal.run([telec, *_AUTH_LOGIN, owner_email])
         harness.record_terminal_result(_LOGIN_ADMIN.format(purpose=_PURPOSE_FADA), login)
