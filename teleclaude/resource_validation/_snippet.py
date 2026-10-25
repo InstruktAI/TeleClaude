@@ -22,6 +22,7 @@ from teleclaude.resource_validation._activation import (
     validate_entry_declarations,
     validate_subscriptions,
 )
+from teleclaude.resource_validation._composition import validate_procedure_composition
 from teleclaude.resource_validation._markdown import markdown_read_scope, parse_markdown, read_markdown
 from teleclaude.resource_validation._markers import (
     validate_marker_structure,
@@ -45,6 +46,7 @@ from teleclaude.resource_validation._models import (
     _error,
     _first_out_of_order_ref,
 )
+from teleclaude.resource_validation._refs import resolve_ref_path
 from teleclaude.resource_validation._todo_status import TodoStatusFact, build_todo_status_facts, is_pending_marker_stale
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, iter_tier_snippet_roots
 from teleclaude.snippet_validation import (
@@ -68,45 +70,10 @@ _MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\((https?://[^)]+)\)$")
 _THIRD_PARTY_TYPE = "third-party"
 _THIRD_PARTY_INDEX_NAMES = frozenset({"index.md", "index.yaml"})
 _INLINE_REF_PREFIX = "@"
-_LOCAL_HALF = "local"
 _DOCS_DIRNAME = "docs"
 _BASELINE_SEGMENT = "baseline"
 _TIER_CLASSIFICATION_AUTHORED_FINDING = "snippet_tier_classification_authored"
 _INLINE_REF_DOMAIN_UNREGISTERED_FINDING = "snippet_inline_ref_domain_publisher_unregistered"
-# ---------------------------------------------------------------------------
-# Shared ref resolution
-# ---------------------------------------------------------------------------
-
-
-def resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path | None:
-    """Resolve an ``@`` reference to an absolute path.
-
-    Handles absolute paths, ``~/`` expansion, ``docs/`` relative paths with
-    local/global fallback, and paths relative to the referencing file.
-    """
-    if "://" in ref:
-        return None
-    candidate = Path(ref).expanduser()
-    if not candidate.is_absolute():
-        if str(candidate).startswith("docs/"):
-            candidate = (root_path / candidate).resolve()
-            if not candidate.exists():
-                tail = Path(ref).relative_to("docs")
-                project_candidate = (root_path / "docs" / _LOCAL_HALF / tail).resolve()
-                if project_candidate.exists():
-                    candidate = project_candidate
-                else:
-                    global_candidate = (root_path / "docs" / "global" / tail).resolve()
-                    if global_candidate.exists():
-                        candidate = global_candidate
-        else:
-            candidate = (current_path.parent / candidate).resolve()
-    else:
-        raw_candidate = candidate
-        candidate = candidate.resolve()
-        mapped_candidate = resolve_global_doc_source(root_path, raw_candidate)
-        return mapped_candidate if mapped_candidate != raw_candidate else candidate
-    return resolve_global_doc_source(root_path, candidate)
 
 
 # ---------------------------------------------------------------------------
@@ -906,6 +873,9 @@ def validate_all_snippets(
     When *paths* is provided, only those files are validated (per-file scoped mode).
     Repo-wide passes (_validate_baseline_dedup, validate_third_party_docs) are skipped
     in scoped mode — they require the full repo and stay on full runs only.
+    The procedure composition pass is the exception: it relates procedures to each other,
+    so the commit that introduces a collision is the only point where both are seen. It
+    runs in scoped mode too, restricted to findings that involve a scoped procedure.
 
     ``tier_home``, when given, additionally walks every declared,
     documentation-participating company and person tier's own documentation
@@ -945,6 +915,7 @@ def _validate_all_snippets(
         )
         if full_run:
             _validate_baseline_dedup(project_root, paths=paths)
+        validate_procedure_composition(project_root, tier_roots=tier_roots, domains=domains, scoped_paths=paths)
         return
 
     todo_status_facts = _resolve_todo_status_facts(project_root)
@@ -970,4 +941,5 @@ def _validate_all_snippets(
             validate_snippet(path, text, project_root, domains=domains, todo_status_facts=todo_status_facts)
     _validate_tier_roots(tier_roots, domains=domains, todo_status_facts=todo_status_facts)
     _validate_baseline_dedup(project_root)
+    validate_procedure_composition(project_root, tier_roots=tier_roots, domains=domains, scoped_paths=None)
     validate_third_party_docs(project_root)

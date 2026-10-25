@@ -12,6 +12,7 @@ from teleclaude.resource_validation._artifacts import (
 )
 from teleclaude.resource_validation._jobs import validate_jobs_config
 from teleclaude.resource_validation._models import REPO_ROOT, _load_schema, clear_errors, get_errors
+from teleclaude.resource_validation._refs import resolve_ref_path
 from teleclaude.resource_validation._snippet import (
     _extract_markdown_link_url,
     _extract_sources_section,
@@ -29,7 +30,6 @@ from teleclaude.resource_validation._snippet import (
     _validate_snippet_structure,
     collect_inline_ref_errors,
     iter_inline_refs,
-    resolve_ref_path,
     validate_all_snippets,
     validate_snippet,
     validate_third_party_doc,

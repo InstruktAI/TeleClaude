@@ -11,7 +11,7 @@ from teleclaude import agent_artifacts
 from teleclaude.constants import ArtifactKind
 from teleclaude.docs_publishers import publisher_resolution
 from teleclaude.resource_validation._models import _ARTIFACT_REF_ORDER, _as_str_list, _error
-from teleclaude.resource_validation._snippet import resolve_ref_path
+from teleclaude.resource_validation._refs import resolve_ref_path
 
 _NAME_FIELD = "name"
 _DESCRIPTION_FIELD = "description"
