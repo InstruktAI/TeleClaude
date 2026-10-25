@@ -8,27 +8,6 @@ description: Durable per-session control-payload delivery into running agent tur
 
 ## What it is
 
-<!-- planned-change:agent-input-identity-envelope -->
-
-The control-delivery surface carries platform-authored control payloads —
-reminder firings and other non-conversational control traffic — into an agent
-session. A payload reaches the agent at the first moment the session offers:
-the next natural boundary of the agent's work while one is certain to follow,
-otherwise a wake that produces one. A pending payload never waits on input
-that is not certain to arrive.
-
-Inside a running turn the payload is delivered at its next supported mid-turn boundary,
-with no terminal write. When the platform holds a pending payload and knows no
-boundary is coming — the producer observes no running turn, or the platform
-records the end of a turn while a payload is still pending — the session is
-woken so that a boundary exists, and delivery then happens through that
-boundary like any other; only that minimal wake trigger reaches the terminal,
-never the control payload itself. Handing a payload to this surface is delivery
-from the producer's perspective: the producer neither tracks nor retries beyond
-the handoff.
-
-<!-- change:agent-input-identity-envelope -->
-
 The control-delivery surface carries platform-authored control payloads —
 reminder firings and other non-conversational control traffic — into an agent
 session. A payload reaches the agent at the first moment the session offers:
@@ -55,8 +34,6 @@ typed input adopts a headless session
 (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`);
 its pending payload is delivered at its next hook boundary, which arrives with
 that agent's next turn.
-
-<!-- /planned-change:agent-input-identity-envelope -->
 
 Stop-hook responses carry checkpoint obligations only
 (`sdlc/principle/design-fundamentals`); control payloads remain pending through

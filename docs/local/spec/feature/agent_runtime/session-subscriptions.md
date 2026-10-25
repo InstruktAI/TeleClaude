@@ -244,15 +244,7 @@ And the consumer adds no separate acknowledgement, retry, or duplicate-detection
 
 - **supervisory silence** — `local/projects/teleclaude/spec/feature/agent_runtime/supervisory-silence-observations` owns caller-only missing-signal observations and their assessment boundary.
 
-<!-- planned-change:agent-input-identity-envelope -->
-
-- **identity** — listener registration is gated by caller identity binding (the caller's session id and host-pane reference from the caller identity). A request without a bound caller session (e.g., a TUI/tool client without identity headers) does not auto-register. The unsubscribe entry similarly resolves the caller from its clearance.
-
-<!-- change:agent-input-identity-envelope -->
-
 - **identity** — listener registration is gated by caller identity binding: the caller's session id from the caller identity. A caller session that receives control delivery is registered whether or not it has a host pane, so the headless session of an agent running outside the platform hears its targets like any other caller. A request without a bound caller session (e.g., a TUI/tool client without identity headers) does not auto-register. The unsubscribe entry similarly resolves the caller from its clearance.
-
-<!-- /planned-change:agent-input-identity-envelope -->
 
 - **workflow** — orchestrator agents that dispatch worker sessions are the dominant producer of listener records: every AI-to-AI session start auto-registers a persistent (non-one-shot) listener so the orchestrator hears its workers' stop events. The orchestrator/worker coordination contract relies on this.
 - **integration** — external messaging adapters are NOT a notification destination in the listener system. Notifications deliver exclusively through control delivery to the caller session (`local/projects/teleclaude/spec/feature/agent_runtime/control-delivery`), which owns when and how a payload reaches that session. Stop fan-out toward external adapters (Telegram, Discord, frontend) flows through separate agent-coordinator / adapter-client paths, not through listener records. The integration boundary is reached via the direct-link mechanism (out of scope) and the broader event-emission paths, not via listener notification.
