@@ -6,6 +6,7 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 
 import yaml
 
@@ -43,6 +44,7 @@ _TIER_KIND_MISMATCH_ERROR = (
     "refusing rather than widening reach."
 )
 _UNREADABLE_DELIVERY_SETTINGS_ERROR = "Unreadable event delivery settings for subscribed procedure {procedure_id!r}"
+_MALFORMED_INDEX_SNIPPETS_ERROR = "The published index carries a {kind} where its snippets list belongs"
 
 
 class IndexKey(StrEnum):
@@ -53,7 +55,10 @@ class IndexKey(StrEnum):
     TYPE = "type"
     SCOPE = "scope"
     SOURCE_PROJECT = "source_project"
+    PATH = "path"
+    ACTIVATION_TRIGGER = "activation_trigger"
     DELIVERED_BY = "delivered_by"
+    SUPERSEDED_BY = "superseded_by"
     SUBSCRIPTIONS = "subscriptions"
     SUBSCRIPTION_HOME = "subscription_home"
     SUBSCRIPTION_IDENTITY = "subscription_identity"
@@ -186,10 +191,20 @@ class SubscriptionPublication:
     entries: tuple[SubscriptionEntry, ...]
 
 
+def published_index_path(docs_dir: Path = GLOBAL_DOCS_DIR) -> Path:
+    """Where the merged index is deployed under a docs directory (the runtime home's by default)."""
+    return docs_dir / _INDEX_FILE_NAME
+
+
 def published_index_identity() -> IndexFileIdentity:
     """The identity of the deployed merged index file as it is now."""
-    stat = (GLOBAL_DOCS_DIR / _INDEX_FILE_NAME).stat()
+    stat = published_index_path().stat()
     return IndexFileIdentity(inode=stat.st_ino, modified_ns=stat.st_mtime_ns, size=stat.st_size)
+
+
+def tier_source_project(scope: SnippetScope, slug: str) -> str:
+    """The ``source_project`` token the merged index records for one company or person tier home's entries."""
+    return f"{_TIER_HOME[scope][1]}{slug}"
 
 
 def _tier_reach(procedure_id: str, entry: Mapping[str, object]) -> tuple[SubscriptionHomeKind | None, str | None]:
@@ -259,6 +274,24 @@ def _subscription_entry(
     )
 
 
+def parse_published_snippets(raw: bytes) -> list[Mapping[str, object]]:
+    """The snippet entries of the merged index bytes, pending entries included.
+
+    Raises ``yaml.YAMLError`` or ``ValueError`` when the bytes are not a readable
+    index. An index document that is not a mapping carries no entries.
+    """
+    payload = yaml.safe_load(raw.decode(_UTF8)) or {}
+    snippets = payload.get(IndexKey.SNIPPETS, []) if isinstance(payload, dict) else []
+    if not isinstance(snippets, list):
+        raise ValueError(_MALFORMED_INDEX_SNIPPETS_ERROR.format(kind=type(snippets).__name__))
+    return [entry for entry in snippets if isinstance(entry, dict)]
+
+
+def read_published_snippets(docs_dir: Path = GLOBAL_DOCS_DIR) -> list[Mapping[str, object]]:
+    """The snippet entries of the merged index deployed under a docs directory. A missing index raises ``FileNotFoundError``."""
+    return parse_published_snippets(published_index_path(docs_dir).read_bytes())
+
+
 def published_procedure_subscriptions() -> SubscriptionPublication:
     """Read every live procedure's declared subscriptions from the deployed merged index.
 
@@ -272,15 +305,11 @@ def published_procedure_subscriptions() -> SubscriptionPublication:
     agent identity or attendance cannot be read raises. Pending (``delivered_by``) entries are excluded.
     """
     identity = published_index_identity()
-    raw = (GLOBAL_DOCS_DIR / _INDEX_FILE_NAME).read_bytes()
+    raw = published_index_path().read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
-    payload = yaml.safe_load(raw.decode(_UTF8)) or {}
-    snippets = payload.get(IndexKey.SNIPPETS, []) if isinstance(payload, dict) else []
 
     entries: list[SubscriptionEntry] = []
-    for entry in snippets:
-        if not isinstance(entry, dict):
-            continue
+    for entry in parse_published_snippets(raw):
         if entry.get(IndexKey.TYPE) != _PROCEDURE_TYPE or entry.get(IndexKey.DELIVERED_BY):
             continue
         subscriptions = entry.get(IndexKey.SUBSCRIPTIONS)
