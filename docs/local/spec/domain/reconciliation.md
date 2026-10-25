@@ -265,11 +265,10 @@ rollback` invokes rollback; `telec app status` reads the install record. The
 
 - **Assessment owed.** Beside the install record, the installation keeps the
   assessment record: the installs whose assessment is owed and the most recent
-  recorded assessment, each install under its own number. The install
-  operation records an install as owed when it opens the stopped window; at
-  each start the daemon also owes a completed install of the active release
-  that the record has not accounted for, as one an older release performed;
-  the daemon emits the owed-assessment event at each start and at a fixed
+  recorded assessment, each install under its own number. The migration step
+  of the release being installed records the install as owed as the stopped
+  window opens, before its migrations, whichever release's install operation
+  runs; the daemon emits the owed-assessment event at each start and at a fixed
   interval while an install is owed; `telec app assessed` discharges the
   installs up to the number it names.
   The event activates `sdlc/procedure/maintenance/installation-assessment`

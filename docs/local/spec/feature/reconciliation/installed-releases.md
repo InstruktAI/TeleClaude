@@ -124,16 +124,13 @@ route reached the install and whether or not the machine performs any source
 integration. For initial provisioning that is the release its first start
 serves.
 
-- **Owed before the restart.** The installation numbers the install and
-  records it as owed when its stopped window opens, before any migration
+- **Owed before the restart.** The release being installed numbers the install
+  and records it as owed when its stopped window opens, before any migration
   starts, so the obligation outlives the restart and every outcome the install
-  can end in. An install that ends before its stopped window — refused,
-  unchanged, failed while preparing, or with its stop withheld — owes none.
-- **Owed when performed by an older release.** An install is performed by the
-  release that was active when it began. When the daemon starts on a release
-  whose completed install the installation holds no obligation or assessment
-  for — an install performed by a release that records no assessment — that
-  install is owed from that start.
+  can end in — whichever release's installer performs the install. An install
+  that ends before its stopped window — refused, unchanged, failed while
+  preparing, or with its stop withheld — owes none. An install whose obligation
+  cannot be recorded fails inside its stopped window.
 - **Announced while owed.** Each time the daemon starts while an install is
   owed, and again at a fixed interval for as long as one stays owed, it
   announces the owed assessment, so an announcement that found no recipient is

@@ -230,27 +230,25 @@ sequenceDiagram
   participant D as daemon
   participant I as integrator (platform home)
   Rec->>D: stop, when one serves
-  Rec->>IR: install numbered and owed
+  Rec->>IR: migration step of the release being installed: install numbered and owed
   Rec->>D: start on the release that serves
-  D->>IR: owe an unaccounted completed install, read owed installs
+  D->>IR: read owed installs
   D-->>I: announce the owed assessment (no origin), at start and at an interval
   I->>I: status, log window from the earliest owed install, health
   I->>IR: telec app assessed <install>
 ```
 
-- **Owed inside the stopped window.** The install act numbers the install and
-  writes it as owed to the assessment record when its stopped window opens,
-  after the window has taken over what an earlier failed window left and
-  before any migration, so every outcome after that — completed, returned to
-  the previous release, or left stopped — leaves it owed. A write that fails
-  there is a failure inside the window and recovers as one: returned only when
-  no migration has started, the earlier window's included.
-- **Installs by an older installer.** The install act that runs is the active
-  release's, so the install that brings this capability is performed by a
-  release that writes no assessment record. The record notes the completed
-  install act it has accounted for. When the daemon starts and the install
-  record's completed install of the active release is later than that, the
-  daemon owes it before announcing.
+- **Owed inside the stopped window, by the release being installed.** The
+  install act that runs is the active release's, but the stopped window's
+  migration step runs with the interpreter of the release being installed. That
+  step first numbers the install and writes it as owed to the assessment
+  record, before any migration, so the obligation is recorded before the
+  restart even when an older release's installer performs the install, and
+  every outcome after that — completed, returned to the previous release, or
+  left stopped — leaves it owed. A write that fails ends the step as a certain
+  failure, which the install act recovers as any failure inside the window:
+  returned only when no migration has started, an earlier failed window's
+  included.
 - **Announced while owed.** The daemon reads the assessment record when it
   starts, and again at a fixed interval, and emits the owed-assessment
   announcement each time an install is owed. The repetition covers an
