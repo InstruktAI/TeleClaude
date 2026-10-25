@@ -34,9 +34,18 @@ class TelecCommand(str, Enum):
     SIGNALS = "signals"
     MCP = "mcp"
     CODE = "code"
+    REPO = "repo"
     MESSAGE = "message"
     AUDIO = "audio"
     SYNC = "sync"
+
+
+class HookEntryVerb(StrEnum):
+    """Git-hook entry verbs shared by the ``code`` and ``repo`` command families."""
+
+    PRE_COMMIT = "pre-commit"
+    POST_COMMIT = "post-commit"
+    POST_MERGE = "post-merge"
 
 
 class JobsSubcommand(StrEnum):

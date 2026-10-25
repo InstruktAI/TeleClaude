@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 # teleclaude: commit gate
-exec telec code pre-commit
+exec telec repo pre-commit

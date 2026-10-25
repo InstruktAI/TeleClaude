@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import tempfile
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 
@@ -38,6 +39,7 @@ from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commi
 from teleclaude.cli.telec.handlers._code_stamp import handle_code_stamp
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import CODE_COMMIT, CODE_OWNERS
+from teleclaude.cli.telec.surface_types import HookEntryVerb, TelecCommand
 from teleclaude.commit_identity import (
     PLANNED_TODO_TRAILER_KEY,
     TODO_TRAILER_KEY,
@@ -123,9 +125,6 @@ class CodeSubcommand(StrEnum):
     OWNERS = "owners"
     STAMP = "stamp"
     BLUEPRINT = "blueprint"
-    POST_COMMIT = "post-commit"
-    POST_MERGE = "post-merge"
-    PRE_COMMIT = "pre-commit"
     MAINTENANCE = "maintenance"
 
 
@@ -141,10 +140,38 @@ _COMMIT_SUBCOMMANDS = frozenset(
 )
 
 
+_HOOK_ENTRY_HANDLERS: dict[HookEntryVerb, Callable[[list[str], TelecCommand], None]] = {
+    HookEntryVerb.PRE_COMMIT: handle_code_pre_commit,
+    HookEntryVerb.POST_COMMIT: handle_code_post_commit,
+    HookEntryVerb.POST_MERGE: handle_code_post_merge,
+}
+
+
+def _hook_entry_verb(args: list[str]) -> HookEntryVerb | None:
+    """Return the hook-entry verb named by the first argument, or None when it names none."""
+    try:
+        return HookEntryVerb(args[0]) if args else None
+    except ValueError:
+        return None
+
+
+def handle_repo(args: list[str]) -> None:
+    """Route ``telec repo <hook-entry verb>`` to the operations ``telec code`` runs for the same verbs."""
+    verb = _hook_entry_verb(args)
+    if verb is None:
+        print(_usage(TelecCommand.REPO))
+        return
+    _HOOK_ENTRY_HANDLERS[verb](args[1:], TelecCommand.REPO)
+
+
 def handle_code(args: list[str]) -> None:
     """Route ``telec code <subcommand>`` to the correct handler."""
     if not args:
         print(_usage(_CODE_NAMESPACE))
+        return
+    verb = _hook_entry_verb(args)
+    if verb is not None:
+        _HOOK_ENTRY_HANDLERS[verb](args[1:], TelecCommand.CODE)
         return
     try:
         sub = CodeSubcommand(args[0])
@@ -152,15 +179,6 @@ def handle_code(args: list[str]) -> None:
         print(_usage(_CODE_NAMESPACE))
         return
     rest = args[1:]
-    if sub is CodeSubcommand.POST_COMMIT:
-        handle_code_post_commit(rest)
-        return
-    if sub is CodeSubcommand.POST_MERGE:
-        handle_code_post_merge(rest)
-        return
-    if sub is CodeSubcommand.PRE_COMMIT:
-        handle_code_pre_commit(rest)
-        return
     _require_code_capability(sub)
     if sub is CodeSubcommand.LINT:
         from teleclaude.cli.telec.handlers.quality import (  # noqa: PLC0415 - each quality command owns its handler import.
