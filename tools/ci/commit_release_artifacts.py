@@ -39,6 +39,8 @@ from tools.release.project_metadata import (
     normalized_tree_digest,
     read_locked_project_version,
     read_project_version,
+    set_locked_project_version,
+    set_project_version,
 )
 
 _AUTHOR_EMAIL = "github-actions[bot]@users.noreply.github.com"
@@ -56,7 +58,6 @@ _MANIFEST_DIRECTORY = "manifests"
 _PYPROJECT = "pyproject.toml"
 _LOCK = "uv.lock"
 _GIT = "git"
-_UV = "uv"
 _GIT_STATUS = "status"
 _GIT_STATUS_PORCELAIN = "--porcelain"
 _GIT_SHOW = "show"
@@ -68,8 +69,6 @@ _GIT_BUNDLE_CREATE = "create"
 _GIT_BUNDLE_VERIFY = "verify"
 _GIT_HEAD_REFERENCE = "HEAD"
 _GIT_EXCLUSION_PREFIX = "^"
-_UV_VERSION = "version"
-_UV_NO_SYNC = "--no-sync"
 _STRICT_DECODING = "strict"
 _VERSION_PREFIX = "v"
 _JSON_MODE = "json"
@@ -161,7 +160,8 @@ def prepare_candidate(
     previous_project_version = read_project_version(root)
     previous_lock_version = read_locked_project_version(root)
     lock_before = (root / _LOCK).read_bytes()
-    _run(root, [_UV, _UV_VERSION, _UV_NO_SYNC, version])
+    (root / _PYPROJECT).write_bytes(set_project_version((root / _PYPROJECT).read_bytes(), version))
+    (root / _LOCK).write_bytes(set_locked_project_version(lock_before, version))
     if read_project_version(root) != version or read_locked_project_version(root) != version:
         raise ValueError(_METADATA_INCOHERENT)
     lock_after = (root / _LOCK).read_bytes()
