@@ -59,15 +59,6 @@ each decision point until the queue is drained.
   unclaimed (see **REPO ROOT SYNC REQUIRED** below). The state machine emits this
   guidance when it observes the divergence.
 
-<!-- planned:reviewed-pr-contributions -->
-
-### Contributor handoff
-
-A contributor assignment follows its project's contribution contract and retains
-PR acceptance as a separate fact. Its source handoff uses that contract's
-proposal operation before any mainline queue watcher or integration call.
-<!-- /planned:reviewed-pr-contributions -->
-
 ### Runtimes activated by an install
 
 Where a project's live runtime runs from an installation that installs pushed

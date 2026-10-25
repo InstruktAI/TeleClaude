@@ -99,28 +99,11 @@ whose records support a failure in the scanned project's own handling through
      match means in-flight work owns the mechanism. Record that slug and do not
      file a sibling.
 
-<!-- planned-change:reviewed-pr-contributions -->
-
 - Delivered, closed, and removed work is not read. Whether a past failure was
   repaired is answered by the code and its history above, which is the source
   of truth for that question (`general/principle/grounding`); a record of
   completed work is neither, and its size grows without bound while its
   bearing on a current signal does not.
-
-<!-- change:reviewed-pr-contributions -->
-
-- Establish the revision that produced the occurrence separately from the
-  development revision. A change on development main can establish an upstream
-  fix without establishing local adoption. For a linked unresolved-adoption
-  matter exposed by `telec bugs list`, read its named todo and occurrence
-  evidence, then compare the recorded fix, available release and installed
-  revision. Attach recurrence on the affected revision to that matter rather
-  than file another implementation. Recurrence after adoption is fresh
-  diagnostic evidence. Read only these linked completed records; unrelated
-  delivered, closed and removed history remains outside the scan
-  (`general/principle/grounding`).
-
-<!-- /planned-change:reviewed-pr-contributions -->
 
 - Read `outstanding_signals` from the checkpoint and re-evaluate them against current logs, suppressions, work, and code history. Retain only signals that still require a retry or the next window's recurrence check. A completed window with no recurrence after the recorded repair removes that signal from the checkpoint.
 - New evidence for an already tracked failure updates its outstanding state when it remains unresolved; it does not create a second bug for the same failure. Route amendments per `sdlc/policy/todo-creation-discipline`.

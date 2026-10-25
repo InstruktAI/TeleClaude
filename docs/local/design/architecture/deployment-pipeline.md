@@ -98,18 +98,6 @@ each installed release selects exactly one revision under
 The install act and publication consume the installation's identity, on every
 channel alike.
 
-<!-- planned:reviewed-pr-contributions -->
-
-### Contribution and upstream release
-
-Public contribution is the workflow handoff in
-`local/projects/teleclaude/spec/feature/workflow/contribution-export` and
-`local/projects/teleclaude/spec/feature/workflow/contribution-adoption`.
-Its upstream integration feeds the existing immutable release pipeline.
-Contribution creation, source acceptance, release publication and local adoption
-remain independently observable.
-<!-- /planned:reviewed-pr-contributions -->
-
 ## Inputs/Outputs
 
 **Inputs:**

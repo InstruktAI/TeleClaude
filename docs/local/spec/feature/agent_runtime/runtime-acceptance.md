@@ -18,23 +18,6 @@ its existing semantic owner; the harness consumes those public contracts.
 
 ## Canonical fields
 
-<!-- planned:reviewed-pr-contributions -->
-
-### Contribution journeys
-
-The full profile exercises contribution export and adoption through fresh
-public command processes, disposable upstream and contributor repositories,
-and the real workflow store and daemon. Provider-boundary fixtures supply
-synthetic GitHub responses and agent-process inputs; application decisions,
-caller resolution and lifecycle transitions run through their public paths.
-The controller records the journeys it actually executes, including proposal
-retry, changed revisions, retained work and reviewer-first continuation.
-The complete journey joins contribution handoff to the existing release,
-upgrade and installation-assessment journeys through their owning contracts
-(`local/projects/teleclaude/spec/feature/workflow/contribution-export`,
-`local/projects/teleclaude/spec/feature/workflow/contribution-adoption`).
-<!-- /planned:reviewed-pr-contributions -->
-
 ### Execution and evidence
 
 Every CLI invocation starts a fresh interpreter through the checked checkout's

@@ -55,18 +55,6 @@ flowchart LR
     S[daemon and live home] --> Sc[sessions, reminders, agents, computers,<br/>operations, message, auth,<br/>events, signals, history, memories,<br/>projects list, config by kind and slug]
 ```
 
-<!-- planned:reviewed-pr-contributions -->
-
-### Contribution delivery purpose
-
-The association additionally identifies upstream-mainline authoring or
-contributor-proposal delivery. A contributor handoff consumes
-`local/projects/teleclaude/spec/feature/workflow/contribution-export` in its
-recorded development checkout. This purpose becomes selectable together with
-its export/adoption handler; missing capability is reported without entering
-the upstream-mainline publication path.
-<!-- /planned:reviewed-pr-contributions -->
-
 ## Invariants
 
 1. **The change acts on the worktree.** A command whose subject is the change — its

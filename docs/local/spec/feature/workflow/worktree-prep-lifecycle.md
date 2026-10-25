@@ -246,21 +246,6 @@ And reclamation runs off the daemon's event loop
 - `reconciliation` — owns the configuration-schema link; ensuring a worktree invokes its published link operation for the worktree root (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
 - `agent_runtime` — owns agent runtimes' workspace trust for slug worktrees; ensuring a worktree, renaming its todo, and delivered-slug cleanup invoke its published add, move, and remove operations for the worktree path, and none of them fails the worktree step (`local/projects/teleclaude/spec/feature/agent_runtime/worktree-workspace-trust`).
 
-<!-- planned:reviewed-pr-contributions -->
-
-### Contribution materialization
-
-Contribution intake first materializes the pinned proposal as source without
-running execution-capable preparation. After the upstream reviewer permits
-normal validation, the existing preparation contract applies to the adopted
-worktree (`local/projects/teleclaude/spec/feature/workflow/contribution-adoption`).
-Contributor worktrees keep their upstream baseline separate from the remote
-that stores their writable proposal branches
-(`local/projects/teleclaude/spec/feature/workflow/contribution-export`). Resume
-and retirement operate on those recorded branch identities, not on a guessed
-single remote.
-<!-- /planned:reviewed-pr-contributions -->
-
 ## Known caveats
 
 - Cleanup releases the active worktree path by moving it into a unique project-local trash entry on the same filesystem. The existing daemon maintenance pass reclaims detached entries at startup and periodically; it keeps the trash container available for concurrent detachment, and a failed deletion is logged and retried on a later pass. Isolated-home deletion, workspace cleanup, and branch operations remain part of the caller-awaited cleanup.
