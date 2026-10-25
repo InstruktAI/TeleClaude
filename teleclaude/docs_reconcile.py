@@ -14,6 +14,8 @@ import yaml
 from teleclaude import agent_artifacts
 from teleclaude.constants import TodoStatus
 from teleclaude.doc_body import (
+    PLANNED_BLOCK_RE,
+    PLANNED_CHANGE_BLOCK_RE,
     drop_planned_additions,
     resolve_planned_change_for_abandon,
     resolve_planned_change_for_delivery,
@@ -25,6 +27,7 @@ from teleclaude.snippet_validation import companion_parent, companion_slug, is_r
 
 _PENDING_MARKER_PATTERN = re.compile(r"<!--[ \t]*/?planned(?:-change)?:(?P<slug>[a-z0-9-]+)[ \t]*-->")
 _MARKER_SLUG_GROUP = "slug"
+_BLOCK_MARKER_COUNT = 2
 _UTF8_ENCODING = "utf-8"
 _LINE_SEPARATOR = "\n"
 _EMPTY_PATH = ""
@@ -241,6 +244,38 @@ def pending_document_carriers(project_root: Path, slug: str) -> tuple[Path, ...]
         if slug in declared_by or has_marker or companion_slug(path) == slug:
             matches.append(path)
     return tuple(matches)
+
+
+def owned_pending_regions(path: Path, content: str, slug: str) -> tuple[str, ...] | None:
+    """Return the pending unit ``slug`` owns in the document ``content`` stored at ``path``.
+
+    ``None`` means the unit is the whole document: the slug declares it through ``delivered_by`` or a
+    companion, or its markers do not form complete blocks, so no bounded unit is well defined. A tuple is
+    the ordered complete text of each ``planned`` and ``planned-change`` block the slug owns, marker lines
+    included; it is empty when the document declares no bounded region for the slug.
+    """
+    try:
+        parsed = _split_frontmatter(content)
+    except yaml.YAMLError:
+        return None
+    declared_by = _delivered_by(parsed[0]) if parsed is not None else []
+    if slug in declared_by or companion_slug(path) == slug:
+        return None
+    blocks = sorted(
+        (
+            match
+            for pattern in (PLANNED_BLOCK_RE, PLANNED_CHANGE_BLOCK_RE)
+            for match in pattern.finditer(content)
+            if match.group(_MARKER_SLUG_GROUP) == slug
+        ),
+        key=lambda match: match.start(),
+    )
+    marker_count = sum(
+        1 for match in _PENDING_MARKER_PATTERN.finditer(content) if match.group(_MARKER_SLUG_GROUP) == slug
+    )
+    if marker_count != len(blocks) * _BLOCK_MARKER_COUNT:
+        return None
+    return tuple(match.group(0) for match in blocks)
 
 
 def _relative_path(project_root: Path, path: Path) -> str:
