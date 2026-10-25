@@ -151,9 +151,11 @@ sequenceDiagram
   that it is starting a migration; an owner that cannot signal counts as having
   started one (`local/projects/teleclaude/policy/single-database`). The ledger
   runners already know when they start one; the stores that migrate when opened
-  emit the same signal. Configuration documents signal through their
-  per-document run outcome: a document found below the current version counts
-  as started. Any started migration counts as having changed state, whatever it
+  emit the same signal. The configuration owner signals from its document
+  migration runner before it migrates each document, whether an install or a
+  later writer triggers it
+  (`local/projects/teleclaude/spec/feature/config/document-migration`). Any
+  started migration counts as having changed state, whatever it
   did; until the first signal, no state has changed.
 - **Switch, start, verify.** `current` is switched atomically, the service
   definitions are deployed only when their rendered content changed, and the
