@@ -222,8 +222,6 @@ And the refusal is the same whether or not that person is declared
 
 #### UC-3PR19:
 
-<!-- planned:target-view-hides-companion-on-pending-parent -->
-
 #### UC-3PR20: Phase-2 shows a not-yet-delivered snippet only through the todos that introduce or rework it
 
 ```gherkin
@@ -238,8 +236,6 @@ Then the operator reads <todo-a>'s version of the snippet, without any other tod
 When the operator runs telec docs get <id> --target <todo-b>
 Then the operator reads the snippet with <todo-b>'s rework applied
 ```
-
-<!-- /planned:target-view-hides-companion-on-pending-parent -->
 
 ### Cross-context references
 
