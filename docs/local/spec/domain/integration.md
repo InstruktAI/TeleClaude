@@ -151,8 +151,6 @@ implementation remain the current appliance contract.
   (`config`); a desk session's lifecycle or its escalation relay
   (`agent_runtime`).
 
-<!-- planned:discord-inbound-dropped-before-provisioning -->
-
 - **Owns (Discord message continuity):** the inbound behavior of
   `local/projects/teleclaude/spec/feature/integration/discord-message-continuity`.
   - **Live classification gate.** A guild post is classified as managed or
@@ -201,8 +199,6 @@ implementation remain the current appliance contract.
   acceptance (`local/projects/teleclaude/spec/inbound-queue`), and how a
   recovered input is presented to the agent
   (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`).
-
-<!-- /planned:discord-inbound-dropped-before-provisioning -->
 
 - **Owns (CI run outcomes):** translating a project's relayed GitHub
   workflow-run completions into run outcomes and main-revision green

@@ -1,8 +1,9 @@
 ---
-description: A person's messages in their Discord session threads and Team channel survive a daemon restart. A message that arrives during startup waits for routing, and a message posted while TeleClaude was away is recovered from Discord once it is back.
+description: A person's messages in their Discord session threads and Team channel
+  survive a daemon restart. A message that arrives during startup waits for routing,
+  and a message posted while TeleClaude was away is recovered from Discord once it
+  is back.
 visibility: internal
-delivered_by:
-  - discord-inbound-dropped-before-provisioning
 ---
 
 # Discord Message Continuity — Spec

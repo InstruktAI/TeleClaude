@@ -150,8 +150,6 @@ occupied, and the composer's content and any screen shown in its place are
 left untouched. A startup message held past the same window fails its
 submission.
 
-<!-- planned:discord-inbound-dropped-before-provisioning -->
-
 Some conversation text is recovered by its channel after TeleClaude was
 offline, and carries the time it was originally posted. It reaches the agent
 followed by a platform notification that it was posted at that time while
@@ -161,8 +159,6 @@ delivered, marked and correlated with its transcript entry exactly as any
 other accepted conversation input is. When recovered text resolves to a
 platform command, its posting time and the fact that it was recovered are
 carried as entry facts of the command's loader instead.
-
-<!-- /planned:discord-inbound-dropped-before-provisioning -->
 
 When conversation text is submitted to an agent's empty composer and its first
 character after any leading whitespace and leading invisible format characters
