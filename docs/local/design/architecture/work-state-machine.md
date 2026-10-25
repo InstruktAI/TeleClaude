@@ -154,6 +154,8 @@ stateDiagram-v2
 
 The machine reads `todo state (todos.db)` and routes from the canonical `lifecycle_phase`:
 
+<!-- planned-change:review-fix-loop-through-artifacts -->
+
 ```mermaid
 flowchart TD
     Start(["telec todo work [slug]"])
@@ -176,6 +178,33 @@ flowchart TD
     PhaseCheck -->|"review_approved"| DispatchFinalize
     PhaseCheck -->|"finalize_ready"| Terminal
 ```
+
+<!-- change:review-fix-loop-through-artifacts -->
+
+```mermaid
+flowchart TD
+    Start(["telec todo work [slug]"])
+    ReadState["Read todo state (todos.db)"]
+    PhaseCheck{"lifecycle_phase?"}
+
+    DispatchBuild["Dispatch /build"]
+    DispatchReview["Dispatch or reuse /review-build"]
+    DispatchFix["Orchestrator relays the review-findings artifact to the builder session"]
+    DispatchDefer["Dispatch /defer"]
+    DispatchFinalize["Dispatch /finalize"]
+    Terminal["lifecycle_phase=finalize_ready written<br/>TodosDb chokepoint fires _on_phase_transition<br/>daemon translator emits todo_finalize_ready<br/>worker sessions end inside the step"]
+
+    Start --> ReadState
+    ReadState --> PhaseCheck
+
+    PhaseCheck -->|"build_started"| DispatchBuild
+    PhaseCheck -->|"build_complete"| DispatchReview
+    PhaseCheck -->|"review_changes_requested"| DispatchFix
+    PhaseCheck -->|"review_approved"| DispatchFinalize
+    PhaseCheck -->|"finalize_ready"| Terminal
+```
+
+<!-- /planned-change:review-fix-loop-through-artifacts -->
 
 ### Precondition checks
 

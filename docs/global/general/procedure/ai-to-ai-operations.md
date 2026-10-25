@@ -108,8 +108,7 @@ or lifecycle contract.
 A dispatched worker messages, links to and tails no other session. Its result
 belongs in its own output and artifacts, where the session that dispatched it
 reads it, and that session points any other session it involves at those sources
-instead of retelling them
-(`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`).
+instead of retelling them.
 
 <!-- /planned:review-fix-loop-through-artifacts -->
 
