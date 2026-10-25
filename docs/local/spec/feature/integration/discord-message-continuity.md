@@ -88,7 +88,8 @@ Scenario Outline: A message posted while the daemon restarts
 - Recovery reads Discord's copy. A message deleted from Discord before the
   daemon is back is not recovered.
 - Before this capability is installed, a place's last processed message is
-  known from retained accepted input. Where none is retained, the session's last
-  accepted input stands in for it. A message lost in an outage before
-  installation, and followed in that session by later accepted input, is not
-  recovered.
+  known only as far back as the inbound queue retains accepted input. In a place
+  with no accepted input inside that window, a message lost in an outage before
+  installation and older than the window is not recovered. Whether such a
+  message was processed can no longer be told, and recovering it could repeat
+  a message the session already received.

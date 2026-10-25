@@ -179,11 +179,15 @@ implementation remain the current appliance contract.
     reads only messages after it.
     - A newly bound place starts its cursor at its newest message at binding.
     - A place already bound when the capability is installed is seeded by the
-      installation's storage migration. The seed is the place's newest retained
-      accepted Discord input when one exists, and otherwise the session's last
-      accepted input time. Nothing is accepted while the daemon is down, so
-      everything posted during the installation's own outage stays after the
-      seed.
+      installation's storage migration, from that place's own acceptance
+      record. The seed is the place's newest Discord input that the inbound
+      queue still retains as accepted.
+    - When the queue retains no accepted input for the place, the seed is the
+      queue's retention horizon. A message in that place posted after the
+      horizon and accepted would still be retained, so every message after the
+      horizon was not processed.
+    - Nothing is accepted while the daemon is down, so everything posted during
+      the installation's own outage stays after the seed.
   - **Recovered-input facts.** The normalized input carries the message's
     original posting time and a recovered mark.
 - **Does not own (Discord message continuity):** duplicate suppression at
