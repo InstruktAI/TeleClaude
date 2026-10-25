@@ -20,9 +20,24 @@ tree.
 
 Three entry points run the same routine:
 
+<!-- planned-change:platform-installation -->
+
 - **Commit-boundary maintenance** — a canonical-main activation whose changed
   paths owe publication publishes the homes it touched
   (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
+
+<!-- change:platform-installation -->
+
+- **Commit-boundary maintenance** — a canonical-main activation whose changed
+  paths owe publication publishes the homes it touched
+  (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
+  In the platform's own project it publishes that project's local half only;
+  the platform's published documentation and agent artifacts are what every
+  session reads, and they publish at install.
+
+<!-- /planned-change:platform-installation -->
+
+<!-- planned-change:platform-installation -->
 
 - **Installation** — the full installer publishes the installed checkout's home
   at the commit it installed, when that home does not already record it. A
@@ -34,6 +49,22 @@ Three entry points run the same routine:
   deploys that commit even when the home records a different one, so the
   deployed documentation matches the installed code. It holds the same
   publication serialization, and the installer acts only on its result.
+
+<!-- change:platform-installation -->
+
+- **Installation** — the install act publishes the platform's published
+  documentation and agent artifacts from the release it installed, when the
+  platform home does not already record that commit
+  (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
+  A fresh machine therefore serves the installed release's committed
+  documentation and agent artifacts before anything is committed on it. Its
+  source is the installed commit, never a project's `main` tip, and it deploys
+  that commit even when the home records a different one, so the deployed
+  documentation matches the installed code. A release is not a home, so the
+  install act publishes no local half. It holds the same publication
+  serialization, and the install act acts only on its result.
+
+<!-- /planned-change:platform-installation -->
 
 - **`telec sync`** — the on-demand maintenance run
   (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`),
@@ -98,6 +129,8 @@ unavailable tree. Other publishers keep their activated revisions.
 
 There is no working-tree entrypoint and no bypass.
 
+<!-- planned-change:platform-installation -->
+
 ### Installed release publication
 
 For the installed release checkout identified by
@@ -109,6 +142,20 @@ publishes the currently selected installed source; it does not reinstall an
 older release or read a different local main tip. The installed commit's
 identity is checked again before distribution. If source selection changed,
 publication reports the conflict and leaves that attempt incomplete.
+
+<!-- change:platform-installation -->
+
+### Installed release publication
+
+The install act selects the commit of the release it installed under
+publication serialization; the canonical-main source and location rules above
+apply to every project checkout, the platform's own included. A replay of a
+failed install publication publishes the commit of the active release; it never
+reads a project's local main tip. The installed commit's identity is checked
+again before distribution. If the active release changed, publication reports
+the conflict and leaves that attempt incomplete.
+
+<!-- /planned-change:platform-installation -->
 
 ## Canonical fields
 
@@ -296,6 +343,8 @@ But a reference naming that domain's generated baseline bundle resolves against 
 And its absence before first deployment is not a finding
 ```
 
+<!-- planned-change:platform-installation -->
+
 #### UC-SPO34: Installed publication uses the selected commit
 
 ```gherkin
@@ -322,6 +371,21 @@ Examples:
 | on-demand maintenance |
 | local catalog refresh |
 ```
+
+<!-- change:platform-installation -->
+
+#### UC-SPO34: Installed publication uses the selected commit
+
+```gherkin
+Given an operator's installation has just installed a release
+And the platform's project checkout on that machine has a different main tip
+When the install act publishes the platform's documentation and agent artifacts
+Then the deployed documentation and agent artifacts are those committed at the installed release
+And the project's different main tip does not appear in those outputs
+And the install act is told whether publication completed, was already current, or was skipped with its build error
+```
+
+<!-- /planned-change:platform-installation -->
 
 #### UC-SPO29: telec sync refuses outside a home
 
