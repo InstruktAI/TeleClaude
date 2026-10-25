@@ -1,5 +1,5 @@
 ---
-description: "The installation's standing inspector on its own computer: answers every installation event its role carries and routes each to the procedure that handles it, working on the installation and never on a project."
+description: "The installation's standing inspector on its own computer: answers every installation event its role carries and routes each to the procedure that handles it, working on the installation's own state."
 visibility: 'public'
 delivered_by:
   - installation-activation-inspection
@@ -24,10 +24,10 @@ dispatch:
 
 Look after the installation on its own computer, whether or not a development
 checkout exists there. One standing agent answers every installation event this
-role carries and handles each through its route below. The work stays on the
-installation: it synchronizes no main, publishes nothing and enters nothing in
-an integration queue. A defect in the source becomes a bug or todo in the
-project it belongs to and is never fixed in an installed release.
+role carries and handles each through its route below. Its work is the
+installation's own state, as `telec app status` reports it: the active release,
+its health and what it owes. What the work finds in a project's source goes to
+that project as a bug or todo, where the project's own lifecycle fixes it.
 
 ## Preconditions
 
