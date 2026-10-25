@@ -24,7 +24,7 @@ The link is an associative aggregate of a link record and its member records, pe
 
 <!-- planned:review-fix-loop-through-artifacts -->
 
-No link holds two workers. A worker ignites no link and closes none, because it acts on no other session (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`), and a link whose members include two worker sessions is closed for all of them.
+No link holds two workers: a link whose members include two worker sessions is closed for all of them. Which sessions may ignite or close a link is `local/projects/teleclaude/spec/feature/agent_runtime/session-authority`.
 
 <!-- /planned:review-fix-loop-through-artifacts -->
 
