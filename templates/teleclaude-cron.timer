@@ -2,7 +2,7 @@
 Description=TeleClaude cron timer (fires teleclaude-cron.service every 5 minutes)
 
 [Timer]
-OnBootSec=2min
+OnActiveSec=2min
 OnUnitActiveSec=5min
 Persistent=true
 
