@@ -32,6 +32,7 @@ nothing in an integration queue.
 ## Preconditions
 
 - The activating event announces that an install is owed an assessment.
+- `telec app status` lists every owed install by number and revision.
 - `telec app status`, `telec app rollback`, `telec app assessed` and
   `instrukt-ai-logs` are available.
 
@@ -48,9 +49,10 @@ nothing in an integration queue.
    `telec app rollback` when the active release cannot be repaired in place.
    A defect in the source becomes a bug or todo in the project it belongs to;
    it is never fixed in the installed release.
-4. **Record the assessment.** Run `telec app assessed <revision>` with the
-   release the window covered. It discharges that install and every earlier
-   one, and keeps a later install owed.
+4. **Record the assessment.** Run `telec app assessed <install>` with the
+   number of the newest owed install the window covered, as `telec app status`
+   lists it. It discharges that install and every earlier one, and keeps a
+   later install owed.
 
 ## Outputs
 
@@ -63,4 +65,4 @@ nothing in an integration queue.
   refuses; the runtime that never returned is a recovery matter, not a
   completed assessment. Restore service, then assess.
 - **A later install arrives during the assessment.** Its obligation stays
-  owed; the next owed-assessment event resumes this procedure for it.
+  owed, and the daemon announces it again while it is owed.
