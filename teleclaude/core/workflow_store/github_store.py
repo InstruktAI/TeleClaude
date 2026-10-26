@@ -418,8 +418,12 @@ def read_github_item_issue(project_root: str | Path, slug: str) -> GitHubIssueRe
         # Issue navigation is optional: an unreadable working copy must not make a session projection fail.
         if identity.project_path not in _unreadable_working_copies:
             _unreadable_working_copies.add(identity.project_path)
+            cause = error.orig if error.orig is not None else error
             logger.warning(
-                _ISSUE_UNREADABLE_EVENT, project_path=str(identity.project_path), error_type=type(error).__name__
+                _ISSUE_UNREADABLE_EVENT,
+                project_path=str(identity.project_path),
+                error_type=type(cause).__name__,
+                reason=str(cause),
             )
         return None
     _unreadable_working_copies.discard(identity.project_path)
