@@ -146,8 +146,10 @@ How the store maps onto the repository is owned by
   the record. It opens with `[session:<id> role:<role> action:turn turn:<n>]`,
   where `<n>` counts that session's turns, followed by the input the turn
   received and the agent's reply, without tool activity or reasoning. A
-  person's own message to the session is not written; the turn notes only that
-  the person spoke. Turns appear in the order they complete, each exactly once,
+  person's comment that reached the session from GitHub is written like any
+  other input; a message a person gave the session anywhere else is not
+  written, and the turn notes only that the person spoke. Turns appear in the
+  order they complete, each exactly once,
   and a turn too large for one comment continues in the next. Before a turn is
   written, every secret the platform holds is masked, and credential-like
   strings and personal data are removed as far as detection recognizes them;
