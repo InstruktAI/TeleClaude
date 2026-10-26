@@ -685,9 +685,9 @@ def handle_sessions_unsubscribe(args: list[str]) -> None:
     Usage: telec sessions unsubscribe <session_id>
 
     Removes the caller's listener for the target session AND severs any active
-    direct link the caller holds with that target. Idempotent: empty state
-    returns success with both action flags false. The target session keeps
-    running.
+    direct link the caller holds with that target. Idempotent for a session that
+    exists: empty state returns success with both action flags false. An unknown
+    session id is refused as not found. The target session keeps running.
 
     Response payload reports which axis was actually cleared:
       { status, listener_removed, link_closed, link_id }
