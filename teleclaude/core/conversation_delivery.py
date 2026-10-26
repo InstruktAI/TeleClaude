@@ -35,7 +35,7 @@ from teleclaude.core.conversation_segments import (
 )
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
-from teleclaude.core.identity import get_identity_resolver, session_person_role
+from teleclaude.core.identity import local_human_author, session_person_role
 from teleclaude.core.injected_text import TranscriptEntryKind, is_peer_opening
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageAuthorKind
 from teleclaude.core.session_links import (
@@ -66,7 +66,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MISSING_HUMAN_IDENTITY_EVENT = "conversation_delivery_missing_human_identity"
 _DELIVERY_FAILED_EVENT = "conversation_delivery_failed"
 _PEER_PASS_FAILED_EVENT = "conversation_delivery_peer_pass_failed"
 _CURSOR_BACKFILLED_EVENT = "conversation_delivery_cursor_backfilled"
@@ -209,24 +208,21 @@ def _trim_trailing_user_turn(segments: list[ConversationSegment]) -> list[Conver
     return segments[:trim_from]
 
 
-def _needs_human_identity(segments: list[CollectedSegment]) -> bool:
-    """Return True when at least one segment requires a resolved human identity."""
+def _has_human_segment(segments: list[CollectedSegment]) -> bool:
+    """Return True when at least one segment is human-authored local input."""
     return any(
         isinstance(segment, ProjectedSegment) and segment.author.kind is ProjectedAuthorKind.HUMAN
         for segment in segments
     )
 
 
-async def _resolve_session_authors(
+def _resolve_session_authors(
     source_session: Session,
     segments: list[CollectedSegment],
-) -> tuple[MessageAuthor, MessageAuthor | None] | None:
-    """Resolve the per-delivery agent author, and the human author when needed.
+) -> tuple[MessageAuthor, MessageAuthor | None]:
+    """Resolve the per-delivery agent author, and the human author when a human segment is present.
 
-    Resolution happens once per delivery, not per segment. Returns ``None``
-    when a ``HUMAN`` segment is present but no human identity can be
-    resolved — the caller holds delivery for this peer rather than
-    substituting a generic identity.
+    Resolution happens once per delivery, not per segment.
     """
     assert source_session.active_agent is not None  # guaranteed by deliver_pending_conversation_updates
     agent_author = MessageAuthor.for_agent(
@@ -234,16 +230,9 @@ async def _resolve_session_authors(
         active_agent=source_session.active_agent,
         thinking_mode=source_session.thinking_mode,
     )
-    if not _needs_human_identity(segments):
+    if not _has_human_segment(segments):
         return agent_author, None
-    if not source_session.human_email:
-        return None
-    try:
-        display_name = get_identity_resolver().resolve_by_email(source_session.human_email).display_name
-    except ValueError:
-        return None
-    human_author = MessageAuthor.for_human(session_id=source_session.session_id, display_name=display_name)
-    return agent_author, human_author
+    return agent_author, local_human_author(source_session)
 
 
 def _resolve_conversation_segment_author(
@@ -400,17 +389,7 @@ async def _deliver_for_peer(
     )
     target_computer = _target_computer_name(peer_computer)
 
-    resolved_authors = await _resolve_session_authors(source_session, all_projected)
-    if resolved_authors is None:
-        logger.error(
-            _MISSING_HUMAN_IDENTITY_EVENT,
-            source_session_id=source_session_id,
-            target_session_id=target_session_id,
-            link_id=link_id,
-            human_email_present=bool(source_session.human_email),
-        )
-        return 0
-    agent_author, human_author = resolved_authors
+    agent_author, human_author = _resolve_session_authors(source_session, all_projected)
     all_segments = _build_conversation_segments(
         all_projected,
         source_session_id=source_session_id,

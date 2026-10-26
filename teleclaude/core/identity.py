@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -55,12 +54,9 @@ from teleclaude.constants import (
     HUMAN_ROLES,
 )
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageAuthorKind, Session, SessionEntryPoint
+from teleclaude.core.models import MessageAuthor, MessageAuthorKind, Session, SessionEntryPoint
 from teleclaude.identity_reach import Reach, resolve_reach, visitor_reach
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
-
-if TYPE_CHECKING:
-    from teleclaude.core.models import MessageAuthor
 
 logger = get_logger(__name__)
 
@@ -795,6 +791,23 @@ async def is_procedure_agent_session(session_id: str) -> bool:
 def caller_for_session(session: Session) -> CliCaller:
     """Resolve a session record into its current local CLI caller."""
     return identity_for_session(session).caller
+
+
+def local_human_author(session: Session) -> MessageAuthor:
+    """The author of human input typed into the session: the person its lineage names, else an unnamed human.
+
+    Lineage presents a name and decides nothing about whether the input is carried
+    (`general/concept/lineage-vs-authorship`).
+    """
+    if session.human_email:
+        try:
+            display = get_identity_resolver().resolve_by_email(session.human_email).display_name
+        except ValueError:
+            # The registry no longer names the lineage's person; the input stays human-authored.
+            display = None
+        if display is not None:
+            return MessageAuthor.for_human(session_id=session.session_id, display_name=display)
+    return MessageAuthor.for_human_without_lineage(session_id=session.session_id)
 
 
 def resolve_discord_author_alias(

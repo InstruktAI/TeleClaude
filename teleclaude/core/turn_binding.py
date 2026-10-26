@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from teleclaude.core.agents import AgentName
 from teleclaude.core.conversation_messages import peer_segments_from_entry
 from teleclaude.core.db import InboundQueueRow, NativeReference, TurnAuthoredPartInput, TurnReceiptEnvelopeInput, db
-from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.identity import local_human_author
 from teleclaude.core.inbound_types import TurnPartKind
 from teleclaude.core.injected_text import (
     InjectedEnvelopeCandidate,
@@ -51,17 +51,6 @@ def _caller_author(row: InboundQueueRow) -> MessageAuthor | None:
     )
 
 
-def _local_author(session: Session) -> MessageAuthor | None:
-    """Resolve the owning person's author snapshot for local gaps."""
-    if not session.human_email:
-        return None
-    try:
-        display = get_identity_resolver().resolve_by_email(session.human_email).display_name
-    except ValueError:
-        return None
-    return MessageAuthor.for_human(session_id=session.session_id, display_name=display)
-
-
 def _bound_parts(
     *,
     session: Session,
@@ -69,18 +58,15 @@ def _bound_parts(
     envelope: InjectedEnvelopeCandidate,
     row: InboundQueueRow,
     caller_author: MessageAuthor,
-    local_author: MessageAuthor | None,
-) -> list[TurnAuthoredPartInput] | None:
+    local_author: MessageAuthor,
+) -> list[TurnAuthoredPartInput]:
     """Build ordered local, caller, and peer spans without consulting rendered bodies for identity."""
     all_envelopes = scan_injected_envelopes(text)
-    has_local_gap = sum(end - start for start, end in (item.envelope_span for item in all_envelopes)) != len(text)
-    if local_author is None and has_local_gap:
-        return None
     caller_span = envelope.envelope_span
     parts: list[TurnAuthoredPartInput] = []
     cursor = 0
     for candidate in all_envelopes:
-        if cursor < candidate.envelope_span[0] and local_author is not None:
+        if cursor < candidate.envelope_span[0]:
             parts.append(
                 TurnAuthoredPartInput(
                     TurnPartKind.LOCAL, cursor, candidate.envelope_span[0], session.session_id, local_author
@@ -112,7 +98,7 @@ def _bound_parts(
                 )
             )
         cursor = candidate.envelope_span[1]
-    if cursor < len(text) and local_author is not None:
+    if cursor < len(text):
         parts.append(TurnAuthoredPartInput(TurnPartKind.LOCAL, cursor, len(text), session.session_id, local_author))
     return sorted(parts, key=lambda part: part.span_start)
 
@@ -139,7 +125,7 @@ async def bind_pending_native_turns(session: Session, entries: Sequence[JsonDict
         occurrence_key = row["occurrence_key"]
         if isinstance(occurrence_key, str):
             rows_by_key.setdefault(occurrence_key, []).append(row)
-    local_author = _local_author(session)
+    local_author = local_human_author(session)
     for entry in entries:
         text = extract_authored_user_text(entry, agent_name)
         if text is None:
@@ -188,8 +174,6 @@ async def bind_pending_native_turns(session: Session, entries: Sequence[JsonDict
             caller_author=author,
             local_author=local_author,
         )
-        if parts is None:
-            continue
         caller_part_id = next(index for index, part in enumerate(parts) if part.part_kind is TurnPartKind.CALLER)
         created = await db.create_turn_binding(
             binding_id=binding_id_for_native_entry(session.session_id, entry_id),

@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, computed_field, model_validator
 from teleclaude.helpers.agent_types import AgentName, ThinkingMode
 
 _MISSING_DISPLAY_ERROR = "MessageAuthor requires a non-empty display identity"
+_HUMAN_WITHOUT_LINEAGE_DISPLAY = "Human"
 _MISSING_SESSION_ID_ERROR = "MessageAuthor with kind={kind} requires a session_id"
 _AGENT_MODE_SEPARATOR = "/"
 _ERROR_CONTEXT_SEPARATOR = ": "
@@ -112,6 +113,15 @@ class MessageAuthor:
     def for_human(cls, *, session_id: str, display_name: str) -> MessageAuthor:
         """Build the author identity for a human-authored segment."""
         return cls(kind=MessageAuthorKind.HUMAN, display=display_name, session_id=session_id)
+
+    @classmethod
+    def for_human_without_lineage(cls, *, session_id: str) -> MessageAuthor:
+        """Build the author identity for human input in a session whose lineage names no person.
+
+        Lineage only names the person presented (`general/concept/lineage-vs-authorship`); without
+        one the input is still human-authored and is presented as a human.
+        """
+        return cls.for_human(session_id=session_id, display_name=_HUMAN_WITHOUT_LINEAGE_DISPLAY)
 
     @classmethod
     def for_agent(

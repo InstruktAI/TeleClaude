@@ -155,6 +155,11 @@ flowchart LR
 - **Unknown presentation degrades, never refuses.** A known author token keeps
   its rich alias and avatar; an unknown token renders from its carried text.
   Neither case changes delivery eligibility.
+- **A human author's name is lineage presentation.** Human input typed into a
+  session carries the person its lineage names. Where the lineage names no person,
+  as in system-rooted work, the input is carried as an unnamed human. No local
+  turn is held, and no binding is skipped, for want of a name
+  (`general/concept/lineage-vs-authorship`).
 - **Cursor advance follows durable text acceptance.** A source cursor advances
   only after the target accepts the framed message under its stable delivery
   occurrence key. Transport failure keeps the cursor retryable; recognition
