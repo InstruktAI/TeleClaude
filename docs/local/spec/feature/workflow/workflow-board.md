@@ -31,6 +31,14 @@ back as workflow state.
 
 ## Canonical fields
 
+- **Board:** the platform creates the board the first time the store
+  refreshes the project from GitHub, titled with the repository's name, and
+  finds that board again from GitHub instead of ever creating a second one. It
+  links the board to the repository as soon as the platform App can read the
+  repository's contents; a board someone linked by hand is already linked. The
+  App keeps the board with the organization's Projects read and write
+  permission and links it with the repository's Contents read permission
+  (`local/projects/teleclaude/design/architecture/workflow-store`).
 - **Items:** every work item the project's GitHub store holds that is active,
   iceboxed or delivered is an item on the board, from the moment the store
   creates it. A removed item leaves the board, and a reactivated item returns
@@ -44,12 +52,15 @@ back as workflow state.
   in Work from then until it is delivered, following the prepare and work
   lanes of the lifecycle
   (`local/projects/teleclaude/spec/feature/workflow/todo-lifecycle-phase`).
-- **Needs you:** an open item carries the needs-you marker while the platform
-  will not move it on its own and only a person can: while a human approval or
-  task authorization it waits on is outstanding, and while it is held or
-  blocked and no session holds its claim. The marker clears in the same change
-  that ends that condition. The board has a view that shows only the items
-  carrying the marker.
+  The lane is the board's Status field.
+- **Needs you:** an active item carries the needs-you marker while the
+  platform will not move it on its own and only a person can: while a human
+  approval it waits on is outstanding, and while it is held or blocked and no
+  session holds its claim. An iceboxed item carries no marker: the Icebox lane
+  already shows it, and it waits on nobody until someone unfreezes it. The
+  marker clears in the same change that ends that condition. The marker is the
+  board's Needs you field, and the board's Needs you view shows only the items
+  carrying it.
 - **Kept true:** a change to an item's phase, freeze, delivery, removal,
   hold, approval or claim sets its lane and marker on the board in the same
   write path that records it, under the platform App. The board never decides
@@ -58,9 +69,12 @@ back as workflow state.
   (`local/projects/teleclaude/design/architecture/workflow-store`).
 - **Board automations:** automations of the board itself that would set a
   lane or remove an item are off, so the platform is the board's only writer.
-- **Repair:** a repair command rebuilds every item, lane and marker on the
-  board from the project's GitHub store. A missed update or a hand edit on the
-  board is corrected by it, never adopted.
+- **Repair:** `telec todo board repair` rebuilds every item, lane and marker
+  on the project's board from its GitHub store, restores the board's lanes,
+  Needs you field and view, and turns off any board automation. A missed
+  update or a hand edit on the board is corrected by it, never adopted. Its
+  outcome names what it could not write and why, such as a missing App
+  permission or a repository owned by a personal account.
 
 ### Use cases
 
@@ -129,3 +143,7 @@ Scenario: The repair command completes missed updates
   reason is on the item's issue and in TeleClaude.
 - A lane or marker update that fails reaches the board at the store's next
   refresh or a repair, so the board can lag the workflow record until then.
+- A hand edit on the board stays visible until the item's next change or a
+  repair, because the platform never reads the board back.
+- Until the board is linked, it is listed among the organization's projects
+  but not on the repository's Projects tab.

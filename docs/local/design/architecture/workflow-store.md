@@ -169,6 +169,43 @@ working copy and the repository.
     posts a review twice, and an item that reuses a delivered or removed
     item's slug never adopts that item's pull request.
 
+<!-- planned:github-work-board -->
+
+- **Board.** In a repository an organization owns, the project's board
+  (`local/projects/teleclaude/spec/feature/workflow/workflow-board`) is a
+  further reflection, written after the local commit, owed apart from the
+  issue's and the pull request's so that no failure of one holds back
+  another, and never read as state.
+  - The board's setup is a project-level reflection. A refresh that finds no
+    board creates one as the platform App, owned by the repository's
+    organization, opens its README with the envelope line
+    `[action:board repository:<id>]`, sets its Status field's options to the
+    lanes, adds the Needs you field and the view filtered on it, and deletes
+    every built-in workflow. The board is found again from GitHub by its App
+    creator and that envelope before any board is created, so a rebuilt
+    working copy never creates a second board.
+  - The link to the repository is owed until it is written or GitHub shows
+    the board linked. Its write asks for the repository's Contents read
+    permission in addition, so an App without it leaves only the link owed.
+  - Each repository work item that is neither a group holder nor removed has
+    one board item for its issue, whose Status is its lane and whose Needs
+    you field is set or cleared. Lane and marker are derived from the item's
+    workflow state through the lifecycle's own predicates — the work-lane
+    boundary the lifecycle runner dispatches on, the pending human-approval
+    gate, the effective hold — and the claim; the adapter decides none of
+    them. A removed item's board item is deleted, and a reactivated item gets
+    one again.
+  - The board's node identities and each item's board item are cached in the
+    adapter's working-copy bookkeeping, rediscoverable from GitHub as above.
+  - Board writes use the same repository-scoped installation credential,
+    requesting the organization Projects write permission with the issue read
+    permission.
+  - `telec todo board repair` runs as a daemon operation: it owes the board's
+    setup and every item's board reflection, writes them as a refresh does,
+    and its outcome names each one it could not write and the cause.
+
+<!-- /planned:github-work-board -->
+
 - **Repository work.** Only repository work is published: an item whose
   kind is `task`, or whose workflow state carries a creative-track section,
   is not, and every other item, group holders included, is
@@ -335,6 +372,14 @@ workflow.
 - The working copy's reads never reach GitHub; only writes, rebuild and
   refresh do.
 
+<!-- planned:github-work-board -->
+
+- A project has at most one board the platform maintains. The board's lanes,
+  markers, fields and views are written from the record and never read back;
+  only its identities are read, to find it again.
+
+<!-- /planned:github-work-board -->
+
 ## Primary flows
 
 1. Resolve project context to the canonical state root, read its project config,
@@ -439,6 +484,26 @@ sequenceDiagram
 - A pull request someone merges on GitHub, or a review someone else posts,
   changes nothing in the record: the item is still delivered only by the
   integrator, and only the reviewer's stamped verdict counts.
+
+<!-- planned:github-work-board -->
+
+- A repository a personal account owns has no board. The board's setup
+  records that cause and writes nothing; the issues and the workflow are
+  unaffected.
+- An App without the organization's Projects read and write permission
+  leaves the board's setup and every board reflection owed with the refused
+  credential as cause; the issues and the workflow are unaffected.
+- An App without the repository's Contents read permission leaves the link
+  owed with that cause; the board otherwise works, listed among the
+  organization's projects but not on the repository's Projects tab.
+- A lane, marker, field or view someone changes on the board stays until the
+  item's next reflection or a repair. A deleted board is created again by the
+  next refresh, with every item.
+- Two computers that create the board in the same interval leave two boards,
+  because GitHub supports no conditional writes. Each refresh then maintains
+  the oldest one, and a repair names the other for a person to delete.
+
+<!-- /planned:github-work-board -->
 
 - Work that is not repository work exists only in the working copy of the
   computer that holds it; a lost working copy loses it, as a lost local
