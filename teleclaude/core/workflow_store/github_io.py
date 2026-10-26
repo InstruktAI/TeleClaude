@@ -269,9 +269,9 @@ class GitHubWorkflowIO:
         changed_parts: frozenset[ProjectionPart],
     ) -> None:
         io_loop = shared_github_io_loop()
-        if io_loop.request_lock is None:
+        if io_loop.unit_lock is None:
             raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
-        async with io_loop.request_lock:
+        async with io_loop.unit_lock:
             if ProjectionPart.LABELS in changed_parts:
                 for label in reflection.labels:
                     await self._ensure_label(label.name, label.color, label.description)
@@ -372,11 +372,8 @@ class GitHubWorkflowIO:
         return shared_github_io_loop().submit(self._serialized_dispatch(operation, *arguments)).result()
 
     async def _serialized_dispatch(self, operation: GitHubOperation, *arguments: object) -> Any:
-        io_loop = shared_github_io_loop()
-        if io_loop.request_lock is None:
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
-        async with io_loop.request_lock:
-            return await self._dispatch(operation, *arguments)
+        # Each request of the dispatch takes the request lock itself (`GitHubTransport.call`).
+        return await self._dispatch(operation, *arguments)
 
     async def _dispatch(self, operation: GitHubOperation, *arguments: object) -> Any:
         return await _OPERATION_HANDLERS[operation](self, arguments)

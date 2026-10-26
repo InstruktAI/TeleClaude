@@ -16,6 +16,7 @@ from httpx import HTTPError
 from pydantic import SecretStr
 
 from teleclaude.core.workflow_store.github_io_models import GitHubRepositoryScope
+from teleclaude.core.workflow_store.github_io_runtime import shared_github_io_loop
 from teleclaude.github.client import create_github_client
 from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
 from teleclaude.types.github_binding import GitHubActorAssignment
@@ -68,7 +69,24 @@ class GitHubTransport:
         operation: StrEnum,
         request: Callable[[Any], Awaitable[_Result]],
     ) -> _Result:
-        """Run one client request as the assigned App, mapping every provider failure to a bounded refusal."""
+        """Run one client request as the assigned App, mapping every provider failure to a bounded refusal.
+
+        The process-wide request lock is held for this request alone, so GitHub sees one request at a time
+        while a caller that needs the next request waits behind at most the one in flight.
+        """
+        request_lock = shared_github_io_loop().request_lock
+        if request_lock is None:
+            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
+        async with request_lock:
+            return await self._call(assignment, permissions, operation, request)
+
+    async def _call(
+        self,
+        assignment: GitHubActorAssignment,
+        permissions: AppPermissionsType,
+        operation: StrEnum,
+        request: Callable[[Any], Awaitable[_Result]],
+    ) -> _Result:
         try:
             token = await self._credential_token(assignment, permissions)
             async with create_github_client(TokenAuthStrategy(token.get_secret_value()), MemCacheStrategy()) as client:
