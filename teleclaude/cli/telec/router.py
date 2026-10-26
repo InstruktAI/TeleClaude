@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 type _ToolAPIError = ToolAPIError
 
 _INVALID_CONFIGURATION_ERROR = "Error: invalid configuration.\n%s"
+_LOGGING_MODULE = "teleclaude.logging_config"
 _AUDIO_HANDLER_MODULE = "teleclaude.cli.telec.handlers.audio"
 _AUDIO_HANDLER_NAME = "_handle_audio"
 _DIRECT_CONVERSATION_FLAGS = (F.FLAG_DIRECT_START, F.FLAG_DIRECT_SEND, F.FLAG_CLOSE_LINK, F.FLAG_CLOSE_LINK_ALIAS)
@@ -188,6 +189,7 @@ def _handle_cli_argv(argv: list[str], clear: ClearanceGate) -> None:
 
 
 def _start_tui() -> None:
+    importlib.import_module(_LOGGING_MODULE).setup_logging()
     tui = importlib.import_module("teleclaude.cli.telec._run_tui")
     tui.start_tui()
 
