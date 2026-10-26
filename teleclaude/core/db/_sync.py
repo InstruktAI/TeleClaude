@@ -65,6 +65,13 @@ _SESSION_EXISTENCE_SQL_PREFIX = "SELECT session_id FROM sessions WHERE session_i
 _SESSION_EXISTENCE_SQL_SUFFIX = ")"
 _SESSION_EXISTENCE_CHUNK = 500
 _READ_ONLY_URI_SUFFIX = "?mode=ro&uri=true"
+_SPAWN_REGISTRY_DELETE_FOR_PID_SQL = "DELETE FROM process_spawn_registry WHERE owner = ? AND pid = ?"  # guard: raw-sql
+_SPAWN_REGISTRY_REGISTER_FOR_PID_SQL = (  # guard: raw-sql
+    "INSERT INTO process_spawn_registry(owner, pid, lease_expires_at, registered_at) "
+    "VALUES (?, ?, ?, ?) "
+    "ON CONFLICT(owner) DO UPDATE SET lease_expires_at = excluded.lease_expires_at "
+    "WHERE process_spawn_registry.pid = excluded.pid"
+)
 
 
 @dataclass(frozen=True)
@@ -505,5 +512,37 @@ def delete_process_spawn_registry_entry_sync(db_path: str, owner: str, *, timeou
         conn.execute(
             "DELETE FROM process_spawn_registry WHERE owner = ?",  # guard: raw-sql
             (owner,),
+        )
+        conn.commit()
+
+
+def delete_process_spawn_registry_entry_for_pid_sync(
+    db_path: str, owner: str, pid: int, *, timeout_s: float = 1.0
+) -> None:
+    """Delete the owner's spawn registry entry only if it still names ``pid``."""
+    if not Path(db_path).exists():
+        return
+    with sqlite3.connect(db_path, timeout=timeout_s) as conn:
+        conn.execute(_SPAWN_REGISTRY_DELETE_FOR_PID_SQL, (owner, pid))
+        conn.commit()
+
+
+def register_process_spawn_registry_entry_for_pid_sync(
+    db_path: str,
+    *,
+    owner: str,
+    pid: int,
+    lease_expires_at: str,
+    timeout_s: float = 1.0,
+) -> None:
+    """Insert the owner's entry, or refresh its lease only if the entry still names ``pid``.
+
+    An entry naming a different PID belongs to a later registrant and is left untouched.
+    """
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path, timeout=timeout_s) as conn:
+        conn.execute(
+            _SPAWN_REGISTRY_REGISTER_FOR_PID_SQL,
+            (owner, pid, lease_expires_at, datetime.now(UTC).isoformat()),
         )
         conn.commit()

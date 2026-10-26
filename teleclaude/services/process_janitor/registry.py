@@ -11,6 +11,10 @@ from teleclaude.core.db import (
     get_process_spawn_registry_entry_sync,
     replace_process_spawn_registry_entry_sync,
 )
+from teleclaude.core.db._sync import (
+    delete_process_spawn_registry_entry_for_pid_sync,
+    register_process_spawn_registry_entry_for_pid_sync,
+)
 from teleclaude.paths import MAIN_DB_PATH
 
 CHIPTUNES_WORKER_OWNER = "chiptunes-worker"
@@ -59,3 +63,21 @@ class ProcessSpawnRegistry:
     def clear_chiptunes(self) -> None:
         """Clear the chiptunes worker registry entry."""
         delete_process_spawn_registry_entry_sync(self._db_path, CHIPTUNES_WORKER_OWNER)
+
+    def registered_chiptunes_pid(self) -> int | None:
+        """Return the PID the chiptunes registry entry names, or None when no entry exists."""
+        entry = get_process_spawn_registry_entry_sync(self._db_path, CHIPTUNES_WORKER_OWNER)
+        return entry.pid if entry is not None else None
+
+    def register_chiptunes_pid(self, pid: int, *, lease_ttl_seconds: int) -> None:
+        """Register the chiptunes worker ``pid``, refreshing the lease only when the entry still names it."""
+        register_process_spawn_registry_entry_for_pid_sync(
+            self._db_path,
+            owner=CHIPTUNES_WORKER_OWNER,
+            pid=pid,
+            lease_expires_at=lease_expiry(lease_ttl_seconds),
+        )
+
+    def clear_chiptunes_pid(self, pid: int) -> None:
+        """Clear the chiptunes registry entry only if it still names ``pid``."""
+        delete_process_spawn_registry_entry_for_pid_sync(self._db_path, CHIPTUNES_WORKER_OWNER, pid)
