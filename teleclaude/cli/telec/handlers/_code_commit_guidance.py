@@ -90,8 +90,8 @@ _COMMIT_REVIEW_MODE_GUIDANCE = (
     "       as it was (general/policy/documentation-discipline).\n"
 )
 _COMMIT_REVIEW_REUSE_GUIDANCE = (
-    "   Reuse the reviewer already open at the mode this series needs; a different lane\n"
-    "   or mode gets its own reviewer:\n" + _COMMIT_REVIEW_MODE_GUIDANCE
+    "   Reuse the reviewer already open at the mode this series needs; it runs every lane\n"
+    "   the series triggers, and a different mode gets its own reviewer:\n" + _COMMIT_REVIEW_MODE_GUIDANCE
 )
 _COMMIT_REVIEW_START_GUIDANCE = "   Start the reviewer for this series:\n" + _COMMIT_REVIEW_MODE_GUIDANCE
 _COMMIT_REVIEW_DISPATCH_TEMPLATE = (
