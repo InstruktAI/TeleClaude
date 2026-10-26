@@ -25,7 +25,12 @@ from teleclaude.config.project_models import TodoStoreBackend, TodoStoreConfig
 from teleclaude.constants import TodoStatus
 from teleclaude.core.todos_db._adapter import TodosDb
 from teleclaude.core.todos_db._github_conversation import ConversationBookkeeping
-from teleclaude.core.todos_db._github_pull_requests import work_item_for_number
+from teleclaude.core.todos_db._github_pull_requests import (
+    PullRequestInterval,
+    owed_pull_requests,
+    pull_request_bookkeeping,
+    work_item_for_number,
+)
 from teleclaude.core.todos_db._github_questions import insert_awaiting_question
 from teleclaude.core.todos_db._working_copy import (
     WorkingCopyField,
@@ -448,6 +453,59 @@ def read_github_item_issue(project_root: str | Path, slug: str) -> GitHubIssueRe
     if not isinstance(number, int):
         return None
     return GitHubIssueReference(number=number, url=HttpUrl(_ISSUE_URL.format(identity.repository, number)))
+
+
+@dataclass(frozen=True)
+class ConversationItem:
+    """What the conversation needs to know of a repository work item: where it lives on GitHub and where it has been.
+
+    ``pull_request_owed`` is true while the working copy has not yet caught up with the item's pull request on
+    GitHub, so its intervals may be incomplete.
+    """
+
+    item_id: str
+    issue_number: int
+    repository_id: int
+    repository: str
+    intervals: Mapping[int, PullRequestInterval]
+    pull_request_owed: bool
+
+
+def read_conversation_item(project_root: str | Path, slug: str) -> ConversationItem | None:
+    """Read the live repository work item with this slug from a working copy that already exists.
+
+    No provider call, no rebuild, no writer lock. None for a project outside the GitHub store, a missing working
+    copy, an item that is not repository work, or an item the store has not yet given an issue.
+    """
+    try:
+        identity = resolve_github_repository_identity(project_root)
+    except GitHubIdentityRefused:
+        return None
+    path = github_working_copy_path(identity.project_path)
+    if not path.is_file():
+        return None
+    with _open_working_copy_read_only(path) as session:
+        found = session.execute(text(_ITEM_ID_BY_SLUG), {_SLUG: slug}).scalar_one_or_none()
+        if found is None:
+            return None
+        item_id = str(found)
+        snapshot = item_snapshot(session, item_id)
+        bookkeeping = item_bookkeeping(session, item_id)
+        if snapshot is None or bookkeeping is None or not is_repository_work(snapshot.state):
+            return None
+        issue_number = bookkeeping.get(WorkflowField.ISSUE_NUMBER)
+        if not isinstance(issue_number, int):
+            return None
+        known = pull_request_bookkeeping(session, item_id)
+        owed = item_id in owed_pull_requests(session)
+    return ConversationItem(
+        item_id=item_id,
+        issue_number=issue_number,
+        repository_id=identity.repository_id,
+        repository=identity.repository,
+        intervals=known.intervals,
+        pull_request_owed=owed,
+    )
 
 
 async def refresh_github_workflow_store(project_root_or_cwd: str | Path) -> int:

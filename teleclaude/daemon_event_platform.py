@@ -89,6 +89,7 @@ if TYPE_CHECKING:
     from teleclaude.core.events import ErrorEventContext
     from teleclaude.core.lifecycle import DaemonLifecycle
     from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
+    from teleclaude.core.workflow_store.github_conversation_runtime import ConversationRuntime
 
 _GITHUB_COMMENT_HANDLER = "github_comment_routing"
 _GITHUB_COMMENT_CONTRACT = "builtin-github-comment-routing"
@@ -154,6 +155,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _source_reader_task: SupervisedTask | None
         _hook_dispatcher: HookDispatcher | None
         cache: DaemonCache
+        conversation: ConversationRuntime
 
         def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]: ...
 
@@ -272,6 +274,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             discord_voice_status=self._handle_discord_runtime_status,
             recover_discord_voice=self._recover_discord_runtime_status,
             compatibility_ingress=self._handle_internal_compat_ingress,
+            capture_conversation=self.conversation.publisher.on_agent_stop,
+            recover_conversation=self.conversation.publisher.run_full_pass,
         )
         names = [consumer.name for consumer in (*platform_consumers, *runtime_consumers)]
         if len(names) != len(set(names)):

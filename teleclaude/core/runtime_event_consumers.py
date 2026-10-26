@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 from pydantic import BaseModel
 
 from teleclaude.config.machine import config
-from teleclaude.core.events import ErrorEventContext, ErrorSeverity
+from teleclaude.core.events import AgentHookEventType, ErrorEventContext, ErrorSeverity
 from teleclaude.core.models._session import SessionField
 from teleclaude.events.consumers import Consumer, ConsumerDelivery, Interest
 from teleclaude.events.envelope import ReceivedEvent
@@ -51,6 +51,11 @@ _SESSION_UPDATE_ROUTING_INTEREST = Interest(
     types=(TypePattern(_SOURCE_CHANGED),),
     subject_kinds=frozenset({ReferenceKind.SESSION}),
 )
+_CONVERSATION_INTEREST = Interest(
+    types=(TypePattern(_ACTIVITY_OBSERVED),),
+    own_computer_only=True,
+    subject_kinds=frozenset({ReferenceKind.SESSION}),
+)
 _ERROR_INTEREST = Interest(types=(TypePattern(_ERROR_REPORTED),))
 _AVAILABILITY_INTEREST = Interest(
     types=(TypePattern(_AVAILABILITY_CHANGED),),
@@ -73,6 +78,7 @@ _API_OPERATION_CONSUMER = "runtime-api-operation-outcome"
 _DISCORD_VOICE_CONSUMER = "runtime-discord-voice-status"
 _DAEMON_ERROR_FEEDBACK_CONSUMER = "runtime-daemon-error-feedback"
 _COMPAT_INGRESS_CONSUMER = "runtime-internal-compat-ingress"
+_CONVERSATION_CONSUMER = "runtime-github-conversation-capture"
 _CURRENT_REQUEST_SURFACE_REQUIRED = "runtime event reaction requires the lifecycle's current API server"
 
 
@@ -111,6 +117,30 @@ def _current_api(lifecycle: DaemonLifecycle) -> RuntimeApiSurface:
     return cast(RuntimeApiSurface, api_server)
 
 
+def _conversation_consumer(
+    capture: Callable[[str], Awaitable[None]], recover: Callable[[], Awaitable[None]]
+) -> Consumer:
+    """The reaction that captures a session's conversation turns when its agent stops.
+
+    The stop event carries no content and its loss loses nothing: every pass takes every completed turn after the
+    last one captured, and the recovery operation runs that pass over every eligible session this computer hosts.
+    Events are not coalesced: a later activity of the same session must not stand in for its stop.
+    """
+
+    async def react(event: ReceivedEvent) -> None:
+        data = _typed_data(event, RuntimeAgentActivityData)
+        if data.event_type == AgentHookEventType.AGENT_STOP:
+            await capture(data.session_id)
+
+    return Consumer(
+        _CONVERSATION_CONSUMER,
+        _CONVERSATION_INTEREST,
+        react,
+        delivery=ConsumerDelivery.LIVE,
+        recover=recover,
+    )
+
+
 def build_runtime_event_consumers(
     *,
     lifecycle: DaemonLifecycle,
@@ -121,6 +151,8 @@ def build_runtime_event_consumers(
     discord_voice_status: Callable[[RuntimeSessionStatusData], Awaitable[None]],
     recover_discord_voice: Callable[[], Awaitable[None]],
     compatibility_ingress: Callable[[InternalEventCompatIngressData, ReceivedEvent], Awaitable[None]],
+    capture_conversation: Callable[[str], Awaitable[None]],
+    recover_conversation: Callable[[], Awaitable[None]],
 ) -> list[Consumer]:
     """Build independent internal-stream reactions while resolving replaceable surfaces at delivery time."""
 
@@ -248,6 +280,7 @@ def build_runtime_event_consumers(
             recover=recover_availability,
             coalesce=True,
         ),
+        _conversation_consumer(capture_conversation, recover_conversation),
         Consumer(_API_ERROR_CONSUMER, _ERROR_INTEREST, api_error, delivery=ConsumerDelivery.LIVE),
         Consumer(_DAEMON_ERROR_FEEDBACK_CONSUMER, _ERROR_INTEREST, daemon_error, delivery=ConsumerDelivery.LIVE),
         Consumer(_API_OPERATION_CONSUMER, _OPERATION_INTEREST, api_operation_outcome, delivery=ConsumerDelivery.LIVE),

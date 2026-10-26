@@ -44,7 +44,8 @@ _SAVE_POINTER_SQL = (
 )
 _INSERT_TURN_SQL = (
     "INSERT OR IGNORE INTO github_conversation_turn(session_id, ordinal, turn_identity, item_id, repository_id, "
-    "repository, destination_number, app_id, completed_at, captured_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "repository, destination_number, app_id, completed_at, captured_at, in_flight) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 _INSERT_PART_SQL = (
     "INSERT OR IGNORE INTO github_conversation_part(session_id, ordinal, part, body, posted) VALUES (?, ?, ?, ?, ?)"
@@ -164,6 +165,7 @@ class ConversationBookkeeping:
                     turn.app_id,
                     turn.completed_at.isoformat(),
                     captured_at.isoformat(),
+                    int(turn.in_flight),
                 ),
             )
             for part in turn.parts:
