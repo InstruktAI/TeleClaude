@@ -383,6 +383,18 @@ class TurnAuthoredPartRow(SQLModel, table=True):
     author_channel_link: str | None = None
 
 
+class SessionTurnRow(SQLModel, table=True):
+    """The ordinal of one turn of a session, fixed when the completed-turns read first finds it."""
+
+    __tablename__ = "session_turns"
+    __table_args__ = {"extend_existing": True}
+
+    session_id: str = Field(primary_key=True)
+    turn_identity: str = Field(primary_key=True)
+    ordinal: int
+    created_at: str
+
+
 class ConversationLinkMode(StrEnum):
     """Kind of conversation a link aggregate represents."""
 

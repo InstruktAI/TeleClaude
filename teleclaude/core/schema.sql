@@ -202,6 +202,16 @@ CREATE TABLE IF NOT EXISTS turn_authored_parts (
     FOREIGN KEY (binding_id) REFERENCES accepted_turn_bindings(binding_id) ON DELETE CASCADE
 );
 
+-- The ordinal of each turn of a session, recorded the first time the completed-turns read finds it.
+CREATE TABLE IF NOT EXISTS session_turns (
+    session_id TEXT NOT NULL,
+    turn_identity TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, turn_identity),
+    UNIQUE (session_id, ordinal)
+);
+
 CREATE INDEX IF NOT EXISTS idx_accepted_turn_bindings_session ON accepted_turn_bindings(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_turn_receipt_envelopes_binding ON turn_receipt_envelopes(binding_id);
 
