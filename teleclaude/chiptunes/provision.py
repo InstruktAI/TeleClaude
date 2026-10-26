@@ -21,6 +21,13 @@ MANIFEST_PATH = Path(__file__).with_name("hvsc_manifest.json")
 ProvisionStatus = Literal["skipped", "installed"]
 PROVISION_SKIPPED: ProvisionStatus = "skipped"
 PROVISION_INSTALLED: ProvisionStatus = "installed"
+HVSC_DOWNLOADS_URL = "https://www.hvsc.c64.org/downloads"
+_REPAIR_POINTER = "The archive is pinned by {manifest}; current HVSC releases are listed at {downloads}."
+_DOWNLOAD_FAILED_MESSAGE = "Failed to download HVSC archive from {url}. " + _REPAIR_POINTER
+_CHECKSUM_MISMATCH_MESSAGE = (
+    "Downloaded HVSC archive checksum mismatch; refusing to install corpus "
+    "(expected {expected}, got {actual}). " + _REPAIR_POINTER
+)
 
 
 class ChiptunesProvisionError(RuntimeError):
@@ -64,7 +71,11 @@ def provision_hvsc_corpus(
         try:
             _download_archive(manifest.archive_url, archive_path)
         except (urllib.error.URLError, OSError) as exc:
-            raise ChiptunesProvisionError(f"Failed to download HVSC archive from {manifest.archive_url}.") from exc
+            raise ChiptunesProvisionError(
+                _DOWNLOAD_FAILED_MESSAGE.format(
+                    url=manifest.archive_url, manifest=manifest_path, downloads=HVSC_DOWNLOADS_URL
+                )
+            ) from exc
         actual_sha256 = _sha256_file(archive_path)
         if actual_sha256 != manifest.sha256:
             logger.error(
@@ -72,10 +83,16 @@ def provision_hvsc_corpus(
                 expected=manifest.sha256,
                 actual=actual_sha256,
                 url=manifest.archive_url,
+                manifest=str(manifest_path),
+                downloads=HVSC_DOWNLOADS_URL,
             )
             raise ChiptunesChecksumError(
-                "Downloaded HVSC archive checksum mismatch; refusing to install corpus "
-                f"(expected {manifest.sha256}, got {actual_sha256})."
+                _CHECKSUM_MISMATCH_MESSAGE.format(
+                    expected=manifest.sha256,
+                    actual=actual_sha256,
+                    manifest=manifest_path,
+                    downloads=HVSC_DOWNLOADS_URL,
+                )
             )
         music_dir.mkdir(parents=True, exist_ok=True)
         try:
