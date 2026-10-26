@@ -84,6 +84,8 @@ class ChiptunesManager:
         self._worker_lease_ttl_seconds = worker_lease_ttl_seconds
         self._enabled = False
         self._provision_task: asyncio.Task[None] | None = None
+        # Advances on every teardown so an awaiting reattach can detect one that ran meanwhile.
+        self._teardown_generation = 0
         self._sock: socket.socket | None = None
         self._reader_thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -114,11 +116,8 @@ class ChiptunesManager:
 
     def stop(self) -> None:
         """Stop playback and terminate the worker."""
-        self._enabled = False
-        self._send_cmd({"cmd": "stop"})
-        self._disconnect()
-        self._kill_worker()
-        self._last_state = {}
+        self._stop_worker()
+        self._registry.clear_chiptunes()
 
     def shutdown(self) -> None:
         """Disconnect from worker without killing it (daemon restart)."""
@@ -140,7 +139,7 @@ class ChiptunesManager:
         """Go back to the previous track."""
         self._send_cmd({"cmd": "prev"})
 
-    def reattach(self) -> None:
+    async def reattach(self) -> None:
         """Reconnect to a live worker, or terminate an unreachable orphan.
 
         The worker is an independent process that keeps playing across daemon
@@ -153,27 +152,40 @@ class ChiptunesManager:
         longer be controlled and would otherwise play forever; reattach
         terminates it and clears the stale registry so the mirrored state stays
         truthful.
+
+        Every worker-lifecycle effect runs on the event loop without suspending.
+        The registry write is the single suspension point: it waits on a thread so
+        the loop keeps advancing the transactions that hold the database write lock.
         """
         pids, reachable = self._classify_worker()
         if reachable:
-            if pids:
-                self._registry.register_chiptunes(pids[0], lease_ttl_seconds=self._worker_lease_ttl_seconds)
+            generation = self._teardown_generation
             self._enabled = True
             self._connect()
             self._send_cmd({"cmd": "capture_state"})
+            if pids:
+                pid = pids[0]
+                await asyncio.to_thread(
+                    self._registry.register_chiptunes_pid, pid, lease_ttl_seconds=self._worker_lease_ttl_seconds
+                )
+                if self._teardown_generation != generation:
+                    # A teardown ran during the write; drop the lease it may have missed.
+                    await asyncio.to_thread(self._registry.clear_chiptunes_pid, pid)
             return
         if pids:
+            registered_pid = self._registry.registered_chiptunes_pid()
             self._terminate_workers(pids)
             self._clear_registry()
-            self._registry.clear_chiptunes()
+            if registered_pid is not None:
+                await asyncio.to_thread(self._registry.clear_chiptunes_pid, registered_pid)
 
-    def reload(self) -> asyncio.Task[None] | None:
-        """Re-read chiptunes config and apply the gate without blocking."""
+    async def reload(self) -> asyncio.Task[None] | None:
+        """Re-read chiptunes config and apply the gate without holding the event loop on the registry."""
         chiptunes_cfg = _current_chiptunes_config()
         self._apply_config(chiptunes_cfg)
         config_gate_enabled = bool(chiptunes_cfg and chiptunes_cfg.enabled)
         if not config_gate_enabled:
-            self.stop()
+            await self._stop_without_blocking_loop()
             return None
         if self._music_dir_populated():
             self._activate()
@@ -481,10 +493,26 @@ class ChiptunesManager:
             threading.Event().wait(_SOCKET_WAIT_POLL_INTERVAL_SECONDS)
         logger.warning("ChipTunes worker did not start in time")
 
-    def _kill_worker(self) -> None:
-        """Terminate any live worker process and clear the registry."""
+    def _stop_worker(self) -> None:
+        """Run every worker-lifecycle effect of a stop except the registry write."""
+        self._teardown_generation += 1
+        self._enabled = False
+        self._send_cmd({"cmd": "stop"})
+        self._disconnect()
         pids = self._find_live_workers()
         if pids:
             self._terminate_workers(pids)
         self._clear_registry()
-        self._registry.clear_chiptunes()
+        self._last_state = {}
+
+    async def _stop_without_blocking_loop(self) -> None:
+        """Stop the worker, waiting for the registry write on a thread.
+
+        The registry entry is snapshotted before the teardown and cleared only if it
+        still names that worker, so a replacement spawned while the write waits keeps
+        its own entry. With no entry there is nothing to clear and no write is made.
+        """
+        registered_pid = self._registry.registered_chiptunes_pid()
+        self._stop_worker()
+        if registered_pid is not None:
+            await asyncio.to_thread(self._registry.clear_chiptunes_pid, registered_pid)

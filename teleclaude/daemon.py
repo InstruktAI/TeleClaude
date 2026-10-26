@@ -998,7 +998,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             if startup_elapsed >= SLOW_STARTUP_WARNING_S:
                 logger.warning("Daemon startup was slow: %.3fs", startup_elapsed)
 
-            self._apply_chiptunes_startup_state()
+            await self._apply_chiptunes_startup_state()
 
             # Start periodic cleanup task (runs every hour)
             self.cleanup_task = self.task_registry.supervise(
@@ -1100,13 +1100,13 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self._release_lock()
             raise
 
-    def _apply_chiptunes_startup_state(self) -> None:
-        """Apply chiptunes config after the event loop is running."""
+    async def _apply_chiptunes_startup_state(self) -> None:
+        """Apply chiptunes config after the event loop is running, awaiting the registry writes off-loop."""
         if not hasattr(self, "chiptunes_manager"):
             return
-        self.chiptunes_manager.reload()
+        await self.chiptunes_manager.reload()
         if self.chiptunes_manager.enabled:
-            self.chiptunes_manager.reattach()
+            await self.chiptunes_manager.reattach()
 
     async def _settle_accepted_work(self) -> None:
         """Close admission and wait, within the preparation window, for accepted work to settle.
@@ -1395,7 +1395,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         if "tts" in changed:
             self.tts_manager.reload()
         if "chiptunes" in changed:
-            self.chiptunes_manager.reload()
+            await self.chiptunes_manager.reload()
             from teleclaude.api import chiptunes_routes  # startup boundary
 
             self._broadcast_chiptunes_state(await asyncio.to_thread(chiptunes_routes.current_track_preferences))
