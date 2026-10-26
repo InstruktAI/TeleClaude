@@ -158,6 +158,12 @@ When the recorded kind does not match the intent, reclassify it with
 `telec todo update {slug} --kind <feature|change|bug|task>` before deriving
 artifacts.
 
+The kind decides the lane, not whether architecture review happens: a plan that
+makes a structural decision no reviewed architecture carries — in a `change` or
+`bug`, or in a `feature` whose architecture was skipped — carries that review
+inside its plan phase (`sdlc/policy/preparation-artifact-quality`, Structural
+decisions carry architecture review).
+
 A `bug` keeps its lane when a current contract states the behavior its report
 expected (`sdlc/policy/todo-creation-discipline`): open the contract the report
 states and confirm it says that. A report that names none, about behavior a

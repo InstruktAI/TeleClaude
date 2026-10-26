@@ -47,6 +47,9 @@ delivery land in docs across two locations — route per change:
   design facets and topic-owned companion assets when useful. Examples: a new
   bounded context, a communication-pattern change, a transport-boundary
   change, a context-map shift, or a deployment-shape change.
+- **Index rule** → a new design snippet or decision record is listed in the
+  domain spec of the context it governs, or in the context map when it is
+  cross-cutting, through the same pending carrier (`sdlc/spec/domain-spec`).
 - **Ownership rule** → a cross-cutting design doc owns only the relationship
   among contexts. Every behavior, invariant, state transition, vocabulary
   decision, and validation rule still resolves to one context's domain or
@@ -121,9 +124,9 @@ Read:
   work, this includes the existing services / modules / scaffolds the change
   touches. For **greenfield**, this includes adjacent or analogous platform
   code as reference patterns.
-- The project's own architecture design docs
-  (`local/projects/<slug>/design/architecture/…`), for the patterns this project
-  has established.
+- The governing contracts, reached by the walk in `preparation-artifact-quality`
+  (Governing contracts); the project's cross-cutting designs among them carry
+  the patterns this project has established.
 - The relevant platform-quality-flavors (when the flavor set exists for the
   work's needs — API scaffolding, frontend scaffold, CLI scaffold, event-bus
   service patterns, language tooling).
@@ -147,15 +150,18 @@ Produce an architectural reading of the work, then author the durable parts
 DIRECTLY into the affected domain-spec or architecture design-doc snippets
 (per the routing above). The standard sections split two ways. The resulting
 contract — affected services, responsibility ownership, event flow, surface and
-state changes — is authored into the snippets. The delivery reasoning — target
-preservation, current and intended state, brownfield reconciliation, platform
-defaults, prior art and adopt-vs-build, decomposition, open questions — goes to
+state changes — is authored into the snippets. The delivery reasoning —
+governing contracts and paradigms, target preservation, current and intended
+state, brownfield reconciliation, platform defaults, prior art and
+adopt-vs-build, decomposition, open questions — goes to
 the thin `architecture` index, where the planner and reviewer read it. Neither
 restates the other; live contracts are not decision journals:
 
 | Section | What it captures |
 | ------- | ---------------- |
 
+| **Governing contracts** | The section `preparation-artifact-quality` requires: each contract the walk reaches that bears on the work, and how the design honours it or why it departs. |
+| **Governing paradigms** | For each concern the design touches, the paradigm that governs it, and where every operation callers see sits within it with what those callers wait for. A structural decision follows `preparation-artifact-quality` (Structural decisions carry architecture review). |
 | **Target preservation** | Which approved outcomes and constraints the architecture must preserve, and where implementation reality pressures them. |
 | **Current and intended state** | What exists now, what approved pending work credibly changes, and where those sources reinforce or conflict. |
 | **Brownfield reconciliation** | The services, modules, events, surfaces, and patterns touched; which are reused, adapted, replaced, or retired, with reasons tied to the target. |

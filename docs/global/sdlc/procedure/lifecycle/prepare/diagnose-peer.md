@@ -72,7 +72,9 @@ another session, prescribe a fix, stamp the diagnosis, or advance the prepare st
      run, or the reason no credible rival survives statement.
    - **Root cause** — the minimal causal set and its counterfactual, with no fix.
    - **Mechanism** — the code shape behind the root cause, stated as the debugging
-     procedure requires: decidable at one site by reading it.
+     procedure requires: decidable at one site by reading it. When a governing design or
+     decision record prescribes it, that contract by id, and whether its design's
+     `Failure modes` already record this failure.
    - **Family census** — the two searches the debugging procedure bounds this lane to,
      and every site they found, each marked matching, not matching, or undecided.
    - **Attack record** — initially empty or marked pending; the peer updates it when the

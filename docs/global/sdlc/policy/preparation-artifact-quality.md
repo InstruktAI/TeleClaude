@@ -36,19 +36,36 @@ When the reviewer or builder needs the upstream text, they read the cited
 artifact at the cited header. Tooling (e.g. `telec todo artifacts read`)
 makes the dereference cheap.
 
-### Domain-context loading
+### Governing contracts
 
-Before creating or reviewing a preparation artifact, identify which domain
-specs the artifact touches and load them.
+Before creating or reviewing a preparation artifact, walk the project's fixed
+entry points to the contracts that govern the work:
 
-- Read the artifact (or input, if creating) and identify the domains it
-  affects: documentation system, CLI surface, config surface, messaging,
-  session infrastructure, etc.
-- Run a filtered `telec docs index --areas spec` (add `--domains <domain>` to narrow further)
-  and load the relevant specs via `telec docs get`.
-- Examples: work involving doc snippets → load the snippet authoring schema.
-  Work involving CLI changes → load the CLI surface spec. Work involving
-  config → load the teleclaude-config spec.
+- every project policy;
+- the project's context map and every cross-cutting design it lists;
+- the domain spec of each bounded context the work touches, and every feature
+  spec, governing design and decision record that spec indexes
+  (`sdlc/spec/domain-spec`);
+- the published contracts those entries cite, and the baseline of every
+  published domain the work enters.
+
+The artifact that first decides the work's mechanism — the architecture where
+that phase runs, otherwise the implementation plan — carries a **Governing
+contracts** section. It names each contract the walk reaches that bears on the
+work and states how the work honours it; a departure from one names the
+conflict and why the target requires it. A reached contract the section leaves
+unnamed is thereby declared not to bear on the work, and that declaration is
+the author's. Later artifacts reference the section and do not restate it.
+
+Every review of a preparation artifact walks the same entry points itself
+before it reads that section, then compares. A contract that bears and is
+missing, or a stated way of honouring one that the reviewer can contradict, is
+a finding against the artifact.
+
+An entry point the project lacks — no context map, a touched context without a
+domain spec, a touched file outside every domain spec's implementation roots —
+is named in the section as a gap. The walk continues from the entry points that
+exist, and the gap stays recorded for the project to close.
 
 Domain specs are the ground truth. Grounding, leakage detection, and
 review-awareness cannot be evaluated without them.
@@ -435,6 +452,42 @@ Quality rules:
 - Records open architectural questions explicitly instead of hiding them in
   implementation-plan tasks.
 
+### Structural decisions carry architecture review
+
+A structural decision shapes the system beyond the work that makes it: it
+writes a decision record, reworks a cross-cutting design or a domain spec's
+model, or changes how callers receive an outcome, which store is a record's
+system of record, or a resource every caller of an operation crosses. It gets
+architecture treatment whatever the todo's kind:
+
+- Its author names, for each concern it touches, the paradigm that already
+  governs that concern — the platform's architectural defaults
+  (`sdlc/principle/architectural-defaults`) and the designs the
+  governing-contracts walk reaches — and places every operation callers see
+  within it, with what those callers wait for.
+- A decision record's alternatives include the option the governing paradigm
+  already gives, and rejecting that option carries its argument.
+- Its independent reviewer builds the paradigm-native alternative before
+  reading the author's, and judges the decision against it.
+
+Where a reviewed architecture carries the decision, this is the architecture
+phase. Where none does — a change or bug, whose lane has no architecture phase,
+or a feature whose architecture was skipped — the plan carries the same
+reasoning in its own sections, authors the durable design into the snippets,
+and its plan review applies the architecture review
+(`sdlc/procedure/lifecycle/prepare/review-architecture`) to that part.
+
+A bug whose settled diagnosis names a prescribing design or decision record
+that has already produced this failure, as that design's `Failure modes`
+record, makes its remedy a structural decision that reopens the prescribing
+decision: it is superseded or amended, and a local repair covers only what the
+reopened decision leaves to it. Removing a cause the decision prescribes stays
+inside the bug's causal scope; a reopened decision whose change alters a
+human-owned outcome returns that outcome to the human
+(`general/policy/human-contract`). Whether or not the failure is a repeat, the
+prepare session records it in the prescribing design's `Failure modes` with the
+plan's documentation reflection.
+
 ### DoD-driven review-awareness
 
 Plans anticipate what delivery review will check. The PRD owns observable
@@ -445,6 +498,12 @@ project opts into tests, the plan names the scenario-bound test the task binds
 under that project's testing contract. Preparation prescribes no log records or
 runtime evidence for a delivery. The PRD remains mechanism-free and carries no
 DoD-implications block.
+
+Where the work changes an operation a caller waits on, the plan states for each
+such caller what it waits for, which shared resources the operation holds and
+who else holds them, and whether the outcome reaches the caller within its
+deadline (`sdlc/policy/code-quality-practices`, Concurrency). Plan review checks
+that statement before build; build review checks the code against it.
 
 ### Tasks are checked against each other, not only against their scenarios
 
@@ -574,9 +633,22 @@ docs/local/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The task
   downstream. A PRD that prescribes implementation detail confuses the builder.
   A plan that misses a DoD gate produces review findings that cost more to fix
   than to prevent.
-- Domain-context loading prevents the most common failure mode: validating
-  structure without substance. Checking "grounding" without loading the
-  actual specs is checking against air.
+- Validating structure without substance is the most common failure mode:
+  checking "grounding" without the governing contracts is checking against
+  air. A search its author steers finds what the author already expects, and
+  misses exactly the contract the author did not think of. Fixed entry points
+  give author and reviewer the same reading set, so an omission surfaces as a
+  finding rather than an excuse. Naming only what bears keeps the section about
+  the work instead of a catalogue of everything the walk passed.
+- A todo's kind records how the work entered the lifecycle, not what it
+  decides, so a change can carry a decision that shapes the whole system.
+  Routing architecture review by kind lets that decision pass through the
+  narrower questions of plan review. An alternative is judged fairly only
+  against the strongest option the system already has; an author who never
+  names that option has not decided against it.
+- The cost a design accepts is paid by every caller of the operation. Stated at
+  plan time, it can still change the design; found at build time, it can only
+  be patched.
 - Artifact discovery replaces a fixed prose enumeration, which goes stale the
   moment the artifact vocabulary grows and silently omits whatever it was
   never updated to name, with a live check of what is actually present.

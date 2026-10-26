@@ -14,11 +14,16 @@ visibility: 'public'
 ### Dispatch Rules
 
 - **Reviewer thinking mode follows the review's scope.**
-  - `med` when the scope contains doc-snippet changes only.
-  - `slow` for commit reviews containing code, including mixed code-and-doc scope, and for other reviews.
+  - `slow` for commit reviews containing code, including mixed code-and-doc
+    scope; for a documentation-only scope that changes what agents are directed
+    to do, the process layer included; and for other reviews.
+  - `med` for a documentation-only scope that changes what a snippet
+    establishes and directs no agent differently.
 
-  Context procedures state the resolved mode for their fixed scope; they do not
-  choose a different mode.
+  The session dispatching a documentation-only review classifies its scope by
+  what the change does (`general/policy/documentation-discipline`). Context
+  procedures state the resolved mode for their fixed scope; they do not choose a
+  different mode.
 
 ### Review Quality Gate (Orchestrator-Owned)
 

@@ -66,8 +66,8 @@ content.
 ### Thinking-mode resolution
 
 Run-session dispatch reads the same declaration. An explicit caller mode
-overrides the procedure default. A doc-only commit review passes explicit
-`med`.
+overrides the procedure default. A commit review whose scope resolves to `med`
+under `general/procedure/orchestration` passes it explicitly.
 
 Run-session mode resolution has one owner beside agent routing. Run-session
 formatters, clients, and API models preserve omission and never independently
