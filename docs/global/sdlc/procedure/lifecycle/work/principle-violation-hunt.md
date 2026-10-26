@@ -163,6 +163,30 @@ wrong layer — the type is the fix, the scanner is the band-aid.
 **Severity:** Important — **Critical** when the scanner has been added in place
 of a type the applicable language policy already mandates.
 
+### 11. Lineage in a mechanism's path
+
+Per `general/concept/lineage-vs-authorship`: lineage scopes an authority and
+never gates a mechanism. Find every read of a human lineage in the changed code
+or the plan — a session's human identity, a record's lineage root, a chain-root
+email — and name what each one decides.
+
+Patterns to detect:
+
+- A mechanism that refuses, holds, retries without bound, or degrades its own
+  operation when human lineage is absent, so it works for human-rooted work and
+  fails for system-rooted work.
+- A mechanism that substitutes a person when human lineage is absent: a
+  default, the caller, the computer's owner, a placeholder name.
+- A plan or design that treats absent human lineage as a failure state to
+  report or wait out, rather than as the true state of system-rooted work.
+
+**The defining test:** would this mechanism behave the same for a session under
+system lineage? If not, the difference is legitimate only when it is the reach
+of the authority itself, such as which person's resources the work may use.
+
+**Severity:** Critical. Conformance to a plan or spec that calls for the
+gating does not mitigate it; the plan or spec carries the same defect.
+
 ## Outputs
 
 - Issue list per category with severity, location, principle violated, and remediation guidance.

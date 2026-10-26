@@ -24,6 +24,14 @@ this?" — are answered from the evidence built for them: a todo's creation
 record, session transcripts, artifact `updated_by` trails. Account lineage is
 never that evidence.
 
+Lineage scopes an authority and never gates a mechanism. It decides what the
+authority it names may reach, such as a person's own resources. It never decides
+whether a platform mechanism works: a session under system lineage converses,
+links, delivers, commits and dispatches exactly as a session under a human's
+lineage does. System-rooted work carrying no human lineage is in its true state,
+not missing a value. A mechanism neither refuses, holds nor degrades on that
+absence, and never substitutes a person for it.
+
 ## Why
 
 Agents repeatedly commit the same misreading: they inspect git history or a
@@ -36,6 +44,13 @@ lineage as authorship misattributes agent work to humans, corrupts audits,
 and erodes the human's trust in every conclusion the agent draws downstream.
 The rule exists so no agent ever again treats an authority thread as a
 signature.
+
+A mechanism that reads lineage as a functional input breaks for exactly the
+work with no human origin: the standing roles and every session they start. It
+breaks only once a human first works inside such a session, long after the
+change passed review. Substituting a person instead attributes system work to
+someone who never directed it. Both failures come from treating an authority
+record as a precondition.
 
 ## See Also
 
