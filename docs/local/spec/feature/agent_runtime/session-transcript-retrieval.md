@@ -104,14 +104,18 @@ they are not accepted with explicit terminal mode.
 ### Completed turns read
 
 A consumer in another context reads a session's completed turns in order,
-from the turn after one it already holds. It is a module query with no API or
-command-line surface, under the same per-session access contract.
+from the turn after one it already holds. It is a module query on the
+computer that hosts the session, with no API or command-line surface, under
+the same per-session access contract.
 
-- **Turn.** One output generation: the turn the runtime cut at a genuine
-  native user entry
-  (`local/projects/teleclaude/design/architecture/conversation-delivery`). A
-  turn carries its generation identity and its ordinal among the session's
-  turns, counted from one, which never changes once assigned.
+- **Turn.** The turn the runtime cuts at a genuine native user entry
+  (`local/projects/teleclaude/design/architecture/conversation-delivery`),
+  found from the session's transcript chain itself, so a turn the runtime
+  never projected while it was not running is still a turn. A turn carries
+  the identity of its output generation, created for it when the read is the
+  first to find it, and its ordinal among the session's turns, counted from
+  one, which never changes once assigned.
+- **Completion time.** When the turn's last entry was written.
 - **Input.** The turn's authored input parts in order, each with its
   authorship: a person, with the channel their words arrived through; a peer
   session, with its id and role; the platform; or runtime content.

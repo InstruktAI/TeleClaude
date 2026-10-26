@@ -436,22 +436,7 @@ And the actual termination work (host-pane termination, resource cleanup, lifecy
 
 #### Ending a missing or already-closed session
 
-<!-- planned-change:fix-observed-accepted-session-close-operatio -->
-
-```
-Given the supplied session id does not exist in storage
-When the caller asks the agent_runtime service to end the session
-Then the entry path's session state read finds no row and does not reject the request
-And the close command is dispatched and the request is accepted as usual
-And the inner termination reports no transition and is logged at debug
-And no error is surfaced to the caller for a missing session
-```
-
-<!-- change:fix-observed-accepted-session-close-operatio -->
-
 Ending a session that the addressed computer does not hold is refused as not found (HTTP 404), as every command on a missing session is refused (`local/projects/teleclaude/spec/command-contracts`). Nothing is closed and no operation receipt is issued. The refusal names the session id and the computer that does not hold it, and the owning computer when the addressed computer knows the session as another computer's. The endpoint's API contract declares the 404 alongside its 200 and 202 statuses.
-
-<!-- /planned-change:fix-observed-accepted-session-close-operatio -->
 
 ```
 Given the session id exists but is already terminal (closed-at marker non-null or lifecycle status `closed`)

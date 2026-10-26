@@ -176,24 +176,33 @@ working copy and the repository.
   further reflection, written after the local commit, owed apart from the
   issue's and the pull request's so that no failure of one holds back
   another, and never read as state.
-  - Which board is the project's board is a project-level record in the
-    ledger, committed through a ledger commit entry as commit reviews and
-    documentation transfers are. A refresh that finds no board record claims
-    the board's setup by committing a board claim naming its computer. The
-    claim the ledger orders first holds setup, and only the holding computer
-    creates the board; every other computer takes the board from the ledger,
-    at refresh and at rebuild. Setup runs only in the daemon, one at a time
+  - Which board is the project's board is recorded on the board issue: one
+    issue the platform App opens and closes as not planned, holding board
+    entries — platform comments appended and never edited, opening with
+    `[action:board-claim computer:<name>]` for a claim or
+    `[action:board project:<number>]` for a board. Two computers may each
+    open a board issue; every computer uses the lowest-numbered one the App
+    opened, a claim on any other counts for nothing, and its computer claims
+    again on the lowest. The board issue's comment order orders the entries.
+    The board issue carries no platform record and its comments no record or
+    ledger marker, so a store that predates the board neither reads it as an
+    item nor as the ledger. A refresh that finds no board entry claims the
+    board's setup by appending a claim naming its computer. The claim the
+    board issue orders first holds setup, and only the holding computer
+    creates the board; every other computer takes the board from the board
+    issue, at refresh and at rebuild. Setup runs only in the daemon, one at a time
     per project, so a refresh and a repair on the holding computer never
     create concurrently. Before creating, the holder takes a project the
     platform App created with the repository's name as its title, which the
     creating request itself sets, so an interrupted setup never creates a
-    second board. The holder records the board's identity in the ledger, then
-    opens the board's README with the envelope line
+    second board. The holder appends the board's entry, then opens the
+    board's README with the envelope line
     `[action:board repository:<id>]`, sets its Status field's options to the
     lanes, adds the Needs you field and the view filtered on it, and deletes
     every built-in workflow. A recorded board that GitHub no longer has opens
-    setup again: the first claim the ledger orders after that board's record
-    holds it.
+    setup again: the first claim the board issue orders after that board's
+    entry holds it. Recording or adopting a board owes the board reflection
+    of every item the project holds.
   - The link to the repository is owed until it is written or GitHub shows
     the board linked. Its write asks for the repository's Contents read
     permission in addition, so an App without it leaves only the link owed.
@@ -204,7 +213,8 @@ working copy and the repository.
     boundary the lifecycle runner dispatches on, the pending human-approval
     gate, the effective hold — and the claim; the adapter decides none of
     them. A removed item's board item is deleted, and a reactivated item gets
-    one again.
+    one again. Rebuild and refresh that restore an item owe its board
+    reflection, as they owe its pull request.
   - The board's field and view identities and each item's board item are
     cached in the adapter's working-copy bookkeeping, rediscoverable from the
     recorded board.
@@ -305,17 +315,32 @@ otherwise on its issue, as the role Apps
 Its bookkeeping in the working copy holds each session's posting position and
 never turn content; the record and the workflow state are unchanged.
 
-**GitHub request budget.** Every GitHub request the adapter module makes
-for a project runs on its one I/O runtime in two priorities. Record work,
-meaning the write path, reflections, questions, reviews, rebuild and
-refresh, runs as it does today. Conversation appends run at background
-priority: one starts only while no record request waits, appends use at most
-half of GitHub's content-creation limits per minute and per hour, and any
-rate-limit response to any request pauses every background append until the
-time that response names, or a minute when it names none, growing on
-repeated limits. Record work therefore keeps the other half of the
-content-creation budget and every primary request left once a limit
-appears.
+**GitHub request budget.** Every GitHub request the adapter module makes runs
+on its one I/O runtime. Record work, meaning the write path, reflections,
+questions, reviews, rebuild and refresh, is never held by the conversation's
+budget and keeps its own refusal and retry contract. Conversation requests,
+the reads and appends for turns, draw on a bounded share that the runtime
+admits before each request:
+
+- **Never the record's identity.** Primary limits are per installation
+  (GitHub's REST rate-limit contract). Turn comments and the reads for them go
+  out only as role Apps, never as the platform App every refusable record
+  write uses. The one conversation-start entry per project goes out as the
+  platform App, once, as record work. On a role App's installation a
+  conversation request is admitted only while the remaining count and reset
+  time of that installation's latest response leave a fifth of its limit for
+  the pull request and review reflections that App also writes.
+- **A fixed share of content creation across all computers.** The
+  conversation's share is half of GitHub's documented content-creation limits
+  per minute and per hour, divided equally among the computers the fleet's
+  computer registry lists. Each computer admits a conversation append only
+  while its own conversation appends over the last minute and hour stay within
+  its part, so all computers together stay within the share without
+  coordinating.
+- **A limit response stops conversation.** Any rate-limit response to any
+  request pauses every conversation request on that computer until the time
+  the response names, or a minute when it names none, doubling on each
+  repeated limit.
 
 <!-- /planned:github-turn-mirror -->
 
@@ -410,8 +435,9 @@ appears.
 
 <!-- planned:github-work-board -->
 
-- A project has one board: only the computer holding the ledger's first board
-  claim creates it, and every computer uses the board the ledger records. The
+- A project has one board: only the computer holding the board issue's first
+  board claim creates it, and every computer uses the board its entries
+  record. The
   board's lanes, markers, fields and views are written from the record and
   never read back.
 
