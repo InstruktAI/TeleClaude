@@ -214,14 +214,15 @@ class ConversationBookkeeping:
             connection.execute(_SET_IN_FLIGHT_SQL, (1, session_id, ordinal))
         return bool(row[0]) if row is not None else False
 
-    def end_handover(self, session_id: str, ordinal: int, written: int) -> bool:
+    def end_handover(self, session_id: str, ordinal: int, written: int, *, uncertain: bool = False) -> bool:
         """Record the master's answer: its first ``written`` comments are on GitHub. True when the turn is complete.
 
-        A turn whose last comment is on GitHub is forgotten.
+        A turn whose last comment is on GitHub is forgotten. An answer that leaves the next comment's fate unknown
+        keeps the turn marked as possibly sent, so its next hand-over reads the destination before writing.
         """
         with self._connection() as connection:
             connection.execute(_MARK_POSTED_SQL, (session_id, ordinal, session_id, ordinal, written))
-            connection.execute(_SET_IN_FLIGHT_SQL, (0, session_id, ordinal))
+            connection.execute(_SET_IN_FLIGHT_SQL, (int(uncertain), session_id, ordinal))
             remaining = connection.execute(_COUNT_UNPOSTED_SQL, (session_id, ordinal)).fetchone()
             if remaining is not None and int(remaining[0]) == 0:
                 connection.execute(_DELETE_PARTS_SQL, (session_id, ordinal))

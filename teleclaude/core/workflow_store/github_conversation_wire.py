@@ -65,10 +65,15 @@ class PostTurnRequest(_Wire):
 
 
 class PostTurnResponse(_Wire):
-    """What the master did with a hand-over: how many comments are now on GitHub, in order from the first given."""
+    """What the master did with a hand-over: how many comments are now on GitHub, in order from the first given.
+
+    ``uncertain`` is set when the master cannot tell whether the comment it was creating when it stopped reached
+    GitHub, as when the connection broke before the answer; the sender then keeps the turn marked as possibly sent.
+    """
 
     outcome: Outcome
     written: int = 0
+    uncertain: bool = False
     retry_at: datetime | None = None
     cause: RefusalCause | None = None
 

@@ -69,11 +69,17 @@ class _Halt:
     outcome: Outcome
     retry_at: datetime | None = None
     cause: RefusalCause | None = None
+    uncertain: bool = False
 
 
-def _halt_for(error: GitHubIORefused) -> _Halt:
+def _halt_for(error: GitHubIORefused, *, creating: bool = False) -> _Halt:
+    """The halt a refusal means. A failed create that is not a definite answer may still have been applied."""
     if error.reason in _WAIT_FAILURES:
-        return _Halt(Outcome.DEFERRED, retry_at=datetime.now(UTC) + _LATER)
+        return _Halt(
+            Outcome.DEFERRED,
+            retry_at=datetime.now(UTC) + _LATER,
+            uncertain=creating and error.reason is GitHubIOFailure.UNAVAILABLE,
+        )
     return _Halt(Outcome.REFUSED, cause=_CAUSES.get(error.reason, RefusalCause.UNAVAILABLE))
 
 
@@ -181,7 +187,7 @@ class GitHubConversationPoster:
             await asyncio.wrap_future(io.submit(partial(_create, assignment, number, body)))
         except GitHubIORefused as error:
             logger.warning(_HALTED_EVENT, reason=error.reason)
-            return _halt_for(error)
+            return _halt_for(error, creating=True)
         await self._budget.record_send()
         return None
 
@@ -221,4 +227,10 @@ async def _read_page(
 
 
 def _post_response(halted: _Halt, *, written: int) -> PostTurnResponse:
-    return PostTurnResponse(outcome=halted.outcome, written=written, retry_at=halted.retry_at, cause=halted.cause)
+    return PostTurnResponse(
+        outcome=halted.outcome,
+        written=written,
+        retry_at=halted.retry_at,
+        cause=halted.cause,
+        uncertain=halted.uncertain,
+    )

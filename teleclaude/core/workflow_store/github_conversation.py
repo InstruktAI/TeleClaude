@@ -17,6 +17,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Final, cast
 
@@ -335,7 +336,15 @@ class ConversationPublisher:
         except MasterUnreachable:
             self._held_until[key] = datetime.now(UTC) + _UNREACHABLE_BACKOFF
             return False
-        done = await asyncio.to_thread(bookkeeping.end_handover, turn.session_id, turn.ordinal, response.written)
+        done = await asyncio.to_thread(
+            partial(
+                bookkeeping.end_handover,
+                turn.session_id,
+                turn.ordinal,
+                response.written,
+                uncertain=response.uncertain,
+            )
+        )
         if response.outcome is Outcome.OK and done:
             return True
         backoff = _REFUSED_BACKOFF if response.outcome is Outcome.REFUSED else _UNREACHABLE_BACKOFF
