@@ -113,6 +113,19 @@ class BoardSetupOutcome:
 
 
 @dataclass(frozen=True)
+class BoardRepairOutcome:
+    """What a repair could not write: the setup's owed cause and holder, and each item left unwritten with why."""
+
+    setup: BoardSetupOutcome
+    unwritten: tuple[tuple[str, str], ...]
+
+    @property
+    def complete(self) -> bool:
+        """Whether the board now shows everything the record reflects."""
+        return self.setup.cause is None and not self.unwritten
+
+
+@dataclass(frozen=True)
 class _Targets:
     """Identities the board's item writes need, learned while bringing the board to its target."""
 

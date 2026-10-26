@@ -44,6 +44,8 @@ from teleclaude.core.todos_db._working_copy import (
     set_refresh_watermarks,
 )
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
+from teleclaude.core.workflow_store.github_board_io import GitHubBoardIO
+from teleclaude.core.workflow_store.github_board_queue import owe_restored_item, repair_owed_board_items
 from teleclaude.core.workflow_store.github_io import (
     GitHubComment,
     GitHubIssue,
@@ -96,10 +98,7 @@ from teleclaude.core.workflow_store.github_reflection import (
     reflect_issue,
     serialize_projection_digests,
 )
-from teleclaude.core.workflow_store.github_reflection_queue import (
-    owe_unwritten_pull_request,
-    repair_owed_pull_requests,
-)
+from teleclaude.core.workflow_store.github_reflection_queue import repair_owed_pull_requests
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 _LEGACY_PROJECT_ID = "legacy-{}-{}"
@@ -137,12 +136,14 @@ class GitHubWorkflowSync:
         assignment: GitHubActorAssignment,
         io: GitHubWorkflowIO,
         pull_requests: GitHubPullRequestIO,
+        board: GitHubBoardIO,
     ) -> None:
         self.store = store
         self.repository = repository
         self.assignment = assignment
         self.io = io
         self.pull_requests = pull_requests
+        self.board = board
 
     async def rebuild(self) -> None:
         """Restore every committed issue and project record into an absent database."""
@@ -180,7 +181,7 @@ class GitHubWorkflowSync:
                 )
                 _save_artifact_pointers(session, snapshot.item_id, revision)
                 clear_item_unverifiable(session, snapshot.item_id)
-                owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
+                owe_restored_item(session, snapshot.item_id, issue.number, snapshot)
             for entry, comment in ledger_entries:
                 for project_record in entry.project_records:
                     remote_id = project_record.remote_record_id or _LEGACY_PROJECT_ID.format(
@@ -236,7 +237,7 @@ class GitHubWorkflowSync:
                         base_revision=revision.revision,
                     )
                     _save_artifact_pointers(session, snapshot.item_id, revision)
-                    owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
+                    owe_restored_item(session, snapshot.item_id, issue.number, snapshot)
                 for entry, comment in ledger_entries:
                     for project_record in entry.project_records:
                         remote_id = project_record.remote_record_id or _LEGACY_PROJECT_ID.format(
@@ -335,7 +336,7 @@ class GitHubWorkflowSync:
                 )
                 _save_artifact_pointers(session, snapshot.item_id, revision)
                 clear_item_unverifiable(session, snapshot.item_id)
-                owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
+                owe_restored_item(session, snapshot.item_id, issue.number, snapshot)
             for entry, comment in new_ledger:
                 for project_record in entry.project_records:
                     remote_id = project_record.remote_record_id or _LEGACY_PROJECT_ID.format(
@@ -366,6 +367,7 @@ class GitHubWorkflowSync:
                 await self._run_async_transaction(clear_reflections)
         finally:
             await repair_owed_pull_requests(self.store, self.pull_requests, blocked_items)
+            await repair_owed_board_items(self.store, self.board, blocked_items)
         if projection_repair_active:
             await self._complete_projection_repair_if_ready()
         return len(applied_items)
