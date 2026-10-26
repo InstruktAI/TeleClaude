@@ -252,9 +252,6 @@ class GitHubWorkflowIO:
     async def async_get_issue(self, number: int) -> GitHubIssue:
         return cast(GitHubIssue, await self._call(GitHubOperation.GET_ISSUE, number))
 
-    def get_issue(self, number: int) -> GitHubIssue:
-        return cast(GitHubIssue, self._sync(GitHubOperation.GET_ISSUE, number))
-
     def list_issues(self, since: datetime | None = None) -> tuple[GitHubIssue, ...]:
         return cast(tuple[GitHubIssue, ...], self._sync(GitHubOperation.LIST_ISSUES, since))
 
@@ -325,9 +322,7 @@ class GitHubWorkflowIO:
                 owner, repo, data={GitHubField.TITLE: title, GitHubField.BODY: body}
             )
             issue = response.parsed_data
-            return GitHubIssue(
-                issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at, issue.comments
-            )
+            return GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
 
         return await self._with_client(GitHubOperation.OPEN_ISSUE, request)
 
@@ -439,9 +434,7 @@ class GitHubWorkflowIO:
                 )
                 issues = response.parsed_data
                 found.extend(
-                    GitHubIssue(
-                        issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at, issue.comments
-                    )
+                    GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
                     for issue in issues
                     if getattr(issue, GitHubField.PULL_REQUEST, UNSET) in (None, UNSET)
                 )
@@ -457,9 +450,7 @@ class GitHubWorkflowIO:
         async def request(client: Any) -> GitHubIssue:
             response = await client.rest.issues.async_get(owner, repo, number)
             issue = response.parsed_data
-            return GitHubIssue(
-                issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at, issue.comments
-            )
+            return GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
 
         return await self._with_client(GitHubOperation.GET_ISSUE, request)
 

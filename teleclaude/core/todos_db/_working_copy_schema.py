@@ -98,9 +98,6 @@ _WORKING_COPY_COLUMN_MIGRATIONS = (
         "INTEGER NOT NULL DEFAULT 0",
     ),
     (WorkingCopyTable.GITHUB_REPOSITORY, LedgerKnowledgeField.THROUGH, "TEXT"),
-    (WorkingCopyTable.GITHUB_ITEM, LedgerKnowledgeField.VERIFIED_AT, "TEXT"),
-    (WorkingCopyTable.GITHUB_ITEM, LedgerKnowledgeField.VERIFIED_COMMENT_COUNT, "INTEGER"),
-    (WorkingCopyTable.GITHUB_ITEM, LedgerKnowledgeField.VERIFIED_MAX_COMMENT_ID, "INTEGER"),
 )
 
 

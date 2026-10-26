@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from teleclaude.core.todos_db._adapter import TodosDb
-from teleclaude.core.todos_db._ledger_knowledge import all_ledger_commits, ledger_commits_through, set_item_verification
+from teleclaude.core.todos_db._ledger_knowledge import all_ledger_commits, ledger_commits_through
 from teleclaude.core.todos_db._working_copy import (
     WorkingCopyField,
     WorkingCopyItemSnapshot,
@@ -183,7 +183,6 @@ class GitHubWorkflowSync:
                 _save_artifact_pointers(session, snapshot.item_id, revision)
                 clear_item_unverifiable(session, snapshot.item_id)
                 owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
-                set_item_verification(session, snapshot.item_id, None)
             adopt_ledger_entries(session, ledger_entries)
             for entry, comment in ledger_entries:
                 for project_record in entry.project_records:
@@ -241,8 +240,7 @@ class GitHubWorkflowSync:
                     )
                     _save_artifact_pointers(session, snapshot.item_id, revision)
                     owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
-                    set_item_verification(session, snapshot.item_id, None)
-                adopt_ledger_entries(session, ledger_entries)
+                    adopt_ledger_entries(session, ledger_entries)
                 for entry, comment in ledger_entries:
                     for project_record in entry.project_records:
                         remote_id = project_record.remote_record_id or _LEGACY_PROJECT_ID.format(
@@ -354,7 +352,6 @@ class GitHubWorkflowSync:
                 _save_artifact_pointers(session, snapshot.item_id, revision)
                 clear_item_unverifiable(session, snapshot.item_id)
                 owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
-                set_item_verification(session, snapshot.item_id, None)
             adopt_ledger_entries(session, all_ledger)
             for entry, comment in new_ledger:
                 for project_record in entry.project_records:
