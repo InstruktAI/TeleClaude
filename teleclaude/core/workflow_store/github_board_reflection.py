@@ -26,6 +26,9 @@ from teleclaude.core.workflow_store.github_reflection import is_repository_work,
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import TodoState
 
+ABSENT_DIGEST = stable_digest(None)
+"""The digest recorded for an item verified to have no board item, so absence is checked once."""
+
 
 class BoardLane(StrEnum):
     """The board's lanes, in board order; each value is the Status option name shown on GitHub."""

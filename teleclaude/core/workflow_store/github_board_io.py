@@ -58,6 +58,9 @@ _LIST_PROJECTS = """query($id:ID!, $cursor:String) {
 _READ_PROJECT = """query($login:String!, $number:Int!) {
   organization(login:$login) { projectV2(number:$number) { id number title } }
 }"""
+_FIND_ITEM = """query($id:ID!) {
+  node(id:$id) { ... on Issue { projectItems(first:50, includeArchived:true) { nodes { id project { id } } } } }
+}"""
 _CREATE_PROJECT = """mutation($ownerId:ID!, $title:String!) {
   createProjectV2(input:{ownerId:$ownerId, title:$title}) { projectV2 { id number title } }
 }"""
@@ -119,6 +122,7 @@ class GitHubBoardOperation(StrEnum):
     READ_OWNER = "read_owner"
     LIST_PROJECTS = "list_projects"
     READ_PROJECT = "read_project"
+    FIND_ITEM = "find_item"
     CREATE_PROJECT = "create_project"
     READ_BOARD = "read_board"
     UPDATE_README = "update_readme"
@@ -173,6 +177,7 @@ class _Key(StrEnum):
     CURSOR = "cursor"
     ORGANIZATION = "organization"
     PROJECT_BY_NUMBER = "projectV2"
+    PROJECT_ITEMS = "projectItems"
     NODE = "node"
     NODES = "nodes"
     REPOSITORY = "repository"
@@ -454,6 +459,15 @@ class GitHubBoardIO:
             _LINK_PROJECT,
             {_Key.PROJECT_ID: project_id, _Key.REPOSITORY_ID: repository_id},
             permissions=_LINK_PERMISSIONS,
+        )
+
+    async def find_item(self, project_id: str, issue_node_id: str) -> str | None:
+        """Find the board item an issue already has on the project, however this computer came to lack its ID."""
+        data = await self._graphql(GitHubBoardOperation.FIND_ITEM, _FIND_ITEM, {_Key.ID: issue_node_id})
+        items = _nodes(_mapping(data.get(_Key.NODE)).get(_Key.PROJECT_ITEMS))
+        return next(
+            (_text(item.get(_Key.ID)) for item in items if _mapping(item.get(_Key.PROJECT)).get(_Key.ID) == project_id),
+            None,
         )
 
     async def add_item(self, project_id: str, issue_node_id: str) -> str:

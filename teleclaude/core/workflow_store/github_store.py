@@ -207,7 +207,7 @@ class GitHubWorkflowStore(TodosDb):
         async with self._board_setup_lock:
             mark_all_board_items_owed_at(Path(self.db_path))
             setup = await self._board_setup(computer).run()
-            left = await repair_owed_board_items(self, self._board, set(), force=True)
+            left = await repair_owed_board_items(self, self._board, set())
             async with self._session() as session:
                 slugs = await session.run_sync(
                     lambda sync_session: [_slug_of(sync_session, item_id) for item_id, _reason in left]

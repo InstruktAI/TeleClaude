@@ -49,7 +49,6 @@ _SAVE_ITEM_SQL = (
     "INSERT INTO github_board_item(item_id, board_item_id, digest) VALUES (:item_id, :board_item_id, :digest) "
     "ON CONFLICT(item_id) DO UPDATE SET board_item_id = excluded.board_item_id, digest = excluded.digest"
 )
-_FORGET_ITEM_SQL = "DELETE FROM github_board_item WHERE item_id = :item_id"
 _FORGET_ALL_ITEMS_SQL = "DELETE FROM github_board_item"
 _MARK_OWED_SQL = "INSERT OR IGNORE INTO github_owed_board_item(item_id) VALUES (:item_id)"
 _MARK_ALL_OWED_SQL = "INSERT OR IGNORE INTO github_owed_board_item(item_id) SELECT item_id FROM github_item"
@@ -173,21 +172,18 @@ def board_item_bookkeeping(session: Session, item_id: str) -> BoardItemBookkeepi
     )
 
 
-def store_board_item(db_path: Path, item_id: str, known: BoardItemBookkeeping | None, *, owed: bool) -> None:
-    """Record one item's board progress from a completion callback; None forgets the item's board item."""
+def store_board_item(db_path: Path, item_id: str, known: BoardItemBookkeeping, *, owed: bool) -> None:
+    """Record one item's board progress from a completion callback or a repair."""
     connection = sqlite3.connect(db_path)
     try:
-        if known is None:
-            connection.execute(_FORGET_ITEM_SQL, {BoardField.ITEM_ID.value: item_id})
-        else:
-            connection.execute(
-                _SAVE_ITEM_SQL,
-                {
-                    BoardField.ITEM_ID.value: item_id,
-                    BoardField.BOARD_ITEM_ID.value: known.board_item_id,
-                    BoardField.DIGEST.value: known.digest,
-                },
-            )
+        connection.execute(
+            _SAVE_ITEM_SQL,
+            {
+                BoardField.ITEM_ID.value: item_id,
+                BoardField.BOARD_ITEM_ID.value: known.board_item_id,
+                BoardField.DIGEST.value: known.digest,
+            },
+        )
         connection.execute(_MARK_OWED_SQL if owed else _CLEAR_OWED_SQL, {BoardField.ITEM_ID.value: item_id})
         connection.commit()
     finally:
