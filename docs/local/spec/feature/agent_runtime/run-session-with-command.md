@@ -405,13 +405,8 @@ Then the live-holder signal is authoritative and the request is refused — the 
 Commit review carries no todo slug — its subject is a commit series whose SHA set changes
 every remediation round — so slug-keyed dedup cannot reach it. Its subject is identified
 by the project, the driver that opened the review, and the thinking mode the review runs
-at. Mode belongs to that subject because reviews at different depths differ in cost and in
-what they read: a documentation review that directs no agent differently runs at `med`,
-while code review and review of changed agent direction run at `slow`
-(`general/procedure/orchestration`). A mode-blind subject collapses them, so the cheap
-review is refused as a duplicate of the expensive one and its work lands on the wrong
-reviewer. Two starts at the same mode remain one subject and still dedup; that reviewer
-runs every lane its series triggers.
+at (`general/procedure/orchestration`). Starts at different modes are different subjects;
+two starts at the same mode are one subject and dedup.
 
 The driver is the caller's session when the caller is a session, and the authenticated
 human when the caller is a terminal that carries no session. A session caller is keyed by

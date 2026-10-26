@@ -1,5 +1,5 @@
 ---
-description: 'Architectural defaults every project on this platform should align with: event-driven services, domain-driven boundaries, CLI-first agency, purposeful state, decoupled composition.'
+description: "Architectural defaults every project on this platform should align with: event-driven services, domain-driven boundaries, CLI-first agency, purposeful state, decoupled composition, and outcomes delivered within the caller's wait."
 visibility: 'public'
 ---
 
@@ -98,6 +98,19 @@ Configuration has a typed schema. No env-var-soup; no untyped string-keyed confi
 
 See the `teleclaude-config` spec as the reference pattern for typed configuration.
 
+### 11. Callers receive their outcome within their wait
+
+Every operation a caller waits on returns its outcome, done or refused, within
+that caller's budget. Work that cannot finish inside it completes
+asynchronously: the caller receives a durable receipt at once, the work runs
+outside the request, and the outcome is delivered back to the caller that asked.
+Slow work is never fitted by stretching the caller's wait.
+
+An operation's cost includes everything it waits on: remote round trips, locks
+it shares with unrelated work, and reads that grow with accumulated history. A
+design names that cost for the callers who pay it. Each project's architecture
+names its own receipt and delivery mechanism.
+
 ### Anti-patterns this principle implicitly forbids
 
 These are concrete moves the defaults reject. Listed explicitly because agents often pattern-match on training-set examples that violate the defaults:
@@ -112,6 +125,10 @@ These are concrete moves the defaults reject. Listed explicitly because agents o
 - **MCP servers as the default agent surface** when CLI extension would do.
 - **Direct standard-output calls** left in production code where the applicable language logging policy requires structured logging.
 - **Truncated UUIDs** in logs or API responses.
+- **A longer client deadline** to absorb slow work, where the caller should hold
+  a receipt.
+- **A frequently used path whose cost grows with history**, such as reading a
+  whole append-only record on every write.
 
 ## Tensions
 
@@ -120,7 +137,7 @@ These are concrete moves the defaults reject. Listed explicitly because agents o
   an evidenced reason. Structural invariants do not participate in that trade:
   changing an ownership boundary means redrawing and reviewing the boundary,
   never bypassing it locally.
-- **Event-driven vs synchronous semantics.** Some operations need transactional guarantees event-driven composition can't provide. The principle yields here: when the semantics genuinely require synchronous, choose synchronous and document the reason. Don't fight the semantics.
+- **Event-driven vs synchronous semantics.** Some operations need transactional guarantees event-driven composition can't provide. The principle yields here: when the semantics genuinely require synchronous, choose synchronous and document the reason. Don't fight the semantics. A transaction that must be synchronous does not make its caller wait for it: the transaction can run inside asynchronous work whose outcome reaches the caller.
 - **CLI-first vs other agent protocols.** MCP and similar protocols have real value in specific contexts (e.g., when integrating with an external tool that only exposes MCP). The principle is "default to CLI; reach for MCP/etc when the external integration demands it" — not "ban MCP."
 - **State ownership vs read performance.** Single-state-owner is strict; some read-heavy patterns benefit from replicated state. The principle accepts replicated state as long as the source of truth is explicit and the replication mechanism is documented (events as the replication signal, not direct database reads).
 - **Defaults vs project-specific architecture.** This principle is the global default. Specific projects may have additional structural choices that aren't in the global defaults. Those live in project-specific architecture docs (`docs/local/design/architecture/...`), not here.

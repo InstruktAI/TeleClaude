@@ -48,6 +48,18 @@ describes the current appliance only.
   visibility of its own. Observations saved before subjects were recorded
   receive one once, from the project they name, or unknown.
 
+### Governing designs and decisions
+
+- **local/projects/teleclaude/design/architecture/memory-system** — Persistent memory subsystem for storing, searching, and injecting relationship-centric observations into agent sessions.
+- **local/projects/teleclaude/adr/0002-memory-uses-triples** — Memory observations are stored as (subject, predicate, object) triples rather than as flat title+narrative+type records.
+- **local/projects/teleclaude/adr/0003-memory-event-store-semantics** — Memory writes are append-only — multiple rows with the same (subject, predicate, object) are allowed. Dedup is a read-time concern for downstream consumers, not a write-time check.
+- **local/projects/teleclaude/adr/0004-two-memory-categories** — Memory observations are classified into exactly two categories — human (about a person) and project (about a project). A third "general" category was considered and deferred for lack of a concrete use case.
+- **local/projects/teleclaude/adr/0005-scraper-only-memory-writer** — Memory is writable exclusively by the dedicated memory extraction agents (the scrapers). All other agents are prohibited from calling telec memories save.
+- **local/projects/teleclaude/adr/0006-mandatory-dedup-against-doc-snippets** — Before saving any memory triple, the scraper must search existing doc snippets for substantive coverage and discard candidates that are already codified. Codified knowledge does not get re-encoded as memory.
+- **local/projects/teleclaude/adr/0007-provenance-via-mirror-id** — Memory observations carry source_mirror_id as their provenance handle. Mirrors are eternal, so the pointer never rots; TeleClaude session_ids are ephemeral and native CLI session UUIDs are CLI-controlled.
+- **local/projects/teleclaude/adr/0008-idle-close-cadence-whole-session** — Memory extraction runs over the whole session delta on two triggers — idle ≥30 minutes or session close. Per-turn windowing (e.g., Hermes-style every-N-turns) is not used for memory.
+- **local/projects/teleclaude/adr/0009-skill-pattern-detection-deferred** — Skill pattern detection is deferred. Skills, when they come, will be per-human curation of external libraries (not memory-promotion). The future shape is captured in a design doc; no implementation in v2.
+
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

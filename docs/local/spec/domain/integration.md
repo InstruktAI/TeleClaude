@@ -228,6 +228,28 @@ implementation remain the current appliance contract.
   (its channel's activation contract); the shape of the CI declaration
   (`config`).
 
+### Governing designs and decisions
+
+- **local/projects/teleclaude/design/architecture/adapter-client** — AdapterClient centralizes UI adapter lifecycle and message delivery across adapters.
+- **local/projects/teleclaude/design/architecture/discord-voice-transport** — Two-process Discord voice transport — Python owns the Gateway, a Node sidecar owns the encrypted voice connection — with explicit utterance closure, single-owner connection claim, and fail-closed identity.
+- **local/projects/teleclaude/design/architecture/hook-service** — Contract-based routing of relayed external events to the in-process handlers the daemon registers.
+- **local/projects/teleclaude/design/architecture/outbox** — Durable outbox table for agent hook events.
+- **local/projects/teleclaude/design/architecture/output-delivery** — Output and footer message separation in UI adapters, with delivery chain and lifecycle.
+- **local/projects/teleclaude/design/architecture/output-sizing** — Two-layer output sizing pipeline: content selection in ui_adapter and platform enforcement in message_ops.
+- **local/projects/teleclaude/design/architecture/redis-transport** — Redis Streams transport for cross-computer request/response and peer discovery.
+- **local/projects/teleclaude/design/architecture/telegram-adapter** — Telegram UI adapter that maps topics to sessions and enforces UX cleanup rules.
+- **local/projects/teleclaude/design/architecture/ui-adapter** — UI adapters translate human inputs into events and render outputs with UX rules.
+- **local/projects/teleclaude/design/architecture/tts-system** — Text-to-speech system with multi-backend fallback, per-session voice assignment, queued playback, and chiptunes audio focus coordination.
+- **local/projects/teleclaude/design/architecture/notification-delivery** — How the platform tells people about events — consumers that tell people select by each person's notification interests, compose readable messages from event facts, and send them through person-addressed messaging; incident alerts open and close one matter per lifecycle family and thing, keeping only which things are broken and which recipients still await their latest state.
+- **local/projects/teleclaude/adr/0012-master-only-shared-discord-channels** — Shared (generic) Discord channels — Operations, Help Desk (Customer Sessions, Escalations), and Team — are provisioned by the master computer only. Non-master computers resolve them by name but never create, so a shared Discord app cannot accrue duplicate channels.
+- **local/projects/teleclaude/adr/0028-single-lan-bound-ingress** — A single ingress computer terminates all external webhooks for the cluster: it binds its webhook server to a LAN/router address (not localhost, not promiscuous), the router port-forwards public traffic to it, it restricts accepted sources to the router, normalizes each payload to a unified event, and relays it onto Redis at cluster scope. No other computer needs public exposure; the ingress need not be the master. This supersedes the v1 localhost-only bind and the self-update-gated deployment fan-out.
+- **local/projects/teleclaude/adr/0032-cluster-bus-redis-serves-local-and-cluster** — One cluster bus Redis serves both the Local and Cluster scopes; CLUSTER_REDIS_URL is its canonical config name and REDIS_URL configures the same endpoint, and subscriptions separate the co-mingled scopes by filtering on envelope.scope.
+- **local/projects/teleclaude/adr/0055-proxy-fronted-ingress-reuse** — The v1 Python webhook ingress reuses the existing localhost API server behind a mandatory same-host reverse proxy instead of a dedicated LAN-bound listener: the proxy owns TLS, source restriction, and path routing, and webhook routes authenticate by HMAC alone with no loopback identity-trust. The verified event is relayed onto the cluster bus as a new cluster.webhook.* capability gated behind an ignorable feature-ID; the legacy deployment version_available fan-out remains as the expand-phase bridge and is retired only once the slowest channel carries the feature. Supersedes ADR-0028.
+- **local/projects/teleclaude/adr/0063-core-resolves-admin-reflection-adapter-via-contract** — Core resolves the admin-reflection adapter through a capability Protocol, not a concrete DiscordAdapter import or an origin-based lookup.
+- **local/projects/teleclaude/adr/0084-discord-voice-receive-runs-in-a-node-sidecar** — Discord voice reception runs in a Node sidecar behind a custom Gateway adapter, because no released Python library receives encrypted Discord voice safely.
+- **local/projects/teleclaude/adr/0111-external-events-enter-as-ordinary-platform-events** — A verified external request enters the platform as an ordinary event on the platform event stream, named <domain>.<name>, with the ingress as origin and the declaring home as subject. Producers that are ours speak one signed native protocol that TeleClaude relays without interpreting; GitHub and WhatsApp are adapters into the same shape. The source is declared in the home it concerns, the path is derived from that home, and every request is signed. The cluster.webhook relay is retired.
+- **local/projects/teleclaude/adr/0120-discord-is-never-a-customer-surface** — Discord is a members-only surface. It carries no help-desk entry, so no desk session ever runs in a Discord conversation.
+
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

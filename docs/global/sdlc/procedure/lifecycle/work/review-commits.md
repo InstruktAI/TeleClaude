@@ -78,8 +78,8 @@ For this invocation:
   behavior. Classify any contradiction under the governing contract; message
   consistency does not establish intent authority.
 - A documentation change to what agents are directed to do arrives with its
-  intent in the dispatch's additional context
-  (`general/policy/documentation-discipline`). Hold the changed text to that
+  intent, in your additional context or in the message that handed you the
+  series (`general/policy/documentation-discipline`). Hold the changed text to that
   intent for the reader role it names: each intended behavior is produced for
   that reader, nothing intended is lost or distorted, nothing beyond it is
   added, and the intent itself holds against the governing contracts. Such a

@@ -84,10 +84,11 @@ _COMMIT_REVIEW_MODE_GUIDANCE = (
     "   --mode slow for code review and for documentation that changes what agents are\n"
     "       directed to do, --mode med for any other documentation change\n"
     "       (general/procedure/orchestration). Documentation that changes what agents are\n"
-    "       directed to do carries its intent in --additional-context: the problem it answers,\n"
-    "       the reader role and the behavior wanted from it, the human's direction where it\n"
-    "       shaped the change, relayed faithfully, the alternatives rejected, and what stays\n"
-    "       as it was (general/policy/documentation-discipline).\n"
+    "       directed to do carries its intent to the reviewer — in --additional-context when\n"
+    "       you start one, in the message when you send the series to one already open: the\n"
+    "       problem it answers, the reader role and the behavior wanted from it, the human's\n"
+    "       direction where it shaped the change, relayed faithfully, the alternatives\n"
+    "       rejected, and what stays as it was (general/policy/documentation-discipline).\n"
 )
 _COMMIT_REVIEW_REUSE_GUIDANCE = (
     "   Reuse the reviewer already open at the mode this series needs; it runs every lane\n"
