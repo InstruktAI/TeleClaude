@@ -188,6 +188,7 @@ def _handle_cli_argv(argv: list[str], clear: ClearanceGate) -> None:
 
 
 def _start_tui() -> None:
+    importlib.import_module("teleclaude.logging_config").setup_logging()
     tui = importlib.import_module("teleclaude.cli.telec._run_tui")
     tui.start_tui()
 
