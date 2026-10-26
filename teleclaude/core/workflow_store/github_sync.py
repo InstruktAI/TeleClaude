@@ -240,7 +240,7 @@ class GitHubWorkflowSync:
                     )
                     _save_artifact_pointers(session, snapshot.item_id, revision)
                     owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
-                    adopt_ledger_entries(session, ledger_entries)
+                adopt_ledger_entries(session, ledger_entries)
                 for entry, comment in ledger_entries:
                     for project_record in entry.project_records:
                         remote_id = project_record.remote_record_id or _LEGACY_PROJECT_ID.format(
