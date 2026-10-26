@@ -33,11 +33,11 @@ from teleclaude.core.injected_text import (
     cut_transcript_entry,
     is_peer_opening,
 )
-from teleclaude.core.models import JsonDict
+from teleclaude.core.models import JsonDict, Session
 from teleclaude.core.session_status import is_session_final
 from teleclaude.core.session_transcript_chain import build_message_chain
 from teleclaude.core.session_turn_store import SessionTurnStore
-from teleclaude.core.turn_binding import binding_id_for_native_entry
+from teleclaude.core.turn_binding import bind_pending_native_turns, binding_id_for_native_entry
 from teleclaude.utils.transcript import native_entry_id, normalize_transcript_entry_message
 from teleclaude.utils.transcript._iterators import _get_entries_for_agent
 from teleclaude.utils.transcript._user_turns import (
@@ -293,6 +293,19 @@ def _read_chain(chain: Sequence[str], agent: AgentName, *, work_completed: bool)
     return _derive_turns(stream, agent)
 
 
+async def _bind_routed_comments(session: Session, agent: AgentName) -> None:
+    """Tie every delivered GitHub comment of the session to its native entry before any input is classified.
+
+    The binding is otherwise made when the output poller next projects the session, which an agent stop does not
+    wait for. Without it a person's already public comment would read as words given elsewhere and be left out.
+    """
+    if not session.native_log_file or not await db.get_unbound_delivered_github_inbound(session.session_id):
+        return
+    entries = await asyncio.to_thread(_get_entries_for_agent, session.native_log_file, agent)
+    if entries:
+        await bind_pending_native_turns(session, entries, agent)
+
+
 async def _person_parts(session_id: str, entry: _InputEntry) -> list[TurnInputPart]:
     """Build an input entry's parts, giving a person's words the channel their binding records."""
     github_part = None
@@ -356,6 +369,7 @@ async def read_completed_turns(
     if session is None:
         raise LookupError(session_id)
     agent = resolve_parser_agent(session.active_agent)
+    await _bind_routed_comments(session, agent)
     chain = build_message_chain(session.transcript_files, session.native_log_file)
     derived = await asyncio.to_thread(
         partial(_read_chain, chain, agent, work_completed=bool(session.last_agent_stop_at))
