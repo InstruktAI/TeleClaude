@@ -382,3 +382,18 @@ If the grounded root cause is a **process-design gap** — removing it would req
 behavioral delta to a process-layer contract — the `diagnosis` is still written and
 settled (the cause is still the cause), and the bug may correct that defect within its
 authorized symptom and causal scope (`sdlc/policy/process-change-authority`).
+
+### The cause is a governing decision
+
+When the settled mechanism is one a governing design or decision record prescribes
+(`sdlc/procedure/debugging`, Name the mechanism), the driving session records the failure
+in that design's `Failure modes` (`general/policy/documentation-discipline`, a limit found
+is recorded with its contract) and reads the failure modes already recorded there.
+
+A failure that design has already produced before means the decision, not the site, is
+what keeps failing. The plan's remedy then reopens it as a structural decision
+(`sdlc/policy/preparation-artifact-quality`, Structural decisions carry architecture
+review): the decision is superseded or amended, and a local repair covers only what the
+reopened decision leaves to it. Removing a cause the decision prescribes stays inside the
+bug's causal scope; a reopened decision whose change alters a human-owned outcome returns
+that outcome to the human (`general/policy/human-contract`).

@@ -78,9 +78,9 @@ First read the sdlc principles as listed in the sdlc baseline that apply to this
 
 - Relevant codebase files referenced in the plan.
 - The code review procedure — to understand what the reviewer will check.
-- Apply the domain-context loading rule from the preparation artifact quality
-  policy: identify which specs the plan touches and load them before
-  validation begins.
+- Walk the governing-contracts entry points yourself before you read the
+  Governing contracts section the plan carries or references, then compare
+  (`preparation-artifact-quality`, Governing contracts).
 
 ### 2. Substantive delivery analysis
 
@@ -276,6 +276,12 @@ the other owner's decision or reimplements its mechanism is Critical under the
 domain-ownership lane. An unmet prerequisite is routed through the dependency
 or blocker provisions of the preparation artifact quality policy.
 
+Where the plan changes an operation a caller waits on, verify its statement of
+what each caller waits for against the code it cites: the shared resources
+held, their other holders, and whether the outcome reaches the caller within
+its deadline (`preparation-artifact-quality`, DoD-driven review-awareness). A
+missing statement, or one the code contradicts, is a finding.
+
 ### 5a. Diagnosis validation (only when a `diagnosis` artifact is present)
 
 Applies only when the todo carries a `diagnosis` artifact (a `bug`). **Skip this
@@ -333,6 +339,15 @@ recorded as re-verifiable facts) alongside its conclusion — and validate:
   the documented contract carries `doc_impact_none`; other new contract text in
   a bug plan is Critical unless the diagnosed cause is that the documented
   contract itself is wrong, and then only the correction of that contract.
+
+### 5b. Structural decisions in `change` and `bug` work
+
+When a `change` or `bug` plan makes a structural decision, apply the grounding
+and divergence checks of `sdlc/procedure/lifecycle/prepare/review-architecture`
+to it, the paradigm-native alternative built before you read the plan's
+(`preparation-artifact-quality`, Structural decisions carry architecture
+review). A plan that makes one without carrying its architecture reasoning is a
+Requirement-Violation.
 
 ### 6. Review lane anticipation
 

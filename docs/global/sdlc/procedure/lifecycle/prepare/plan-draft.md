@@ -104,10 +104,10 @@ Read the full context before writing anything:
   `--domains <domain>` to narrow) to surface relevant policies and specs.
 - Definition of Done — every plan task must produce output that satisfies DoD gates.
 
-Apply the domain-context loading rule from the preparation artifact quality
-policy: identify which specs the PRD and the architecture snippets touch and load them before
-drafting begins. Domain specs are the ground truth — grounding and
-review-awareness cannot be evaluated without them.
+Walk the governing-contracts entry points before drafting begins
+(`sdlc/policy/preparation-artifact-quality`, Governing contracts). Where an
+approved architecture carries the Governing contracts section, the plan
+references it; otherwise the plan carries that section itself.
 
 ### 1b. Re-entry classification (read the dispatch reason)
 
@@ -234,6 +234,16 @@ new product or business limit the input does not carry. If
 another reasonable implementation could satisfy everything the human said
 while omitting or varying a proposed business detail, the detail remains
 unspecified and outside _Intent & scope_.
+
+### 1e. Carry a structural decision's architecture (`change` and `bug`)
+
+When the plan makes a structural decision, it carries the architecture
+reasoning its lane has no phase for (`sdlc/policy/preparation-artifact-quality`,
+Structural decisions carry architecture review): the governing paradigms with
+every operation callers see placed in them, the alternatives with the
+paradigm-native one among them, and the durable design authored into its
+snippets through pending carriers naming this slug, as
+`sdlc/procedure/lifecycle/prepare/architecture` routes them.
 
 ### 2. Decide whether the todo is atomic
 

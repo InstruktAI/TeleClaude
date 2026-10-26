@@ -89,6 +89,10 @@ occurred, and the mechanism that produced it. Write the mechanism as a code shap
 can confirm or reject at a single site by reading that site. A shape that reading one site
 cannot decide is too broad; narrow it before searching.
 
+When a governing design or decision record prescribes the mechanism, name that contract
+beside it: the site then does what its design told it to, and the defect lives in the
+decision as much as in the code.
+
 **The family census is a lane that ends.** Its full extent is two searches: the diff of
 the commit that introduced the mechanism, when provenance named one, and one search of the
 codebase for the mechanism's shape. Each site found is recorded with one of three
