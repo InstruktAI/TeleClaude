@@ -756,11 +756,16 @@ async def deliver_inbound(
                     occurrence_id=procedure_wake_occurrence_id,
                 )
             ):
-                if row["occurrence_key"] != procedure_wake_occurrence_id or not await db.admit_procedure_event_wake(
+                if row["occurrence_key"] != procedure_wake_occurrence_id:
+                    return
+                admitted = await db.admit_procedure_event_wake(
                     session_id=session_id,
                     occurrence_id=procedure_wake_occurrence_id,
                     session=current,
-                ):
+                )
+                # A refused procedure wake leaves its event pending in the inbox. An ordinary control wake
+                # still owes its pending payloads a delivery boundary, so it goes on to injection.
+                if not admitted and is_procedure_wake:
                     return
             # A relaunch can be marked between the readiness check above and
             # ownership; the mark is read again now that no relaunch is mid-flight.
