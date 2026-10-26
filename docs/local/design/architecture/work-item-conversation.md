@@ -259,8 +259,9 @@ first turn of each eligible session missing from GitHub.
   answers; meanwhile the master learns of a limit shared with its own
   requests from the response to its next request.
 - **A new master.** A computer that becomes the master posts nothing for an
-  hour after it does, so no budget window or pause of its predecessor is
-  still running when it starts.
+  hour after it does, so no budget window of its predecessor is still
+  running; a longer pause of its predecessor stops it at the response to its
+  first request.
 
 ## See Also
 
