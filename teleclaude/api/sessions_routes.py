@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -44,6 +44,7 @@ from teleclaude.api.session_listing_route import (
     build_local_session_listing,
     parse_list_sessions_query,
 )
+from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, resolve_session_ownership
 from teleclaude.api.session_reminder_summary import attach_next_reminders, observe_session_reminder_summaries
 from teleclaude.api.session_remote import is_remote_create_target, is_remote_target
 from teleclaude.api.session_route_helpers import build_metadata as _build_metadata
@@ -101,6 +102,7 @@ from teleclaude.core.session_links import (
 from teleclaude.core.session_listeners import (
     register_listener,
 )
+from teleclaude.core.session_status import is_session_final
 from teleclaude.core.session_status import is_session_terminal as _terminal
 from teleclaude.core.session_utils import resolve_working_dir
 
@@ -128,6 +130,8 @@ _EMPTY_MESSAGE_TEXT = ""
 _NO_TMUX_SESSION = ""
 _WORKTREE_SUBDIR_TEMPLATE = "trees/{slug}"
 _WORKTREE_DIRECTORY_MISSING_TEMPLATE = "required worktree directory does not exist: {worktree_dir}"
+_END_SESSION_NOT_HELD_DETAIL = "Session {session_id} not found on {computer}"
+_END_SESSION_OWNED_ELSEWHERE_DETAIL = "Session {session_id} not found on {computer}; it is owned by {owner}"
 
 
 _CONFIG_UNSET = object()
@@ -542,10 +546,37 @@ async def create_session(
     return await _create_session_response(request, identity)
 
 
+async def _require_held_session(session_id: str) -> Session:
+    """Return the session this computer holds, or refuse the request as not found."""
+    ownership = await resolve_session_ownership(session_id, db=db, cache=_STATE.cache)
+    match ownership:
+        case None:
+            raise HTTPException(
+                status_code=404,
+                detail=_END_SESSION_NOT_HELD_DETAIL.format(session_id=session_id, computer=config.computer.name),
+            )
+        case RemoteOwnership():
+            raise HTTPException(
+                status_code=404,
+                detail=_END_SESSION_OWNED_ELSEWHERE_DETAIL.format(
+                    session_id=session_id,
+                    computer=config.computer.name,
+                    owner=ownership.computer,
+                ),
+            )
+        case LocalOwnership():
+            return ownership.session
+        case _:
+            assert_never(ownership)
+
+
 @router.delete(
     "/sessions/{session_id}",
     status_code=202,
-    responses={200: {"description": "Session already closed"}},
+    responses={
+        200: {"description": "Session already closed"},
+        404: {"description": "Session not held by the addressed computer"},
+    },
 )
 async def end_session(
     request: Request,
@@ -553,7 +584,13 @@ async def end_session(
     computer: str | None = Query(None),
     identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
-    """End session via CloseSessionCommand through the command system."""
+    """End a session via CloseSessionCommand through the command system.
+
+    A session this computer does not hold is refused as not found (404), naming the
+    owning computer when a peer snapshot knows it; nothing is dispatched. An already
+    closed session answers 200 without dispatch; any other held session answers 202
+    with the close operation receipt.
+    """
     await refuse_act_on_dispatching_orchestrator(identity, session_id, ACT_END)
     user_agent = request.headers.get("user-agent", "no-ua")
     logger.info(
@@ -563,6 +600,7 @@ async def end_session(
         user_agent,
     )
 
+    session = await _require_held_session(session_id)
     caller = await resolve_caller_provenance(identity)
 
     # ADR-0036: only a human-initiated close holds the driven todo. A human
@@ -576,8 +614,7 @@ async def end_session(
             logger.error("Manual session close hold interlock failed for %s", session_id, exc_info=True)
 
     try:
-        session = await db.get_session(session_id)
-        if session and (session.closed_at or session.lifecycle_status == "closed"):
+        if is_session_final(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
             response = JSONResponse(
                 status_code=200,
                 content={
