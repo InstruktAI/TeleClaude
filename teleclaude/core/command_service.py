@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Concatenate, TypedDict
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.machine import config
 from teleclaude.core import voice_focus
 from teleclaude.core.command_handlers import (
     EndSessionHandlerResult,
@@ -76,6 +77,7 @@ from teleclaude.core.session_listeners import unregister_listener
 logger = get_logger(__name__)
 
 _UNSUBSCRIBE_CALLER_SESSION_REQUIRED = "unsubscribe always carries a verified caller identity"
+_UNSUBSCRIBE_UNKNOWN_SESSION_DETAIL = "session {session_id} not found on {computer}"
 _DELIVER_RESULT_SESSION_REQUIRED = "deliver_result always carries the caller's session id"
 _DELIVER_FILE_SESSION_REQUIRED = "deliver_file always carries the caller's session id"
 _ESCALATE_SESSION_ID_REQUIRED = "escalate_session always carries the caller's session id"
@@ -83,6 +85,10 @@ _ESCALATE_CUSTOMER_FIELD = "customer_name"
 _ESCALATE_REASON_FIELD = "reason"
 _ESCALATE_SUMMARY_FIELD = "context_summary"
 _NO_TEXT = ""
+
+
+class UnsubscribeUnknownSessionError(LookupError):
+    """The session an unsubscribe targets does not exist on this computer."""
 
 
 class UnsubscribeSessionPayload(TypedDict):
@@ -223,6 +229,10 @@ class CommandService:
     @_admitted
     async def unsubscribe(self, cmd: UnsubscribeSessionCommand) -> UnsubscribeSessionPayload:
         assert cmd.caller_session_id is not None, _UNSUBSCRIBE_CALLER_SESSION_REQUIRED
+        if await db.get_session(cmd.session_id) is None:
+            raise UnsubscribeUnknownSessionError(
+                _UNSUBSCRIBE_UNKNOWN_SESSION_DETAIL.format(session_id=cmd.session_id, computer=config.computer.name)
+            )
         listener_removed = await unregister_listener(
             target_session_id=cmd.session_id,
             caller_session_id=cmd.caller_session_id,
