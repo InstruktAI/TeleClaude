@@ -176,14 +176,21 @@ working copy and the repository.
   further reflection, written after the local commit, owed apart from the
   issue's and the pull request's so that no failure of one holds back
   another, and never read as state.
-  - The board's setup is a project-level reflection. A refresh that finds no
-    board creates one as the platform App, owned by the repository's
-    organization, opens its README with the envelope line
+  - Which board is the project's board is a project-level record in the
+    ledger, committed through a ledger commit entry as commit reviews and
+    documentation transfers are. A refresh that finds no board record claims
+    the board's setup by committing a board claim naming its computer. The
+    claim the ledger orders first holds setup, and only the holding computer
+    creates the board; every other computer takes the board from the ledger,
+    at refresh and at rebuild. Before creating, the holder takes a project the
+    platform App created with the repository's name as its title, which the
+    creating request itself sets, so an interrupted setup never creates a
+    second board. The holder records the board's identity in the ledger, then
+    opens the board's README with the envelope line
     `[action:board repository:<id>]`, sets its Status field's options to the
     lanes, adds the Needs you field and the view filtered on it, and deletes
-    every built-in workflow. The board is found again from GitHub by its App
-    creator and that envelope before any board is created, so a rebuilt
-    working copy never creates a second board.
+    every built-in workflow. A recorded board that GitHub no longer has opens
+    setup again, claimed the same way.
   - The link to the repository is owed until it is written or GitHub shows
     the board linked. Its write asks for the repository's Contents read
     permission in addition, so an App without it leaves only the link owed.
@@ -195,14 +202,18 @@ working copy and the repository.
     gate, the effective hold — and the claim; the adapter decides none of
     them. A removed item's board item is deleted, and a reactivated item gets
     one again.
-  - The board's node identities and each item's board item are cached in the
-    adapter's working-copy bookkeeping, rediscoverable from GitHub as above.
+  - The board's field and view identities and each item's board item are
+    cached in the adapter's working-copy bookkeeping, rediscoverable from the
+    recorded board.
   - Board writes use the same repository-scoped installation credential,
     requesting the organization Projects write permission with the issue read
     permission.
   - `telec todo board repair` runs as a daemon operation: it owes the board's
     setup and every item's board reflection, writes them as a refresh does,
-    and its outcome names each one it could not write and the cause.
+    and its outcome names each one it could not write and the cause. With
+    `--take-over` it claims setup for its own computer when no board is
+    recorded and the holding computer is not online in the fleet, and it
+    refuses while that computer is online.
 
 <!-- /planned:github-work-board -->
 
@@ -374,9 +385,10 @@ workflow.
 
 <!-- planned:github-work-board -->
 
-- A project has at most one board the platform maintains. The board's lanes,
-  markers, fields and views are written from the record and never read back;
-  only its identities are read, to find it again.
+- A project has one board: only the computer holding the ledger's first board
+  claim creates it, and every computer uses the board the ledger records. The
+  board's lanes, markers, fields and views are written from the record and
+  never read back.
 
 <!-- /planned:github-work-board -->
 
@@ -497,11 +509,14 @@ sequenceDiagram
   owed with that cause; the board otherwise works, listed among the
   organization's projects but not on the repository's Projects tab.
 - A lane, marker, field or view someone changes on the board stays until the
-  item's next reflection or a repair. A deleted board is created again by the
-  next refresh, with every item.
-- Two computers that create the board in the same interval leave two boards,
-  because GitHub supports no conditional writes. Each refresh then maintains
-  the oldest one, and a repair names the other for a person to delete.
+  item's next reflection or a repair. A deleted board is created again through
+  a new claim, with every item.
+- A holding computer that leaves the fleet before creating the board leaves
+  setup owed on every computer until `telec todo board repair --take-over`
+  claims it elsewhere. The taking computer first takes a board the holder
+  already created, by its title, so only a holder that is offline to the fleet
+  yet creates its board at the same moment as the take-over leaves a second
+  board, which the platform neither maintains nor removes.
 
 <!-- /planned:github-work-board -->
 

@@ -31,10 +31,11 @@ back as workflow state.
 
 ## Canonical fields
 
-- **Board:** the platform creates the board the first time the store
-  refreshes the project from GitHub, titled with the repository's name, and
-  finds that board again from GitHub instead of ever creating a second one. It
-  links the board to the repository as soon as the platform App can read the
+- **Board:** the platform creates the board, titled with the repository's
+  name, the first time a computer serving the project refreshes it from
+  GitHub. A project never gets a second board: when several computers serve
+  it, exactly one of them creates the board and every other one uses it, and a
+  board someone deleted is created again the same way. It links the board to the repository as soon as the platform App can read the
   repository's contents; a board someone linked by hand is already linked. The
   App keeps the board with the organization's Projects read and write
   permission and links it with the repository's Contents read permission
@@ -53,12 +54,10 @@ back as workflow state.
   lanes of the lifecycle
   (`local/projects/teleclaude/spec/feature/workflow/todo-lifecycle-phase`).
   The lane is the board's Status field.
-- **Needs you:** an active item carries the needs-you marker while the
-  platform will not move it on its own and only a person can: while a human
-  approval it waits on is outstanding, and while it is held or blocked and no
-  session holds its claim. An iceboxed item carries no marker: the Icebox lane
-  already shows it, and it waits on nobody until someone unfreezes it. The
-  marker clears in the same change that ends that condition. The marker is the
+- **Needs you:** an open item carries the needs-you marker while the platform
+  will not move it on its own and only a person can: while a human approval it
+  waits on is outstanding, and while it is held or blocked and no session holds
+  its claim. The marker clears in the same change that ends that condition. The marker is the
   board's Needs you field, and the board's Needs you view shows only the items
   carrying it.
 - **Kept true:** a change to an item's phase, freeze, delivery, removal,
@@ -74,7 +73,10 @@ back as workflow state.
   Needs you field and view, and turns off any board automation. A missed
   update or a hand edit on the board is corrected by it, never adopted. Its
   outcome names what it could not write and why, such as a missing App
-  permission or a repository owned by a personal account.
+  permission or a repository owned by a personal account. When the computer
+  that took on creating the board left the fleet before creating it,
+  `telec todo board repair --take-over` lets the computer it runs on create the
+  board instead; it is refused while that computer is online.
 
 ### Use cases
 
@@ -147,3 +149,6 @@ Scenario: The repair command completes missed updates
   repair, because the platform never reads the board back.
 - Until the board is linked, it is listed among the organization's projects
   but not on the repository's Projects tab.
+- A take-over run at the very moment the departed computer, still reaching
+  GitHub, creates the board after all can leave a second board that the
+  platform ignores.
