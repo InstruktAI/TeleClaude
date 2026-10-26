@@ -73,10 +73,8 @@ back as workflow state.
   Needs you field and view, and turns off any board automation. A missed
   update or a hand edit on the board is corrected by it, never adopted. Its
   outcome names what it could not write and why, such as a missing App
-  permission or a repository owned by a personal account. When the computer
-  that took on creating the board left the fleet before creating it,
-  `telec todo board repair --take-over` lets the computer it runs on create the
-  board instead; it is refused while that computer is online.
+  permission or a repository owned by a personal account, and while the board
+  is not yet created it names the computer that creates it.
 
 ### Use cases
 
@@ -149,6 +147,7 @@ Scenario: The repair command completes missed updates
   repair, because the platform never reads the board back.
 - Until the board is linked, it is listed among the organization's projects
   but not on the repository's Projects tab.
-- A take-over run at the very moment the departed computer, still reaching
-  GitHub, creates the board after all can leave a second board that the
-  platform ignores.
+- The computer that takes on creating the board is the only one that ever
+  creates it. If that computer leaves in the moment between taking it on and
+  creating it, the board is created once a computer with that computer's name
+  serves the project again.
