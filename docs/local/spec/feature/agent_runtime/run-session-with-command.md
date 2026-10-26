@@ -402,7 +402,8 @@ admitted under driver admission
 decides whether the todo is held and orders concurrent starts. A request it
 refuses for a holder returns HTTP 409 with the driver-start conflict naming the
 holder. A request refused as busy returns HTTP 423 with a detail stating that
-another start of the todo is in progress. Neither creates a session.
+another start of the todo is in progress and naming the session it is starting.
+Neither creates a session.
 
 <!-- /planned-change:single-orchestrator-concurrent-starts -->
 

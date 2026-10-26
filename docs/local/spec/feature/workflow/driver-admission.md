@@ -39,8 +39,9 @@ A todo is held when either of these exists in its project on this computer:
   session, and an operation claims the todo for its calling session.
 - A start that finds a holder is refused with a driver-start conflict naming
   that holder, and creates or claims nothing.
-- A start that waits longer than its bound for the start ahead of it is refused
-  as busy, naming no holder, and creates or claims nothing.
+- A start that arrives while another start of the same todo is being decided
+  does not wait: it is refused as busy, naming the session that other start
+  creates or claims, and creates or claims nothing.
 - Starts of different todos are never decided against each other.
 - Task-runner, reviewer and worker-child starts are outside driver admission
   and keep their own checks.
@@ -50,7 +51,8 @@ A todo is held when either of these exists in its project on this computer:
 - A `telec todo prepare` or `telec todo work` operation whose start loses fails,
   whether it would have claimed the todo in place or started an orchestrator
   session: with the driver-start conflict naming the holder when it lost to a
-  holder, or with the busy refusal when its wait exceeded the bound.
+  holder, or with the busy refusal naming the other start's session when it
+  arrived while that start was being decided.
 - A lifecycle runner pass whose start of a todo loses, to a holder or to a start
   of that todo still being decided, counts that todo as already driven, starts
   nothing for it, and continues with the other todos it selected. Neither the

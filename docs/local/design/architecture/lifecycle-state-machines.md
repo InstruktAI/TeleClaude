@@ -215,7 +215,7 @@ Each state machine has its own design document with full state diagrams, sequenc
 
 <!-- planned:single-orchestrator-concurrent-starts -->
 
-- **Concurrent orchestrator starts**: orchestrator starts of one todo on one computer are decided one at a time; the first creates or claims the orchestrator and each later one is refused naming it. A start that waits longer than its bound is refused. Starts on different computers sharing one workflow store are not serialized against each other.
+- **Concurrent orchestrator starts**: orchestrator starts of one todo on one computer are decided one at a time; the first creates or claims the orchestrator and each later one is refused naming it. A start that arrives while another is being decided does not wait; it is refused as busy, naming the session being started. Starts on different computers sharing one workflow store are not serialized against each other.
 - **Orchestrator stranded in initializing**: an orchestrator session counts as the todo's holder from its creation, so one whose bootstrap failed keeps holding the todo until it is ended; the bootstrap failure is published for a person to act on.
 
 <!-- /planned:single-orchestrator-concurrent-starts -->

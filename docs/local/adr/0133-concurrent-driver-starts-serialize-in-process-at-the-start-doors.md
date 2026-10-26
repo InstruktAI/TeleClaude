@@ -45,9 +45,12 @@ whatever lane is asked for, so starts in different lanes contend for the same
 holder and must be decided one at a time too. The create doors take the section
 for an orchestrator launch created on this computer; the in-process adoption
 takes it for its check and its ownership writes. A start that finds a holder
-inside the section is refused naming that holder. The section records nothing,
-outlives no request, and leaves the registry and `active_runner` as the only
-ownership facts.
+inside the section is refused naming that holder. A start that finds the section
+already held by another start of the todo does not wait for it: it is refused at
+once, naming the session that start is creating or claiming. While held, the
+section remembers that session id in memory and nothing else; it records nothing
+durable, outlives no request, and leaves the registry and `active_runner` as the
+only ownership facts.
 
 ## Consequences
 
@@ -56,13 +59,13 @@ ownership facts.
 - No ownership state is added: a failed start, a crash or a restart leaves
   nothing to release, expire or reconcile, and ADR-0078's retirement of
   time-bound reservations stands.
-- A start waits while another start of the same todo is inside the section,
-  including while an adoption writes `active_runner` to a GitHub-backed store.
-  Starts of different todos never wait on each other. The wait is bounded below
-  the callers' request deadline, and a start that exceeds it is refused.
+- No start ever waits on the section, so it adds no time to any caller's request
+  beyond the holder re-check. A start that collides with another start of the
+  same todo is refused even when that other start later fails; its caller starts
+  again, as a lifecycle runner does on its next pass.
 - A start must not hold the section while it calls another door, because the
-  door would wait on the section its caller holds. A lifecycle dispatch therefore
-  takes no section of its own; the create door it calls takes it.
+  door would find the section its caller holds and refuse. A lifecycle dispatch
+  therefore takes no section of its own; the create door it calls takes it.
 - The guarantee holds only inside one daemon. Two computers that see one todo
   through a shared workflow store are not serialized by it.
 
