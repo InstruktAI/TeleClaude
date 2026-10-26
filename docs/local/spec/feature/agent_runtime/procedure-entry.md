@@ -97,9 +97,9 @@ Without a bound issue parameter, a session whose work slug names an item of
 its project's GitHub workflow store carries that item's own issue
 (`local/projects/teleclaude/spec/feature/workflow/github-work-record`) in the
 same structured reference: the number the store records for the item, its URL
-in the project's declared repository, and the work slug as its subject. The
-store's record is the identity, so no GitHub lookup is made for it, and reading
-it never waits on the store's writers. A bound issue parameter takes precedence
+in the project's declared repository, and the work slug as its subject. No
+GitHub lookup is made for it, and reading it never waits on the store's
+writers. A bound issue parameter takes precedence
 over the work item's issue. A session carries none when its project keeps its
 work in the local store, when the store records no issue for the item yet, or
 when the project's working copy cannot be read; a later projection of the
