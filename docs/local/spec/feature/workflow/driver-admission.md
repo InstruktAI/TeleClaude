@@ -47,9 +47,10 @@ A todo is held when either of these exists in its project on this computer:
 
 ### Losing starts
 
-- A `telec todo prepare` or `telec todo work` operation whose start loses fails
-  with the driver-start conflict naming the holder, whether it would have
-  claimed the todo in place or started an orchestrator session.
+- A `telec todo prepare` or `telec todo work` operation whose start loses fails,
+  whether it would have claimed the todo in place or started an orchestrator
+  session: with the driver-start conflict naming the holder when it lost to a
+  holder, or with the busy refusal when its wait exceeded the bound.
 - A lifecycle runner pass whose start of a todo loses, to a holder or to a start
   of that todo still being decided, counts that todo as already driven, starts
   nothing for it, and continues with the other todos it selected. Neither the
