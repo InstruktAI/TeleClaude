@@ -20,6 +20,7 @@ from teleclaude.core.workflow_store.github_record import (
     CommentEnvelopeField,
     WorkflowField,
     WorkflowTodoStatus,
+    comment_envelope_fields,
     render_comment_envelope,
 )
 from teleclaude.core.workflow_store.github_reflection import (
@@ -42,10 +43,6 @@ _TRUNCATION_NOTE = "\n\n_(Truncated; the full report is on the item's issue.)_"
 _CLOSING_LINE = "Closes #{}"
 _LINE_BREAK = "\n"
 _BLANK_LINE = "\n\n"
-_ENVELOPE_OPEN = "["
-_ENVELOPE_CLOSE = "]"
-_ENVELOPE_SEPARATOR = " "
-_ENVELOPE_KEY_VALUE_SEPARATOR = ":"
 
 
 class PullRequestStage(StrEnum):
@@ -152,12 +149,12 @@ def opens_with_pull_request_envelope(body: str, issue_number: int) -> bool:
 
 def is_delivered_comment(body: str) -> bool:
     """Tell whether a comment body opens with the envelope that names the delivered commit."""
-    return _envelope_fields(body).get(CommentEnvelopeField.ACTION) == CommentEnvelopeAction.DELIVERED
+    return comment_envelope_fields(body).get(CommentEnvelopeField.ACTION) == CommentEnvelopeAction.DELIVERED
 
 
 def review_round(body: str) -> int | None:
     """Read the round a review's opening envelope names; None for a body that is not a review envelope."""
-    fields = _envelope_fields(body)
+    fields = comment_envelope_fields(body)
     if fields.get(CommentEnvelopeField.ACTION) != CommentEnvelopeAction.REVIEW:
         return None
     value = fields.get(CommentEnvelopeField.ROUND)
@@ -241,15 +238,3 @@ def _state(snapshot: WorkingCopyItemSnapshot) -> Mapping[str, object]:
     except json.JSONDecodeError:
         return {}
     return parsed if isinstance(parsed, dict) else {}
-
-
-def _envelope_fields(body: str) -> dict[str, str]:
-    line = body.split(_LINE_BREAK, 1)[0].strip()
-    if not (line.startswith(_ENVELOPE_OPEN) and line.endswith(_ENVELOPE_CLOSE)):
-        return {}
-    fields: dict[str, str] = {}
-    for part in line[1:-1].split(_ENVELOPE_SEPARATOR):
-        key, separator, value = part.partition(_ENVELOPE_KEY_VALUE_SEPARATOR)
-        if separator:
-            fields[key] = value
-    return fields
