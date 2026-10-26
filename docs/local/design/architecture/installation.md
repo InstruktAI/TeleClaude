@@ -381,7 +381,8 @@ checkout stays a registered project.
   refused, or it has not yet reloaded when the act prunes. Its registry record
   still names its release, so that release stays installed, and the first
   install that finds the interface on newer code removes it. An act that
-  cannot read the registry prunes no release.
+  cannot read the registry, or finds a running interface whose record names
+  no release, prunes no release.
 
 <!-- /planned-change:tui-stranded-on-pruned-release -->
 

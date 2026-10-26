@@ -54,7 +54,9 @@ state every installed release reads, and no release carries any of it.
 - **A release a running terminal interface runs from** stays installed for as
   long as that interface's registry record names it
   (`local/projects/teleclaude/design/architecture/tui-state-layout`), whether
-  or not it is the active or previous release.
+  or not it is the active or previous release. When the registry cannot be
+  read, or a running interface's record names no release, an install removes
+  no release.
 
 <!-- /planned:tui-stranded-on-pruned-release -->
 
