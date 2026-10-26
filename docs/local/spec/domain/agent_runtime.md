@@ -187,47 +187,48 @@ another session started, or a session whose record establishes none of these.
 
 ### Governing designs and decisions
 
-- **local/projects/teleclaude/design/architecture/agent-dispatch** — One agent-runtime decision boundary for deterministic role-aware fresh-session selection, extended separately by adaptive quota ranking.
-- **local/projects/teleclaude/design/architecture/ai-to-ai-dispatch** — End-to-end dispatch flow when one AI session spawns and supervises another: creation, listener registration, execution, and stop-time notification.
-- **local/projects/teleclaude/design/architecture/checkpoint-system** — Checkpoint injection mechanism that delivers structured debrief prompts to AI agents at turn boundaries.
-- **local/projects/teleclaude/design/architecture/conversation-delivery** — Envelope-authoritative conversation delivery — one grammar registry, one transcript cutter, structured peer authorship, independent UI generations, and observable Discord identity.
-- **local/projects/teleclaude/design/architecture/daemon** — Daemon orchestration responsibilities, boundaries, and background services.
-- **local/projects/teleclaude/design/architecture/help-desk-platform** — Help desks: entry identifiers resolved by the core, the session as the conversation's binding, public-depth documentation, identity-scoped memory, escalation to the people accountable for a desk, and the relay between them and the visitor.
-- **local/projects/teleclaude/design/architecture/jobs-runner** — Scheduled job runner: architecture, generic closed-loop run lifecycle, job contract, and configuration surface.
-- **local/projects/teleclaude/design/architecture/model-launch-resolution** — One launch-model decision boundary at every computed agent-process launch, resolving per-mode ordered model chains against model-scoped availability.
-- **local/projects/teleclaude/design/architecture/reminder-service** — Daemon-owned session reminder aggregate, durable occurrence scheduling, typed event activation, transcript evidence, and existing projection/input composition.
-- **local/projects/teleclaude/design/architecture/session-lifecycle** — Complete lifecycle of a terminal session from creation to cleanup.
-- **local/projects/teleclaude/design/architecture/session-listeners** — Persistent listener registry that notifies callers about the lifecycle states of the target sessions they watch, with link-aware suppression.
-- **local/projects/teleclaude/design/architecture/tmux-management** — Tmux session orchestration, input injection, and per-session temp directories.
-- **local/projects/teleclaude/design/architecture/output-polling** — Mechanism for real-time terminal output capture and streaming.
-- **local/projects/teleclaude/design/architecture/mcp-registry-resolution** — How the effective MCP registry is resolved per invocation project — resolver layering, per-root daemon runtimes, and the baked MCP indexes.
-- **local/projects/teleclaude/design/code-commit** — Design of the canonical agent commit command with workspace-scope staging and pathspec-scoped commits.
-- **local/projects/teleclaude/design/process-lifecycle** — Daemon-owned process lifecycle: a janitor that reaps leaked processes against a signature+TTL policy and a spawn registry that gives platform-detached children an expiring lease. Every reap is observable; the matcher can never kill the daemon, a live agent session, or an out-of-policy process.
-- **local/projects/teleclaude/adr/0018-typed-in-messages-are-first-class-turns** — Typed-in input, whether human or inter-actor, defines a real session turn; only hook side-channel artifacts are excluded from turn boundaries and notification dedup resets.
-- **local/projects/teleclaude/adr/0037-checkpoint-ledger-separates-commit-detection** — The checkpoint action ledger is time-anchored and includes committed code; the authored-main-commit signal triggers only the post-commit review gate; one turn-scoped escape hatch replaces the permanent disable.
-- **local/projects/teleclaude/adr/0038-companion-drift-caught-at-checkpoint** — Companion-edit drift (a live parent snippet reworked without its pending companion) is caught in-loop by a checkpoint presence heuristic at agent_stop, with the review lane retained as the correctness backstop.
-- **local/projects/teleclaude/adr/0039-guardrails-locked-no-config** — The portable guardrails are a domain-blind engine running rule packs, locked at error with no per-project quality configuration; brownfield flex lives only in shrinking exemption ramps, and guardrails never watch the watchers.
-- **local/projects/teleclaude/adr/0040-guardrails-teleclaude-owned-slimmed** — Guardrails are TeleClaude-owned and provided as part of the stack; they catch substantive code/structure issues only — the rules that watched other tools or duplicated native type/lint enforcement are removed, and there is no per-project quality-config surface. Supersedes the portable/pack framing of ADR 0039.
-- **local/projects/teleclaude/adr/0043-checkpoint-obligations-discharge-on-evidence** — Committed code is sourced into the checkpoint action ledger as derived maintenance obligations, each discharged when its evidence is observed in any later checkpoint cycle; the wholesale user-prompt-submit clear is a backstop, not the only clear.
-- **local/projects/teleclaude/adr/0047-commit-gates-in-process-no-stash** — telec code commit runs format then lint in-process before git commit --no-verify; the pre-commit framework is retired; .git/hooks/pre-commit is a thin fail-closed partial-staging guard.
-- **local/projects/teleclaude/adr/0049-recurring-ticks-via-in-daemon-loop** — Recurring-job ticks (scheduler.tick.*) are emitted by a loop mounted inside the always-on telec-daemon, not by an OS cron entry. The runtime is already a hard precondition for nearly all scheduled work, and source-owned cursors make scheduler durability non-load-bearing, so co-locating the emitter with the daemon collapses two failure domains into one and removes the cross-platform host-schedule install surface.
-- **local/projects/teleclaude/adr/0050-restore-declarative-test-budgets** — Restore the declarative pytest budget layer (per-test timeout, session_timeout, xdist -n auto) that the spec-anchored-testing transition removed alongside the custom hang machinery. The machinery ban stays; only the cheap native config returns. Per-test signal budget names a hung test by node id; the session ceiling is a graceful between-tests stop, not an in-flight dump.
-- **local/projects/teleclaude/adr/0064-runner-reaps-process-group-on-normal-exit** — The telec code test/lint runner reaps its child process group on the normal-return path too, not only on abnormal exit — closing the xdist session_timeout leak where a suite-spawned descendant survives a normal (exit 2, no signal) return under start_new_session terminal detachment. Reverses ADR-0050 in part.
-- **local/projects/teleclaude/adr/0066-checkpoint-location-axis-in-config-semantics-in-engine** — The checkpoint location axis (worktree | integration | main) is declared per action in project config; what each location means stays engine-owned and is not configurable.
-- **local/projects/teleclaude/adr/0070-clean-working-tree-floors-the-commit-action-checkpoint** — The agent_stop commit-action checkpoint additionally suppresses on a definitively clean working tree; a positively-read empty git status is a guaranteed floor over ADR-0037's timeline-evidence suppression, refining but not reversing it.
-- **local/projects/teleclaude/adr/0071-agents-author-their-own-commits** — Commit attribution names the agent that did the work; the human's identity is lineage, and co-authorship requires a recorded involvement fact.
-- **local/projects/teleclaude/adr/0072-commit-author-field-and-session-trailer** — The sealed commit surface stamps the agent's GitHub bot identity into the git author field and a Session trailer into the message; the interim Agent trailer is retired and the prior session-id omission is reversed.
-- **local/projects/teleclaude/adr/0073-human-involved-is-declared-not-derived** — The Human-Involved commit footer is a per-commit declaration made by the committing agent, never derived from a todo's recorded human_involved fact.
-- **local/projects/teleclaude/adr/0079-external-session-roots-are-enrolled-not-derived** — The process instance that anchors an externally hosted agent session is bound by an enrollment in which the enrolling process is itself the connecting peer, because no rule derives that anchor from kernel process evidence alone.
-- **local/projects/teleclaude/adr/0086-checkpoint-failures-do-not-invent-work** — Checkpoint evaluation blocks only on established maintenance actions and never substitutes generic work for an evaluation failure.
-- **local/projects/teleclaude/adr/0087-mechanical-maintenance-executes-in-a-hook** — Deterministic post-commit maintenance executes in a git post-commit hook; the checkpoint registry retains only actions whose outcome requires an agent's judgment.
-- **local/projects/teleclaude/adr/0100-commit-maintenance-drains-after-hook-return** — Let Git return after recording commit-boundary maintenance, while one-shot contenders drain the owed work in order.
-- **local/projects/teleclaude/adr/0102-a-telec-wrapper-runs-the-checkout-it-belongs-to** — The code a telec invocation runs is selected by the wrapper's own location — the global command runs the installation, a checkout's bin/telec runs that checkout, and worktree code runs only against a scratch home.
-- **local/projects/teleclaude/adr/0108-the-git-pre-commit-hook-is-the-only-commit-gate** — The git pre-commit hook runs the commit gate for every route into a commit; telec code commit formats and scopes, then lets git run the hook. Lint grades the commit as staged against the rest of each home as committed, so no stash is needed.
-- **local/projects/teleclaude/adr/0112-deepseek-fit-judges-runtime-requirements-only** — DeepSeek stack convergence judges fit only on what a package requires of the runtime itself; requirements on libraries the runtime bundles are reported as advisories, and the verification gate decides whether such a set works.
-- **local/projects/teleclaude/adr/0113-commit-authors-discard-review-candidates** — The authoring session decides whether a commit owes independent review and stamps a discarded candidate itself; every commit-review outcome is a stamp, recorded on the todo its session chain claims, so lifecycle gates read verdicts instead of trusting transcripts.
-- **local/projects/teleclaude/adr/0123-procedures-are-entrypoints-and-roles-are-explicit-capability-sets** — Every agent assignment is entered by naming a procedure that declares its role; roles are composed centrally from explicit capability sets with an opt-in full reach, and the command artifact layer is retired.
-- **local/projects/teleclaude/adr/0132-an-assignment-carries-only-the-inputs-its-caller-supplied** — A procedure assignment's inputs and its title are exactly what its caller supplied; declarations carry no default values and entry context never fills an absent argument.
+- `local/projects/teleclaude/design/architecture/agent-dispatch` — which agent a fresh session runs, decided at one runtime boundary
+- `local/projects/teleclaude/design/architecture/ai-to-ai-dispatch` — how a session starts, watches and is told about the sessions it dispatches
+- `local/projects/teleclaude/design/architecture/checkpoint-system` — the debrief prompts a session receives at turn boundaries
+- `local/projects/teleclaude/design/architecture/conversation-delivery` — how turns become conversation entries, with their authorship and per-surface generations
+- `local/projects/teleclaude/design/architecture/daemon` — what the daemon process runs and supervises
+- `local/projects/teleclaude/design/architecture/help-desk-platform` — help-desk entry, the session bound to a conversation, and the desk's documentation depth
+- `local/projects/teleclaude/design/architecture/jobs-runner` — the run lifecycle of scheduled jobs and the job contract
+- `local/projects/teleclaude/design/architecture/model-launch-resolution` — which model a launched agent process gets
+- `local/projects/teleclaude/design/architecture/reminder-service` — session reminders: their record, schedule and firing
+- `local/projects/teleclaude/design/architecture/session-lifecycle` — a session's states from creation to cleanup
+- `local/projects/teleclaude/design/architecture/session-listeners` — who is told when a watched session changes state
+- `local/projects/teleclaude/design/architecture/tmux-management` — the terminal host a session runs in and how input reaches it
+- `local/projects/teleclaude/design/architecture/output-polling` — how a session's terminal output is captured
+- `local/projects/teleclaude/design/architecture/mcp-registry-resolution` — which MCP servers a session can reach, resolved per project
+- `local/projects/teleclaude/design/code-commit` — the sealed commit command and its scope
+- `local/projects/teleclaude/design/process-lifecycle` — reaping of leaked processes and the spawn registry
+- `local/projects/teleclaude/adr/0018-typed-in-messages-are-first-class-turns` — which inputs count as a session turn
+- `local/projects/teleclaude/adr/0037-checkpoint-ledger-separates-commit-detection` — how the commit checkpoint detects committed code
+- `local/projects/teleclaude/adr/0038-companion-drift-caught-at-checkpoint` — catching companion-snippet drift at the checkpoint
+- `local/projects/teleclaude/adr/0039-guardrails-locked-no-config` — guardrails as a locked engine without per-project quality settings
+- `local/projects/teleclaude/adr/0040-guardrails-teleclaude-owned-slimmed` — guardrails' ownership and their substantive scope
+- `local/projects/teleclaude/adr/0043-checkpoint-obligations-discharge-on-evidence` — checkpoint obligations discharged by evidence
+- `local/projects/teleclaude/adr/0047-commit-gates-in-process-no-stash` — commit gates run in process, never through a stash
+- `local/projects/teleclaude/adr/0049-recurring-ticks-via-in-daemon-loop` — recurring job ticks emitted from inside the daemon
+- `local/projects/teleclaude/adr/0050-restore-declarative-test-budgets` — the declarative test time budgets
+- `local/projects/teleclaude/adr/0064-runner-reaps-process-group-on-normal-exit` — the test and lint runner reaping its process group
+- `local/projects/teleclaude/adr/0066-checkpoint-location-axis-in-config-semantics-in-engine` — where a checkpoint action runs, declared per action
+- `local/projects/teleclaude/adr/0070-clean-working-tree-floors-the-commit-action-checkpoint` — a clean working tree suppressing the commit checkpoint
+- `local/projects/teleclaude/adr/0071-agents-author-their-own-commits` — commit authorship naming the agent that did the work
+- `local/projects/teleclaude/adr/0072-commit-author-field-and-session-trailer` — the author field and session trailer the commit surface stamps
+- `local/projects/teleclaude/adr/0073-human-involved-is-declared-not-derived` — the human-involvement commit footer as the agent's declaration
+- `local/projects/teleclaude/adr/0079-external-session-roots-are-enrolled-not-derived` — how an externally hosted session's process is bound to it
+- `local/projects/teleclaude/adr/0086-checkpoint-failures-do-not-invent-work` — checkpoint failures blocking only on established actions
+- `local/projects/teleclaude/adr/0087-mechanical-maintenance-executes-in-a-hook` — mechanical maintenance running in the post-commit hook
+- `local/projects/teleclaude/adr/0100-commit-maintenance-drains-after-hook-return` — Git returning before commit maintenance completes
+- `local/projects/teleclaude/adr/0102-a-telec-wrapper-runs-the-checkout-it-belongs-to` — which checkout's code a telec invocation runs
+- `local/projects/teleclaude/adr/0108-the-git-pre-commit-hook-is-the-only-commit-gate` — the pre-commit hook as the only commit gate
+- `local/projects/teleclaude/adr/0112-deepseek-fit-judges-runtime-requirements-only` — how DeepSeek runtime fit is judged
+- `local/projects/teleclaude/adr/0113-commit-authors-discard-review-candidates` — the author deciding whether a commit owes review
+- `local/projects/teleclaude/adr/0123-procedures-are-entrypoints-and-roles-are-explicit-capability-sets` — procedures as session entry points, with roles as explicit capability sets
+- `local/projects/teleclaude/adr/0132-an-assignment-carries-only-the-inputs-its-caller-supplied` — an assignment carrying only its caller's inputs
+- `local/projects/teleclaude/adr/0033-doc-only-commits-require-independent-review` — doc-only commits owing an independent review
 
 ## See Also
 
