@@ -65,6 +65,9 @@ class CommentEnvelopeField(StrEnum):
     VERSION = "version"
     ISSUE = "issue"
     ROUND = "round"
+    COMPUTER = "computer"
+    PROJECT = "project"
+    REPOSITORY = "repository"
 
 
 class CommentEnvelopeAction(StrEnum):
@@ -78,6 +81,8 @@ class CommentEnvelopeAction(StrEnum):
     PULL_REQUEST = "pull-request"
     REVIEW = "review"
     DELIVERED = "delivered"
+    BOARD = "board"
+    BOARD_CLAIM = "board-claim"
 
 
 _ACTION_FIELD = CommentEnvelopeField.ACTION

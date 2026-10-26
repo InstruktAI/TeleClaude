@@ -37,6 +37,7 @@ class GitHubIssue:
     node_id: str
     creator: str
     updated_at: datetime | None
+    body: str = ""
 
 
 @dataclass(frozen=True)
