@@ -312,17 +312,29 @@ otherwise on its issue, as the role Apps
 Its bookkeeping in the working copy holds each session's posting position and
 never turn content; the record and the workflow state are unchanged.
 
-**GitHub request budget.** Every GitHub request the adapter module makes
-for a project runs on its one I/O runtime in two priorities. Record work,
-meaning the write path, reflections, questions, reviews, rebuild and
-refresh, runs as it does today. Conversation appends run at background
-priority: one starts only while no record request waits, appends use at most
-half of GitHub's content-creation limits per minute and per hour, and any
-rate-limit response to any request pauses every background append until the
-time that response names, or a minute when it names none, growing on
-repeated limits. Record work therefore keeps the other half of the
-content-creation budget and every primary request left once a limit
-appears.
+**GitHub request budget.** Every GitHub request the adapter module makes runs
+on its one I/O runtime, which keeps a budget for each App installation it
+uses and one for the content-creating requests of the whole computer. Record
+work, meaning the write path, reflections, questions, reviews, rebuild and
+refresh, is never held by the budget. Conversation requests, reads and
+appends alike, are admitted only when every budget they touch allows them:
+
+- **Primary limits are per installation** (GitHub's REST rate-limit
+  contract). Every record write that can refuse an operation goes out as the
+  platform App, and conversation requests never do, so they never spend the
+  primary budget a record write draws on. A conversation request is admitted
+  on a role App's installation only while the remaining count and reset time
+  of that installation's latest response leave a reserve of a fifth of its
+  limit for the pull request and review reflections that App also writes.
+- **Content-creation limits are counted for the whole computer.** GitHub does
+  not state whether its secondary limits are shared across identities, so the
+  runtime counts every content-creating request this computer sends, record
+  and conversation alike, over the last minute and hour, and admits a
+  conversation append only while that count plus the append stays within half
+  of the documented limits.
+- **A limit response stops conversation.** Any rate-limit response to any
+  request pauses every conversation request until the time the response
+  names, or a minute when it names none, doubling on each repeated limit.
 
 <!-- /planned:github-turn-mirror -->
 

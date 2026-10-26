@@ -1,7 +1,7 @@
 ---
 description: How the completed turns of the sessions working a GitHub-backed
-  work item reach that item's issue or pull request, cleaned, in order and once,
-  without touching the sessions or the record.
+  work item reach that item's issue or pull request, cleaned, in completion
+  order and once, without touching the sessions or the record.
 visibility: internal
 delivered_by:
   - github-turn-mirror
@@ -20,19 +20,20 @@ What a reader sees is owned by
 `local/projects/teleclaude/spec/feature/workflow/github-work-record`
 (Conversation). This design owns only how the participants relate:
 
-| Concern                                                                                                         | Owner                              | Contract consumed or published                                                                                   |
-| --------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| What a completed turn is and what it contains                                                                   | `agent_runtime`                    | Completed turns read (`local/projects/teleclaude/spec/feature/agent_runtime/session-transcript-retrieval`)       |
-| That a session stopped                                                                                          | `agent_runtime`                    | The agent activity event the runtime emits for an agent stop (`local/projects/teleclaude/spec/event-vocabulary`) |
-| Which sessions belong to which item, where the turn goes, under which App, what is removed, the comment's shape | `workflow`                         | This design and the work record                                                                                  |
-| Secrets the platform holds                                                                                      | `config`                           | The declared secret values the configuration publishes                                                           |
-| Each GitHub request, its credential and its share of the rate budget                                            | `workflow` (GitHub adapter module) | `local/projects/teleclaude/design/architecture/workflow-store` (GitHub request budget)                           |
-| Delivery of the stop event, its progress and recovery                                                           | `event-catalog`                    | `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`                                           |
+| Concern                                                                                                                | Owner                              | Contract consumed or published                                                                                   |
+| ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| What a completed turn is, what it contains, when it completed                                                          | `agent_runtime`                    | Completed turns read (`local/projects/teleclaude/spec/feature/agent_runtime/session-transcript-retrieval`)       |
+| That a session stopped                                                                                                 | `agent_runtime`                    | The agent activity event the runtime emits for an agent stop (`local/projects/teleclaude/spec/event-vocabulary`) |
+| Which sessions belong to which item, where and when a turn goes, under which App, what is removed, the comment's shape | `workflow`                         | This design and the work record                                                                                  |
+| Secrets the platform holds                                                                                             | `config`                           | The resolved values of every sensitive declaration                                                               |
+| Each GitHub request, its credential and its share of the rate budget                                                   | `workflow` (GitHub adapter module) | `local/projects/teleclaude/design/architecture/workflow-store` (GitHub request budget)                           |
+| Delivery of the stop event, its progress and recovery                                                                  | `event-catalog`                    | `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`                                           |
 
 The publisher is part of the workflow store's GitHub adapter module, beside
 the question comments and pull request reviews it already writes. It reads
-the session's turns from `agent_runtime` and never reads a native transcript,
-a session row or an output-delivery cursor itself.
+turns from `agent_runtime`, on this computer or through the runtime's
+cross-computer session read, and never reads a native transcript, a session
+row or an output-delivery cursor itself.
 
 ## Inputs/Outputs
 
@@ -41,34 +42,59 @@ a session row or an output-delivery cursor itself.
 - The runtime's agent-stop activity event for a session on this computer:
   the signal that a turn may have completed. It carries no content.
 - The completed turns read: for a session, its completed turns after a
-  given turn, each with its turn identity, its ordinal, its authored input
-  parts with their authorship, and the agent's user-visible text.
-- The session's role, working item slug and project, read through the
-  runtime's session identity facts.
-- The project's store selection, the item's repository-work status, its issue
-  and its open pull request, from the store's own bookkeeping.
+  given turn, each with its turn identity, its ordinal, its completion time,
+  its authored input parts with their authorship, and the agent's
+  user-visible text.
+- The session's role, working item slug, project and host computer, read
+  through the runtime's session identity facts and its fleet session listing.
+- The project's store selection, the item's repository-work status, its
+  issue, its pull request, and the times its workflow state records for the
+  start of its build and for its delivery or removal.
+- The project's conversation start, the first conversation-start entry on its
+  ledger issue.
 - The App inventory and role mapping
   (`local/projects/teleclaude/spec/teleclaude-config`, `github.apps`,
-  `github.roles`) and the declared secret values.
+  `github.roles`) and the resolved values of every sensitive declaration.
 
 **Outputs**
 
-- One or more conversation comments per completed turn on the item's open
-  pull request, otherwise on its issue, in the shape the work record
-  specifies, posted by the App chosen below.
-- The publisher's bookkeeping in the working copy: per session, the last turn
-  whose comments are on GitHub, and any turn whose posting is in flight.
+- One or more conversation comments per completed turn, on the destination
+  the turn's completion time decides, in the shape the work record specifies,
+  posted by the App chosen below.
+- The publisher's bookkeeping in the working copy: each captured turn, already
+  protected and split into its comments, with its destination and completion
+  time, and which of its comments are on GitHub.
 
-**Eligibility.** A session's conversation belongs to an item when all hold:
-the session's project on this computer selects the GitHub store; its working
-item slug names an item of that project that is repository work; and its role
-is one the workflow dispatches for an item: `prepare-orchestrator`,
-`work-orchestrator`, `intaker`, `architect`, `planner`, `prd-reviewer`,
-`architecture-reviewer`, `plan-reviewer`, `build-reviewer`, `builder`,
-`finalizer`, `diagnoser`, `drift-analyzer` and `deferrer`. A session with no
-role, any other role, or no working item is never published: a commit
-review belongs to the project's ledger rather than one item, and the
-integrator and coordinator work across items.
+**Eligibility.** A session's turn belongs to an item when all hold: the
+session's project selects the GitHub store; its working item slug names an
+item of that project that is repository work; its role is one the workflow
+dispatches for an item: `prepare-orchestrator`, `work-orchestrator`,
+`intaker`, `architect`, `planner`, `prd-reviewer`, `architecture-reviewer`,
+`plan-reviewer`, `build-reviewer`, `builder`, `finalizer`, `diagnoser`,
+`drift-analyzer` and `deferrer`; and the turn completed at or after the
+project's conversation start. A session with no role, any other role, or no
+working item is never published: a commit review belongs to the project's
+ledger rather than one item, and the integrator and coordinator work across
+items.
+
+**Conversation start.** A computer that runs the publisher for a project
+whose ledger issue holds no conversation-start entry appends one, as the
+platform App, carrying that moment: a platform comment of its own kind,
+appended and never edited, opening with
+`[action:conversation-start at:<time>]`, with no ledger marker so stores that
+predate it read past it. The entry the ledger issue's comment order puts first
+is the project's conversation start, on every computer and after every
+rebuild. It is the lower bound of eligibility, so neither a restart nor a
+rebuilt working copy publishes a turn completed before the capability went
+live. A project without a ledger issue publishes nothing until the store opens
+one.
+
+**Destination.** A turn completed at or after the item's build start and
+before its delivery or removal goes on the item's pull request; every other
+turn goes on its issue. The destination is decided once, from those recorded
+times, when the turn is captured, and never changes: a delayed turn is not
+redirected when the pull request opens or closes in the meantime. A turn for a
+pull request that is not on GitHub yet waits until its reflection opens it.
 
 **Identity.** A review role, resolved through its composite role, posts as
 the App `github.roles` maps for `reviewer`. Every other eligible role posts
@@ -84,39 +110,47 @@ message under that session's id and role; platform and runtime content under
 the platform. A message a person gave the session through any other channel
 is not written; the turn states that the person spoke.
 
-**Protection.** Before any request carries a turn, the publisher masks every
-declared secret value, replaces each credential-like string detect-secrets
-recognizes, and replaces each personal-data entity Presidio recognizes with
-its entity label. Presidio runs with its English small model, a credential
-recognizer set without the hexadecimal high-entropy detector, and the
-person, contact, location, nationality, financial, network and medical
-entities; it does not replace dates, URLs or UUIDs, which are the platform's
-own identifiers and timestamps rather than personal data in this
-conversation. A turn whose declared secrets cannot be read, or whose
-detection raises, is written as a withheld turn and nothing of its content
-leaves the computer.
+**Protection.** The input requires personal data to be filtered with an
+established library before anything is posted, so protection is an
+established-library data-protection transform at the publication boundary,
+applied to every turn alike; it never decides whether a turn is published or
+anything about what it means. Before a turn is captured, the publisher:
+
+- masks every resolved value of a sensitive declaration, App private keys in
+  their encoded and decoded forms included;
+- replaces each credential detect-secrets recognizes, run locally with
+  verification off so no candidate leaves the computer, and without its
+  hexadecimal high-entropy plugin, because commit SHAs and digests fill this
+  conversation;
+- replaces each entity Presidio's analyzer recognizes, with its English small
+  model, for the person, email, phone, location, nationality, credit card,
+  IBAN, crypto wallet, IP address, MAC address and medical licence entities,
+  with that entity's label. Dates, URLs and UUIDs are not replaced: here they
+  are the platform's own timestamps, links and identifiers.
+
+A turn whose sensitive values cannot be resolved, or whose detection raises,
+is captured as a withheld turn and nothing of its content leaves the computer.
 
 ## Invariants
 
-- A completed turn of an eligible session appears on its item exactly once:
-  its comments are posted in order, the session's turns appear in ordinal
-  order, and the next turn of a session is not posted before every comment of
-  the previous one is.
+- Every eligible turn appears on its destination exactly once, all of its
+  comments in order, and on each destination the turns appear in completion
+  order across every session of the item, wherever those sessions ran.
+- A turn is captured, protected, at the moment the publisher first sees it
+  completed. Its source can disappear afterwards without losing it.
 - Publishing never delays, refuses or alters a session's turn and never
   messages a session. Its comments are App comments, which comment routing
   never delivers.
 - A conversation comment is never read as record, content or ledger: it is
   authored by a role App, and the store trusts only the App its declaration
   names.
-- The publisher holds no turn content at rest. Its bookkeeping holds turn
-  identities and posting state; content is read from the runtime when a turn
-  is posted.
-- Conversation requests never cause a record write to be refused: they run at
-  background priority on the store's GitHub request runtime.
+- Conversation requests are admitted by the request budget of the workflow
+  store design. Turn comments are never posted as the platform App; the one
+  conversation-start entry is.
 
 ## Primary flows
 
-### Publishing a completed turn
+### Capturing and publishing
 
 ```mermaid
 sequenceDiagram
@@ -127,57 +161,84 @@ sequenceDiagram
     participant IO as GitHub request runtime
     participant GH as Issue or pull request
     EC->>P: agent stop on this computer (session)
-    P->>P: eligibility, destination, identity
-    P->>WC: last posted turn for the session
-    P->>AR: completed turns after it
-    loop each turn in ordinal order
-        P->>P: protect (mask, detect, or withhold)
-        P->>WC: record turn in flight
-        P->>IO: append comments (background priority)
+    P->>AR: completed turns after the last captured one
+    loop each new eligible turn
+        P->>P: destination, identity, protect, split
+        P->>WC: capture turn
+    end
+    P->>P: next turn per destination, by completion time
+    P->>AR: other computers' sessions of the item: uncaptured or unposted turns completed earlier?
+    alt none earlier
+        P->>IO: append the turn's comments (admitted by the budget)
         IO->>GH: create comment(s)
-        P->>WC: record turn posted
+        P->>WC: mark posted
+    else an earlier turn is still owed elsewhere
+        P->>P: hold this destination
     end
 ```
 
-The stop event wakes the publisher; it never carries content and its loss
-loses nothing, because each pass posts every completed turn after the
-recorded position. The event consumer is a live consumer whose declared
-recovery operation is a full pass over every eligible session on this
-computer, run at consumer start and on reconnection.
+The stop event wakes the publisher; it carries no content and its loss loses
+nothing, because each pass captures every completed turn after the last
+captured one and posts every captured turn not yet on GitHub. The event
+consumer is a live consumer whose declared recovery operation is a full pass
+over every eligible session this computer hosts, run at consumer start and on
+reconnection; the store's periodic refresh runs the same pass.
+
+### Ordering across computers
+
+The workflow dispatches an item's sessions from its claim holder, so the
+sessions of one item that run at the same time share a computer. Turns of an
+item can still be owed on two computers when the item moved between them
+while posting was held up. Before posting the next turn of a destination, the
+publisher asks every other computer hosting an eligible session of the item,
+through the runtime's cross-computer session read, for that session's
+completed turns; it posts only when none of them completed earlier than the
+next turn and is missing from the destination. Otherwise the destination
+holds, as it does during a GitHub outage, and resumes when the other computer
+has posted them.
 
 ### Recovering position
 
-The recorded position lives in the working copy. When it is absent for a
-session, after a rebuilt working copy or an interrupted post, the publisher
-reads the item's comments by the session's App from GitHub and takes the last
-turn whose envelope names that session as posted; a turn found partly posted
-is completed from its next missing part. A turn in flight whose create reply
-was lost is found the same way before anything is posted again.
+Bookkeeping lives in the working copy. When a captured turn's posting was
+interrupted, or the working copy was rebuilt, the publisher reads the
+destination's comments by the turn's App from GitHub and takes each turn whose
+envelope names its session and ordinal as posted; a turn found partly posted is
+completed from its next missing part, from the protected parts it captured. A
+create whose reply was lost is found the same way before anything is posted
+again. After a rebuild, turns are captured again from the runtime from the
+first turn of each eligible session missing from GitHub.
 
 ## Failure modes
 
-- **GitHub unavailable or rate limited.** The turn stays unposted and the
-  position does not move; the next pass, on the next stop or the periodic
-  refresh, posts it. The session is unaffected.
-- **Protection cannot complete.** The turn is posted as a withheld turn,
-  which advances the position; its content is never retried onto GitHub.
+- **GitHub unavailable or the budget spent.** Captured turns stay unposted and
+  their destination holds; the next pass posts them. The session is
+  unaffected.
+- **Protection cannot complete.** The turn is captured and posted as a
+  withheld turn; its content never reaches GitHub.
 - **No App for the identity, or the App is not installed with issue and pull
-  request write access.** The turn stays unposted with that cause logged;
-  later turns of that session wait behind it, so order holds when the cause is
-  fixed.
-- **A turn the runtime reports unreadable.** Its transcript entries are no
-  longer on disk; it is posted as a withheld turn, as the work record states
-  for a turn whose content cannot be read, so the session's later turns are
-  not held back.
+  request write access.** The turn stays unposted with that cause logged; its
+  destination holds behind it, so order holds when the cause is fixed.
+- **A computer with earlier turns of the item is unreachable.** The item's
+  destinations hold until it answers or leaves the fleet.
 - **A turn the runtime never saw complete.** A turn with no later turn, no
   covering agent stop and an open session is not completed and is not
-  posted until one of those holds.
-- **Sessions on different computers.** Each computer publishes the sessions
-  it hosts, with its own App inventory. Turns of one session keep their order;
-  turns of sessions on different computers interleave by when each computer
-  posted them.
+  captured until one of those holds.
+- **A turn the runtime cannot read at capture.** Capture follows completion
+  within one pass, so this occurs only when the source disappeared while the
+  publisher was not running. The runtime reports it unreadable; the publisher
+  logs the loss and posts the turn as unavailable, an explicit gap in place of
+  the turn, so the item's later turns are not held for ever. It is a defect of
+  that capture, not a delivered turn.
+- **A lost working copy.** Captured turns not yet on GitHub are captured again
+  from the runtime; a turn whose source is also gone is lost, as a lost
+  working copy loses non-repository work.
 - **A computer that does not hold the project.** It publishes nothing for its
   sessions on that project's items.
+- **Other computers' content creation.** Each computer counts only the
+  content-creating requests it sends. Other computers' record writes are not
+  in its count; a secondary limit they trigger still stops its conversation
+  through the limit response, and the record writes keep their own refusal
+  and retry contract.
 
 ## See Also
 
