@@ -234,6 +234,10 @@ def migrate_local_snippet_identities(
         return
     if not conn.execute(_TABLE_EXISTS_SQL, (_CUTOVER_MARK_TABLE,)).fetchone():
         return
+    # A completed cutover needs no writer: this unlocked read only skips the lock, and the check
+    # inside the transaction stays authoritative for a cutover that completes in between.
+    if conn.execute(_SELECT_CUTOVER_MARK_SQL, (_IDENTITY_CUTOVER_MARK,)).fetchone():
+        return
     conn.execute(_BEGIN_IMMEDIATE_SQL)
     try:
         if conn.execute(_SELECT_CUTOVER_MARK_SQL, (_IDENTITY_CUTOVER_MARK,)).fetchone():
