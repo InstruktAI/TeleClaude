@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS binding_conflict_candidates (
 CREATE TABLE IF NOT EXISTS turn_authored_parts (
     binding_id TEXT NOT NULL,
     part_id INTEGER NOT NULL,
-    part_kind TEXT NOT NULL CHECK(part_kind IN ('local', 'caller', 'peer')),
+    part_kind TEXT NOT NULL CHECK(part_kind IN ('local', 'caller', 'peer', 'github')),
     span_start INTEGER NOT NULL,
     span_end INTEGER NOT NULL,
     original_source_session_id TEXT,
@@ -196,6 +196,8 @@ CREATE TABLE IF NOT EXISTS turn_authored_parts (
     author_thinking_mode TEXT,
     author_machine_role TEXT,
     author_job_role TEXT,
+    author_channel_login TEXT,
+    author_channel_link TEXT,
     PRIMARY KEY (binding_id, part_id),
     FOREIGN KEY (binding_id) REFERENCES accepted_turn_bindings(binding_id) ON DELETE CASCADE
 );

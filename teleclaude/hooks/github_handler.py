@@ -25,6 +25,7 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.inbound_types import GITHUB_ACTOR_ID_PREFIX
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.origins import InputOrigin
@@ -34,7 +35,7 @@ from teleclaude.types.commands import ProcessMessageCommand
 
 logger = get_logger(__name__)
 
-_ACTOR_ID_TEMPLATE = "github:{login}"
+_ACTOR_ID_TEMPLATE = GITHUB_ACTOR_ID_PREFIX + "{login}"
 _OCCURRENCE_KEY_TEMPLATE = "github:{event_type}:{comment_id}"
 _ATTRIBUTION_TEMPLATE = "{name} (@{login}) {act}: {url}"
 _ATTRIBUTION_WITH_TEXT_TEMPLATE = "{attribution}\n\n{text}"
@@ -240,6 +241,7 @@ async def handle_github_event(event: HookEvent, contract: Contract) -> None:
         actor_id=_ACTOR_ID_TEMPLATE.format(login=comment.sender_login),
         actor_name=person.person_name,
         source_message_id=str(comment.comment_id),
+        source_channel_id=comment.url,
     )
     try:
         await get_command_service().process_message(command)

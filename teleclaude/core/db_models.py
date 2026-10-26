@@ -379,6 +379,8 @@ class TurnAuthoredPartRow(SQLModel, table=True):
     author_thinking_mode: str | None = None
     author_machine_role: str | None = None
     author_job_role: str | None = None
+    author_channel_login: str | None = None
+    author_channel_link: str | None = None
 
 
 class ConversationLinkMode(StrEnum):

@@ -19,9 +19,13 @@ class InboundBindingDisposition(StrEnum):
     INPUT_CONFLICT = "input_conflict"
 
 
+GITHUB_ACTOR_ID_PREFIX = "github:"
+
+
 class TurnPartKind(StrEnum):
     """Authorship classes for the ordered spans of one bound native turn."""
 
     LOCAL = "local"
     CALLER = "caller"
     PEER = "peer"
+    GITHUB = "github"

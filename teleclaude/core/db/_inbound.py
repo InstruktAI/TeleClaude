@@ -90,6 +90,8 @@ class TurnAuthoredPartInput:
     original_source_session_id: str | None
     author: MessageAuthor
     author_job_role: str | None = None
+    channel_login: str | None = None
+    channel_link: str | None = None
 
 
 @dataclass(frozen=True)
@@ -501,6 +503,22 @@ class DbInboundMixin:
             rows = (await db_session.exec(statement)).all()
             return [_decode_inbound_row(row) for row in rows]
 
+    async def get_unbound_delivered_github_inbound(self, session_id: str) -> list[InboundQueueRow]:
+        """Return delivered GitHub comments awaiting a native-entry binding, oldest first."""
+        associated_ids = select(db_models.TurnReceiptEnvelopeRow.inbound_queue_id)
+        statement = (
+            select(db_models.InboundQueue)
+            .where(db_models.InboundQueue.session_id == session_id)
+            .where(db_models.InboundQueue.status == _DELIVERED_STATUS)
+            .where(db_models.InboundQueue.source_feature == InjectedTextSourceFeature.GITHUB.value)
+            .where(db_models.InboundQueue.binding_disposition.is_(None))  # type: ignore[union-attr]
+            .where(db_models.InboundQueue.id.notin_(associated_ids))
+            .order_by(db_models.InboundQueue.id.asc())  # type: ignore[arg-type]
+        )
+        async with self._session() as db_session:
+            rows = (await db_session.exec(statement)).all()
+            return [_decode_inbound_row(row) for row in rows]
+
     async def create_turn_binding(
         self,
         *,
@@ -545,6 +563,8 @@ class DbInboundMixin:
                         author_thinking_mode=part.author.thinking_mode,
                         author_machine_role=part.author.machine_role,
                         author_job_role=part.author_job_role,
+                        author_channel_login=part.channel_login,
+                        author_channel_link=part.channel_link,
                     )
                 )
             db_session.add(
@@ -596,6 +616,8 @@ class DbInboundMixin:
                         machine_role=row.author_machine_role,
                     ),
                     author_job_role=row.author_job_role,
+                    channel_login=row.author_channel_login,
+                    channel_link=row.author_channel_link,
                 )
                 for row in part_rows
             )
