@@ -254,7 +254,13 @@ first turn of each eligible session missing from GitHub.
   notice and cannot be inspected, so a record write can still meet one; it
   keeps the store's existing refusal and retry contract. Its limit response,
   passed to the master when another computer receives it, stops the whole
-  fleet's conversation until the time it names.
+  fleet's conversation until the time it names. While that computer cannot
+  reach the master it keeps the notice and delivers it when the relay
+  answers; meanwhile the master learns of a limit shared with its own
+  requests from the response to its next request.
+- **A new master.** A computer that becomes the master posts nothing for an
+  hour after it does, so no budget window or pause of its predecessor is
+  still running when it starts.
 
 ## See Also
 

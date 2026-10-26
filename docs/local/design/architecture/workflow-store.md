@@ -344,14 +344,18 @@ master admits each conversation request before sending it:
   GitHub request any computer makes pauses every conversation request until
   the time the response names, or a minute when it names none, doubling on
   each repeated limit up to an hour. A computer other than the master that
-  receives one tells the master over the same relay, with that time; a
-  computer that cannot reach the master is not posting through it anyway. A
-  turn handed over during the pause is answered deferred until its end.
+  receives one tells the master over the same relay, with that time, keeps
+  the notice durably while the master cannot be reached, and delivers it once
+  the relay answers, unless its time has passed by then. A turn handed over
+  during the pause is answered deferred until its end.
 - **The budget survives a restart.** The master's request runtime records the
   time of each conversation append it sends within the last hour and the end
   of any pause in the daemon's operational database
   (`local/projects/teleclaude/policy/single-database`), and reloads both
-  before it admits a conversation request after it starts.
+  before it admits a conversation request after it starts. A computer that
+  becomes the master holds none of its predecessor's record, so it admits no
+  conversation request until an hour after it became master: the longest
+  budget window and the longest pause.
 
 <!-- /planned:github-turn-mirror -->
 
