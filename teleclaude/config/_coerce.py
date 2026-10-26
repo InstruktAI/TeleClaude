@@ -96,6 +96,13 @@ def _int_strict(value: object) -> int:
     raise ValueError(str(scalar))
 
 
+def _optional_int_strict(value: object) -> int | None:
+    """Keep None and apply the strict integer rule to any other value."""
+    if value is None:
+        return None
+    return _int_strict(value)
+
+
 def _float_strict(value: object) -> float:
     """Convert numeric scalars to float while rejecting booleans."""
     scalar = _require_scalar(value)
@@ -118,6 +125,7 @@ TRUTHY_TEXT = Annotated[str | None, BeforeValidator(_truthy_text)]
 TEXT = Annotated[str, BeforeValidator(_text)]
 OPT_INT_LENIENT = Annotated[bool | int | None, BeforeValidator(_optional_int_lenient)]
 INT_STRICT = Annotated[int, BeforeValidator(_int_strict)]
+OPT_INT_STRICT = Annotated[int | None, BeforeValidator(_optional_int_strict)]
 FLOAT_STRICT = Annotated[float, BeforeValidator(_float_strict)]
 INT_LENIENT = Annotated[int, BeforeValidator(_int_lenient)]
 SCALAR_INPUT = Annotated[object, BeforeValidator(_require_scalar)]
