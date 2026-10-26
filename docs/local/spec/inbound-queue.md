@@ -39,6 +39,23 @@ entry and an accepted occurrence each bind at most once. Binding conflicts keep
 their exact native-entry candidates as durable evidence and never acquire a
 guessed author.
 
+<!-- planned:github-turn-mirror -->
+
+A comment routed from GitHub binds as one authored part of the `github` kind.
+Its delivered row is the authority for the correlation: the native entry whose
+authored text equals the row's accepted content is that row's entry, and
+nothing is read from the shape of the text. The part spans the whole entry and
+names the person who wrote the comment as a human author, with the GitHub login
+the comment was written under and the comment's link as its channel facts. The
+receipt envelope spans the whole entry as well. The projection pass and the
+completed-turns read
+(`local/projects/teleclaude/spec/feature/agent_runtime/session-transcript-retrieval`)
+both establish the binding, so a turn's input carries its GitHub authorship
+whichever of them reads the entry first. A delivered GitHub row that matches no
+entry stays unbound and acquires no disposition.
+
+<!-- /planned:github-turn-mirror -->
+
 ### Reminder machine input
 
 Reminder firings use the control-delivery surface and never enter this queue.
