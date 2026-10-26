@@ -1,11 +1,9 @@
 # yaml-language-server: $schema=.teleclaude/schemas/teleclaude-project.schema.json
-description: AI-powered multi-agent orchestration platform
-project_name: TeleClaude
+kind: project
 project_slug: teleclaude
+project_name: TeleClaude
+description: AI-powered multi-agent orchestration platform
 company: instrukt-ai
-help_desk:
-  enabled: true
-env_allow_list: []
 business:
   publishes:
     - slug: general
@@ -21,29 +19,54 @@ business:
       trigger: Work on a person's own mail, calendar and standing instructions.
         Only an agent started in that person's own workspace does this; asked
         elsewhere, an agent spawns one there rather than serving it.
-# TeleClaude's checkpoint maintenance uses this project's overlay. The
-# platform-wide base supplies sync for docs and agents and install for setup.
-# A commit here activates nothing live: the platform runs from an installed
-# release, and a revision becomes the active release only through an install
-# (`telec app install`). A commit here therefore owes no runtime log judgment:
-# each install's runtime is assessed by the installation inspector, never by the
-# integrator. The overlay carries only the development plumbing below.
+hooks:
+  inbound:
+    github:
+      secret: ${GITHUB_WEBHOOK_SECRET}
+todos:
+  store: github
+  repository:
+    id: 1086643517
+    full_name: InstruktAI/TeleClaude
+  app: 5453276
+jobs:
+  - name: temp-reaper
+    category: system
+    when:
+      every: 60m
+    script: jobs/temp_reaper.py
+  - name: project-backup
+    category: system
+    when:
+      at: 05:00
+    script: jobs/project_backup.py
+  - name: log-bug-hunter
+    category: system
+    when:
+      every: 6h
+    job: sdlc/procedure/maintenance/log-bug-hunter
+    agent:
+      - codex
+      - claude
+      - gemini
+    thinking_mode: med
+    enabled: ${TELECLAUDE_JOB_LOGBUGHUNTER_ENABLED}
 checkpoint:
   maintenance:
     plumbing-convergence:
-      main_only: true
-      precedence: 15
       command:
         - '{interpreter}'
         - -m
         - teleclaude.project_setup.plumbing
-    docs-layout-convergence:
       main_only: true
-      precedence: 45
+      precedence: 15
+    docs-layout-convergence:
       command:
         - '{interpreter}'
         - -m
         - teleclaude.entrypoints.docs_layout_convergence
+      main_only: true
+      precedence: 45
   bindings:
     - scope:
         include:
@@ -65,48 +88,19 @@ checkpoint:
           - teleclaude/snippet_roots.py
       actions:
         - docs-layout-convergence
-jobs:
-  - category: system
-    name: temp-reaper
-    when:
-      every: 60m
-    script: jobs/temp_reaper.py
-  - category: system
-    name: project-backup
-    when:
-      at: 05:00
-    script: jobs/project_backup.py
-  - category: system
-    name: log-bug-hunter
-    when:
-      every: 6h
-    job: sdlc/procedure/maintenance/log-bug-hunter
-    agent:
-      - codex
-      - claude
-      - gemini
-    thinking_mode: med
-    enabled: ${TELECLAUDE_JOB_LOGBUGHUNTER_ENABLED}
 code:
   enabled: true
 docs:
   enabled: true
 agents:
   enabled: true
-hooks:
-  inbound:
-    github:
-      secret: ${GITHUB_WEBHOOK_SECRET}
-todos:
-  repository:
-    id: 1086643517
-    full_name: InstruktAI/TeleClaude
-  app: 5453276
+help_desk:
+  enabled: true
 ci:
   required_checks:
     - .github/workflows/lint-test.yaml
   dependency_update_branches:
     - renovate/
     - dependabot/
-kind: project
-schema_version: 26
+env_allow_list: []
+schema_version: 27
