@@ -1,5 +1,5 @@
 ---
-description: 'Proactive log-scanning job that discovers daemon errors and files a minimal bug report for each unsuppressed signal.'
+description: 'Proactive log-scanning job that discovers daemon errors and recurring guard refusals and files a minimal bug report for each unsuppressed signal.'
 visibility: 'public'
 role: bug-hunter
 dispatch:
@@ -17,10 +17,11 @@ dispatch:
 
 ## Goal
 
-Scan the current project's logs, reject warnings and exclude errors attributable to
-congestion, a computer restart, or an upstream dependency's own failure. File only errors
-whose records support a failure in the scanned project's own handling through
-`telec bugs report`. The bug lifecycle owns diagnosis and implementation.
+Scan the current project's logs, reject warnings other than recurring guard refusals, and
+exclude errors attributable to congestion, a computer restart, or an upstream dependency's
+own failure. File only errors whose records support a failure in the scanned project's own
+handling, and recurring guard refusals, through `telec bugs report`. The bug lifecycle owns
+diagnosis and implementation.
 
 ## Preconditions
 
@@ -43,15 +44,26 @@ whose records support a failure in the scanned project's own handling through
    - If `incomplete_scan` is present, retry its recorded start/end window. Otherwise, fix the end at the current UTC time and start at `completed_until`; with no completed cursor, start one declared schedule interval before that end. Process records in the half-open interval `[start, end)`. A completed window advances the next start to its end.
 
    - Collect that window with
-     `instrukt-ai-logs {project_slug} --since <window> --exclude 'logger=git-wrapper'`.
+     `instrukt-ai-logs {project_slug} --since <window>`.
      A successful empty result is a clean scan. A failed collection is an
      incomplete scan, reported under Recovery.
 
 2. Establish which records are eligible to become signals.
    - Under `sdlc/policy/observability`, only `ERROR` and `CRITICAL`
-     records, exceptions, and tracebacks are filing candidates. A `WARNING` never becomes
-     a signal or bug report, however often it repeats. Adjacent warnings may be read only as
-     context for an eligible error; they are not findings and are omitted from the report.
+     records, exceptions, and tracebacks are filing candidates. Apart from the guard refusals
+     below, a `WARNING` never becomes a signal or bug report, however often it repeats.
+     Adjacent warnings may be read only as context for an eligible error; they are not
+     findings and are omitted from the report.
+   - A guard refusal is a `WARNING` record with `event=blocked`, carrying the refusal's
+     `reason`, the refused operation, the attempting session's `session_id`, and its `cwd`.
+     The guard enforced its rule, so a single refusal is no finding. The same `reason`
+     refused in more than one session within the window is one pattern signal: either the
+     agents' instructions keep inviting an act the guard refuses, so the counter belongs on
+     the load path the invitation reaches (`general/policy/agent-facing-text`), or the guard
+     refuses an act agents need without naming its door
+     (`general/principle/trust-and-guardrails`). The congestion and restart gates do not
+     apply to it. Report the reason, its occurrence count, and the session ids; the bug
+     lifecycle reads those transcripts to establish which of the two it is.
    - Group related eligible records into distinct error signals. Use the observed messages
      and context; do not investigate the codebase to establish a diagnosis.
    - Establish which system owns the failed operation. An upstream 5xx response, rate limit,
