@@ -34,9 +34,15 @@ following.
   or the description of a work item's issue edited. An issue one of the
   platform's own Apps opens as its record is never a filing.
 - **The handover.** No issue bypasses triage. An issue reaches the intake
-  only once triage hands it over by removing `status:triage`, whoever opened
-  it. Which removals count as a handover, the screening before triage and
-  triage itself are the outsider gate's.
+  only once `status:triage` is removed from it, by triage or by a configured
+  person with write access, whoever opened it. Screening and triage
+  themselves are the outsider gate's.
+- **Waiting for release.** An item filed from an issue whose author is a
+  member or collaborator without write access, or anyone outside the
+  repository, another App's bot included, is created waiting for release:
+  held, with the issue showing it waits and why, until someone with write
+  access releases it through the existing release of a held item. An item
+  from an author with write access goes on to preparation as normal.
 - **Whose edits count.** A description edit or a reopen by a GitHub user —
   never a bot or App — who holds write access to the repository and whose
   login resolves to a configured person
@@ -59,7 +65,8 @@ following.
   GitHub as its door
   (`local/projects/teleclaude/spec/feature/workflow/todo-creation`) and, when
   the issue's author is a configured person, that person as the authority it
-  ran under; an outside author gains no authority over the work.
+  ran under; otherwise it runs under the platform's own authority, and the
+  outside author's GitHub name is presentation context only.
 - **Not filed.** An issue whose work an existing item covers is closed as a
   duplicate linked to that item's issue. An issue that adds to an existing
   item not yet in build is carried into that item's input through its owner,
@@ -104,6 +111,13 @@ Scenario: An issue triage hands over becomes a work item on that issue
   Then the issue becomes a work item with the kind, slug and input the intake decided
   And the issue's description shows the item's input
   And the original text stays on the issue as its author's comment
+
+Scenario: An outsider's item waits until someone with write access releases it
+  Given someone outside the repository opened an issue describing new work
+  When triage hands the issue over and the intake files it
+  Then the work item waits for release and its issue says so
+  When a configured person with write access releases it
+  Then the work item goes on to preparation
 
 Scenario: An issue is not taken in before triage hands it over
   Given a member of the repository with write access opens an issue
