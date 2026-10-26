@@ -57,6 +57,8 @@ they remain recorded and inspectable in session details beside the complete
 arguments. Display abbreviation does not change dispatch, continuation or
 matching identity.
 
+<!-- planned-change:tui-session-issue-from-work-item -->
+
 A bound issue parameter identifies GitHub work when GitHub's issue lookup
 resolves it in the assignment's project. Session snapshots carry its verified
 number, URL, and bound work subject as an optional structured reference,
@@ -72,6 +74,38 @@ repository is identified when one of the platform's Apps can read it. The refere
 claim; an assignment without an identified GitHub issue carries none. An
 unavailable optional lookup leaves the session visible and eligible for a
 later lookup.
+
+<!-- change:tui-session-issue-from-work-item -->
+
+A bound issue parameter identifies GitHub work when GitHub's issue lookup
+resolves it in the assignment's project. Session snapshots carry its verified
+number, URL, and bound work subject as an optional structured reference,
+including for sessions started before the display was opened. An issue URL
+names its own repository; a bare number is looked up in the project's
+declared GitHub repository (`local/projects/teleclaude/spec/teleclaude-config`),
+or, without a declaration, in the repository of the checkout's `origin`
+remote on GitHub. The lookup authenticates as the App the project declares,
+otherwise as an App of the machine's App inventory
+(`local/projects/teleclaude/spec/teleclaude-config`) installed on that
+repository, and otherwise reads without credentials, so an issue in a private
+repository is identified when one of the platform's Apps can read it. The
+reference is independent of the session title and work-slug claim. An
+unavailable optional lookup leaves the session visible and eligible for a
+later lookup.
+
+Without a bound issue parameter, a session whose work slug names an item of
+its project's GitHub workflow store carries that item's own issue
+(`local/projects/teleclaude/spec/feature/workflow/github-work-record`) in the
+same structured reference: the number the store records for the item, its URL
+in the project's declared repository, and the work slug as its subject. The
+store's record is the identity, so no GitHub lookup is made for it, and reading
+it never waits on the store's writers. A bound issue parameter takes precedence
+over the work item's issue. A session carries none when its project keeps its
+work in the local store, when the store records no issue for the item yet, or
+when the project's working copy cannot be read; a later projection of the
+session carries the issue once the store records it.
+
+<!-- /planned-change:tui-session-issue-from-work-item -->
 
 ### Resolution
 
