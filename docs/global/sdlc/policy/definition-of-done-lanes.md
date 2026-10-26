@@ -481,6 +481,17 @@ recorded `doc_impact_none: <reason>`, is a finding. This is the build/commit-rev
 backstop to the plan-review documentation hard gate, so a forgotten snippet update
 cannot reach delivery.
 
+**No account- or installation-specific literals in committed configuration
+(always, every diff):** a committed configuration or declaration file carries
+only what holds for everyone who clones the repository. A value that belongs to
+one account, organization, installation or machine — an account, App,
+installation or repository identity, an owning company or person, a host, a
+path, a credential — is authored as a whole environment reference
+(`${NAME}` or `${NAME:-default}`), with the value in that installation's
+environment. Such a literal in a committed configuration file is **Critical**,
+whoever wrote it and whatever the delivery's subject: a fork or another
+installation inherits it as if it were its own.
+
 **Work-phase doc freeze (build reviews only):** the doc layer is authored at
 prepare on `main` and folded at integration; the work phase executes a frozen
 contract. A lifecycle work-phase diff (slug worktree) that touches `docs/**` is
