@@ -69,8 +69,8 @@ whole fleet has one request budget and one stop.
 - The capturer's bookkeeping in the working copy of the computer hosting the
   session: each captured turn, already protected and split into its comments,
   with its repository, destination, App and completion time, and which of its
-  comments are on GitHub. The master keeps no turn: it holds only its budget
-  counts and stop state, in memory.
+  comments are on GitHub. The master keeps no turn: it keeps only its budget
+  state, durably (workflow-store design, GitHub request budget).
 
 **Eligibility.** A session's turn belongs to an item when all hold: the
 session's project selects the GitHub store; its working item slug names an
@@ -241,8 +241,8 @@ first turn of each eligible session missing from GitHub.
   captured until one of those holds.
 - **A turn the runtime cannot read at capture.** This occurs when a transcript
   was deleted before the capturer took its turn: by hand, or by an agent's
-  own retention, which the deployed settings set to 99,999 days for Claude
-  and 1,460 days for Gemini. The runtime reports it unreadable; the publisher
+  own retention under the settings TeleClaude deploys for it. The runtime
+  reports it unreadable; the publisher
   logs the loss and posts the turn as unavailable in its place, as the work
   record specifies.
 - **A lost working copy.** Captured turns not yet on GitHub are captured again
@@ -252,9 +252,9 @@ first turn of each eligible session missing from GitHub.
   sessions on that project's items.
 - **A record write GitHub refuses.** GitHub's secondary limits change without
   notice and cannot be inspected, so a record write can still meet one; it
-  keeps the store's existing refusal and retry contract. A limit response the
-  master receives stops the whole fleet's conversation until the time it
-  names.
+  keeps the store's existing refusal and retry contract. Its limit response,
+  passed to the master when another computer receives it, stops the whole
+  fleet's conversation until the time it names.
 
 ## See Also
 

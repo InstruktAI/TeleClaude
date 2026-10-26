@@ -340,11 +340,18 @@ master admits each conversation request before sending it:
   that count stays within half of GitHub's documented content-creation limits.
   Because the master sends every conversation request, its count is the
   fleet's.
-- **A limit response stops the conversation.** Any rate-limit response to a
-  request the master sends pauses every conversation request until the time
-  the response names, or a minute when it names none, doubling on each
-  repeated limit. A turn handed over meanwhile is answered deferred until
-  that time.
+- **A limit response stops the conversation.** A rate-limit response to any
+  GitHub request any computer makes pauses every conversation request until
+  the time the response names, or a minute when it names none, doubling on
+  each repeated limit up to an hour. A computer other than the master that
+  receives one tells the master over the same relay, with that time; a
+  computer that cannot reach the master is not posting through it anyway. A
+  turn handed over during the pause is answered deferred until its end.
+- **The budget survives a restart.** The master's request runtime records the
+  time of each conversation append it sends within the last hour and the end
+  of any pause in the daemon's operational database
+  (`local/projects/teleclaude/policy/single-database`), and reloads both
+  before it admits a conversation request after it starts.
 
 <!-- /planned:github-turn-mirror -->
 
