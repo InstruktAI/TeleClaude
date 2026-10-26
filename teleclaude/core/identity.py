@@ -61,6 +61,7 @@ from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 logger = get_logger(__name__)
 
 _DISCORD_AVATAR_BINDING_EVENT = "discord_avatar_binding_lifecycle"
+_UNREGISTERED_LINEAGE_PERSON_EVENT = "session_lineage_person_unregistered"
 _PERSON_CONTEXT_BINDING_REGISTRY_UNAVAILABLE = "Person registry is unavailable for context binding"
 
 
@@ -235,6 +236,7 @@ class IdentityResolver:
         self._config_mtime_ns: int | None = None
         self._people_mtime_ns: int | None = None
         self._person_configs_signature: tuple[tuple[str, int], ...] | None = None
+        self._unregistered_lineage_reported: set[str] = set()
         self._load_config()
 
     @staticmethod
@@ -305,6 +307,7 @@ class IdentityResolver:
         self._config_mtime_ns = config_mtime
         self._people_mtime_ns = people_mtime
         self._person_configs_signature = person_configs
+        self._unregistered_lineage_reported.clear()
         self._load_config()
 
     @staticmethod
@@ -476,6 +479,21 @@ class IdentityResolver:
                 avatar_url=self._avatar_url_for(person),
             )
         return IdentityContext()
+
+    def resolve_lineage_person(self, email: str, *, session_id: str) -> IdentityContext | None:
+        """The registered person a session's lineage email names, or ``None`` when the registry names none.
+
+        A miss is registry drift — the lineage outlived its person's entry — and is reported once
+        per email for each version of the registry.
+        """
+        context = self.resolve_by_email(email)
+        if context.person_name is not None:
+            return context
+        reported_key = email.lower()
+        if reported_key not in self._unregistered_lineage_reported:
+            self._unregistered_lineage_reported.add(reported_key)
+            logger.warning(_UNREGISTERED_LINEAGE_PERSON_EVENT, session_id=session_id)
+        return None
 
     def resolve_exact_one_by_email(self, email: str) -> IdentityContext:
         """Resolve a person only when the verified email has exactly one configured owner."""
@@ -800,13 +818,9 @@ def local_human_author(session: Session) -> MessageAuthor:
     (`general/concept/lineage-vs-authorship`).
     """
     if session.human_email:
-        try:
-            display = get_identity_resolver().resolve_by_email(session.human_email).display_name
-        except ValueError:
-            # The registry no longer names the lineage's person; the input stays human-authored.
-            display = None
-        if display is not None:
-            return MessageAuthor.for_human(session_id=session.session_id, display_name=display)
+        person = get_identity_resolver().resolve_lineage_person(session.human_email, session_id=session.session_id)
+        if person is not None:
+            return MessageAuthor.for_human(session_id=session.session_id, display_name=person.display_name)
     return MessageAuthor.for_human_without_lineage(session_id=session.session_id)
 
 
