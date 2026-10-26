@@ -482,7 +482,7 @@ backstop to the plan-review documentation hard gate, so a forgotten snippet upda
 cannot reach delivery.
 
 **No account- or installation-specific literals in committed configuration
-(always, every diff):** a committed configuration or declaration file carries
+(every diff that changes a committed configuration or declaration file):** a committed configuration or declaration file carries
 only what holds for everyone who clones the repository. A value that belongs to
 one account, organization, installation or machine — an account, App,
 installation or repository identity, an owning company or person, a host, a
