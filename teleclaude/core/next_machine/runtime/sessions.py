@@ -9,7 +9,7 @@ from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.agent_status_projection import read_session_agent_status
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.lanes import DRIVER_ROLES, LifecycleProcedure
-from teleclaude.core.session_status import AgentStatusValue
+from teleclaude.core.session_status import AgentStatusValue, SessionLifecycleStatus
 
 CommandValues = str | tuple[str, ...]
 PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (
@@ -333,6 +333,30 @@ async def live_orchestrator_owner(db: Db, project_path: str | Path, slug: str) -
         if _same_project_root(session.project_path, project_root):
             return session.session_id
     return None
+
+
+async def find_accepted_lifecycle_start(db: Db, project_path: str | Path, slug: str, role: str) -> str | None:
+    """Return the open session already started as ``role``'s driver for ``slug`` in this project.
+
+    Lifecycle dispatch's idempotency read: a session carrying the lane's driver role, this
+    ``working_slug`` and this canonical project root, with no close timestamp and not closing, is
+    the start an earlier dispatch already accepted, including one whose ``active_runner`` record
+    failed. When several match, the earliest created is the first accepted start. Reads the
+    session's own registry row and writes nothing. Returns ``None`` when no such session exists.
+    """
+    project_root = Path(project_path).resolve()
+    sessions = await db.list_sessions(all_open=True)
+    matches = [
+        session
+        for session in sessions
+        if session.lifecycle_status != SessionLifecycleStatus.CLOSING
+        and session.role == role
+        and session.working_slug == slug
+        and _same_project_root(session.project_path, project_root)
+    ]
+    if not matches:
+        return None
+    return min(matches, key=lambda session: (session.created_at is None, session.created_at)).session_id
 
 
 @dataclass(frozen=True)
