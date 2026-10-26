@@ -86,7 +86,7 @@ class GitHubConversationIO:
 
     def __init__(self, scope: GitHubRepositoryScope) -> None:
         self.scope = scope
-        self._transport = GitHubTransport(scope)
+        self._transport = GitHubTransport(scope, secondary_limit_is_rate_limit=True)
 
     def submit[Result](self, work: Callable[[GitHubConversationIO], Awaitable[Result]]) -> Future[Result]:
         """Queue one serialized unit of conversation work on the shared GitHub I/O loop."""
