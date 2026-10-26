@@ -396,23 +396,13 @@ Then no live-holder conflict is found and the session is created
 
 <!-- change:single-orchestrator-concurrent-starts -->
 
-```
-Given no live driver holds todo slug X
-And several orchestrator starts that would bind X arrive at the same time on one computer, in any lane, through any mix of orchestrator-class create requests and operator work or prepare operations
-When TeleClaude decides each request
-Then exactly one request creates an orchestrator session for X or claims X for its calling session
-And every other request is refused with a driver-start conflict naming that orchestrator, and creates no session
-And a request whose decision waits on another start of X for longer than its bound is refused, and creates no session
-```
-
-```
-Given a lifecycle runner pass selects todo X for a driver
-And another start comes to drive X before the runner's start of X is decided
-When the runner's start of X is refused with a driver-start conflict
-Then the pass counts X as already driven by that driver and starts nothing for X
-And it continues with the other todos it selected
-And neither the pass nor the event that woke it fails
-```
+An orchestrator-class create request for a todo created on this computer is
+admitted under driver admission
+(`local/projects/teleclaude/spec/feature/workflow/driver-admission`), which
+decides whether the todo is held and orders concurrent starts. A request it
+refuses for a holder returns HTTP 409 with the driver-start conflict naming the
+holder. A request refused as busy returns HTTP 423 with a detail stating that
+another start of the todo is in progress. Neither creates a session.
 
 <!-- /planned-change:single-orchestrator-concurrent-starts -->
 
