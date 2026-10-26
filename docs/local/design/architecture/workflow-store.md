@@ -461,8 +461,8 @@ master admits each conversation request before sending it:
   restore during the GitHub store switch is paced and publishes under its own
   limit. An API request that changes workflow records runs under one request
   deadline: every admission and push of its transactions ends by that
-  deadline, however many transactions the request commits, so its caller
-  receives the outcome within its wait.
+  deadline, however many transactions the request commits. Waiting for a
+  database connection before a transaction starts is not cut short by it.
 - GitHub I/O runs on an adapter-owned I/O thread: a sync caller blocks on it
   without starting an event loop of its own, and an async caller awaits it
   without blocking the daemon's loop. Requests on that thread run one at a
