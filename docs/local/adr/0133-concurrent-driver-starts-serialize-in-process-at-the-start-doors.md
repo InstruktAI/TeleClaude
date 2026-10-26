@@ -2,7 +2,7 @@
 visibility: public
 number: 133
 date: 2026-10-26
-description: Driver starts for one todo on one computer pass the live-holder check and the creation or claim it admits one at a time, under an in-process critical section keyed by project and todo that records no state.
+description: Lifecycle orchestrator starts for one todo on one computer pass the live-holder check and the creation or claim it admits one at a time, under an in-process critical section keyed by project and todo that records no state.
 ---
 
 # Concurrent Driver Starts Serialize In-Process at the Start Doors — ADR
@@ -37,18 +37,21 @@ a standing agent takes the same one.
 
 ## Decision
 
-On one computer, a driver start for a todo holds an in-process critical section
-keyed by the todo's canonical project state root and slug across its live-holder
-check and the creation or claim that check admits. The create doors take it for
-a lifecycle-driver or task-runner launch created on this computer; the in-process
-adoption takes it for its check and its ownership writes. A start that finds a
-holder inside the section is refused naming that holder. The section records
-nothing, outlives no request, and leaves the registry and `active_runner` as the
-only ownership facts.
+On one computer, a lifecycle orchestrator start for a todo holds an in-process
+critical section keyed by the todo's canonical project state root and slug
+across its live-holder check and the creation or claim that check admits. The
+key carries no lane: the live-holder check already admits one driver per todo
+whatever lane is asked for, so starts in different lanes contend for the same
+holder and must be decided one at a time too. The create doors take the section
+for an orchestrator launch created on this computer; the in-process adoption
+takes it for its check and its ownership writes. A start that finds a holder
+inside the section is refused naming that holder. The section records nothing,
+outlives no request, and leaves the registry and `active_runner` as the only
+ownership facts.
 
 ## Consequences
 
-- Concurrent first starts for one todo on one computer yield one driver,
+- Concurrent first starts for one todo on one computer yield one orchestrator,
   whichever doors they arrive through; the losers are refused naming it.
 - No ownership state is added: a failed start, a crash or a restart leaves
   nothing to release, expire or reconcile, and ADR-0078's retirement of

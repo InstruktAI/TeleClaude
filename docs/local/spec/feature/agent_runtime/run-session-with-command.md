@@ -398,10 +398,10 @@ Then no live-holder conflict is found and the session is created
 
 ```
 Given no live driver holds todo slug X
-And several driver-start requests that would bind X arrive at the same time on one computer, through any mix of the create doors and operator work or prepare operations
+And several orchestrator starts that would bind X arrive at the same time on one computer, in any lane, through any mix of orchestrator-class create requests and operator work or prepare operations
 When TeleClaude decides each request
-Then exactly one request creates a driver session for X or claims X for its calling session
-And every other request is refused with a driver-start conflict naming that driver, and creates no session
+Then exactly one request creates an orchestrator session for X or claims X for its calling session
+And every other request is refused with a driver-start conflict naming that orchestrator, and creates no session
 And a request whose decision waits on another start of X for longer than its bound is refused, and creates no session
 ```
 

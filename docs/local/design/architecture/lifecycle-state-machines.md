@@ -62,7 +62,7 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 <!-- planned:single-orchestrator-concurrent-starts -->
 
-- **One driver per todo on a computer**: every start of a lifecycle driver or task runner for a todo — a session create door or a lifecycle operation adopting its caller — passes its live-holder check and the creation or claim it admits inside one in-process critical section per project and todo, so at most one live driver holds the todo. The section records nothing; the session registry and `active_runner` remain the ownership facts (`local/projects/teleclaude/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors`).
+- **One orchestrator per todo on a computer**: every start of a lifecycle orchestrator for a todo — a session create door or a lifecycle operation adopting its caller — passes its live-holder check and the creation or claim it admits inside one in-process critical section per project and todo, whatever its lane, so at most one live orchestrator holds the todo. The section records nothing; the session registry and `active_runner` remain the ownership facts (`local/projects/teleclaude/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors`).
 
 <!-- /planned:single-orchestrator-concurrent-starts -->
 
@@ -215,7 +215,7 @@ Each state machine has its own design document with full state diagrams, sequenc
 
 <!-- planned:single-orchestrator-concurrent-starts -->
 
-- **Concurrent driver starts**: starts of one todo on one computer are decided one at a time; the first creates or claims the driver and each later one is refused naming it. A start that waits longer than its bound is refused. Starts on different computers sharing one workflow store are not serialized against each other.
+- **Concurrent orchestrator starts**: orchestrator starts of one todo on one computer are decided one at a time; the first creates or claims the orchestrator and each later one is refused naming it. A start that waits longer than its bound is refused. Starts on different computers sharing one workflow store are not serialized against each other.
 
 <!-- /planned:single-orchestrator-concurrent-starts -->
 
