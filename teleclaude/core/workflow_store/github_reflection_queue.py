@@ -30,7 +30,7 @@ from teleclaude.core.todos_db._working_copy import (
 )
 from teleclaude.core.workflow_store import github_reflection as _github_reflection
 from teleclaude.core.workflow_store.github_io import GitHubWorkflowIO
-from teleclaude.core.workflow_store.github_io_transport import GitHubIORefused
+from teleclaude.core.workflow_store.github_io_transport import failure_reason
 from teleclaude.core.workflow_store.github_pull_request_apply import apply_pull_request
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_pull_request_reflection import (
@@ -158,7 +158,7 @@ def owe_unwritten_pull_request(
     try:
         desired = reflect_pull_request(snapshot, issue_number)
     except Exception as error:  # supervision boundary: a reflection never decides the operation's outcome
-        logger.warning(_PULL_REQUEST_DERIVE_FAILED, item_id=item_id, reason=_failure_reason(error), exc_info=True)
+        logger.warning(_PULL_REQUEST_DERIVE_FAILED, item_id=item_id, reason=failure_reason(error), exc_info=True)
         mark_pull_request_owed(session, item_id)
         return None
     if desired is None:
@@ -185,7 +185,7 @@ def dispatch_staged_pull_requests(session: Session, db_path: Path, pull_requests
             logger.warning(
                 _PULL_REQUEST_QUEUE_FAILED,
                 item_id=item_id,
-                reason=_failure_reason(error),
+                reason=failure_reason(error),
                 exc_info=True,
             )
 
@@ -207,7 +207,7 @@ async def repair_owed_pull_requests(store: TodosDb, pull_requests: GitHubPullReq
             logger.warning(
                 _PULL_REQUEST_REPAIR_FAILED,
                 item_id=item_id,
-                reason=_failure_reason(error),
+                reason=failure_reason(error),
                 exc_info=True,
             )
 
@@ -252,14 +252,10 @@ def _pull_request_finished(db_path: Path, item_id: str, known: PullRequestBookke
         logger.warning(
             _PULL_REQUEST_FAILED,
             item_id=item_id,
-            reason=_failure_reason(error),
+            reason=failure_reason(error),
             exc_info=True,
         )
     try:
         store_pull_request_bookkeeping(db_path, item_id, known, owed=owed)
     except sqlite3.Error as error:
         logger.warning(_PULL_REQUEST_STORE_FAILED, item_id=item_id, reason=type(error).__name__, exc_info=True)
-
-
-def _failure_reason(error: Exception) -> str:
-    return error.reason.value if isinstance(error, GitHubIORefused) else type(error).__name__
