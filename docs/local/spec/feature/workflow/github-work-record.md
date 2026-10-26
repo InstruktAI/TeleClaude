@@ -137,10 +137,10 @@ How the store maps onto the repository is owned by
 
 <!-- planned:github-work-board -->
 
-- **Board entries:** where the project has a board, the ledger issue also
-  records which computer sets the board up and which board it is, as
-  `[action:board-claim computer:<name>]` and `[action:board project:<number>]`
-  comments.
+- **Board issue:** where the project has a board, one platform-opened issue,
+  closed as not planned, records which computer sets the board up and which
+  board it is, as `[action:board-claim computer:<name>]` and
+  `[action:board project:<number>]` comments.
 
 <!-- /planned:github-work-board -->
 

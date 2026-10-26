@@ -176,18 +176,21 @@ working copy and the repository.
   further reflection, written after the local commit, owed apart from the
   issue's and the pull request's so that no failure of one holds back
   another, and never read as state.
-  - Which board is the project's board is recorded on the ledger issue as
-    board entries: platform comments of their own kind, appended and never
-    edited, opening with `[action:board-claim computer:<name>]` for a claim
-    or `[action:board project:<number>]` for a board. The ledger issue's
-    comment order orders them. They carry no ledger marker, so a store that
-    predates the board reads past them and keeps committing and refreshing.
-    A refresh that finds no board entry claims the board's setup by appending
-    a claim naming its computer. The claim the ledger issue orders first
-    holds setup, and only the holding computer creates the board; every other
-    computer takes the board from the ledger issue, at refresh and at
-    rebuild. A project without a ledger issue keeps setup owed until the
-    store opens one. Setup runs only in the daemon, one at a time
+  - Which board is the project's board is recorded on the board issue: one
+    issue the platform App opens and closes as not planned, holding board
+    entries — platform comments appended and never edited, opening with
+    `[action:board-claim computer:<name>]` for a claim or
+    `[action:board project:<number>]` for a board. Two computers may each
+    open a board issue; every computer uses the lowest-numbered one the App
+    opened, a claim on any other counts for nothing, and its computer claims
+    again on the lowest. The board issue's comment order orders the entries.
+    The board issue carries no platform record and its comments no record or
+    ledger marker, so a store that predates the board neither reads it as an
+    item nor as the ledger. A refresh that finds no board entry claims the
+    board's setup by appending a claim naming its computer. The claim the
+    board issue orders first holds setup, and only the holding computer
+    creates the board; every other computer takes the board from the board
+    issue, at refresh and at rebuild. Setup runs only in the daemon, one at a time
     per project, so a refresh and a repair on the holding computer never
     create concurrently. Before creating, the holder takes a project the
     platform App created with the repository's name as its title, which the
@@ -197,7 +200,7 @@ working copy and the repository.
     `[action:board repository:<id>]`, sets its Status field's options to the
     lanes, adds the Needs you field and the view filtered on it, and deletes
     every built-in workflow. A recorded board that GitHub no longer has opens
-    setup again: the first claim the ledger issue orders after that board's
+    setup again: the first claim the board issue orders after that board's
     entry holds it. Recording or adopting a board owes the board reflection
     of every item the project holds.
   - The link to the repository is owed until it is written or GitHub shows
@@ -429,7 +432,7 @@ appends alike, are admitted only when every budget they touch allows them:
 
 <!-- planned:github-work-board -->
 
-- A project has one board: only the computer holding the ledger issue's first
+- A project has one board: only the computer holding the board issue's first
   board claim creates it, and every computer uses the board its entries
   record. The
   board's lanes, markers, fields and views are written from the record and
