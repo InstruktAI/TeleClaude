@@ -377,17 +377,18 @@ def _settle(
 
     A stop is withheld while the attempted daemon cannot yet prepare, which is the ordinary state of a
     daemon still starting and not listening on its API. While nothing listens, the lifecycle is asked
-    again until the bound expires; the deadline is checked between attempts, so an attempt that is
-    running when it expires still ends by its own waits. A stop that is withheld while the daemon
-    answers, or that has not succeeded when the bound expires, is an unresolved recovery condition:
-    nothing is switched back and nothing is started over a daemon that may still be running.
+    again until the bound expires. An attempt is admitted only when its pause ends before the deadline,
+    so an attempt that is running when the bound expires still ends by its own waits, and none starts
+    after it. A stop that is withheld while the daemon answers, or that has not succeeded when the bound
+    expires, is an unresolved recovery condition: nothing is switched back and nothing is started over a
+    daemon that may still be running.
     """
     deadline = time.monotonic() + ADMISSION_WAIT_BOUND_SECONDS
     stop = ports.ensure_stopped()
     while not stop.stopped:
         if ports.daemon_serving():
             break
-        if time.monotonic() >= deadline:
+        if time.monotonic() + _SETTLE_POLL_SECONDS >= deadline:
             reason += _SETTLE_BOUND_EXPIRED.format(seconds=ADMISSION_WAIT_BOUND_SECONDS)
             break
         time.sleep(_SETTLE_POLL_SECONDS)
