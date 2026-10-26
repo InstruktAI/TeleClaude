@@ -395,6 +395,39 @@ class SessionTurnRow(SQLModel, table=True):
     created_at: str
 
 
+class GitHubConversationSendRow(SQLModel, table=True):
+    """The time of one conversation append the fleet master sent."""
+
+    __tablename__ = "github_conversation_sends"
+    __table_args__ = {"extend_existing": True}
+
+    id: int | None = Field(default=None, primary_key=True)
+    sent_at: str
+
+
+class GitHubConversationBudgetRow(SQLModel, table=True):
+    """The one row of conversation pause state: when requests may resume and how many unnamed limits ran in a row."""
+
+    __tablename__ = "github_conversation_budget"
+    __table_args__ = {"extend_existing": True}
+
+    id: int = Field(default=1, primary_key=True)
+    pause_until: str | None = None
+    unnamed_limits: int = 0
+
+
+class GitHubRateLimitNoticeRow(SQLModel, table=True):
+    """A limit response this computer received that the fleet master has not yet been told."""
+
+    __tablename__ = "github_rate_limit_notices"
+    __table_args__ = {"extend_existing": True}
+
+    id: int | None = Field(default=None, primary_key=True)
+    observed_at: str
+    resume_at: str | None = None
+    delivered_at: str | None = None
+
+
 class ConversationLinkMode(StrEnum):
     """Kind of conversation a link aggregate represents."""
 
