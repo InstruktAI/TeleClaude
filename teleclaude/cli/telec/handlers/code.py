@@ -83,7 +83,7 @@ logger = get_logger(__name__)
 _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+")
 # The doc layer is authored at prepare on `main` and folded at integration; a slug
 # worktree commit must never touch it. Deliberately narrower than
-# `_NON_CODE_DOCUMENTATION_PATTERNS` so the guard only refuses the doc layer
+# `NON_CODE_DOCUMENTATION_PATTERNS` so the guard only refuses the doc layer
 # itself, not incidental prose elsewhere in the tree.
 _CODE_OWNERS_NO_POSITIONALS = "telec repo owners takes no positional arguments"
 _CODE_OWNERS_QUERY_FAILURE = "telec repo owners failed: {error}"

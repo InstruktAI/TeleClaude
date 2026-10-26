@@ -23,14 +23,19 @@ from teleclaude.core.worktree_layout import (
 from teleclaude.paths import invocation_cwd, is_platform_home
 
 DOC_LAYER_PATTERN = "docs/**"
+STANDALONE_PROSE_PATTERNS = ("*.md", "*.txt", "*.rst")
+NON_CODE_DOCUMENTATION_PATTERNS = (DOC_LAYER_PATTERN, *STANDALONE_PROSE_PATTERNS)
 _PROJECT_ROOT_ERROR = "cwd does not resolve to a project checkout: {invocation_dir}"
 
 __all__ = [
     "AGENT_ARTIFACT_SOURCE_GLOBS",
     "DOC_LAYER_PATTERN",
+    "NON_CODE_DOCUMENTATION_PATTERNS",
+    "STANDALONE_PROSE_PATTERNS",
     "declaration_root",
     "forbidden_slug_worktree_agent_artifact_paths",
     "forbidden_slug_worktree_doc_paths",
+    "includes_code",
     "is_integration_worktree",
     "is_project_checkout",
     "is_slug_worktree",
@@ -218,3 +223,8 @@ def is_project_checkout(start: str | Path) -> bool:
     except FileNotFoundError:
         return False
     return True
+
+
+def includes_code(paths: Iterable[str]) -> bool:
+    """Whether any path lies outside the documentation and standalone prose a commit can carry without code."""
+    return any(not any(fnmatch(path, pattern) for pattern in NON_CODE_DOCUMENTATION_PATTERNS) for path in paths)

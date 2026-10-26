@@ -32,7 +32,10 @@ harness; agents invoking it do not redirect their own home or platform home.
 The fast profile covers cold CLI startup, version/help entry paths, the
 installer's safe entry path, and the import of every module of the `teleclaude`
 package in one fresh interpreter. It runs once against the materialized
-prospective commit tree at the sealed commit gate, separately from routine lint.
+prospective commit tree at the sealed commit gate, separately from routine lint,
+for a commit carrying any staged path outside documentation and standalone prose;
+a commit carrying only those paths changes nothing the profile exercises and
+skips it.
 The full profile runs for each push to `main`, on a fresh GitHub-hosted macOS
 runner, and on the final immutable release candidate before the existing full
 installation proof. The same CI run executes

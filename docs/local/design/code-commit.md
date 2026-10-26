@@ -300,6 +300,10 @@ todo worktree, a successful commit also publishes the todo's branch to
    Deletion-only commits
    (empty `quality_paths`) skip formatting and the native leg; the documentation
    and agent-artifact validators still grade each owning home of a deleted path.
+   In TeleClaude's own repository the gate also runs the cold acceptance profile
+   when a staged path — added, changed or deleted — lies outside documentation
+   and standalone prose, the same classification the code-scoped review latch
+   reads (`local/projects/teleclaude/spec/feature/agent_runtime/runtime-acceptance`).
 
 5. **Commit-first gate on main.** Non-integrator agents on main use the bare
    `telec repo commit` invocation to surface commit-first and post-commit

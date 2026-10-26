@@ -21,12 +21,10 @@ from teleclaude.core.db import get_db
 from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.next_machine.runtime.sessions import list_live_commit_reviewers_for_initiator
 from teleclaude.git import GitCommandError, Repo
-from teleclaude.project_root import DOC_LAYER_PATTERN
+from teleclaude.project_root import DOC_LAYER_PATTERN, NON_CODE_DOCUMENTATION_PATTERNS, STANDALONE_PROSE_PATTERNS
 from teleclaude.quality.scope import WorkspaceScopeResolution, resolve_workspace_scope_resolution
 from teleclaude.session_identity import get_session_id
 
-_STANDALONE_PROSE_PATTERNS = ("*.md", "*.txt", "*.rst")
-_NON_CODE_DOCUMENTATION_PATTERNS = (DOC_LAYER_PATTERN, *_STANDALONE_PROSE_PATTERNS)
 _SCOPE_DIFFSTAT_HEADER = "Scope as resolved now — read this before you write the message:"
 _SCOPE_DIFFSTAT_EMPTY = "Scope as resolved now: nothing. A commit would carry no change."
 _SCOPE_DIFFSTAT_UNAVAILABLE = "Scope as resolved now: unavailable. Read the diff yourself before committing."
@@ -111,7 +109,6 @@ _REVIEW_DECISION_STEP_TEMPLATE = (
 )
 
 __all__ = [
-    "_NON_CODE_DOCUMENTATION_PATTERNS",
     "_commit_stage_paths",
     "_print_commit_review_guidance",
 ]
@@ -233,8 +230,8 @@ def _print_commit_review_guidance(project_root: Path, context_root: Path | None)
     instruction: commit or reach a concrete blocker before reporting done.
     """
     open_reviewers = _resolve_open_commit_reviewers(project_root)
-    documentation_patterns = ", ".join(_NON_CODE_DOCUMENTATION_PATTERNS)
-    standalone_prose_patterns = ", ".join(_STANDALONE_PROSE_PATTERNS)
+    documentation_patterns = ", ".join(NON_CODE_DOCUMENTATION_PATTERNS)
+    standalone_prose_patterns = ", ".join(STANDALONE_PROSE_PATTERNS)
     agent_artifact_patterns = ", ".join(CHECKPOINT_BASE_AGENTS_BINDING.scope.include)
     agent_artifact_lane = _agent_artifact_review_lane(project_root, _pending_commit_pathspec(project_root))
     if open_reviewers:
