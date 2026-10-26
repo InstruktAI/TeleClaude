@@ -54,6 +54,7 @@ from teleclaude.core.operation_caller_identity import (
 )
 from teleclaude.core.operation_follow_through import follow_through_scope
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
+from teleclaude.core.operations import todo_board_repair, todo_store_switch
 from teleclaude.core.operations._command_outcome import command_result_outcome
 from teleclaude.core.operations._delivery import (
     DeliveryOutcome,
@@ -78,8 +79,6 @@ from teleclaude.core.operations.todo_identity import (
     todo_operation_submission,
 )
 from teleclaude.core.operations.todo_removal import run_todo_remove_operation
-from teleclaude.core.operations.todo_store_switch import run_todo_store_switch_operation
-from teleclaude.core.operations.todo_store_switch import submit_todo_store_switch as _submit_todo_store_switch
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.shutdown_drain import OwnedUnit, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
@@ -149,7 +148,7 @@ def get_operations_service() -> OperationsService:
 class OperationsService:
     """Submit, track, and inspect durable background operations."""
 
-    submit_todo_store_switch = _submit_todo_store_switch
+    submit_todo_store_switch = todo_store_switch.submit_todo_store_switch
 
     def __init__(
         self,
@@ -637,7 +636,8 @@ class OperationsService:
             OperationKind.TODO_PREPARE: self._run_todo_prepare,
             OperationKind.TODO_RENAME: self._run_todo_rename,
             OperationKind.TODO_REMOVE: lambda op: run_todo_remove_operation(self._db, op),
-            OperationKind.TODO_STORE_SWITCH: lambda op: run_todo_store_switch_operation(self._db, op),
+            OperationKind.TODO_STORE_SWITCH: lambda op: todo_store_switch.run_todo_store_switch_operation(self._db, op),
+            OperationKind.TODO_BOARD_REPAIR: todo_board_repair.run_todo_board_repair_operation,
             OperationKind.SESSION_CLOSE: self._run_command_backed_operation,
             OperationKind.AGENT_RESTART: self._run_command_backed_operation,
             OperationKind.AGENT_HANDOFF: self._run_command_backed_operation,
