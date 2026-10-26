@@ -14,6 +14,7 @@ Everything that touches git, processes or the filesystem is a port the act drive
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass, replace
@@ -24,6 +25,7 @@ from typing import Protocol
 from instrukt_ai_logging import get_logger
 from pydantic import ValidationError
 
+from teleclaude.core.integration.daemon_window import ADMISSION_WAIT_BOUND_SECONDS
 from teleclaude.core.reconciliation.installation import (
     ActOutcome,
     InstallAct,
@@ -47,6 +49,8 @@ _STOP_WITHHELD = "the daemon's stop was withheld: {detail}"
 _MIGRATION_FAILED = "the release's migrations failed: {detail}"
 _START_UNVERIFIED = "the daemon did not verify on revision {revision}: {detail}"
 _NOT_SETTLED = "; the attempted release could not be stopped, so nothing was switched back: {detail}"
+_SETTLE_BOUND_EXPIRED = "; the bound of {seconds:g}s for the attempted release to become stoppable expired"
+_SETTLE_POLL_SECONDS = 1.0
 _RESTORE_UNVERIFIED = "; the previously active release did not verify either: {detail}"
 _PREPARATION_FAILED = "preparing the release failed at {step}: {detail}"
 _IN_PROGRESS = "another install or rollback is in progress"
@@ -371,11 +375,24 @@ def _settle(
 ) -> InstallResult | None:
     """Stop the release that was attempted; ``None`` once the lifecycle recorded it stopped.
 
-    A stop that is withheld or fails is an unresolved recovery condition: nothing is switched back and
-    nothing is started over a daemon that may still be running.
+    A stop is withheld while the attempted daemon cannot yet prepare, which is the ordinary state of a
+    daemon still starting and not listening on its API. While nothing listens, the lifecycle is asked
+    again until the bound expires; the deadline is checked between attempts, so an attempt that is
+    running when it expires still ends by its own waits. A stop that is withheld while the daemon
+    answers, or that has not succeeded when the bound expires, is an unresolved recovery condition:
+    nothing is switched back and nothing is started over a daemon that may still be running.
     """
+    deadline = time.monotonic() + ADMISSION_WAIT_BOUND_SECONDS
     stop = ports.ensure_stopped()
-    if stop.stopped:
+    while not stop.stopped:
+        if ports.daemon_serving():
+            break
+        if time.monotonic() >= deadline:
+            reason += _SETTLE_BOUND_EXPIRED.format(seconds=ADMISSION_WAIT_BOUND_SECONDS)
+            break
+        time.sleep(_SETTLE_POLL_SECONDS)
+        stop = ports.ensure_stopped()
+    else:
         return None
     return _ended(layout, ActOutcome.FAILED_UNSETTLED, revision, reason + _NOT_SETTLED.format(detail=stop.reason), act)
 
