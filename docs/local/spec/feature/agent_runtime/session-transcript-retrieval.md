@@ -108,13 +108,16 @@ from the turn after one it already holds. It is a module query on the
 computer that hosts the session, with no API or command-line surface, under
 the same per-session access contract.
 
-- **Turn.** The turn the runtime cuts at a genuine native user entry
-  (`local/projects/teleclaude/design/architecture/conversation-delivery`),
-  found from the session's transcript chain itself, so a turn the runtime
-  never projected while it was not running is still a turn. A turn carries
-  the identity of its output generation, created for it when the read is the
-  first to find it, and its ordinal among the session's turns, counted from
-  one, which never changes once assigned.
+- **Turn.** An exchange the agent answered: it opens at a native user entry
+  carrying input of any origin (a person's message, a peer's or the
+  platform's message, a dispatch loader, a notification or a reminder) and
+  includes every further input entry that arrived before the agent's answer.
+  Turns are found from the session's transcript chain itself, so a turn the
+  runtime never projected while it was not running is still a turn. A turn
+  carries the runtime-qualified native identity of the entry that opened it
+  and its ordinal among the session's turns, counted from one, which the
+  runtime records the first time the read finds the turn and never changes.
+  Output generations and their delivery are unaffected by the read.
 - **Completion time.** When the turn's last entry was written.
 - **Input.** The turn's authored input parts in order, each with its
   authorship: a person, with the channel their words arrived through; a peer
