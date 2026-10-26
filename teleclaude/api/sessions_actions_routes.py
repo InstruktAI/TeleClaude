@@ -68,6 +68,7 @@ from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_handlers import resolve_working_slug_from_subdir, select_handoff_successor
 from teleclaude.core.command_mapper import KEY_COMMANDS, CommandMapper
 from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.command_service import UnsubscribeUnknownSessionError
 from teleclaude.core.db import db
 from teleclaude.core.models import (
     AgentDispatchMode,
@@ -772,12 +773,17 @@ async def unsubscribe_session(
     """Stop caring about a target session — umbrella verb across both subscription axes.
 
     Removes the caller's listener row (if any) AND severs any active direct link
-    the caller holds with the target. Idempotent: empty state returns success
-    with both action flags false. See `local/projects/teleclaude/spec/session-subscriptions`.
+    the caller holds with the target. Idempotent for a session that exists: empty
+    state returns success with both action flags false. An unknown session is
+    refused as 404 naming the session id and the computer.
+    See `local/projects/teleclaude/spec/session-subscriptions`.
     """
     await refuse_act_on_dispatching_orchestrator(identity, session_id, ACT_UNSUBSCRIBE)
     cmd = UnsubscribeSessionCommand(session_id=session_id, caller_session_id=identity.session_id)
-    result = await dispatch_caller_command(_STATE.client, cmd, identity)
+    try:
+        result = await dispatch_caller_command(_STATE.client, cmd, identity)
+    except UnsubscribeUnknownSessionError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     if isinstance(result, dict):
         return {"status": "success", **result}
     return {"status": "success", "listener_removed": False, "link_closed": False, "link_id": None}
