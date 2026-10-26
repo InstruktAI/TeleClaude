@@ -556,6 +556,17 @@ sequenceDiagram
   the bot's last version, makes its item unverifiable. Writes to the item
   refuse, and rebuild refuses store resolution naming the item. No working
   copy is ever published in its place.
+- A write holds the working copy's single writer from its first change until
+  its local commit, across the GitHub round trips the write path places before
+  that commit. Another write on the same computer that cannot gain the writer
+  within its connection's busy budget is refused with `database is locked`:
+  that operation fails and its change is lost, and on the API an unhandled
+  server error reaches the caller. Writers are ordered while they wait, but a
+  hold that outlasts the busy budget refuses them.
+- A synchronous reflection acknowledgement that waits for the writer stops the
+  event loop it runs on for its whole wait. A write that already holds the
+  writer and needs that loop to reach its commit cannot finish meanwhile, so
+  the acknowledgement's wait lengthens the very hold it is waiting on.
 
 - A role mapping that names no App for `builder` or `reviewer`, or an App not
   installed on the repository with pull request write access, leaves the
