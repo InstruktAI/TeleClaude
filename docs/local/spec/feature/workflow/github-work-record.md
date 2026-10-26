@@ -206,11 +206,11 @@ How the store maps onto the repository is owned by
 
 <!-- change:github-item-acts -->
 
-- **Authority:** only what the platform's Apps write is the record. A
-  configured person's change to an item's title, open state, platform labels,
-  issue type, sub-issues or blocked-by relations is taken as the workflow act
-  it stands for, and any other change to those fields is put back with a
-  comment saying why
+- **Authority:** only what the platform's Apps write is the record. A change
+  by a configured person with write access to the repository to an item's
+  title, open state, platform labels, issue type, sub-issues or blocked-by
+  relations is taken as the workflow act it stands for, and any other change
+  to those fields is put back with a comment saying why
   (`local/projects/teleclaude/spec/feature/integration/github-work-control`).
   Bodies, assignments, reviews, merges, comments and edits by anyone else are
   visible on GitHub but never change the workflow, and the platform sets its
