@@ -63,6 +63,7 @@ from teleclaude.core.workflow_store.github_store import (
     ConversationItem,
     GitHubWorkflowStore,
     get_github_workflow_store,
+    github_working_copy_paths,
     read_conversation_item,
 )
 
@@ -92,7 +93,6 @@ ELIGIBLE_ROLES: Final = frozenset(
 _ELIGIBLE_ROLE_NAMES: Final = frozenset(role.value for role in ELIGIBLE_ROLES)
 _REFUSED_BACKOFF: Final = timedelta(minutes=5)
 _UNREACHABLE_BACKOFF: Final = timedelta(minutes=1)
-_CLOSED_LOOKBACK: Final = timedelta(days=30)
 _CAPTURE_FAILED_EVENT = "conversation_capture_failed"
 _CAPTURE_HELD_EVENT = "conversation_capture_held"
 _CAPTURED_EVENT = "conversation_turn_captured"
@@ -152,8 +152,7 @@ class ConversationPublisher:
             await self._tenure.since(is_master=bool(config.computer.is_master), now=datetime.now(UTC))
             if self._deliver_notices is not None:
                 await self._deliver_notices()
-            closed_since = datetime.now(UTC) - _CLOSED_LOOKBACK
-            for session in await db.list_sessions_working_items(_ELIGIBLE_ROLE_NAMES, closed_since):
+            for session in await db.list_sessions_working_items(_ELIGIBLE_ROLE_NAMES):
                 await self._capture(session)
             await self._hand_over()
 
@@ -302,7 +301,13 @@ class ConversationPublisher:
         return render_turn_comments(target.session_id, target.role, turn.ordinal, completed_at, state, blocks)
 
     async def _hand_over(self) -> None:
-        """Hand every captured turn not yet on GitHub to the master, per destination in completion order."""
+        """Hand every captured turn not yet on GitHub to the master, per destination in completion order.
+
+        Turns captured before a restart are found in the working copies of the registered GitHub projects, whatever
+        the age of the sessions that captured them.
+        """
+        for path in await asyncio.to_thread(github_working_copy_paths):
+            self._bookkeeping_for(path)
         for bookkeeping in tuple(self._bookkeepings.values()):
             turns = await asyncio.to_thread(bookkeeping.pending_turns)
             held: set[_DestinationKey] = set()

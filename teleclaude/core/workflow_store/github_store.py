@@ -508,6 +508,25 @@ def read_conversation_item(project_root: str | Path, slug: str) -> ConversationI
     )
 
 
+def github_working_copy_paths() -> tuple[Path, ...]:
+    """The existing working copies of every registered GitHub-backed project on this computer.
+
+    Reads the project registry and the files that exist: no provider call, no rebuild, no writer lock.
+    """
+    paths: list[Path] = []
+    for project_root in load_roots():
+        if not project_root.exists() or not is_project_checkout(project_root):
+            continue
+        try:
+            identity = resolve_github_repository_identity(project_root)
+        except GitHubIdentityRefused:
+            continue
+        path = github_working_copy_path(identity.project_path)
+        if path.is_file() and path not in paths:
+            paths.append(path)
+    return tuple(paths)
+
+
 async def refresh_github_workflow_store(project_root_or_cwd: str | Path) -> int:
     """Refresh the selected project's shared GitHub working copy."""
     store = await get_github_workflow_store(project_root_or_cwd)

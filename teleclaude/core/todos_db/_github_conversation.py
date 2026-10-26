@@ -72,6 +72,7 @@ _DELETE_PARTS_SQL = "DELETE FROM github_conversation_part WHERE session_id = ? A
 _SELECT_START_SQL = "SELECT started_at FROM github_conversation_start WHERE singleton = 1"
 _SAVE_START_SQL = "INSERT OR IGNORE INTO github_conversation_start(singleton, started_at) VALUES (1, ?)"
 _SELECT_LEDGER_SQL = "SELECT ledger_issue_number FROM github_repository WHERE singleton = 1"
+_TURN_TABLE_EXISTS_SQL = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'github_conversation_turn'"
 _BUSY_TIMEOUT_SECONDS = 30.0
 
 
@@ -175,8 +176,13 @@ class ConversationBookkeeping:
             connection.execute(_SAVE_POINTER_SQL, (turn.session_id, turn.turn_identity, turn.ordinal))
 
     def pending_turns(self) -> list[CapturedTurn]:
-        """Every captured turn with comments not yet on GitHub, in completion order."""
+        """Every captured turn with comments not yet on GitHub, in completion order.
+
+        A working copy that predates the conversation tables holds none.
+        """
         with self._connection() as connection:
+            if connection.execute(_TURN_TABLE_EXISTS_SQL).fetchone() is None:
+                return []
             turns: list[CapturedTurn] = []
             for row in connection.execute(_SELECT_TURNS_SQL).fetchall():
                 completed_at = parse_iso_datetime(row[8])
