@@ -76,6 +76,12 @@ the work.
 - **Once and in order.** A change GitHub delivers more than once, or that
   several computers receive, is taken or put back once. Changes to one issue
   are taken in the order they were made.
+- **Which computer acts.** One computer serving the project handles its
+  changes: the first to claim it, until it releases the claim. While that
+  computer is not running, changes wait for it. An operator moves the claim off
+  a computer that no longer serves the project with
+  `telec todo work-control release <computer>`, which refuses while that
+  computer is online.
 - **Missed deliveries.** A change made while no computer received GitHub's
   deliveries is taken or put back when the platform next brings the project
   up to date from GitHub, under the same rules.
