@@ -49,6 +49,7 @@ _PULL_REQUEST_REPAIR_FAILED = "github_store_pull_request_repair_failed"
 _PULL_REQUEST_STORE_FAILED = "github_store_pull_request_store_failed"
 _REFLECTION_QUEUE_FAILED = "github_store_reflection_queued_failed"
 _REFLECTION_FAILED = "github_store_reflection_failed"
+_REFLECTION_STORE_FAILED = "github_store_reflection_store_failed"
 _CLEAR_OWED_REFLECTION_SQL = "DELETE FROM github_owed_reflection WHERE item_id = ?"
 _SAVE_PROJECTION_DIGEST_SQL = "UPDATE github_item SET projection_digest = ? WHERE item_id = ?"
 logger = get_logger(__name__)
@@ -107,7 +108,11 @@ def _reflection_finished(db_path: Path, item_id: str, projection_digest: str, fu
             exc_info=True,
         )
         return
-    _store_projection_reflection(db_path, item_id, projection_digest)
+    try:
+        _store_projection_reflection(db_path, item_id, projection_digest)
+    except sqlite3.Error as error:
+        # The digest update and the owed-row delete share one transaction, so the item stays owed and refresh repairs it.
+        logger.warning(_REFLECTION_STORE_FAILED, item_id=item_id, reason=type(error).__name__, exc_info=True)
 
 
 def _store_projection_reflection(db_path: Path, item_id: str, projection_digest: str) -> None:
