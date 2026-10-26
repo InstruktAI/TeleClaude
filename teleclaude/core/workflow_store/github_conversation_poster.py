@@ -102,6 +102,7 @@ class GitHubConversationPoster:
         self._is_master = is_master
         self._io_factory = io_factory
         self._ios: dict[tuple[int, str], GitHubConversationIO] = {}
+        self._append_lock = asyncio.Lock()
 
     async def post_turn(self, request: PostTurnRequest) -> PostTurnResponse:
         """Write the comments of a captured turn, in order, or say how far it got and why it stopped."""
@@ -177,18 +178,21 @@ class GitHubConversationPoster:
     async def _create_comment(
         self, assignment: GitHubActorAssignment, destination: Destination, body: str
     ) -> _Halt | None:
-        halted = await self._admitted(assignment.app_id, destination, creates=True)
-        if halted is not None:
-            logger.info(_HALTED_EVENT, outcome=halted.outcome, cause=halted.cause)
-            return halted
-        io = self._io_for(destination)
-        number = destination.number
-        try:
-            await asyncio.wrap_future(io.submit(partial(_create, assignment, number, body)))
-        except GitHubIORefused as error:
-            logger.warning(_HALTED_EVENT, reason=error.reason)
-            return _halt_for(error, creating=True)
-        await self._budget.record_send()
+        # Admission reads the count of appends sent, so the decision, the append and its count are one unit: two
+        # callers must never both take the last slot of a window.
+        async with self._append_lock:
+            halted = await self._admitted(assignment.app_id, destination, creates=True)
+            if halted is not None:
+                logger.info(_HALTED_EVENT, outcome=halted.outcome, cause=halted.cause)
+                return halted
+            io = self._io_for(destination)
+            number = destination.number
+            try:
+                await asyncio.wrap_future(io.submit(partial(_create, assignment, number, body)))
+            except GitHubIORefused as error:
+                logger.warning(_HALTED_EVENT, reason=error.reason)
+                return _halt_for(error, creating=True)
+            await self._budget.record_send()
         return None
 
     async def _read_envelopes(
