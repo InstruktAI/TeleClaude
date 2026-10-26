@@ -35,7 +35,7 @@ The agent-restart action is the one place where v1 deliberately diverges from th
 - This is `agent_runtime`'s session-restart flow leaning on command clearance for a single carve-out. The action handler dispatches the agent restart inside `agent_runtime` after the client has cleared it.
 - The carve-out relies on the client-side caller resolution (`local/projects/teleclaude/spec/identity-and-auth` §6) having resolved the caller to its session record — terminal and TUI callers cannot self-restart anything.
 - The agent-restart action also emits an `agent_runtime.agent.restarted` event on successful dispatch (see the v2 event taxonomy).
-- The session authority rule the daemon applies to the restart it performs is unchanged by this carve-out: a session never restarts a session above it (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`).
+- The session authority rule the daemon applies to the restart it performs is unchanged by this carve-out: a session never restarts an orchestrator above it (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`).
 - In v2 the carve-out disappears from identity. `agent_runtime` defines its own "may restart self" authorization rule and evaluates it against the resolved `Principal`. Identity returns the Principal only; the cross-cutting verb table no longer needs a special case.
 
 ## Known caveats

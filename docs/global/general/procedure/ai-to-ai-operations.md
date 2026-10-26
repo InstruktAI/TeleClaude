@@ -95,10 +95,11 @@ or lifecycle contract.
    its governing contract requires them. Manage any continuing watch through
    that contract and the reminder policy, not a terminal polling loop.
 9. Close links, unsubscribe, and end sessions only when the corresponding
-   interest or lifecycle obligation ends, and only downward or sideways. Never
-   message, open or close a conversation with, unsubscribe from, end, or restart
-   the session above you: completing your turn already wakes it, so the result
-   belongs in your own output and reaches it there. Follow the governing cleanup
+   interest or lifecycle obligation ends. Toward an orchestrator above you, your
+   completed turn is the only act: it already wakes the orchestrator, so the
+   result belongs in your own output and reaches it there, and messaging,
+   linking, unsubscribing, ending or restarting it is refused. A session that
+   started you without orchestrating you is reached like any other. Follow the governing cleanup
    and departure contract, including its child cleanup; do not treat notification
    receipt or context pressure as independent authority to terminate a session.
    Ending a session that holds a claim is tree-scoped: account for its spawned

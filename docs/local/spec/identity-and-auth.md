@@ -198,7 +198,7 @@ the client sends any request:
   the relayed principal against its own registries and applies that act's person
   band (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
 - the daemon applies the rules that scope an act to its objects — a session acts
-  on no session above it, a reminder belongs to its session, a session's result,
+  on no orchestrator above it, a reminder belongs to its session, a session's result,
   file, and escalation act for that session, a claimed todo is written only by its
   claiming group, a person-bound service acts only for its person — against the
   identity the request carries.

@@ -677,6 +677,16 @@ def is_worker_role(recorded: str | None) -> bool:
     return isinstance(resolved, Role) and resolved.role_class is RoleClass.WORKER
 
 
+def is_orchestrator_role(recorded: str | None) -> bool:
+    """Whether a recorded role orchestrates todo work: the catalog assigns it todo orchestration explicitly.
+
+    The lifecycle orchestrators hold it; the integrator, the coordinator, and every role whose reach
+    merely covers it do not. No role and an unnamed role are not orchestrators.
+    """
+    resolved = resolve_role(recorded)
+    return isinstance(resolved, Role) and Capability.TODO_ORCHESTRATION in resolved.capabilities
+
+
 def catalog() -> tuple[Role, ...]:
     """Every catalog entry, in declaration order."""
     return tuple(_CATALOG.values())

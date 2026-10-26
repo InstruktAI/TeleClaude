@@ -103,13 +103,15 @@ So ending flows from context, not from a worker's own initiative.
   reach, they converge on it directly; only a decision that is genuinely a human's to make
   travels to the human.
 
-- **Nothing reaches upward but a finished turn.** A session does not message, open or close a
-  conversation with, unsubscribe from, end, or restart the session above it. It has no need:
-  completing a turn already wakes that session, which then reads what was produced. An upward
-  act reaches past the acting session's own mandate into the one that dispatched it, and it
-  inverts who is driving — the result arrives as a claim about the work instead of as the work.
-  Peers are untouched by this: sessions beside each other, and a session with nothing above it,
-  reach wherever the work requires.
+- **Nothing reaches an orchestrator from below but a finished turn.** A session does not
+  message, open or close a conversation with, unsubscribe from, end, or restart an
+  orchestrator above it. It has no need: completing a turn already wakes that orchestrator,
+  which then reads what was produced. An upward act reaches past the acting session's own
+  mandate into the orchestrator that conferred it, and it inverts who is driving — the result
+  arrives as a claim about the work instead of as the work. Any other dispatch confers no
+  mandate: a peer a session asks for, or a session a standing or human-directed session
+  starts, reaches the session that started it as it reaches any other, and so do sessions
+  beside each other and a session with nothing above it.
 - **Departing with grace.** When an agent that holds its own lifecycle — one that dispatched the
   work and outlived its children, a singleton answerable only to itself, or one no agent governs —
   ends its own session,
