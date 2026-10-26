@@ -405,11 +405,13 @@ Then the live-holder signal is authoritative and the request is refused — the 
 Commit review carries no todo slug — its subject is a commit series whose SHA set changes
 every remediation round — so slug-keyed dedup cannot reach it. Its subject is identified
 by the project, the driver that opened the review, and the thinking mode the review runs
-at. Mode belongs to that subject because the review lanes differ in cost and in what they
-read: doc-hygiene runs at `med` over snippet conformance, code review at `slow` over
-behavior. A mode-blind subject collapses them, so the cheap lane is refused as a duplicate
-of the expensive one and its work lands on the wrong reviewer. Two starts at the same mode
-remain one subject and still dedup.
+at. Mode belongs to that subject because reviews at different depths differ in cost and in
+what they read: a documentation review that directs no agent differently runs at `med`,
+while code review and review of changed agent direction run at `slow`
+(`general/procedure/orchestration`). A mode-blind subject collapses them, so the cheap
+review is refused as a duplicate of the expensive one and its work lands on the wrong
+reviewer. Two starts at the same mode remain one subject and still dedup; that reviewer
+runs every lane its series triggers.
 
 The driver is the caller's session when the caller is a session, and the authenticated
 human when the caller is a terminal that carries no session. A session caller is keyed by
@@ -613,7 +615,7 @@ And a menu or ambiguous screen is left unchanged
 
 - **context** — the command corpus lives in the context bounded context. agent_runtime validates the run-session command token shape, routes the new-session dispatch, and composes the command loader message; it does not interpret command semantics.
 
-- **config** — per-agent enablement gates the command-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their command-matrix row and generic session creation uses the Claude-first global order. Fresh-session thinking mode follows the same command matrix: explicit caller mode wins, command defaults are explicit, and an unrecognized command without an explicit mode is rejected. `review-commits` defaults to `slow`; doc-only commit review explicitly supplies `med`.
+- **config** — per-agent enablement gates the command-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their command-matrix row and generic session creation uses the Claude-first global order. Fresh-session thinking mode follows the same command matrix: explicit caller mode wins, command defaults are explicit, and an unrecognized command without an explicit mode is rejected. `review-commits` defaults to `slow`; a commit review whose scope resolves to `med` under `general/procedure/orchestration` supplies it explicitly.
 
 ## Known caveats
 
