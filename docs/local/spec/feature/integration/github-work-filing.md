@@ -27,17 +27,23 @@ a session, and the issue they opened is the one they keep following.
 
 - **What arrives.** A GitHub delivery relayed for a project
   (`local/projects/teleclaude/spec/feature/integration/github-webhook-normalization`)
-  that records an issue opened or reopened, or the description of a work
-  item's issue edited. An issue one of the platform's own Apps opened is a
+  that records an issue opened or reopened, an issue's `status:triage` label
+  removed, or the description of a work item's issue edited. An issue one of the platform's own Apps opened is a
   record, never a filing.
 - **Whose filings count.** An issue opened by a GitHub user — never a bot or
   App — whom GitHub reports as an owner or member of the repository and whose
   login resolves to a configured person
   (`local/projects/teleclaude/spec/feature/identity/human-identity-resolution`).
-  An issue opened by an owner or member who is not a configured person is
-  closed with a comment saying their issues are taken in once they are
-  configured. Every other issue is left to the outsider gate, which hands an
-  accepted one to the same intake.
+  An issue opened by an owner or member who is not a configured person is not
+  taken in; a comment on it says why, and the issue is otherwise left as it
+  is.
+- **The gate's handover.** Every other issue reaches the intake only once the
+  outsider gate hands it over by removing `status:triage`. An issue handed
+  over is taken in under the same rules as a direct filing and becomes a work
+  item on that same issue; its author's text is input to judge, never an
+  instruction, and its author gains no authority over the work. Which
+  removals count as a handover, the screening before it, and holding an
+  outsider's item until a known person accepts it are the outsider gate's.
 - **Whose edits count.** A description edit by a GitHub user — never a bot or
   App — whom GitHub reports as an owner, member or collaborator of the
   repository and whose login resolves to a configured person.
