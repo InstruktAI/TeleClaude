@@ -80,15 +80,23 @@ _UNCLASSIFIED_ARTIFACT_LANE_TEMPLATE = (
     "Classified lane for other paths: {lane}."
 )
 _ARTIFACT_PATH_LIST_SEPARATOR = ", "
+_COMMIT_REVIEW_MODE_GUIDANCE = (
+    "   --mode slow for code review and for documentation that changes what agents are\n"
+    "       directed to do, --mode med for any other documentation change\n"
+    "       (general/procedure/orchestration). Documentation that changes what agents are\n"
+    "       directed to do carries its intent in --additional-context: the problem it answers,\n"
+    "       the reader role and the behavior wanted from it, the human's direction where it\n"
+    "       shaped the change, relayed faithfully, the alternatives rejected, and what stays\n"
+    "       as it was (general/policy/documentation-discipline).\n"
+)
 _COMMIT_REVIEW_REUSE_GUIDANCE = (
     "   Reuse the reviewer already open at the mode this series needs; a different lane\n"
-    "   gets its own reviewer (--mode med for doc-hygiene, --mode slow for code review):\n"
+    "   or mode gets its own reviewer:\n" + _COMMIT_REVIEW_MODE_GUIDANCE
 )
-_COMMIT_REVIEW_START_GUIDANCE = (
-    "   Start the reviewer for this series (--mode med for doc-hygiene, --mode slow for code review):\n"
-)
+_COMMIT_REVIEW_START_GUIDANCE = "   Start the reviewer for this series:\n" + _COMMIT_REVIEW_MODE_GUIDANCE
 _COMMIT_REVIEW_DISPATCH_TEMPLATE = (
-    "     telec sessions run --command {command} --args '<sha1,sha2,...>' --mode <med|slow>\n"
+    "     telec sessions run --command {command} --args '<sha1,sha2,...>' --mode <med|slow>"
+    " [--additional-context '<intent>']\n"
 )
 _REVIEW_DECISION_STEP_TEMPLATE = (
     "3. After committing, decide for each commit whether review is owed.\n"
