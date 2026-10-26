@@ -77,6 +77,22 @@ nothing the workflow or the store decides.
   bus Redis: set only when absent, expiring, renewed while the work lasts, and
   released only by its holder. The store's conflict check reads and writes in
   separate requests and cannot arbitrate two writers; the lease does.
+- **A former holder's write ends before the lease passes.** A holder starts a
+  GitHub write only while the lease's remaining time exceeds its own request
+  timeout plus GitHub's documented server-side processing limit, beyond which
+  GitHub terminates a REST request
+  (docs.github.com, "Troubleshooting the REST API", Timeouts); otherwise it
+  renews first or stops. A write it started has therefore been processed or
+  terminated by GitHub before the lease can expire.
+- **Progress never moves backwards.** Each acquisition of an issue's lease
+  draws the next fencing token from a counter beside it in the cluster bus
+  Redis, and every record write carries its writer's token. The record version
+  the store adopts is the newest one in the record comment's edit history
+  carrying the highest token; a later edit carrying a lower token is a stale
+  write and is replaced by restoring that version, the recovery the store
+  already applies to an edit it did not write. Should a former holder's write
+  land late despite the limit above, it can neither lower the history position
+  nor undo a later disposition.
 - **No change is left behind by a held lease.** A computer that finds the lease
   held marks the issue for another pass and leaves it; before releasing, the
   holder takes every pass marked during its work, re-reading the history each
@@ -110,7 +126,9 @@ nothing the workflow or the store decides.
   reflection, its envelope naming the history entry it answers, and only by the
   holder of the issue's lease, which first looks for a notice the App already
   wrote for that entry; a lost reply or an interrupted write therefore never
-  posts it twice, and two computers never write it at once.
+  posts it twice, and two computers never write it at once. Should a late
+  write still leave two notices for one entry, the next holder deletes every
+  one but the earliest.
 - **Open act table.** The mapping from field change to act is one table the
   handler reads; a later delivery adds a row for another field or label
   without changing admission, history handling or put-back.
@@ -181,12 +199,16 @@ handled, so a computer that sweeps late or twice disposes of nothing twice.
 - **The cluster bus Redis is unreachable.** No computer takes a lease, so
   nothing is handled; the first handling after it is reachable again disposes
   of every change since each item's history position.
-- **A lease cannot be renewed.** The holder renews before each disposition and
-  gives every GitHub request it then makes a timeout shorter than the lease
-  time that remains, so its last request has ended before the lease can pass
-  to another computer. A renewal that fails stops the holder before its next
-  disposition; what it committed stands and the next holder continues from the
-  position.
+- **A lease cannot be renewed.** The holder stops before its next GitHub
+  write; what it committed stands and the next holder continues from the
+  position the record holds. A write whose outcome it never learned is, by the
+  start rule, processed or terminated before the next holder can begin.
+- **GitHub processes a write later than its documented limit**, or changes that
+  limit. The fencing token keeps the record's position and dispositions from
+  regressing, and a duplicated notice is removed by the next holder. The
+  workflow events of a disposition that a late write and the next holder both
+  committed can then be emitted by both computers; the record's state is the
+  same either way.
 - **A holder stops without releasing.** The lease expires and the next
   delivery, sweep or marked pass takes it.
 - **A history entry the module cannot read as a change of a reflected field.**

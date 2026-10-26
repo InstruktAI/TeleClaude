@@ -1,0 +1,54 @@
+"""Closed set of GitHub REST and GraphQL field names the workflow store's provider boundary consumes."""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+__all__ = ["GitHubField"]
+
+
+class GitHubField(StrEnum):
+    """Closed set of GitHub REST and GraphQL field names consumed by this adapter."""
+
+    ISSUES = "issues"
+    WRITE = "write"
+    TITLE = "title"
+    BODY = "body"
+    STATE = "state"
+    STATE_REASON = "state_reason"
+    LABELS = "labels"
+    ASSIGNEES = "assignees"
+    TYPE = "type"
+    NAME = "name"
+    COLOR = "color"
+    DESCRIPTION = "description"
+    SUB_ISSUE_ID = "sub_issue_id"
+    REPLACE_PARENT = "replace_parent"
+    ISSUE_ID = "issue_id"
+    PULL_REQUEST = "pull_request"
+    ID = "id"
+    IDS = "ids"
+    DATABASE_ID = "databaseId"
+    TYPENAME = "__typename"
+    AUTHOR = "author"
+    EDITOR = "editor"
+    LOGIN = "login"
+    REPOSITORY = "repository"
+    ISSUE = "issue"
+    COMMENTS = "comments"
+    PAGE_INFO = "pageInfo"
+    HAS_NEXT_PAGE = "hasNextPage"
+    END_CURSOR = "endCursor"
+    START_CURSOR = "startCursor"
+    USER_CONTENT_EDITS = "userContentEdits"
+    NODES = "nodes"
+    HAS_PREVIOUS_PAGE = "hasPreviousPage"
+    LAST_EDITED_AT = "lastEditedAt"
+    ALL_STATES = "all"
+    NODE = "node"
+    OWNER = "owner"
+    REPO = "repo"
+    NUMBER = "number"
+    CURSOR = "cursor"
+    BEFORE = "before"
+    MESSAGE = "message"

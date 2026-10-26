@@ -456,15 +456,20 @@ master admits each conversation request before sending it:
   not exclude a second writer between its read and its write; the work-control
   handler's issue lease
   (`local/projects/teleclaude/design/architecture/github-work-control`) is what
-  keeps one writer per issue while positions advance.
+  keeps one writer per issue while positions advance. A transaction may also
+  carry its writer's fencing token, which the record keeps; the version the
+  store adopts from the record comment is the newest in its edit history
+  carrying the highest token, and an edit carrying a lower one is restored over
+  as the Trust rule restores an edit the App did not write.
 - **Put-back notices.** The record carries the notices an item owes: the
   history entry each answers, the field, the change and the reason. Each is
   reflected as one comment under the work record's put-back envelope, which
   names the entry. Owed notices are written only by the holder of the issue's
   work-control lease, during its handling or a refresh that takes the lease.
   Before appending one, the writer looks for a notice the App already wrote
-  for that entry and adopts it instead; a notice found on the issue leaves the
-  record with the item's next revision.
+  for that entry and adopts it instead; when several are found, it keeps the
+  earliest and deletes the rest. A notice found on the issue leaves the record
+  with the item's next revision.
 - **Changed issues.** For a project on this computer and a moment, the module
   lists the issues the platform App opened that GitHub reports updated since
   then.
