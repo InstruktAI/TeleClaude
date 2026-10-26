@@ -34,13 +34,18 @@ or lifecycle contract.
    shapes, command examples, and subscription options. Write a brief as the
    reality wanted from the dispatched role (`general/policy/agent-facing-text`).
    Preserve the returned session identity and owning computer for follow-up.
-3. Keep ordinary conversation separate from attention handling. For a peer
-   discussion, establish a direct link using `telec sessions send ... --direct`.
-   Once linked, converse through turn output, which is shared automatically;
-   do not replace the conversation with repeated sends or routine transcript
-   tailing. Use the published close-link operation when the conversation ends,
-   from a side that is not below its peer. A non-conversational child
-   notification instead enters the assessment below.
+3. Match the communication mode to the exchange's purpose
+   (`general/policy/leadership`). Use ordinary `telec sessions send` for
+   operational requests, handoffs, readiness questions, instructions, and status
+   exchanges. Use `--direct` only for an ongoing peer discussion — joint
+   reasoning, sparring, or analysis — whose turn outputs belong in the shared
+   conversation. Contacting a peer does not itself constitute a peer discussion.
+   A direct link automatically shares subsequent turn outputs, including replies
+   to the human. Once linked, converse through turn output; do not replace the
+   conversation with repeated sends or routine transcript tailing. Use the
+   published close-link operation when the discussion ends, from a side that is
+   not below its peer. A non-conversational child notification instead enters
+   the assessment below.
 4. Read the observation before choosing a response. Identify the child and its
    owning computer, the reported event, its native details and observation time
    when available. Keep missing evidence explicitly unknown. Compare the
