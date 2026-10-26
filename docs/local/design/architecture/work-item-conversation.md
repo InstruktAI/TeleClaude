@@ -31,9 +31,9 @@ What a reader sees is owned by
 
 The publisher is part of the workflow store's GitHub adapter module, beside
 the question comments and pull request reviews it already writes. It reads
-turns from `agent_runtime`, on this computer or through the runtime's
-cross-computer session read, and never reads a native transcript, a session
-row or an output-delivery cursor itself.
+the turns of the sessions its own computer hosts from `agent_runtime` and
+never reads a native transcript, a session row or an output-delivery cursor
+itself.
 
 ## Inputs/Outputs
 
@@ -45,11 +45,11 @@ row or an output-delivery cursor itself.
   given turn, each with its turn identity, its ordinal, its completion time,
   its authored input parts with their authorship, and the agent's
   user-visible text.
-- The session's role, working item slug, project and host computer, read
-  through the runtime's session identity facts and its fleet session listing.
+- The session's role, working item slug and project, read through the
+  runtime's session identity facts.
 - The project's store selection, the item's repository-work status, its
-  issue, its pull request, and the times its workflow state records for the
-  start of its build and for its delivery or removal.
+  issue, and its pull request with the times GitHub reports for its opening
+  and, once closed, its closing.
 - The project's conversation start, the first conversation-start entry on its
   ledger issue.
 - The App inventory and role mapping
@@ -89,12 +89,15 @@ rebuilt working copy publishes a turn completed before the capability went
 live. A project without a ledger issue publishes nothing until the store opens
 one.
 
-**Destination.** A turn completed at or after the item's build start and
-before its delivery or removal goes on the item's pull request; every other
-turn goes on its issue. The destination is decided once, from those recorded
-times, when the turn is captured, and never changes: a delayed turn is not
-redirected when the pull request opens or closes in the meantime. A turn for a
-pull request that is not on GitHub yet waits until its reflection opens it.
+**Destination.** A turn goes on the item's pull request when the item had an
+open pull request at the turn's completion: opened at or before it and not
+closed by then. Every other turn goes on the item's issue, including a turn
+completed during the build before a delayed reflection opened the pull
+request. The destination is decided once, when the turn is captured, from the
+opening and closing times GitHub reports for the pull request, which a rebuilt
+working copy finds again with the pull request itself, and it never changes: a
+turn posted late is not redirected because the pull request opened or closed
+in the meantime.
 
 **Identity.** A review role, resolved through its composite role, posts as
 the App `github.roles` maps for `reviewer`. Every other eligible role posts
@@ -134,8 +137,10 @@ is captured as a withheld turn and nothing of its content leaves the computer.
 ## Invariants
 
 - Every eligible turn appears on its destination exactly once, all of its
-  comments in order, and on each destination the turns appear in completion
-  order across every session of the item, wherever those sessions ran.
+  comments in order. On each destination the turns a computer posts appear in
+  completion order across every session of the item it hosts, and each turn's
+  envelope carries its completion time, so a turn another computer posts late
+  shows when it happened.
 - A turn is captured, protected, at the moment the publisher first sees it
   completed. Its source can disappear afterwards without losing it.
 - Publishing never delays, refuses or alters a session's turn and never
@@ -166,14 +171,10 @@ sequenceDiagram
         P->>P: destination, identity, protect, split
         P->>WC: capture turn
     end
-    P->>P: next turn per destination, by completion time
-    P->>AR: other computers' sessions of the item: uncaptured or unposted turns completed earlier?
-    alt none earlier
+    loop each destination, its captured turns by completion time
         P->>IO: append the turn's comments (admitted by the budget)
         IO->>GH: create comment(s)
         P->>WC: mark posted
-    else an earlier turn is still owed elsewhere
-        P->>P: hold this destination
     end
 ```
 
@@ -184,18 +185,16 @@ consumer is a live consumer whose declared recovery operation is a full pass
 over every eligible session this computer hosts, run at consumer start and on
 reconnection; the store's periodic refresh runs the same pass.
 
-### Ordering across computers
+### Across computers
 
 The workflow dispatches an item's sessions from its claim holder, so the
-sessions of one item that run at the same time share a computer. Turns of an
-item can still be owed on two computers when the item moved between them
-while posting was held up. Before posting the next turn of a destination, the
-publisher asks every other computer hosting an eligible session of the item,
-through the runtime's cross-computer session read, for that session's
-completed turns; it posts only when none of them completed earlier than the
-next turn and is missing from the destination. Otherwise the destination
-holds, as it does during a GitHub outage, and resumes when the other computer
-has posted them.
+sessions of one item that run at the same time share a computer, and that
+computer posts them in completion order. Each computer posts only the
+sessions it hosts. When an item's work moves to another computer while the
+first still owes turns, those turns appear when the first computer posts them,
+after the new computer's later turns, each showing its completion time. No
+computer waits for another: whether an unreachable computer still owes a turn
+cannot be known, and waiting could hold the item's conversation for ever.
 
 ### Recovering position
 
@@ -218,27 +217,24 @@ first turn of each eligible session missing from GitHub.
 - **No App for the identity, or the App is not installed with issue and pull
   request write access.** The turn stays unposted with that cause logged; its
   destination holds behind it, so order holds when the cause is fixed.
-- **A computer with earlier turns of the item is unreachable.** The item's
-  destinations hold until it answers or leaves the fleet.
 - **A turn the runtime never saw complete.** A turn with no later turn, no
   covering agent stop and an open session is not completed and is not
   captured until one of those holds.
-- **A turn the runtime cannot read at capture.** Capture follows completion
-  within one pass, so this occurs only when the source disappeared while the
-  publisher was not running. The runtime reports it unreadable; the publisher
-  logs the loss and posts the turn as unavailable, an explicit gap in place of
-  the turn, so the item's later turns are not held for ever. It is a defect of
-  that capture, not a delivered turn.
+- **A turn the runtime cannot read at capture.** The deployed agent settings
+  keep transcripts for years and capture follows completion within the next
+  pass, so this occurs only when a transcript was deleted by hand before the
+  publisher took its turn. The runtime reports it unreadable; the publisher
+  logs the loss and posts the turn as unavailable in its place, as the work
+  record specifies.
 - **A lost working copy.** Captured turns not yet on GitHub are captured again
   from the runtime; a turn whose source is also gone is lost, as a lost
   working copy loses non-repository work.
 - **A computer that does not hold the project.** It publishes nothing for its
   sessions on that project's items.
-- **Other computers' content creation.** Each computer counts only the
-  content-creating requests it sends. Other computers' record writes are not
-  in its count; a secondary limit they trigger still stops its conversation
-  through the limit response, and the record writes keep their own refusal
-  and retry contract.
+- **A record write GitHub refuses.** GitHub's secondary limits change without
+  notice and cannot be inspected, so a record write can still meet one; it
+  keeps the store's existing refusal and retry contract, and the limit
+  response stops every computer's conversation that receives one.
 
 ## See Also
 

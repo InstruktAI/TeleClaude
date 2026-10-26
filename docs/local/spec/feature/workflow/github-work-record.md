@@ -147,26 +147,31 @@ How the store maps onto the repository is owned by
 <!-- planned:github-turn-mirror -->
 
 - **Conversation:** every session the workflow starts for a repository work
-  item has its conversation on that item: a turn completed between the start
-  of the item's build and its delivery or removal on the item's pull request,
-  every other turn on its issue. Each completed turn is one comment, written
+  item has its conversation on that item: a turn completed while the item had
+  an open pull request on that pull request, every other turn on its issue.
+  Each completed turn is one comment, written
   by the App mapped to the session's role
   (`local/projects/teleclaude/spec/teleclaude-config`): the reviewer App for a
   review role, the author App for every other role, never the App that writes
-  the record. It opens with `[session:<id> role:<role> action:turn turn:<n>]`,
-  where `<n>` counts that session's turns, followed by the input the turn
+  the record. It opens with
+  `[session:<id> role:<role> action:turn turn:<n> at:<time>]`, where `<n>`
+  counts that session's turns and `<time>` is when it completed, followed by
+  the input the turn
   received and the agent's reply, without tool activity or reasoning. A
   person's comment that reached the session from GitHub is written like any
   other input; a message a person gave the session anywhere else is not
   written, and the turn notes only that the person spoke. Turns appear in the
   order they completed across all of the item's sessions, each exactly once,
-  and a turn too large for one comment continues in the next. Before a turn is
+  except that a turn one computer still owed when the item's work moved to
+  another computer appears when it is posted, after later turns. A turn too
+  large for one comment continues in the next. Before a turn is
   written, every secret the platform holds is masked, and credential-like
   strings and personal data are removed as far as detection recognizes them;
   a turn whose masking or detection cannot complete appears only as
-  `[session:<id> role:<role> action:turn turn:<n> withheld]`, with no content,
-  and a turn whose content was lost before it could be taken appears only as
-  `[session:<id> role:<role> action:turn turn:<n> unavailable]`. The project's
+  `[session:<id> role:<role> action:turn turn:<n> at:<time> withheld]`, with
+  no content, and a turn whose transcript was deleted before it could be taken
+  appears only as
+  `[session:<id> role:<role> action:turn turn:<n> at:<time> unavailable]`. The project's
   conversation starts at the moment recorded by the first
   `[action:conversation-start at:<time>]` entry on its ledger issue; turns
   completed before it are not written. The conversation is never part of the
@@ -286,7 +291,8 @@ Scenario: A turn that cannot be cleaned is withheld
   conversation only as far as detection recognizes them: what it misses is
   published with the turn. Secrets the platform holds are always masked.
 - A session's turn appears on GitHub after it completes, and later than that
-  while GitHub is unreachable, its request budget is spent, or a computer that
-  holds earlier turns of the same item cannot be reached.
+  while GitHub is unreachable or its request budget is spent. A turn that a
+  computer could not post before the item's work moved to another computer
+  appears after the turns completed after it, showing when it completed.
 
 <!-- /planned:github-turn-mirror -->

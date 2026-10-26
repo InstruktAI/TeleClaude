@@ -104,10 +104,9 @@ they are not accepted with explicit terminal mode.
 ### Completed turns read
 
 A consumer in another context reads a session's completed turns in order,
-from the turn after one it already holds. It is a query with no command-line
-surface, under the same per-session access contract, answered by the computer
-that hosts the session and reachable from another computer through the
-cross-computer session read.
+from the turn after one it already holds. It is a module query on the
+computer that hosts the session, with no API or command-line surface, under
+the same per-session access contract.
 
 - **Turn.** The turn the runtime cuts at a genuine native user entry
   (`local/projects/teleclaude/design/architecture/conversation-delivery`),

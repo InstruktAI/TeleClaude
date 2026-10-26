@@ -316,28 +316,31 @@ Its bookkeeping in the working copy holds each session's posting position and
 never turn content; the record and the workflow state are unchanged.
 
 **GitHub request budget.** Every GitHub request the adapter module makes runs
-on its one I/O runtime, which keeps a budget for each App installation it
-uses and one for the content-creating requests of the whole computer. Record
-work, meaning the write path, reflections, questions, reviews, rebuild and
-refresh, is never held by the budget. Conversation requests, reads and
-appends alike, are admitted only when every budget they touch allows them:
+on its one I/O runtime. Record work, meaning the write path, reflections,
+questions, reviews, rebuild and refresh, is never held by the conversation's
+budget and keeps its own refusal and retry contract. Conversation requests,
+the reads and appends for turns, draw on a bounded share that the runtime
+admits before each request:
 
-- **Primary limits are per installation** (GitHub's REST rate-limit
-  contract). Every record write that can refuse an operation goes out as the
-  platform App, and conversation requests never do, so they never spend the
-  primary budget a record write draws on. A conversation request is admitted
-  on a role App's installation only while the remaining count and reset time
-  of that installation's latest response leave a reserve of a fifth of its
-  limit for the pull request and review reflections that App also writes.
-- **Content-creation limits are counted for the whole computer.** GitHub does
-  not state whether its secondary limits are shared across identities, so the
-  runtime counts every content-creating request this computer sends, record
-  and conversation alike, over the last minute and hour, and admits a
-  conversation append only while that count plus the append stays within half
-  of the documented limits.
+- **Never the record's identity.** Primary limits are per installation
+  (GitHub's REST rate-limit contract). Turn comments and the reads for them go
+  out only as role Apps, never as the platform App every refusable record
+  write uses. The one conversation-start entry per project goes out as the
+  platform App, once, as record work. On a role App's installation a
+  conversation request is admitted only while the remaining count and reset
+  time of that installation's latest response leave a fifth of its limit for
+  the pull request and review reflections that App also writes.
+- **A fixed share of content creation across all computers.** The
+  conversation's share is half of GitHub's documented content-creation limits
+  per minute and per hour, divided equally among the computers the fleet's
+  computer registry lists. Each computer admits a conversation append only
+  while its own conversation appends over the last minute and hour stay within
+  its part, so all computers together stay within the share without
+  coordinating.
 - **A limit response stops conversation.** Any rate-limit response to any
-  request pauses every conversation request until the time the response
-  names, or a minute when it names none, doubling on each repeated limit.
+  request pauses every conversation request on that computer until the time
+  the response names, or a minute when it names none, doubling on each
+  repeated limit.
 
 <!-- /planned:github-turn-mirror -->
 
