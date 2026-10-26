@@ -269,7 +269,7 @@ class GitHubWorkflowSync:
         since = _parse_timestamp(previous_issue_watermark)
         issues: Sequence[GitHubIssue] = await self.io.async_list_issues(since)
         ledger_issue_number = _int_or_none(repository_state.get(WorkflowField.LEDGER_ISSUE_NUMBER))
-        issues, ledger_issue, all_ledger = await self._read_ledger_for_refresh(issues, ledger_issue_number)
+        issues, ledger_issue, all_ledger = await self._read_ledger_for_refresh(issues, ledger_issue_number, since)
         for _entry, comment in all_ledger:
             trusted = _trusted_body(comment, self.assignment.actor.login)
             if trusted is not None and comment.body != trusted:
@@ -371,10 +371,13 @@ class GitHubWorkflowSync:
         return len(applied_items)
 
     async def _read_ledger_for_refresh(
-        self, issues: Sequence[GitHubIssue], ledger_issue_number: int | None
+        self, issues: Sequence[GitHubIssue], ledger_issue_number: int | None, since: datetime | None
     ) -> tuple[Sequence[GitHubIssue], GitHubIssue | None, list[tuple[LedgerCommit, GitHubComment]]]:
+        """Read ledger entries created since the last complete refresh's issue watermark; all before the first."""
         ledger_issue = _issue_by_number(issues, ledger_issue_number)
         discovered: list[tuple[LedgerCommit, GitHubComment]] = []
+        if ledger_issue is None and ledger_issue_number is not None and since is not None:
+            return issues, None, discovered
         if ledger_issue is None and ledger_issue_number is not None:
             issues = await self.io.async_list_issues()
             ledger_issue = _issue_by_number(issues, ledger_issue_number)
@@ -387,7 +390,12 @@ class GitHubWorkflowSync:
             )
         entries = list(discovered)
         if ledger_issue is not None and not entries:
-            for comment in await self.io.async_read_comments(ledger_issue.number):
+            ledger_comments = (
+                await self.io.async_read_comments_since(ledger_issue.number, since)
+                if since is not None
+                else await self.io.async_read_comments(ledger_issue.number)
+            )
+            for comment in ledger_comments:
                 commit = _parse_ledger_comment(comment, self.assignment.actor.login, ledger_issue.number)
                 if commit is not None:
                     entries.append((commit, comment))
