@@ -459,7 +459,10 @@ master admits each conversation request before sending it:
   under the store's push deadline, which is no longer than the admission
   budget, so a write queued behind one in-flight writer is admitted. A
   restore during the GitHub store switch is paced and publishes under its own
-  limit.
+  limit. An API request that changes workflow records runs under one request
+  deadline: every admission and push of its transactions ends by that
+  deadline, however many transactions the request commits. Waiting for a
+  database connection before a transaction starts is not cut short by it.
 - GitHub I/O runs on an adapter-owned I/O thread: a sync caller blocks on it
   without starting an event loop of its own, and an async caller awaits it
   without blocking the daemon's loop. Requests on that thread run one at a
@@ -467,8 +470,10 @@ master admits each conversation request before sending it:
   another one, but holds the request serialization only for each of its own
   requests, so a push waits behind at most one request in flight.
 - No working-copy write waits for the writer on a thread that runs an event
-  loop. Bookkeeping that records a completed reflection or pull request is
-  written from a thread no write depends on.
+  loop. A commit whose reflection needs no GitHub write records that in the
+  same transaction. Bookkeeping that records a completed reflection or pull
+  request is written from a thread no write depends on, within the admission
+  budget.
 
 <!-- /planned-change:working-copy-writers-refused-database-locked -->
 
@@ -604,14 +609,22 @@ sequenceDiagram
   its local commit, across the GitHub round trips the write path places before
   that commit
   (`local/projects/teleclaude/adr/0125-github-store-keeps-the-local-implementation-as-its-working-copy`).
-  A write that cannot gain the writer within the admission budget, behind
-  more than one holder or behind a write window whose work is not GitHub I/O,
-  is refused before it changes anything. On the API its caller receives the
-  explicit retryable refusal that nothing was written, never an unhandled
-  server error; a background operation records the refusal as its failure.
+  A write that cannot gain the writer within the admission budget or its
+  request's deadline, behind more than one holder or behind a write window
+  whose work is not GitHub I/O, is refused before its transaction changes
+  anything. On the API the caller receives an explicit refusal, never an
+  unhandled server error: when nothing in the request had committed, it says
+  that nothing was written and that the request can be sent again; when an
+  earlier transaction of the same request had committed, it says that part was
+  saved and the rest was not. A background operation records the refusal as
+  its failure.
 - A transaction whose GitHub I/O outlasts the push deadline aborts its local
   commit and refuses with the provider's unavailable cause, as any failed GitHub
-  write before the commit point does.
+  write before the commit point does. When its request's deadline is what ran
+  out, the transaction aborts the same way, and the API caller receives the
+  explicit refusal instead. If the push had already sent its commit-point
+  write, that refusal says the change may have been saved and appears once the
+  store refreshes.
 - Bookkeeping refused for the writer after a completed reflection or pull
   request leaves that reflection owed, and refresh writes it again.
 
