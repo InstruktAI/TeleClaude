@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 from pydantic import ValidationError
 
 from teleclaude.core.models._snapshot import SessionSnapshot
+from teleclaude.core.workflow_store.github_store import read_github_item_issue
 from teleclaude.github.issue_lookup import IssueLookupUnavailable, read_issue_reference
 from teleclaude.types.github_issue import GitHubIssueReference
 from teleclaude.types.work_subject import WorkSubjectParameter
@@ -109,23 +110,42 @@ async def resolve_session_issue_metadata(assignment: SessionIssueAssignment) -> 
     return SessionIssueMetadata(assignment=assignment, reference=reference)
 
 
+async def resolve_session_work_item_issue(session: Session) -> GitHubIssueReference | None:
+    """Read the issue the store recorded for the item this session works, bound to the work slug."""
+    if session.project_path is None or session.working_slug is None:
+        return None
+    reference = await asyncio.to_thread(read_github_item_issue, session.project_path, session.working_slug)
+    if reference is None:
+        return None
+    return reference.model_copy(update={_SUBJECT_FIELD: session.working_slug})
+
+
 def project_session_snapshot_from_source(
     session: Session,
     *,
     computer: str,
     issue_metadata: SessionIssueMetadata | None = None,
+    work_item_issue: GitHubIssueReference | None = None,
 ) -> SessionSnapshot:
-    """Project a current source row with optional metadata already resolved for it."""
+    """Project a current source row with optional metadata already resolved for it.
+
+    The explicit issue reference wins when it applies and is resolved; otherwise the work item's issue applies.
+    """
     snapshot = SessionSnapshot.from_db_session(session, computer=computer)
     if issue_metadata is not None and issue_metadata.applies_to(session) and issue_metadata.reference is not None:
         snapshot.github_issue = issue_metadata.reference.model_copy(
             update={_SUBJECT_FIELD: issue_metadata.assignment.subject}
         )
+    elif work_item_issue is not None:
+        snapshot.github_issue = work_item_issue
     return snapshot
 
 
 async def project_session_snapshot(runtime_db: Db, session: Session, *, computer: str) -> SessionSnapshot:
     """Build one snapshot with issue identity resolved on the session's owning computer."""
     assignment = await resolve_session_issue_assignment(runtime_db, session)
-    issue_metadata = await resolve_session_issue_metadata(assignment) if assignment is not None else None
-    return project_session_snapshot_from_source(session, computer=computer, issue_metadata=issue_metadata)
+    if assignment is not None:
+        issue_metadata = await resolve_session_issue_metadata(assignment)
+        return project_session_snapshot_from_source(session, computer=computer, issue_metadata=issue_metadata)
+    work_item_issue = await resolve_session_work_item_issue(session)
+    return project_session_snapshot_from_source(session, computer=computer, work_item_issue=work_item_issue)

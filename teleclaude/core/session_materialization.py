@@ -17,6 +17,7 @@ from teleclaude.core.session_snapshot import (
     project_session_snapshot_from_source,
     resolve_session_issue_assignment,
     resolve_session_issue_metadata,
+    resolve_session_work_item_issue,
 )
 from teleclaude.core.session_status import is_session_final
 
@@ -145,10 +146,12 @@ class SessionMaterializer:
                 self._resolved_metadata.move_to_end(assignment)
             if metadata is not None and not metadata.applies_to(current):
                 metadata = None
+            work_item_issue = await resolve_session_work_item_issue(current) if assignment is None else None
             snapshot = project_session_snapshot_from_source(
                 current,
                 computer=self._computer,
                 issue_metadata=metadata,
+                work_item_issue=work_item_issue,
             )
             self._publish_snapshot(snapshot)
         if assignment is not None and assignment not in self._resolved_metadata:
