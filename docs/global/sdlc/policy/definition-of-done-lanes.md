@@ -204,9 +204,15 @@ ubiquitous-language decision:
    or mutate the owner's rule locally.
 4. Verify cross-cutting coordinators and design surfaces own only the
    relationship, never the participating domain behavior.
+5. Verify every changed spec, plan, or design states only its own context's
+   rules. A contract that dictates a mechanism another context's design owns —
+   which checks a gate runs, how a peer selects or authorizes — is a consumer
+   restating that owner's rule in the contract layer. Code that conforms to such
+   a contract carries the same defect.
 
 Wrong-context placement, duplicated owner policy, host-as-owner reasoning, and
-direct bypass of an owner's published contract are **Critical**. Unresolved
+direct bypass of an owner's published contract are **Critical**, including when
+a reviewed contract called for them. Unresolved
 ownership is also Critical; reviewers do not infer an owner from existing
 placement. This is semantic reviewer judgment. Mechanical dependency checks
 may expose crossings, but no path-name or prose scanner determines ownership.
