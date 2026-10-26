@@ -135,6 +135,15 @@ How the store maps onto the repository is owned by
   belong to the project rather than one item, are appended to one
   platform-opened ledger issue.
 
+<!-- planned:github-work-board -->
+
+- **Board entries:** where the project has a board, the ledger issue also
+  records which computer sets the board up and which board it is, as
+  `[action:board-claim computer:<name>]` and `[action:board project:<number>]`
+  comments.
+
+<!-- /planned:github-work-board -->
+
 <!-- planned:github-turn-mirror -->
 
 - **Conversation:** every session the workflow starts for a repository work

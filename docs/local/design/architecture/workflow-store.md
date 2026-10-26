@@ -176,24 +176,30 @@ working copy and the repository.
   further reflection, written after the local commit, owed apart from the
   issue's and the pull request's so that no failure of one holds back
   another, and never read as state.
-  - Which board is the project's board is a project-level record in the
-    ledger, committed through a ledger commit entry as commit reviews and
-    documentation transfers are. A refresh that finds no board record claims
-    the board's setup by committing a board claim naming its computer. The
-    claim the ledger orders first holds setup, and only the holding computer
-    creates the board; every other computer takes the board from the ledger,
-    at refresh and at rebuild. Setup runs only in the daemon, one at a time
+  - Which board is the project's board is recorded on the ledger issue as
+    board entries: platform comments of their own kind, appended and never
+    edited, opening with `[action:board-claim computer:<name>]` for a claim
+    or `[action:board project:<number>]` for a board. The ledger issue's
+    comment order orders them. They carry no ledger marker, so a store that
+    predates the board reads past them and keeps committing and refreshing.
+    A refresh that finds no board entry claims the board's setup by appending
+    a claim naming its computer. The claim the ledger issue orders first
+    holds setup, and only the holding computer creates the board; every other
+    computer takes the board from the ledger issue, at refresh and at
+    rebuild. A project without a ledger issue keeps setup owed until the
+    store opens one. Setup runs only in the daemon, one at a time
     per project, so a refresh and a repair on the holding computer never
     create concurrently. Before creating, the holder takes a project the
     platform App created with the repository's name as its title, which the
     creating request itself sets, so an interrupted setup never creates a
-    second board. The holder records the board's identity in the ledger, then
-    opens the board's README with the envelope line
+    second board. The holder appends the board's entry, then opens the
+    board's README with the envelope line
     `[action:board repository:<id>]`, sets its Status field's options to the
     lanes, adds the Needs you field and the view filtered on it, and deletes
     every built-in workflow. A recorded board that GitHub no longer has opens
-    setup again: the first claim the ledger orders after that board's record
-    holds it.
+    setup again: the first claim the ledger issue orders after that board's
+    entry holds it. Recording or adopting a board owes the board reflection
+    of every item the project holds.
   - The link to the repository is owed until it is written or GitHub shows
     the board linked. Its write asks for the repository's Contents read
     permission in addition, so an App without it leaves only the link owed.
@@ -204,7 +210,8 @@ working copy and the repository.
     boundary the lifecycle runner dispatches on, the pending human-approval
     gate, the effective hold — and the claim; the adapter decides none of
     them. A removed item's board item is deleted, and a reactivated item gets
-    one again.
+    one again. Rebuild and refresh that restore an item owe its board
+    reflection, as they owe its pull request.
   - The board's field and view identities and each item's board item are
     cached in the adapter's working-copy bookkeeping, rediscoverable from the
     recorded board.
@@ -410,8 +417,9 @@ appears.
 
 <!-- planned:github-work-board -->
 
-- A project has one board: only the computer holding the ledger's first board
-  claim creates it, and every computer uses the board the ledger records. The
+- A project has one board: only the computer holding the ledger issue's first
+  board claim creates it, and every computer uses the board its entries
+  record. The
   board's lanes, markers, fields and views are written from the record and
   never read back.
 
