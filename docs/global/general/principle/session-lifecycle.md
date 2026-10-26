@@ -103,9 +103,9 @@ So ending flows from context, not from a worker's own initiative.
   reach, they converge on it directly; only a decision that is genuinely a human's to make
   travels to the human.
 
-- **Nothing reaches an orchestrator from below but a finished turn.** A session does not
-  message, open or close a conversation with, unsubscribe from, end, or restart an
-  orchestrator above it. It has no need: completing a turn already wakes that orchestrator,
+- **Nothing reaches an orchestrator from its children but a finished turn.** A session does
+  not message, open or close a conversation with, unsubscribe from, end, or restart the
+  orchestrator that dispatched it. It has no need: completing a turn already wakes that orchestrator,
   which then reads what was produced. An upward act reaches past the acting session's own
   mandate into the orchestrator that conferred it, and it inverts who is driving — the result
   arrives as a claim about the work instead of as the work. Any other dispatch confers no

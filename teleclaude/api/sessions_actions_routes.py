@@ -31,7 +31,7 @@ from teleclaude.api.run_session_job import normalize_job_run_request
 from teleclaude.api.run_session_procedure import manual_activation
 from teleclaude.api.run_session_refusals import RunSessionRefusal, resolve_run_session_agent
 from teleclaude.api.run_session_shapes import RunSessionPlan
-from teleclaude.api.session_authority import ACT_RESTART, ACT_UNSUBSCRIBE, refuse_act_on_ancestor
+from teleclaude.api.session_authority import ACT_RESTART, ACT_UNSUBSCRIBE, refuse_act_on_dispatching_orchestrator
 from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
 from teleclaude.api.session_pane_routes import router as session_pane_router
 from teleclaude.api.session_result_routes import router as session_result_router
@@ -404,7 +404,7 @@ async def agent_restart(
     readable at ``telec operations get <operation_id>``.
     """
     try:
-        await refuse_act_on_ancestor(identity, session_id, ACT_RESTART)
+        await refuse_act_on_dispatching_orchestrator(identity, session_id, ACT_RESTART)
         logger.info("API agent_restart requested (session=%s, origin=api)", session_id)
 
         handoff = restart_request.handoff if restart_request else False
@@ -775,7 +775,7 @@ async def unsubscribe_session(
     the caller holds with the target. Idempotent: empty state returns success
     with both action flags false. See `local/projects/teleclaude/spec/session-subscriptions`.
     """
-    await refuse_act_on_ancestor(identity, session_id, ACT_UNSUBSCRIBE)
+    await refuse_act_on_dispatching_orchestrator(identity, session_id, ACT_UNSUBSCRIBE)
     cmd = UnsubscribeSessionCommand(session_id=session_id, caller_session_id=identity.session_id)
     result = await dispatch_caller_command(_STATE.client, cmd, identity)
     if isinstance(result, dict):

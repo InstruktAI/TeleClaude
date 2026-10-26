@@ -95,7 +95,7 @@ or lifecycle contract.
    its governing contract requires them. Manage any continuing watch through
    that contract and the reminder policy, not a terminal polling loop.
 9. Close links, unsubscribe, and end sessions only when the corresponding
-   interest or lifecycle obligation ends. Toward an orchestrator above you, your
+   interest or lifecycle obligation ends. Toward the orchestrator that dispatched you, your
    completed turn is the only act: it already wakes the orchestrator, so the
    result belongs in your own output and reaches it there, and messaging,
    linking, unsubscribing, ending or restarting it is refused. A session that

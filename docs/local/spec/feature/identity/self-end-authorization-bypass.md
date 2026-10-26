@@ -37,7 +37,7 @@ The driver-vs-sub-worker discriminator is `initiator_session_id`. It is daemon-s
 - This is the session-end flow leaning on command clearance for a single carve-out, the end-path counterpart of `feature/identity/self-restart-authorization-bypass`.
 - The carve-out relies on the client-side caller resolution (`local/projects/teleclaude/spec/identity-and-auth` §6) having resolved the caller to its session record — terminal callers cannot self-end via the carve-out and go through the standard human band.
 - `initiator_session_id` is the same driver-vs-sub-worker discriminator the session-lifecycle contract relies on (drivers hold the `active_runner` and are reaped on close; sub-workers are reaped by their orchestrator).
-- The session authority rule the daemon applies to the end it performs is unchanged by this carve-out: a session never ends an orchestrator above it (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`).
+- The session authority rule the daemon applies to the end it performs is unchanged by this carve-out: a session never ends the orchestrator that dispatched it (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`).
 
 ## Known caveats
 

@@ -1,14 +1,13 @@
-"""Refuse a caller act whose target is an orchestrator above it in the dispatch chain.
+"""Refuse a caller act whose target is the orchestrator that dispatched the caller.
 
-An orchestrator's dispatch confers the mandate its descendants work under, and
-their completed turns already reach it, so no session acts on an orchestrator
-above it — sending it a message, opening or closing a direct conversation with
-it, unsubscribing from it, ending it, or restarting it. Any other dispatch
-confers no mandate and restricts nothing. The ancestry fact is
-``session_descends_from`` (``teleclaude.core.session_utils``); this module is
-its edge translation into an HTTP refusal, parallel to
-``teleclaude.api.todo_artifact_authority`` for the todo-claim relationship —
-that module reads a todo's claim, this one reads the session graph.
+An orchestrator's dispatch confers the mandate its children work under, and
+their completed turns already reach it, so no child acts on the orchestrator
+that dispatched it — sending it a message, opening or closing a direct
+conversation with it, unsubscribing from it, ending it, or restarting it. Any
+other dispatch confers no mandate and restricts nothing. This module reads the
+caller's recorded dispatcher and translates the relationship into an HTTP
+refusal, parallel to ``teleclaude.api.todo_artifact_authority`` for the
+todo-claim relationship.
 """
 
 from __future__ import annotations
@@ -22,7 +21,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.core.db import db
 from teleclaude.core.roles import is_orchestrator_role
-from teleclaude.core.session_utils import session_descends_from
 
 logger = get_logger(__name__)
 
@@ -40,25 +38,25 @@ _ANCESTOR_ACT_ROUTES: tuple[tuple[HTTPMethod, re.Pattern[str], str], ...] = (
 )
 _SESSION_ACT_REFUSED_ANCESTOR_EVENT = "session_act_refused_ancestor"
 REFUSED_ANCESTOR_DETAIL = (
-    "orchestrator session '{target_session_id}' is above caller '{caller_session_id}' in its "
-    "dispatch chain; {act} is refused. The caller's completed turn already reaches the "
-    "orchestrator, so the result belongs in the caller's own output, not in an act directed "
-    "upward."
+    "orchestrator session '{target_session_id}' dispatched caller '{caller_session_id}'; "
+    "{act} is refused. The caller's completed turn already reaches the orchestrator, so the "
+    "result belongs in the caller's own output, not in an act directed upward."
 )
 
 
-async def refuse_act_on_ancestor(caller: CallerIdentity, target_session_id: str, act: str) -> None:
-    """Refuse ``act`` when ``target_session_id`` is an orchestrator the caller strictly descends from.
+async def refuse_act_on_dispatching_orchestrator(caller: CallerIdentity, target_session_id: str, act: str) -> None:
+    """Refuse ``act`` when ``target_session_id`` is the orchestrator that dispatched the caller.
 
     A caller with no session identity — a human at a terminal, the TUI — has
-    no dispatch chain and is never refused. A caller targeting itself is not
-    refused: identity is not descent. An ancestor that is not an orchestrator
-    conferred no mandate, so an act on it is not refused. Called before any
-    side effect of the act being attempted.
+    no dispatcher and is never refused. A caller targeting itself is not
+    refused. A dispatcher that is not an orchestrator, and any session further
+    up the chain, conferred no mandate on the caller, so an act on it is not
+    refused. Called before any side effect of the act being attempted.
     """
     if not caller.session_id or caller.session_id == target_session_id:
         return
-    if not await session_descends_from(caller.session_id, target_session_id):
+    caller_session = await db.get_session(caller.session_id)
+    if caller_session is None or caller_session.initiator_session_id != target_session_id:
         return
     target = await db.get_session(target_session_id)
     if target is None or not is_orchestrator_role(target.role):

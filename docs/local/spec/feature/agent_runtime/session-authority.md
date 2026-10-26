@@ -1,6 +1,6 @@
 ---
 description: Which session may act on which — a standing role has no session above
-  it, and no session acts on an orchestrator above it.
+  it, and no session acts on the orchestrator that dispatched it.
 visibility: internal
 ---
 
@@ -29,12 +29,13 @@ job's session whatever its role
 (`local/projects/teleclaude/spec/feature/identity/agent-roles`) — takes its
 work from a queue, a schedule, or the fleet, so the session that started it
 conferred no mandate and none is recorded. And an orchestrator's authority
-runs downward only: a session never acts on an orchestrator above it in the
-dispatch chain, because the orchestrator's dispatch confers the mandate its
-descendants work under, and the act would reach past that mandate into the
-orchestrator's own. Any other dispatch confers no mandate: a peer a session asks
-for, or a session a standing or human-directed session starts, acts on the
-session that started it as on any other session within its reach. Upward
+runs downward only: a session never acts on the orchestrator that dispatched it,
+because that dispatch confers the mandate the session works under, and the act
+would reach past that mandate into the orchestrator's own. Any other dispatch
+confers no mandate: a peer a session asks for, or a session a standing,
+human-directed or non-orchestrating session starts, acts on the session that
+started it, and on every session further up the chain, as on any other session
+within its reach. Upward
 reporting needs no act — a completed turn already wakes the session above.
 
 A worker — a session whose role is of class `worker`
@@ -51,7 +52,7 @@ Standing sessions have no dispatch parent or human-origin identity; they resolve
 to the platform principal. Adopting a live session into a standing role clears
 its prior human identity. A standing session is not an ordinary dispatched
 child, so ending its former starter does not end it. Direct requests to message,
-link to, unsubscribe from, end, or restart an orchestrator ancestor are refused;
+link to, unsubscribe from, end, or restart the orchestrator that dispatched the caller are refused;
 a session reports upward to an orchestrator through its own completed turn
 (`local/projects/teleclaude/spec/feature/identity/principal-resolution`).
 
@@ -70,10 +71,10 @@ session-above-it link. A session's **ancestors** are every session on that walk;
 the session itself is not among them.
 
 **Orchestrator**
-: A session whose role the catalog assigns todo orchestration: the lifecycle orchestrators (`local/projects/teleclaude/spec/feature/identity/agent-roles`). The integrator and the project coordinator are not orchestrators for this rule.
+: A session whose role the catalog assigns todo orchestration: the lifecycle orchestrators and their intake, architecture and planning phases (`local/projects/teleclaude/spec/feature/identity/agent-roles`). The integrator and the project coordinator are not orchestrators for this rule.
 
 **Upward act**
-: A request naming an orchestrator among the calling session's ancestors as its target.
+: A request naming the orchestrator that dispatched the calling session as its target.
 
 ### Use cases
 
@@ -95,7 +96,7 @@ And the dispatcher remains unchanged
 
 ```gherkin
 Given an operator asks their agent to restart a peer or child session
-When that target is not an orchestrator above the agent in the dispatch chain
+When that target is not the orchestrator that dispatched the agent
 Then the restart request proceeds
 And a rootless agent can reach any session in the fleet
 And targeting itself is not treated as an upward act
