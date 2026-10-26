@@ -65,7 +65,8 @@ following.
   GitHub as its door
   (`local/projects/teleclaude/spec/feature/workflow/todo-creation`) and, when
   the issue's author is a configured person, that person as the authority it
-  ran under; otherwise it runs under the platform's own authority, and the
+  ran under, with human involvement recorded as for that person's own filing;
+  otherwise it runs under the platform's own authority, and the
   outside author's GitHub name is presentation context only.
 - **Not filed.** An issue whose work an existing item covers is closed as a
   duplicate linked to that item's issue. An issue that adds to an existing
