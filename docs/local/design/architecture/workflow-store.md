@@ -182,7 +182,9 @@ working copy and the repository.
     the board's setup by committing a board claim naming its computer. The
     claim the ledger orders first holds setup, and only the holding computer
     creates the board; every other computer takes the board from the ledger,
-    at refresh and at rebuild. Before creating, the holder takes a project the
+    at refresh and at rebuild. Setup runs only in the daemon, one at a time
+    per project, so a refresh and a repair on the holding computer never
+    create concurrently. Before creating, the holder takes a project the
     platform App created with the repository's name as its title, which the
     creating request itself sets, so an interrupted setup never creates a
     second board. The holder records the board's identity in the ledger, then
