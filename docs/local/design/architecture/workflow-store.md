@@ -620,7 +620,11 @@ sequenceDiagram
   its failure.
 - A transaction whose GitHub I/O outlasts the push deadline aborts its local
   commit and refuses with the provider's unavailable cause, as any failed GitHub
-  write before the commit point does.
+  write before the commit point does. When its request's deadline is what ran
+  out, the transaction aborts the same way, and the API caller receives the
+  explicit refusal instead. If the push had already sent its commit-point
+  write, that refusal says the change may have been saved and appears once the
+  store refreshes.
 - Bookkeeping refused for the writer after a completed reflection or pull
   request leaves that reflection owed, and refresh writes it again.
 
