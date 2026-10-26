@@ -24,6 +24,7 @@ from teleclaude.config.loader import github_actor_for_app_id
 from teleclaude.config.project_models import TodoStoreBackend, TodoStoreConfig
 from teleclaude.constants import TodoStatus
 from teleclaude.core.todos_db._adapter import TodosDb
+from teleclaude.core.todos_db._github_conversation import ConversationBookkeeping
 from teleclaude.core.todos_db._github_pull_requests import work_item_for_number
 from teleclaude.core.todos_db._github_questions import insert_awaiting_question
 from teleclaude.core.todos_db._working_copy import (
@@ -44,6 +45,7 @@ from teleclaude.core.workflow_store.github import (
     GitHubRepositoryIdentity,
     resolve_github_repository_identity,
 )
+from teleclaude.core.workflow_store.github_conversation_start import ensure_conversation_start
 from teleclaude.core.workflow_store.github_io import GitHubMutationPacing, GitHubWorkflowIO
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_push import GitHubWorkflowPush
@@ -181,6 +183,22 @@ class GitHubWorkflowStore(TodosDb):
     async def refresh_working_copy(self) -> int:
         """Adopt committed changes made by another computer and repair owed reflections."""
         return await self._sync.refresh()
+
+    async def conversation_start(self) -> datetime | None:
+        """The moment this project's conversation began, written to its ledger issue if no computer has yet.
+
+        None while the store has opened no ledger issue: a project without one publishes nothing.
+        """
+        bookkeeping = ConversationBookkeeping(Path(self.db_path))
+        cached = await asyncio.to_thread(bookkeeping.conversation_start)
+        if cached is not None:
+            return cached
+        ledger_issue_number = await asyncio.to_thread(bookkeeping.ledger_issue_number)
+        if ledger_issue_number is None:
+            return None
+        started = await ensure_conversation_start(self._io, self._assignment.actor.login, ledger_issue_number)
+        await asyncio.to_thread(bookkeeping.save_conversation_start, started)
+        return started
 
     async def surface_question(
         self,
