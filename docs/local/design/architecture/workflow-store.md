@@ -296,6 +296,29 @@ refresh observes through the session conversation seam. A failure to post
 the question is logged and changes neither the message's delivery nor the
 workflow.
 
+<!-- planned:github-turn-mirror -->
+
+**Conversation.** The adapter module publishes the completed turns of the
+sessions working a repository work item on that item's open pull request,
+otherwise on its issue, as the role Apps
+(`local/projects/teleclaude/design/architecture/work-item-conversation`).
+Its bookkeeping in the working copy holds each session's posting position and
+never turn content; the record and the workflow state are unchanged.
+
+**GitHub request budget.** Every GitHub request the adapter module makes
+for a project runs on its one I/O runtime in two priorities. Record work,
+meaning the write path, reflections, questions, reviews, rebuild and
+refresh, runs as it does today. Conversation appends run at background
+priority: one starts only while no record request waits, appends use at most
+half of GitHub's content-creation limits per minute and per hour, and any
+rate-limit response to any request pauses every background append until the
+time that response names, or a minute when it names none, growing on
+repeated limits. Record work therefore keeps the other half of the
+content-creation budget and every primary request left once a limit
+appears.
+
+<!-- /planned:github-turn-mirror -->
+
 - **Conflict check.** Before writing a record, the adapter reads its current
   revision from GitHub. A revision newer than the one the working copy was
   derived from means the item changed on another computer: the write is

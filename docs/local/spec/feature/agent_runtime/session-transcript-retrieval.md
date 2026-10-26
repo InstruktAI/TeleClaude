@@ -99,6 +99,35 @@ tail command and messages endpoint retain their transcript projection and
 fallback behavior. Transcript filtering flags apply to the transcript query;
 they are not accepted with explicit terminal mode.
 
+<!-- planned:github-turn-mirror -->
+
+### Completed turns read
+
+A consumer in another context reads a session's completed turns in order,
+from the turn after one it already holds. It is a module query with no API or
+command-line surface, under the same per-session access contract.
+
+- **Turn.** One output generation: the turn the runtime cut at a genuine
+  native user entry
+  (`local/projects/teleclaude/design/architecture/conversation-delivery`). A
+  turn carries its generation identity and its ordinal among the session's
+  turns, counted from one, which never changes once assigned.
+- **Input.** The turn's authored input parts in order, each with its
+  authorship: a person, with the channel their words arrived through; a peer
+  session, with its id and role; the platform; or runtime content.
+- **Reply.** The agent's user-visible text for the turn, every text block in
+  order, without tool activity or reasoning.
+- **Completion.** A turn is completed once the session has a later turn, its
+  latest agent stop is at or after the turn's last entry, or the session is
+  closed. Only completed turns are returned.
+- **Unreadable.** A turn whose transcript entries can no longer be read is
+  returned as unreadable with its identity and ordinal, never as an empty
+  turn.
+
+The read covers the session's whole transcript chain.
+
+<!-- /planned:github-turn-mirror -->
+
 ### Cross-context references
 
 - **session_mirrors** — explicitly NOT what this entry returns. The mirror layer is an eternal text extract published only at session end and lives in its own bounded context; this entry always reads the live native transcripts.
