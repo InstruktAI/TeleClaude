@@ -47,6 +47,9 @@ delivery land in docs across two locations — route per change:
   design facets and topic-owned companion assets when useful. Examples: a new
   bounded context, a communication-pattern change, a transport-boundary
   change, a context-map shift, or a deployment-shape change.
+- **Index rule** → a new design snippet or decision record is listed in the
+  domain spec of the context it governs, or in the context map when it is
+  cross-cutting, through the same pending carrier (`sdlc/spec/domain-spec`).
 - **Ownership rule** → a cross-cutting design doc owns only the relationship
   among contexts. Every behavior, invariant, state transition, vocabulary
   decision, and validation rule still resolves to one context's domain or

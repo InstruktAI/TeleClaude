@@ -470,11 +470,23 @@ architecture treatment whatever the todo's kind:
 - Its independent reviewer builds the paradigm-native alternative before
   reading the author's, and judges the decision against it.
 
-In a feature this is the architecture phase, which a structural decision never
-skips. A change or bug lane has no architecture phase: its plan carries the
-same reasoning in its own sections, authors the durable design into the
-snippets, and its plan review applies the architecture review
+Where a reviewed architecture carries the decision, this is the architecture
+phase. Where none does — a change or bug, whose lane has no architecture phase,
+or a feature whose architecture was skipped — the plan carries the same
+reasoning in its own sections, authors the durable design into the snippets,
+and its plan review applies the architecture review
 (`sdlc/procedure/lifecycle/prepare/review-architecture`) to that part.
+
+A bug whose settled diagnosis names a prescribing design or decision record
+that has already produced this failure, as that design's `Failure modes`
+record, makes its remedy a structural decision that reopens the prescribing
+decision: it is superseded or amended, and a local repair covers only what the
+reopened decision leaves to it. Removing a cause the decision prescribes stays
+inside the bug's causal scope; a reopened decision whose change alters a
+human-owned outcome returns that outcome to the human
+(`general/policy/human-contract`). Whether or not the failure is a repeat, the
+prepare session records it in the prescribing design's `Failure modes` with the
+plan's documentation reflection.
 
 ### DoD-driven review-awareness
 

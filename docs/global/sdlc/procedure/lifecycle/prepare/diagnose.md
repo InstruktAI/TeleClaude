@@ -386,14 +386,9 @@ authorized symptom and causal scope (`sdlc/policy/process-change-authority`).
 ### The cause is a governing decision
 
 When the settled mechanism is one a governing design or decision record prescribes
-(`sdlc/procedure/debugging`, Name the mechanism), the driving session records the failure
-in that design's `Failure modes` (`general/policy/documentation-discipline`, a limit found
-is recorded with its contract) and reads the failure modes already recorded there.
-
-A failure that design has already produced before means the decision, not the site, is
-what keeps failing. The plan's remedy then reopens it as a structural decision
+(`sdlc/procedure/debugging`, Name the mechanism), the `diagnosis` names that contract and
+states whether its design's `Failure modes` already record this failure. The interrogation
+tests both claims like any other transition. A repeat makes the remedy reopen the decision
 (`sdlc/policy/preparation-artifact-quality`, Structural decisions carry architecture
-review): the decision is superseded or amended, and a local repair covers only what the
-reopened decision leaves to it. Removing a cause the decision prescribes stays inside the
-bug's causal scope; a reopened decision whose change alters a human-owned outcome returns
-that outcome to the human (`general/policy/human-contract`).
+review), and the prepare session records the failure in that design when the plan reflects
+its documentation; diagnosis itself commits nothing.

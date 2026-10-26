@@ -235,15 +235,19 @@ another reasonable implementation could satisfy everything the human said
 while omitting or varying a proposed business detail, the detail remains
 unspecified and outside _Intent & scope_.
 
-### 1e. Carry a structural decision's architecture (`change` and `bug`)
+### 1e. Carry a structural decision no reviewed architecture carries
 
-When the plan makes a structural decision, it carries the architecture
-reasoning its lane has no phase for (`sdlc/policy/preparation-artifact-quality`,
-Structural decisions carry architecture review): the governing paradigms with
-every operation callers see placed in them, the alternatives with the
-paradigm-native one among them, and the durable design authored into its
-snippets through pending carriers naming this slug, as
-`sdlc/procedure/lifecycle/prepare/architecture` routes them.
+When the plan makes a structural decision that no reviewed architecture
+carries — in a `change` or `bug`, or in a `feature` whose architecture was
+skipped — it carries the architecture reasoning itself
+(`sdlc/policy/preparation-artifact-quality`, Structural decisions carry
+architecture review): the governing paradigms with every operation callers see
+placed in them, the alternatives with the paradigm-native one among them, and
+the durable design authored into its snippets through pending carriers naming
+this slug, as `sdlc/procedure/lifecycle/prepare/architecture` routes them. A bug
+whose `diagnosis` names a prescribing decision that has failed this way before
+reopens that decision here, and every plan whose diagnosis names one records
+the failure in that design's `Failure modes`.
 
 ### 2. Decide whether the todo is atomic
 

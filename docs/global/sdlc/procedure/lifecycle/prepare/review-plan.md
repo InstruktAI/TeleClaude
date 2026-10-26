@@ -340,14 +340,17 @@ recorded as re-verifiable facts) alongside its conclusion — and validate:
   a bug plan is Critical unless the diagnosed cause is that the documented
   contract itself is wrong, and then only the correction of that contract.
 
-### 5b. Structural decisions in `change` and `bug` work
+### 5b. Structural decisions no reviewed architecture carries
 
-When a `change` or `bug` plan makes a structural decision, apply the grounding
-and divergence checks of `sdlc/procedure/lifecycle/prepare/review-architecture`
-to it, the paradigm-native alternative built before you read the plan's
+When the plan makes a structural decision that no reviewed architecture
+carries — in a `change` or `bug`, or in a `feature` whose architecture was
+skipped — apply the grounding and divergence checks of
+`sdlc/procedure/lifecycle/prepare/review-architecture` to it, the
+paradigm-native alternative built before you read the plan's
 (`preparation-artifact-quality`, Structural decisions carry architecture
 review). A plan that makes one without carrying its architecture reasoning is a
-Requirement-Violation.
+Requirement-Violation, and so is a bug plan that patches locally where its
+`diagnosis` names a prescribing decision that has failed this way before.
 
 ### 6. Review lane anticipation
 

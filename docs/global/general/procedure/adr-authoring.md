@@ -78,6 +78,7 @@ broken:
    - The decision is stated clearly enough that a future agent could re-evaluate it on its merits.
    - The consequences include the negative ones, not just the wins.
    - The ADR is discoverable: the path-derived id matches the filename; authored `number` matches the filename prefix; date is correct.
+   - In a project whose domain specs follow `sdlc/spec/domain-spec`, the same commit lists the ADR in the domain spec of the context it governs, or in the context map when it is cross-cutting.
 
 6. **Never modify a prior ADR's body.** A decision that reverses or narrows an
    earlier one is its own new ADR; the earlier ADR's body stays exactly as written.
