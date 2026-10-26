@@ -49,11 +49,11 @@ A thinking mode sets the depth a dispatched session brings, whichever agent runs
 it. Each procedure's dispatch declaration carries the mode its work earns.
 
 - **slow**: work whose error is costly and hard to see — novel design, analysis,
-  planning, root-cause diagnosis, and every review whose scope is not
-  documentation only.
+  planning, root-cause diagnosis, and every review except one of a
+  documentation-only scope that directs no agent differently.
 - **med**: routine work against a settled plan — implementation, fixes,
-  refactoring — and review of a documentation-only scope
-  (`general/procedure/orchestration`).
+  refactoring — and review of a documentation-only scope that directs no agent
+  differently (`general/procedure/orchestration`).
 - **fast**: mechanical, clerical work whose result is checked at a glance.
 
 ### Collaboration selection
@@ -84,4 +84,6 @@ themselves. It changes only when models change — not per-machine, not per-proj
 
 Depth is spent where a mistake is expensive and invisible. A review is the point
 where a defect is caught or passed on to everything built after it, so review
-runs deep; a documentation-only scope is read in full at a lower cost of error.
+runs deep. A documentation change that redirects agents steers every session
+after it, so it earns the same depth; one that only refines what a snippet
+establishes is read in full at a lower cost of error.

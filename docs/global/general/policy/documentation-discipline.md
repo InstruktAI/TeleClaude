@@ -71,13 +71,26 @@ restart, then check the logs` is directive. One string reaching a human and an
 ### Review and cross-project authoring
 
 - **Governed documentation is never self-reviewed.** A doc-only commit that
-  changes what a snippet establishes or directs gets an independent fast
-  doc-hygiene review via `sdlc/procedure/lifecycle/work/review-commits` on its
-  SHA, covering the security lane's repository-privacy check and the doc-hygiene
-  lane. Both are reviewer judgment, never prose scanning. A typo, formatting or
+  changes what a snippet establishes or directs gets an independent review via
+  `sdlc/procedure/lifecycle/work/review-commits` on its SHA. Its author
+  classifies the change when dispatching that review:
+  - **A change to what agents are directed to do** — directive text, the
+    process layer (`sdlc/policy/process-change-authority`) included — is
+    reviewed at full depth (`general/procedure/orchestration`). The dispatch's
+    additional context carries the intent no diff shows: the problem the
+    change answers, the reader role whose behavior it changes and the behavior
+    wanted from that role, the human's direction wherever it shaped the change,
+    relayed faithfully, the alternatives the authoring context rejected, and
+    what the change leaves as it was.
+  - **Any other change to what a snippet establishes** is reviewed at the
+    lighter depth for the security lane's repository-privacy check and the
+    doc-hygiene lane.
+
+  Every check is reviewer judgment, never prose scanning. A typo, formatting or
   link repair changes neither, and its author stamps it
   (`general/policy/commits`). Standalone descriptive prose outside the snippet system,
   such as a README, is not governed content; directive text is, wherever it lives.
+
 - **Cross-project doc work preserves the authoring session.** The session holding
   the design context writes the complete content to caller-owned temporary files
   and relays only their absolute paths and target repository paths to a session
@@ -107,6 +120,11 @@ the conversation that made it correct, and the human is pulled back to restate
 it.
 
 An author reviewing their own snippet believes it correct, which is no review.
+A reviewer handed only the diff can judge form, and a directive change can be
+well formed while it steers every later session the wrong way. Its intent lives
+in the authoring conversation, so it reaches the reviewer only when the author
+carries it there. A change that only refines what a snippet establishes steers
+no one, so its error costs less and a lighter review catches it.
 
 Moving a mechanical write to another project must not move authorship with it:
 the files carry the already-authored document, and the receiving session owns

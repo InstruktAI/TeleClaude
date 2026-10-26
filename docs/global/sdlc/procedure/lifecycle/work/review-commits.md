@@ -77,6 +77,13 @@ For this invocation:
 - Check material claims in the authored message against the diff and resulting
   behavior. Classify any contradiction under the governing contract; message
   consistency does not establish intent authority.
+- A documentation change to what agents are directed to do arrives with its
+  intent in the dispatch's additional context
+  (`general/policy/documentation-discipline`). Hold the changed text to that
+  intent for the reader role it names: each intended behavior is produced for
+  that reader, nothing intended is lost or distorted, nothing beyond it is
+  added, and the intent itself holds against the governing contracts. Such a
+  change dispatched without its intent is a material authority gap.
 
 - The authoring caller owns continuation and recovery for this review; the
   reviewer retains verdict authority. Apply the shared convergence contract
