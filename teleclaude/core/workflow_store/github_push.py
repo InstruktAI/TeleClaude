@@ -242,10 +242,11 @@ class GitHubWorkflowPush:
         if ledger_comment_id is not None:
             for table, row_id in changes.project_records:
                 mark_project_record_pushed(session, table, row_id, ledger_comment_id)
-        stage_issue_reflections(session, reflection_rows)
+        settled = stage_issue_reflections(session, reflection_rows)
         stage_pull_request_reflections(session, reflection_rows)
         for _issue_number, item_id, _snapshot in reflection_rows:
-            mark_reflection_owed(session, item_id)
+            if item_id not in settled:
+                mark_reflection_owed(session, item_id)
         clear_pending_changes(session)
 
     @staticmethod

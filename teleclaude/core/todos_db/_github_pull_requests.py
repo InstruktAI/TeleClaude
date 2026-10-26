@@ -16,6 +16,8 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from ._write_admission import WRITE_ADMISSION_BUDGET_S, connect_admitted
+
 _PULL_REQUEST_TABLE_DDL = (
     "CREATE TABLE IF NOT EXISTS github_pull_request (item_id TEXT PRIMARY KEY, number INTEGER, digest TEXT, "
     "delivered_noted INTEGER NOT NULL DEFAULT 0)"
@@ -106,8 +108,11 @@ def save_pull_request_bookkeeping(session: Session, item_id: str, known: PullReq
 
 
 def store_pull_request_bookkeeping(db_path: Path, item_id: str, known: PullRequestBookkeeping, *, owed: bool) -> None:
-    """Record progress from a completion callback, outside any working-copy transaction."""
-    connection = sqlite3.connect(db_path)
+    """Record progress from a completion callback, outside any working-copy transaction.
+
+    Runs on a thread no working-copy write depends on, and waits for the writer up to the admission budget.
+    """
+    connection = connect_admitted(str(db_path), WRITE_ADMISSION_BUDGET_S)
     try:
         for statement, parameters in _write_statements(item_id, known):
             connection.execute(statement, parameters)
