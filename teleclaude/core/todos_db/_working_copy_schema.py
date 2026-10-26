@@ -28,13 +28,23 @@ _BOOKKEEPING_DDL = (
     "ledger_issue_number INTEGER, ledger_node_id TEXT, issue_watermark TEXT, ledger_watermark TEXT, "
     "initialized INTEGER NOT NULL DEFAULT 0, projection_version INTEGER NOT NULL DEFAULT 0, "
     "projection_repair_after_issue INTEGER NOT NULL DEFAULT 0)",
-    "INSERT OR IGNORE INTO github_repository(singleton) VALUES (1)",
     "CREATE TABLE IF NOT EXISTS working_copy_pending_item (item_id TEXT PRIMARY KEY)",
     "CREATE TABLE IF NOT EXISTS working_copy_pending_project (table_name TEXT NOT NULL, row_id INTEGER NOT NULL, "
     "PRIMARY KEY(table_name, row_id))",
     "CREATE TABLE IF NOT EXISTS working_copy_capture_control (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), "
     "suppressed INTEGER NOT NULL DEFAULT 0)",
-    "INSERT OR IGNORE INTO working_copy_capture_control(singleton, suppressed) VALUES (1, 0)",
+)
+# Each singleton row is created once and never deleted, so a presence read decides the seed without the
+# writer: INSERT OR IGNORE needs writer admission even when it ignores the row.
+_SINGLETON_SEEDS = (
+    (
+        "SELECT 1 FROM github_repository WHERE singleton = 1",
+        "INSERT OR IGNORE INTO github_repository(singleton) VALUES (1)",
+    ),
+    (
+        "SELECT 1 FROM working_copy_capture_control WHERE singleton = 1",
+        "INSERT OR IGNORE INTO working_copy_capture_control(singleton, suppressed) VALUES (1, 0)",
+    ),
 )
 _REPOSITORY_COLUMNS_SQL = "PRAGMA table_info(github_repository)"
 _TABLE_INFO_SQL = "PRAGMA table_info({})"
@@ -103,6 +113,9 @@ def initialize_working_copy(path: str | Path) -> None:
     try:
         for statement in _BOOKKEEPING_DDL:
             connection.execute(statement)
+        for presence_sql, seed_sql in _SINGLETON_SEEDS:
+            if connection.execute(presence_sql).fetchone() is None:
+                connection.execute(seed_sql)
         initialize_question_bookkeeping(connection)
         initialize_pull_request_bookkeeping(connection)
         repository_columns = {str(row[1]) for row in connection.execute(_REPOSITORY_COLUMNS_SQL)}
