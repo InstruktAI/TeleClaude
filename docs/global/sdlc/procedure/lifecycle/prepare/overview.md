@@ -272,10 +272,29 @@ approved digest it carries forward and the review report that carried it. The
 human is not asked to confirm a carried approval and receives no separate
 notice of it.
 
+<!-- planned-change:github-person-decisions -->
+
 A PRD the human has never approved is never stamped `prd_approved` by an
 agent: the first approval is the human's, given directly in the live
 conversation, and no signal about how the session started supplies,
 withholds, or propagates it.
+<!-- change:github-person-decisions -->
+
+A PRD the human has never approved is never stamped `prd_approved` by an
+agent: the first approval is the human's, given directly in the live
+conversation, and no signal about how the session started supplies,
+withholds, or propagates it.
+
+For an item of a project on the GitHub workflow store, the first approval may
+also be given on the item's issue, through the approval act its work record
+defines, by a configured person who owns the repository or is a member of the
+organization that owns it; approving intent is authority the human grants
+only to them (`general/policy/human-contract`). Such an approval counts only
+while the item waits for human approval of its current reviewed PRD, and the
+platform records it from that act; no agent stamps it and no agent reads one
+from a person's words. An approval act by anyone else, or at any other moment,
+changes nothing and is answered on the issue.
+<!-- /planned-change:github-person-decisions -->
 
 ### 5. Re-read against changed doctrine
 

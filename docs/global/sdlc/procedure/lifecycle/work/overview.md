@@ -56,6 +56,24 @@ resolved by the agents. A worker's or reviewer's statement that a human
 decision is needed is a claim the orchestrator assesses under this rule, never
 a routing instruction.
 
+<!-- planned:github-person-decisions -->
+
+### A person's review on the item's pull request
+
+For an item of a project on the GitHub workflow store, a configured person who
+owns the repository, is a member of the organization that owns it, or
+collaborates on it may review the item's pull request. Their request for
+changes, given on the commit the build currently stands on and before
+delivery, is a `changes_requested` build-review verdict: the platform records
+their review as that round's review report, and the build returns to fix. The
+fixer validates each of its points under
+`sdlc/procedure/lifecycle/fix-review-findings` like any finding, and a point
+whose answer would change intent or scope is a kickback ground (Step 9). Their
+approval stamps nothing, because work holds no human lane; it reaches the
+session working the item as their message. A review on an earlier commit, or
+by anyone else, changes nothing and is answered on the pull request.
+<!-- /planned:github-person-decisions -->
+
 ## Preconditions
 
 - Target slug has completed preparation (state: PREPARED).
