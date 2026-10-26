@@ -44,6 +44,7 @@ from teleclaude.core.workflow_store.github import (
     GitHubRepositoryIdentity,
     resolve_github_repository_identity,
 )
+from teleclaude.core.workflow_store.github_board_io import GitHubBoardIO
 from teleclaude.core.workflow_store.github_io import GitHubMutationPacing, GitHubWorkflowIO
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_push import GitHubWorkflowPush
@@ -107,7 +108,8 @@ class GitHubWorkflowStore(TodosDb):
         self._migration_lock = asyncio.Lock()
         self._io = GitHubWorkflowIO(repository, assignment)
         self._pull_requests = GitHubPullRequestIO(repository)
-        self._push = GitHubWorkflowPush(path, repository, assignment, self._io, self._pull_requests)
+        self._board = GitHubBoardIO(repository, assignment)
+        self._push = GitHubWorkflowPush(path, repository, assignment, self._io, self._pull_requests, self._board)
         self._sync = GitHubWorkflowSync(self, repository, assignment, self._io, self._pull_requests)
         self._push.set_conflict_refresh(self._sync.refresh)
         self.set_commit_callbacks(

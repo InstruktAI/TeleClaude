@@ -76,6 +76,17 @@ class BoardField(StrEnum):
 
 
 @dataclass(frozen=True)
+class BoardTargets:
+    """The identities a board item write addresses: the project, the Status lanes and the Needs you marker."""
+
+    project_id: str
+    status_field_id: str
+    lane_option_ids: Mapping[str, str]
+    needs_you_field_id: str
+    needs_you_option_id: str
+
+
+@dataclass(frozen=True)
 class BoardSetup:
     """What is known of the project's board: where it is recorded, its identities and what setup still owes."""
 
@@ -89,15 +100,22 @@ class BoardSetup:
     linked: bool = False
     owed_cause: str | None = None
 
-    @property
-    def usable(self) -> bool:
-        """Whether item writes can address the board: the project and both fields with their options are known."""
-        return (
-            self.project_id is not None
-            and self.status_field_id is not None
-            and bool(self.lane_option_ids)
-            and self.needs_you_field_id is not None
-            and self.needs_you_option_id is not None
+    def targets(self) -> BoardTargets | None:
+        """Return the identities item writes address, or None while the project or a field is not yet known."""
+        if (
+            self.project_id is None
+            or self.status_field_id is None
+            or not self.lane_option_ids
+            or self.needs_you_field_id is None
+            or self.needs_you_option_id is None
+        ):
+            return None
+        return BoardTargets(
+            project_id=self.project_id,
+            status_field_id=self.status_field_id,
+            lane_option_ids=self.lane_option_ids,
+            needs_you_field_id=self.needs_you_field_id,
+            needs_you_option_id=self.needs_you_option_id,
         )
 
 
@@ -171,6 +189,16 @@ def store_board_item(db_path: Path, item_id: str, known: BoardItemBookkeeping | 
                 },
             )
         connection.execute(_MARK_OWED_SQL if owed else _CLEAR_OWED_SQL, {BoardField.ITEM_ID.value: item_id})
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def mark_board_item_owed_at(db_path: Path, item_id: str) -> None:
+    """Record that the item's board item is owed again, from a completion callback whose write failed."""
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute(_MARK_OWED_SQL, {BoardField.ITEM_ID.value: item_id})
         connection.commit()
     finally:
         connection.close()
