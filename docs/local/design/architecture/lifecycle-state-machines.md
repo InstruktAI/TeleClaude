@@ -62,7 +62,7 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 <!-- planned:single-orchestrator-concurrent-starts -->
 
-- **One orchestrator per todo on a computer**: every start of a lifecycle orchestrator for a todo — a session create door or a lifecycle operation adopting its caller — passes its live-holder check and the creation or claim it admits inside one in-process critical section per project and todo, whatever its lane, so at most one live orchestrator holds the todo. The section records nothing; the session registry and `active_runner` remain the ownership facts (`local/projects/teleclaude/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors`).
+- **One orchestrator per todo on a computer**: every start of a lifecycle orchestrator for a todo — a session create door or a lifecycle operation adopting its caller — passes its live-holder check and the creation or claim it admits inside one in-process critical section per project and todo, whatever its lane, so at most one live orchestrator holds the todo. The section records nothing; the session registry and `active_runner` remain the ownership facts (`local/projects/teleclaude/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors`, `local/projects/teleclaude/adr/0134-a-colliding-driver-start-is-refused-without-waiting`).
 
 <!-- /planned:single-orchestrator-concurrent-starts -->
 

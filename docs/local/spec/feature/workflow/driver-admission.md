@@ -71,4 +71,5 @@ A todo is held when either of these exists in its project on this computer:
 ## See Also
 
 - docs/local/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors.md
+- docs/local/adr/0134-a-colliding-driver-start-is-refused-without-waiting.md
 - docs/local/adr/0052-orchestrator-dedup-registry-authoritative.md
