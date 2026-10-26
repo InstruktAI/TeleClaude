@@ -38,6 +38,7 @@ from teleclaude.core.todos_db._working_copy import (
     restore_project_record,
 )
 from teleclaude.core.todos_db._working_copy_schema import initialize_working_copy
+from teleclaude.core.todos_db._write_admission import WRITE_ADMISSION_BUDGET_S
 from teleclaude.core.todos_db_path import github_working_copy_path
 from teleclaude.core.workflow_store.github import (
     GitHubIdentityRefused,
@@ -101,7 +102,7 @@ class GitHubWorkflowStore(TodosDb):
         repository: GitHubRepositoryIdentity,
         assignment: GitHubActorAssignment,
     ) -> None:
-        super().__init__(str(path))
+        super().__init__(str(path), write_admission_budget=WRITE_ADMISSION_BUDGET_S)
         self._repository = repository
         self._assignment = assignment
         self._migration_lock = asyncio.Lock()
