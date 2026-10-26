@@ -309,38 +309,42 @@ workflow.
 <!-- planned:github-turn-mirror -->
 
 **Conversation.** The adapter module publishes the completed turns of the
-sessions working a repository work item on that item's open pull request,
-otherwise on its issue, as the role Apps
+sessions working a repository work item on the pull request the item had open
+when each turn completed, otherwise on its issue, as the role Apps, sent by
+the fleet's master
 (`local/projects/teleclaude/design/architecture/work-item-conversation`).
-Its bookkeeping in the working copy holds each session's posting position and
-never turn content; the record and the workflow state are unchanged.
+The working copy of the computer hosting a session holds that session's
+captured turns, protected and split, until they are on GitHub, and never raw
+transcript content; the record and the workflow state are unchanged.
 
 **GitHub request budget.** Every GitHub request the adapter module makes runs
 on its one I/O runtime. Record work, meaning the write path, reflections,
 questions, reviews, rebuild and refresh, is never held by the conversation's
 budget and keeps its own refusal and retry contract. Conversation requests,
-the reads and appends for turns, draw on a bounded share that the runtime
-admits before each request:
+the reads and appends for turns, are sent only by the fleet's master computer
+(`local/projects/teleclaude/spec/teleclaude-config`, `computer.is_master`),
+which every other computer hands its captured turns to
+(`local/projects/teleclaude/design/architecture/work-item-conversation`). The
+master admits each conversation request before sending it:
 
-- **Never the record's identity.** Primary limits are per installation
-  (GitHub's REST rate-limit contract). Turn comments and the reads for them go
+- **Never the record's identity.** Turn comments and the reads for them go
   out only as role Apps, never as the platform App every refusable record
   write uses. The one conversation-start entry per project goes out as the
-  platform App, once, as record work. On a role App's installation a
-  conversation request is admitted only while the remaining count and reset
-  time of that installation's latest response leave a fifth of its limit for
-  the pull request and review reflections that App also writes.
-- **A fixed share of content creation across all computers.** The
-  conversation's share is half of GitHub's documented content-creation limits
-  per minute and per hour, divided equally among the computers the fleet's
-  computer registry lists. Each computer admits a conversation append only
-  while its own conversation appends over the last minute and hour stay within
-  its part, so all computers together stay within the share without
-  coordinating.
-- **A limit response stops conversation.** Any rate-limit response to any
-  request pauses every conversation request on that computer until the time
+  platform App, once, as record work, from the computer that appends it. On a
+  role App's installation a conversation request is admitted only while the
+  remaining count and reset time of that installation's latest response leave
+  a fifth of its limit for the pull request and review reflections that App
+  also writes.
+- **One share for the fleet.** The master counts the conversation appends it
+  sent over the last minute and the last hour and admits an append only while
+  that count stays within half of GitHub's documented content-creation limits.
+  Because the master sends every conversation request, its count is the
+  fleet's.
+- **A limit response stops the conversation.** Any rate-limit response to a
+  request the master sends pauses every conversation request until the time
   the response names, or a minute when it names none, doubling on each
-  repeated limit.
+  repeated limit. A turn handed over meanwhile is answered deferred until
+  that time.
 
 <!-- /planned:github-turn-mirror -->
 
