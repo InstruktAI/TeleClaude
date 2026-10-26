@@ -10,7 +10,9 @@ description: Lifecycle dispatch records ownership directly and carries no time-b
 ## Status
 
 Superseded in part by ADR-0096: prepare-artifact admission consults the
-claiming group on a claimed todo. The retirement of time-bound dispatch
+claiming group on a claimed todo. Superseded in part by ADR-0133: concurrent
+driver starts for one todo on one computer are serialized by an in-process
+critical section that records no state. The retirement of time-bound dispatch
 reservations is unchanged and remains accepted.
 
 ## Context

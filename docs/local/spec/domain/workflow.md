@@ -174,6 +174,7 @@ concerned:
 - `local/projects/teleclaude/adr/0104-every-todo-is-created-with-its-kind` — every todo created with its kind
 - `local/projects/teleclaude/adr/0125-github-store-keeps-the-local-implementation-as-its-working-copy` — the GitHub store's working copy and push before local commit
 - `local/projects/teleclaude/adr/0126-non-repository-work-stays-in-the-github-store-working-copy` — non-repository work kept in the GitHub store's working copy
+- `local/projects/teleclaude/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors` — concurrent driver starts for one todo serialized on one computer
 
 ## See Also
 

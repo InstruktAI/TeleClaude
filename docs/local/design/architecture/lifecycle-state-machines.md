@@ -59,6 +59,13 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 - **Artifact immutability**: machines never modify artifacts directly; they delegate to workers.
 - **Dependency blocking**: cannot claim a work item until all its dependencies are complete.
 - **Integration serialization**: only one integrator pushes `main` at a time, enforced by a singleton lease.
+
+<!-- planned:single-orchestrator-concurrent-starts -->
+
+- **One driver per todo on a computer**: every start of a lifecycle driver or task runner for a todo — a session create door or a lifecycle operation adopting its caller — passes its live-holder check and the creation or claim it admits inside one in-process critical section per project and todo, so at most one live driver holds the todo. The section records nothing; the session registry and `active_runner` remain the ownership facts (`local/projects/teleclaude/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors`).
+
+<!-- /planned:single-orchestrator-concurrent-starts -->
+
 - **Crash recovery**: all three machines are re-entrant. Re-calling after a crash resumes from durable state.
 
 ## Primary flows
@@ -205,4 +212,12 @@ Each state machine has its own design document with full state diagrams, sequenc
 - **Worker crash**: orchestrator retries once, then escalates.
 - **Phase mark failure**: worker must commit before marking phase.
 - **Integration contention**: serialized by lease; concurrent candidates are queued in FIFO order.
+
+<!-- planned:single-orchestrator-concurrent-starts -->
+
+- **Concurrent driver starts**: starts of one todo on one computer are decided one at a time; the first creates or claims the driver and each later one is refused naming it. A start that waits longer than its bound is refused. Starts on different computers sharing one workflow store are not serialized against each other.
+
+<!-- /planned:single-orchestrator-concurrent-starts -->
+
+- **Stale artifacts**: PRD or architecture updated but downstream artifacts not regenerated. Grounding check catches and triggers re-grounding.
 - **Stale artifacts**: PRD or architecture updated but downstream artifacts not regenerated. Grounding check catches and triggers re-grounding.
