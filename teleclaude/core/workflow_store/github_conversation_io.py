@@ -18,7 +18,6 @@ from githubkit_schemas.v2026_03_10.types import AppPermissionsType
 
 from teleclaude.config.loader import github_actor_for_app_id, github_actor_for_role
 from teleclaude.core.roles import RoleName, composite_role
-from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
 from teleclaude.core.workflow_store.github_io_models import GitHubRepositoryScope
 from teleclaude.core.workflow_store.github_io_runtime import run_serialized_unit, shared_github_io_loop
 from teleclaude.core.workflow_store.github_io_transport import (
@@ -85,9 +84,9 @@ async def conversation_assignment_for_app(app_id: int) -> GitHubActorAssignment:
 class GitHubConversationIO:
     """Make conversation requests for one repository as a given role App."""
 
-    def __init__(self, repository: GitHubRepositoryIdentity) -> None:
-        self.repository = repository
-        self._transport = GitHubTransport(GitHubRepositoryScope(repository.repository_id, repository.repository))
+    def __init__(self, scope: GitHubRepositoryScope) -> None:
+        self.scope = scope
+        self._transport = GitHubTransport(scope)
 
     def submit[Result](self, work: Callable[[GitHubConversationIO], Awaitable[Result]]) -> Future[Result]:
         """Queue one serialized unit of conversation work on the shared GitHub I/O loop."""
@@ -98,7 +97,7 @@ class GitHubConversationIO:
 
     async def create_comment(self, assignment: GitHubActorAssignment, number: int, body: str) -> int:
         """Append one comment to the issue or pull request with this number, and return its comment id."""
-        owner, repo = split_repository(self.repository.repository)
+        owner, repo = split_repository(self.scope.repository)
 
         async def request(client: Any) -> int:
             response = await client.rest.issues.async_create_comment(owner, repo, number, data={_BODY_FIELD: body})
@@ -112,7 +111,7 @@ class GitHubConversationIO:
         self, assignment: GitHubActorAssignment, number: int, page: int
     ) -> ConversationCommentPage:
         """Read one page, oldest first, of the comments this App wrote on the issue or pull request."""
-        owner, repo = split_repository(self.repository.repository)
+        owner, repo = split_repository(self.scope.repository)
 
         async def request(client: Any) -> ConversationCommentPage:
             response = await client.rest.issues.async_list_comments(owner, repo, number, per_page=PAGE_SIZE, page=page)
