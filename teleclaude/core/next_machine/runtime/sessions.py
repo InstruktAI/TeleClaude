@@ -335,6 +335,30 @@ async def live_orchestrator_owner(db: Db, project_path: str | Path, slug: str) -
     return None
 
 
+async def find_accepted_lifecycle_start(db: Db, project_path: str | Path, slug: str, role: str) -> str | None:
+    """Return the open session already started as ``role``'s driver for ``slug`` in this project.
+
+    Lifecycle dispatch's idempotency read: a session carrying the lane's driver role, this
+    ``working_slug`` and this canonical project root, with no close timestamp and not closing, is
+    the start an earlier dispatch already accepted, including one whose ``active_runner`` record
+    failed. When several match, the earliest created is the first accepted start. Reads the
+    session's own registry row and writes nothing. Returns ``None`` when no such session exists.
+    """
+    project_root = Path(project_path).resolve()
+    sessions = await db.list_sessions(all_open=True)
+    matches = [
+        session
+        for session in sessions
+        if session.lifecycle_status != "closing"
+        and session.role == role
+        and session.working_slug == slug
+        and _same_project_root(session.project_path, project_root)
+    ]
+    if not matches:
+        return None
+    return min(matches, key=lambda session: (session.created_at is None, session.created_at)).session_id
+
+
 @dataclass(frozen=True)
 class SlugHolders:
     """The two live-holder signals for a slug, resolved but not yet exempted.
