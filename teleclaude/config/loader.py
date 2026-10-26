@@ -1,7 +1,5 @@
 """Configuration file loading and validation."""
 
-from base64 import b64decode
-from binascii import Error as Base64Error
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -11,19 +9,17 @@ from typing import Any
 
 import yaml
 from instrukt_ai_logging import get_logger
-from pydantic import BaseModel, SecretStr, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from teleclaude.config._environment import (
     company_environment_creation_mode,
     expand_environment_references,
     find_environment_references,
     read_environment_file,
-    read_environment_transaction,
     reconcile_environment_references,
     replace_environment_value,
     replace_environment_values,
     require_owner_only_environment,
-    resolve_owner_linked_environment,
     write_environment_values,
 )
 from teleclaude.config._unresolved import NO_OVERRIDES, drop_unresolved_fields
@@ -95,7 +91,6 @@ _STAGED_DECLARATION_MAPPING_ERROR = "{path}: declaration must be a mapping"
 _STAGED_DECLARATION_KIND_ERROR = "{path}: declaration kind must be one of: global, project, person, company"
 _STAGED_DECLARATION_SCHEMA_ERROR = "{path}: invalid {kind} declaration: {error}"
 _FINDINGS_SEPARATOR = "; "
-_GITHUB_KEY_REFUSED_EVENT = "github_app_key_refused app_id=%s reason=%s"
 _OWNER_ONLY_MODE = 0o600
 
 
@@ -561,64 +556,6 @@ def github_actor_for_app_id(app_id: int) -> GitHubActorAssignment | None:
         return next(
             (profile.assignment for profile in declaration.github.apps if profile.assignment.app_id == app_id), None
         )
-
-
-class GitHubAppKeyFailure(StrEnum):
-    """Value-free prerequisite failures from protected config resolution."""
-
-    CONFIG_UNAVAILABLE = "config_unavailable"
-    PROFILE_MISSING = "profile_missing"
-    ACTOR_MISMATCH = "actor_mismatch"
-    KEY_UNAVAILABLE = "key_unavailable"
-    KEY_MISSING = "key_missing"
-    KEY_MALFORMED = "key_malformed"
-
-
-class GitHubAppKeyRefused(ValueError):
-    """The config owner supplies no usable key for the assigned actor."""
-
-    def __init__(self, reason: GitHubAppKeyFailure) -> None:
-        super().__init__(reason)
-        self.reason = reason
-
-
-def resolve_github_app_private_key(assignment: GitHubActorAssignment) -> SecretStr:
-    """Resolve only the recorded App after authenticated admission, with no ambient fallback."""
-    try:
-        with file_transaction(GLOBAL_CONFIG_PATH) as declaration_transaction:
-            try:
-                declaration = read_global_config_transaction(declaration_transaction)
-            except (ConfigLoadError, OSError, ValueError, yaml.YAMLError):
-                raise GitHubAppKeyRefused(GitHubAppKeyFailure.CONFIG_UNAVAILABLE) from None
-            profile = next(
-                (item for item in declaration.github.apps if item.assignment.app_id == assignment.app_id), None
-            )
-            if profile is None:
-                raise GitHubAppKeyRefused(GitHubAppKeyFailure.PROFILE_MISSING)
-            if not profile.assignment.actor.same_account(assignment.actor):
-                raise GitHubAppKeyRefused(GitHubAppKeyFailure.ACTOR_MISMATCH)
-            environment_path = resolve_owner_linked_environment(GLOBAL_CONFIG_PATH.with_name(ConfigFileName.ENV))
-            with file_transaction(environment_path) as environment_transaction:
-                try:
-                    values = read_environment_transaction(environment_transaction, owner_only=True, interpolate=False)
-                except (OSError, ValueError):
-                    raise GitHubAppKeyRefused(GitHubAppKeyFailure.KEY_UNAVAILABLE) from None
-                encoded = values.get(profile.private_key_base64_env)
-                if not encoded:
-                    raise GitHubAppKeyRefused(GitHubAppKeyFailure.KEY_MISSING)
-                try:
-                    pem = b64decode(encoded, validate=True).decode(_UTF8)
-                except (Base64Error, ValueError):
-                    raise GitHubAppKeyRefused(GitHubAppKeyFailure.KEY_MALFORMED) from None
-                if not pem.strip():
-                    raise GitHubAppKeyRefused(GitHubAppKeyFailure.KEY_MALFORMED)
-                return SecretStr(pem)
-    except GitHubAppKeyRefused as error:
-        logger.warning(_GITHUB_KEY_REFUSED_EVENT, assignment.app_id, error.reason)
-        raise
-    except OSError:
-        logger.warning(_GITHUB_KEY_REFUSED_EVENT, assignment.app_id, GitHubAppKeyFailure.KEY_UNAVAILABLE)
-        raise GitHubAppKeyRefused(GitHubAppKeyFailure.KEY_UNAVAILABLE) from None
 
 
 def load_person_config(path: Path, *, registered_slug: str | None = None) -> PersonConfig:
