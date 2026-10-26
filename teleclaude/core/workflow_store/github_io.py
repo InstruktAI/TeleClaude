@@ -6,7 +6,6 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from concurrent.futures import Future
 from contextlib import asynccontextmanager
-from dataclasses import replace
 from datetime import datetime
 from enum import StrEnum
 from time import monotonic
@@ -18,14 +17,6 @@ from githubkit_schemas.v2026_03_10.types import AppPermissionsType
 from httpx import HTTPError
 
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
-from teleclaude.core.workflow_store.github_io_comments import (
-    COMMENT_EDIT_QUERY,
-    COMMENT_QUERY,
-    EDIT_HISTORY_QUERY,
-    RECENT_COMMENTS_QUERY,
-    graph_time,
-    written_comment,
-)
 from teleclaude.core.workflow_store.github_io_models import GitHubComment, GitHubIssue, GitHubRepositoryScope
 from teleclaude.core.workflow_store.github_io_runtime import GitHubMutationPacing, shared_github_io_loop
 from teleclaude.core.workflow_store.github_io_transport import (
@@ -41,7 +32,6 @@ from teleclaude.types.github_binding import GitHubActorAssignment
 
 _EMPTY = ""
 _PAGE_SIZE = 100
-_ISSUE_URL_SUFFIX = "/issues/{}"
 _WRITE_PERMISSIONS: AppPermissionsType = {"issues": "write"}
 _ISSUE_COLOR = "ededed"
 _LABEL_COLOR_PREFIX = "#"
@@ -84,7 +74,6 @@ class _GraphIssueComment(TypedDict, total=False):
     id: str
     databaseId: int
     body: str
-    createdAt: str
     author: _GraphActor | None
     editor: _GraphActor | None
     userContentEdits: _GraphEditConnection
@@ -101,6 +90,24 @@ class _GraphIssue(TypedDict, total=False):
 
 class _GraphRepository(TypedDict, total=False):
     issue: _GraphIssue | None
+
+
+_EDIT_HISTORY_QUERY = """query($owner:String!, $repo:String!, $number:Int!, $cursor:String) {
+  repository(owner:$owner, name:$repo) {
+    issue(number:$number) {
+      comments(first:100, after:$cursor) {
+        nodes { id databaseId body author { __typename login } editor { __typename login } lastEditedAt
+        }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}"""
+_COMMENT_EDIT_QUERY = """query($id:ID!, $before:String) { node(id:$id) { ... on IssueComment {
+  userContentEdits(last:100, before:$before) { nodes { editor { __typename login } editedAt diff deletedAt }
+    pageInfo { hasPreviousPage startCursor } } } } }"""
+_COMMENT_QUERY = """query($id:ID!) { node(id:$id) { ... on IssueComment { id databaseId body
+  author { __typename login } editor { __typename login } lastEditedAt } } }"""
 
 
 class GitHubOperation(StrEnum):
@@ -121,8 +128,6 @@ class GitHubOperation(StrEnum):
     ADD_BLOCKED_BY = "add_blocked_by"
     REMOVE_BLOCKED_BY = "remove_blocked_by"
     READ_COMMENTS = "read_comments"
-    READ_COMMENT = "read_comment"
-    READ_COMMENTS_SINCE = "read_comments_since"
     CREATE_COMMENT = "create_comment"
     UPDATE_COMMENT = "update_comment"
 
@@ -162,7 +167,6 @@ class GitHubField(StrEnum):
     USER_CONTENT_EDITS = "userContentEdits"
     NODES = "nodes"
     HAS_PREVIOUS_PAGE = "hasPreviousPage"
-    CREATED_AT = "createdAt"
     LAST_EDITED_AT = "lastEditedAt"
     ALL_STATES = "all"
     NODE = "node"
@@ -347,18 +351,6 @@ class GitHubWorkflowIO:
 
     def read_comments(self, number: int) -> tuple[GitHubComment, ...]:
         return cast(tuple[GitHubComment, ...], self._sync(GitHubOperation.READ_COMMENTS, number))
-
-    async def async_read_comment(self, number: int, comment_id: int) -> GitHubComment:
-        return cast(GitHubComment, await self._call(GitHubOperation.READ_COMMENT, number, comment_id))
-
-    def read_comment(self, number: int, comment_id: int) -> GitHubComment:
-        return cast(GitHubComment, self._sync(GitHubOperation.READ_COMMENT, number, comment_id))
-
-    async def async_read_comments_since(self, number: int, since: datetime) -> tuple[GitHubComment, ...]:
-        return cast(tuple[GitHubComment, ...], await self._call(GitHubOperation.READ_COMMENTS_SINCE, number, since))
-
-    def read_comments_since(self, number: int, since: datetime) -> tuple[GitHubComment, ...]:
-        return cast(tuple[GitHubComment, ...], self._sync(GitHubOperation.READ_COMMENTS_SINCE, number, since))
 
     async def async_create_comment(self, number: int, body: str) -> GitHubComment:
         return cast(GitHubComment, await self._call(GitHubOperation.CREATE_COMMENT, number, body))
@@ -648,7 +640,7 @@ class GitHubWorkflowIO:
             comments: list[GitHubComment] = []
             while True:
                 result = await client.graphql.arequest(
-                    EDIT_HISTORY_QUERY,
+                    _EDIT_HISTORY_QUERY,
                     {
                         GitHubField.OWNER: owner,
                         GitHubField.REPO: repo,
@@ -676,74 +668,14 @@ class GitHubWorkflowIO:
 
         return await self._with_client(GitHubOperation.READ_COMMENTS, request)
 
-    async def _read_comment(self, number: int, comment_id: int) -> GitHubComment:
-        """Read one comment of issue ``number`` with the edit history its trust needs, by its database id."""
-        owner, repo = split_repository(self.repository.repository)
-
-        async def request(client: Any) -> GitHubComment:
-            response = await client.rest.issues.async_get_comment(owner, repo, comment_id)
-            rest_comment = response.parsed_data
-            if not str(rest_comment.issue_url).endswith(_ISSUE_URL_SUFFIX.format(number)):
-                raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-            return await self._trusted_view(client, rest_comment)
-
-        return await self._with_client(GitHubOperation.READ_COMMENT, request)
-
-    async def _read_comments_since(self, number: int, since: datetime) -> tuple[GitHubComment, ...]:
-        """Read the comments of one issue created at or after ``since``, newest page first."""
-        owner, repo = split_repository(self.repository.repository)
-
-        async def request(client: Any) -> tuple[GitHubComment, ...]:
-            cursor: str | None = None
-            comments: list[GitHubComment] = []
-            while True:
-                result = await client.graphql.arequest(
-                    RECENT_COMMENTS_QUERY,
-                    {
-                        GitHubField.OWNER: owner,
-                        GitHubField.REPO: repo,
-                        GitHubField.NUMBER: number,
-                        GitHubField.CURSOR: cursor,
-                    },
-                )
-                repository_data = cast(_GraphRepository, result.get(GitHubField.REPOSITORY, {}))
-                issue = repository_data.get(GitHubField.ISSUE)
-                if not isinstance(issue, dict):
-                    raise GitHubIORefused(GitHubIOFailure.NOT_FOUND)
-                connection = issue.get(GitHubField.COMMENTS, {})
-                reached_older = False
-                for node in reversed(connection.get(GitHubField.NODES, [])):
-                    created_at = graph_time(node.get(GitHubField.CREATED_AT))
-                    if created_at is None or created_at < since:
-                        reached_older = True
-                        break
-                    comment = _comment_from_graph(node)
-                    if comment.editor is not None and comment.editor != self.assignment.actor.login:
-                        comment = await _complete_bot_history(client, comment, self.assignment.actor.login)
-                    comments.append(comment)
-                page = connection.get(GitHubField.PAGE_INFO, {})
-                if reached_older or not page.get(GitHubField.HAS_PREVIOUS_PAGE):
-                    return tuple(comments)
-                previous_cursor = page.get(GitHubField.START_CURSOR)
-                if not isinstance(previous_cursor, str) or previous_cursor == cursor:
-                    raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
-                cursor = previous_cursor
-
-        return await self._with_client(GitHubOperation.READ_COMMENTS_SINCE, request)
-
-    async def _trusted_view(self, client: Any, rest_comment: Any) -> GitHubComment:
-        comment = await _read_one_comment(client, rest_comment.node_id)
-        if comment.editor is not None and comment.editor != self.assignment.actor.login:
-            comment = await _complete_bot_history(client, comment, self.assignment.actor.login)
-        return replace(comment, updated_at=rest_comment.updated_at)
-
     async def _create_comment(self, number: int, body: str) -> GitHubComment:
         owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> GitHubComment:
             await self._pace_mutation_start()
             response = await client.rest.issues.async_create_comment(owner, repo, number, data={GitHubField.BODY: body})
-            return written_comment(response.parsed_data, body)
+            comment = response.parsed_data
+            return await _read_one_comment(client, comment.node_id)
 
         return await self._with_client(GitHubOperation.CREATE_COMMENT, request)
 
@@ -755,7 +687,7 @@ class GitHubWorkflowIO:
             response = await client.rest.issues.async_update_comment(
                 owner, repo, comment_id, data={GitHubField.BODY: body}
             )
-            return written_comment(response.parsed_data, body)
+            return await _read_one_comment(client, response.parsed_data.node_id)
 
         return await self._with_client(GitHubOperation.UPDATE_COMMENT, request)
 
@@ -851,17 +783,6 @@ async def _dispatch_read_comments(io: GitHubWorkflowIO, args: tuple[object, ...]
     return await io._read_comments(int_argument(args[0]))
 
 
-async def _dispatch_read_comment(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
-    return await io._read_comment(int_argument(args[0]), int_argument(args[1]))
-
-
-async def _dispatch_read_comments_since(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
-    since = args[1]
-    if not isinstance(since, datetime):
-        raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-    return await io._read_comments_since(int_argument(args[0]), since)
-
-
 async def _dispatch_create_comment(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
     return await io._create_comment(int_argument(args[0]), str(args[1]))
 
@@ -885,8 +806,6 @@ _OPERATION_HANDLERS: dict[GitHubOperation, Callable[[GitHubWorkflowIO, tuple[obj
     GitHubOperation.ADD_BLOCKED_BY: _dispatch_add_blocked_by,
     GitHubOperation.REMOVE_BLOCKED_BY: _dispatch_remove_blocked_by,
     GitHubOperation.READ_COMMENTS: _dispatch_read_comments,
-    GitHubOperation.READ_COMMENT: _dispatch_read_comment,
-    GitHubOperation.READ_COMMENTS_SINCE: _dispatch_read_comments_since,
     GitHubOperation.CREATE_COMMENT: _dispatch_create_comment,
     GitHubOperation.UPDATE_COMMENT: _dispatch_update_comment,
 }
@@ -957,7 +876,7 @@ async def _read_edit_page(
 ) -> tuple[tuple[_GraphEdit, ...], str | None, bool] | None:
     try:
         result = await client.graphql.arequest(
-            COMMENT_EDIT_QUERY,
+            _COMMENT_EDIT_QUERY,
             {GitHubField.ID: comment_node_id, GitHubField.BEFORE: before},
         )
         node = result.get(GitHubField.NODE)
@@ -985,7 +904,7 @@ async def _read_edit_page(
 
 async def _read_one_comment(client: Any, node_id: str) -> GitHubComment:
     try:
-        result = await client.graphql.arequest(COMMENT_QUERY, {GitHubField.ID: node_id})
+        result = await client.graphql.arequest(_COMMENT_QUERY, {GitHubField.ID: node_id})
         node = result.get(GitHubField.NODE)
         if not isinstance(node, dict):
             raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)

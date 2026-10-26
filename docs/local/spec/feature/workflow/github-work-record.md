@@ -166,8 +166,9 @@ How the store maps onto the repository is owned by
   - A question to a person: `[session:<id> role:<role> action:question]`,
     followed by the message and the link to the session.
   - A project ledger entry: `[action:ledger tx:<transaction>]`.
-  - A change put back: `[action:put-back field:<field>]`, followed by the
-    change it puts back and why it did not count.
+  - A change put back: `[action:put-back field:<field> change:<id>]`, where
+    `<id>` names the change in the issue's history, followed by the change it
+    puts back and why it did not count.
 
 <!-- /planned-change:github-item-acts -->
 

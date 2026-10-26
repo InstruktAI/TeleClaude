@@ -385,6 +385,8 @@ And the caller's own slug — when the caller is itself the holder — continues
 And an operation for the other lane is refused, because a session never changes lanes
 ```
 
+<!-- planned-change:single-orchestrator-concurrent-starts -->
+
 ```
 Given a driver-start request that would bind slug X
 And no live driver yet holds X (the autonomous runner is mid-spawn establishing the first driver, before active_runner is written and before the orchestrator session exists)
@@ -392,13 +394,27 @@ When the shared driver-start dedup check runs
 Then no live-holder conflict is found and the session is created
 ```
 
+<!-- change:single-orchestrator-concurrent-starts -->
+
 ```
-Given slug X already has a live holder
-And a dispatch claim for X is still held (retained briefly after the holder's active_runner was written)
-And a second orchestrator-class request for X arrives
-When the shared driver-start dedup check runs
-Then the live-holder signal is authoritative and the request is refused — the retained claim does not exempt it
+Given no live driver holds todo slug X
+And several orchestrator starts that would bind X arrive at the same time on one computer, in any lane, through any mix of orchestrator-class create requests and operator work or prepare operations
+When TeleClaude decides each request
+Then exactly one request creates an orchestrator session for X or claims X for its calling session
+And every other request is refused with a driver-start conflict naming that orchestrator, and creates no session
+And a request whose decision waits on another start of X for longer than its bound is refused, and creates no session
 ```
+
+```
+Given a lifecycle runner pass selects todo X for a driver
+And another start comes to drive X before the runner's start of X is decided
+When the runner's start of X is refused with a driver-start conflict
+Then the pass counts X as already driven by that driver and starts nothing for X
+And it continues with the other todos it selected
+And neither the pass nor the event that woke it fails
+```
+
+<!-- /planned-change:single-orchestrator-concurrent-starts -->
 
 #### UC-DSD3: A second commit reviewer for the same driver, project, and mode is refused
 
