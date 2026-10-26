@@ -26,7 +26,6 @@ from teleclaude.core.todos_db._working_copy import (
     WorkingCopyField,
     WorkingCopyItemSnapshot,
     acquire_repository_writer,
-    initialize_working_copy,
     item_bookkeeping,
     item_snapshot,
     mark_reflection_owed,
@@ -34,6 +33,7 @@ from teleclaude.core.todos_db._working_copy import (
     restore_item_snapshot,
     restore_project_record,
 )
+from teleclaude.core.todos_db._working_copy_schema import initialize_working_copy
 from teleclaude.core.todos_db_path import github_working_copy_path
 from teleclaude.core.workflow_store.github import (
     GitHubIdentityRefused,
