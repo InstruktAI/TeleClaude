@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -88,7 +90,7 @@ _activation_locks: dict[tuple[str, str], asyncio.Lock] = {}
 _activation_locks_guard = asyncio.Lock()
 
 
-def _home_folder(home: ActivationHome) -> Path:
+def home_folder(home: ActivationHome) -> Path:
     """The folder a standing agent for the home works in on this computer; raises when the home is absent here."""
     if home.kind is SubscriptionHomeKind.PLATFORM:
         return TELECLAUDE_HOME
@@ -101,19 +103,14 @@ def _home_folder(home: ActivationHome) -> Path:
     return folder
 
 
-def _serves_home(session: Session, procedure_id: str, home: ActivationHome, folder: Path) -> bool:
-    """Whether the session carries the procedure for the home.
+def _serves_home(session: Session, procedure_id: str, folder: Path) -> bool:
+    """Whether the session carries the procedure in the home's folder.
 
-    A company home is identified by the session's company. Any other home is
-    identified by the working folder with no company: one procedure answers one
-    home kind, so the folder of a home of that kind names it.
+    Every home kind is identified by its own folder, the one its agent works
+    in. A session's company is business context and never identifies a home.
     """
-    if session.job != procedure_id:
-        return False
-    if home.company is not None:
-        return session.company == home.company
     return (
-        session.company is None
+        session.job == procedure_id
         and session.project_path is not None
         and Path(session.project_path).resolve() == folder.resolve()
     )
@@ -148,12 +145,26 @@ def _system_principal_session(sessions: list[Session]) -> Session | None:
     return None
 
 
-async def _find_standing_session(procedure_id: str, home: ActivationHome, folder: Path) -> tuple[Session | None, int]:
+async def _find_standing_session(procedure_id: str, folder: Path) -> tuple[Session | None, int]:
     """Return the most recently active qualifying session, and how many candidates matched."""
     candidates = await db.list_sessions(computer_name=config.computer.name, all_open=True)
-    matching = [session for session in candidates if _serves_home(session, procedure_id, home, folder)]
+    matching = [session for session in candidates if _serves_home(session, procedure_id, folder)]
     matching.sort(key=lambda session: session.last_activity or session.created_at or "", reverse=True)
     return _system_principal_session(matching), len(matching)
+
+
+@asynccontextmanager
+async def home_agent_guard(procedure_id: str, home: ActivationHome) -> AsyncIterator[None]:
+    """Hold the serialization that activations of the procedure for the home take."""
+    lock = await _get_activation_lock(procedure_id, home)
+    async with lock:
+        yield
+
+
+async def standing_home_agent(procedure_id: str, home: ActivationHome) -> Session | None:
+    """The agent already running the procedure for the home, as an activation would find it."""
+    session, _candidate_count = await _find_standing_session(procedure_id, home_folder(home))
+    return session
 
 
 def _subject_token(cmd: ActivateProcedureCommand) -> str:
@@ -171,9 +182,7 @@ def _is_open(session: Session) -> bool:
     return not is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at)
 
 
-async def _find_bound_sessions(
-    procedure_id: str, home: ActivationHome, folder: Path, subject: str
-) -> tuple[Session | None, Session | None]:
+async def _find_bound_sessions(procedure_id: str, folder: Path, subject: str) -> tuple[Session | None, Session | None]:
     """The open and the resumable closed system-principal sessions bound to the subject, newest first.
 
     The binding section names the subject; the session's job and home say which
@@ -187,7 +196,7 @@ async def _find_bound_sessions(
     serving = [
         session
         for session in bound
-        if session.computer_name == config.computer.name and _serves_home(session, procedure_id, home, folder)
+        if session.computer_name == config.computer.name and _serves_home(session, procedure_id, folder)
     ]
     open_session = _system_principal_session([session for session in serving if _is_open(session)])
     closed_session = _system_principal_session(
@@ -317,7 +326,7 @@ async def _resolve_home_agent(
 
     async def _find() -> Session | None:
         nonlocal candidate_count
-        session, candidate_count = await _find_standing_session(procedure_id, home, folder)
+        session, candidate_count = await _find_standing_session(procedure_id, folder)
         return session
 
     async def _create() -> Session | None:
@@ -342,7 +351,7 @@ async def _resolve_subject_agent(
     """The agent bound to the event's subject: woken when open, revived when closed and attended, otherwise started and bound."""
     procedure_id = cmd.procedure_id
     subject = _subject_token(cmd)
-    open_session, closed_session = await _find_bound_sessions(procedure_id, home, folder, subject)
+    open_session, closed_session = await _find_bound_sessions(procedure_id, folder, subject)
     candidate_count = sum(session is not None for session in (open_session, closed_session))
     if open_session is not None:
         return _Resolution(open_session, ActivationOutcome.WOKEN, candidate_count)
@@ -378,7 +387,7 @@ async def activate(cmd: ActivateProcedureCommand) -> ProcedureActivationResult:
     async with lock:
         activation = await accept_procedure_activation(cmd)
         try:
-            folder = _home_folder(home)
+            folder = home_folder(home)
             if cmd.identity is SubscriptionIdentity.SUBJECT:
                 resolution = await _resolve_subject_agent(cmd, activation, home, folder)
             else:
