@@ -255,6 +255,16 @@ And the project keeps every todo, worktree and claim where it was
   contract; a side project keeps its own checkout and deploy.
 - Rollback returns one step only. After an install that ran migrations the way
   back is a forward repair.
+
+<!-- planned:install-unverified-start-not-returned -->
+
+- An install whose started daemon does not verify, and that cannot then stop
+  that daemon, leaves the release it attempted active and its daemon running,
+  and reports why; while no migration has started, rollback returns the
+  platform once that daemon can be stopped.
+
+<!-- /planned:install-unverified-start-not-returned -->
+
 - Whether a migration started is what the store owners signal. The install
   opens, inside its stopped window, every store the daemon opens at startup and
   every registered project's todo store, so their migrations start there; a
