@@ -67,21 +67,6 @@ autonomous-creation marker when present, the owner chip, and the hold glyph.
 
 ### GitHub issue navigation
 
-<!-- planned-change:tui-session-issue-from-work-item -->
-
-A session assigned to a GitHub issue shows the assigned issue number as a
-separate clickable span beside its work subject. Clicking that number opens the
-assigned issue URL in the default browser. The slug retains its existing
-styling, click region, and navigation behavior. The issue link consumes only
-clicks inside the number's own span.
-
-Issue identity comes from the session's structured assignment, carried by its
-owning computer in the session snapshot. Digits in a title or slug do not
-establish a GitHub assignment. A session without a GitHub issue reference shows
-no issue-number link.
-
-<!-- change:tui-session-issue-from-work-item -->
-
 A session whose snapshot carries a GitHub issue reference shows that issue's
 number as a separate clickable span beside its work subject. Clicking that
 number opens the issue URL in the default browser. The slug retains its
@@ -94,8 +79,6 @@ snapshot; which sessions carry one, and from which source, is
 `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`'s
 contract. Digits in a title or slug do not establish an issue. A session
 without a GitHub issue reference shows no issue-number link.
-
-<!-- /planned-change:tui-session-issue-from-work-item -->
 
 ### Use cases
 
