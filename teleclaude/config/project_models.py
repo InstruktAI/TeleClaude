@@ -8,6 +8,7 @@ from typing import Final
 from pydantic import Field, field_validator
 
 from teleclaude.closed_model import ClosedModel
+from teleclaude.config._coerce import INT_STRICT, OPT_INT_STRICT
 from teleclaude.types.github_binding import REPOSITORY_PATTERN
 
 
@@ -25,7 +26,7 @@ class TodoStoreBackend(StrEnum):
 class GitHubRepositoryDeclaration(ClosedModel):
     """Committed repository facts used by GitHub workflow identity reads."""
 
-    id: int = Field(gt=0, strict=True)
+    id: INT_STRICT = Field(gt=0)
     full_name: str = Field(pattern=REPOSITORY_PATTERN)
 
 
@@ -63,4 +64,4 @@ class TodoStoreConfig(ClosedModel):
 
     store: TodoStoreBackend = TodoStoreBackend.LOCAL
     repository: GitHubRepositoryDeclaration | None = None
-    app: int | None = Field(default=None, gt=0, strict=True)
+    app: OPT_INT_STRICT = Field(default=None, gt=0)
