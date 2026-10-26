@@ -228,6 +228,20 @@ And the service manager relaunches the service on its installed code
 And the agent never finds the capability silently absent while the daemon reports itself healthy
 ```
 
+<!-- planned:daemon-startup-chiptunes-registry-lock -->
+
+#### UC-DL18: An operator can restart the daemon with chiptunes turned off
+
+```gherkin
+Given an operator has chiptunes turned off
+And other startup work is still writing the daemon's records while the daemon turns chiptunes off
+When an operator restarts the daemon
+Then startup completes and the daemon serves
+And the service manager does not relaunch it
+```
+
+<!-- /planned:daemon-startup-chiptunes-registry-lock -->
+
 ### Runtime-local coordination
 
 Runtime-owned readiness coordination scopes a waiter to its target session and
