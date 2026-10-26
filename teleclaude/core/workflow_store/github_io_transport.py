@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import threading
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, TypeVar
@@ -12,13 +14,22 @@ from githubkit.auth.token import TokenAuthStrategy
 from githubkit.cache.mem_cache import MemCacheStrategy
 from githubkit.exception import GitHubException, RateLimitExceeded, RequestFailed
 from githubkit_schemas.v2026_03_10.types import AppPermissionsType
-from httpx import HTTPError
+from httpx import HTTPError, Response
+from instrukt_ai_logging import get_logger
 from pydantic import SecretStr
 
 from teleclaude.core.workflow_store.github_io_models import GitHubRepositoryScope
+from teleclaude.github.accounts import GitHubRateLimitFacts
 from teleclaude.github.client import create_github_client
-from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
+from teleclaude.github.credentials import (
+    GitHubCredentialFailure,
+    GitHubCredentialRefused,
+    issue_github_installation_credential,
+)
+from teleclaude.github.rate_limit_headers import RateReading, read_rate_reading
 from teleclaude.types.github_binding import GitHubActorAssignment
+
+logger = get_logger(__name__)
 
 _EMPTY = ""
 _TOKEN_REFRESH_MARGIN = timedelta(minutes=2)
@@ -30,8 +41,61 @@ _REFUSAL_WITH_DETAIL = "{}: {}"
 _MESSAGE_FIELD = "message"
 _HTTP_NOT_FOUND = 404
 _HTTP_REFUSALS = (400, 401, 403, 422)
+_RATE_LIMIT_HOOK_FAILED_EVENT = "github_rate_limit_hook_failed"
 _Result = TypeVar("_Result")
 _CredentialKey = tuple[int, tuple[tuple[str, str], ...]]
+_InstallationKey = tuple[int, str]
+
+
+@dataclass(frozen=True)
+class RateLimitSignal:
+    """A limit response one installation received, and the time it names for requests to resume, if any."""
+
+    app_id: int
+    repository: str
+    observed_at: datetime
+    resume_at: datetime | None
+
+
+type RateLimitHook = Callable[[RateLimitSignal], None]
+
+_readings_lock = threading.Lock()
+_latest_readings: dict[_InstallationKey, RateReading] = {}
+_rate_limit_hook: RateLimitHook | None = None
+
+
+def latest_rate_reading(app_id: int, repository: str) -> RateReading | None:
+    """The budget the latest response to this App's installation on the repository left, if one was read."""
+    with _readings_lock:
+        return _latest_readings.get((app_id, repository))
+
+
+def set_rate_limit_hook(hook: RateLimitHook | None) -> None:
+    """Install, or with None remove, the one observer told of every limit response a transport receives.
+
+    The hook runs on the GitHub I/O thread and must return promptly. A hook that raises is logged and changes
+    nothing a transport does.
+    """
+    global _rate_limit_hook
+    _rate_limit_hook = hook
+
+
+def _signal_rate_limit(assignment: GitHubActorAssignment, repository: str, resume_at: datetime | None) -> None:
+    hook = _rate_limit_hook
+    if hook is None:
+        return
+    try:
+        hook(RateLimitSignal(assignment.app_id, repository, datetime.now(UTC), resume_at))
+    except Exception:  # supervision boundary: an observer must never change what a transport does
+        logger.warning(_RATE_LIMIT_HOOK_FAILED_EVENT, exc_info=True)
+
+
+def _record_reading(key: _InstallationKey, headers: Mapping[str, str]) -> None:
+    reading = read_rate_reading(headers, datetime.now(UTC))
+    if reading is None:
+        return
+    with _readings_lock:
+        _latest_readings[key] = reading
 
 
 class GitHubIOFailure(StrEnum):
@@ -69,13 +133,21 @@ class GitHubTransport:
         request: Callable[[Any], Awaitable[_Result]],
     ) -> _Result:
         """Run one client request as the assigned App, mapping every provider failure to a bounded refusal."""
+        installation: _InstallationKey = (assignment.app_id, self.scope.repository)
+
+        async def observe(response: Response) -> None:
+            _record_reading(installation, response.headers)
+
         try:
             token = await self._credential_token(assignment, permissions)
-            async with create_github_client(TokenAuthStrategy(token.get_secret_value()), MemCacheStrategy()) as client:
+            async with create_github_client(
+                TokenAuthStrategy(token.get_secret_value()), MemCacheStrategy(), response_observer=observe
+            ) as client:
                 return await request(client)
         except GitHubIORefused:
             raise
-        except RateLimitExceeded:
+        except RateLimitExceeded as error:
+            _signal_rate_limit(assignment, self.scope.repository, GitHubRateLimitFacts.from_sdk(error).resume_at)
             raise GitHubIORefused(GitHubIOFailure.RATE_LIMITED) from None
         except RequestFailed as error:
             detail = _request_refusal_detail(operation, error)
@@ -97,7 +169,10 @@ class GitHubTransport:
             return cached[0]
         try:
             credential = await issue_github_installation_credential(assignment, self.scope, permissions)
-        except GitHubCredentialRefused:
+        except GitHubCredentialRefused as error:
+            if error.reason is GitHubCredentialFailure.RATE_LIMITED:
+                resume_at = error.rate_limit.resume_at if error.rate_limit is not None else None
+                _signal_rate_limit(assignment, self.scope.repository, resume_at)
             raise GitHubIORefused(GitHubIOFailure.CREDENTIAL_REFUSED) from None
         self._credentials[key] = (credential.token, credential.expires_at)
         return credential.token

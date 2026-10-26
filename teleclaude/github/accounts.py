@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Self
 from urllib.parse import quote
 
@@ -11,6 +11,7 @@ from githubkit.auth.token import TokenAuthStrategy
 from githubkit.exception import GitHubException, RateLimitExceeded
 from githubkit.github import GitHub
 
+from teleclaude.github.rate_limit_headers import named_resume_time
 from teleclaude.types.github_account import GitHubAccount, GitHubAccountKind
 
 _LOOKUP_REFUSED = "Authenticated GitHub account lookup could not be verified"
@@ -20,15 +21,24 @@ _GITHUB_API_URL = "https://api.github.com/"
 
 @dataclass(frozen=True)
 class GitHubRateLimitFacts:
-    """SDK recovery facts without its secret-bearing request/response objects."""
+    """SDK recovery facts without its secret-bearing request/response objects.
+
+    ``retry_after`` is the SDK's own delay, which it defaults when a response names none; ``resume_at`` is the time
+    the response itself names, or None when it names none.
+    """
 
     status_code: int
     retry_after: timedelta
+    resume_at: datetime | None = None
 
     @classmethod
     def from_sdk(cls, error: RateLimitExceeded) -> Self:
-        """Copy only public status and delay; retain no raw SDK exception."""
-        return cls(status_code=error.response.status_code, retry_after=error.retry_after)
+        """Copy only public status, delay and named resume time; retain no raw SDK exception."""
+        return cls(
+            status_code=error.response.status_code,
+            retry_after=error.retry_after,
+            resume_at=named_resume_time(error.response.headers, datetime.now(UTC)),
+        )
 
 
 class GitHubAccountLookupRefused(RuntimeError):
