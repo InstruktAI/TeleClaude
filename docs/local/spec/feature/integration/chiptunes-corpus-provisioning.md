@@ -33,13 +33,9 @@ download.
   the checksum is refused, or extraction fails, the player stays inactive, the
   daemon logs a warning naming the failure, and the daemon keeps serving.
 
-<!-- planned:chiptunes-hvsc-archive-url-dead -->
-
 - **Repair pointer.** A failed download and a refused checksum are each logged
   with the manifest file the pin is read from and the HVSC downloads page that
   lists current releases, so the reader of the log has both at hand.
-
-<!-- /planned:chiptunes-hvsc-archive-url-dead -->
 
 ## Known caveats
 
