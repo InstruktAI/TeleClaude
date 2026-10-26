@@ -53,7 +53,8 @@ class ActOutcome(StrEnum):
 
     ``FAILED_RETURNED`` left the previously active release active and serving; ``FAILED_STOPPED``
     left the daemon stopped after a migration started, to be repaired forward; ``FAILED_UNSETTLED``
-    could not stop the daemon it meant to replace, so nothing was switched back.
+    could not stop the attempted daemon through its lifecycle, because the stop was withheld while it
+    answered or it was still not stoppable when the settlement bound expired, so nothing was switched back.
     """
 
     COMPLETED = "completed"
