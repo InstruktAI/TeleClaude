@@ -122,6 +122,7 @@ _CONVERGE_STEP = "{name}: converge from the installed release"
 _STATUS_START = "make start"
 _STATUS_HEALTH = "make status health"
 _STATUS_LOGIN = "seeded administrator terminal login"
+_STATUS_RESTART_LOGIN = "log in the seeded administrator for the service restart"
 _STATUS_VERSION = "telec version"
 _STATUS_DOCS = "published documentation read"
 _STATUS_CONFIG = "seeded administrator config validation"
@@ -344,7 +345,7 @@ class BootstrapHarness:
         self._admin_readiness_probes(owner_seed)
         self._role_and_identity_probes(owner_seed)
         self._repeat_install(owner_seed)
-        self._restart_services()
+        self._restart_services(owner_seed)
         self._install_after_restart(owner_seed)
         self._collect_logs()
 
@@ -661,19 +662,29 @@ class BootstrapHarness:
         if before != after:
             raise HarnessFailure(_SETTLED_FILES_CHANGED)
 
-    def _restart_services(self) -> None:
-        for name, target in ((_STATUS_SERVICE_STOP, _STOP_TARGET), (_STATUS_START, _START_TARGET)):
-            self.run_command(
-                name,
-                [_MAKE_BINARY, _MAKE_CHANGE_DIRECTORY_OPTION, str(self._project_checkout), target],
-                _DAEMON_COMMAND_TIMEOUT_SECONDS,
+    def _restart_services(self, owner_seed: OwnerSeed) -> None:
+        # The restart runs once the roster holds several people, so a fresh terminal resolves to nobody and the
+        # stop, start and status commands clear no caller. One terminal logs in the administrator and runs the
+        # whole cycle, so the login spans the stop that takes the daemon down and the start that brings it back.
+        telec = str(self._home / TELEC_RELATIVE_PATH)
+        with self.terminal(_DAEMON_COMMAND_TIMEOUT_SECONDS) as terminal:
+            self._record_terminal_step(
+                terminal,
+                _STATUS_RESTART_LOGIN,
+                [telec, TelecToken.AUTH, TelecToken.LOGIN, owner_seed.email],
             )
-        self.run_command(
-            _STATUS_HEALTH,
-            [_MAKE_BINARY, _MAKE_CHANGE_DIRECTORY_OPTION, str(self._project_checkout), _STATUS_TARGET],
-            _DAEMON_COMMAND_TIMEOUT_SECONDS,
-            expected_text=_HEALTHY_STATUS_TOKEN,
-        )
+            for name, target in ((_STATUS_SERVICE_STOP, _STOP_TARGET), (_STATUS_START, _START_TARGET)):
+                self._record_terminal_step(
+                    terminal,
+                    name,
+                    [_MAKE_BINARY, _MAKE_CHANGE_DIRECTORY_OPTION, str(self._project_checkout), target],
+                )
+            self._record_terminal_step(
+                terminal,
+                _STATUS_HEALTH,
+                [_MAKE_BINARY, _MAKE_CHANGE_DIRECTORY_OPTION, str(self._project_checkout), _STATUS_TARGET],
+                expected_text=_HEALTHY_STATUS_TOKEN,
+            )
         self._record_verdict(_STATUS_RESTART, True)
 
     def _install_after_restart(self, owner_seed: OwnerSeed) -> None:
