@@ -305,9 +305,12 @@ def _prepare_run_session(
                 ),
                 reason=AgentDispatchReason.WORKTREE_MISMATCH,
             )
+    # A hand-started procedure agent runs as an event-started one does: under the system principal,
+    # with no dispatcher, so the runner and a later hand start both recognize it as the home's agent.
     origin_metadata: TerminalOriginMetadata | None = None
-    if identity.email:
+    if identity.email and activation_home is None:
         origin_metadata = TerminalOriginMetadata(email=identity.email)
+    initiator_session_id = (identity.session_id or None) if activation_home is None else None
     return RunSessionPlan(
         effective_agent=effective_agent,
         full_command=full_command,
@@ -321,7 +324,7 @@ def _prepare_run_session(
             candidate_order=resolved.agents,
             invocation=resolved.record,
         ),
-        initiator_session_id=identity.session_id or None,
+        initiator_session_id=initiator_session_id,
         origin_metadata=origin_metadata,
         role=resolved.role.name.value,
         job=entry.job,

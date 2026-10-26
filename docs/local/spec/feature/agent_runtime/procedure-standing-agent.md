@@ -41,8 +41,10 @@ company; an agent for a person, a project, or the platform has no company,
 because location never supplies one
 (`local/projects/teleclaude/spec/feature/agent_runtime/company-scoped-session-context`).
 
-A standing agent is started by an event, so it runs under the platform's system
-principal with the origin the event's producer stated. The principal is
+A standing agent runs under the platform's system principal, whether an event or
+a hand start began it: an event-started agent carries the origin the event's
+producer stated, and a hand-started one records neither the starting session as
+its dispatcher nor the starter's lineage. The principal is
 therefore the same for every standing agent and is not part of its identity.
 
 A standing agent is a session, so it lives on one computer. Activations arrive
@@ -189,10 +191,9 @@ person's folder carries no human identity and acts as no person.
   when a later event about its subject arrives. Workers an agent dispatches are
   a separate, bounded source of concurrency.
 
-- Starting a standing agent by hand names its home with `--company` only for a
-  procedure answering company homes; any other home is the one the invoking
-  folder belongs to, so starting a person- or project-home agent by hand runs
-  from that home's folder.
+- Starting a person- or project-home agent by hand without its tier naming the
+  home works only from inside that home's folder, because the invoking folder is
+  what names the home there.
 - A repeated activation is recognized only while the platform retains its
   delivery record.
 
