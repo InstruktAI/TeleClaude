@@ -74,6 +74,14 @@ How the store maps onto the repository is owned by
 - **Delivery and removal:** delivery closes the issue as completed. Removal
   closes it as not planned; reactivation reopens it.
 
+<!-- planned:github-work-board -->
+
+- **Board:** in a repository an organization owns, the project's work also
+  appears on one board the platform keeps
+  (`local/projects/teleclaude/spec/feature/workflow/workflow-board`).
+
+<!-- /planned:github-work-board -->
+
 - **Pull request:** from the moment an item's build starts until it is
   delivered or removed, its branch has one draft pull request, linked to its
   issue by its opening envelope `[action:pull-request issue:<n>]` and opened
@@ -126,6 +134,27 @@ How the store maps onto the repository is owned by
 - **Project records:** commit reviews and documentation transfers, which
   belong to the project rather than one item, are appended to one
   platform-opened ledger issue.
+
+<!-- planned:github-turn-mirror -->
+
+- **Conversation:** every session the workflow starts for a repository work
+  item has its conversation on that item: on the item's pull request while one
+  is open, otherwise on its issue. Each completed turn is one comment, written
+  by the App mapped to the session's role
+  (`local/projects/teleclaude/spec/teleclaude-config`): the reviewer App for a
+  review role, the author App for every other role, never the App that writes
+  the record. It opens with `[session:<id> role:<role> action:turn turn:<n>]`,
+  where `<n>` counts that session's turns, followed by the input the turn
+  received and the agent's reply, without tool activity or reasoning. Turns
+  appear in the order they complete, each exactly once, and a turn too large
+  for one comment continues in the next. Every secret the platform holds,
+  every credential-like string and all detected personal data are removed
+  before a turn is written; a turn they cannot be removed from appears only as
+  `[session:<id> role:<role> action:turn turn:<n> withheld]`, with no content.
+  The conversation is never part of the record, and writing it never holds up
+  a session.
+
+<!-- /planned:github-turn-mirror -->
 
 - **Authority:** only what the platform's Apps write is the record. Labels,
   titles, bodies, types, relations, assignments, reviews, merges, comments and
@@ -187,6 +216,26 @@ Scenario: A collaborator follows a build and its reviews on GitHub
   And the pull request closes naming the delivered commit when the item is delivered
 ```
 
+<!-- planned:github-turn-mirror -->
+
+#### UC-GWR4: Follow the agents' conversation on a work item
+
+```gherkin
+Scenario: A collaborator reads how the agents worked an item
+  Given a GitHub-backed project with an item the workflow is preparing or building
+  When a collaborator opens the item's issue, or its pull request once the build has started
+  Then they read every turn of the item's sessions in the order the turns completed
+  And each turn names its session and role, what the session was asked and what it answered
+  And each turn is written by the identity of the session's role, not by the record's
+
+Scenario: A turn that cannot be cleaned is withheld
+  Given a session working an item completes a turn whose secrets or personal data cannot be removed
+  When the turn appears on the item
+  Then it shows that the turn was withheld, without any of its content
+```
+
+<!-- /planned:github-turn-mirror -->
+
 ## Known caveats
 
 - A project that selects the GitHub store by editing its declaration starts
@@ -212,3 +261,12 @@ Scenario: A collaborator follows a build and its reviews on GitHub
 - Labels, types, relations, assignments, the pull request and its reviews
   follow a change within the store's next refresh when the write that reflects
   them fails.
+
+<!-- planned:github-turn-mirror -->
+
+- Removing secrets and personal data from a session's conversation rests on
+  detection: what the detection does not recognize is published with the turn.
+- A session's turn appears on GitHub after it completes, and later than that
+  while GitHub is unreachable or its request budget is spent.
+
+<!-- /planned:github-turn-mirror -->
