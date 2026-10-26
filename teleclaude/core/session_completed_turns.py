@@ -11,11 +11,13 @@ The read never touches output generations: live delivery keeps its own turn boun
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from functools import partial
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -47,6 +49,8 @@ from teleclaude.utils.transcript._user_turns import (
 logger = get_logger(__name__)
 
 _IDENTITY_TEMPLATE = "{runtime}:{entry_id}"
+_MISSING_IDENTITY_TEMPLATE = "{runtime}:missing:{digest}"
+_MISSING_DIGEST_LENGTH = 16
 _REPLY_SEPARATOR = "\n\n"
 _ROLE_FIELD = "role"
 _CONTENT_FIELD = "content"
@@ -124,9 +128,17 @@ class _InputEntry:
     segments: tuple[_InputSegment, ...]
 
 
+@dataclass(frozen=True)
+class _MissingSource:
+    """A transcript file the session's chain names that no longer exists."""
+
+    path: str
+
+
 @dataclass
 class _OpenTurn:
     identity: str
+    source_missing: bool = False
     inputs: list[_InputEntry] = field(default_factory=list)
     reply: list[str] = field(default_factory=list)
     last_time: datetime | None = None
@@ -226,11 +238,20 @@ def _entry_time(entry: JsonDict) -> datetime | None:
     return ensure_utc(parsed) if parsed is not None else None
 
 
-def _derive_turns(entries: Sequence[JsonDict], agent: AgentName) -> list[_OpenTurn]:
-    """Cut one ordered entry stream into turns."""
+def _derive_turns(stream: Sequence[JsonDict | _MissingSource], agent: AgentName) -> list[_OpenTurn]:
+    """Cut one ordered entry stream into turns; a missing source stands as one turn that cannot be read."""
     turns: list[_OpenTurn] = []
     current: _OpenTurn | None = None
-    for entry in entries:
+    for entry in stream:
+        if isinstance(entry, _MissingSource):
+            digest = hashlib.sha256(entry.path.encode()).hexdigest()[:_MISSING_DIGEST_LENGTH]
+            current = None
+            turns.append(
+                _OpenTurn(
+                    identity=_MISSING_IDENTITY_TEMPLATE.format(runtime=agent.value, digest=digest), source_missing=True
+                )
+            )
+            continue
         segments = _input_segments(entry, agent)
         if segments:
             entry_id = native_entry_id(entry, agent)
@@ -254,16 +275,22 @@ def _derive_turns(entries: Sequence[JsonDict], agent: AgentName) -> list[_OpenTu
     return turns
 
 
-def _read_chain(chain: Sequence[str], agent: AgentName) -> list[_OpenTurn]:
-    """Read every file of the chain, oldest first, into one turn sequence."""
-    entries: list[JsonDict] = []
+def _read_chain(chain: Sequence[str], agent: AgentName, *, work_completed: bool) -> list[_OpenTurn]:
+    """Read every file of the chain, oldest first, into one turn sequence.
+
+    A file the chain names that is gone stands in the sequence as a turn that cannot be read, when the session has
+    stopped at least once and so completed work somewhere: whatever it held was deleted before it was taken.
+    """
+    stream: list[JsonDict | _MissingSource] = []
     for path in chain:
         file_entries = _get_entries_for_agent(path, agent)
         if file_entries is None:
             logger.warning(_UNREADABLE_CHAIN_FILE_EVENT, file=Path(path).name)
+            if work_completed:
+                stream.append(_MissingSource(path))
             continue
-        entries.extend(file_entries)
-    return _derive_turns(entries, agent)
+        stream.extend(file_entries)
+    return _derive_turns(stream, agent)
 
 
 async def _person_parts(session_id: str, entry: _InputEntry) -> list[TurnInputPart]:
@@ -320,7 +347,9 @@ async def read_completed_turns(
     """Return the session's completed turns after the one identified, in order.
 
     A turn whose transcript can no longer be read, but which an earlier read recorded, is returned as unreadable
-    with its identity and ordinal. An ``after_identity`` this session has no record of reads from the first turn.
+    with its identity and ordinal, and so is a transcript file the session's chain names that is gone though no read
+    ever recorded what it held: one unreadable turn stands for its span, completed no later than the session's last
+    agent stop. An ``after_identity`` this session has no record of reads from the first turn.
     Raises ``LookupError`` when the session does not exist on this computer.
     """
     session = await db.get_session(session_id)
@@ -328,7 +357,9 @@ async def read_completed_turns(
         raise LookupError(session_id)
     agent = resolve_parser_agent(session.active_agent)
     chain = build_message_chain(session.transcript_files, session.native_log_file)
-    derived = await asyncio.to_thread(_read_chain, chain, agent)
+    derived = await asyncio.to_thread(
+        partial(_read_chain, chain, agent, work_completed=bool(session.last_agent_stop_at))
+    )
     ordinals = await store.record_turns(session_id, [turn.identity for turn in derived])
     held_ordinal = 0
     if after_identity is not None:
@@ -342,6 +373,18 @@ async def read_completed_turns(
     for index, turn in enumerate(derived):
         ordinal = ordinals[turn.identity]
         if ordinal <= held_ordinal:
+            continue
+        if turn.source_missing:
+            completed.append(
+                CompletedTurn(
+                    identity=turn.identity,
+                    ordinal=ordinal,
+                    completed_at=stopped_at,
+                    input_parts=(),
+                    reply="",
+                    unreadable=True,
+                )
+            )
             continue
         if not _is_completed(
             turn, is_last=index == len(derived) - 1, stopped_at=stopped_at, session_is_final=session_is_final
