@@ -1,5 +1,5 @@
 ---
-description: How a configured person's change to a GitHub-backed work item's issue reaches the workflow as the act it stands for, or is put back with its reason, once, from current issue state, whether GitHub delivered it or the platform caught up with it later.
+description: How each change a person makes to a GitHub-backed work item's issue reaches the workflow as the act it stands for, or is put back with its reason — once, in the issue's history order, on whichever computer serving the project handles it, whether GitHub delivered it or the platform caught up with it later.
 delivered_by:
   - github-item-acts
 visibility: internal
@@ -17,13 +17,14 @@ become an accepted act.
 
 Each decision has one owner; this design owns only how they compose.
 
-| Decision                                                                    | Owner                              | Contract                                                                                                      |
-| --------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Which GitHub field change stands for which act; whose changes count         | `integration`                      | `local/projects/teleclaude/spec/feature/integration/github-work-control`                                      |
-| Which person a GitHub login is                                              | `identity`                         | `local/projects/teleclaude/spec/feature/identity/human-identity-resolution`                                   |
-| Whether an act is valid, and its effect                                     | `workflow`                         | `local/projects/teleclaude/spec/domain/workflow` and the feature specs of each act                            |
-| What the issue's fields should hold; reading, restoring and commenting them | `workflow` (GitHub adapter module) | `local/projects/teleclaude/design/architecture/workflow-store` (Issue field reads, Field restore, Item title) |
-| Receiving GitHub deliveries on every computer                               | `integration`                      | `local/projects/teleclaude/spec/feature/integration/github-webhook-normalization`, hook dispatch              |
+| Decision                                                                    | Owner                              | Contract                                                                                                                 |
+| --------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Which GitHub field change stands for which act; whose changes count         | `integration`                      | `local/projects/teleclaude/spec/feature/integration/github-work-control`                                                 |
+| Which person a GitHub login is                                              | `identity`                         | `local/projects/teleclaude/spec/feature/identity/human-identity-resolution`                                              |
+| Whether an act is valid, and its effect                                     | `workflow`                         | `local/projects/teleclaude/spec/domain/workflow` and the feature specs of each act                                       |
+| What the issue's fields should hold; reading, restoring and commenting them | `workflow` (GitHub adapter module) | `local/projects/teleclaude/design/architecture/workflow-store` (Issue history and field read, Field restore, Item title) |
+| Receiving GitHub deliveries on every computer                               | `integration`                      | `local/projects/teleclaude/spec/feature/integration/github-webhook-normalization`, hook dispatch                         |
+| Each change's disposition committed once, and its notice written once       | `workflow` (GitHub adapter module) | `local/projects/teleclaude/design/architecture/workflow-store` (History position, Put-back notices)                      |
 
 The work-control handler is an integration edge: it translates a field change
 into a typed workflow request, as the TUI translates a key press, and decides
@@ -36,116 +37,134 @@ nothing the workflow or the store decides.
 - GitHub deliveries of the `issues` (title edited, labeled, unlabeled, closed,
   reopened, typed, untyped), `sub_issues` and `issue_dependencies` events,
   relayed to every computer and dispatched to the handler by a built-in hook
-  contract beside comment routing's. The delivery names the issue and the
-  sender; it is a trigger, never the value acted on.
-- The catch-up sweep on the fleet's master
-  (`local/projects/teleclaude/spec/teleclaude-config`, `computer.is_master`),
-  run after each refresh of a GitHub-backed project it serves: the issues the
-  platform App opened whose update time is newer than the sweep's last mark.
-- For one issue: the store's work item lookup, its issue field read (current
-  values on GitHub, the projected values, and the latest attributed change to
-  each field), the sender's repository permission read through the project's
-  App, and the identity resolver's answer for the login.
+  contract beside comment routing's. A delivery names the issue; it only
+  triggers handling of that issue and is never itself the change acted on.
+- The catch-up sweep, run on every computer after each refresh of a
+  GitHub-backed project it serves: the issues the platform App opened that
+  GitHub reports updated since that computer's last sweep of the project.
+- For one issue: the store's work item lookup; the issue's **history** after
+  the item's history position — every change to a reflected field, in the
+  order GitHub recorded it, each with its account, previous and new value;
+  the issue's current fields beside their projected values; the repository
+  permission of each acting account, read through the project's App; and the
+  identity resolver's answer for each login.
 
 **Outputs**
 
-- One workflow request per accepted change, taken through the same workflow
-  service and validated update facade the TUI's routes call, with the
-  person's principal as caller and GitHub as entry point. The workflow's own
-  events and reflections follow from it unchanged.
-- For each change that does not count: one field restore through the store,
-  which writes the projected value and appends the put-back comment the work
-  record specifies with its reason.
-- Structured logs at each decision: taken, put back with reason, skipped as
+- For each change in the history, in order, one disposition committed with the
+  item's next history position:
+  - taken: the workflow request it stands for, through the same workflow
+    service and validated update facade the TUI's routes call, with the
+    person's principal as caller and GitHub as entry point;
+  - put back: a put-back notice owed in the record, naming the change and the
+    reason;
+  - skipped: a change the platform's own App made.
+- After the changes are disposed of, a restore of every reflected field whose
+  current value still differs from its projected one, through the store.
+- Structured logs at each disposition: taken, put back with reason, skipped as
   the platform's own write, no item.
 
 ## Invariants
 
-- **Only the master acts.** Every computer receives the deliveries; only the
-  fleet's master handles them, and only for projects it serves. One handler per
-  fleet gives one act and one comment per change without a cross-computer
-  claim, the same choice the work-item conversation makes for its poster.
-- **Current state, not the delivery.** The handler reconciles the issue's
-  current fields against the projection. A delivery GitHub repeats or reorders
-  finds nothing left to do once the issue matches; a stale delivery never
-  applies a value the issue no longer shows.
-- **One issue at a time.** Reconciliation of one issue is serialized on the
-  master, so a delivery and the sweep never act on the same issue at once.
-- **Attribution decides.** A field that differs is taken only when its latest
-  change is attributed to a person whose changes count; a change with no
-  attributable actor counts for no one and is put back. A field the
-  platform's own App last wrote is a reflection still owed, restored without
-  a comment.
-- **Owed reflections first.** An item with owed reflections has them written
-  before it is reconciled, so a failed platform write is never mistaken for a
-  person's change.
+- **Each change, in order.** Every change GitHub records to a reflected field
+  of an item's issue receives exactly one disposition, in the order of the
+  issue's history, whatever the order, number or absence of deliveries. A
+  change superseded on GitHub before it is handled is still disposed of —
+  taken, then followed by the later one, or put back with its notice.
+- **One commit point per disposition.** The history position advances in the
+  same conflict-checked record revision that commits the disposition: the act
+  it leads to, or the owed notice, or nothing for a skipped change. Any
+  computer serving the project may handle an issue; when two handle one
+  change, the record's conflict check admits one, and the other refreshes and
+  continues from the advanced position.
+- **History, not current values, carries attribution.** A change is taken only
+  when its own history entry names a person whose changes count at the time
+  it is handled. A field that differs from its projection with no change in the
+  history to account for it is restored, and its notice says no change by a
+  person who may change the work was found.
+- **A platform write never hides a person's change.** A reflection the App
+  writes after a person's change — an owed write repaired by refresh on any
+  computer — is a later history entry, skipped in its turn; the person's change
+  before it is still disposed of, and the final restore writes the value the
+  dispositions leave.
 - **Designated fields only.** The issue number, the issue numbers of a
   sub-issue or blocked-by relation, labels, state and state reason, issue type
   and title value are the only inputs; no text is interpreted to choose an
   item or an act.
-- **The workflow decides.** A refusal of the act is the workflow's own
-  outcome and its reason, unchanged, is the put-back comment's reason. A
-  failure that is not a refusal — a write conflict, an unreachable store —
-  puts nothing back and leaves the issue for the next sweep.
+- **The workflow decides.** A refusal of the act is the workflow's own outcome
+  and its reason, unchanged, is the notice's reason. A failure that is not a
+  refusal — a write conflict, an unreachable store, a failed permission or
+  history read — commits no disposition and leaves the change for the next
+  handling.
+- **One notice per put-back.** A notice is written from the record as a
+  reflection, its envelope naming the history entry it answers; the writer
+  recognizes a notice already on the issue for that entry, so a lost reply or
+  an interrupted write never posts it twice.
 - **Open act table.** The mapping from field change to act is one table the
   handler reads; a later delivery adds a row for another field or label
-  without changing admission, attribution or put-back.
+  without changing admission, history handling or put-back.
 
 ## Primary flows
 
-### A person changes an issue
+### Handling one issue
 
 ```mermaid
 sequenceDiagram
-    participant GH as GitHub
-    participant H as Work-control handler (master)
+    participant T as Delivery or catch-up sweep
+    participant H as Work-control handler (computer serving the project)
     participant S as GitHub adapter module
     participant ID as Identity resolver
     participant WF as Workflow service
-    GH->>H: issues / sub_issues / issue_dependencies delivery
+    T->>H: issue of a project this computer serves
     H->>S: work item lookup (repository, issue number)
     alt no item
         H-->>H: nothing to do
     else item
-        H->>S: issue field read (current, projected, latest change per field)
-        loop each field that differs
-            alt platform App last wrote it
-                H->>S: restore field (no comment)
-            else counted person (write access, configured)
+        H->>S: history after the item's history position
+        loop each change, in history order
+            alt made by the platform's App
+                H->>S: advance position (skipped)
+            else counted person (configured, write access)
                 H->>ID: resolve login
-                H->>WF: act as that person
+                H->>WF: act as that person, advancing the position
                 alt refused
-                    H->>S: restore field + put-back comment (workflow's reason)
+                    H->>S: owe notice with the workflow's reason, advancing the position
                 end
             else anyone else, or no act for the change
-                H->>S: restore field + put-back comment (reason)
+                H->>S: owe notice with the reason, advancing the position
             end
         end
+        H->>S: restore fields that still differ from their projection
+        S->>S: write owed notices not yet on the issue
     end
 ```
 
+A conflict at any advance refreshes the item and resumes from the position
+the record now holds.
+
 ### Catch-up
 
-After each refresh of a project it serves, the master lists the platform
-App's issues updated since its last mark and reconciles each through the same
-flow, attributing every differing field from the issue's history. The mark
-advances only past issues it reconciled, so an interrupted sweep resumes
-where it stopped.
+After each refresh of a project it serves, a computer lists the platform App's
+issues GitHub reports updated since its last sweep of that project and handles
+each through the same flow. Its sweep mark is its own bookkeeping and only
+saves work: the history position in the record decides what is still to be
+handled, so a computer that sweeps late or twice disposes of nothing twice.
 
 ## Failure modes
 
-- **The master is down or does not serve the project.** Nothing is taken or put
-  back meanwhile; the issue shows the person's change. The first sweep after
-  the master serves the project again reconciles it.
-- **A restore or comment write fails.** The restore is owed like any
-  reflection and written by the next refresh, regardless of the field's last
-  written digest; the comment is owed with it.
-- **The permission read fails.** The change is neither taken nor put back; the
-  issue stays as it is and the next sweep retries it.
-- **Two changes to one field before the handler runs.** Only the latest is
-  reconciled; the earlier one is superseded on GitHub as it would be in the
-  TUI.
-- **A workflow write conflicts with another computer's.** The workflow
-  refuses with that cause and the store refreshes the item
-  (`local/projects/teleclaude/design/architecture/workflow-store`, Conflict
-  check); the next sweep reconciles the issue against the refreshed record.
+- **No computer serving the project is running.** Nothing is handled
+  meanwhile; the issue shows the person's change. The first handling after a
+  serving computer starts disposes of every change since the item's history
+  position.
+- **A restore or notice write fails, or its reply is lost.** It is owed and
+  written by the next refresh like any reflection; a notice already on the
+  issue for its history entry is recognized and not written again.
+- **A permission or history read fails.** No disposition is committed; the
+  change waits for the next handling.
+- **Several computers handle one issue at once.** Each advance is
+  conflict-checked against the record's revision, so one disposition per
+  change commits; the others refresh, and their GitHub reads are the only
+  cost.
+- **A history entry the module cannot read as a change of a reflected field.**
+  It is skipped; if its field still differs afterwards, the final restore puts
+  it back with the notice for an unaccounted change.

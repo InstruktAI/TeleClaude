@@ -440,21 +440,33 @@ master admits each conversation request before sending it:
   otherwise the heading the input derives.
 - **Platform labels only.** A label reflection adds and removes only the
   platform's own labels on the issue and leaves every other label as it is.
-- **Issue field read.** For an item of a project on this computer, the
-  adapter module reads the issue's current title, open state and state
-  reason, labels, issue type, parent issue and blocked-by issues from GitHub,
-  beside the values its projection holds for them, and, for each field whose
-  values differ, the latest change to it in the issue's history with the
-  account that made it. It is a module call like the work item lookup,
+- **Issue history and field read.** For an item of a project on this computer
+  and a history position, the adapter module reads, in the order GitHub
+  recorded them, the changes after that position to the issue's title, open
+  state and state reason, labels, issue type, sub-issues and blocked-by
+  relations, each with the account that made it and its previous and new
+  value; and the current values of those fields beside the values its
+  projection holds. It is a module call like the work item lookup,
   authenticated as the project's App, and retains nothing.
+- **History position.** The record carries, per item, the position in its
+  issue's history up to which every change has its disposition. A transaction
+  may carry the position it advances to; the position commits in the same
+  record revision as the transaction's other changes, under the conflict
+  check, so one position can be advanced only once. A position advanced with
+  no other change is a record write of its own.
+- **Put-back notices.** The record carries the notices an item owes: the
+  history entry each answers, the field, the change and the reason. Each is
+  reflected as one comment under the work record's put-back envelope, which
+  names the entry. Before appending one, the writer looks for a notice the
+  App already wrote for that entry and adopts it instead; a notice found on
+  the issue leaves the record with the item's next revision.
 - **Changed issues.** For a project on this computer and a moment, the module
   lists the issues the platform App opened that GitHub reports updated since
   then.
 - **Field restore.** For an item and a set of its reflected fields, the module
   writes the projected value of each, whatever the field's last written
-  digest, and, when given a reason, appends one put-back comment under the
-  envelope the work record specifies. A restore that fails is owed and
-  written by the next refresh like any reflection, with its comment.
+  digest. A restore that fails is owed and written by the next refresh like
+  any reflection.
 - **Repository permission read.** For a project on this computer and a GitHub
   login, the module reads that account's permission on the repository through
   the project's App.
