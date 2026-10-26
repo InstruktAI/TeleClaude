@@ -235,7 +235,8 @@ implementation remain the current appliance contract.
   person with write access to the repository — and when a change is put back
   and with which reason
   (`local/projects/teleclaude/spec/feature/integration/github-work-control`).
-  The handler runs on every computer serving the project, disposes of each
+  The handler runs on every computer serving the project, handles an issue
+  only while holding its lease in the cluster bus Redis, disposes of each
   change in the issue's history order, and hands each accepted change to
   `workflow`'s update facade as that person; the composition is
   `local/projects/teleclaude/design/architecture/github-work-control`.

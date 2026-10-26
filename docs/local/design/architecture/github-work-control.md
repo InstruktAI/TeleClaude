@@ -17,14 +17,15 @@ become an accepted act.
 
 Each decision has one owner; this design owns only how they compose.
 
-| Decision                                                                    | Owner                              | Contract                                                                                                                 |
-| --------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Which GitHub field change stands for which act; whose changes count         | `integration`                      | `local/projects/teleclaude/spec/feature/integration/github-work-control`                                                 |
-| Which person a GitHub login is                                              | `identity`                         | `local/projects/teleclaude/spec/feature/identity/human-identity-resolution`                                              |
-| Whether an act is valid, and its effect                                     | `workflow`                         | `local/projects/teleclaude/spec/domain/workflow` and the feature specs of each act                                       |
-| What the issue's fields should hold; reading, restoring and commenting them | `workflow` (GitHub adapter module) | `local/projects/teleclaude/design/architecture/workflow-store` (Issue history and field read, Field restore, Item title) |
-| Receiving GitHub deliveries on every computer                               | `integration`                      | `local/projects/teleclaude/spec/feature/integration/github-webhook-normalization`, hook dispatch                         |
-| Each change's disposition committed once, and its notice written once       | `workflow` (GitHub adapter module) | `local/projects/teleclaude/design/architecture/workflow-store` (History position, Put-back notices)                      |
+| Decision                                                                           | Owner                              | Contract                                                                                                                   |
+| ---------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Which GitHub field change stands for which act; whose changes count                | `integration`                      | `local/projects/teleclaude/spec/feature/integration/github-work-control`                                                   |
+| Which person a GitHub login is                                                     | `identity`                         | `local/projects/teleclaude/spec/feature/identity/human-identity-resolution`                                                |
+| Whether an act is valid, and its effect                                            | `workflow`                         | `local/projects/teleclaude/spec/domain/workflow` and the feature specs of each act                                         |
+| What the issue's fields should hold; reading, restoring and commenting them        | `workflow` (GitHub adapter module) | `local/projects/teleclaude/design/architecture/workflow-store` (Issue history and field read, Field restore, Item title)   |
+| Receiving GitHub deliveries on every computer                                      | `integration`                      | `local/projects/teleclaude/spec/feature/integration/github-webhook-normalization`, hook dispatch                           |
+| One handler per issue at a time, and a re-pass for a change that arrives meanwhile | `integration`                      | The issue lease in the cluster bus Redis (`local/projects/teleclaude/adr/0032-cluster-bus-redis-serves-local-and-cluster`) |
+| Each change's disposition committed once with the history position                 | `workflow` (GitHub adapter module) | `local/projects/teleclaude/design/architecture/workflow-store` (History position, Put-back notices)                        |
 
 The work-control handler is an integration edge: it translates a field change
 into a typed workflow request, as the TUI translates a key press, and decides
@@ -71,12 +72,21 @@ nothing the workflow or the store decides.
   issue's history, whatever the order, number or absence of deliveries. A
   change superseded on GitHub before it is handled is still disposed of —
   taken, then followed by the later one, or put back with its notice.
-- **One commit point per disposition.** The history position advances in the
-  same conflict-checked record revision that commits the disposition: the act
-  it leads to, or the owed notice, or nothing for a skipped change. Any
-  computer serving the project may handle an issue; when two handle one
-  change, the record's conflict check admits one, and the other refreshes and
-  continues from the advanced position.
+- **One handler per issue.** Any computer serving the project may handle an
+  issue, but only while it holds that issue's lease in the fleet's one cluster
+  bus Redis: set only when absent, expiring, renewed while the work lasts, and
+  released only by its holder. The store's conflict check reads and writes in
+  separate requests and cannot arbitrate two writers; the lease does.
+- **No change is left behind by a held lease.** A computer that finds the lease
+  held marks the issue for another pass and leaves it; before releasing, the
+  holder takes every pass marked during its work, re-reading the history each
+  time, so a change that arrives while another computer handles the issue is
+  disposed of by that computer.
+- **One commit point per disposition.** Under the lease, the history position
+  advances in the same record revision that commits the disposition: the act
+  it leads to, or the owed notice, or nothing for a skipped change. The
+  position is re-read from the record before each disposition, so a handler
+  never disposes of a change the position has already passed.
 - **History, not current values, carries attribution.** A change is taken only
   when its own history entry names a person whose changes count at the time
   it is handled. A field that differs from its projection with no change in the
@@ -97,9 +107,10 @@ nothing the workflow or the store decides.
   history read — commits no disposition and leaves the change for the next
   handling.
 - **One notice per put-back.** A notice is written from the record as a
-  reflection, its envelope naming the history entry it answers; the writer
-  recognizes a notice already on the issue for that entry, so a lost reply or
-  an interrupted write never posts it twice.
+  reflection, its envelope naming the history entry it answers, and only by the
+  holder of the issue's lease, which first looks for a notice the App already
+  wrote for that entry; a lost reply or an interrupted write therefore never
+  posts it twice, and two computers never write it at once.
 - **Open act table.** The mapping from field change to act is one table the
   handler reads; a later delivery adds a row for another field or label
   without changing admission, history handling or put-back.
@@ -111,11 +122,16 @@ nothing the workflow or the store decides.
 ```mermaid
 sequenceDiagram
     participant T as Delivery or catch-up sweep
+    participant L as Issue lease (cluster bus Redis)
     participant H as Work-control handler (computer serving the project)
     participant S as GitHub adapter module
     participant ID as Identity resolver
     participant WF as Workflow service
     T->>H: issue of a project this computer serves
+    H->>L: take the issue's lease
+    alt lease held elsewhere
+        H->>L: mark the issue for another pass
+    end
     H->>S: work item lookup (repository, issue number)
     alt no item
         H-->>H: nothing to do
@@ -137,10 +153,11 @@ sequenceDiagram
         H->>S: restore fields that still differ from their projection
         S->>S: write owed notices not yet on the issue
     end
+    H->>L: take any marked pass, else release
 ```
 
-A conflict at any advance refreshes the item and resumes from the position
-the record now holds.
+A record write refused at any advance refreshes the item and resumes from the
+position the record now holds.
 
 ### Catch-up
 
@@ -161,10 +178,17 @@ handled, so a computer that sweeps late or twice disposes of nothing twice.
   issue for its history entry is recognized and not written again.
 - **A permission or history read fails.** No disposition is committed; the
   change waits for the next handling.
-- **Several computers handle one issue at once.** Each advance is
-  conflict-checked against the record's revision, so one disposition per
-  change commits; the others refresh, and their GitHub reads are the only
-  cost.
+- **The cluster bus Redis is unreachable.** No computer takes a lease, so
+  nothing is handled; the first handling after it is reachable again disposes
+  of every change since each item's history position.
+- **A lease cannot be renewed.** The holder renews before each disposition and
+  gives every GitHub request it then makes a timeout shorter than the lease
+  time that remains, so its last request has ended before the lease can pass
+  to another computer. A renewal that fails stops the holder before its next
+  disposition; what it committed stands and the next holder continues from the
+  position.
+- **A holder stops without releasing.** The lease expires and the next
+  delivery, sweep or marked pass takes it.
 - **A history entry the module cannot read as a change of a reflected field.**
   It is skipped; if its field still differs afterwards, the final restore puts
   it back with the notice for an unaccounted change.
