@@ -558,7 +558,9 @@ sequenceDiagram
   copy is ever published in its place.
 - A write holds the working copy's single writer from its first change until
   its local commit, across the GitHub round trips the write path places before
-  that commit. Another write on the same computer that cannot gain the writer
+  that commit
+  (`local/projects/teleclaude/adr/0125-github-store-keeps-the-local-implementation-as-its-working-copy`).
+  Another write on the same computer that cannot gain the writer
   within its connection's busy budget is refused with `database is locked`:
   that operation fails and its change is lost, and on the API an unhandled
   server error reaches the caller. Writers are ordered while they wait, but a
