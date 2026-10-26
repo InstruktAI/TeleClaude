@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from teleclaude.core.todos_db._adapter import TodosDb
-from teleclaude.core.todos_db._ledger_knowledge import all_ledger_commits, ledger_commits_through, set_item_verified_at
+from teleclaude.core.todos_db._ledger_knowledge import all_ledger_commits, ledger_commits_through, set_item_verification
 from teleclaude.core.todos_db._working_copy import (
     WorkingCopyField,
     WorkingCopyItemSnapshot,
@@ -183,7 +183,7 @@ class GitHubWorkflowSync:
                 _save_artifact_pointers(session, snapshot.item_id, revision)
                 clear_item_unverifiable(session, snapshot.item_id)
                 owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
-                set_item_verified_at(session, snapshot.item_id, issue.updated_at)
+                set_item_verification(session, snapshot.item_id, None)
             adopt_ledger_entries(session, ledger_entries)
             for entry, comment in ledger_entries:
                 for project_record in entry.project_records:
@@ -241,7 +241,7 @@ class GitHubWorkflowSync:
                     )
                     _save_artifact_pointers(session, snapshot.item_id, revision)
                     owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
-                    set_item_verified_at(session, snapshot.item_id, issue.updated_at)
+                    set_item_verification(session, snapshot.item_id, None)
                 adopt_ledger_entries(session, ledger_entries)
                 for entry, comment in ledger_entries:
                     for project_record in entry.project_records:
@@ -285,8 +285,8 @@ class GitHubWorkflowSync:
         issues, ledger_issue, all_ledger = await self._read_ledger_for_refresh(issues, ledger_issue_number, after_id)
         restorable = (
             [comment for _entry, comment in all_ledger]
-            if since is None or ledger_issue is None
-            else await self.io.async_read_comments_updated_since(ledger_issue.number, since)
+            if since is None or ledger_issue_number is None
+            else await self.io.async_read_comments_updated_since(ledger_issue_number, since)
         )
         for comment in restorable:
             trusted = trusted_body(comment, self.assignment.actor.login)
@@ -354,7 +354,7 @@ class GitHubWorkflowSync:
                 _save_artifact_pointers(session, snapshot.item_id, revision)
                 clear_item_unverifiable(session, snapshot.item_id)
                 owe_unwritten_pull_request(session, snapshot.item_id, issue.number, snapshot)
-                set_item_verified_at(session, snapshot.item_id, issue.updated_at)
+                set_item_verification(session, snapshot.item_id, None)
             adopt_ledger_entries(session, all_ledger)
             for entry, comment in new_ledger:
                 for project_record in entry.project_records:

@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from concurrent.futures import Future
 from contextlib import asynccontextmanager
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from time import monotonic
 from typing import Any, TypeVar, cast
@@ -43,6 +43,7 @@ from teleclaude.types.github_binding import GitHubActorAssignment
 
 _EMPTY = ""
 _PAGE_SIZE = 100
+_SINCE_OVERLAP = timedelta(seconds=1)
 _ISSUE_URL_SUFFIX = "/issues/{}"
 _WRITE_PERMISSIONS: AppPermissionsType = {"issues": "write"}
 _ISSUE_COLOR = "ededed"
@@ -251,6 +252,9 @@ class GitHubWorkflowIO:
     async def async_get_issue(self, number: int) -> GitHubIssue:
         return cast(GitHubIssue, await self._call(GitHubOperation.GET_ISSUE, number))
 
+    def get_issue(self, number: int) -> GitHubIssue:
+        return cast(GitHubIssue, self._sync(GitHubOperation.GET_ISSUE, number))
+
     def list_issues(self, since: datetime | None = None) -> tuple[GitHubIssue, ...]:
         return cast(tuple[GitHubIssue, ...], self._sync(GitHubOperation.LIST_ISSUES, since))
 
@@ -321,7 +325,9 @@ class GitHubWorkflowIO:
                 owner, repo, data={GitHubField.TITLE: title, GitHubField.BODY: body}
             )
             issue = response.parsed_data
-            return GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
+            return GitHubIssue(
+                issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at, issue.comments
+            )
 
         return await self._with_client(GitHubOperation.OPEN_ISSUE, request)
 
@@ -433,7 +439,9 @@ class GitHubWorkflowIO:
                 )
                 issues = response.parsed_data
                 found.extend(
-                    GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
+                    GitHubIssue(
+                        issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at, issue.comments
+                    )
                     for issue in issues
                     if getattr(issue, GitHubField.PULL_REQUEST, UNSET) in (None, UNSET)
                 )
@@ -449,7 +457,9 @@ class GitHubWorkflowIO:
         async def request(client: Any) -> GitHubIssue:
             response = await client.rest.issues.async_get(owner, repo, number)
             issue = response.parsed_data
-            return GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
+            return GitHubIssue(
+                issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at, issue.comments
+            )
 
         return await self._with_client(GitHubOperation.GET_ISSUE, request)
 
@@ -651,7 +661,10 @@ class GitHubWorkflowIO:
         return await self._with_client(GitHubOperation.READ_COMMENTS_AFTER, request)
 
     async def _read_comments_updated_since(self, number: int, since: datetime) -> tuple[GitHubComment, ...]:
-        """Read the comments of issue ``number`` created or edited at or after ``since``, with their trust views."""
+        """Read the comments of issue ``number`` created or edited at or after ``since``, with their trust views.
+
+        GitHub filters by whole seconds, so the read starts one overlap earlier and may repeat a comment.
+        """
         owner, repo = split_repository(self.repository.repository)
 
         async def request(client: Any) -> tuple[GitHubComment, ...]:
@@ -659,7 +672,7 @@ class GitHubWorkflowIO:
             page = 1
             while True:
                 response = await client.rest.issues.async_list_comments(
-                    owner, repo, number, since=since, per_page=_PAGE_SIZE, page=page
+                    owner, repo, number, since=since - _SINCE_OVERLAP, per_page=_PAGE_SIZE, page=page
                 )
                 batch = response.parsed_data
                 rest_comments.extend(batch)

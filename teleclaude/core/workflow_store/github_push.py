@@ -7,7 +7,6 @@ import hashlib
 import json
 import uuid
 from collections.abc import Awaitable, Callable, Container, Mapping
-from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -15,9 +14,10 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy.orm import Session
 
 from teleclaude.core.todos_db._ledger_knowledge import (
-    item_verified_at,
+    ItemVerification,
+    item_verification,
     record_ledger_commits,
-    set_item_verified_at,
+    set_item_verification,
 )
 from teleclaude.core.todos_db._working_copy import (
     WorkingCopyField,
@@ -46,7 +46,9 @@ from teleclaude.core.workflow_store.github_io import (
     GitHubOperation,
     GitHubWorkflowIO,
 )
+from teleclaude.core.workflow_store.github_io_models import GitHubIssue
 from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused
+from teleclaude.core.workflow_store.github_item_trust import validate_revision_content
 from teleclaude.core.workflow_store.github_ledger import GitHubLedgerRefused, find_ledger
 from teleclaude.core.workflow_store.github_ledger_commits import LedgerCommitView
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
@@ -134,7 +136,7 @@ class GitHubWorkflowPush:
             session, self.assignment.actor.login, self._ledger_reader(session, ledger_issue_number)
         )
         record_comments: dict[int, GitHubComment] = {}
-        verified_bounds: dict[str, datetime] = {}
+        verified_bounds: dict[str, ItemVerification] = {}
         snapshots: list[
             tuple[WorkingCopyItemSnapshot, int, int | None, str, int, ItemRevision, WorkflowRecord | None, int | None]
         ] = []
@@ -250,8 +252,8 @@ class GitHubWorkflowPush:
                 revision=revision_number,
                 base_revision=revision_number,
             )
-        for item_id, verified_bound in verified_bounds.items():
-            set_item_verified_at(session, item_id, verified_bound)
+        for item_id, verification in verified_bounds.items():
+            set_item_verification(session, item_id, verification)
         if ledger_comment_id is not None:
             for table, row_id in changes.project_records:
                 mark_project_record_pushed(session, table, row_id, ledger_comment_id)
@@ -286,7 +288,7 @@ class GitHubWorkflowPush:
         item_id: str,
         committed_transactions: Container[str],
         record_comments: dict[int, GitHubComment],
-        verified_bounds: dict[str, datetime],
+        verified_bounds: dict[str, ItemVerification],
     ) -> (
         tuple[
             WorkingCopyItemSnapshot,
@@ -689,66 +691,43 @@ class GitHubWorkflowPush:
         issue_number: int,
         revision: ItemRevision,
         record_comment: GitHubComment,
-    ) -> datetime | None:
-        """Validate referenced content unless only the bot touched the issue since; return the time this covers."""
-        verified_at = item_verified_at(session, item_id)
-        if verified_at is not None:
+    ) -> ItemVerification | None:
+        """Validate referenced content unless the issue changed only by the bot since it was verified.
+
+        Edits are found by time, deletions by count: fewer comments than verified plus newly created ones means one
+        was deleted. Either, or no earlier verification, sends the whole issue through validation.
+        """
+        verification = item_verification(session, item_id)
+        if verification is not None:
             changed = cast(
                 tuple[GitHubComment, ...],
-                _io_call(session, self.io, GitHubOperation.READ_COMMENTS_UPDATED_SINCE, issue_number, verified_at),
+                _io_call(
+                    session,
+                    self.io,
+                    GitHubOperation.READ_COMMENTS_UPDATED_SINCE,
+                    issue_number,
+                    verification.verified_at,
+                ),
             )
+            count = cast(GitHubIssue, _io_call(session, self.io, GitHubOperation.GET_ISSUE, issue_number)).comment_count
             bot_login = self.assignment.actor.login
-            if not any(comment.author == bot_login and comment.editor not in (None, bot_login) for comment in changed):
+            edited = any(comment.author == bot_login and comment.editor not in (None, bot_login) for comment in changed)
+            created = sum(1 for comment in changed if comment.database_id > verification.max_comment_id)
+            if not edited and count is not None and verification.comment_count + created <= count:
                 seen = [comment.updated_at for comment in changed if comment.updated_at is not None]
-                return max(seen) if seen else verified_at
-        comments = _io_call(session, self.io, GitHubOperation.READ_COMMENTS, issue_number)
-        self._validate_revision_content(revision, comments)
-        return record_comment.updated_at
-
-    def _validate_revision_content(
-        self, revision: ItemRevision, comments: list[GitHubComment] | tuple[GitHubComment, ...]
-    ) -> None:
-        by_id = {comment.database_id: comment for comment in comments}
-        pointers = [(name, pointer) for name, values in revision.artifacts.items() for pointer in values]
-        if revision.state_content_pointer is not None:
-            pointers.append((_STATE_NAME, revision.state_content_pointer))
-        for name, pointer in pointers:
-            if name != _STATE_NAME and pointer.head_comment_id is not None:
-                try:
-                    history = resolve_artifact_history(
-                        pointer,
-                        revision.item_id,
-                        name,
-                        comments,
-                        self.assignment.actor.login,
-                    )
-                except ValueError:
-                    raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED) from None
-                if not history:
-                    raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-                continue
-            parts: list[tuple[Any, str]] = []
-            for comment_id in pointer.comment_ids:
-                comment = by_id.get(comment_id)
-                trusted = self._trusted(comment) if comment is not None else None
-                if trusted is None:
-                    raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-                try:
-                    header, content = parse_content_comment(trusted)
-                except ValueError:
-                    raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED) from None
-                if (
-                    header.item_id != revision.item_id
-                    or header.name != name
-                    or header.version != (pointer.remote_version_id or pointer.version)
-                    or header.digest != pointer.digest
-                ):
-                    raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-                parts.append((header, content))
-            try:
-                join_content_comments(parts)
-            except ValueError:
-                raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED) from None
+                ids = [comment.database_id for comment in changed]
+                return ItemVerification(
+                    max([verification.verified_at, *seen]), count, max([verification.max_comment_id, *ids])
+                )
+        comments = cast(
+            tuple[GitHubComment, ...], _io_call(session, self.io, GitHubOperation.READ_COMMENTS, issue_number)
+        )
+        validate_revision_content(revision, comments, self.assignment.actor.login)
+        if record_comment.updated_at is None:
+            return None
+        return ItemVerification(
+            record_comment.updated_at, len(comments), max((comment.database_id for comment in comments), default=0)
+        )
 
     def _read_item_content(self, session: Session, issue_number: int, revision: ItemRevision, name: str) -> str:
         pointers = revision.artifacts.get(name, [])
@@ -930,6 +909,7 @@ _ASYNC_IO: dict[GitHubOperation, Callable[..., Awaitable[Any]]] = {
     GitHubOperation.LIST_ISSUES: GitHubWorkflowIO.async_list_issues,
     GitHubOperation.READ_COMMENTS: GitHubWorkflowIO.async_read_comments,
     GitHubOperation.READ_COMMENT: GitHubWorkflowIO.async_read_comment,
+    GitHubOperation.GET_ISSUE: GitHubWorkflowIO.async_get_issue,
     GitHubOperation.READ_COMMENTS_AFTER: GitHubWorkflowIO.async_read_comments_after,
     GitHubOperation.READ_COMMENTS_UPDATED_SINCE: GitHubWorkflowIO.async_read_comments_updated_since,
     GitHubOperation.CREATE_COMMENT: GitHubWorkflowIO.async_create_comment,
@@ -942,6 +922,7 @@ _SYNC_IO: dict[GitHubOperation, Callable[..., Any]] = {
     GitHubOperation.LIST_ISSUES: GitHubWorkflowIO.list_issues,
     GitHubOperation.READ_COMMENTS: GitHubWorkflowIO.read_comments,
     GitHubOperation.READ_COMMENT: GitHubWorkflowIO.read_comment,
+    GitHubOperation.GET_ISSUE: GitHubWorkflowIO.get_issue,
     GitHubOperation.READ_COMMENTS_AFTER: GitHubWorkflowIO.read_comments_after,
     GitHubOperation.READ_COMMENTS_UPDATED_SINCE: GitHubWorkflowIO.read_comments_updated_since,
     GitHubOperation.CREATE_COMMENT: GitHubWorkflowIO.create_comment,

@@ -38,6 +38,7 @@ class GitHubIssue:
     node_id: str
     creator: str
     updated_at: datetime | None
+    comment_count: int | None = None
 
 
 @dataclass(frozen=True)
