@@ -48,6 +48,18 @@ describes the current appliance only.
   visibility of its own. Observations saved before subjects were recorded
   receive one once, from the project they name, or unknown.
 
+### Governing designs and decisions
+
+- `local/projects/teleclaude/design/architecture/memory-system` — storing, searching and injecting observations
+- `local/projects/teleclaude/adr/0002-memory-uses-triples` — observations as triples
+- `local/projects/teleclaude/adr/0003-memory-event-store-semantics` — append-only memory writes
+- `local/projects/teleclaude/adr/0004-two-memory-categories` — the two observation categories
+- `local/projects/teleclaude/adr/0005-scraper-only-memory-writer` — extraction agents as the only memory writers
+- `local/projects/teleclaude/adr/0006-mandatory-dedup-against-doc-snippets` — dedup against documentation before saving
+- `local/projects/teleclaude/adr/0007-provenance-via-mirror-id` — the mirror id as an observation's provenance
+- `local/projects/teleclaude/adr/0008-idle-close-cadence-whole-session` — when extraction runs over a session
+- `local/projects/teleclaude/adr/0009-skill-pattern-detection-deferred` — deferral of skill-pattern detection
+
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

@@ -9,15 +9,7 @@ visibility: 'public'
 
 - The daemon is a 24/7 service; downtime is not acceptable outside controlled restarts.
 
-<!-- planned-change:install-unverified-start-not-returned -->
-
-- An install is a controlled restart. The daemon is down from before the install's first migration until its start on the new release; preparing the release happens while it serves, and publication of documentation and configuration schemas runs after the verified start, while it serves (`local/projects/teleclaude/design/architecture/installation`). The install succeeds only once the started daemon is verified serving the new release; initial provisioning — the bootstrap's install on a machine with no installed release and no daemon serving — replaces no daemon and completes without a start, which `telec app start` performs once the configuration is valid; an install into an existing installation whose daemon is stopped still ends with a verified start. An install that cannot establish the daemon stopped leaves it as it is and runs no migration. An install that fails after the stop before any migration started returns to the previously active release and verifies its start; one that fails after a migration started leaves the daemon stopped with that reason recorded; `telec app status` reports each reason.
-
-<!-- change:install-unverified-start-not-returned -->
-
 - An install is a controlled restart. The daemon is down from before the install's first migration until its start on the new release; preparing the release happens while it serves, and publication of documentation and configuration schemas runs after the verified start, while it serves (`local/projects/teleclaude/design/architecture/installation`). The install succeeds only once the started daemon is verified serving the new release; initial provisioning — the bootstrap's install on a machine with no installed release and no daemon serving — replaces no daemon and completes without a start, which `telec app start` performs once the configuration is valid; an install into an existing installation whose daemon is stopped still ends with a verified start. An install that cannot establish the daemon stopped leaves it as it is and runs no migration. An install that fails after the stop before any migration started stops the daemon it started and returns to the previously active release and verifies its start; when that daemon cannot be stopped, the install leaves it running on the release it attempted. One that fails after a migration started leaves the daemon stopped with that reason recorded; `telec app status` reports each reason.
-
-<!-- /planned-change:install-unverified-start-not-returned -->
 
 - `telec app start` and `telec app restart` first establish that the machine configuration loads; when it does not, they refuse with its finding and leave a running daemon running, because the daemon cannot boot on it.
 

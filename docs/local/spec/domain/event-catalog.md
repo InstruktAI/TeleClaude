@@ -17,7 +17,7 @@ that bind observable behavior.
 - **Schema authority:** the event type declarations in `teleclaude/events/`,
   from which the catalog is generated.
 - **Operator discovery:** `telec events list` and `telec events schema`.
-- **Delivery implementation:** `teleclaude/events/`.
+- **Implementation roots:** `teleclaude/events/`.
 - **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. No replacement event model is
   authored here.
 
@@ -191,6 +191,18 @@ duplicate protection, retry, and dead letter. The bounded context that produces 
 semantic name, data meaning, and emission invariant; consuming contexts own
 their local reaction. Catalog registration does not transfer either
 responsibility.
+
+### Governing designs and decisions
+
+- `local/projects/teleclaude/design/architecture/event-delivery` — the one delivery model for domain events
+- `local/projects/teleclaude/adr/0013-unified-cluster-events` — cluster-wide state propagation on one event namespace
+- `local/projects/teleclaude/adr/0105-event-access-follows-the-subject-its-producer-states` — event access following the stated subject
+- `local/projects/teleclaude/adr/0109-an-event-that-cannot-establish-its-subject-says-so` — an event that cannot establish its subject
+- `local/projects/teleclaude/adr/0114-events-take-the-cloudevents-attribute-model` — the CloudEvents attribute model
+- `local/projects/teleclaude/adr/0115-an-event-states-facts-and-its-consumers-own-every-reaction` — events stating facts while consumers own reactions
+- `local/projects/teleclaude/adr/0116-each-reaction-to-a-platform-event-is-an-independent-consumer` — each reaction as an independent consumer
+- `local/projects/teleclaude/adr/0117-a-platform-event-type-names-the-state-it-reports` — event types naming the state they report
+- `local/projects/teleclaude/adr/0118-an-event-states-its-origin-and-a-home-is-a-consumers` — an event's origin and a consumer's home
 
 ## Known caveats
 

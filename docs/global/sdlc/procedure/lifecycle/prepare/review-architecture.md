@@ -51,9 +51,10 @@ First read the sdlc principles as listed in the sdlc baseline that apply to this
 - Every indexed snippet in its pending view, `telec docs get <id> --target {slug}`,
   compared with its current contract — the design under review is the pending
   material, not the live text.
-- Relevant code paths and project architecture docs cited by the artifact.
-- Apply the domain-context loading rule from the preparation artifact quality
-  policy before validating.
+- Relevant code paths cited by the artifact.
+- Walk the governing-contracts entry points yourself before you read the
+  artifact's Governing contracts section, then compare
+  (`preparation-artifact-quality`, Governing contracts).
 
 ### 2. Verify grounding
 
@@ -85,6 +86,13 @@ Reject status-quo absorption when the architecture omits or weakens an approved
 outcome merely because the current implementation lacks a convenient path. A
 departure from current code may be correct; it must name the collision, the
 evidence, and why the target earns the change.
+
+For every structural decision, build the alternative the governing paradigm
+already gives before you read the author's reasoning. Reject a decision that
+never weighs that alternative, rejects it without an argument, or places an
+operation callers see outside its governing paradigm without saying what those
+callers then wait for (`preparation-artifact-quality`, Structural decisions
+carry architecture review).
 
 Reject bespoke infrastructure or security mechanisms without authoritative
 prior-art evidence and an adopt-vs-build judgment. Also reject prior art used as

@@ -382,3 +382,13 @@ If the grounded root cause is a **process-design gap** — removing it would req
 behavioral delta to a process-layer contract — the `diagnosis` is still written and
 settled (the cause is still the cause), and the bug may correct that defect within its
 authorized symptom and causal scope (`sdlc/policy/process-change-authority`).
+
+### The cause is a governing decision
+
+When the settled mechanism is one a governing design or decision record prescribes
+(`sdlc/procedure/debugging`, Name the mechanism), the `diagnosis` names that contract and
+states whether its design's `Failure modes` already record this failure. The interrogation
+tests both claims like any other transition. A repeat makes the remedy reopen the decision
+(`sdlc/policy/preparation-artifact-quality`, Structural decisions carry architecture
+review), and the prepare session records the failure in that design when the plan reflects
+its documentation; diagnosis itself commits nothing.

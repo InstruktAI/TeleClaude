@@ -13,6 +13,8 @@ Domain specs are documentation snippets and follow the snippet schema (`general/
 
 Each spec is authored once per bounded context and evolves with the context. New intended state is added by updating the spec and adding the delivering slug to `delivered_by`. Implementation changes that change behavior MUST update the spec.
 
+Together with the project's policies, the domain specs and the project's context map are the fixed entry points from which preparation reaches every contract governing a work item (`sdlc/policy/preparation-artifact-quality`, Governing contracts). The context map lives at `spec/domain/context-map` in the project's local half. It lists every bounded context with its domain spec and every cross-cutting design, the designs whose subject is the relationship among contexts rather than one context's model. Every design and decision record is listed by the context map or by one domain spec, from the change that adds it.
+
 ## Canonical fields
 
 ### Frontmatter
@@ -64,10 +66,12 @@ module topology:
   which other contexts use this context's behavior.
 - **Allowed dependencies** — the contexts this one may depend on and the
   relationship from the context map.
+- **Implementation roots** — the source directories whose code realizes this
+  context.
 
-Implementation roots may be recorded for grounding, but never substitute for
-this boundary. A file's current location is evidence about code, not authority
-over the rule it contains.
+Implementation roots are recorded for grounding, but never substitute for this
+boundary. A file's current location is evidence about code, not authority over
+the rule it contains.
 
 #### Aggregates
 
@@ -135,6 +139,16 @@ Example:
 When a new feature touches this context, a new entry is added here AND the corresponding feature spec is authored at the referenced path.
 
 Detailed Gherkin scenarios live in the feature spec, not here. Detailed JTBD / business value lives in the feature spec, not here. The domain spec stays compact because its job is to describe the bounded context's model + index its features — not to duplicate scenario detail.
+
+#### Governing designs and decisions (index)
+
+An INDEX of the design snippets that shape this context's model and of the decision records behind them, one line each. A cross-cutting design is listed in the context map instead.
+
+Format:
+
+```
+- **<snippet id>** — one-line statement of what it governs in this context
+```
 
 #### Context map position
 

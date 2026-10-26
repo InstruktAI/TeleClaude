@@ -17,6 +17,7 @@ TeleClaudeNext.
 - **Schema authority:** `teleclaude/config/` and the published configuration
   schema.
 - **Operator surfaces:** `telec config` commands and the TUI configuration view.
+- **Implementation roots:** `teleclaude/config/`.
 
 - **Runtime authority:** configuration is loaded through
   `teleclaude/runtime/config.py`; externally supplied configuration values enter
@@ -250,6 +251,14 @@ concerned:
 - an effective configuration change: the configuration that changed, with the
   project whose configuration it is as origin. A machine or global configuration
   change has no origin.
+
+### Governing designs and decisions
+
+- `local/projects/teleclaude/design/architecture/config-tier-resolution` — which configuration tier governs an invocation
+- `local/projects/teleclaude/design/architecture/feature-flags` — feature flags and experiments
+- `local/projects/teleclaude/adr/0027-feature-id-capability-gating` — gating cross-node behavior behind feature ids
+- `local/projects/teleclaude/adr/0077-runtime-catalog-is-separate-from-machine-settings` — the runtime catalog apart from machine settings
+- `local/projects/teleclaude/adr/0099-address-configuration-by-kind` — addressing configuration by kind
 
 ## See Also
 

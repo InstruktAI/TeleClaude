@@ -442,11 +442,36 @@ master admits each conversation request before sending it:
   it. Every write channel of the working copy, including raw connections,
   commits through the push.
 
+<!-- planned-change:working-copy-writers-refused-database-locked -->
+
 - Processes on one computer stay serialized by the working copy's
   transactions, exactly as on the local backend. GitHub I/O runs on an
   adapter-owned I/O thread: a sync caller blocks on it without starting an
   event loop of its own, and an async caller awaits it without blocking the
   daemon's loop.
+
+<!-- change:working-copy-writers-refused-database-locked -->
+
+- Processes on one computer stay serialized by the working copy's
+  transactions, exactly as on the local backend. A write that finds the
+  writer held waits for it up to the store's admission budget, measured in
+  wall-clock time. While a transaction holds the writer, its GitHub I/O runs
+  under the store's push deadline, which is no longer than the admission
+  budget, so a write queued behind one in-flight writer is admitted. A
+  restore during the GitHub store switch is paced and publishes under its own
+  limit.
+- GitHub I/O runs on an adapter-owned I/O thread: a sync caller blocks on it
+  without starting an event loop of its own, and an async caller awaits it
+  without blocking the daemon's loop. Requests on that thread run one at a
+  time. An issue reflection or a pull request unit never runs alongside
+  another one, but holds the request serialization only for each of its own
+  requests, so a push waits behind at most one request in flight.
+- No working-copy write waits for the writer on a thread that runs an event
+  loop. Bookkeeping that records a completed reflection or pull request is
+  written from a thread no write depends on.
+
+<!-- /planned-change:working-copy-writers-refused-database-locked -->
+
 - The working copy's reads never reach GitHub; only writes, rebuild and
   refresh do.
 
@@ -556,6 +581,41 @@ sequenceDiagram
   the bot's last version, makes its item unverifiable. Writes to the item
   refuse, and rebuild refuses store resolution naming the item. No working
   copy is ever published in its place.
+
+<!-- planned-change:working-copy-writers-refused-database-locked -->
+
+- A write holds the working copy's single writer from its first change until
+  its local commit, across the GitHub round trips the write path places before
+  that commit
+  (`local/projects/teleclaude/adr/0125-github-store-keeps-the-local-implementation-as-its-working-copy`).
+  Another write on the same computer that cannot gain the writer
+  within its connection's busy budget is refused with `database is locked`:
+  that operation fails and its change is lost, and on the API an unhandled
+  server error reaches the caller. Writers are ordered while they wait, but a
+  hold that outlasts the busy budget refuses them.
+- A synchronous reflection acknowledgement that waits for the writer stops the
+  event loop it runs on for its whole wait. A write that already holds the
+  writer and needs that loop to reach its commit cannot finish meanwhile, so
+  the acknowledgement's wait lengthens the very hold it is waiting on.
+
+<!-- change:working-copy-writers-refused-database-locked -->
+
+- A write holds the working copy's single writer from its first change until
+  its local commit, across the GitHub round trips the write path places before
+  that commit
+  (`local/projects/teleclaude/adr/0125-github-store-keeps-the-local-implementation-as-its-working-copy`).
+  A write that cannot gain the writer within the admission budget, behind
+  more than one holder or behind a write window whose work is not GitHub I/O,
+  is refused before it changes anything. On the API its caller receives the
+  explicit retryable refusal that nothing was written, never an unhandled
+  server error; a background operation records the refusal as its failure.
+- A transaction whose GitHub I/O outlasts the push deadline aborts its local
+  commit and refuses with the provider's unavailable cause, as any failed GitHub
+  write before the commit point does.
+- Bookkeeping refused for the writer after a completed reflection or pull
+  request leaves that reflection owed, and refresh writes it again.
+
+<!-- /planned-change:working-copy-writers-refused-database-locked -->
 
 - A role mapping that names no App for `builder` or `reviewer`, or an App not
   installed on the repository with pull request write access, leaves the

@@ -76,8 +76,9 @@ restart, then check the logs` is directive. One string reaching a human and an
   classifies the change when dispatching that review:
   - **A change to what agents are directed to do** — directive text, the
     process layer (`sdlc/policy/process-change-authority`) included — is
-    reviewed at full depth (`general/procedure/orchestration`). The dispatch's
-    additional context carries the intent no diff shows: the problem the
+    reviewed at full depth (`general/procedure/orchestration`). The dispatch
+    carries the intent no diff shows, in its additional context or in the
+    message that hands the series to a reviewer already open: the problem the
     change answers, the reader role whose behavior it changes and the behavior
     wanted from that role, the human's direction wherever it shaped the change,
     relayed faithfully, the alternatives the authoring context rejected, and

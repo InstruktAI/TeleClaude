@@ -339,6 +339,22 @@ The owed-assessment event states as subject the newest owed install — its
 number, revision and when it became owed — and states no origin: the
 installation belongs to no registered project, person, or company.
 
+### Governing designs and decisions
+
+- `local/projects/teleclaude/design/architecture/installation` — the installation, its releases and the install act
+- `local/projects/teleclaude/design/architecture/release-publication` — release candidates and their publication
+- `local/projects/teleclaude/design/architecture/home-repository` — the home's retained set and local-only history
+- `local/projects/teleclaude/adr/0024-reconciliation-bounded-context` — fleet convergence as its own context
+- `local/projects/teleclaude/adr/0025-two-layer-migration-model` — separating aggregate upcasting from schema migration
+- `local/projects/teleclaude/adr/0026-cross-version-fleet-compatibility` — interoperation across a multi-version fleet
+- `local/projects/teleclaude/adr/0041-agents-own-daemon-lifecycle-via-make` — agents operating the daemon lifecycle
+- `local/projects/teleclaude/adr/0083-retain-node-toolchain-for-non-frontend-tooling` — keeping the Node toolchain in the installer
+- `local/projects/teleclaude/adr/0124-maintenance-replaces-the-daemon-inside-a-stopped-window` — replacing the daemon inside a stopped window
+- `local/projects/teleclaude/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start` — serving-tolerant steps after the verified start
+- `local/projects/teleclaude/adr/0128-maintenance-actions-declare-serving-tolerance-per-action` — serving tolerance declared per maintenance action
+- `local/projects/teleclaude/adr/0129-overlays-can-declare-maintenance-actions-that-run-while-the-daemon-serves` — overlays declaring serving-tolerant maintenance actions
+- `local/projects/teleclaude/adr/0130-the-platform-runs-from-an-installation-not-its-project` — the platform running from an installation
+
 ## See Also
 
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered project, person, or company its act happened in.

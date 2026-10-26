@@ -228,6 +228,28 @@ implementation remain the current appliance contract.
   (its channel's activation contract); the shape of the CI declaration
   (`config`).
 
+### Governing designs and decisions
+
+- `local/projects/teleclaude/design/architecture/adapter-client` — the lifecycle of UI adapters and delivery across them
+- `local/projects/teleclaude/design/architecture/discord-voice-transport` — the Discord voice connection split between gateway and sidecar
+- `local/projects/teleclaude/design/architecture/hook-service` — routing relayed external events to registered handlers
+- `local/projects/teleclaude/design/architecture/outbox` — durable queuing of agent hook events
+- `local/projects/teleclaude/design/architecture/output-delivery` — how output and footer messages are separated and delivered
+- `local/projects/teleclaude/design/architecture/output-sizing` — fitting output to each platform's message limits
+- `local/projects/teleclaude/design/architecture/redis-transport` — cross-computer requests and peer discovery over Redis
+- `local/projects/teleclaude/design/architecture/telegram-adapter` — Telegram topics as session surfaces and their cleanup
+- `local/projects/teleclaude/design/architecture/ui-adapter` — how adapters translate input and render output
+- `local/projects/teleclaude/design/architecture/tts-system` — speech output backends, voices and playback
+- `local/projects/teleclaude/design/architecture/notification-delivery` — how people are told about events
+- `local/projects/teleclaude/adr/0012-master-only-shared-discord-channels` — provisioning shared Discord channels on the master only
+- `local/projects/teleclaude/adr/0028-single-lan-bound-ingress` — one ingress computer for external webhooks
+- `local/projects/teleclaude/adr/0032-cluster-bus-redis-serves-local-and-cluster` — one Redis serving local and cluster scopes
+- `local/projects/teleclaude/adr/0055-proxy-fronted-ingress-reuse` — the webhook ingress behind a same-host reverse proxy
+- `local/projects/teleclaude/adr/0063-core-resolves-admin-reflection-adapter-via-contract` — reaching the admin-reflection adapter through a capability contract
+- `local/projects/teleclaude/adr/0084-discord-voice-receive-runs-in-a-node-sidecar` — Discord voice reception in a Node sidecar
+- `local/projects/teleclaude/adr/0111-external-events-enter-as-ordinary-platform-events` — external requests entering as platform events
+- `local/projects/teleclaude/adr/0120-discord-is-never-a-customer-surface` — Discord as a members-only surface
+
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

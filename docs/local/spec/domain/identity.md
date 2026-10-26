@@ -120,6 +120,17 @@ TeleClaudeNext.
   consumer is the help desk's Discord surface
   (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`).
 
+### Governing designs and decisions
+
+- `local/projects/teleclaude/design/architecture/organizational-membership` — the company roster and its resolution
+- `local/projects/teleclaude/design/architecture/scoped-roles` — person roles held at a scope
+- `local/projects/teleclaude/design/cli-authorization-matrix` — which roles and bands may run each command
+- `local/projects/teleclaude/design/architecture/local-caller-attestation` — the withdrawn local caller attestation design
+- `local/projects/teleclaude/adr/0093-bind-mcp-credentials-to-verified-owner` — binding personal MCP credentials to the verified owner
+- `local/projects/teleclaude/adr/0097-involvement-is-observed-not-adjudicated` — the involvement record resolved from observed input
+- `local/projects/teleclaude/adr/0101-clients-authorize-and-the-daemon-trusts-carried-identity` — clients authorizing their caller and the daemon trusting carried identity
+- `local/projects/teleclaude/adr/0103-person-roles-are-one-vocabulary-held-at-a-scope` — one person-role vocabulary held at a scope
+
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

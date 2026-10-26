@@ -121,6 +121,50 @@ concerned:
 - the schedule clock's minute tick: the computer whose clock ticked, with no
   origin.
 
+### Governing designs and decisions
+
+- `local/projects/teleclaude/design/architecture/integration-state-machine` — integrating finished work into canonical main
+- `local/projects/teleclaude/design/architecture/lifecycle-state-machines` — the three machines that drive the lifecycle
+- `local/projects/teleclaude/design/architecture/next-machine` — the stateless orchestration machine
+- `local/projects/teleclaude/design/architecture/prepare-flow` — the prepare phase from intent to prepared
+- `local/projects/teleclaude/design/architecture/work-state-machine` — build, review, fix and finalize routing
+- `local/projects/teleclaude/design/architecture/workflow-store` — the workflow store port and its local and GitHub adapters
+- `local/projects/teleclaude/adr/0001-git-stash-prevention` — keeping test runs from leaving git stash entries
+- `local/projects/teleclaude/adr/0015-kind-as-lifecycle-entry-point` — a kind as the lifecycle entry point
+- `local/projects/teleclaude/adr/0017-review-lanes-as-dod-anchored-shared-group` — review lanes as one shared catalog
+- `local/projects/teleclaude/adr/0019-bug-lane-diagnosis-gate` — the bug lane's diagnosis gate
+- `local/projects/teleclaude/adr/0020-upstream-how-is-a-hypothesis-not-a-gate` — upstream mechanism as a hypothesis for the consuming author
+- `local/projects/teleclaude/adr/0021-remove-reconcile-and-mark-phase` — removal of reconcile and mark-phase
+- `local/projects/teleclaude/adr/0035-active-runner-driver-ownership` — durable ownership of a todo's lifecycle driver
+- `local/projects/teleclaude/adr/0036-manual-close-is-an-explicit-halt` — a manual close halting its todo
+- `local/projects/teleclaude/adr/0042-task-lane-decoupled-recurring-self-bookkeeping` — the task lane outside the prepare machine
+- `local/projects/teleclaude/adr/0046-spec-anchored-testing` — spec-anchored testing
+- `local/projects/teleclaude/adr/0048-diagnosis-records-cause-not-fix` — diagnosis recording the cause, not the fix
+- `local/projects/teleclaude/adr/0051-task-run-is-persistent` — task runs as persistent sessions
+- `local/projects/teleclaude/adr/0052-orchestrator-dedup-registry-authoritative` — orchestrator dedup through the registry
+- `local/projects/teleclaude/adr/0053-hold-scoped-to-autostart-enabled-kinds` — hold limited to autostart-enabled kinds
+- `local/projects/teleclaude/adr/0056-roleless-sessions-exempt-from-prepare-write-role-gate` — roleless sessions writing prepare artifacts
+- `local/projects/teleclaude/adr/0057-spec-coverage-enforcement-by-review` — spec coverage enforced by review
+- `local/projects/teleclaude/adr/0060-task-firing-outcome-contract` — task firings reporting a durable outcome
+- `local/projects/teleclaude/adr/0061-hold-is-durable-dispatch-brake` — hold as the durable dispatch brake
+- `local/projects/teleclaude/adr/0063-task-runs-are-ephemeral` — task firings as ephemeral runs
+- `local/projects/teleclaude/adr/0065-integrator-parks-and-drains-with-integrity-only-gating` — the integrator's park-and-drain delivery
+- `local/projects/teleclaude/adr/0067-authorization-reads-the-object-not-the-caller-role` — todo and artifact authorization read from the object
+- `local/projects/teleclaude/adr/0075-cutover-bearing-delivery-is-not-partitioned` — delivering a cutover-bearing rework unpartitioned
+- `local/projects/teleclaude/adr/0076-integrator-parks-blockers-and-keeps-quality-gating` — the integrator parking blockers while keeping quality gating
+- `local/projects/teleclaude/adr/0078-remove-time-bound-dispatch-reservations` — dispatch recording ownership without time-bound reservations
+- `local/projects/teleclaude/adr/0081-commit-scope-is-the-sole-foreign-ownership-predicate` — commit scope as the only foreign-ownership predicate
+- `local/projects/teleclaude/adr/0082-candidate-span-ownership-inspection-is-withdrawn` — withdrawal of span-ownership inspection
+- `local/projects/teleclaude/adr/0085-canonical-doc-state-before-delivery` — publishing canonical documentation state before candidate selection
+- `local/projects/teleclaude/adr/0089-delivery-folds-on-repository-root-main` — repository-root main as the fold and push surface
+- `local/projects/teleclaude/adr/0090-root-fold-finalizes-a-pushed-candidate` — finalizing a pushed candidate by folding root main
+- `local/projects/teleclaude/adr/0091-published-candidate-finalization-blocks-the-drain` — blocking the drain on an unresolved published candidate
+- `local/projects/teleclaude/adr/0092-divergence-detection-belongs-to-the-acting-role` — marker-divergence detection inside the repairing role
+- `local/projects/teleclaude/adr/0096-claimed-todo-artifacts-are-writable-only-by-the-claiming-group` — claimed artifacts writable only by the claiming group
+- `local/projects/teleclaude/adr/0104-every-todo-is-created-with-its-kind` — every todo created with its kind
+- `local/projects/teleclaude/adr/0125-github-store-keeps-the-local-implementation-as-its-working-copy` — the GitHub store's working copy and push before local commit
+- `local/projects/teleclaude/adr/0126-non-repository-work-stays-in-the-github-store-working-copy` — non-repository work kept in the GitHub store's working copy
+
 ## See Also
 
 - docs/local/spec/feature/workflow/blueprint-freshness.md —

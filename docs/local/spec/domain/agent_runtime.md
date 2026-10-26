@@ -185,6 +185,51 @@ it worked in, and the event's type states what kind of session ended: a
 help-desk conversation, a person's own conversation, a session the platform or
 another session started, or a session whose record establishes none of these.
 
+### Governing designs and decisions
+
+- `local/projects/teleclaude/design/architecture/agent-dispatch` — which agent a fresh session runs, decided at one runtime boundary
+- `local/projects/teleclaude/design/architecture/ai-to-ai-dispatch` — how a session starts, watches and is told about the sessions it dispatches
+- `local/projects/teleclaude/design/architecture/checkpoint-system` — the debrief prompts a session receives at turn boundaries
+- `local/projects/teleclaude/design/architecture/conversation-delivery` — how turns become conversation entries, with their authorship and per-surface generations
+- `local/projects/teleclaude/design/architecture/daemon` — what the daemon process runs and supervises
+- `local/projects/teleclaude/design/architecture/help-desk-platform` — help-desk entry, the session bound to a conversation, and the desk's documentation depth
+- `local/projects/teleclaude/design/architecture/jobs-runner` — the run lifecycle of scheduled jobs and the job contract
+- `local/projects/teleclaude/design/architecture/model-launch-resolution` — which model a launched agent process gets
+- `local/projects/teleclaude/design/architecture/reminder-service` — session reminders: their record, schedule and firing
+- `local/projects/teleclaude/design/architecture/session-lifecycle` — a session's states from creation to cleanup
+- `local/projects/teleclaude/design/architecture/session-listeners` — who is told when a watched session changes state
+- `local/projects/teleclaude/design/architecture/tmux-management` — the terminal host a session runs in and how input reaches it
+- `local/projects/teleclaude/design/architecture/output-polling` — how a session's terminal output is captured
+- `local/projects/teleclaude/design/architecture/mcp-registry-resolution` — which MCP servers a session can reach, resolved per project
+- `local/projects/teleclaude/design/code-commit` — the sealed commit command and its scope
+- `local/projects/teleclaude/design/process-lifecycle` — reaping of leaked processes and the spawn registry
+- `local/projects/teleclaude/adr/0018-typed-in-messages-are-first-class-turns` — which inputs count as a session turn
+- `local/projects/teleclaude/adr/0037-checkpoint-ledger-separates-commit-detection` — how the commit checkpoint detects committed code
+- `local/projects/teleclaude/adr/0038-companion-drift-caught-at-checkpoint` — catching companion-snippet drift at the checkpoint
+- `local/projects/teleclaude/adr/0039-guardrails-locked-no-config` — guardrails as a locked engine without per-project quality settings
+- `local/projects/teleclaude/adr/0040-guardrails-teleclaude-owned-slimmed` — guardrails' ownership and their substantive scope
+- `local/projects/teleclaude/adr/0043-checkpoint-obligations-discharge-on-evidence` — checkpoint obligations discharged by evidence
+- `local/projects/teleclaude/adr/0047-commit-gates-in-process-no-stash` — commit gates run in process, never through a stash
+- `local/projects/teleclaude/adr/0049-recurring-ticks-via-in-daemon-loop` — recurring job ticks emitted from inside the daemon
+- `local/projects/teleclaude/adr/0050-restore-declarative-test-budgets` — the declarative test time budgets
+- `local/projects/teleclaude/adr/0064-runner-reaps-process-group-on-normal-exit` — the test and lint runner reaping its process group
+- `local/projects/teleclaude/adr/0066-checkpoint-location-axis-in-config-semantics-in-engine` — where a checkpoint action runs, declared per action
+- `local/projects/teleclaude/adr/0070-clean-working-tree-floors-the-commit-action-checkpoint` — a clean working tree suppressing the commit checkpoint
+- `local/projects/teleclaude/adr/0071-agents-author-their-own-commits` — commit authorship naming the agent that did the work
+- `local/projects/teleclaude/adr/0072-commit-author-field-and-session-trailer` — the author field and session trailer the commit surface stamps
+- `local/projects/teleclaude/adr/0073-human-involved-is-declared-not-derived` — the human-involvement commit footer as the agent's declaration
+- `local/projects/teleclaude/adr/0079-external-session-roots-are-enrolled-not-derived` — how an externally hosted session's process is bound to it
+- `local/projects/teleclaude/adr/0086-checkpoint-failures-do-not-invent-work` — checkpoint failures blocking only on established actions
+- `local/projects/teleclaude/adr/0087-mechanical-maintenance-executes-in-a-hook` — mechanical maintenance running in the post-commit hook
+- `local/projects/teleclaude/adr/0100-commit-maintenance-drains-after-hook-return` — Git returning before commit maintenance completes
+- `local/projects/teleclaude/adr/0102-a-telec-wrapper-runs-the-checkout-it-belongs-to` — which checkout's code a telec invocation runs
+- `local/projects/teleclaude/adr/0108-the-git-pre-commit-hook-is-the-only-commit-gate` — the pre-commit hook as the only commit gate
+- `local/projects/teleclaude/adr/0112-deepseek-fit-judges-runtime-requirements-only` — how DeepSeek runtime fit is judged
+- `local/projects/teleclaude/adr/0113-commit-authors-discard-review-candidates` — the author deciding whether a commit owes review
+- `local/projects/teleclaude/adr/0123-procedures-are-entrypoints-and-roles-are-explicit-capability-sets` — procedures as session entry points, with roles as explicit capability sets
+- `local/projects/teleclaude/adr/0132-an-assignment-carries-only-the-inputs-its-caller-supplied` — an assignment carrying only its caller's inputs
+- `local/projects/teleclaude/adr/0033-doc-only-commits-require-independent-review` — doc-only commits owing an independent review
+
 ## See Also
 
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered project, person, or company its act happened in.

@@ -147,6 +147,22 @@ any location.
 
 - **documentation-layout-convergence** — `docs/local/spec/feature/context/documentation-layout-convergence.md` — converging every registered repository on every computer to the documentation layout, one verified commit per repository
 
+### Governing designs and decisions
+
+- `local/projects/teleclaude/design/architecture/agent-artifact-distribution` — how skill packages are validated and published
+- `local/projects/teleclaude/design/architecture/context-index` — generating the snippet catalogs
+- `local/projects/teleclaude/design/architecture/context-selection` — selecting docs for retrieval
+- `local/projects/teleclaude/adr/0016-graphify-as-codebase-blueprint-engine` — Graphify as the codebase blueprint engine
+- `local/projects/teleclaude/adr/0023-index-as-single-source-of-truth-for-snippet-metadata` — the index as the source of snippet metadata
+- `local/projects/teleclaude/adr/0029-doc-snippet-bodies-state-present-contract` — snippet bodies stating present contract only
+- `local/projects/teleclaude/adr/0058-adr-status-supersession` — ADR status supersession
+- `local/projects/teleclaude/adr/0059-domain-publication-and-universal-awareness` — domain publication and universal awareness
+- `local/projects/teleclaude/adr/0088-deployment-happens-at-the-commit-boundary` — deployment of docs and artifacts at the commit boundary
+- `local/projects/teleclaude/adr/0094-publication-activates-from-recorded-commits` — publication only from recorded commits
+- `local/projects/teleclaude/adr/0106-a-homes-local-half-is-its-own-identity-namespace` — a home's local half as its own identity namespace
+- `local/projects/teleclaude/adr/0107-a-persons-local-half-is-owner-only` — a person's local half readable by its owner only
+- `local/projects/teleclaude/adr/0131-the-platforms-documentation-publishes-from-its-project-commits` — platform docs publishing from project commits
+
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md
