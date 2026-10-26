@@ -153,7 +153,7 @@ How the store maps onto the repository is owned by
   and a turn too large for one comment continues in the next. Before a turn is
   written, every secret the platform holds is masked, and credential-like
   strings and personal data are removed as far as detection recognizes them;
-  a turn whose masking or detection cannot complete appears only as
+  a turn whose content cannot be read, masked or checked appears only as
   `[session:<id> role:<role> action:turn turn:<n> withheld]`, with no content.
   The conversation is never part of the record, and writing it never holds up
   a session.
