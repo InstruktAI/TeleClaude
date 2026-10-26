@@ -435,7 +435,7 @@ class GitHubWorkflowIO:
                 found.extend(
                     GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
                     for issue in issues
-                    if getattr(issue, GitHubField.PULL_REQUEST, None) is None
+                    if getattr(issue, GitHubField.PULL_REQUEST, UNSET) in (None, UNSET)
                 )
                 if len(issues) < _PAGE_SIZE:
                     return tuple(found)
