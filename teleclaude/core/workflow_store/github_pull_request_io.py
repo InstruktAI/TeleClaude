@@ -18,7 +18,7 @@ from teleclaude.core.workflow_store.github_io_models import (
     GitHubRepositoryScope,
     GitHubReview,
 )
-from teleclaude.core.workflow_store.github_io_runtime import shared_github_io_loop
+from teleclaude.core.workflow_store.github_io_runtime import run_serialized_unit, shared_github_io_loop
 from teleclaude.core.workflow_store.github_io_transport import (
     GitHubIOFailure,
     GitHubIORefused,
@@ -31,9 +31,6 @@ _PAGE_SIZE = 100
 _REPOSITORY_SEPARATOR = "/"
 _HEAD_TEMPLATE = "{owner}:{branch}"
 _EMPTY = ""
-_LOCK_WAIT_SECONDS = 30.0
-_UNIT_SECONDS = 180.0
-_LOCK_WAIT_DETAIL = "request lock wait exceeded"
 _UNIT_DETAIL = "pull request unit exceeded its time bound"
 _PULL_REQUEST_PERMISSIONS: AppPermissionsType = {"pull_requests": "write"}
 _Result = TypeVar("_Result")
@@ -108,20 +105,7 @@ class GitHubPullRequestIO:
         return shared_github_io_loop().submit(self._serialized(work))
 
     async def _serialized(self, work: Callable[[GitHubPullRequestIO], Awaitable[_Result]]) -> _Result:
-        io_loop = shared_github_io_loop()
-        if io_loop.request_lock is None:
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
-        try:
-            await asyncio.wait_for(io_loop.request_lock.acquire(), _LOCK_WAIT_SECONDS)
-        except TimeoutError:
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_LOCK_WAIT_DETAIL) from None
-        try:
-            async with asyncio.timeout(_UNIT_SECONDS):
-                return await work(self)
-        except TimeoutError:
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_UNIT_DETAIL) from None
-        finally:
-            io_loop.request_lock.release()
+        return await run_serialized_unit(lambda: work(self), unit_detail=_UNIT_DETAIL)
 
     async def reviewer_login(self) -> str:
         """Return the login the reviewer App's reviews are authored under."""
