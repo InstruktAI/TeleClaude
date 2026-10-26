@@ -22,7 +22,7 @@ import yaml
 
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.reconciliation.install_act import InstallStatus
-from tools.ci.terminal import CommandResult, PersistentTerminal
+from tools.ci.terminal import CommandResult, PersistentTerminal, TerminalFailure
 
 from .probes import TELEC_RELATIVE_PATH, ProbeFailure, run_role_and_identity_probes
 
@@ -103,6 +103,7 @@ _OUTPUT_CAPTURE_FAILED = "Could not save command output: {error}"
 _STEP_RESULT_DETAIL = "command exited with code {exit_code}"
 _EXPECTED_TEXT_DETAIL_FORMAT = "{detail}, expected output did not include {expected!r}"
 _EXIT_DETAIL_FORMAT = "exit={actual}, expected={expected}"
+_TERMINAL_FAILURE_DETAIL = "terminal failure: {reason}"
 _STEP_PASSED = "[PASS] {name}"
 _STEP_FAILED = "[FAIL] {name}: {detail}"
 _STEP_INFORMATION = "[INFO] {name}: {detail}"
@@ -595,17 +596,39 @@ class BootstrapHarness:
         return release
 
     def _start_and_check_health(self) -> None:
-        self.run_command(
-            _STATUS_START,
-            [_MAKE_BINARY, _MAKE_CHANGE_DIRECTORY_OPTION, str(self._project_checkout), _START_TARGET],
-            _DAEMON_COMMAND_TIMEOUT_SECONDS,
-        )
-        self.run_command(
-            _STATUS_HEALTH,
-            [_MAKE_BINARY, _MAKE_CHANGE_DIRECTORY_OPTION, str(self._project_checkout), _STATUS_TARGET],
-            _DAEMON_COMMAND_TIMEOUT_SECONDS,
-            expected_text=_HEALTHY_STATUS_TOKEN,
-        )
+        # The start command clears its caller before dispatch; on a real terminal that caller is the
+        # sole registered owner, which the generic background path cannot present.
+        with self.terminal(_DAEMON_COMMAND_TIMEOUT_SECONDS) as terminal:
+            self._record_terminal_step(
+                terminal,
+                _STATUS_START,
+                [_MAKE_BINARY, _MAKE_CHANGE_DIRECTORY_OPTION, str(self._project_checkout), _START_TARGET],
+            )
+            self._record_terminal_step(
+                terminal,
+                _STATUS_HEALTH,
+                [_MAKE_BINARY, _MAKE_CHANGE_DIRECTORY_OPTION, str(self._project_checkout), _STATUS_TARGET],
+                expected_text=_HEALTHY_STATUS_TOKEN,
+            )
+
+    def _record_terminal_step(
+        self,
+        terminal: PersistentTerminal,
+        name: str,
+        command: Sequence[str],
+        *,
+        expected_text: str | None = None,
+    ) -> None:
+        # A terminal that fails to return a bounded result keeps the partial output `_capture` gives a timed-out
+        # step, and the failure record names the terminal's reason.
+        try:
+            result = terminal.run(command)
+        except TerminalFailure as exc:
+            detail = _TERMINAL_FAILURE_DETAIL.format(reason=exc)
+            self._save_output(name, exc.output)
+            self._record_verdict(name, False, detail)
+            raise HarnessFailure(detail) from exc
+        self.record_terminal_result(name, result, expected_text=expected_text)
 
     def _admin_readiness_probes(self, owner_seed: OwnerSeed) -> None:
         telec = str(self._home / TELEC_RELATIVE_PATH)
