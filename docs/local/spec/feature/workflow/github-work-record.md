@@ -44,10 +44,25 @@ How the store maps onto the repository is owned by
   appears on GitHub, and an issue it already has is closed as not planned. An
   item that becomes repository work later appears on GitHub from then on, with
   its full history.
+
+<!-- planned-change:github-item-acts -->
+
 - **One issue per item:** each work item is an issue the platform App opened.
   Its title is the first meaningful heading of the item's current input, or
   the item's slug when the input has none. Its body is the item's current
   input without the generated `<slug> — Input` heading.
+
+<!-- change:github-item-acts -->
+
+- **One issue per item:** each work item is an issue the platform App opened.
+  Its title is the title a person last gave it
+  (`local/projects/teleclaude/spec/feature/integration/github-work-control`),
+  otherwise the first meaningful heading of the item's current input, or the
+  item's slug when the input has none. Its body is the item's current input
+  without the generated `<slug> — Input` heading.
+
+<!-- /planned-change:github-item-acts -->
+
 - **Kind:** the issue type is Feature, Change or Bug, following the item's
   kind. A group holder has no type.
 - **Groups:** a group holder's members are its sub-issues. There is no group
@@ -179,6 +194,8 @@ How the store maps onto the repository is owned by
 
 <!-- /planned:github-turn-mirror -->
 
+<!-- planned-change:github-item-acts -->
+
 - **Authority:** only what the platform's Apps write is the record. Labels,
   titles, bodies, types, relations, assignments, reviews, merges, comments and
   edits by anyone else are visible on GitHub but never change the workflow, and
@@ -187,9 +204,27 @@ How the store maps onto the repository is owned by
   (`local/projects/teleclaude/spec/feature/integration/github-comment-routing`);
   the work changes only through that session.
 
+<!-- change:github-item-acts -->
+
+- **Authority:** only what the platform's Apps write is the record. A
+  configured person's change to an item's title, open state, platform labels,
+  issue type, sub-issues or blocked-by relations is taken as the workflow act
+  it stands for, and any other change to those fields is put back with a
+  comment saying why
+  (`local/projects/teleclaude/spec/feature/integration/github-work-control`).
+  Bodies, assignments, reviews, merges, comments and edits by anyone else are
+  visible on GitHub but never change the workflow, and the platform sets its
+  own values again. A configured collaborator's comment or review reaches the
+  session working the item as their message
+  (`local/projects/teleclaude/spec/feature/integration/github-comment-routing`).
+
+<!-- /planned-change:github-item-acts -->
+
 ### Use cases
 
 #### UC-GWR1: Follow a work item from intent to delivered commit
+
+<!-- planned-change:github-item-acts -->
 
 ```gherkin
 Scenario: A collaborator reads a delivered item on GitHub
@@ -206,6 +241,26 @@ Scenario: An edit by someone else does not change the work
   When someone other than the platform App edits the issue body or changes its labels
   Then the workflow continues from the record the platform App wrote
 ```
+
+<!-- change:github-item-acts -->
+
+```gherkin
+Scenario: A collaborator reads a delivered item on GitHub
+  Given a project whose workflow store is GitHub
+  And a work item was created, prepared, built, reviewed and delivered there
+  When a collaborator with repository access opens the item's issue on GitHub
+  Then they read the item's intent in the issue body
+  And they read every artifact version in the order it was written
+  And they see the stage changes as label events on the issue timeline
+  And the closed issue names the commit that delivered the item
+
+Scenario: An edit by someone else does not change the work
+  Given a work item in progress on a GitHub-backed project
+  When someone whose changes do not count edits the issue body or changes its labels
+  Then the workflow continues from the record the platform App wrote
+```
+
+<!-- /planned-change:github-item-acts -->
 
 #### UC-GWR2: See where the work stands and what waits for me
 
