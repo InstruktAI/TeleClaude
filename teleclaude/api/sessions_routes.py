@@ -102,6 +102,7 @@ from teleclaude.core.session_links import (
 from teleclaude.core.session_listeners import (
     register_listener,
 )
+from teleclaude.core.session_status import is_session_final
 from teleclaude.core.session_status import is_session_terminal as _terminal
 from teleclaude.core.session_utils import resolve_working_dir
 
@@ -613,7 +614,7 @@ async def end_session(
             logger.error("Manual session close hold interlock failed for %s", session_id, exc_info=True)
 
     try:
-        if session.closed_at or session.lifecycle_status == "closed":
+        if is_session_final(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
             response = JSONResponse(
                 status_code=200,
                 content={
