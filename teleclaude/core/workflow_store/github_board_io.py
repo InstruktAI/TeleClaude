@@ -55,6 +55,9 @@ _LIST_PROJECTS = """query($id:ID!, $cursor:String) {
     }
   } }
 }"""
+_READ_PROJECT = """query($login:String!, $number:Int!) {
+  organization(login:$login) { projectV2(number:$number) { id number title } }
+}"""
 _CREATE_PROJECT = """mutation($ownerId:ID!, $title:String!) {
   createProjectV2(input:{ownerId:$ownerId, title:$title}) { projectV2 { id number title } }
 }"""
@@ -115,6 +118,7 @@ class GitHubBoardOperation(StrEnum):
 
     READ_OWNER = "read_owner"
     LIST_PROJECTS = "list_projects"
+    READ_PROJECT = "read_project"
     CREATE_PROJECT = "create_project"
     READ_BOARD = "read_board"
     UPDATE_README = "update_readme"
@@ -167,6 +171,8 @@ class _Key(StrEnum):
     NAME = "name"
     ID = "id"
     CURSOR = "cursor"
+    ORGANIZATION = "organization"
+    PROJECT_BY_NUMBER = "projectV2"
     NODE = "node"
     NODES = "nodes"
     REPOSITORY = "repository"
@@ -343,6 +349,19 @@ class GitHubBoardIO:
             if not isinstance(next_cursor, str) or next_cursor == cursor:
                 raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_MALFORMED_RESPONSE)
             cursor = next_cursor
+
+    async def find_project_by_number(self, login: str, number: int) -> GitHubBoardProject | None:
+        """Read the organization's project with this number; None when GitHub has no such project."""
+        try:
+            data = await self._graphql(
+                GitHubBoardOperation.READ_PROJECT, _READ_PROJECT, {_Key.LOGIN: login, _Key.NUMBER: number}
+            )
+        except GitHubIORefused as refused:
+            if refused.reason is GitHubIOFailure.NOT_FOUND:
+                return None
+            raise
+        project = _mapping(data.get(_Key.ORGANIZATION)).get(_Key.PROJECT_BY_NUMBER)
+        return _project(_mapping(project)) if project is not None else None
 
     async def create_project(self, owner_id: str, title: str) -> GitHubBoardProject:
         """Create the organization project; the title is set in this request so a rerun can find it."""

@@ -38,6 +38,7 @@ class GitHubIssue:
     creator: str
     updated_at: datetime | None
     body: str = ""
+    closed: bool = False
 
 
 @dataclass(frozen=True)

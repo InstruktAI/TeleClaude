@@ -26,7 +26,12 @@ from teleclaude.core.workflow_store.github_io_transport import (
     int_argument,
     split_repository,
 )
-from teleclaude.core.workflow_store.github_reflection import ISSUE_FIELD_PARTS, IssueReflection, ProjectionPart
+from teleclaude.core.workflow_store.github_reflection import (
+    ISSUE_FIELD_PARTS,
+    IssueReflection,
+    IssueState,
+    ProjectionPart,
+)
 from teleclaude.types.github_account import GitHubAccountKind, github_app_bot_login
 from teleclaude.types.github_binding import GitHubActorAssignment
 
@@ -817,6 +822,7 @@ def _github_issue(issue: Any) -> GitHubIssue:
         issue.user.login,
         issue.updated_at,
         issue.body if isinstance(issue.body, str) else _EMPTY,
+        issue.state == IssueState.CLOSED,
     )
 
 
