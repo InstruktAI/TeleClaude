@@ -138,5 +138,5 @@ And no company membership was required for it to exist
 
 ## See Also
 
-- docs/local/spec/feature/agent_runtime/procedure-standing-agent.md — the company is one of the two facts identifying a procedure's continuing agent.
+- docs/local/spec/feature/agent_runtime/procedure-standing-agent.md — a company home is one of the homes a procedure's continuing agent answers; a session's company never identifies that agent.
 - docs/local/spec/feature/identity/whoami-resolution.md — the surface through which a tool inside a session reads this context.

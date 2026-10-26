@@ -106,7 +106,9 @@ rule it relies on is stated by its owner:
   agent and a later event about that subject reaches the same one. A company, a
   person, and a project that share a slug are three different homes. The
   declared patterns are membership only, so overlapping patterns never merge
-  procedures and editing them never forks a second agent. The principal is not
+  procedures and editing them never forks a second agent. A session is
+  recognized as a home's agent by the procedure it runs and the home's folder;
+  its company never identifies the home. The principal is not
   an identity dimension: every event-started agent runs under the same system
   principal.
 
@@ -121,8 +123,9 @@ rule it relies on is stated by its owner:
   emitting computer, the runner's resolve-or-create is serialized per procedure
   and home. It wakes a session already running the procedure for the home under
   the system principal when it finds one or more, and starts one only when it
-  finds none; a human-lineage session is never adopted. Starting a
-  company-home agent by hand is never refused.
+  finds none; a human-lineage session is never adopted. Starting an agent by
+  hand takes the same serialization and reaches the same agent
+  (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-standing-agent`).
   For a procedure declaring subject identity, it delivers to the session it
   bound to the subject when that session is open, revives it when it has closed
   and can resume its own transcript, and starts a bound one only when neither

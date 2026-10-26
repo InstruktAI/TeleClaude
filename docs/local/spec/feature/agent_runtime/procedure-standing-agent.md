@@ -49,8 +49,13 @@ A standing agent is a session, so it lives on one computer. Activations arrive
 only on the computer that emitted the event, and there the activation runner
 wakes a session already running the procedure for that home under the system
 principal when it finds one or more, and starts one only when it finds none.
-That is the runner's own behavior: nothing restricts starting such an agent by
-hand, and nothing coordinates computers.
+Starting a procedure's agent by hand reaches that same agent. The home is the
+procedure's own: `--company` names it only for a procedure answering company
+homes, a procedure its tier limits answers that tier's home, and otherwise the
+home is the one of the procedure's kind that the invoking folder belongs to, or
+the platform. The start takes the runner's serialization, starts the agent in
+the home's folder when none stands, and is refused, naming the standing agent,
+when one does. Nothing coordinates computers.
 
 For a procedure that declares subject identity, the runner finds the session it
 started for the procedure, the home and the event's subject on that computer,
@@ -67,7 +72,9 @@ reaches the agent no second time, within the records the platform retains.
 Existing sessions are reused only when they already run the same procedure for
 the home under the system principal; a human-lineage session is never adopted
 as a standing agent. Concurrent first activations for one agent identity still
-establish one continuing session.
+establish one continuing session. A session is recognized as a home's agent by
+the procedure it runs and the home folder it works in; its company is business
+context and never identifies the home.
 
 A standing agent is an ordinary scoped session. Standing confers no platform
 role authority: it is not the integrator, the project coordinator, or a job
@@ -119,9 +126,9 @@ person's folder carries no human identity and acts as no person.
 
 #### UC-PSA9: An activation that cannot be fulfilled is observable as a failure
 
-#### UC-PSA10: A system-origin session already running the procedure for the company counts as standing
+#### UC-PSA10: A system-origin session already running the procedure for the home counts as standing
 
-#### UC-PSA11: Starting an agent by hand is never refused
+#### UC-PSA11: Starting an agent by hand reaches its home's one agent
 
 #### UC-PSA12: A human-lineage session running the procedure is not adopted
 
@@ -182,8 +189,10 @@ person's folder carries no human identity and acts as no person.
   when a later event about its subject arrives. Workers an agent dispatches are
   a separate, bounded source of concurrency.
 
-- Starting a standing agent by hand is available for a company home only; a
-  person-, project-, or platform-home agent is started by an activation.
+- Starting a standing agent by hand names its home with `--company` only for a
+  procedure answering company homes; any other home is the one the invoking
+  folder belongs to, so starting a person- or project-home agent by hand runs
+  from that home's folder.
 - A repeated activation is recognized only while the platform retains its
   delivery record.
 

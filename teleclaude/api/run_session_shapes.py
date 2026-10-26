@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from teleclaude.core.models import SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._adapter import TerminalOriginMetadata
+from teleclaude.types.activation_home import ActivationHome
 
 
 @dataclass(frozen=True)
@@ -20,3 +21,6 @@ class RunSessionPlan:
     working_slug: str | None
     entry_point: SessionEntryPoint
     session_id: str
+    project_path: str
+    subfolder: str | None
+    activation_home: ActivationHome | None

@@ -81,6 +81,7 @@ from teleclaude.core.next_machine.lanes import WORKTREE_BOUND_PROCEDURES
 from teleclaude.core.next_machine.manual_start import DriverStartGuardResult
 from teleclaude.core.operations.service import get_operations_service
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.procedure_activation_runner import home_agent_guard, standing_home_agent
 from teleclaude.core.procedure_entry import (
     EntryContext,
     EntryRefusal,
@@ -96,6 +97,7 @@ from teleclaude.core.session_message_projection import (
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.project_manifest_runtime import load_registered_entries
+from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.commands import (
     CreateSessionCommand,
     HandoffAgentCommand,
@@ -112,6 +114,9 @@ from teleclaude.types.commands import SystemCommand
 logger = get_logger(__name__)
 COMMAND_PREFIX = "/"
 _ESCALATE_NOTIFIED_KEY = "notified"
+_HOME_AGENT_STANDING_TEMPLATE = (
+    "{procedure_id} already has its agent for {home}: session {session_id}; message it with telec sessions send"
+)
 _ESCALATE_WARNING_KEY = "warning"
 
 _STATE = SimpleNamespace(client=None)
@@ -258,22 +263,26 @@ def _prepare_run_session(
     caller_mode = ThinkingMode(request.thinking_mode) if request.thinking_mode is not None else None
     entry = EntryContext()
     company = request.company
+    project_path = request.project
+    subfolder: str | None = request.subfolder or None
+    activation_home: ActivationHome | None = None
     if request.job is not None:
         agents, job_mode, job_name, procedure_token = normalize_job_run_request(request, identity)
         entry = job_entry(job_name, agents, ThinkingMode(job_mode.value))
         entry_point = SessionEntryPoint.CRON
     else:
         procedure_token = request.command
-        activation = manual_activation(request, procedure_token, identity)
+        activation = manual_activation(request, procedure_token)
         if activation is not None:
-            entry, company = activation.entry, activation.company
+            entry, company, activation_home = activation.entry, activation.home.company, activation.home
+            project_path, subfolder = str(activation.folder), None
             entry_point = SessionEntryPoint.PROCEDURE_ACTIVATION
     session_id = str(uuid.uuid4())
     try:
         resolved = resolve_entry(
             procedure_token=procedure_token,
             arguments=request.args,
-            project_root=Path(request.project),
+            project_root=Path(project_path),
             caller=resolve_session_role(identity.role, identity.session_id),
             entry=entry,
             caller_mode=caller_mode,
@@ -321,6 +330,9 @@ def _prepare_run_session(
         working_slug=resolved.working_slug,
         entry_point=entry_point,
         session_id=session_id,
+        project_path=project_path,
+        subfolder=subfolder,
+        activation_home=activation_home,
     )
 
 
@@ -598,9 +610,42 @@ async def _run_session(
         )
         raise refusal from exc
 
+    if plan.activation_home is None:
+        return await _create_planned_session(request, identity, plan, dispatch_mode, request_id)
+    async with home_agent_guard(plan.command, plan.activation_home):
+        standing = await standing_home_agent(plan.command, plan.activation_home)
+        if standing is not None:
+            emit_run_outcome(
+                selected_agent=None,
+                request_id=request_id,
+                entry_point=plan.entry_point,
+                dispatch_mode=dispatch_mode,
+                outcome=run_refusal_outcome(AgentDispatchReason.RUN_REQUEST_REJECTED),
+                reason=AgentDispatchReason.RUN_REQUEST_REJECTED,
+            )
+            raise RunSessionRefusal(
+                status_code=409,
+                detail=_HOME_AGENT_STANDING_TEMPLATE.format(
+                    procedure_id=plan.command,
+                    home=plan.activation_home.to_token(),
+                    session_id=standing.session_id,
+                ),
+                reason=AgentDispatchReason.RUN_REQUEST_REJECTED,
+            )
+        return await _create_planned_session(request, identity, plan, dispatch_mode, request_id)
+
+
+async def _create_planned_session(
+    request: RunSessionRequest,
+    identity: CallerIdentity,
+    plan: RunSessionPlan,
+    dispatch_mode: AgentDispatchMode,
+    request_id: str,
+) -> CreateSessionResponseDTO:
+    """Create the planned session and present its routing outcome."""
     metadata = _build_metadata(
-        project_path=request.project,
-        subdir=request.subfolder or None,
+        project_path=plan.project_path,
+        subdir=plan.subfolder,
         origin_metadata=plan.origin_metadata,
         role=plan.role,
         job=plan.job,
@@ -628,7 +673,7 @@ async def _run_session(
             cmd.launch_intent.accepted_at_origin = True
     try:
         guard_result = await enforce_driver_start_guard(
-            project_path=request.project,
+            project_path=plan.project_path,
             working_slug=plan.working_slug,
             procedure_id=plan.command,
             role=plan.role,
