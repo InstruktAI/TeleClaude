@@ -13,12 +13,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from instrukt_ai_logging import get_logger
+from pydantic import HttpUrl
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session as SyncSession
 
 from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import github_actor_for_app_id
 from teleclaude.config.project_models import TodoStoreBackend, TodoStoreConfig
+from teleclaude.constants import TodoStatus
 from teleclaude.core.todos_db._adapter import TodosDb
 from teleclaude.core.todos_db._github_pull_requests import work_item_for_number
 from teleclaude.core.todos_db._github_questions import insert_awaiting_question
@@ -56,6 +60,7 @@ from teleclaude.core.workflow_store.types import StoreCapabilities
 from teleclaude.project_manifest import load_roots
 from teleclaude.project_root import is_project_checkout
 from teleclaude.types.github_binding import GitHubActorAssignment
+from teleclaude.types.github_issue import GitHubIssueReference
 
 if TYPE_CHECKING:
     from .store import WorkflowStore
@@ -68,10 +73,19 @@ _MIGRATION_RECORD_ID = "github-store-switch:{}:{}"
 _ITEM_ID_BY_SLUG = "SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug"
 _ITEM_SLUG_BY_ID = "SELECT slug FROM todo WHERE CAST(id AS TEXT) = :item_id"
 _ITEM_STATE_BY_ID = "SELECT state FROM todo_state WHERE CAST(id AS TEXT) = :item_id"
+_LIVE_ITEM_ISSUE_NUMBER = (
+    "SELECT i.issue_number FROM todo AS t JOIN github_item AS i ON CAST(t.id AS TEXT) = i.item_id "
+    f"WHERE t.slug = :slug AND t.status IN ('{TodoStatus.ACTIVE}', '{TodoStatus.ICEBOX}')"
+)
+_SLUG = "slug"
+_ISSUE_URL = "https://github.com/{}/issues/{}"
+_ISSUE_UNREADABLE_EVENT = "github_item_issue_unreadable"
 _READ_ONLY_URI = "file:{}?mode=ro"
 _IN_MEMORY_ENGINE_URL = "sqlite://"
 _ACTIVE_RUNNER = "active_runner"
 _ITEM_ID = "item_id"
+logger = get_logger(__name__)
+_unreadable_working_copies: set[Path] = set()
 _instances: dict[str, GitHubWorkflowStore] = {}
 _locks: dict[str, threading.Lock] = {}
 _guard = threading.Lock()
@@ -381,6 +395,37 @@ def _read_work_item(project_root: Path, number: int) -> GitHubWorkItem | None:
         state = {}
     runner = state.get(_ACTIVE_RUNNER) if isinstance(state, dict) else None
     return GitHubWorkItem(project_root, slug, runner if isinstance(runner, str) and runner else None)
+
+
+def read_github_item_issue(project_root: str | Path, slug: str) -> GitHubIssueReference | None:
+    """Read the issue the store recorded for the live item with this slug.
+
+    Answers only from a working copy that already exists: no provider call, no rebuild, no writer lock.
+    Returns None for a project outside the GitHub store, a missing working copy, an item that is not
+    live, or an item the store has not yet given an issue.
+    """
+    try:
+        identity = resolve_github_repository_identity(project_root)
+    except GitHubIdentityRefused:
+        return None
+    path = github_working_copy_path(identity.project_path)
+    if not path.is_file():
+        return None
+    try:
+        with _open_working_copy_read_only(path) as session:
+            number = session.execute(text(_LIVE_ITEM_ISSUE_NUMBER), {_SLUG: slug}).scalar_one_or_none()
+    except DBAPIError as error:
+        # Issue navigation is optional: an unreadable working copy must not make a session projection fail.
+        if identity.project_path not in _unreadable_working_copies:
+            _unreadable_working_copies.add(identity.project_path)
+            logger.warning(
+                _ISSUE_UNREADABLE_EVENT, project_path=str(identity.project_path), error_type=type(error).__name__
+            )
+        return None
+    _unreadable_working_copies.discard(identity.project_path)
+    if not isinstance(number, int):
+        return None
+    return GitHubIssueReference(number=number, url=HttpUrl(_ISSUE_URL.format(identity.repository, number)))
 
 
 async def refresh_github_workflow_store(project_root_or_cwd: str | Path) -> int:
