@@ -9,3 +9,7 @@ section.
 
 Each section is headed `## <version>` for the release that ships the change, and its steps are an ordered list
 written in the order they must run.
+
+## 0.10.0
+
+1. On Linux hosts, install the libarchive shared library before installing this release, or re-run the full installer (`bin/install.sh`), which now installs it: `libarchive-tools` on Debian/Ubuntu, `libarchive` on Fedora and Arch. The chiptunes corpus extraction decodes the pinned HVSC archive through it. macOS ships the library and needs nothing.

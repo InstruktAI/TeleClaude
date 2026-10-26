@@ -5,15 +5,31 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 import urllib.error
 import urllib.request
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Literal
+from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING, Literal
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
+
+try:
+    import libarchive
+
+    _libarchive_available = True
+except (ImportError, OSError, AttributeError):
+    # libarchive-c loads the system libarchive when imported: a missing package raises ImportError, a named library
+    # that does not exist raises OSError, and a host without any libarchive raises AttributeError on the first symbol.
+    libarchive = None  # type: ignore[unused-ignore]
+    _libarchive_available = False
+
+if TYPE_CHECKING:
+    from libarchive.entry import ArchiveEntry
 
 logger = get_logger(__name__)
 
@@ -28,6 +44,14 @@ _CHECKSUM_MISMATCH_MESSAGE = (
     "Downloaded HVSC archive checksum mismatch; refusing to install corpus "
     "(expected {expected}, got {actual}). " + _REPAIR_POINTER
 )
+_EXTRACTOR_UNAVAILABLE_MESSAGE = (
+    "The libarchive shared library is required to extract the HVSC .7z archive. "
+    "It is part of macOS; install `libarchive-tools` on Debian/Ubuntu or `libarchive` on Fedora/Arch, "
+    "and run `uv sync` so the libarchive-c binding is present."
+)
+_EXTRACT_FAILED_MESSAGE = "Failed to extract HVSC archive into {target}: {error}"
+_STAGING_NAME = ".{name}.provisioning-{token}"
+_STAGING_CLEANUP_FAILED_EVENT = "chiptunes_provision_staging_cleanup_failed"
 
 
 class ChiptunesProvisionError(RuntimeError):
@@ -39,7 +63,7 @@ class ChiptunesChecksumError(ChiptunesProvisionError):
 
 
 class ChiptunesExtractorUnavailable(ChiptunesProvisionError):
-    """Raised when the required 7z extractor dependency is unavailable."""
+    """Raised when the libarchive library or its Python binding is unavailable."""
 
 
 @dataclass(frozen=True)
@@ -94,13 +118,7 @@ def provision_hvsc_corpus(
                     downloads=HVSC_DOWNLOADS_URL,
                 )
             )
-        music_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            _extract_archive(archive_path, music_dir)
-        except ChiptunesProvisionError:
-            raise
-        except OSError as exc:
-            raise ChiptunesProvisionError(f"Failed to extract HVSC archive into {music_dir}.") from exc
+        _publish_corpus(archive_path, music_dir)
     logger.info("chiptunes_provision_installed", music_dir=str(music_dir), version=manifest.version)
     return ProvisionResult(status=PROVISION_INSTALLED, music_dir=music_dir)
 
@@ -157,17 +175,58 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _publish_corpus(archive_path: Path, music_dir: Path) -> None:
+    """Extract ``archive_path`` into a sibling staging directory and rename it onto ``music_dir``.
+
+    ``music_dir`` is absent or empty here. It is written only by the final rename, which is atomic within one
+    filesystem, so a failure at any earlier point leaves it exactly as it was.
+    """
+    staging_dir = music_dir.parent / _STAGING_NAME.format(name=music_dir.name, token=uuid4().hex)
+    published = False
+    try:
+        music_dir.parent.mkdir(parents=True, exist_ok=True)
+        staging_dir.mkdir()
+        _extract_archive(archive_path, staging_dir)
+        os.replace(staging_dir, music_dir)
+        published = True
+    except OSError as exc:
+        raise ChiptunesProvisionError(_EXTRACT_FAILED_MESSAGE.format(target=music_dir, error=exc)) from exc
+    finally:
+        if not published:
+            _discard_staging(staging_dir)
+
+
+def _discard_staging(staging_dir: Path) -> None:
+    try:
+        shutil.rmtree(staging_dir)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        logger.warning(_STAGING_CLEANUP_FAILED_EVENT, staging_dir=str(staging_dir), error=str(exc))
+
+
 def _extract_archive(archive_path: Path, target_dir: Path) -> None:
+    if not _libarchive_available:
+        raise ChiptunesExtractorUnavailable(_EXTRACTOR_UNAVAILABLE_MESSAGE)
+    # Entries are written under ``target_dir`` by rewriting their pathnames: ``libarchive.extract_file`` extracts into
+    # the process working directory, which must not move under the daemon's other threads.
+    flags = libarchive.extract.EXTRACT_SECURE_NODOTDOT | libarchive.extract.EXTRACT_SECURE_SYMLINKS
     try:
-        import py7zr  # noqa: PLC0415 - lazy dependency import; provisioning only runs when gate-enabled.
-        from py7zr import exceptions as py7zr_exceptions  # noqa: PLC0415 - lazy dependency import; same gate.
-    except ImportError as exc:
-        raise ChiptunesExtractorUnavailable(
-            "py7zr is required to extract the HVSC .7z archive. "
-            "Run `uv sync` or reinstall TeleClaude so default runtime dependencies are present."
-        ) from exc
-    try:
-        with py7zr.SevenZipFile(archive_path, mode="r") as archive:
-            archive.extractall(path=target_dir)
-    except (py7zr.Bad7zFile, py7zr_exceptions.ArchiveError, OSError) as exc:
-        raise ChiptunesProvisionError(f"Failed to extract HVSC archive into {target_dir}.") from exc
+        with libarchive.file_reader(str(archive_path)) as entries:
+            libarchive.extract.extract_entries(_corpus_entries_under(entries, target_dir), flags=flags)
+    except (libarchive.exception.ArchiveError, OSError) as exc:
+        raise ChiptunesProvisionError(_EXTRACT_FAILED_MESSAGE.format(target=target_dir, error=exc)) from exc
+
+
+def _corpus_entries_under(entries: Iterable[ArchiveEntry], target_dir: Path) -> Iterator[ArchiveEntry]:
+    """Yield each entry with its pathname moved under ``target_dir``, minus the archive's leading root element.
+
+    The pinned archive has a single ``C64Music/`` root; the corpus tree belongs directly in ``target_dir``. The
+    root's own entry has nothing left after the strip and is skipped.
+    """
+    for entry in entries:
+        relative = PurePosixPath(*PurePosixPath(entry.pathname).parts[1:])
+        if not relative.parts:
+            continue
+        entry.pathname = str(target_dir / relative)
+        yield entry

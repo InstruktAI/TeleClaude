@@ -476,6 +476,19 @@ install_package() {
     print_success "Installed $package"
 }
 
+# Distribution package that provides the libarchive shared library
+libarchive_package() {
+    case "$DISTRO" in
+        ubuntu|debian)
+            # Stable name across the libarchive13 / libarchive13t64 rename; depends on the library package
+            echo "libarchive-tools"
+            ;;
+        *)
+            echo "libarchive"
+            ;;
+    esac
+}
+
 # Check Python version
 check_python() {
     print_info "Checking Python version..."
@@ -925,6 +938,14 @@ install_system_deps() {
         else
             print_info "Installing socat..."
             install_package socat
+        fi
+
+        # libarchive shared library (for chiptunes HVSC corpus extraction via the libarchive-c binding)
+        if python3 -c 'import ctypes.util, sys; sys.exit(0 if ctypes.util.find_library("archive") else 1)' &> /dev/null; then
+            print_info "libarchive already installed"
+        else
+            print_info "Installing libarchive..."
+            install_package "$(libarchive_package)"
         fi
 
         install_gog
