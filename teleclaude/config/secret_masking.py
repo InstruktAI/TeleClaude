@@ -17,7 +17,9 @@ from pydantic import BaseModel
 from teleclaude.closed_model import MASKED_INPUT, field_is_sensitive
 from teleclaude.config._environment import CompanyCredentialsError
 from teleclaude.config.errors import ConfigLoadError
+from teleclaude.config.github_app_key import GitHubAppKeyRefused, resolve_github_app_key_material
 from teleclaude.config.loader import (
+    github_actor_inventory,
     list_company_configs,
     load_company_credentials,
     load_declared_project_config,
@@ -39,6 +41,29 @@ def declared_secret_values(project_root: Path) -> frozenset[str]:
         return _declared_secret_values(project_root)
     except (CompanyCredentialsError, OSError) as error:
         raise ConfigLoadError(_SECRETS_UNKNOWN.format(error=error)) from error
+
+
+def resolved_secret_values(project_root: Path) -> frozenset[str]:
+    """Every declared secret plus the value each sensitive environment reference points at.
+
+    A declaration such as a GitHub App's ``private_key_base64_env`` holds the name of an environment key, so the
+    declared values never include the key itself. This adds each App's key as stored and as decoded, which is
+    what a turn would have to contain for the key to leak.
+
+    Raises ``ConfigLoadError`` whenever any of them cannot be known, as ``declared_secret_values`` does.
+    """
+    values = set(declared_secret_values(project_root))
+    try:
+        assignments = github_actor_inventory()
+    except (ConfigLoadError, OSError) as error:
+        raise ConfigLoadError(_SECRETS_UNKNOWN.format(error=error)) from error
+    for assignment in assignments:
+        try:
+            material = resolve_github_app_key_material(assignment)
+        except GitHubAppKeyRefused as error:
+            raise ConfigLoadError(_SECRETS_UNKNOWN.format(error=error.reason)) from error
+        values.update((material.encoded.get_secret_value(), material.pem.get_secret_value()))
+    return frozenset(value for value in values if value)
 
 
 def _declared_secret_values(project_root: Path) -> frozenset[str]:

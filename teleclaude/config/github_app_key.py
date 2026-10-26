@@ -2,6 +2,7 @@
 
 from base64 import b64decode
 from binascii import Error as Base64Error
+from dataclasses import dataclass
 from enum import StrEnum
 
 import yaml
@@ -39,8 +40,21 @@ class GitHubAppKeyRefused(ValueError):
         self.reason = reason
 
 
+@dataclass(frozen=True)
+class GitHubAppKeyMaterial:
+    """One App key in both forms the platform holds it: as stored (base64) and as decoded PEM."""
+
+    encoded: SecretStr
+    pem: SecretStr
+
+
 def resolve_github_app_private_key(assignment: GitHubActorAssignment) -> SecretStr:
     """Resolve only the recorded App after authenticated admission, with no ambient fallback."""
+    return resolve_github_app_key_material(assignment).pem
+
+
+def resolve_github_app_key_material(assignment: GitHubActorAssignment) -> GitHubAppKeyMaterial:
+    """Resolve the recorded App's key in its stored and decoded forms, with no ambient fallback."""
     try:
         with file_transaction(GLOBAL_CONFIG_PATH) as declaration_transaction:
             try:
@@ -69,7 +83,7 @@ def resolve_github_app_private_key(assignment: GitHubActorAssignment) -> SecretS
                     raise GitHubAppKeyRefused(GitHubAppKeyFailure.KEY_MALFORMED) from None
                 if not pem.strip():
                     raise GitHubAppKeyRefused(GitHubAppKeyFailure.KEY_MALFORMED)
-                return SecretStr(pem)
+                return GitHubAppKeyMaterial(encoded=SecretStr(encoded), pem=SecretStr(pem))
     except GitHubAppKeyRefused as error:
         logger.warning(_GITHUB_KEY_REFUSED_EVENT, assignment.app_id, error.reason)
         raise
