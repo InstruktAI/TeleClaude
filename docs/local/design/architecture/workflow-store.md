@@ -190,7 +190,8 @@ working copy and the repository.
     `[action:board repository:<id>]`, sets its Status field's options to the
     lanes, adds the Needs you field and the view filtered on it, and deletes
     every built-in workflow. A recorded board that GitHub no longer has opens
-    setup again, claimed the same way.
+    setup again: the first claim the ledger orders after that board's record
+    holds it.
   - The link to the repository is owed until it is written or GitHub shows
     the board linked. Its write asks for the repository's Contents read
     permission in addition, so an App without it leaves only the link owed.
@@ -210,10 +211,9 @@ working copy and the repository.
     permission.
   - `telec todo board repair` runs as a daemon operation: it owes the board's
     setup and every item's board reflection, writes them as a refresh does,
-    and its outcome names each one it could not write and the cause. With
-    `--take-over` it claims setup for its own computer when no board is
-    recorded and the holding computer is not online in the fleet, and it
-    refuses while that computer is online.
+    and its outcome names each one it could not write and the cause. On a
+    computer that does not hold setup it never creates the board, and its
+    outcome names the holding computer.
 
 <!-- /planned:github-work-board -->
 
@@ -511,12 +511,11 @@ sequenceDiagram
 - A lane, marker, field or view someone changes on the board stays until the
   item's next reflection or a repair. A deleted board is created again through
   a new claim, with every item.
-- A holding computer that leaves the fleet before creating the board leaves
-  setup owed on every computer until `telec todo board repair --take-over`
-  claims it elsewhere. The taking computer first takes a board the holder
-  already created, by its title, so only a holder that is offline to the fleet
-  yet creates its board at the same moment as the take-over leaves a second
-  board, which the platform neither maintains nor removes.
+- A claim belongs to the computer it names and never passes to another one,
+  because GitHub has no conditional write that could stop a departed holder
+  that is still running from creating its board as well. A holding computer
+  that leaves before creating the board leaves setup owed on every computer
+  until a computer of that name serves the project again and resumes it.
 
 <!-- /planned:github-work-board -->
 
