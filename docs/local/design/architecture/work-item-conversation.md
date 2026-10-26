@@ -28,12 +28,17 @@ What a reader sees is owned by
 | Secrets the platform holds                                                                                             | `config`                           | The resolved values of every sensitive declaration                                                               |
 | Each GitHub request, its credential and its share of the rate budget                                                   | `workflow` (GitHub adapter module) | `local/projects/teleclaude/design/architecture/workflow-store` (GitHub request budget)                           |
 | Delivery of the stop event, its progress and recovery                                                                  | `event-catalog`                    | `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`                                           |
+| Carrying a captured turn to the fleet's master and its outcome back                                                    | `integration`                      | The computer-addressed relay person-addressed messaging uses (`local/projects/teleclaude/spec/messaging`)        |
 
 The publisher is part of the workflow store's GitHub adapter module, beside
-the question comments and pull request reviews it already writes. It reads
-the turns of the sessions its own computer hosts from `agent_runtime` and
-never reads a native transcript, a session row or an output-delivery cursor
-itself.
+the question comments and pull request reviews it already writes. It has two
+parts. On every computer, the capturer reads the turns of the sessions that
+computer hosts from `agent_runtime`, protects and splits them, and keeps them
+until they are posted; it never reads a native transcript, a session row or an
+output-delivery cursor itself. On the fleet's master computer
+(`local/projects/teleclaude/spec/teleclaude-config`, `computer.is_master`),
+the poster sends every computer's turns to GitHub, so the conversation's
+whole fleet has one request budget and one stop.
 
 ## Inputs/Outputs
 
@@ -60,10 +65,12 @@ itself.
 
 - One or more conversation comments per completed turn, on the destination
   the turn's completion time decides, in the shape the work record specifies,
-  posted by the App chosen below.
-- The publisher's bookkeeping in the working copy: each captured turn, already
-  protected and split into its comments, with its destination and completion
-  time, and which of its comments are on GitHub.
+  posted by the master as the App chosen below.
+- The capturer's bookkeeping in the working copy of the computer hosting the
+  session: each captured turn, already protected and split into its comments,
+  with its repository, destination, App and completion time, and which of its
+  comments are on GitHub. The master keeps no turn: it holds only its budget
+  counts and stop state, in memory.
 
 **Eligibility.** A session's turn belongs to an item when all hold: the
 session's project selects the GitHub store; its working item slug names an
@@ -149,9 +156,9 @@ is captured as a withheld turn and nothing of its content leaves the computer.
 - A conversation comment is never read as record, content or ledger: it is
   authored by a role App, and the store trusts only the App its declaration
   names.
-- Conversation requests are admitted by the request budget of the workflow
-  store design. Turn comments are never posted as the platform App; the one
-  conversation-start entry is.
+- Only the master sends conversation requests, admitted by the request budget
+  of the workflow store design. Turn comments are never posted as the
+  platform App; the one conversation-start entry is.
 
 ## Primary flows
 
@@ -163,7 +170,7 @@ sequenceDiagram
     participant P as Conversation publisher
     participant AR as agent_runtime (completed turns read)
     participant WC as Working copy bookkeeping
-    participant IO as GitHub request runtime
+    participant M as Poster on the master (GitHub request runtime)
     participant GH as Issue or pull request
     EC->>P: agent stop on this computer (session)
     P->>AR: completed turns after the last captured one
@@ -172,9 +179,11 @@ sequenceDiagram
         P->>WC: capture turn
     end
     loop each destination, its captured turns by completion time
-        P->>IO: append the turn's comments (admitted by the budget)
-        IO->>GH: create comment(s)
-        P->>WC: mark posted
+        P->>M: post this turn (relay)
+        M->>M: admit under the fleet budget, or defer until a time
+        M->>GH: create comment(s) as the turn's App
+        M-->>P: posted, deferred until a time, or refused with a cause
+        P->>WC: mark posted, or hold the destination
     end
 ```
 
@@ -189,19 +198,22 @@ reconnection; the store's periodic refresh runs the same pass.
 
 The workflow dispatches an item's sessions from its claim holder, so the
 sessions of one item that run at the same time share a computer, and that
-computer posts them in completion order. Each computer posts only the
-sessions it hosts. When an item's work moves to another computer while the
-first still owes turns, those turns appear when the first computer posts them,
-after the new computer's later turns, each showing its completion time. No
-computer waits for another: whether an unreachable computer still owes a turn
-cannot be known, and waiting could hold the item's conversation for ever.
+computer hands their turns to the master in completion order, one turn at a
+time per destination, each after the previous one was posted. Each computer
+hands over only the sessions it hosts and never waits for another computer.
+When an item's work moves to another computer while the first still holds
+turns, those turns appear when the first computer hands them over, after the
+new computer's later turns, each showing its completion time
+(`local/projects/teleclaude/spec/feature/workflow/github-work-record`,
+Conversation).
 
 ### Recovering position
 
-Bookkeeping lives in the working copy. When a captured turn's posting was
-interrupted, or the working copy was rebuilt, the publisher reads the
-destination's comments by the turn's App from GitHub and takes each turn whose
-envelope names its session and ordinal as posted; a turn found partly posted is
+Bookkeeping lives in the capturing computer's working copy. Before the master
+posts a turn the capturer marks as possibly sent before, after an interrupted
+hand-over, a lost reply or a rebuilt working copy, it reads the destination's
+comments by the turn's App from GitHub and takes each turn whose envelope names
+its session and ordinal as posted; a turn found partly posted is
 completed from its next missing part, from the protected parts it captured. A
 create whose reply was lost is found the same way before anything is posted
 again. After a rebuild, turns are captured again from the runtime from the
@@ -209,9 +221,16 @@ first turn of each eligible session missing from GitHub.
 
 ## Failure modes
 
-- **GitHub unavailable or the budget spent.** Captured turns stay unposted and
-  their destination holds; the next pass posts them. The session is
+- **GitHub unavailable or the budget spent.** The master answers deferred
+  until a time; captured turns stay on their computer and their destination
+  holds; the next pass after that time hands them over again. The session is
   unaffected.
+- **The master unreachable, or no master in the fleet.** Captured turns stay on
+  their computer and are handed over once a master answers; nothing is posted
+  meanwhile and no other computer posts in its place.
+- **The master lacks the turn's App.** The master answers refused with that
+  cause; the turn stays captured and its destination holds, as for a missing
+  App mapping.
 - **Protection cannot complete.** The turn is captured and posted as a
   withheld turn; its content never reaches GitHub.
 - **No App for the identity, or the App is not installed with issue and pull
@@ -220,10 +239,10 @@ first turn of each eligible session missing from GitHub.
 - **A turn the runtime never saw complete.** A turn with no later turn, no
   covering agent stop and an open session is not completed and is not
   captured until one of those holds.
-- **A turn the runtime cannot read at capture.** The deployed agent settings
-  keep transcripts for years and capture follows completion within the next
-  pass, so this occurs only when a transcript was deleted by hand before the
-  publisher took its turn. The runtime reports it unreadable; the publisher
+- **A turn the runtime cannot read at capture.** This occurs when a transcript
+  was deleted before the capturer took its turn: by hand, or by an agent's
+  own retention, which the deployed settings set to 99,999 days for Claude
+  and 1,460 days for Gemini. The runtime reports it unreadable; the publisher
   logs the loss and posts the turn as unavailable in its place, as the work
   record specifies.
 - **A lost working copy.** Captured turns not yet on GitHub are captured again
@@ -233,8 +252,9 @@ first turn of each eligible session missing from GitHub.
   sessions on that project's items.
 - **A record write GitHub refuses.** GitHub's secondary limits change without
   notice and cannot be inspected, so a record write can still meet one; it
-  keeps the store's existing refusal and retry contract, and the limit
-  response stops every computer's conversation that receives one.
+  keeps the store's existing refusal and retry contract. A limit response the
+  master receives stops the whole fleet's conversation until the time it
+  names.
 
 ## See Also
 
