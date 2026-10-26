@@ -9,7 +9,7 @@ from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.agent_status_projection import read_session_agent_status
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.lanes import DRIVER_ROLES, LifecycleProcedure
-from teleclaude.core.session_status import AgentStatusValue
+from teleclaude.core.session_status import AgentStatusValue, SessionLifecycleStatus
 
 CommandValues = str | tuple[str, ...]
 PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (
@@ -349,7 +349,7 @@ async def find_accepted_lifecycle_start(db: Db, project_path: str | Path, slug: 
     matches = [
         session
         for session in sessions
-        if session.lifecycle_status != "closing"
+        if session.lifecycle_status != SessionLifecycleStatus.CLOSING
         and session.role == role
         and session.working_slug == slug
         and _same_project_root(session.project_path, project_root)
