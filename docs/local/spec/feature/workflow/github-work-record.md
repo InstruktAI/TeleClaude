@@ -145,11 +145,13 @@ How the store maps onto the repository is owned by
   review role, the author App for every other role, never the App that writes
   the record. It opens with `[session:<id> role:<role> action:turn turn:<n>]`,
   where `<n>` counts that session's turns, followed by the input the turn
-  received and the agent's reply, without tool activity or reasoning. Turns
-  appear in the order they complete, each exactly once, and a turn too large
-  for one comment continues in the next. Every secret the platform holds,
-  every credential-like string and all detected personal data are removed
-  before a turn is written; a turn they cannot be removed from appears only as
+  received and the agent's reply, without tool activity or reasoning. A
+  person's own message to the session is not written; the turn notes only that
+  the person spoke. Turns appear in the order they complete, each exactly once,
+  and a turn too large for one comment continues in the next. Before a turn is
+  written, every secret the platform holds is masked, and credential-like
+  strings and personal data are removed as far as detection recognizes them;
+  a turn whose masking or detection cannot complete appears only as
   `[session:<id> role:<role> action:turn turn:<n> withheld]`, with no content.
   The conversation is never part of the record, and writing it never holds up
   a session.
@@ -264,8 +266,9 @@ Scenario: A turn that cannot be cleaned is withheld
 
 <!-- planned:github-turn-mirror -->
 
-- Removing secrets and personal data from a session's conversation rests on
-  detection: what the detection does not recognize is published with the turn.
+- Credential-like strings and personal data are removed from a session's
+  conversation only as far as detection recognizes them: what it misses is
+  published with the turn. Secrets the platform holds are always masked.
 - A session's turn appears on GitHub after it completes, and later than that
   while GitHub is unreachable or its request budget is spent.
 
