@@ -116,6 +116,10 @@ _CONVERGENCE_INSTALLER = Path("bin") / "install.sh"
 _INSTALLER_LOG_LABEL = "Installer log (end): "
 _INSTALLER_LOG_UNAVAILABLE = "Installer log unavailable ({error_class})."
 _INSTALLER_LOG_TRUNCATION_MARKER = "[earlier installer log content omitted]\n"
+_DAEMON_LOG_PATH = Path(".local") / "state" / "instrukt-ai" / "teleclaude" / "teleclaude.log"
+_DAEMON_LOG_LABEL = "Daemon log (end): "
+_DAEMON_LOG_UNAVAILABLE = "Daemon log unavailable ({error_class})."
+_DAEMON_LOG_TRUNCATION_MARKER = "[earlier daemon log content omitted]\n"
 _DIAGNOSTIC_SEPARATOR = "\n"
 _BINARY_READ_MODE = "rb"
 _PROFILE_OPTION = "--profile"
@@ -1272,7 +1276,24 @@ def _run_readiness_check(resources: FullRuntimeResources, evidence: list[Command
         if _run_lifecycle_command(resources, _SERVICE_STATUS_COMMAND, _FULL_COMMAND_TIMEOUT_SECONDS, evidence):
             return
         time.sleep(_READINESS_POLL_INTERVAL_SECONDS)
+    _attach_daemon_log_tail(resources, evidence)
     raise RuntimeError(_EXPECTED_READINESS_ERROR)
+
+
+def _attach_daemon_log_tail(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Retain the end of the disposable runtime's daemon log on the last status command a failed readiness recorded."""
+    last = evidence[-1]
+    diagnostic_prefix = f"{last.diagnostics}{_DIAGNOSTIC_SEPARATOR}" if last.diagnostics else _EMPTY
+    daemon_log_path = Path(resources.environment[_COLD_HOME_VARIABLE]) / _DAEMON_LOG_PATH
+    log_tail = _log_tail_diagnostic(
+        resources,
+        daemon_log_path,
+        diagnostic_prefix,
+        label=_DAEMON_LOG_LABEL,
+        truncation_marker=_DAEMON_LOG_TRUNCATION_MARKER,
+        unavailable=_DAEMON_LOG_UNAVAILABLE,
+    )
+    evidence[-1] = replace(last, diagnostics=f"{diagnostic_prefix}{log_tail}")
 
 
 def _read_health_body(socket_path: str, timeout_seconds: float) -> bytes | None:
@@ -1347,33 +1368,36 @@ def _await_config_restart(
     raise RuntimeError(_HEALTH_INSTANCE_UNCHANGED)
 
 
-def _installer_log_diagnostic(resources: FullRuntimeResources, log_path: Path, diagnostic_prefix: str) -> str:
-    """The end of an installer log, sized to what the diagnostic budget leaves after the process output."""
+def _log_tail_diagnostic(
+    resources: FullRuntimeResources,
+    log_path: Path,
+    diagnostic_prefix: str,
+    *,
+    label: str,
+    truncation_marker: str,
+    unavailable: str,
+) -> str:
+    """The end of a log, sized to what the diagnostic budget leaves after the preceding diagnostics."""
     try:
         log_budget = max(
             1,
-            _DIAGNOSTIC_LIMIT
-            - len(diagnostic_prefix)
-            - len(_INSTALLER_LOG_LABEL)
-            - len(_INSTALLER_LOG_TRUNCATION_MARKER),
+            _DIAGNOSTIC_LIMIT - len(diagnostic_prefix) - len(label) - len(truncation_marker),
         )
-        with log_path.open(_BINARY_READ_MODE) as installer_log:
-            installer_log.seek(0, os.SEEK_END)
-            log_size = installer_log.tell()
+        with log_path.open(_BINARY_READ_MODE) as log_file:
+            log_file.seek(0, os.SEEK_END)
+            log_size = log_file.tell()
             log_start = max(0, log_size - log_budget)
-            installer_log.seek(log_start)
-            log_excerpt = installer_log.read(log_budget).decode(_UTF8, errors=_UTF8_REPLACEMENT)
-        truncation_marker = _INSTALLER_LOG_TRUNCATION_MARKER if log_start else _EMPTY
+            log_file.seek(log_start)
+            log_excerpt = log_file.read(log_budget).decode(_UTF8, errors=_UTF8_REPLACEMENT)
+        applied_marker = truncation_marker if log_start else _EMPTY
         available_log_chars = max(
             1,
-            _DIAGNOSTIC_LIMIT - len(diagnostic_prefix) - len(_INSTALLER_LOG_LABEL) - len(truncation_marker),
+            _DIAGNOSTIC_LIMIT - len(diagnostic_prefix) - len(label) - len(applied_marker),
         )
         sanitized_log_excerpt = resources.sanitize(log_excerpt)
-        return f"{_INSTALLER_LOG_LABEL}{truncation_marker}{sanitized_log_excerpt[-available_log_chars:]}"
+        return f"{label}{applied_marker}{sanitized_log_excerpt[-available_log_chars:]}"
     except OSError as error:
-        return _INSTALLER_LOG_UNAVAILABLE.format(error_class=type(error).__name__)[
-            : _DIAGNOSTIC_LIMIT - len(diagnostic_prefix)
-        ]
+        return unavailable.format(error_class=type(error).__name__)[: _DIAGNOSTIC_LIMIT - len(diagnostic_prefix)]
 
 
 def _run_installation_step(
@@ -1403,7 +1427,14 @@ def _run_installation_step(
         diagnostic_prefix = f"{process_diagnostics}{_DIAGNOSTIC_SEPARATOR}" if process_diagnostics else _EMPTY
         log_section = _EMPTY
         if log_path is not None:
-            log_tail = _installer_log_diagnostic(resources, log_path, diagnostic_prefix)[-_INSTALLER_LOG_TAIL_LIMIT:]
+            log_tail = _log_tail_diagnostic(
+                resources,
+                log_path,
+                diagnostic_prefix,
+                label=_INSTALLER_LOG_LABEL,
+                truncation_marker=_INSTALLER_LOG_TRUNCATION_MARKER,
+                unavailable=_INSTALLER_LOG_UNAVAILABLE,
+            )[-_INSTALLER_LOG_TAIL_LIMIT:]
             log_section = f"{log_tail}{_DIAGNOSTIC_SEPARATOR}"
         stdout_tail = resources.sanitize(result.stdout[-_INSTALLER_STDOUT_TAIL_LIMIT:])
         stderr_tail = resources.sanitize(result.stderr[-_INSTALLER_STDERR_TAIL_LIMIT:])
