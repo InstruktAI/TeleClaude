@@ -35,6 +35,16 @@ feature specs remain the current contract.
   identity, or domain behavior delivered by a todo.
 - **Published contracts:** todo and artifact commands, queries, lifecycle
   events, and explicit dispatch requests to agent runtime.
+
+<!-- planned:github-item-acts -->
+
+- **Also owns (item title):** an item's title — the readable name a person
+  gives it, apart from its slug, set or cleared through the update facade and
+  held with the item's row facts. Setting it changes nothing else about the
+  item; a store that shows the item uses it where it shows a title.
+
+<!-- /planned:github-item-acts -->
+
 - **Also published:** where a project's shared state lives, given a project
   root. A primary checkout owns its own state and a linked worktree's state
   lives at the owning checkout — the relation this context creates and defines,
