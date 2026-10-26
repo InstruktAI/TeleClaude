@@ -57,13 +57,13 @@ diagnosis and implementation.
    - A guard refusal is a `WARNING` record with `event=blocked`, carrying the refusal's
      `reason`, the refused operation, the attempting session's `session_id`, and its `cwd`.
      The guard enforced its rule, so a single refusal is no finding. The same `reason`
-     refused in more than one session within the window is one pattern signal: either the
-     agents' instructions keep inviting an act the guard refuses, so the counter belongs on
-     the load path the invitation reaches (`general/policy/agent-facing-text`), or the guard
-     refuses an act agents need without naming its door
-     (`general/principle/trust-and-guardrails`). The congestion and restart gates do not
-     apply to it. Report the reason, its occurrence count, and the session ids; the bug
-     lifecycle reads those transcripts to establish which of the two it is.
+     refused in more than one session within the window is one pattern observation; the
+     congestion and restart gates do not apply to it. The records establish the recurrence
+     and not its cause. Its expected outcome is the one `general/policy/agent-facing-text`
+     states for an act an agent attempts and a refusal meets: the counter sits on the load
+     path that invites the act. Report the reason, its occurrence count, and the session
+     ids, and state the cause as unestablished; the bug lifecycle reads those transcripts to
+     establish whether anything is defective.
    - Group related eligible records into distinct error signals. Use the observed messages
      and context; do not investigate the codebase to establish a diagnosis.
    - Establish which system owns the failed operation. An upstream 5xx response, rate limit,
