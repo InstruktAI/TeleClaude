@@ -83,6 +83,8 @@ def _pull_request(pull: Any) -> GitHubPullRequest:
         draft=bool(pull.draft),
         open=pull.state == GitHubPullRequestField.OPEN,
         head_branch=pull.head.ref,
+        created_at=pull.created_at,
+        closed_at=pull.closed_at,
     )
 
 
@@ -195,16 +197,17 @@ class GitHubPullRequestIO:
 
         await self._request(RoleName.BUILDER, GitHubPullRequestOperation.COMMENT_PULL_REQUEST, request)
 
-    async def close_pull_request(self, number: int) -> None:
-        """Close a pull request without merging it."""
+    async def close_pull_request(self, number: int) -> GitHubPullRequest:
+        """Close a pull request without merging it, returning it as GitHub now reports it."""
         owner, repo = split_repository(self.repository.repository)
 
-        async def request(client: Any) -> None:
-            await client.rest.pulls.async_update(
+        async def request(client: Any) -> GitHubPullRequest:
+            response = await client.rest.pulls.async_update(
                 owner, repo, number, data={GitHubPullRequestField.STATE.value: GitHubPullRequestField.CLOSED.value}
             )
+            return _pull_request(response.parsed_data)
 
-        await self._request(RoleName.BUILDER, GitHubPullRequestOperation.CLOSE_PULL_REQUEST, request)
+        return await self._request(RoleName.BUILDER, GitHubPullRequestOperation.CLOSE_PULL_REQUEST, request)
 
     async def list_own_comments(self, number: int) -> tuple[str, ...]:
         """List the bodies of the comments the builder App wrote on a pull request."""

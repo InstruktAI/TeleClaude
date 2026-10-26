@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.todos_db._github_pull_requests import PullRequestBookkeeping
+from teleclaude.core.todos_db._github_pull_requests import PullRequestBookkeeping, PullRequestInterval
 from teleclaude.core.workflow_store.github_io_models import GitHubPullRequest
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_pull_request_reflection import (
@@ -48,13 +48,16 @@ async def apply_pull_request(
     keep the pull request owed.
     """
     writes = _Writes()
-    pull = await _locate(io, desired)
+    pull, own = await _locate(io, desired)
+    for found in own:
+        _remember_interval(known, found)
     if pull is None:
         if desired.stage is not PullRequestStage.OPEN:
             known.digest = desired.digest
             return
         base = await io.default_branch()
         pull = await io.create_draft_pull_request(desired.title, desired.body, desired.branch, base)
+        _remember_interval(known, pull)
         writes.created = True
     elif (
         pull.open
@@ -76,7 +79,7 @@ async def apply_pull_request(
             writes.delivery_noted = True
         known.delivered_noted = True
     if desired.stage is not PullRequestStage.OPEN and pull.open:
-        await io.close_pull_request(pull.number)
+        _remember_interval(known, await io.close_pull_request(pull.number))
         writes.closed = True
     known.digest = desired.digest
     if writes.any:
@@ -94,8 +97,16 @@ async def apply_pull_request(
         )
 
 
-async def _locate(io: GitHubPullRequestIO, desired: PullRequestReflection) -> GitHubPullRequest | None:
-    """Find this item's own pull request: the builder App's, on its branch, naming its issue.
+def _remember_interval(known: PullRequestBookkeeping, pull: GitHubPullRequest) -> None:
+    """Record when GitHub says a pull request was opened and, once closed, closed."""
+    if pull.created_at is not None:
+        known.intervals[pull.number] = PullRequestInterval(opened_at=pull.created_at, closed_at=pull.closed_at)
+
+
+async def _locate(
+    io: GitHubPullRequestIO, desired: PullRequestReflection
+) -> tuple[GitHubPullRequest | None, list[GitHubPullRequest]]:
+    """Find this item's own pull request and every one it has had: the builder App's, on its branch, naming its issue.
 
     An item that reuses a delivered or removed item's slug names a different issue, so it never
     adopts that item's pull request. A closed pull request is reused only to close out an item
@@ -108,10 +119,10 @@ async def _locate(io: GitHubPullRequestIO, desired: PullRequestReflection) -> Gi
     ]
     open_pulls = [pull for pull in own if pull.open]
     if open_pulls:
-        return open_pulls[0]
+        return open_pulls[0], own
     if desired.stage is PullRequestStage.OPEN or not own:
-        return None
-    return max(own, key=lambda pull: pull.number)
+        return None, own
+    return max(own, key=lambda pull: pull.number), own
 
 
 async def _post_reviews(
