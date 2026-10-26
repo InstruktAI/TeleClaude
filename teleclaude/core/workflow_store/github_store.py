@@ -6,8 +6,8 @@ import asyncio
 import json
 import sqlite3
 import threading
-from collections.abc import AsyncIterator, Callable, Mapping
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -350,22 +350,29 @@ def find_github_work_item(repository_id: int, number: int) -> GitHubWorkItem | N
     return None
 
 
-def _read_work_item(project_root: Path, number: int) -> GitHubWorkItem | None:
-    path = github_working_copy_path(project_root)
-    if not path.is_file():
-        return None
+@contextmanager
+def _open_working_copy_read_only(path: Path) -> Iterator[SyncSession]:
+    """Open an existing working copy without the writer lock, a rebuild or a provider call."""
     engine = create_engine(
         _IN_MEMORY_ENGINE_URL, creator=lambda: sqlite3.connect(_READ_ONLY_URI.format(path), uri=True)
     )
     try:
         with SyncSession(engine) as session:
-            item_id = work_item_for_number(session, number)
-            if item_id is None:
-                return None
-            slug = session.execute(text(_ITEM_SLUG_BY_ID), {_ITEM_ID: item_id}).scalar_one_or_none()
-            state_value = session.execute(text(_ITEM_STATE_BY_ID), {_ITEM_ID: item_id}).scalar_one_or_none()
+            yield session
     finally:
         engine.dispose()
+
+
+def _read_work_item(project_root: Path, number: int) -> GitHubWorkItem | None:
+    path = github_working_copy_path(project_root)
+    if not path.is_file():
+        return None
+    with _open_working_copy_read_only(path) as session:
+        item_id = work_item_for_number(session, number)
+        if item_id is None:
+            return None
+        slug = session.execute(text(_ITEM_SLUG_BY_ID), {_ITEM_ID: item_id}).scalar_one_or_none()
+        state_value = session.execute(text(_ITEM_STATE_BY_ID), {_ITEM_ID: item_id}).scalar_one_or_none()
     if not isinstance(slug, str):
         return None
     try:
