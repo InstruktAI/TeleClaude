@@ -75,7 +75,7 @@ from teleclaude.hooks.edit_declarations import (
     hold_certain_edit,
     settle_certain_edit,
 )
-from teleclaude.hooks.receiver._command_shell import command_shell_context
+from teleclaude.hooks.receiver._command_shell import host_shell_context
 from teleclaude.hooks.receiver._tool_admission import native_tool_denial_for_source
 from teleclaude.hooks.receiver_args import parse_receiver_args
 from teleclaude.hooks.session_map import (
@@ -802,7 +802,7 @@ def _print_additional_context(
         identity_key=identity_key,
         strict_identity_keys=scope.identity_keys if strict_scope and scope is not None else None,
     )
-    shell_context = command_shell_context(provider)
+    shell_context = host_shell_context()
     if not memory_context and not person_header and not company_header and not shell_context:
         logger.info(
             EVENT_SESSION_START_CONTEXT_COMPOSED,

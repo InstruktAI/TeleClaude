@@ -78,17 +78,10 @@ no stored control payload, extra model turn, approval gate, or transcript read.
 
 ### Command shell context
 
-At session start, the transient provider context also names the shell the
-agent's command tool runs in and how to write commands for it. The receiver
-runs in the agent CLI's environment and resolves the shell by that CLI's own
-rule: Claude uses `CLAUDE_CODE_SHELL` or `SHELL` when either names bash or
-zsh, and otherwise the account's login shell; Codex always uses the account's
-login shell. For zsh, the context carries the bash habits that fail there; for
-bash, only the version and tool checks. It states nothing it cannot resolve:
-other providers, and shells other than bash and zsh, receive no shell context.
-Agents type bash habits whatever their shell, so this is a counter for an act
-their context already invites (`general/policy/agent-facing-text`). The
-guidance itself is owned by `teleclaude/hooks/receiver/_command_shell.py`.
+At session start, when the host shell resolved by the platform's runtime
+environment is zsh, the transient provider context for every agent also
+carries guidance for writing commands in zsh. Any other host shell adds
+nothing. The guidance is owned by `teleclaude/hooks/receiver/_command_shell.py`.
 
 ### Use cases
 
@@ -151,13 +144,6 @@ And the session is not reported complete while provider work remains active
   mint on both agent-session-start and agent-stop because a native execution
   may first become observable at its stop boundary. For non-mint events on an
   unknown native session id, the receiver drops the event rather than minting.
-- Claude's fallback to the account's login shell is observed, not read from
-  its source: with `SHELL` naming TeleClaude's shell wrapper, Claude runs its
-  commands in zsh, which is also the login shell on the machines observed.
-- The command shell context covers the shell, not the tools on the command
-  tool's `PATH`: Claude and Codex sessions on one machine can resolve different
-  `bash` and coreutils builds, so the context directs agents to check them
-  rather than naming them.
 - The system-injected prompt filter strips complete platform-control and
   identity envelopes through the shared registry, plus Codex
   internal hook-prompt markers, and Claude hook-feedback prefixes
