@@ -25,8 +25,6 @@ class _Run:
     def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop = loop
         self.follow_up = False
-        self.started = False
-        self.future: concurrent.futures.Future[None] | None = None
         self.task: asyncio.Task[None] | None = None
         self.done: concurrent.futures.Future[None] = concurrent.futures.Future()
 
@@ -81,14 +79,17 @@ class ConflictRefreshScheduler:
             run = self._active
             if run is None:
                 return
-            future = run.future
-            if not run.started or not run.loop.is_running():
+            task = run.task
+            if task is None or not run.loop.is_running():
                 self._release(run)
-                run = None
-        if future is not None:
-            future.cancel()
-        if run is not None:
-            await asyncio.wrap_future(run.done)
+                return
+        try:
+            run.loop.call_soon_threadsafe(task.cancel)
+        except RuntimeError:
+            with self._lock:
+                self._release(run)
+            return
+        await asyncio.wrap_future(run.done)
 
     def _live_run(self) -> _Run | None:
         """Return the active chain, dropping one whose loop is gone and so can never end it. Lock held."""
@@ -108,7 +109,7 @@ class ConflictRefreshScheduler:
     def _start(self, run: _Run) -> None:
         coroutine = self._run(run)
         try:
-            run.future = asyncio.run_coroutine_threadsafe(coroutine, run.loop)
+            asyncio.run_coroutine_threadsafe(coroutine, run.loop)
         except RuntimeError as error:
             coroutine.close()
             logger.warning(_CONFLICT_REFRESH_FAILED, reason=type(error).__name__, exc_info=True)
@@ -128,7 +129,6 @@ class ConflictRefreshScheduler:
         with self._lock:
             if run.done.done():
                 return
-            run.started = True
             run.task = asyncio.current_task()
         try:
             while True:
