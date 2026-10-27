@@ -139,40 +139,6 @@ working copy and the repository.
   its expiry and never persists it. No session actor, person account or
   ambient token is used.
 
-<!-- planned-change:github-store-owed-pull-request-without-branch -->
-
-- **Pull requests.** An item's pull request is a reflection like the issue's
-  fields: written after the local commit from the record and the working
-  copy, owed and rewritten on refresh when its write fails, and never read as
-  state. It is owed apart from the issue's reflection, so a failure of either
-  never holds back the other.
-  - The reflection written for the build's start opens the item's pull
-    request: its branch, named for the item, has one open draft pull request
-    against the repository's default branch, linked to the item's issue, until
-    the item is delivered or removed. When that write fails, or the branch is
-    not yet on GitHub, the pull request is owed and opened by the next refresh
-    that can, as every reflection is.
-  - Each build review verdict is posted once as a review on the commit the
-    verdict is bound to, with the verdict as approval or requested changes
-    and, as its body under its envelope line, the review findings
-    (`review-findings`) the verdict is bound to. The reviews are derived from
-    the item's build review events
-    (`local/projects/teleclaude/design/architecture/work-state-machine`,
-    Review history), which its workflow state carries in the record, so a
-    later stamp, a fix cycle that clears the verdict, or a rebuilt working
-    copy loses no review. A review not yet on GitHub, including one whose
-    commit is not yet there, stays owed.
-  - Delivery closes the pull request with a comment naming the delivered
-    commit; removal closes it without one. Nothing merges it on GitHub.
-  - The pull request's body opens with an envelope line naming the item's
-    issue. The pull request is found again from GitHub by its App author, its
-    branch and that envelope, and a review by its App author and envelope
-    round, so a rebuilt working copy neither opens a second pull request nor
-    posts a review twice, and an item that reuses a delivered or removed
-    item's slug never adopts that item's pull request.
-
-<!-- change:github-store-owed-pull-request-without-branch -->
-
 - **Pull requests.** An item's pull request is a reflection like the issue's
   fields: written after the local commit from the record and the working
   copy, owed and rewritten on refresh when its write fails, and never read as
@@ -204,8 +170,6 @@ working copy and the repository.
     round, so a rebuilt working copy neither opens a second pull request nor
     posts a review twice, and an item that reuses a delivered or removed
     item's slug never adopts that item's pull request.
-
-<!-- /planned-change:github-store-owed-pull-request-without-branch -->
 
 - **Board.** In a repository an organization owns, the project's board
   (`local/projects/teleclaude/spec/feature/workflow/workflow-board`) is a
@@ -712,35 +676,20 @@ sequenceDiagram
 - Bookkeeping refused for the writer after a completed reflection or pull
   request leaves that reflection owed, and refresh writes it again.
 
-<!-- planned-change:github-store-owed-pull-request-without-branch -->
-
-- A role mapping that names no App for `builder` or `reviewer`, or an App not
-  installed on the repository with pull request write access, leaves the
-  pull request reflections owed with that cause; the issue and the workflow
-  are unaffected.
-
-<!-- change:github-store-owed-pull-request-without-branch -->
-
 - A role mapping that names no App for `builder` or `reviewer`, an App not
   installed on the repository with pull request write access, or a `builder`
   App without the repository's Contents read access, which reading the item's
   branch needs, leaves the pull request reflections owed with that cause; the
   issue and the workflow are unaffected.
 
-<!-- /planned-change:github-store-owed-pull-request-without-branch -->
-
 - A pull request someone merges on GitHub, or a review someone else posts,
   changes nothing in the record: the item is still delivered only by the
   integrator, and only the reviewer's stamped verdict counts.
-
-<!-- planned:github-store-owed-pull-request-without-branch -->
 
 - An item whose build started and whose branch is no longer on GitHub keeps
   its pull request owed for as long as the branch is absent. Refresh sends no
   request to open it in that time, and opens it once the branch is on GitHub
   again; the issue and the workflow are unaffected.
-
-<!-- /planned:github-store-owed-pull-request-without-branch -->
 
 - A repository a personal account owns has no board. The board's setup
   records that cause and writes nothing; the issues and the workflow are

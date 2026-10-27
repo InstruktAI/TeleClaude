@@ -40,19 +40,23 @@ class _Writes:
 
 async def apply_pull_request(
     io: GitHubPullRequestIO, desired: PullRequestReflection, known: PullRequestBookkeeping
-) -> None:
+) -> bool:
     """Bring GitHub to the desired pull request, recording each step that lands in `known`.
 
     `known` is advanced as the writes succeed, so a failure part way leaves it holding exactly what
-    GitHub now has and the next attempt repeats nothing. A failure propagates for the caller to
-    keep the pull request owed.
+    GitHub now has and the next attempt repeats nothing. Returns whether GitHub now holds the desired
+    reflection; False means the item's branch is not on GitHub yet, so nothing was requested, `known`
+    is untouched, and the caller keeps the pull request owed for the refresh that finds the branch.
+    A failure propagates for the caller to keep the pull request owed.
     """
     writes = _Writes()
     pull = await _locate(io, desired)
     if pull is None:
         if desired.stage is not PullRequestStage.OPEN:
             known.digest = desired.digest
-            return
+            return True
+        if not await io.branch_exists(desired.branch):
+            return False
         base = await io.default_branch()
         pull = await io.create_draft_pull_request(desired.title, desired.body, desired.branch, base)
         writes.created = True
@@ -92,6 +96,7 @@ async def apply_pull_request(
             delivery_noted=writes.delivery_noted,
             closed=writes.closed,
         )
+    return True
 
 
 async def _locate(io: GitHubPullRequestIO, desired: PullRequestReflection) -> GitHubPullRequest | None:
