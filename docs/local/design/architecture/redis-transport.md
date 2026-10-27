@@ -16,7 +16,7 @@ visibility: 'public'
 
 - Redis transport implements RemoteExecutionProtocol for request/response.
 - Redis transport never performs UI messaging.
-- The transport runs on the shared cluster Redis, never on a computer's local Redis; the cluster Redis is optional, and Telegram multi-computer operation does not require it.
+- The transport runs on the shared cluster Redis, never on a computer's local Redis. The event platform needs the cluster Redis to start; Telegram multi-computer operation does not need the transport.
 
 ```mermaid
 flowchart LR
@@ -46,7 +46,7 @@ flowchart LR
 
 ## Invariants
 
-- **Optional Dependency**: The cluster Redis is never required for local operations or Telegram multi-computer operation; local events use the computer's own local Redis (`local/projects/teleclaude/design/architecture/event-delivery`).
+- **Transport Dependency**: Telegram multi-computer operation does not depend on the transport. Local events use the computer's own local Redis when one is configured (`local/projects/teleclaude/design/architecture/event-delivery`).
 - **Stream Per Computer**: Each computer polls exactly one command stream named after its computer identity.
 - **One-Shot Responses**: Response streams are created per-message and auto-expire after TTL.
 - **Heartbeat TTL**: Computer registry entries expire after 60s without heartbeat; marks computer offline.

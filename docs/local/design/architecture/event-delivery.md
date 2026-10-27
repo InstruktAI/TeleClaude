@@ -122,7 +122,9 @@ retain their local payload reach and completion boundaries under
 
 The local Redis runs on each computer under the operating system's service
 manager, listens only on a Unix socket that only the computer's user and the
-Redis service can open, and requires its own user and password.
+Redis service can open, and requires its own user and password. A computer whose
+local Redis is not configured carries its local events on the cluster Redis, and
+its event platform logs that at startup.
 The cluster Redis is shared by the computers of one cluster; it also carries
 the cross-computer transport of
 `local/projects/teleclaude/design/architecture/redis-transport`.
@@ -136,10 +138,15 @@ sessions show, and the earlier internal compatibility ingress. Every other type
 is local. The set of cluster types has one owner in code, and a new
 cross-computer consumer changes it in the same change.
 
-A consumer whose interest names only local types reads the local Redis; one
-naming only cluster types reads the cluster Redis; one taking any type reads
-both and keeps separate progress on each. Own-computer filtering applies to
-what each Redis delivers.
+A relayed event is always cluster. A type outside every namespace the platform
+declares is a relayed type, and a platform type the catalog no longer declares
+stays local. A consumer whose interest names only local types reads the local
+Redis; one naming only cluster types reads the cluster Redis; one taking any
+type reads both and keeps separate progress on each, while its reaction still
+handles one event at a time. Own-computer filtering applies to what each Redis
+delivers. A consumer that takes any type from every computer, such as
+event-bound maintenance, receives another computer's events only when they are
+cluster events.
 
 ### Earlier internal wire interoperability
 

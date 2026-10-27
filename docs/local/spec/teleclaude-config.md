@@ -539,12 +539,12 @@ environment_variables:
   # their references are authored in the configuration, not derived here.
   # Redis — essential infrastructure. Editable in the Infra subtab (Redis section)
   # as ${VAR}-backed fields, and a mandatory guided-wizard step (the Infra step is not
-  # complete until REDIS_CLUSTER_URL is set). Also listed in the config TUI's environment section.
+  # complete until REDIS_URL is set). Also listed in the config TUI's environment section.
+  - REDIS_URL # the cluster Redis
+  - REDIS_PASSWORD
   - REDIS_LOCAL_URL
   - REDIS_LOCAL_USERNAME
   - REDIS_LOCAL_PASSWORD
-  - REDIS_CLUSTER_URL
-  - REDIS_CLUSTER_PASSWORD
   # Current machine-config field with no runtime consumer.
   - DATABASE_URL
   # RuntimeConfig one-shot path control. RuntimeConfig reads this once at
@@ -697,13 +697,15 @@ agents:
           flags: string # complete, opaque launch flags for this entry; the platform never derives flags from a template. Startup validation rejects unknown modes and malformed entries, referencing the concrete config.yml path.
 redis:
   local: # this computer's own Redis for local events; never reachable from another computer
-    url: string # normally ${REDIS_LOCAL_URL}: a unix:// socket only this computer's user and the Redis service can open
-    username: string # normally ${REDIS_LOCAL_USERNAME}: the ACL user the local Redis requires
-    password: string # normally ${REDIS_LOCAL_PASSWORD}
+    url: string | null # normally ${REDIS_LOCAL_URL}: a unix:// socket only this computer's user and the Redis service can open; any other scheme is refused. Unset, local events use the cluster Redis
+    username: string | null # normally ${REDIS_LOCAL_USERNAME}: the ACL user the local Redis requires
+    password: string | null # normally ${REDIS_LOCAL_PASSWORD}
+    max_connections: integer # connection pool size
     socket_timeout: integer # seconds
   cluster: # the shared Redis for cluster events and the cross-computer transport
-    url: string # normally ${REDIS_CLUSTER_URL}
-    password: string | null # normally ${REDIS_CLUSTER_PASSWORD}
+    url: string # normally ${REDIS_URL}
+    password: string | null # normally ${REDIS_PASSWORD}
+    max_connections: integer # connection pool size
     socket_timeout: integer # seconds
     message_stream_maxlen: integer # length cap of each computer's request stream
     output_stream_maxlen: integer # length cap of each response stream
