@@ -160,9 +160,13 @@ same outcome as well as the comparable in-system path. Name what is reused and
 the concrete gap that remains; interface familiarity or a list of references is
 not an assessment of existing solutions (`general/principle/grounding`). This
 applies to designs carried by specs and mechanism notes as well as architecture
-artifacts. For unfamiliar infrastructure or a security boundary, the artifact
-names the reference implementations, current vendor documentation and a
-comparable production architecture behind its adopt-or-build judgment.
+artifacts. For every external system the work depends on, the artifact names
+the primitives that system offers for the problem, read from its current
+documentation, and the part of the design each one carries
+(`sdlc/procedure/lifecycle/prepare/architecture`, step 1a). For infrastructure
+or a security boundary the design adds of its own, it also names the reference
+implementations, current vendor documentation and a comparable production
+architecture behind its adopt-or-build judgment.
 A grounded
 artifact neither invents a mechanism from memory nor lets the present codebase
 veto a better, approved target without examination.
@@ -313,9 +317,11 @@ horizon is derived from intent and situation, not from the todo kind alone:
   the diagnosed causal mechanism. Betterment may make the restoration coherent
   and durable; it does not smuggle adjacent product scope into the fix.
 - Implementation-internal work stays within the contract it preserves.
-- Product-shaping work may enrich sparse input with situation-specific domain
-  intelligence, provided every consequential addition explains why it belongs
-  here and remains a proposal until the product-intent gate accepts it.
+- Product-shaping work enriches sparse input with situation-specific domain
+  intelligence: the shapes, cases and consequences the stated outcome already
+  implies. Scope stays what the input carries. A guarantee another sound
+  realization of the input could do without is not carried by it, and a
+  reason for it, however well argued, does not make it scope.
 
 For a feature, the PRD carries the horizon into independent review and human
 approval. For change or bug work without a PRD, the plan's _Intent & scope_
