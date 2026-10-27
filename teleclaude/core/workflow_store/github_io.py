@@ -100,6 +100,11 @@ class GitHubWorkflowIO:
         self._transport = GitHubTransport(self.scope)
         self._pacing_window: GitHubMutationPacing | None = None
 
+    @property
+    def paced(self) -> bool:
+        """Whether a paced-mutation window (the GitHub store switch) is open on this IO."""
+        return self._pacing_window is not None
+
     @asynccontextmanager
     async def paced_mutations(self) -> AsyncIterator[GitHubMutationPacing]:
         """Pace mutative requests during one migration without changing ordinary traffic."""
@@ -178,9 +183,9 @@ class GitHubWorkflowIO:
         changed_parts: frozenset[ProjectionPart],
     ) -> None:
         io_loop = shared_github_io_loop()
-        if io_loop.request_lock is None:
+        if io_loop.unit_lock is None:
             raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
-        async with io_loop.request_lock:
+        async with io_loop.unit_lock:
             if ProjectionPart.LABELS in changed_parts:
                 for label in reflection.labels:
                     await self._ensure_label(label.name, label.color, label.description)
@@ -300,12 +305,18 @@ class GitHubWorkflowIO:
     def _sync(self, operation: GitHubOperation, *arguments: object) -> Any:
         return shared_github_io_loop().submit(self._serialized_dispatch(operation, *arguments)).result()
 
+    def call_sync_within(self, operation: GitHubOperation, timeout: float, *arguments: object) -> Any:
+        """Run one operation for a sync caller, abandoning it when `timeout` seconds pass (raises TimeoutError)."""
+        future = shared_github_io_loop().submit(self._serialized_dispatch(operation, *arguments))
+        try:
+            return future.result(timeout=timeout)
+        except TimeoutError:
+            future.cancel()
+            raise
+
     async def _serialized_dispatch(self, operation: GitHubOperation, *arguments: object) -> Any:
-        io_loop = shared_github_io_loop()
-        if io_loop.request_lock is None:
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
-        async with io_loop.request_lock:
-            return await self._dispatch(operation, *arguments)
+        # Each request of the dispatch takes the request lock itself (`GitHubTransport.call`).
+        return await self._dispatch(operation, *arguments)
 
     async def _dispatch(self, operation: GitHubOperation, *arguments: object) -> Any:
         return await _OPERATION_HANDLERS[operation](self, arguments)

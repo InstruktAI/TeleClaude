@@ -33,7 +33,7 @@ _HEAD_TEMPLATE = "{owner}:{branch}"
 _EMPTY = ""
 _LOCK_WAIT_SECONDS = 30.0
 _UNIT_SECONDS = 180.0
-_LOCK_WAIT_DETAIL = "request lock wait exceeded"
+_LOCK_WAIT_DETAIL = "unit lock wait exceeded"
 _UNIT_DETAIL = "pull request unit exceeded its time bound"
 _PULL_REQUEST_PERMISSIONS: AppPermissionsType = {"pull_requests": "write"}
 _Result = TypeVar("_Result")
@@ -95,8 +95,8 @@ class GitHubPullRequestIO:
     The pull request is opened, edited and closed as the App mapped to `builder` and
     reviewed as the App mapped to `reviewer`: GitHub refuses approving or
     requesting changes on a pull request from its own author. Every primitive runs
-    inside `submit`, which holds the process-wide request lock like every store
-    request.
+    inside `submit`, which holds the unit lock for the whole unit; each primitive's
+    request takes the process-wide request lock alone, like every store request.
     """
 
     def __init__(self, repository: GitHubRepositoryIdentity) -> None:
@@ -109,10 +109,10 @@ class GitHubPullRequestIO:
 
     async def _serialized(self, work: Callable[[GitHubPullRequestIO], Awaitable[_Result]]) -> _Result:
         io_loop = shared_github_io_loop()
-        if io_loop.request_lock is None:
+        if io_loop.unit_lock is None:
             raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
         try:
-            await asyncio.wait_for(io_loop.request_lock.acquire(), _LOCK_WAIT_SECONDS)
+            await asyncio.wait_for(io_loop.unit_lock.acquire(), _LOCK_WAIT_SECONDS)
         except TimeoutError:
             raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_LOCK_WAIT_DETAIL) from None
         try:
@@ -121,7 +121,7 @@ class GitHubPullRequestIO:
         except TimeoutError:
             raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_UNIT_DETAIL) from None
         finally:
-            io_loop.request_lock.release()
+            io_loop.unit_lock.release()
 
     async def reviewer_login(self) -> str:
         """Return the login the reviewer App's reviews are authored under."""
