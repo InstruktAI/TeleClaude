@@ -60,16 +60,74 @@ A todo is held when either of these exists in its project on this computer:
 - A dispatch repeated after its own earlier start was accepted records that
   started session as the todo's driver instead of starting another.
 
+<!-- planned:single-orchestrator-across-computers -->
+
+### Across computers
+
+For a project on the GitHub workflow store, every computer holding a checkout
+sees the same todos, and one todo has at most one live orchestrator across all
+of them.
+
+- A start on any computer is also admitted by the fleet's master before its
+  session is created or its caller claimed. The starting computer keeps its own
+  decision for the todo while it asks, and its caller waits for the answer only
+  within a bounded budget.
+- The master decides one start of a todo at a time. The todo is held when the
+  master's own sessions hold it or the todo's `active_runner` claim holds it.
+- A claimed session holds the todo while it is open, not closing, and drives
+  that todo, or while a start of it for that todo is being decided on its
+  computer. Each computer answers this for the sessions it ran. The master asks
+  every computer the platform knows, configured or discovered: the computer
+  that ran the session decides; a session no computer ran does not hold the
+  todo; a computer that does not answer leaves the claim held.
+- A computer treats a claim for a session it never ran as held, and never
+  clears it.
+- Only the master writes the claim while a start can be admitted for the todo.
+  Another computer asks it to release a claim for a session that computer ran,
+  and the master clears claims it judges ended in its lifecycle runner passes.
+  Reactivating a removed todo restores the claim its removal set aside.
+- A start that finds the todo held is refused with the driver-start conflict
+  naming the holding session and the computer running it, or the computers that
+  did not answer, and creates or claims nothing.
+- A start the master cannot decide — no unique live master holding the
+  project, no answer from it, or no decision within the budget — is refused
+  naming why, and creates or claims nothing. A lifecycle runner pass counts
+  that todo as skipped and continues; a lifecycle operation fails with that
+  refusal.
+
+<!-- /planned:single-orchestrator-across-computers -->
+
 ## Known caveats
 
 - A start whose session never leaves initializing — its bootstrap failed —
   holds the todo until that session is ended; the bootstrap failure is
   published for a person to act on.
+
+<!-- planned-change:single-orchestrator-across-computers -->
+
 - Admission covers one computer. Computers that see one todo through a shared
   workflow store do not decide their starts against each other.
+
+<!-- change:single-orchestrator-across-computers -->
+
+- Across computers, a claim stays held while the computer running its session
+  does not answer the master, and every start of a GitHub-backed todo is
+  refused while the master is unreachable.
+- A computer on a release without cross-computer admission still decides its
+  own starts by its own registry until it is updated.
+
+<!-- /planned-change:single-orchestrator-across-computers -->
 
 ## See Also
 
 - docs/local/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors.md
 - docs/local/adr/0134-a-colliding-driver-start-is-refused-without-waiting.md
 - docs/local/adr/0052-orchestrator-dedup-registry-authoritative.md
+
+<!-- planned:single-orchestrator-across-computers -->
+
+- docs/local/adr/0135-github-backed-driver-starts-are-admitted-by-the-mesh-master.md
+- docs/local/adr/0136-only-the-master-writes-a-github-backed-claim.md
+- docs/local/adr/0137-a-github-backed-claim-is-settled-per-todo.md
+
+<!-- /planned:single-orchestrator-across-computers -->

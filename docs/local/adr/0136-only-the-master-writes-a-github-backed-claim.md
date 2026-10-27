@@ -7,6 +7,12 @@ description: For a project on the GitHub workflow store, every write that sets o
 
 # Only the Master Writes a GitHub-Backed Claim — ADR
 
+## Status
+
+Superseded in part by ADR-0137: the single writer covers todos an
+orchestrator start can be admitted for, and a release is ordered by the
+releasing computer's admission section.
+
 ## Context
 
 ADR-0135 makes the fleet's master admit every orchestrator start of a todo in a

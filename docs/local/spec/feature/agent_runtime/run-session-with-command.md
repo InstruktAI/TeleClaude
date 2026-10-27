@@ -394,6 +394,16 @@ holder. A request refused as busy returns HTTP 423 with a detail stating that
 another start of the todo is in progress and naming the session it is starting.
 Neither creates a session.
 
+<!-- planned:single-orchestrator-across-computers -->
+
+For a todo in a project on the GitHub workflow store, the driver-start conflict
+also names the computer running the holding session, or the computers that did
+not answer. A request whose admission cannot be decided — no unique live master
+holding the project, no answer from it, or no decision within the start budget
+— returns HTTP 503 with a detail naming why, and creates no session.
+
+<!-- /planned:single-orchestrator-across-computers -->
+
 #### UC-DSD3: A second commit reviewer for the same driver, project, and mode is refused
 
 Commit review carries no todo slug — its subject is a commit series whose SHA set changes
