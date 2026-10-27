@@ -15,6 +15,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.tui.processes import live_tui_start_commits, signal_tui_reload
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.integration.daemon_window import (
     Lifecycle,
@@ -72,6 +73,7 @@ _STOP_WITHHELD = "the lifecycle withheld the stop ({outcome})"
 _MIGRATE_FAILED = "exit {exit_code}: {output}"
 _MIGRATE_TIMED_OUT = "the migration entrypoint did not finish within {seconds:.0f}s"
 _NO_OUTPUT = "no output"
+_TUI_RELOAD_EVENT = "install_tuis_reloaded"
 
 
 class LiveInstallPorts:
@@ -202,8 +204,17 @@ class LiveInstallPorts:
         """Publish the global ``telec`` through ``current``."""
         publish_telec(self._layout)
 
+    def reload_tuis(self) -> None:
+        """Signal every running terminal interface through presentation's registry."""
+        reached = signal_tui_reload()
+        logger.info(_TUI_RELOAD_EVENT, pids=reached)
+
+    def held_tui_revisions(self) -> frozenset[str | None]:
+        """The start commit each running terminal interface's record names, ``None`` where it names none."""
+        return frozenset(commit for _pid, commit in live_tui_start_commits())
+
     def prune(self, keep: frozenset[str]) -> None:
-        """Remove every release folder except the ones named; nothing live names a release."""
+        """Remove every release folder except the ones named; the act's keep-set names what running terminal interfaces hold."""
         for revision in self._layout.installed_revisions():
             if revision not in keep:
                 remove_release(self._layout, revision)

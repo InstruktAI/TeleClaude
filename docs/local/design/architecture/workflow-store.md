@@ -139,6 +139,8 @@ working copy and the repository.
   its expiry and never persists it. No session actor, person account or
   ambient token is used.
 
+<!-- planned-change:github-store-owed-pull-request-without-branch -->
+
 - **Pull requests.** An item's pull request is a reflection like the issue's
   fields: written after the local commit from the record and the working
   copy, owed and rewritten on refresh when its write fails, and never read as
@@ -168,6 +170,42 @@ working copy and the repository.
     round, so a rebuilt working copy neither opens a second pull request nor
     posts a review twice, and an item that reuses a delivered or removed
     item's slug never adopts that item's pull request.
+
+<!-- change:github-store-owed-pull-request-without-branch -->
+
+- **Pull requests.** An item's pull request is a reflection like the issue's
+  fields: written after the local commit from the record and the working
+  copy, owed and rewritten on refresh when its write fails, and never read as
+  state. It is owed apart from the issue's reflection, so a failure of either
+  never holds back the other.
+  - The reflection written for the build's start opens the item's pull
+    request: its branch, named for the item, has one open draft pull request
+    against the repository's default branch, linked to the item's issue, until
+    the item is delivered or removed. When that write fails, the pull request
+    is owed and opened by the next refresh that can, as every reflection is.
+    GitHub opens a pull request only from a branch it holds, so while the
+    item's branch is not on GitHub the pull request stays owed and no request
+    to open it is sent; the first refresh that finds the branch there opens it.
+  - Each build review verdict is posted once as a review on the commit the
+    verdict is bound to, with the verdict as approval or requested changes
+    and, as its body under its envelope line, the review findings
+    (`review-findings`) the verdict is bound to. The reviews are derived from
+    the item's build review events
+    (`local/projects/teleclaude/design/architecture/work-state-machine`,
+    Review history), which its workflow state carries in the record, so a
+    later stamp, a fix cycle that clears the verdict, or a rebuilt working
+    copy loses no review. A review not yet on GitHub, including one whose
+    commit is not yet there, stays owed.
+  - Delivery closes the pull request with a comment naming the delivered
+    commit; removal closes it without one. Nothing merges it on GitHub.
+  - The pull request's body opens with an envelope line naming the item's
+    issue. The pull request is found again from GitHub by its App author, its
+    branch and that envelope, and a review by its App author and envelope
+    round, so a rebuilt working copy neither opens a second pull request nor
+    posts a review twice, and an item that reuses a delivered or removed
+    item's slug never adopts that item's pull request.
+
+<!-- /planned-change:github-store-owed-pull-request-without-branch -->
 
 <!-- planned:github-work-board -->
 
@@ -240,6 +278,9 @@ working copy and the repository.
   planned. An item that becomes repository work opens its issue in the next
   push and publishes every version the repository lacks
   (`local/projects/teleclaude/adr/0126-non-repository-work-stays-in-the-github-store-working-copy`).
+
+<!-- planned-change:github-item-acts -->
+
 - **Repository layout.** Each repository work item is one issue the platform
   App created. The item's `WorkItemId` and `StoreAddress` are those of its
   working-copy row, exactly as on the local backend, so every port result
@@ -263,6 +304,35 @@ working copy and the repository.
   closed state, labels, issue type, sub-issues, blocked-by relations and
   assignees are reflections the adapter writes from the record and its own
   bookkeeping and never reads.
+
+<!-- change:github-item-acts -->
+
+- **Repository layout.** Each repository work item is one issue the platform
+  App created. The item's `WorkItemId` and `StoreAddress` are those of its
+  working-copy row, exactly as on the local backend, so every port result
+  names items in one vocabulary; the issue is reached through the adapter's
+  own bookkeeping and never through a port identity. The item's **record** is
+  one platform-authored comment on that issue, edited in place: the item's
+  row facts, dependencies, workflow state, a revision counter and, for each
+  artifact, a pointer to its current content. Artifact versions are
+  platform-authored content comments appended to the issue and never edited
+  in content, so every version stays readable; content larger than one
+  comment is split across consecutive parts, the version's history link sits
+  hidden in its last part, and workflow state that does not fit in the record
+  is stored the same way. A history link in a comment of its own, as earlier
+  versions carry it, is read the same way. Content digests are computed from
+  the stored content exactly as the local implementation computes them. One
+  platform-created **ledger** issue per repository holds the project-level
+  records, commit reviews and documentation transfers, as appended entries.
+  Every platform comment opens with the envelope line the work record
+  specifies; the machine data follows it hidden, and every reader accepts a
+  comment with or without the envelope. The issue's title, body, open or
+  closed state, labels, issue type, sub-issues, blocked-by relations and
+  assignees are reflections the adapter writes from the record and its own
+  bookkeeping and never reads as state; the issue field read below reads
+  them only to report a person's change to the work-control handler.
+
+<!-- /planned-change:github-item-acts -->
 
 - **Write path.** Every transaction on the working copy records which items
   and project-level records it changes. Before the local commit completes,
@@ -399,6 +469,58 @@ master admits each conversation request before sending it:
 - **Selected-store helpers.** Presence, validation reads and integrity
   checks answer for the working copy. Transfer and database location refuse
   for a GitHub-backed project: each computer reaches the state from GitHub.
+
+<!-- planned:github-item-acts -->
+
+- **Item title.** An item's title is a workflow fact: the title a person last
+  set through the update facade, or none. The record carries it with the
+  item's row facts, and the issue's title reflection is that title when set,
+  otherwise the heading the input derives.
+- **Platform labels only.** A label reflection adds and removes only the
+  platform's own labels on the issue and leaves every other label as it is.
+- **Issue history and field read.** For an item of a project on this computer
+  and a history position, the adapter module reads, in the order GitHub
+  recorded them, the changes after that position to the issue's title, open
+  state and state reason, labels, issue type, sub-issues and blocked-by
+  relations, each with the account that made it and its previous and new
+  value; and the current values of those fields beside the values its
+  projection holds. It is a module call like the work item lookup,
+  authenticated as the project's App, and retains nothing.
+- **History position.** The record carries, per item, the position in its
+  issue's history up to which every change has its disposition. A transaction
+  may carry the position it advances to; the position commits in the same
+  record revision as the transaction's other changes, and a position advanced
+  with no other change is a record write of its own. Only the holder of the
+  project's work-control claim advances positions.
+- **Work-control claim.** The ledger issue holds the project's work-control
+  claim as platform comments appended and never edited, opening with
+  `[action:work-control-claim computer:<name>]` or
+  `[action:work-control-release computer:<name>]`; the ledger's readers take
+  neither as a ledger entry. The claim that holds is the first claim the
+  ledger orders after the latest release. The module answers whether this
+  computer holds it, appends this computer's claim when none holds, appends a
+  release for this computer, and, for an operator, appends a release for
+  another computer once the fleet no longer reports that computer online. A
+  claim never expires.
+- **Put-back notices.** The record carries the notices an item owes: the
+  history entry each answers, the field, the change and the reason. Each is
+  reflected as one comment under the work record's put-back envelope, which
+  names the entry, written only by the holder of the project's work-control
+  claim. Before appending one, the holder looks for a notice the App already
+  wrote for that entry and adopts it instead; a notice found on the issue
+  leaves the record with the item's next revision.
+- **Changed issues.** For a project on this computer and a moment, the module
+  lists the issues the platform App opened that GitHub reports updated since
+  then.
+- **Field restore.** For an item and a set of its reflected fields, the module
+  writes the projected value of each, whatever the field's last written
+  digest. A restore that fails is owed and written by the next refresh like
+  any reflection.
+- **Repository permission read.** For a project on this computer and a GitHub
+  login, the module reads that account's permission on the repository through
+  the project's App.
+
+<!-- /planned:github-item-acts -->
 
 ## Invariants
 
@@ -630,13 +752,35 @@ sequenceDiagram
 
 <!-- /planned-change:working-copy-writers-refused-database-locked -->
 
+<!-- planned-change:github-store-owed-pull-request-without-branch -->
+
 - A role mapping that names no App for `builder` or `reviewer`, or an App not
   installed on the repository with pull request write access, leaves the
   pull request reflections owed with that cause; the issue and the workflow
   are unaffected.
+
+<!-- change:github-store-owed-pull-request-without-branch -->
+
+- A role mapping that names no App for `builder` or `reviewer`, an App not
+  installed on the repository with pull request write access, or a `builder`
+  App without the repository's Contents read access, which reading the item's
+  branch needs, leaves the pull request reflections owed with that cause; the
+  issue and the workflow are unaffected.
+
+<!-- /planned-change:github-store-owed-pull-request-without-branch -->
+
 - A pull request someone merges on GitHub, or a review someone else posts,
   changes nothing in the record: the item is still delivered only by the
   integrator, and only the reviewer's stamped verdict counts.
+
+<!-- planned:github-store-owed-pull-request-without-branch -->
+
+- An item whose build started and whose branch is no longer on GitHub keeps
+  its pull request owed for as long as the branch is absent. Refresh sends no
+  request to open it in that time, and opens it once the branch is on GitHub
+  again; the issue and the workflow are unaffected.
+
+<!-- /planned:github-store-owed-pull-request-without-branch -->
 
 <!-- planned:github-work-board -->
 

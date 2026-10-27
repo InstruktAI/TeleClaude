@@ -138,13 +138,12 @@ _real_git() {
 
 # Refusal logger. The wrapper's refusals are the only git outcomes it can
 # classify, so each refusal path records one event=blocked line:
-#   WARNING — the wrapper refused an operation the session attempted; recurring
-#             reasons are the log bug hunter's pattern signal.
-#   ERROR   — the wrapper could not establish what to enforce (pass ERROR).
+#   DEBUG — the wrapper refused an operation the session attempted, as designed.
+#   ERROR — the wrapper could not establish what to enforce (pass ERROR).
 # The session id names the transcript that shows why the operation was attempted.
 _log_block() {
     local _reason="$1"
-    local _level="${2:-WARNING}"
+    local _level="${2:-DEBUG}"
     local _session_id="" _identity_doc=""
     if _level_enabled "$_level"; then
         if [ -r "${TMPDIR:-}/teleclaude_identity.json" ]; then

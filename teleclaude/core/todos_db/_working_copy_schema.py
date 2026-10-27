@@ -9,6 +9,7 @@ from pathlib import Path
 from teleclaude.core.migration_signal import MigrationStore, signal_migration_started
 from teleclaude.core.todos_db._github_pull_requests import initialize_pull_request_bookkeeping
 from teleclaude.core.todos_db._github_questions import initialize_question_bookkeeping
+from teleclaude.core.todos_db._ledger_knowledge import LEDGER_COMMIT_DDL, LEDGER_COMMIT_TABLE, LedgerKnowledgeField
 from teleclaude.core.todos_db._working_copy import _PROJECT_TABLES, WorkingCopyField, WorkingCopyTable
 
 _BOOKKEEPING_DDL = (
@@ -47,6 +48,7 @@ _SINGLETON_SEEDS = (
     ),
 )
 _REPOSITORY_COLUMNS_SQL = "PRAGMA table_info(github_repository)"
+_TABLE_EXISTS_SQL = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
 _TABLE_INFO_SQL = "PRAGMA table_info({})"
 _ADD_COLUMN_SQL = "ALTER TABLE {} ADD COLUMN {} {}"
 _INITIALIZED_COLUMN_DDL = "ALTER TABLE github_repository ADD COLUMN initialized INTEGER NOT NULL DEFAULT 0"
@@ -95,6 +97,7 @@ _WORKING_COPY_COLUMN_MIGRATIONS = (
         WorkingCopyField.PROJECTION_REPAIR_AFTER_ISSUE,
         "INTEGER NOT NULL DEFAULT 0",
     ),
+    (WorkingCopyTable.GITHUB_REPOSITORY, LedgerKnowledgeField.THROUGH, "TEXT"),
 )
 
 
@@ -111,6 +114,13 @@ def initialize_working_copy(path: str | Path) -> None:
     """Install working-copy bookkeeping and change capture after every schema bootstrap."""
     connection = sqlite3.connect(path)
     try:
+        if connection.execute(_TABLE_EXISTS_SQL, (LEDGER_COMMIT_TABLE,)).fetchone() is None:
+            if (
+                connection.execute(_TABLE_EXISTS_SQL, (WorkingCopyTable.GITHUB_REPOSITORY.value,)).fetchone()
+                is not None
+            ):
+                signal_migration_started(MigrationStore.TODOS)
+            connection.execute(LEDGER_COMMIT_DDL)
         for statement in _BOOKKEEPING_DDL:
             connection.execute(statement)
         for presence_sql, seed_sql in _SINGLETON_SEEDS:

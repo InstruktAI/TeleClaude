@@ -86,4 +86,7 @@ orchestrator adopting or continuing its own slug is not self-blocked.
 ## Status
 
 Superseded in part by ADR-0078: time-bound dispatch claims are removed; the
-registry-authoritative live-orchestrator decision remains accepted.
+registry-authoritative live-orchestrator decision remains accepted. Superseded
+in part by ADR-0135: across computers, the claim judged by the computers that
+could run its session decides whether a todo of a GitHub-backed project is
+held.

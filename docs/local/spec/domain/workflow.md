@@ -35,6 +35,16 @@ feature specs remain the current contract.
   identity, or domain behavior delivered by a todo.
 - **Published contracts:** todo and artifact commands, queries, lifecycle
   events, and explicit dispatch requests to agent runtime.
+
+<!-- planned:github-item-acts -->
+
+- **Also owns (item title):** an item's title — the readable name a person
+  gives it, apart from its slug, set or cleared through the update facade and
+  held with the item's row facts. Setting it changes nothing else about the
+  item; a store that shows the item uses it where it shows a title.
+
+<!-- /planned:github-item-acts -->
+
 - **Also published:** where a project's shared state lives, given a project
   root. A primary checkout owns its own state and a linked worktree's state
   lives at the owning checkout — the relation this context creates and defines,
@@ -164,6 +174,9 @@ concerned:
 - `local/projects/teleclaude/adr/0104-every-todo-is-created-with-its-kind` — every todo created with its kind
 - `local/projects/teleclaude/adr/0125-github-store-keeps-the-local-implementation-as-its-working-copy` — the GitHub store's working copy and push before local commit
 - `local/projects/teleclaude/adr/0126-non-repository-work-stays-in-the-github-store-working-copy` — non-repository work kept in the GitHub store's working copy
+- `local/projects/teleclaude/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors` — concurrent driver starts for one todo serialized on one computer
+- `local/projects/teleclaude/adr/0134-a-colliding-driver-start-is-refused-without-waiting` — a colliding driver start refused at once instead of waiting
+- `local/projects/teleclaude/adr/0135-github-backed-driver-starts-are-admitted-by-the-mesh-master` — driver starts of a GitHub-backed project admitted by the fleet's master
 
 ## See Also
 

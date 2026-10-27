@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal, Protocol
@@ -447,7 +447,7 @@ def parse_artifact_history_node(body: str) -> ArtifactHistoryNode:
     return ArtifactHistoryNode.model_validate_json(_marker_payload(body, _HISTORY_MARKER))
 
 
-def effective_revision(record: WorkflowRecord, committed_transactions: set[str]) -> ItemRevision:
+def effective_revision(record: WorkflowRecord, committed_transactions: Container[str]) -> ItemRevision:
     """Apply a pending snapshot only when its transaction has a ledger commit entry."""
     pending = record.pending
     if pending is not None and pending.transaction_id in committed_transactions:
