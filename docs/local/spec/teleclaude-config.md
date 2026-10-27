@@ -540,7 +540,7 @@ environment_variables:
   # Redis — essential infrastructure. Editable in the Infra subtab (Redis section)
   # as ${VAR}-backed fields, and a mandatory guided-wizard step (the Infra step is not
   # complete until REDIS_CLUSTER_URL is set). Also listed in the config TUI's environment section.
-  # The installation's environment stage gives them the values of the earlier REDIS_URL and REDIS_PASSWORD.
+  # Every install gives them the values of the earlier REDIS_URL and REDIS_PASSWORD before migrating.
   - REDIS_CLUSTER_URL
   - REDIS_CLUSTER_PASSWORD
   - REDIS_LOCAL_URL

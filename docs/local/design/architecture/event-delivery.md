@@ -121,16 +121,25 @@ retain their local payload reach and completion boundaries under
 ### Scopes and their Redis
 
 The local Redis is the operating system's Redis, run by its service manager.
-The installer configures it on every computer whose cluster Redis is on another
-computer: it listens only on a Unix socket that only the computer's user and the
-Redis service can open, its TCP port is off, its default user is off, and it
-requires one ACL user whose password lives in the machine environment. On
-Linux the Redis service runs with the TeleClaude user's primary group, so every
-process of that user opens the socket at once. The installer verifies the local
-Redis answers before the install continues. It configures none on a computer
-that hosts the cluster Redis, keeps a local Redis the operator configured that
-answers, and refuses to take over a Redis another program uses, naming the
-variables that point TeleClaude at a dedicated one (ADR-0140). A computer whose
+Every install sets it up before the release's migrations, on every computer
+whose cluster Redis is on another computer: it installs the Redis package when
+it is missing, makes Redis listen only on a Unix socket that only the
+computer's user and the Redis service can open, turns its TCP port and default
+user off, and gives it one ACL user whose password lives in the machine
+environment. On Linux the Redis service runs with the TeleClaude user's primary
+group, so every process of that user opens the socket at once; an account that
+shares that group can reach the socket but not authenticate. The install
+verifies the local Redis answers with its ACL user before it writes the
+variables that make the platform use it.
+
+A cluster Redis is on this computer when its URL names a socket or an address
+this computer holds; such a computer gets no local Redis. A local Redis the
+operator configured that answers is kept. A Redis someone else configured for
+socket or authenticated access, or that another program is connected to, is not
+taken over; a program that connects only now and then is not seen. When the
+local Redis cannot be set up, the install fails with the reason and what
+resolves it before any migration starts, so the previous release keeps serving
+(ADR-0140). A computer whose
 local Redis is not configured carries its local events on the cluster Redis, and
 its event platform logs that at startup.
 The cluster Redis is shared by the computers of one cluster; it also carries

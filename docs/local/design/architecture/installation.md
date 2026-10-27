@@ -157,7 +157,13 @@ sequenceDiagram
   its environment happen while the daemon keeps serving on the active release.
 - **Migrate inside a stopped window, and let the owners say what ran.** The
   daemon is stopped through the lifecycle contract's preparation before any
-  migration runs. The new release then runs its ledger-recorded migrations —
+  migration runs. Before its first migration the new release prepares the
+  machine for itself: it carries machine environment values whose names the
+  configuration schema renamed to their current names, and sets up this
+  computer's local Redis (`local/projects/teleclaude/design/architecture/event-delivery`).
+  Neither is a migration the previous release cannot read past, and a failure
+  of either fails the install before any migration started. The new release
+  then runs its ledger-recorded migrations —
   installation migrations, configuration-document migrations
   (`local/projects/teleclaude/spec/feature/config/document-migration`) and the
   core database runner — and afterwards opens, through each store's own
