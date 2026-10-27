@@ -12,7 +12,7 @@ visibility: 'public'
 - Each computer polls a Redis stream named for its computer identity.
 - Requests are answered on `output:{computer}:{message_id}` streams for one-shot responses.
 - Heartbeats maintain a registry of online computers with TTL-based expiry.
-- Project and todo digests trigger cache refresh on peers.
+- A computer's projects digest triggers its peers' projects-and-todos refresh.
 
 - Redis transport implements RemoteExecutionProtocol for request/response.
 - Redis transport never performs UI messaging.
@@ -50,7 +50,7 @@ flowchart LR
 - **Stream Per Computer**: Each computer polls exactly one command stream named after its computer identity.
 - **One-Shot Responses**: Response streams are created per-message and auto-expire after TTL.
 - **Heartbeat TTL**: Computer registry entries expire after 60s without heartbeat; marks computer offline.
-- **Digest-Driven Refresh**: Projects/todos cache refreshes only when heartbeat digest changes, not on every beat.
+- **Digest-Driven Refresh**: A peer's projects and todos are pulled only when the digest its heartbeat advertises differs from the one advertised at the last pull. A peer that advertises a digest is never pulled because a cached copy aged, and one pull per peer answers projects, todos and preparation views alike.
 - **Single Connection Lifecycle**: Redis connection is managed by one reconnect loop; all tasks wait on readiness.
 
 - **Bounded Backpressure**: The shared Redis client draws connections from a single bounded pool that blocks a caller for a bounded time when every connection is in use, rather than failing immediately. A momentary saturation waits for a connection to be released instead of surfacing a connection error to every subsystem at once; only a saturation that outlasts the bound raises.
@@ -103,12 +103,11 @@ sequenceDiagram
 
 ### 3. Digest-Based Cache Invalidation
 
-| Component | Heartbeat Field      | Cache Action                    |
-| --------- | -------------------- | ------------------------------- |
-| Projects  | `projects_digest`    | Refresh if changed              |
-| Todos     | `todos_digest`       | Refresh if changed              |
-| Sessions  | N/A                  | Event-driven only (no digest)   |
-| Stats     | `cpu`, `mem`, `disk` | Update immediately on heartbeat |
+| Component          | Heartbeat Field      | Cache Action                    |
+| ------------------ | -------------------- | ------------------------------- |
+| Projects and todos | `projects_digest`    | Pull if changed                 |
+| Sessions           | N/A                  | Event-driven only (no digest)   |
+| Stats              | `cpu`, `mem`, `disk` | Update immediately on heartbeat |
 
 ### 4. Stream Cleanup
 
@@ -156,7 +155,8 @@ refuses it without running it.
 - **Network Partition**: Computer heartbeats stop arriving. Registry marks computer offline after TTL. Commands to partitioned computer timeout.
 - **Stream Accumulation**: If consumer lags, streams grow beyond MAXLEN. Oldest messages trimmed. Commands may be lost if not processed in time.
 - **Response Stream Collision**: Extremely rare. Two messages with same ID overwrite response stream. Mitigated by UUID message IDs.
-- **Digest False Positive**: Digest unchanged but content actually changed. Next TTL-based refresh corrects it (max 5min delay).
+- **Digest Not Recomputed**: The digest is a SHA-256 of the exact projects-with-todos answer, so an unchanged digest means an unchanged answer. When this computer cannot read its own projects, it keeps advertising the last digest, and peers keep their copy until a later pass succeeds.
+- **Peer Without a Digest**: A computer whose build advertises no digest is refreshed when a read finds its cached copy older than the cache TTL, at most one pull per peer at a time.
 - **Heartbeat Storm**: Many computers restart simultaneously and publish heartbeats. Redis handles gracefully; cache refresh tasks may queue.
 - **Reconnect Storm Prevention**: Redis reconnects are serialized; tasks wait on readiness to avoid connection floods.
 - **Stale Registry**: Computer dies without sending offline heartbeat. Registry shows online until TTL expires (max 60s stale window).

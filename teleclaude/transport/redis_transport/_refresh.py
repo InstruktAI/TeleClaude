@@ -18,6 +18,7 @@ from teleclaude.core.redis_utils import scan_keys
 from teleclaude.core.shell_identity import optional_shell_safe_identifier
 from teleclaude.transport.peer_heartbeat import (
     CONVERSATION_ADAPTERS_FIELD,
+    PROJECTS_DIGEST_FIELD,
     decode_optional_announced_strings,
 )
 from teleclaude.types import SystemStats
@@ -26,6 +27,11 @@ logger = get_logger(__name__)
 
 _REFRESH_EXCEPTIONS = (RedisError, TimeoutError, OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError)
 _PEER_RECORD_FAILED_EVENT = "heartbeat_peer_record_failed"
+# One pull answers every one of these, so they share one refresh per peer.
+_PROJECTS_DATA_TYPES = frozenset({"projects", "todos", "preparation"})
+_PROJECTS_REFRESH_KEY_TEMPLATE = "{computer}:projects"
+_TTL_REASON = "ttl"
+_DIGEST_CHANGED_REASON = "digest_changed"
 
 
 if TYPE_CHECKING:
@@ -58,6 +64,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         _refresh_last: dict[str, float]
         _refresh_tasks: dict[str, asyncio.Task[object]]
         _bootstrapped: set[tuple[str, str]]
+        _pulled_projects_digest: dict[str, str]
         _refresh_cooldown_seconds: float
         _ALLOWED_REFRESH_REASONS: set[str]
 
@@ -153,6 +160,14 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         if request.computer in ("local", self.computer_name):
             return False
 
+        if (
+            request.reason == _TTL_REASON
+            and request.data_type in _PROJECTS_DATA_TYPES
+            and request.computer in self._pulled_projects_digest
+        ):
+            # A peer that advertises a digest is pulled when its digest changes, never because a copy aged.
+            return False
+
         key = self._refresh_key(request.computer, request.data_type, request.project_path)
         if not self._can_schedule_refresh(key, force=request.force):
             logger.debug("Refresh skipped for %s (reason=%s, force=%s)", key, request.reason, request.force)
@@ -186,7 +201,13 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         self._refresh_tasks[key] = task
         return True
 
+    def _projects_pulled(self, computer: str, digest: str) -> None:
+        """Record the digest a peer advertised when its projects were pulled, so an unchanged digest pulls nothing."""
+        self._pulled_projects_digest[computer] = digest
+
     def _refresh_key(self, computer: str, data_type: str, project_path: str | None) -> str:
+        if data_type in _PROJECTS_DATA_TYPES:
+            return _PROJECTS_REFRESH_KEY_TEMPLATE.format(computer=computer)
         if project_path:
             return f"{computer}:{data_type}:{project_path}"
         return f"{computer}:{data_type}"
@@ -279,6 +300,15 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                     logger.exception(_PEER_RECORD_FAILED_EVENT, heartbeat_key=key)
                     continue
                 self.cache.update_computer(computer_info)
+
+                advertised_digest = info.get(PROJECTS_DIGEST_FIELD)
+                if isinstance(advertised_digest, str) and advertised_digest:
+                    self._bootstrapped.add((computer_name, "projects"))
+                    if self._pulled_projects_digest.get(computer_name) != advertised_digest:
+                        self._schedule_refresh(
+                            _RefreshRequest(computer_name, "projects", _DIGEST_CHANGED_REASON, force=True),
+                            on_success=lambda p=computer_name, d=advertised_digest: self._projects_pulled(p, d),
+                        )
 
                 for data_type in ("projects", "sessions"):
                     if (computer_name, data_type) in self._bootstrapped:

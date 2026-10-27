@@ -27,6 +27,7 @@ _RECONNECT_TASK = "redis-reconnect"
 _MESSAGE_POLL_LOOP = "redis-message-poll"
 _HEARTBEAT_LOOP = "redis-heartbeat"
 _PEER_REFRESH_LOOP = "redis-peer-refresh"
+_PROJECTS_DIGEST_LOOP = "redis-projects-digest"
 _STARTUP_RECONNECT_REASON = "startup"
 _RECONNECT_CLEANUP_COMPONENT = "redis_reconnect"
 _LOOP_ENDED = "Redis transport loop {name} ended while the transport was running"
@@ -71,6 +72,10 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
 
         async def _peer_refresh_loop(self) -> None:
             """Refresh peer metadata from heartbeats."""
+            raise NotImplementedError
+
+        async def _projects_digest_loop(self) -> None:
+            """Keep the advertised projects digest current."""
             raise NotImplementedError
 
         async def refresh_remote_snapshot(self) -> None:
@@ -147,6 +152,7 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
             group.create_task(self._run_loop_while_running(_MESSAGE_POLL_LOOP, self._poll_redis_messages))
             group.create_task(self._run_loop_while_running(_HEARTBEAT_LOOP, self._heartbeat_loop))
             group.create_task(self._run_loop_while_running(_PEER_REFRESH_LOOP, self._peer_refresh_loop))
+            group.create_task(self._run_loop_while_running(_PROJECTS_DIGEST_LOOP, self._projects_digest_loop))
 
     async def _run_loop_while_running(self, name: str, loop: Callable[[], Awaitable[None]]) -> None:
         """Run a transport loop; its return while the transport runs and is not being cancelled is an end of the run."""

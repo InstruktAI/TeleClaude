@@ -13,7 +13,9 @@ from redis.exceptions import RedisError
 from teleclaude.core import command_handlers
 from teleclaude.transport.peer_heartbeat import (
     CONVERSATION_ADAPTERS_FIELD,
+    PROJECTS_DIGEST_FIELD,
     heartbeat_key,
+    projects_digest,
 )
 
 logger = get_logger(__name__)
@@ -21,6 +23,7 @@ logger = get_logger(__name__)
 # Failure families the loop hands to ``_handle_redis_error`` (reconnect behavior).
 _HEARTBEAT_RECOVERABLE_ERRORS = (RedisError, OSError, RuntimeError, TypeError, ValueError)
 _HEARTBEAT_SAMPLE_FAILED_EVENT = "heartbeat_sample_failed"
+_PROJECTS_DIGEST_FAILED_EVENT = "projects_digest_failed"
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -37,6 +40,7 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         heartbeat_interval: int
         heartbeat_ttl: int
         _running: bool
+        _local_projects_digest: str | None
 
         @property
         def cache(self) -> DaemonCache | None:
@@ -69,6 +73,22 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
             except _HEARTBEAT_RECOVERABLE_ERRORS as e:
                 await self._handle_redis_error("Heartbeat failed", e)
 
+    async def _projects_digest_loop(self) -> None:
+        """Background task: keep the digest of the projects-with-todos answer that peers would pull current.
+
+        It runs apart from the heartbeat because building the answer can take longer than a heartbeat may wait.
+        """
+        while self._running:
+            try:
+                payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
+                self._local_projects_digest = projects_digest(payload)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                # An unreadable local state leaves the last digest in place; the next pass tries again.
+                logger.exception(_PROJECTS_DIGEST_FAILED_EVENT, computer_name=self.computer_name)
+            await asyncio.sleep(self.heartbeat_interval)
+
     async def _send_heartbeat(self) -> None:
         """Publish cross-computer identity + presence timestamp to the heartbeat key.
 
@@ -93,6 +113,8 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
                 "is_master": info.is_master,
                 CONVERSATION_ADAPTERS_FIELD: info.conversation_adapters,
             }
+            if self._local_projects_digest is not None:
+                payload[PROJECTS_DIGEST_FIELD] = self._local_projects_digest
         except _HEARTBEAT_RECOVERABLE_ERRORS:
             raise
         except Exception:
