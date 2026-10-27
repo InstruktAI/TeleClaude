@@ -93,6 +93,22 @@ class BlockerEntry(TypedDict, total=False):
     blocked_by: list[BlockerEntry]
 
 
+class ClaimBlock(TypedDict):
+    """The ``claim`` block in the show payload: who holds an active todo's lifecycle claim.
+
+    ``status`` is ``held`` (``session_id`` names the holder; ``computer`` the computer that answered for
+    it, ``role`` its role when readable, ``unanswered`` the computers that did not answer when none
+    did), ``free``, or ``undetermined`` (``reason`` says why). It is not ``state.active_runner``.
+    """
+
+    status: Literal["held", "free", "undetermined"]
+    session_id: NotRequired[str]
+    computer: NotRequired[str]
+    role: NotRequired[str]
+    unanswered: NotRequired[list[str]]
+    reason: NotRequired[str]
+
+
 class TodoShowPayload(TypedDict, total=False):
     """Lifecycle-bearing todo payload for ``telec todo show``."""
 
@@ -115,6 +131,7 @@ class TodoShowPayload(TypedDict, total=False):
     next_commands: dict[str, str]
     artifacts: list[str]
     artifact_content: dict[str, str]
+    claim: ClaimBlock
 
 
 class HolderShowPayload(TypedDict):
@@ -539,6 +556,13 @@ async def _assemble_holder_payload(
             artifact_content[name] = await todos_db.read_artifact(slug, name)
         payload["artifact_content"] = artifact_content
     return payload
+
+
+def payload_is_active_todo(payload: ShowPayload) -> bool:
+    """Whether the payload shows a live lifecycle todo, the only kind a driver start is admitted for."""
+    if payload.get("stage") == _HOLDER_PHASE:
+        return False
+    return payload.get("roadmap", {}).get("status") == TodoStatus.ACTIVE.value
 
 
 async def assemble_show_payload(

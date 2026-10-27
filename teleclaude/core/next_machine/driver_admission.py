@@ -47,6 +47,7 @@ from teleclaude.core.next_machine.runtime.sessions import (
     recheck_slug_holder,
 )
 from teleclaude.core.relay_carrier import carry_request
+from teleclaude.core.session_inspection import InspectionGroup, SessionColumn
 from teleclaude.core.todos_db._exceptions import (
     AdmissionUnavailable,
     AdmissionUnavailableReason,
@@ -895,3 +896,35 @@ async def claim_holder(project_root: Path, slug: str, caller: AdmissionCaller) -
     if master is None:
         return await master_claim_holder(project_root, slug, caller)
     return await _ask_master_claim_holder(master, project_root, slug, caller)
+
+
+async def holder_role(report: ClaimHolderReport, caller: AdmissionCaller) -> str | None:
+    """The role of the session a ``HELD`` report names, read from the computer running it; ``None`` when unreadable.
+
+    A holder on this computer is read from its session record. A holder elsewhere is read through that
+    computer's own session read, carried as ``caller``, so the computer decides whether the caller may see
+    the record. A held claim no computer answered for, a refusal, silence or an unreadable record name no role.
+    """
+    if report.status is not ClaimStatus.HELD or not report.session_id or not report.computer:
+        return None
+    if report.computer == config.computer.name:
+        session = await (await get_db()).get_session(report.session_id)
+        return session.role if session is not None else None
+    try:
+        response = await _carry(
+            report.computer,
+            HTTPMethod.GET,
+            f"/sessions/{report.session_id}",
+            query=[],
+            body=b"",
+            caller=caller,
+            deadline_s=HOLDER_ROLE_RELAY_DEADLINE_S,
+        )
+        if response.status_code != _HTTP_OK:
+            return None
+        record: object = json.loads(base64.b64decode(response.body_b64))
+    except (RemoteDispatchError, RuntimeError, ValueError):
+        return None
+    group = record.get(InspectionGroup.ROLE.value) if isinstance(record, dict) else None
+    role = group.get(SessionColumn.ROLE.value) if isinstance(group, dict) else None
+    return role if isinstance(role, str) and role else None

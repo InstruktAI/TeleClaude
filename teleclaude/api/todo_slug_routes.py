@@ -8,18 +8,19 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
+from teleclaude.api.claim_block import claim_block_for
 from teleclaude.api.person_display import with_person_chips_on_todos
 from teleclaude.api.todo_routes import _default_cwd, _get_workflow_store_from_cwd
 from teleclaude.api.working_copy_request import working_copy_request_deadline
 from teleclaude.api_models import TodoDTO
 from teleclaude.constants import SLUG_NOT_FOUND_DETAIL
-from teleclaude.core.todos_db._show import assemble_show_payload
+from teleclaude.core.todos_db._show import ClaimBlock, TodoShowPayload, assemble_show_payload, payload_is_active_todo
 from teleclaude.project_root import resolve_project_root
 from teleclaude.services.work import get_work_service
 from teleclaude.services.work.slug_actions import SlugActionResult, deliver_todo, freeze_todo, unfreeze_todo
@@ -61,10 +62,11 @@ async def show_todo(
     cwd: str | None = None,
     include_removed: Annotated[bool, Query()] = False,
     include_artifact_content: Annotated[bool, Query()] = False,
-    _identity: CallerIdentity = Depends(carried_caller),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> object:
-    """Return the diagnostic state payload of one todo."""
-    todos_db = await _get_workflow_store_from_cwd(str(request_project_root(cwd)))
+    """Return the diagnostic state payload of one todo; an active todo's carries the ``claim`` block."""
+    project_root = request_project_root(cwd)
+    todos_db = await _get_workflow_store_from_cwd(str(project_root))
     payload = await assemble_show_payload(
         todos_db,
         slug,
@@ -73,7 +75,23 @@ async def show_todo(
     )
     if payload is None:
         raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
+    if payload_is_active_todo(payload):
+        cast(TodoShowPayload, payload)["claim"] = await claim_block_for(project_root, slug, identity)
     return payload
+
+
+@router.get("/claim/{slug}")
+async def claim_of_todo(
+    slug: str,
+    cwd: str | None = None,
+    identity: CallerIdentity = Depends(carried_caller),
+) -> ClaimBlock:
+    """Return who holds one active todo's lifecycle claim, as a driver start from this computer would find it."""
+    project_root = request_project_root(cwd)
+    payload = await assemble_show_payload(await _get_workflow_store_from_cwd(str(project_root)), slug)
+    if payload is None or not payload_is_active_todo(payload):
+        raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
+    return await claim_block_for(project_root, slug, identity)
 
 
 @router.post("/{slug}/freeze")
