@@ -344,6 +344,17 @@ is_managed_launchd_label() {
     return 1
 }
 
+is_outliving_launchd_label() {
+    local candidate="$1"
+    local label
+    while IFS= read -r label; do
+        if [ "$candidate" = "$label" ]; then
+            return 0
+        fi
+    done < <(outliving_launchd_labels)
+    return 1
+}
+
 installed_teleclaude_launchd_labels() {
     find \
         "$HOME/Library/LaunchAgents" \
@@ -364,7 +375,7 @@ check_managed_launchd_units_complete() {
 
     while IFS= read -r label; do
         [ -n "$label" ] || continue
-        if ! is_managed_launchd_label "$label"; then
+        if ! is_managed_launchd_label "$label" && ! is_outliving_launchd_label "$label"; then
             log_warn "Unmanaged TeleClaude launchd unit installed: $label"
             unknown=1
         fi

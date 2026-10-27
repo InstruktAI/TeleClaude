@@ -88,6 +88,8 @@ if [ "$PLATFORM" = "macos" ]; then
     V1_DAEMON_LABEL="ai.instrukt.teleclaude.daemon"
     DOCS_WATCH_LABEL="ai.instrukt.teleclaude.docs-watch"
     CRON_LABEL="ai.instrukt.teleclaude.cron"
+    # TeleClaude's own local Redis, deployed by the install act (teleclaude/install/local_redis.py).
+    LOCAL_REDIS_LABEL="ai.instrukt.teleclaude.redis"
     SERVICE_LABEL="$V1_DAEMON_LABEL"
     SERVICE_PATH="$HOME/Library/LaunchAgents/$SERVICE_LABEL.plist"
 else
@@ -101,6 +103,11 @@ fi
 managed_launchd_labels() {
     printf '%s\n' "$V1_DAEMON_LABEL"
     printf '%s\n' "$CRON_LABEL"
+}
+
+# Units the installation deploys that outlive the daemon: stopping the daemon leaves them running.
+outliving_launchd_labels() {
+    printf '%s\n' "$LOCAL_REDIS_LABEL"
 }
 
 # launchd resolvers. These resolve and query; they perform no service
