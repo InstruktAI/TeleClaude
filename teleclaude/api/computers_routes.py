@@ -11,59 +11,27 @@ from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api_models import ComputerDTO
 from teleclaude.config.machine import config
 from teleclaude.core import command_handlers
+from teleclaude.core.inbound.fleet import configure_known_computers, known_remote_computers
 
 if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
 
 logger = get_logger(__name__)
 
-_CACHE: dict[str, DaemonCache | None] = {"value": None}
-
 router = APIRouter()
 
 
 def configure(cache: DaemonCache | None) -> None:
     """Wire cache; called from APIServer."""
-    _CACHE["value"] = cache
+    configure_known_computers(cache)
 
 
 def _known_remote_computers() -> list[ComputerDTO]:
     """Remote computers this computer has discovered (online) or has configured (offline when not discovered)."""
-    # Track names already listed (case-insensitive) to avoid duplicates, starting with this computer.
-    seen_names: set[str] = {config.computer.name.lower()}
-    remotes: list[ComputerDTO] = []
-
-    cache = _CACHE["value"]
-    if cache:
-        for comp in cache.get_computers():
-            remotes.append(
-                ComputerDTO(
-                    name=comp.name,
-                    status="online",
-                    user=comp.user,
-                    host=comp.host,
-                    is_local=False,
-                )
-            )
-            seen_names.add(comp.name.lower())
-
-    for remote in config.remote_computers:
-        if remote.name.lower() not in seen_names:
-            remotes.append(
-                ComputerDTO(
-                    name=remote.name,
-                    status="offline",
-                    user=remote.user,
-                    host=remote.host,
-                    is_local=False,
-                )
-            )
-    return remotes
-
-
-def known_computer_names() -> frozenset[str]:
-    """Every computer name this computer has configured or discovered, itself included."""
-    return frozenset({config.computer.name, *(remote.name for remote in _known_remote_computers())})
+    return [
+        ComputerDTO(name=remote.name, status=remote.status.value, user=remote.user, host=remote.host, is_local=False)
+        for remote in known_remote_computers()
+    ]
 
 
 @router.get("/computers")

@@ -38,7 +38,7 @@ from teleclaude.cli.api_client_health import TelecHealthAPI
 from teleclaude.cli.api_client_identity import TelecIdentityAPI
 from teleclaude.cli.api_client_request import JsonBody, RequestOptions
 from teleclaude.cli.api_client_runtime import TelecRuntimeAPI
-from teleclaude.cli.api_session_args import CreateSessionArgs, RunSessionArgs
+from teleclaude.cli.api_session_args import CreateSessionArgs, RunSessionArgs, RunSessionField
 from teleclaude.cli.clearance import ClearanceScope, clearance_scope_refusal, refresh_cli_identity_role
 from teleclaude.cli.models import WsEvent
 from teleclaude.cli.session_auth import ResolvedCliIdentity
@@ -773,6 +773,8 @@ class _TelecSessionAPI:
         job = kwargs.get("job")
         if job is not None:
             request_data["job"] = job
+        if kwargs.get(RunSessionField.MANUALLY_STARTED):
+            request_data[RunSessionField.MANUALLY_STARTED] = True
         request = RunSessionRequest.model_validate(request_data)
         if "agent" in kwargs:
             request = request.model_copy(update={"agent": kwargs["agent"]})

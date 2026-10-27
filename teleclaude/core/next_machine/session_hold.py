@@ -10,6 +10,8 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import Db
+from teleclaude.core.next_machine.driver_admission import schedule_claim_release
+from teleclaude.core.next_machine.runtime.sessions import OwnSessionAnswer, is_github_backed, own_session_answer
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.session_listeners import notify_gate_approved
 from teleclaude.core.session_runtime_gate import session_runtime_owner
@@ -193,19 +195,68 @@ async def _project_path_for_session_end(db: Db, session_id: str) -> tuple[str | 
 async def reconcile_driver_ownership_for_session(
     todos_db: WorkflowStore, session_id: str
 ) -> DriverOwnershipReconciliation:
-    """Clear every active driver link for a terminal session."""
+    """Clear every active driver link for a terminal session.
+
+    A claim on a GitHub-backed project is written only on the master, so each todo the session still
+    claims gets a release request instead, one per todo, issued without waiting for the master's answer;
+    its ``cleared_slugs`` names the todos a release was requested for.
+    """
+    rows = await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True)
+    if is_github_backed(todos_db.project_root):
+        states = await todos_db.read_status_and_states_by_id([row["id"] for row in rows])
+        claimed = sorted(
+            {
+                row["slug"]
+                for row in rows
+                if (state := states.get(row["id"])) is not None
+                and state.state is not None
+                and state.state.get(_ACTIVE_RUNNER_STATE_KEY) == session_id
+            }
+        )
+        for slug in claimed:
+            schedule_claim_release(todos_db.project_root, slug, session_id)
+        return DriverOwnershipReconciliation(cleared_slugs=tuple(claimed))
     cleared_slugs: list[str] = []
-    for row in await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True):
+    for row in rows:
         if await StateWriter.clear_active_runner_if_matches(todos_db, row["id"], session_id):
             cleared_slugs.append(row["slug"])
     return DriverOwnershipReconciliation(cleared_slugs=tuple(cleared_slugs))
 
 
+async def _release_ended_github_claims(runtime_db: Db, project_root: Path, claims: dict[str, str]) -> None:
+    """Request the release of each GitHub-backed claim whose session this computer shows ended.
+
+    A claim for a session this computer never ran is left alone: its absence here says nothing about the
+    computer that runs it, and the master judges it.
+    """
+    for slug, session_id in sorted(claims.items()):
+        if await own_session_answer(runtime_db, project_root, slug, session_id) is not OwnSessionAnswer.ENDED:
+            continue
+        async with session_runtime_owner(session_id, wait=True):
+            if await own_session_answer(runtime_db, project_root, slug, session_id) is OwnSessionAnswer.ENDED:
+                schedule_claim_release(project_root, slug, session_id)
+
+
 async def reconcile_terminal_driver_ownership(runtime_db: Db, project_path: str) -> None:
-    """Recover terminal driver links from workflow references without dispatching work."""
+    """Recover terminal driver links from workflow references without dispatching work.
+
+    On a GitHub-backed project only claims whose session this computer reports ended are released, and
+    each release is requested of the master rather than written here.
+    """
     todos_db = await get_workflow_store(project_path)
     rows = await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True)
     states = await todos_db.read_status_and_states_by_id([row["id"] for row in rows])
+    if is_github_backed(project_path):
+        claims = {
+            row["slug"]: runner
+            for row in rows
+            if (read := states.get(row["id"])) is not None
+            and read.state is not None
+            and isinstance(runner := read.state.get(_ACTIVE_RUNNER_STATE_KEY), str)
+            and runner
+        }
+        await _release_ended_github_claims(runtime_db, Path(project_path), claims)
+        return
     identities: set[str] = set()
     for state in states.values():
         runner = state.state.get(_ACTIVE_RUNNER_STATE_KEY) if state.state is not None else None

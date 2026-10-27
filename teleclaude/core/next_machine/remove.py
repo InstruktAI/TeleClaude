@@ -5,7 +5,7 @@ from __future__ import annotations
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
+from teleclaude.core.next_machine.runtime.sessions import claim_is_held
 from teleclaude.core.operation_caller_identity import get_caller_session_id
 from teleclaude.core.todos_db._exceptions import RemoveRefusedLiveWork
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
@@ -62,7 +62,7 @@ async def execute_todo_remove(
         raw_claim_holder
         if isinstance(raw_claim_holder, str)
         and raw_claim_holder != caller_session_id
-        and await is_live_session_id(db, raw_claim_holder)
+        and await claim_is_held(db, cwd, slug, raw_claim_holder)
         else None
     )
     operations = await db.find_nonterminal_operations_bound_to_todo(

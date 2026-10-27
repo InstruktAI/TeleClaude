@@ -8,18 +8,23 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.api.run_session_refusals import RunSessionRefusal
 from teleclaude.caller_identity import PersonCliCaller, caller_from_principal, human_principal_for_email
-from teleclaude.constants import DriverLaunchClass
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL, DriverLaunchClass
 from teleclaude.core.agent_dispatch import AgentDispatchReason
 from teleclaude.core.db import get_db
-from teleclaude.core.next_machine.lanes import classify_driver_launch
-from teleclaude.core.next_machine.manual_start import (
-    DriverStartGuardResult,
-    driver_start_section,
-    guard_driver_start,
-    recheck_slug_holder,
+from teleclaude.core.next_machine.driver_admission import (
+    AdmissionCaller,
+    StartRequest,
+    admission_conflict_detail,
+    admitted_start,
 )
+from teleclaude.core.next_machine.lanes import classify_driver_launch
+from teleclaude.core.next_machine.manual_start import DriverStartGuardResult, guard_driver_start, lane_of_role
+from teleclaude.core.next_machine.runner_types import RunnerLane
+from teleclaude.core.next_machine.runtime.driver_starts import driver_start_section
+from teleclaude.core.next_machine.runtime.sessions import is_github_backed, recheck_slug_holder
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.core.todos_db._exceptions import (
+    AdmissionUnavailable,
     ClaimConflict,
     DriverStartBusy,
     ReviewerConflict,
@@ -48,6 +53,15 @@ def terminal_driver_email(identity: CallerIdentity) -> str | None:
     return None
 
 
+def admission_caller_for(identity: CallerIdentity) -> AdmissionCaller:
+    """The principal a start's relayed requests are cleared as on the master: the caller's own, else the daemon's."""
+    return AdmissionCaller(
+        principal=identity.principal or SYSTEM_DAEMON_PRINCIPAL,
+        cleared_command=identity.command,
+        session_id=identity.session_id or None,
+    )
+
+
 async def _admit_driver_start(
     held: AsyncExitStack,
     *,
@@ -60,8 +74,15 @@ async def _admit_driver_start(
     thinking_mode: str,
     starting_session_id: str | None,
     local_target: bool,
+    admission_caller: AdmissionCaller,
+    manually_started: bool,
 ) -> DriverStartGuardResult:
-    """Run the dedup guard and, for a local orchestrator start, enter the todo's section on ``held``."""
+    """Run the dedup guard and, for a local orchestrator start, enter the todo's section on ``held``.
+
+    A todo on the GitHub store is admitted by the fleet's master first, and the section is held across
+    that admission (:func:`admitted_start`); any other todo holds the section around this computer's own
+    holder re-check.
+    """
     launch_class = classify_driver_launch(role)
     if launch_class is not DriverLaunchClass.REVIEWER and not working_slug:
         return DriverStartGuardResult()
@@ -80,6 +101,18 @@ async def _admit_driver_start(
         or not local_target
         or not starting_session_id
     ):
+        return guard_result
+    if is_github_backed(project_path):
+        start = StartRequest(
+            project_root=resolve_project_state_root(project_path),
+            slug=working_slug,
+            session_id=starting_session_id,
+            lane=lane_of_role(role) or RunnerLane.PREPARE,
+            manually_started=manually_started,
+            release_hold=manually_started,
+            caller=admission_caller,
+        )
+        await held.enter_async_context(admitted_start(start))
         return guard_result
     await held.enter_async_context(
         driver_start_section(project_path, working_slug, starting_session_id=starting_session_id)
@@ -108,6 +141,8 @@ async def enforce_driver_start_guard(
     thinking_mode: str,
     starting_session_id: str | None = None,
     local_target: bool = True,
+    admission_caller: AdmissionCaller = AdmissionCaller(),
+    manually_started: bool = False,
 ) -> AsyncIterator[DriverStartGuardResult]:
     """Refuse a create-door driver start that would duplicate a live driver.
 
@@ -123,6 +158,13 @@ async def enforce_driver_start_guard(
     caller creates the session row inside it and the next start finds it. A start
     that finds the section held is refused at once with HTTP 423 naming the session
     the holding start is creating. Every other launch class holds nothing.
+
+    For a todo on the GitHub store the master admits the start first and records its claim before the
+    session exists. A todo held by a session on another computer is refused with HTTP 409 whose detail
+    declares its own kind and names the holding session and its computer (or the computers that did not
+    answer for it); a master that cannot decide the start is refused with HTTP 503 and nothing is created.
+    ``admission_caller`` is the principal the start's relayed requests are cleared as, and
+    ``manually_started`` marks a start a person asked for.
     """
     async with AsyncExitStack() as held:
         try:
@@ -137,15 +179,28 @@ async def enforce_driver_start_guard(
                 thinking_mode=thinking_mode,
                 starting_session_id=starting_session_id,
                 local_target=local_target,
+                admission_caller=admission_caller,
+                manually_started=manually_started,
             )
         except ReviewerConflict as conflict:
             raise RunSessionRefusal(
                 status_code=409, detail=conflict.summary(), reason=AgentDispatchReason.REVIEWER_CONFLICT
             ) from conflict
-        except (ClaimConflict, ReviewerIdentityUnresolved) as conflict:
+        except ClaimConflict as conflict:
+            detail = (
+                admission_conflict_detail(conflict) if conflict.computer or conflict.unanswered else conflict.summary()
+            )
+            raise RunSessionRefusal(
+                status_code=409, detail=detail, reason=AgentDispatchReason.RUN_REQUEST_REJECTED
+            ) from conflict
+        except ReviewerIdentityUnresolved as conflict:
             raise RunSessionRefusal(
                 status_code=409, detail=conflict.summary(), reason=AgentDispatchReason.RUN_REQUEST_REJECTED
             ) from conflict
+        except AdmissionUnavailable as unavailable:
+            raise RunSessionRefusal(
+                status_code=503, detail=unavailable.summary(), reason=AgentDispatchReason.RUN_REQUEST_REJECTED
+            ) from unavailable
         except DriverStartBusy as busy:
             raise RunSessionRefusal(
                 status_code=423, detail=busy.summary(), reason=AgentDispatchReason.RUN_REQUEST_REJECTED

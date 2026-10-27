@@ -974,6 +974,10 @@ class RunSessionRequest(BaseModel):
     additional_context: str = ""
     company: str | None = None
     job: str | None = Field(default=None, description="Configured job name when the run is a scheduled job entry")
+    manually_started: bool = Field(
+        default=False,
+        description="A person asked for this lifecycle start; the claim recorded for it is marked manual",
+    )
 
 
 class AgentStatusRequest(BaseModel):

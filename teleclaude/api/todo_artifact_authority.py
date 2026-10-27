@@ -15,7 +15,7 @@ from fastapi import HTTPException
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES
-from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
+from teleclaude.core.next_machine.runtime.sessions import claim_is_held
 from teleclaude.core.session_utils import session_in_claiming_group
 from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX, Lineage
 
@@ -125,7 +125,7 @@ async def _foreign_live_claim_holder(
     holder = (state or {}).get("active_runner")
     if not isinstance(holder, str) or not holder:
         return None
-    if not await is_live_session_id(runtime_db, holder):
+    if not await claim_is_held(runtime_db, todos_db.project_root, slug, holder):
         return None
     if caller_session_id and await session_in_claiming_group(caller_session_id, holder):
         return None
