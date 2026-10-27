@@ -10,7 +10,7 @@ from typing import NamedTuple, Protocol, Unpack
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import CreateSessionResponseDTO
-from teleclaude.cli.api_client import TelecAPIClient
+from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.api_session_args import RunSessionArgs
 from teleclaude.config._models import WorkflowRunnerMode
 from teleclaude.config.machine import config
@@ -49,6 +49,7 @@ from teleclaude.core.next_machine.runtime.sessions import (
     find_accepted_lifecycle_start,
     is_live_session_id,
     live_orchestrator_owned_slugs,
+    resolve_slug_holders,
 )
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
 from teleclaude.core.next_machine.slug_resolution import (
@@ -58,13 +59,14 @@ from teleclaude.core.next_machine.slug_resolution import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.todos_db._exceptions import ClaimConflict, DriverStartBusy
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TodoKind
-from teleclaude.types.todos import HoldAuditState, TodoState
+from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, HoldAuditState, TodoState
 
 logger = get_logger(__name__)
 
@@ -578,6 +580,52 @@ async def _live_active_runners(db: Db, todos: Mapping[str, RunnerTodo]) -> tuple
     return live, auto_count
 
 
+async def recheck_slug_holder(
+    runtime_db: Db,
+    todos_db: WorkflowStore,
+    project_path: str | Path,
+    slug: str,
+    *,
+    exempt_session_id: str | None,
+) -> str | None:
+    """Return the session holding ``slug`` as a driver, or ``None`` when no other session does.
+
+    The narrow holder re-check taken inside :func:`driver_start_section`: the slug's own
+    ``active_runner`` and the registry owner through :func:`resolve_slug_holders`, with no
+    project-wide load and no writes. ``exempt_session_id`` is treated as no holder.
+    """
+    state = await todos_db.read_state(slug)
+    raw_runner = state.get(ACTIVE_RUNNER_STATE_KEY) if state is not None else None
+    active_runner = raw_runner if isinstance(raw_runner, str) else None
+    holders = await resolve_slug_holders(runtime_db, project_path, slug, active_runner)
+    for holder in (holders.orchestrator_owner, holders.live_runner):
+        if holder is not None and holder != exempt_session_id:
+            return holder
+    return None
+
+
+_HTTP_LOCKED = 423
+_LOST_START_EVENT = "lifecycle start lost to a start in progress"
+_HTTP_CONFLICT = 409
+
+
+async def _raise_lost_start(
+    runtime_db: Db,
+    todos_db: WorkflowStore,
+    project_path: str,
+    slug: str,
+    error: APIError,
+) -> None:
+    """Raise the typed outcome of a lost concurrent start; return when ``error`` is another refusal."""
+    if error.status_code == _HTTP_LOCKED:
+        logger.warning(_LOST_START_EVENT, slug=slug, detail=error.detail)
+        raise DriverStartBusy(slug=slug, refusal=error.detail) from error
+    if error.status_code == _HTTP_CONFLICT:
+        holder = await recheck_slug_holder(runtime_db, todos_db, project_path, slug, exempt_session_id=None)
+        if holder is not None:
+            raise ClaimConflict(slug=slug, holder=holder) from error
+
+
 async def dispatch_lifecycle_session(
     *,
     client: SessionRunner,
@@ -591,6 +639,11 @@ async def dispatch_lifecycle_session(
 
     The start is idempotent per todo and lane: a repeated dispatch records the driver an earlier
     dispatch already started instead of starting another (``event-consumers``, Retained occurrences).
+
+    A start that loses to a concurrent start of the same todo is reported, not failed generically:
+    the create door's 423 raises :class:`DriverStartBusy`, and its 409 raises :class:`ClaimConflict`
+    naming the holder a re-read of the slug finds. Any other refusal propagates unchanged. The create
+    door takes the todo's driver-start section, so none is taken here.
     """
     # An earlier dispatch whose ``active_runner`` record failed left an accepted, unrecorded start.
     # Recording that session is the same direct adoption ADR-0078 sanctions, so re-entry completes the
@@ -611,7 +664,11 @@ async def dispatch_lifecycle_session(
         }
         if intent.additional_context:
             kwargs["additional_context"] = intent.additional_context
-        response = await client.run_session(**kwargs)
+        try:
+            response = await client.run_session(**kwargs)
+        except APIError as error:
+            await _raise_lost_start(runtime_db, todos_db, project_path, intent.slug, error)
+            raise
         session_id = response.session_id
     await _set_active_runner(
         todos_db,
@@ -682,14 +739,20 @@ async def run_lifecycle_runner(
     await client.connect()
     try:
         for intent in decision.intents:
-            await dispatch_lifecycle_session(
-                client=client,
-                runtime_db=runtime_db,
-                todos_db=todos_db,
-                project_path=str(project_root),
-                intent=intent,
-                origin=DispatchOrigin.RUNNER,
-            )
+            try:
+                await dispatch_lifecycle_session(
+                    client=client,
+                    runtime_db=runtime_db,
+                    todos_db=todos_db,
+                    project_path=str(project_root),
+                    intent=intent,
+                    origin=DispatchOrigin.RUNNER,
+                )
+            except (ClaimConflict, DriverStartBusy):
+                # Lost to a start of the same todo: it is driven or being started, which is
+                # the state the pass wants. The next pass re-evaluates it.
+                decision.skip(RunnerSkipReason.ALREADY_DRIVEN, intent.slug)
+                continue
             dispatched.append(intent)
     finally:
         await client.close()
@@ -756,6 +819,7 @@ __all__ = [
     "make_intent",
     "plan_review_current_from_state",
     "project_path_from_event_payload",
+    "recheck_slug_holder",
     "resolve_kinded_dispatch",
     "role_for_lane",
     "run_lifecycle_runner",

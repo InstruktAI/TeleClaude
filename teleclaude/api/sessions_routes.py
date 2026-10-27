@@ -420,36 +420,25 @@ async def _create_session_response(
     )
     command_entry_point = SessionEntryPoint.API_CREATE
     try:
-        guard_result = await guard_generic_create_session(request, cmd, identity)
-    except RunSessionRefusal as exc:
-        emit_run_outcome(
-            selected_agent=None,
-            request_id=cmd.request_id,
-            entry_point=command_entry_point,
-            dispatch_mode=launch_mode,
-            outcome=run_refusal_outcome(exc.reason),
-            reason=exc.reason,
-        )
-        raise
-    if isinstance(cmd, CreateSessionCommand):
-        cmd.entry_point = command_entry_point
-        if cmd.launch_intent is not None:
-            cmd.launch_intent.entry_point = cmd.entry_point
-    # Fail fast before a session is spawned. The authoritative check runs under
-    # the endpoint locks inside link creation; this only spares the caller a
-    # session it could not have linked.
-    if request.direct and identity.session_id:
-        blocking_peer = await active_direct_peer(identity.session_id)
-        if blocking_peer is not None:
-            raise HTTPException(
-                status_code=409,
-                detail=_EXCLUSIVE_DIRECT_LINK_DETAIL.format(
-                    peer_label=blocking_peer.participant_name or blocking_peer.session_id,
-                    peer_session_id=blocking_peer.session_id,
-                ),
-            )
-    try:
-        result = await dispatch_caller_command(_STATE.client, cmd, identity)
+        async with guard_generic_create_session(request, cmd, identity) as guard_result:
+            if isinstance(cmd, CreateSessionCommand):
+                cmd.entry_point = command_entry_point
+                if cmd.launch_intent is not None:
+                    cmd.launch_intent.entry_point = cmd.entry_point
+            # Fail fast before a session is spawned. The authoritative check runs under
+            # the endpoint locks inside link creation; this only spares the caller a
+            # session it could not have linked.
+            if request.direct and identity.session_id:
+                blocking_peer = await active_direct_peer(identity.session_id)
+                if blocking_peer is not None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=_EXCLUSIVE_DIRECT_LINK_DETAIL.format(
+                            peer_label=blocking_peer.participant_name or blocking_peer.session_id,
+                            peer_session_id=blocking_peer.session_id,
+                        ),
+                    )
+            result = await dispatch_caller_command(_STATE.client, cmd, identity)
         if not isinstance(result, dict):
             raise HTTPException(status_code=500, detail="Failed to create session")
         data = result
@@ -508,6 +497,16 @@ async def _create_session_response(
             routing_explanation=routing_explanation,
             routing_reason=read_routing_reason(data),
         )
+    except RunSessionRefusal as exc:
+        emit_run_outcome(
+            selected_agent=None,
+            request_id=cmd.request_id,
+            entry_point=command_entry_point,
+            dispatch_mode=launch_mode,
+            outcome=run_refusal_outcome(exc.reason),
+            reason=exc.reason,
+        )
+        raise
     except HTTPException as exc:
         raise exc
     except DirectLinkExclusivityError as exc:
