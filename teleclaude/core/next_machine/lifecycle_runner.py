@@ -36,7 +36,7 @@ from teleclaude.core.next_machine.lanes import LANE_ENTRY_PROCEDURES
 from teleclaude.core.next_machine.lifecycle import (
     coerce_lifecycle_phase,
     effective_hold,
-    lifecycle_phase_index,
+    is_in_work_lane,
     pending_approval_gate,
     plan_review_current,
 )
@@ -192,7 +192,7 @@ def _resolve_kinded_dispatch(
         return None, RunnerSkipReason.UNKNOWN_PHASE
     if phase == LifecyclePhase.FINALIZE_READY and todo.plan_review_current:
         return None, RunnerSkipReason.FINALIZE_READY
-    if lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED) and todo.plan_review_current:
+    if is_in_work_lane(phase, plan_review_is_current=todo.plan_review_current):
         if todo.dependency_drift_pending_on:
             # Re-derive a prepared dependent before its work runtime resumes.
             unmet = [dep for dep in todo.after if dep not in prepared_slugs]

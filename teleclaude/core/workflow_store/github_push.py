@@ -37,6 +37,8 @@ from teleclaude.core.todos_db._working_copy import (
 )
 from teleclaude.core.workflow_store import github_reflection as _github_reflection
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
+from teleclaude.core.workflow_store.github_board_io import GitHubBoardIO
+from teleclaude.core.workflow_store.github_board_queue import dispatch_staged_board_items, stage_board_reflections
 from teleclaude.core.workflow_store.github_conflict_refresh import ConflictRefreshScheduler
 from teleclaude.core.workflow_store.github_io import (
     GitHubComment,
@@ -118,12 +120,14 @@ class GitHubWorkflowPush:
         assignment: GitHubActorAssignment,
         io: GitHubWorkflowIO,
         pull_requests: GitHubPullRequestIO,
+        board: GitHubBoardIO,
     ) -> None:
         self.db_path = Path(db_path)
         self.repository = repository
         self.assignment = assignment
         self.io = io
         self.pull_requests = pull_requests
+        self.board = board
         self._conflict_refresh = ConflictRefreshScheduler()
 
     def set_conflict_refresh(self, callback: Callable[[], Awaitable[int]]) -> None:
@@ -287,6 +291,7 @@ class GitHubWorkflowPush:
                 mark_project_record_pushed(session, table, row_id, ledger_comment_id)
         settled = stage_issue_reflections(session, reflection_rows)
         stage_pull_request_reflections(session, reflection_rows)
+        stage_board_reflections(session, reflection_rows)
         for _issue_number, item_id, _snapshot in reflection_rows:
             if item_id not in settled:
                 mark_reflection_owed(session, item_id)
@@ -441,6 +446,7 @@ class GitHubWorkflowPush:
         """Queue issue reflections after local commit and retain failed reflections for refresh."""
         dispatch_staged_reflections(session, self.db_path, self.io)
         dispatch_staged_pull_requests(session, self.db_path, self.pull_requests)
+        dispatch_staged_board_items(session, self.db_path, self.board)
 
     def _append_unpushed_versions(
         self,

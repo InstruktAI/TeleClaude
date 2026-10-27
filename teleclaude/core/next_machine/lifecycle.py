@@ -94,6 +94,7 @@ __all__ = [
     "diagnosis_settled_current",
     "effective_hold",
     "is_in_prepare_lane",
+    "is_in_work_lane",
     "is_prepare_lifecycle_phase",
     "is_ready_band_eligible",
     "is_ready_for_work",
@@ -257,6 +258,16 @@ def is_in_prepare_lane(lifecycle_phase: str | None) -> bool:
     if phase is None:
         return False
     return phase in PREPARE_LIFECYCLE_PHASES
+
+
+def is_in_work_lane(phase: LifecyclePhase, *, plan_review_is_current: bool) -> bool:
+    """Return whether an active item is past the prepare/work boundary.
+
+    The boundary the lifecycle runner dispatches on: the phase has reached ``PREPARED`` and the plan
+    review still binds the plan. A prepared item whose plan review went stale is prepared again.
+    ``is_in_prepare_lane`` answers a different question (it counts ``PREPARED`` itself as prepare).
+    """
+    return plan_review_is_current and lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED)
 
 
 def is_settled_ok_phase(lifecycle_phase: str | None) -> bool:

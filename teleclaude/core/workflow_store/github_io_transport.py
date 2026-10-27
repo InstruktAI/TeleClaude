@@ -145,6 +145,11 @@ def _request_refusal_detail(operation: StrEnum, error: RequestFailed) -> str:
     return detail
 
 
+def failure_reason(error: Exception) -> str:
+    """Name why a reflection failed: the bounded refusal reason, or the exception type for any other failure."""
+    return error.reason.value if isinstance(error, GitHubIORefused) else type(error).__name__
+
+
 def int_argument(value: object) -> int:
     """Validate one dispatched integer argument."""
     if not isinstance(value, int):

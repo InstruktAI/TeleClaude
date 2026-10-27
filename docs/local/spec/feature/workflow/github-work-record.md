@@ -89,13 +89,9 @@ How the store maps onto the repository is owned by
 - **Delivery and removal:** delivery closes the issue as completed. Removal
   closes it as not planned; reactivation reopens it.
 
-<!-- planned:github-work-board -->
-
 - **Board:** in a repository an organization owns, the project's work also
   appears on one board the platform keeps
   (`local/projects/teleclaude/spec/feature/workflow/workflow-board`).
-
-<!-- /planned:github-work-board -->
 
 - **Pull request:** from the moment an item's build starts until it is
   delivered or removed, its branch has one draft pull request, linked to its
@@ -179,14 +175,10 @@ How the store maps onto the repository is owned by
   belong to the project rather than one item, are appended to one
   platform-opened ledger issue.
 
-<!-- planned:github-work-board -->
-
 - **Board issue:** where the project has a board, one platform-opened issue,
   closed as not planned, records which computer sets the board up and which
   board it is, as `[action:board-claim computer:<name>]` and
   `[action:board project:<number>]` comments.
-
-<!-- /planned:github-work-board -->
 
 <!-- planned:github-turn-mirror -->
 

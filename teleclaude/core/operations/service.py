@@ -72,6 +72,7 @@ from teleclaude.core.operations._receipt import recovery_command
 from teleclaude.core.operations._relayed_ownership import was_started_by_principal
 from teleclaude.core.operations._rename_payload import ensure_rename_target_matches, rename_payload
 from teleclaude.core.operations.job_run import JobRunRequest, job_project_path, job_run_payload, run_job_run_operation
+from teleclaude.core.operations.todo_board_repair import run_todo_board_repair_operation
 from teleclaude.core.operations.todo_filing import FilingOrder, run_todo_filing_operation
 from teleclaude.core.operations.todo_filing import submit_todo_filing as _submit_todo_filing
 from teleclaude.core.operations.todo_identity import (
@@ -615,6 +616,7 @@ class OperationsService:
             OperationKind.TODO_REMOVE: lambda op: run_todo_remove_operation(self._db, op),
             OperationKind.TODO_FILING: lambda op: run_todo_filing_operation(self._db, op, self._filing_order),
             OperationKind.TODO_STORE_SWITCH: lambda op: run_todo_store_switch_operation(self._db, op),
+            OperationKind.TODO_BOARD_REPAIR: run_todo_board_repair_operation,
             OperationKind.SESSION_CLOSE: self._run_command_backed_operation,
             OperationKind.AGENT_RESTART: self._run_command_backed_operation,
             OperationKind.AGENT_HANDOFF: self._run_command_backed_operation,

@@ -38,6 +38,8 @@ class GitHubIssue:
     node_id: str
     creator: str
     updated_at: datetime | None
+    body: str = ""
+    closed: bool = False
 
 
 @dataclass(frozen=True)
@@ -63,3 +65,53 @@ class GitHubReview:
     commit_id: str
     state: str
     body: str
+
+
+@dataclass(frozen=True)
+class GitHubBoardOwner:
+    """The repository and the account that owns it, as the board's GraphQL calls address them."""
+
+    repository_id: str
+    owner_id: str
+    is_organization: bool
+
+
+@dataclass(frozen=True)
+class GitHubBoardProject:
+    """An organization project: its node ID and the number the organization shows."""
+
+    project_id: str
+    number: int
+    title: str
+
+
+@dataclass(frozen=True)
+class GitHubBoardSelectField:
+    """A single-select field of a project with its options as (option ID, name) in field order."""
+
+    field_id: str
+    name: str
+    options: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class GitHubBoardView:
+    """A saved view of a project."""
+
+    view_id: str
+    name: str
+    layout: str
+    filter: str
+
+
+@dataclass(frozen=True)
+class GitHubBoardState:
+    """Everything setup compares against its target: README, fields, views, built-in workflows and links."""
+
+    project: GitHubBoardProject
+    readme: str
+    closed: bool
+    fields: tuple[GitHubBoardSelectField, ...]
+    views: tuple[GitHubBoardView, ...]
+    workflow_ids: tuple[str, ...]
+    linked_repository_ids: frozenset[str]

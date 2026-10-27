@@ -14,7 +14,14 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.addressing import addressed_computer, project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
-from teleclaude.cli.telec.surface import TODO_COMMAND, TODO_CREATE, TODO_DELIVER, TODO_REACTIVATE, TODO_REMOVE
+from teleclaude.cli.telec.surface import (
+    TODO_BOARD_REPAIR,
+    TODO_COMMAND,
+    TODO_CREATE,
+    TODO_DELIVER,
+    TODO_REACTIVATE,
+    TODO_REMOVE,
+)
 from teleclaude.constants import (
     ARTIFACT_INPUT,
     ARTIFACT_NAMES,
@@ -61,6 +68,9 @@ _TODO_STORE_SWITCH_PATH = "/todos/switch-to-github"
 _TODO_SWITCH_CWD_FIELD = "cwd"
 _TODO_SWITCH_REQUEST_FIELD = "client_request_id"
 _TODO_SWITCH_ARGUMENT_ERROR = "This command takes no arguments."
+_TODO_BOARD_REPAIR_PATH = "/todos/board/repair"
+_TODO_BOARD_REPAIR = "repair"
+_TODO_BOARD_UNKNOWN_TEMPLATE = "Unknown board subcommand: {subcommand}"
 
 
 @dataclass(frozen=True)
@@ -84,6 +94,7 @@ class _TodoSubcommand(StrEnum):
     """Closed vocabulary for todo subcommands routed by this handler."""
 
     ARTIFACTS = "artifacts"
+    BOARD = "board"
     CREATE = "create"
     DELIVER = "deliver"
     DESIGN = "design"
@@ -107,6 +118,7 @@ class _TodoSubcommand(StrEnum):
 __all__ = [
     "_handle_todo",
     "_handle_todo_artifacts",
+    "_handle_todo_board",
     "_handle_todo_create",
     "_handle_todo_deliver",
     "_handle_todo_design",
@@ -540,6 +552,32 @@ def _handle_todo_switch_to_github(args: list[str]) -> None:
     render_receipt(tool_api_call(HTTPMethod.POST, _TODO_STORE_SWITCH_PATH, json_body=body))
 
 
+def _handle_todo_board(args: list[str]) -> None:
+    """Handle telec todo board repair: submit the board repair once and render its durable receipt."""
+    from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - command boundary: daemon API client.
+    from teleclaude.cli.tool_commands._receipt import (  # noqa: PLC0415 - command boundary: receipt rendering.
+        render_receipt,
+    )
+
+    if not args:
+        print(_usage(TODO_COMMAND, _TodoSubcommand.BOARD))
+        raise SystemExit(1)
+    if args[0] != _TODO_BOARD_REPAIR:
+        print(_TODO_BOARD_UNKNOWN_TEMPLATE.format(subcommand=args[0]))
+        print(_usage(TODO_COMMAND, _TodoSubcommand.BOARD))
+        raise SystemExit(1)
+    parsed = parse_command_args(TODO_BOARD_REPAIR, args[1:])
+    if parsed.positionals:
+        print(_TODO_SWITCH_ARGUMENT_ERROR)
+        print(_usage(TODO_COMMAND, _TodoSubcommand.BOARD))
+        raise SystemExit(1)
+    body = {
+        _TODO_SWITCH_CWD_FIELD: project_reference(),
+        _TODO_SWITCH_REQUEST_FIELD: str(uuid.uuid4()),
+    }
+    render_receipt(tool_api_call(HTTPMethod.POST, _TODO_BOARD_REPAIR_PATH, json_body=body))
+
+
 def _normalize_after_values(raw_values: list[str]) -> list[str]:
     """Normalize raw --after CLI values into a validated slug list.
 
@@ -922,6 +960,7 @@ def _handle_todo_reactivate(args: list[str]) -> None:
 
 _TODO_SUBCOMMAND_HANDLERS: dict[_TodoSubcommand, Callable[[list[str]], None]] = {
     _TodoSubcommand.ARTIFACTS: _handle_todo_artifacts,
+    _TodoSubcommand.BOARD: _handle_todo_board,
     _TodoSubcommand.CREATE: _handle_todo_create,
     _TodoSubcommand.DELIVER: _handle_todo_deliver,
     _TodoSubcommand.DESIGN: _handle_todo_design,
