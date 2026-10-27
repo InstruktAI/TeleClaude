@@ -20,7 +20,7 @@ from teleclaude.core.todos_db._exceptions import DriverStartBusy
 logger = get_logger(__name__)
 
 _START_REFUSED_BUSY_EVENT = "driver start refused while another start is in progress"
-STARTS_IN_FLIGHT: dict[tuple[Path, str], str] = {}
+STARTS_IN_FLIGHT: dict[tuple[Path, str], str | None] = {}
 
 
 def start_key(project_path: str | Path, slug: str) -> tuple[Path, str]:
@@ -38,7 +38,7 @@ async def driver_start_section(
     project_path: str | Path,
     slug: str,
     *,
-    starting_session_id: str,
+    starting_session_id: str | None,
 ) -> AsyncIterator[None]:
     """Hold the one-start-at-a-time section for a todo while a start creates or claims its orchestrator.
 
@@ -50,10 +50,14 @@ async def driver_start_section(
     nothing behind. The record lives in this process only; the registry check-and-set
     has no await in it, so on the daemon's event loop it is atomic. The caller
     re-checks the slug's holder inside the section and creates or claims before leaving.
+
+    A section taken to release or reconcile a claim passes no ``starting_session_id``: it excludes every
+    start of the todo while it runs but registers no session, so no computer reads it as that session
+    starting.
     """
     key = start_key(project_path, slug)
-    in_flight = STARTS_IN_FLIGHT.get(key)
-    if in_flight is not None:
+    if key in STARTS_IN_FLIGHT:
+        in_flight = STARTS_IN_FLIGHT[key]
         busy = DriverStartBusy(slug=slug, in_flight=in_flight)
         logger.warning(
             _START_REFUSED_BUSY_EVENT,

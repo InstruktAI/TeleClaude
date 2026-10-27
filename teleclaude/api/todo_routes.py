@@ -55,6 +55,8 @@ from teleclaude.core.human_involvement import (
     resolve_human_involvement,
 )
 from teleclaude.core.next_machine.driver_admission import (
+    DriverAdmissionRequest,
+    DriverReleaseRequest,
     StartRequest,
     admit_relayed_start,
     release_relayed_claim,
@@ -64,7 +66,6 @@ from teleclaude.core.next_machine.kind_migration import (
     KindMigrationResult,
     migrate_todo_kind,
 )
-from teleclaude.core.next_machine.runner_types import RunnerLane
 from teleclaude.core.next_machine.runtime.sessions import OwnSessionAnswer, own_session_answer
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
@@ -674,27 +675,6 @@ async def todo_switch_to_github(
     )
 
 
-class _DriverAdmissionRequest(BaseModel):
-    """A start of a GitHub-backed todo's driver another computer asks the master to admit."""
-
-    model_config = ConfigDict(frozen=True)
-    project_path: str
-    slug: str
-    session_id: str
-    lane: RunnerLane
-    manually_started: bool
-    release_hold: bool
-
-
-class _DriverReleaseRequest(BaseModel):
-    """A claim another computer asks the master to release."""
-
-    model_config = ConfigDict(frozen=True)
-    project_path: str
-    slug: str
-    session_id: str
-
-
 class _DriverClaimResponse(BaseModel):
     """The master's answer to an admission or a release."""
 
@@ -714,7 +694,7 @@ def _driver_refusal(failure: OperationFailure, status_code: int) -> DeclaredWork
 
 @router.post("/driver-admission")
 async def todo_driver_admission(
-    body: _DriverAdmissionRequest,
+    body: DriverAdmissionRequest,
     identity: CallerIdentity = Depends(carried_caller),
 ) -> _DriverClaimResponse:
     """Admit a start of a GitHub-backed todo's driver on the master, recording its claim before its session exists.
@@ -745,7 +725,7 @@ async def todo_driver_admission(
 
 @router.post("/driver-release")
 async def todo_driver_release(
-    body: _DriverReleaseRequest,
+    body: DriverReleaseRequest,
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> _DriverClaimResponse:
     """Release a GitHub-backed todo's claim on the master, in the todo's section, while it still names the session."""

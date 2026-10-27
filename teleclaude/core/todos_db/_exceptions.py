@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
 
 from typing_extensions import TypedDict
@@ -46,6 +47,33 @@ _DRIVER_START_BUSY_SUMMARY = "DriverStartBusy: another start of {slug} is in pro
 _LANE_CROSSING_WORK_FEEDBACK = (
     "This todo is held in the {held_lane} lane and cannot be started from {requested_lane}. {sanctioned_path}."
 )
+
+
+class ClaimConflictField(StrEnum):
+    """The payload fields of a :class:`ClaimConflict` that cross a computer boundary."""
+
+    HOLDER = "holder"
+    COMPUTER = "computer"
+    UNANSWERED = "unanswered"
+
+
+class DriverStartBusyField(StrEnum):
+    """The payload fields of a :class:`DriverStartBusy` that cross a computer boundary."""
+
+    IN_FLIGHT = "in_flight"
+
+
+class AdmissionUnavailableField(StrEnum):
+    """The payload fields of an :class:`AdmissionUnavailable` that cross a computer boundary."""
+
+    REASON = "reason"
+    DETAIL = "detail"
+
+
+def _text_field(payload: Mapping[str, object], field: StrEnum) -> str | None:
+    """A non-empty text field of a received payload, or ``None`` when it is absent or not text."""
+    value = payload.get(field)
+    return value if isinstance(value, str) and value else None
 
 
 class OperationErrorPayload(TypedDict):
@@ -257,13 +285,26 @@ class ClaimConflict(OperationFailure):
         super().__init__(slug)
 
     def to_error_payload(self) -> ClaimConflictErrorPayload:
-        return {
-            "kind": self.error_kind,
-            "slug": self.slug,
-            "holder": self.holder,
-            "computer": self.computer,
-            "unanswered": list(self.unanswered),
-        }
+        return ClaimConflictErrorPayload(
+            kind=self.error_kind,
+            slug=self.slug,
+            holder=self.holder,
+            computer=self.computer,
+            unanswered=list(self.unanswered),
+        )
+
+    @classmethod
+    def from_error_payload(cls, slug: str, payload: Mapping[str, object]) -> ClaimConflict:
+        """Rebuild the conflict another computer declared, from the payload it carried."""
+        unanswered = payload.get(ClaimConflictField.UNANSWERED)
+        return cls(
+            slug=slug,
+            holder=_text_field(payload, ClaimConflictField.HOLDER),
+            computer=_text_field(payload, ClaimConflictField.COMPUTER),
+            unanswered=tuple(item for item in unanswered if isinstance(item, str))
+            if isinstance(unanswered, list)
+            else (),
+        )
 
     def summary(self) -> str:
         if self.holder and self.unanswered:
@@ -291,6 +332,7 @@ class AdmissionUnavailableReason(StrEnum):
     NOT_THE_MASTER = "this computer is not the master"
     REFUSED_AT_CREATE_DOOR = "the create door refused the start as undecided"
     ADMISSION_FAILED = "the admission failed before it was decided"
+    NO_LIVE_TODO = "the todo has no live state to record a claim on"
 
 
 class AdmissionUnavailableErrorPayload(OperationErrorPayload):
@@ -321,7 +363,21 @@ class AdmissionUnavailable(OperationFailure):
         super().__init__(slug)
 
     def to_error_payload(self) -> AdmissionUnavailableErrorPayload:
-        return {"kind": self.error_kind, "slug": self.slug, "reason": self.reason.name, "detail": self.detail}
+        return AdmissionUnavailableErrorPayload(
+            kind=self.error_kind, slug=self.slug, reason=self.reason.name, detail=self.detail
+        )
+
+    @classmethod
+    def from_error_payload(cls, slug: str, payload: Mapping[str, object]) -> AdmissionUnavailable | None:
+        """Rebuild the refusal another computer declared; ``None`` when its reason is not one this release knows."""
+        declared = _text_field(payload, AdmissionUnavailableField.REASON)
+        if declared is None or declared not in AdmissionUnavailableReason.__members__:
+            return None
+        return cls(
+            slug=slug,
+            reason=AdmissionUnavailableReason[declared],
+            detail=_text_field(payload, AdmissionUnavailableField.DETAIL),
+        )
 
     def summary(self) -> str:
         reason_text = f"{self.reason.value} ({self.detail})" if self.detail else self.reason.value
@@ -359,6 +415,11 @@ class DriverStartBusy(OperationFailure):
         return DriverStartBusyErrorPayload(
             kind=self.error_kind, slug=self.slug, in_flight=self.in_flight, refusal=self.refusal
         )
+
+    @classmethod
+    def from_error_payload(cls, slug: str, payload: Mapping[str, object]) -> DriverStartBusy:
+        """Rebuild the refusal another computer declared, naming the start it found in progress."""
+        return cls(slug=slug, in_flight=_text_field(payload, DriverStartBusyField.IN_FLIGHT))
 
     def summary(self) -> str:
         if self.in_flight:

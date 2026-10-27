@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from instrukt_ai_logging import get_logger
+from pydantic import BaseModel, ConfigDict
 from redis.exceptions import RedisError
 
 from teleclaude.caller_identity import cleared_command_path
@@ -78,9 +79,6 @@ _JSON_CONTENT_TYPE = "application/json"
 _PROJECT_PATH_FIELD = "project_path"
 _SLUG_FIELD = "slug"
 _SESSION_ID_FIELD = "session_id"
-LANE_FIELD = "lane"
-MANUALLY_STARTED_FIELD = "manually_started"
-RELEASE_HOLD_FIELD = "release_hold"
 _ANSWER_FIELD = "answer"
 _COMPUTER_SEPARATOR = ", "
 _JUDGED_EVENT = "driver claim judged"
@@ -93,6 +91,27 @@ _RECONCILE_SKIPPED_EVENT = "driver claim reconciliation skipped"
 ADMISSION_CONFLICT_KIND = "driver_admission_conflict"
 _KIND_FIELD = "kind"
 _SUMMARY_FIELD = "summary"
+
+
+class DriverAdmissionRequest(BaseModel):
+    """The wire body asking the master to admit a start of a GitHub-backed todo's driver."""
+
+    model_config = ConfigDict(frozen=True)
+    project_path: str
+    slug: str
+    session_id: str
+    lane: RunnerLane
+    manually_started: bool
+    release_hold: bool
+
+
+class DriverReleaseRequest(BaseModel):
+    """The wire body asking the master to release the claim naming a session."""
+
+    model_config = ConfigDict(frozen=True)
+    project_path: str
+    slug: str
+    session_id: str
 
 
 @dataclass(frozen=True)
@@ -136,16 +155,18 @@ class StartRequest:
 
     def to_body(self) -> bytes:
         """The admission request body, naming the project by the identity another computer resolves."""
-        return json.dumps(
-            {
-                _PROJECT_PATH_FIELD: project_identity_for_folder(self.project_root),
-                _SLUG_FIELD: self.slug,
-                _SESSION_ID_FIELD: self.session_id,
-                LANE_FIELD: self.lane.value,
-                MANUALLY_STARTED_FIELD: self.manually_started,
-                RELEASE_HOLD_FIELD: self.release_hold,
-            }
-        ).encode()
+        return (
+            DriverAdmissionRequest(
+                project_path=project_identity_for_folder(self.project_root),
+                slug=self.slug,
+                session_id=self.session_id,
+                lane=self.lane,
+                manually_started=self.manually_started,
+                release_hold=self.release_hold,
+            )
+            .model_dump_json()
+            .encode()
+        )
 
 
 async def _carry(
@@ -263,7 +284,9 @@ async def decide_driver_admission(request: StartRequest) -> None:
     local holder re-check exempts the starting session; a claim naming another session is judged, and a
     held claim raises :class:`ClaimConflict` naming the holding session and the computer that answered
     for it, or the computers that did not answer. Otherwise the claim is written through the one claim
-    writer, replacing an ended claim in the same write.
+    writer, replacing an ended claim in the same write. A todo with no live state (missing, removed or
+    delivered) has nothing to record a claim on, so the start is refused as :class:`AdmissionUnavailable`:
+    an admission always has recorded its claim.
     """
     project_root, slug = request.project_root, request.slug
     await refresh_github_workflow_store(project_root)
@@ -274,7 +297,9 @@ async def decide_driver_admission(request: StartRequest) -> None:
     if holder is not None:
         raise ClaimConflict(slug=slug, holder=holder, computer=config.computer.name)
     state = await todos_db.read_state(slug)
-    claim = state.get(ACTIVE_RUNNER_STATE_KEY) if state is not None else None
+    if state is None:
+        raise AdmissionUnavailable(slug=slug, reason=AdmissionUnavailableReason.NO_LIVE_TODO)
+    claim = state.get(ACTIVE_RUNNER_STATE_KEY)
     if isinstance(claim, str) and claim and claim != request.session_id:
         judgment = await judge_claim(project_root, slug, claim, caller=request.caller)
         if judgment.held:
@@ -322,7 +347,7 @@ async def release_driver_claim(project_root: Path, slug: str, session_id: str) -
     A section held by another start refuses at once as busy, and the claim is left to the master's
     reconciliation.
     """
-    async with driver_start_section(project_root, slug, starting_session_id=session_id):
+    async with driver_start_section(project_root, slug, starting_session_id=None):
         return await clear_matching_claim(project_root, slug, session_id)
 
 
@@ -355,7 +380,7 @@ async def reconcile_ended_claims(
         return reconciled
     for slug, todo, claim in candidates:
         try:
-            async with driver_start_section(project_root, slug, starting_session_id=claim):
+            async with driver_start_section(project_root, slug, starting_session_id=None):
                 if await _clear_ended_claim(project_root, slug, claim):
                     reconciled[slug] = replace(todo, active_runner=None, manually_started=False)
         except DriverStartBusy:
@@ -470,10 +495,7 @@ async def release_relayed_claim(project_root: Path, slug: str, session_id: str) 
 _HTTP_OK = 200
 _HTTP_CONFLICT = 409
 _HTTP_LOCKED = 423
-_HOLDER_FIELD = "holder"
-_COMPUTER_FIELD = "computer"
-_UNANSWERED_FIELD = "unanswered"
-_IN_FLIGHT_FIELD = "in_flight"
+_HTTP_UNAVAILABLE = 503
 _DETAIL_FIELD = "detail"
 _ADMISSION_DECLINED_STATUS = "status {status}"
 _START_RELEASED_EVENT = "driver start withdrew its claim"
@@ -497,11 +519,6 @@ def _detail_of(response: RelayedResponse) -> Mapping[str, object]:
         return {}
     detail = payload.get(_DETAIL_FIELD) if isinstance(payload, dict) else None
     return {str(key): value for key, value in detail.items()} if isinstance(detail, dict) else {}
-
-
-def _text_of(detail: Mapping[str, object], key: str) -> str | None:
-    value = detail.get(key)
-    return value if isinstance(value, str) and value else None
 
 
 async def _post_to_master(
@@ -533,17 +550,13 @@ async def _request_admission(master: str, request: StartRequest) -> None:
         return
     detail = _detail_of(response)
     if response.status_code == _HTTP_CONFLICT:
-        unanswered = detail.get(_UNANSWERED_FIELD)
-        raise ClaimConflict(
-            slug=slug,
-            holder=_text_of(detail, _HOLDER_FIELD),
-            computer=_text_of(detail, _COMPUTER_FIELD),
-            unanswered=tuple(item for item in unanswered if isinstance(item, str))
-            if isinstance(unanswered, list)
-            else (),
-        )
+        raise ClaimConflict.from_error_payload(slug, detail)
     if response.status_code == _HTTP_LOCKED:
-        raise DriverStartBusy(slug=slug, in_flight=_text_of(detail, _IN_FLIGHT_FIELD))
+        raise DriverStartBusy.from_error_payload(slug, detail)
+    if response.status_code == _HTTP_UNAVAILABLE:
+        declared = AdmissionUnavailable.from_error_payload(slug, detail)
+        if declared is not None:
+            raise declared
     raise AdmissionUnavailable(
         slug=slug,
         reason=AdmissionUnavailableReason.MASTER_CANNOT_CARRY,
@@ -566,13 +579,11 @@ async def _release_within_section(project_root: Path, slug: str, session_id: str
     if master is None:
         await clear_matching_claim(project_root, slug, session_id)
         return
-    body = json.dumps(
-        {
-            _PROJECT_PATH_FIELD: project_identity_for_folder(project_root),
-            _SLUG_FIELD: slug,
-            _SESSION_ID_FIELD: session_id,
-        }
-    ).encode()
+    body = (
+        DriverReleaseRequest(project_path=project_identity_for_folder(project_root), slug=slug, session_id=session_id)
+        .model_dump_json()
+        .encode()
+    )
     try:
         response = await _post_to_master(master, slug, RELEASE_PATH, body, caller, RELEASE_RELAY_DEADLINE_S)
     except AdmissionUnavailable as unavailable:
@@ -584,7 +595,7 @@ async def _release_within_section(project_root: Path, slug: str, session_id: str
 
 async def _release_in_own_section(project_root: Path, slug: str, session_id: str, caller: AdmissionCaller) -> None:
     try:
-        async with driver_start_section(project_root, slug, starting_session_id=session_id):
+        async with driver_start_section(project_root, slug, starting_session_id=None):
             await _release_within_section(project_root, slug, session_id, caller)
     except DriverStartBusy:
         logger.info(_RELEASE_SKIPPED_EVENT, slug=slug, session_id=session_id)
@@ -728,10 +739,4 @@ def parse_admission_conflict(slug: str, detail: str | None) -> ClaimConflict | N
         return None
     if not isinstance(payload, dict) or payload.get(_KIND_FIELD) != ADMISSION_CONFLICT_KIND:
         return None
-    unanswered = payload.get(_UNANSWERED_FIELD)
-    return ClaimConflict(
-        slug=slug,
-        holder=_text_of(payload, _HOLDER_FIELD),
-        computer=_text_of(payload, _COMPUTER_FIELD),
-        unanswered=tuple(item for item in unanswered if isinstance(item, str)) if isinstance(unanswered, list) else (),
-    )
+    return ClaimConflict.from_error_payload(slug, {str(key): value for key, value in payload.items()})
