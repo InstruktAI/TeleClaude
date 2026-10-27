@@ -29,6 +29,9 @@ _REFRESH_EXCEPTIONS = (RedisError, TimeoutError, OSError, RuntimeError, ValueErr
 _PEER_RECORD_FAILED_EVENT = "heartbeat_peer_record_failed"
 # One pull answers every one of these, so they share one refresh per peer.
 _PROJECTS_DATA_TYPE = "projects"
+_SESSIONS_DATA_TYPE = "sessions"
+_FIRST_HEARTBEAT_REASON = "first_heartbeat"
+_STARTUP_REASON = "startup"
 _PROJECTS_DATA_TYPES = frozenset({_PROJECTS_DATA_TYPE, "todos", "preparation"})
 _PROJECTS_REFRESH_KEY_TEMPLATE = "{computer}:projects"
 DIGEST_CHANGED_REASON = "digest_changed"
@@ -119,12 +122,12 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         for peer in peers:
             try:
                 self._schedule_refresh(
-                    _RefreshRequest(peer.name, "projects", "startup", force=True),
-                    on_success=lambda name=peer.name: self._bootstrapped.add((name, "projects")),
+                    _RefreshRequest(peer.name, _PROJECTS_DATA_TYPE, _STARTUP_REASON, force=True),
+                    on_success=lambda name=peer.name: self._bootstrapped.add((name, _PROJECTS_DATA_TYPE)),
                 )
                 self._schedule_refresh(
-                    _RefreshRequest(peer.name, "sessions", "startup", force=True),
-                    on_success=lambda name=peer.name: self._bootstrapped.add((name, "sessions")),
+                    _RefreshRequest(peer.name, _SESSIONS_DATA_TYPE, _STARTUP_REASON, force=True),
+                    on_success=lambda name=peer.name: self._bootstrapped.add((name, _SESSIONS_DATA_TYPE)),
                 )
             except _REFRESH_EXCEPTIONS as e:
                 logger.warning("Failed to refresh snapshot from %s: %s", peer.name, e)
@@ -296,20 +299,20 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
 
                 advertised_digest = info.get(PROJECTS_DIGEST_FIELD)
                 advertises_digest = isinstance(advertised_digest, str) and bool(advertised_digest)
-                if isinstance(advertised_digest, str) and advertised_digest:
+                if advertises_digest and isinstance(advertised_digest, str):
                     if self._pulled_projects_digest.get(computer_name) != advertised_digest:
                         self._schedule_refresh(
                             _RefreshRequest(computer_name, _PROJECTS_DATA_TYPE, DIGEST_CHANGED_REASON, force=True),
                             on_success=lambda p=computer_name, d=advertised_digest: self._projects_pulled(p, d),
                         )
 
-                for data_type in (_PROJECTS_DATA_TYPE, "sessions"):
+                for data_type in (_PROJECTS_DATA_TYPE, _SESSIONS_DATA_TYPE):
                     if (computer_name, data_type) in self._bootstrapped:
                         continue
                     if data_type == _PROJECTS_DATA_TYPE and advertises_digest:
                         continue
                     self._schedule_refresh(
-                        _RefreshRequest(computer_name, data_type, "first_heartbeat", force=True),
+                        _RefreshRequest(computer_name, data_type, _FIRST_HEARTBEAT_REASON, force=True),
                         on_success=lambda p=computer_name, d=data_type: self._bootstrapped.add((p, d)),
                     )
             except _REFRESH_EXCEPTIONS as exc:

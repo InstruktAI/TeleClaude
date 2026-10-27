@@ -26,6 +26,7 @@ _HEARTBEAT_RECOVERABLE_ERRORS = (RedisError, OSError, RuntimeError, TypeError, V
 _HEARTBEAT_SAMPLE_FAILED_EVENT = "heartbeat_sample_failed"
 _PROJECTS_DIGEST_FAILED_EVENT = "projects_digest_failed"
 _COMPUTER_FIELD = "computer"
+_PROJECTS_DATA_TYPE = "projects"
 _PEER_INVALIDATION_EVENTS = frozenset({CacheEvent.TODOS_UPDATED.value, CacheEvent.PROJECTS_UPDATED.value})
 
 if TYPE_CHECKING:
@@ -36,7 +37,7 @@ if TYPE_CHECKING:
 
 
 class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
-    """Mixin: periodic heartbeat emission and cache-change no-op handler."""
+    """Mixin: periodic heartbeat with the projects digest, and peer invalidation from cache changes."""
 
     if TYPE_CHECKING:
         computer_name: str
@@ -45,6 +46,7 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         _running: bool
         _local_projects_digest: str | None
         _pulled_projects_digest: dict[str, str]
+        _bootstrapped: set[tuple[str, str]]
 
         @property
         def cache(self) -> DaemonCache | None:
@@ -138,11 +140,12 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
     def _on_cache_change(self, event: str, data: object) -> None:
         """Forget the pulled digest of a peer whose cached projects or todos were invalidated.
 
-        The next heartbeat then finds the peer's digest unequal to none recorded and pulls once, which refills
-        what the invalidation dropped. Nothing is sent from here.
+        The next heartbeat then pulls the peer once, through its digest or, for a peer that advertises none, its
+        bootstrap, which refills what the invalidation dropped. Nothing is sent from here.
         """
         if event not in _PEER_INVALIDATION_EVENTS or not isinstance(data, dict):
             return
         computer = data.get(_COMPUTER_FIELD)
         if isinstance(computer, str) and computer != self.computer_name:
             self._pulled_projects_digest.pop(computer, None)
+            self._bootstrapped.discard((computer, _PROJECTS_DATA_TYPE))
