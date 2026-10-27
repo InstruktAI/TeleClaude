@@ -68,7 +68,7 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 <!-- planned:single-orchestrator-across-computers -->
 
-- **One orchestrator per todo across computers**: for a project on the GitHub workflow store, the fleet's master admits every orchestrator start of a todo, from any computer, one at a time, and records the claim before the session is created or claimed; the starting computer holds its own admission section across that admission. Each computer answers for the sessions it runs; the master judges a claim by asking every computer the platform knows, and a claim stays held until the computer running its session shows it ended, or every computer answers that the session is not its own. A computer never clears a claim naming a session it did not run. A start that finds the todo held is refused naming the holding session and the computer running it, or the computers that did not answer.
+- **One orchestrator per todo across computers**: for a project on the GitHub workflow store, the fleet's master admits every orchestrator start of a todo, from any computer, one at a time, and records the claim before the session is created or claimed; the starting computer holds its own admission section across that admission. Each computer answers for the sessions it runs; the master judges a claim by asking every computer the platform knows, and a claim stays held until the computer running its session shows it ended, or every computer answers that the session is not its own. Only the master writes the claim, inside its section for the todo: other computers ask it to release a claim for a session they ran, and its lifecycle runner passes clear claims it judges ended. A start that finds the todo held is refused naming the holding session and the computer running it, or the computers that did not answer. A caller waits for an admission only within a bounded budget; a start still undecided when it expires is refused and creates nothing, and a claim recorded for it is cleared by the master.
 
 <!-- /planned:single-orchestrator-across-computers -->
 
@@ -230,7 +230,8 @@ Each state machine has its own design document with full state diagrams, sequenc
 
 - **Holder's computer does not answer**: while the computer running a claimed session, or any computer when none answers for it, does not answer the master, the claim stays held and a start of that todo is refused naming the session and the computer running it, or the computers that did not answer; the todo can be started again once the claim is shown ended.
 - **No master to admit a start**: while no unique live master holds the project and answers, starts of a GitHub-backed todo on other computers are refused naming why and create nothing, and lifecycle runner passes skip those todos; no computer decides the start by its own registry instead.
-- **Admission answered but the start failed**: a start that cannot create or claim its session after the master recorded its claim clears that claim from its own computer. One interrupted by its computer's restart leaves the todo held until a later start of it is admitted, when every computer answers that the session is not its own.
+- **Admission answered but the start failed**: a start that cannot create or claim its session after asking — refused, out of budget, or interrupted by its computer's restart — creates nothing; a claim the master recorded for it is cleared by the start's release request or by the master's next runner pass, once every computer answers that the session is not its own.
+- **Release does not reach the master**: a claim for a session that ended on another computer stays held until the master's next runner pass judges it ended; while the master is unreachable it stays held.
 - **Computer on an older release**: a computer that does not run cross-computer admission still judges claims by its own registry and can start a second orchestrator until it is updated.
 
 <!-- /planned:single-orchestrator-across-computers -->
@@ -241,3 +242,4 @@ Each state machine has its own design document with full state diagrams, sequenc
 ## See Also
 
 - docs/local/adr/0135-github-backed-driver-starts-are-admitted-by-the-mesh-master.md
+- docs/local/adr/0136-only-the-master-writes-a-github-backed-claim.md

@@ -7,6 +7,11 @@ description: For a project on the GitHub workflow store, every lifecycle orchest
 
 # GitHub-Backed Driver Starts Are Admitted by the Mesh Master — ADR
 
+## Status
+
+Superseded in part by ADR-0136: only the master writes a GitHub-backed claim;
+other computers ask it to release, and its runner passes clear ended claims.
+
 ## Context
 
 ADR-0133 and ADR-0134 make lifecycle orchestrator starts for one todo on one
