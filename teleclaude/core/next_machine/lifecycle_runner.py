@@ -18,7 +18,11 @@ from teleclaude.constants import TodoStatus
 from teleclaude.context_selector import resolve_snippet_meta
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
-from teleclaude.core.next_machine.driver_admission import reconcile_ended_claims, schedule_claim_release
+from teleclaude.core.next_machine.driver_admission import (
+    parse_admission_conflict,
+    reconcile_ended_claims,
+    schedule_claim_release,
+)
 from teleclaude.core.next_machine.driver_claim import set_active_runner
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
@@ -63,7 +67,12 @@ from teleclaude.core.next_machine.slug_resolution import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
-from teleclaude.core.todos_db._exceptions import ClaimConflict, DriverStartBusy
+from teleclaude.core.todos_db._exceptions import (
+    AdmissionUnavailable,
+    AdmissionUnavailableReason,
+    ClaimConflict,
+    DriverStartBusy,
+)
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
@@ -568,6 +577,7 @@ async def _live_active_runners(
 _HTTP_LOCKED = 423
 _LOST_START_EVENT = "lifecycle start lost to a start in progress"
 _HTTP_CONFLICT = 409
+_HTTP_UNAVAILABLE = 503
 
 
 async def _raise_lost_start(
@@ -577,11 +587,24 @@ async def _raise_lost_start(
     slug: str,
     error: APIError,
 ) -> None:
-    """Raise the typed outcome of a lost concurrent start; return when ``error`` is another refusal."""
+    """Raise the typed outcome of a lost concurrent start; return when ``error`` is another refusal.
+
+    A 409 the create door declared as an admission conflict names the holding session and its computer (or
+    the computers that did not answer for it) and is read by that declared kind, ahead of this computer's own
+    re-read, which cannot see a driver on another computer. A 503 the door gave for a start it could not
+    decide is :class:`AdmissionUnavailable`; a draining daemon's 503 is another refusal.
+    """
     if error.status_code == _HTTP_LOCKED:
         logger.warning(_LOST_START_EVENT, slug=slug, detail=error.detail)
         raise DriverStartBusy(slug=slug, refusal=error.detail) from error
+    if error.status_code == _HTTP_UNAVAILABLE and error.not_accepted_cause is None:
+        raise AdmissionUnavailable(
+            slug=slug, reason=AdmissionUnavailableReason.REFUSED_AT_CREATE_DOOR, detail=error.detail
+        ) from error
     if error.status_code == _HTTP_CONFLICT:
+        declared = parse_admission_conflict(slug, error.detail)
+        if declared is not None:
+            raise declared from error
         holder = await recheck_slug_holder(runtime_db, todos_db, project_path, slug, exempt_session_id=None)
         if holder is not None:
             raise ClaimConflict(slug=slug, holder=holder) from error
@@ -600,6 +623,11 @@ async def dispatch_lifecycle_session(
 
     The start is idempotent per todo and lane: a repeated dispatch records the driver an earlier
     dispatch already started instead of starting another (``event-consumers``, Retained occurrences).
+
+    On a project on the GitHub store the create door's admission has already recorded the claim, through
+    the master and before the session existed, so this writes no ``active_runner`` of its own; the door's
+    503 for a start it could not decide raises :class:`AdmissionUnavailable`, and a terminal session
+    reconciles through a release request of the master.
 
     A start that loses to a concurrent start of the same todo is reported, not failed generically:
     the create door's 423 raises :class:`DriverStartBusy`, and its 409 raises :class:`ClaimConflict`
@@ -623,6 +651,8 @@ async def dispatch_lifecycle_session(
             "args": intent.slug,
             "detach": True,
         }
+        if origin.manually_started:
+            kwargs["manually_started"] = True
         if intent.additional_context:
             kwargs["additional_context"] = intent.additional_context
         try:
@@ -631,14 +661,15 @@ async def dispatch_lifecycle_session(
             await _raise_lost_start(runtime_db, todos_db, project_path, intent.slug, error)
             raise
         session_id = response.session_id
-    await set_active_runner(
-        todos_db,
-        intent.slug,
-        session_id,
-        lane=intent.lane,
-        manually_started=origin.manually_started,
-        release_hold=origin.manually_started,
-    )
+    if not is_github_backed(project_path):
+        await set_active_runner(
+            todos_db,
+            intent.slug,
+            session_id,
+            lane=intent.lane,
+            manually_started=origin.manually_started,
+            release_hold=origin.manually_started,
+        )
     session = await runtime_db.get_session(session_id)
     if session is not None and is_session_terminal(
         lifecycle_status=session.lifecycle_status,
@@ -719,6 +750,11 @@ async def run_lifecycle_runner(
                 # Lost to a start of the same todo: it is driven or being started, which is
                 # the state the pass wants. The next pass re-evaluates it.
                 decision.skip(RunnerSkipReason.ALREADY_DRIVEN, intent.slug)
+                continue
+            except AdmissionUnavailable:
+                # The master could not decide the start, so nothing was created. The pass keeps its other
+                # todos and the next pass tries again.
+                decision.skip(RunnerSkipReason.ADMISSION_UNAVAILABLE, intent.slug)
                 continue
             dispatched.append(intent)
     finally:

@@ -289,6 +289,7 @@ class AdmissionUnavailableReason(StrEnum):
     MASTER_DID_NOT_ANSWER = "the master did not answer"
     UNDECIDED_WITHIN_BUDGET = "the start was not decided within its budget"
     NOT_THE_MASTER = "this computer is not the master"
+    REFUSED_AT_CREATE_DOOR = "the create door refused the start as undecided"
 
 
 class AdmissionUnavailableErrorPayload(OperationErrorPayload):
