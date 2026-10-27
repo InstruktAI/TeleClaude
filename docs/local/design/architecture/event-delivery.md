@@ -131,8 +131,8 @@ and stopping the daemon leaves it running. It never touches another Redis on
 the computer; the block an earlier installer added to the operating system's
 Redis configuration is removed. Setup has two steps: while the
 previous release serves, the new release installs the Redis server binary when
-it is missing, disabling a service the operating system's package started by
-itself, and checks what the stopped window needs; in the stopped window it
+it is missing, disabling the service the operating system's package added,
+whether it is running or only enabled, and checks what the stopped window needs; in the stopped window it
 writes the configuration and the unit, starts the instance and verifies it with
 its ACL user before it writes the variables that make the platform use it,
 never installing and never prompting. A local Redis the operator configured
