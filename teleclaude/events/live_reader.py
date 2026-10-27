@@ -24,6 +24,9 @@ _ENTRY_FAILED_EVENT = "live_event_entry_failed"
 _POSITION_RETIRED_EVENT = "live_event_position_retired"
 _RETIRED_GROUP_ABSENT_EVENT = "live_event_retired_group_absent"
 _FEED_NAME = "shared-live-feed"
+_BATCH_DROPPED_EVENT = "live_event_batch_dropped"
+# Batches a view may fall behind before the feed drops the next one for it; it then recovers its current source.
+_QUEUED_BATCHES = 16
 
 type StreamRows = list[tuple[bytes, StreamEntry]]
 type StreamBatch = list[tuple[bytes, StreamRows]]
@@ -53,7 +56,9 @@ def _position(value: str) -> tuple[int, int]:
 class LiveEventReader:
     """One consumer's live view of a stream: its recovery, group retirement, decoding, coalescing and handler.
 
-    It reads nothing itself; the stream's ``SharedLiveFeed`` hands it every entry the feed reads.
+    It reads nothing itself. The stream's ``SharedLiveFeed`` offers it every batch it reads, and the view works
+    through them in its own task from a bounded queue, so a slow or failing consumer delays no other one. A batch
+    that finds the queue full is dropped and the view recovers its current source before its next batch.
     """
 
     def __init__(
@@ -78,17 +83,47 @@ class LiveEventReader:
         self._coalesce = coalesce
         self._retired = False
         self._recovered = False
-
-    @property
-    def ready(self) -> bool:
-        """Whether this view has recovered its current source and may take live entries."""
-        return self._recovered
+        self._skipped = False
+        self._batches: asyncio.Queue[StreamRows] = asyncio.Queue(maxsize=_QUEUED_BATCHES)
 
     def reset(self) -> None:
         """Require recovery before the next delivery, after the feed lost its position."""
         self._recovered = False
 
-    async def ensure_ready(self) -> None:
+    def offer(self, rows: StreamRows, *, skipped: bool) -> None:
+        """Queue one batch without waiting; a full queue drops it and the view recovers before its next one."""
+        if skipped:
+            self._skipped = True
+        try:
+            self._batches.put_nowait(rows)
+        except asyncio.QueueFull:
+            self._skipped = True
+            logger.warning(_BATCH_DROPPED_EVENT, name=self._name, stream=self._stream)
+
+    async def run(self, shutdown_event: asyncio.Event) -> None:
+        """Recover, then handle queued batches until shutdown, containing every failure to this view."""
+        while not shutdown_event.is_set():
+            try:
+                await self._ensure_ready()
+                rows = await read_until_shutdown(self._batches.get(), shutdown_event)
+                if rows is None:
+                    return
+                if self._skipped:
+                    self._skipped = False
+                    if self._recover is not None:
+                        await self._recover()
+                await self._deliver(rows)
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                logger.exception(_READER_RECOVERING_EVENT, name=self._name, stream=self._stream)
+                self._recovered = False
+                try:
+                    await asyncio.wait_for(shutdown_event.wait(), timeout=_RETRY_PAUSE_S)
+                except TimeoutError:
+                    pass
+
+    async def _ensure_ready(self) -> None:
         """Recover current source and retire the earlier group once, before any live entry is handled."""
         if self._recovered:
             return
@@ -99,12 +134,8 @@ class LiveEventReader:
             self._retired = True
             logger.info(_POSITION_RETIRED_EVENT, name=self._name, group=self._retired_group)
         self._recovered = True
+        self._skipped = False
         logger.info(_READER_STARTED_EVENT, name=self._name, stream=self._stream)
-
-    async def recover_after_overflow(self) -> None:
-        """Recover current source when the feed skipped entries it could not hand over."""
-        if self._recover is not None:
-            await self._recover()
 
     async def _retire_group(self) -> None:
         """Destroy the retired consumer group; a stream that does not exist yet holds no group to destroy."""
@@ -113,8 +144,7 @@ class LiveEventReader:
         except ResponseError:
             logger.info(_RETIRED_GROUP_ABSENT_EVENT, name=self._name, stream=self._stream)
 
-    async def deliver(self, rows: StreamRows) -> None:
-        """Decode, coalesce and hand the rows to the handler, containing each entry's failure."""
+    async def _deliver(self, rows: StreamRows) -> None:
         events: list[StreamEvent] = []
         for entry_id, entry in rows:
             position = _text(entry_id)
@@ -141,9 +171,10 @@ class LiveEventReader:
 
 
 class SharedLiveFeed:
-    """One bounded live read of a stream on one Redis, handing every entry to each live view on it.
+    """One bounded live read of a stream on one Redis, offering every batch to each live view on it.
 
-    The stream is read once for all of its live consumers on this computer, so an entry crosses the network once.
+    The stream is read once for all of its live consumers on this computer, so an entry crosses the network once;
+    each view handles its batches in its own task.
     """
 
     def __init__(self, redis_client: LiveStreamClient, *, stream: str, readers: list[LiveEventReader]) -> None:
@@ -160,14 +191,22 @@ class SharedLiveFeed:
             self._cursor = _text(rows[0][0]) if rows else _INITIAL_CURSOR
 
     async def start(self, shutdown_event: asyncio.Event) -> None:
-        """Read until shutdown, recovering every view after a lost position and containing each view's failures."""
+        """Run every view's task and read until shutdown, resetting every view after a lost position."""
         if self._started:
             self._reset()
         self._started = True
+        views = [asyncio.create_task(reader.run(shutdown_event)) for reader in self._readers]
+        try:
+            await self._read(shutdown_event)
+        finally:
+            for view in views:
+                view.cancel()
+            await asyncio.gather(*views, return_exceptions=True)
+
+    async def _read(self, shutdown_event: asyncio.Event) -> None:
         while not shutdown_event.is_set():
             try:
                 await self.prepare_group_position()
-                await self._ready_views()
                 cursor = self._cursor or _INITIAL_CURSOR
                 batch = await read_until_shutdown(
                     self._redis.xread({self._stream: cursor}, count=_BATCH_SIZE, block=STREAM_BLOCK_MS),
@@ -176,13 +215,15 @@ class SharedLiveFeed:
                 if batch is None:
                     return
                 rows = [row for _stream, messages in batch for row in messages]
-                overflowed = len(rows) >= _BATCH_SIZE
-                if overflowed:
+                skipped = len(rows) >= _BATCH_SIZE
+                if skipped:
                     newest = await self._redis.xrevrange(self._stream, count=_BATCH_SIZE)
                     rows = [row for row in reversed(newest) if _position(_text(row[0])) > _position(cursor)]
-                if rows:
-                    self._cursor = _text(rows[-1][0])
-                await self._hand_over(rows, overflowed=overflowed)
+                if not rows:
+                    continue
+                self._cursor = _text(rows[-1][0])
+                for reader in self._readers:
+                    reader.offer(rows, skipped=skipped)
             except asyncio.CancelledError:
                 return
             except Exception:
@@ -197,23 +238,3 @@ class SharedLiveFeed:
         self._cursor = None
         for reader in self._readers:
             reader.reset()
-
-    async def _ready_views(self) -> None:
-        for reader in self._readers:
-            try:
-                await reader.ensure_ready()
-            except Exception:
-                # A view that cannot recover now misses this batch and tries again before the next one.
-                logger.exception(_READER_RECOVERING_EVENT, name=_FEED_NAME, stream=self._stream)
-
-    async def _hand_over(self, rows: StreamRows, *, overflowed: bool) -> None:
-        for reader in self._readers:
-            if not reader.ready:
-                continue
-            try:
-                if overflowed:
-                    await reader.recover_after_overflow()
-                await reader.deliver(rows)
-            except Exception:
-                logger.exception(_READER_RECOVERING_EVENT, name=_FEED_NAME, stream=self._stream)
-                reader.reset()
