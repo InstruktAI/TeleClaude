@@ -188,6 +188,28 @@ def _retained_reader(
     )
 
 
+class RetainedHandover:
+    """A retained consumer that no longer reads the cluster Redis: it finishes its old cluster group, then reads locally.
+
+    The local reader's position is taken before producers run, so entries that arrive while the old group drains wait
+    for it; the drain hands over every entry the consumer was owed there, in order, and retires the group.
+    """
+
+    def __init__(self, drain: EventProcessor[StreamEvent], local: EventProcessor[StreamEvent]) -> None:
+        self._drain = drain
+        self._local = local
+
+    async def prepare_group_position(self) -> None:
+        """Take the local position; the old group keeps its own."""
+        await self._local.prepare_group_position()
+
+    async def start(self, shutdown_event: asyncio.Event) -> None:
+        """Drain and retire the old cluster group when it exists, then read locally until shutdown."""
+        await self._drain.drain_and_retire(shutdown_event)
+        if not shutdown_event.is_set():
+            await self._local.start(shutdown_event)
+
+
 class ConsumerRuntime:
     """Compose independent retained and live readers on one computer, each on the Redis of a scope it reads."""
 
@@ -205,13 +227,16 @@ class ConsumerRuntime:
         repeated = sorted({name for name in names if names.count(name) > 1})
         if repeated:
             raise ValueError(_DUPLICATE_NAMES_ERROR.format(names=_NAME_SEPARATOR.join(repeated)))
-        self._processors: list[tuple[str, EventProcessor[StreamEvent] | SharedLiveFeed]] = []
+        self._processors: list[tuple[str, EventProcessor[StreamEvent] | SharedLiveFeed | RetainedHandover]] = []
         live_views: dict[EventScope, list[LiveEventReader]] = {}
         live_clients: dict[EventScope, Any] = {}
         for consumer in consumers:
             pipeline = _ConsumerPipeline(consumer, db, computer)
             read_clients: list[object] = []
-            for scope in sorted(scopes_of_interest(consumer.interest.types)):
+            scopes = scopes_of_interest(consumer.interest.types)
+            # A consumer that reads only local events once read the cluster Redis, which may still hold entries for it.
+            hands_over = EventScope.CLUSTER not in scopes and redis_clients.local is not redis_clients.cluster
+            for scope in sorted(scopes):
                 client = redis_clients.for_scope(scope)
                 # Scopes that share one Redis are read once.
                 if any(client is read for read in read_clients):
@@ -226,12 +251,12 @@ class ConsumerRuntime:
                         _live_view(consumer, pipeline, client, computer, stream, codec)
                     )
                     continue
-                self._processors.append(
-                    (
-                        _SCOPED_NAME_TEMPLATE.format(name=consumer.name, scope=scope.value),
-                        _retained_reader(consumer, pipeline, client, computer, stream, codec),
-                    )
-                )
+                local_reader = _retained_reader(consumer, pipeline, client, computer, stream, codec)
+                reader: EventProcessor[StreamEvent] | RetainedHandover = local_reader
+                if hands_over:
+                    drain = _retained_reader(consumer, pipeline, redis_clients.cluster, computer, stream, codec)
+                    reader = RetainedHandover(drain, local_reader)
+                self._processors.append((_SCOPED_NAME_TEMPLATE.format(name=consumer.name, scope=scope.value), reader))
         for scope, views in live_views.items():
             self._processors.append(
                 (
@@ -256,7 +281,10 @@ class ConsumerRuntime:
         )
 
     async def _run_one(
-        self, name: str, processor: EventProcessor[StreamEvent] | SharedLiveFeed, shutdown_event: asyncio.Event
+        self,
+        name: str,
+        processor: EventProcessor[StreamEvent] | SharedLiveFeed | RetainedHandover,
+        shutdown_event: asyncio.Event,
     ) -> None:
         logger.info(_CONSUMER_STARTED_EVENT, consumer=name)
         await processor.start(shutdown_event)
