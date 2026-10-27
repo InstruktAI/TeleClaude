@@ -752,10 +752,23 @@ sequenceDiagram
 
 <!-- /planned-change:working-copy-writers-refused-database-locked -->
 
+<!-- planned-change:github-store-owed-pull-request-without-branch -->
+
 - A role mapping that names no App for `builder` or `reviewer`, or an App not
   installed on the repository with pull request write access, leaves the
   pull request reflections owed with that cause; the issue and the workflow
   are unaffected.
+
+<!-- change:github-store-owed-pull-request-without-branch -->
+
+- A role mapping that names no App for `builder` or `reviewer`, an App not
+  installed on the repository with pull request write access, or a `builder`
+  App without the repository's Contents read access, which reading the item's
+  branch needs, leaves the pull request reflections owed with that cause; the
+  issue and the workflow are unaffected.
+
+<!-- /planned-change:github-store-owed-pull-request-without-branch -->
+
 - A pull request someone merges on GitHub, or a review someone else posts,
   changes nothing in the record: the item is still delivered only by the
   integrator, and only the reviewer's stamped verdict counts.
