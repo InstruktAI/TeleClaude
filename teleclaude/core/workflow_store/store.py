@@ -13,6 +13,7 @@ from teleclaude.core.todos_db_path import github_working_copy_path, todos_db_pat
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import DependencyEntry
 
+from .github_io_transport import GitHubIORefused as GitHubIORefused
 from .github_store import (
     close_github_workflow_stores,
     get_github_workflow_store,
