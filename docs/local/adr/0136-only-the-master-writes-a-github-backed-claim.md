@@ -7,6 +7,12 @@ description: For a project on the GitHub workflow store, every write that sets o
 
 # Only the Master Writes a GitHub-Backed Claim — ADR
 
+## Status
+
+Superseded in part by ADR-0137: the single writer covers todos an
+orchestrator start can be admitted for, and a release is ordered by the
+releasing computer's admission section.
+
 ## Context
 
 ADR-0135 makes the fleet's master admit every orchestrator start of a todo in a
@@ -30,11 +36,10 @@ held from every lifecycle runner's view.
 
 ## Decision
 
-- **One writer while a todo can be started.** For a todo in a project on the
-  GitHub store that a lifecycle orchestrator can still be started for, every
-  write that sets or clears its claim is made by the master, inside its
-  admission section for that todo, against the item it has just read from
-  GitHub. No other computer writes that claim.
+- **One writer.** Every write that sets or clears the claim of a todo in a
+  project on the GitHub store is made by the master, inside its admission
+  section for that todo, against the item it has just read from GitHub. No
+  other computer writes the claim.
 - **Other computers ask the master to release.** When a computer would clear a
   claim for a session it ran — the session ended, its housekeeping finds it
   ended, its caller releases it, or a start it made gave up after asking for
@@ -49,11 +54,8 @@ held from every lifecycle runner's view.
   pass.
 - **Clears the master makes stay as before.** The master clears a claim for its
   own ended session the same way, inside its section.
-- **Delivery and removal keep their own clears.** Delivering or removing a todo
-  clears its claim as part of that transition, as before. No orchestrator start
-  is admitted for a delivered or removed todo, and removal is refused while a
-  live session holds the todo, so such a clear cannot erase a claim the master
-  recorded for a new start.
+- Clears that are part of a todo's delivery, removal or other state transitions
+  outside lifecycle driving are unchanged.
 
 ## Consequences
 
