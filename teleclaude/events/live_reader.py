@@ -108,13 +108,20 @@ class LiveEventReader:
                 rows = await read_until_shutdown(self._batches.get(), shutdown_event)
                 if rows is None:
                     return
+                # The feed may have lost its position while this view waited; recover before handling the batch.
+                await self._ensure_ready()
                 if self._skipped:
                     self._skipped = False
                     if self._recover is not None:
                         await self._recover()
                 await self._deliver(rows)
             except asyncio.CancelledError:
-                return
+                current = asyncio.current_task()
+                if current is None or current.cancelling():
+                    return
+                # A handler's own cancellation is its failure, not this view's end.
+                logger.exception(_READER_RECOVERING_EVENT, name=self._name, stream=self._stream)
+                self._recovered = False
             except Exception:
                 logger.exception(_READER_RECOVERING_EVENT, name=self._name, stream=self._stream)
                 self._recovered = False

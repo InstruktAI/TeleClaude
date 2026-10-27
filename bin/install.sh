@@ -952,8 +952,8 @@ install_system_deps() {
         install_sqlite3_rsync
 
         # Redis: every computer runs one. Where the cluster Redis is remote it is this computer's local Redis,
-        # configured by the setup_local_redis stage; where the cluster Redis URL is loopback or unset it is the
-        # cluster Redis itself. Classification (loopback vs remote) lives in bin/init/redis_locality.sh.
+        # configured by the install act before the release's migrations (teleclaude.install.local_redis); where the
+        # cluster Redis URL is loopback or unset it is the cluster Redis itself. Classification (loopback vs remote) lives in bin/init/redis_locality.sh.
         local redis_url_value
         redis_url_value="$(machine_cluster_redis_url "${TELECLAUDE_HOME:-$HOME/.teleclaude}/.env")"
         if command -v redis-server &> /dev/null; then
@@ -1655,13 +1655,6 @@ run_owner_establishment() {
     fi
 }
 
-setup_local_redis() {
-    if ! PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.install.local_redis; then
-        print_error "The local Redis could not be set up; fix the reported cause and re-run make install"
-        exit 1
-    fi
-}
-
 run_environment_defaults() {
     if ! PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.entrypoints.environment_defaults; then
         print_error "Local environment defaults could not be written; fix the reported cause and re-run make install"
@@ -1709,7 +1702,6 @@ main() {
     if [ "$CI_MODE" = false ]; then
         run_install_stage owner_decide run_owner_establishment decide
         run_install_stage run_environment_defaults run_environment_defaults
-        run_install_stage setup_local_redis setup_local_redis
     fi
     run_install_stage ensure_config_yml ensure_config_yml
     run_install_stage install_blueprint_engine install_blueprint_engine

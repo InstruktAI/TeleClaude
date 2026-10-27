@@ -23,6 +23,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 from pydantic import ValidationError
 
+from teleclaude.config.environment_renames import carry_renamed_environment
 from teleclaude.config.migrations._chain import MigrationTrigger
 from teleclaude.config.migrations._run import ExitStatus, run_trigger
 from teleclaude.core.db import db
@@ -33,6 +34,7 @@ from teleclaude.core.store_opening import open_stores
 from teleclaude.core.todos_db._adapter import close_todos_db_instances
 from teleclaude.deployment.migration_runner import migrate_committed_range
 from teleclaude.events.db import get_event_db
+from teleclaude.install.local_redis import LocalRedisRefused, ensure_local_redis
 from teleclaude.logging_config import setup_logging
 
 logger = get_logger(__name__)
@@ -43,6 +45,8 @@ _REPOSITORY_OPTION = "--repository"
 _MIGRATIONS_FAILED = "installation migrations failed for {target}"
 _CONFIGURATION_FAILED = "configuration document migrations ended {status} for {target}"
 _STORES_FAILED = "stores did not open for {target}: {projects}"
+_LOCAL_REDIS_REFUSED = "the local Redis for {target} could not be set up: {reason}"
+_LOCAL_REDIS_REFUSED_EVENT = "release_migration_local_redis_refused"
 _STORES_ERROR = "opening the stores for {target} failed: {error}"
 _STORES_ERROR_EVENT = "release_migration_stores_failed"
 _PROJECT_SEPARATOR = ", "
@@ -84,7 +88,17 @@ def _record_owed_assessment(layout: InstallationLayout, target: str) -> str | No
 
 
 def _migrate(repository: Path, previous: str | None, target: str) -> str | None:
-    """Run the release's migrations and open its stores; the failure reason, or ``None``."""
+    """Prepare the machine for the release, run its migrations and open its stores; the failure reason, or ``None``.
+
+    The renamed environment names are carried and the local Redis set up before any migration starts, so a
+    refusal of either leaves nothing migrated and the install returns to the previous release.
+    """
+    carry_renamed_environment()
+    try:
+        ensure_local_redis()
+    except LocalRedisRefused as error:
+        logger.error(_LOCAL_REDIS_REFUSED_EVENT, target=target, reason=str(error))
+        return _LOCAL_REDIS_REFUSED.format(target=target, reason=error)
     if migrate_committed_range(repository, previous, target) != 0:
         return _MIGRATIONS_FAILED.format(target=target)
     if previous is not None and (status := run_trigger(MigrationTrigger.INSTALL)) is not ExitStatus.SUCCESS:
