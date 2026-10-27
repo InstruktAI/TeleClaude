@@ -12,6 +12,7 @@ from sqlalchemy import delete, update
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
+from teleclaude.config.project_models import TodoStoreBackend
 from teleclaude.constants import TodoStatus
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.marker_reconciliation import (
@@ -29,6 +30,7 @@ from teleclaude.core.todos_db._models import (
     TodoStateModel,
 )
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
+from teleclaude.core.workflow_store.selection import selected_workflow_store_backend
 from teleclaude.core.workflow_store.types import (
     ExpiredRemovedItem as ExpiredRemovedRow,
 )
@@ -49,6 +51,7 @@ from teleclaude.docs_reconcile import (
     ReconciliationWrite,
 )
 
+_ACTIVE_RUNNER_FIELD = "active_runner"
 _SOFT_REMOVE_LOCKS: dict[str, asyncio.Lock] = {}
 _LIVE_SLUG_STATUSES: frozenset[TodoStatus] = frozenset({TodoStatus.ACTIVE, TodoStatus.ICEBOX, TodoStatus.HOLDER})
 _REMOVED_IDENTITY_ACTION_REFUSAL = (
@@ -190,6 +193,35 @@ class TodoIdentityNotFound(Exception):
     def __init__(self, *, todo_id: str) -> None:
         self.todo_id = todo_id
         super().__init__(_IDENTITY_NOT_FOUND.format(todo_id=todo_id))
+
+
+async def _restore_set_aside_claim(db_session: SqlAsyncSession, todo_id: str, removed_claim: str | None) -> None:
+    """Put the ``active_runner`` a removal set aside back into the todo's state.
+
+    Removal records the claim it popped from the state, and reactivation used to discard it. On a GitHub-backed
+    project the driver it names may still run on another computer, held by nothing the master could then judge,
+    so the claim returns with the todo: the master judges it like any other and clears it when its holder ended.
+    No start is admitted while the todo is removed, so this write cannot race an admission.
+    """
+    if removed_claim is None:
+        return
+    try:
+        claim = json.loads(removed_claim)
+    except (TypeError, ValueError):
+        return
+    runner = claim.get(_ACTIVE_RUNNER_FIELD) if isinstance(claim, dict) else None
+    if not isinstance(runner, str) or not runner:
+        return
+    state_model = await db_session.get(TodoStateModel, todo_id)
+    if state_model is None:
+        return
+    state = json.loads(state_model.state)
+    if not isinstance(state, dict):
+        return
+    state[_ACTIVE_RUNNER_FIELD] = runner
+    state_model.state = json.dumps(canonicalize_state_for_storage(state))
+    state_model.updated_at = datetime.now(UTC).isoformat()
+    db_session.add(state_model)
 
 
 class TodosDbTodoSoftDeleteMixin:
@@ -364,7 +396,9 @@ class TodosDbTodoSoftDeleteMixin:
         On success: status flips back to ``prev_status`` (fallback ``icebox``
         for legacy rows that predate the tombstone fields), ``removed_deps`` is
         deserialized and replayed as outgoing ``todo_deps``, and all
-        tombstone fields are cleared. Inbound third-party edges are NOT
+        tombstone fields are cleared. On a project on the GitHub store the
+        ``active_runner`` the removal set aside is restored to the todo's state
+        first, so a driver still running on another computer stays held. Inbound third-party edges are NOT
         resurrected — only the entry's own footprint is restored. State,
         artifacts, and version history were retained at soft-remove and
         become addressable again through the default resolvers.
@@ -425,6 +459,9 @@ class TodosDbTodoSoftDeleteMixin:
                         todo_id=todo_id,
                         slug=entry.slug,
                     )
+
+            if selected_workflow_store_backend(Path(cwd)) is TodoStoreBackend.GITHUB:
+                await _restore_set_aside_claim(db_session, todo_id, entry.removed_claim)
 
             entry.status = restored_status
             entry.prev_status = None
