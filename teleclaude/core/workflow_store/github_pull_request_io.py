@@ -18,11 +18,12 @@ from teleclaude.core.workflow_store.github_io_models import (
     GitHubRepositoryScope,
     GitHubReview,
 )
-from teleclaude.core.workflow_store.github_io_runtime import run_serialized_unit, shared_github_io_loop
+from teleclaude.core.workflow_store.github_io_runtime import shared_github_io_loop
 from teleclaude.core.workflow_store.github_io_transport import (
     GitHubIOFailure,
     GitHubIORefused,
     GitHubTransport,
+    run_serialized_unit,
     split_repository,
 )
 from teleclaude.types.github_binding import GitHubActorAssignment

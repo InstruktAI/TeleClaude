@@ -19,11 +19,12 @@ from githubkit_schemas.v2026_03_10.types import AppPermissionsType
 from teleclaude.config.loader import github_actor_for_app_id, github_actor_for_role
 from teleclaude.core.roles import RoleName, composite_role
 from teleclaude.core.workflow_store.github_io_models import GitHubRepositoryScope
-from teleclaude.core.workflow_store.github_io_runtime import run_serialized_unit, shared_github_io_loop
+from teleclaude.core.workflow_store.github_io_runtime import shared_github_io_loop
 from teleclaude.core.workflow_store.github_io_transport import (
     GitHubIOFailure,
     GitHubIORefused,
     GitHubTransport,
+    run_serialized_unit,
     split_repository,
 )
 from teleclaude.types.github_binding import GitHubActorAssignment

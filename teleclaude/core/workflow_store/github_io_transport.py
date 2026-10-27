@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from instrukt_ai_logging import get_logger
 from pydantic import SecretStr
 
 from teleclaude.core.workflow_store.github_io_models import GitHubRepositoryScope
+from teleclaude.core.workflow_store.github_io_runtime import shared_github_io_loop
 from teleclaude.github.accounts import GitHubRateLimitFacts
 from teleclaude.github.client import create_github_client
 from teleclaude.github.credentials import (
@@ -45,6 +47,9 @@ _HTTP_FORBIDDEN = 403
 _SECONDARY_LIMIT_MESSAGE = "secondary rate limit"
 _HTTP_REFUSALS = (400, 401, 403, 422)
 _RATE_LIMIT_HOOK_FAILED_EVENT = "github_rate_limit_hook_failed"
+_LOCK_WAIT_SECONDS = 30.0
+_UNIT_SECONDS = 180.0
+_LOCK_WAIT_DETAIL = "request lock wait exceeded"
 _Result = TypeVar("_Result")
 _CredentialKey = tuple[int, tuple[tuple[str, str], ...]]
 _InstallationKey = tuple[int, str]
@@ -235,3 +240,25 @@ def split_repository(value: str) -> tuple[str, str]:
     if not separator or not owner or not repository or _REPOSITORY_SEPARATOR in repository:
         raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
     return quote(owner, safe=_EMPTY), quote(repository, safe=_EMPTY)
+
+
+async def run_serialized_unit[Result](work: Callable[[], Awaitable[Result]], *, unit_detail: str) -> Result:
+    """Run one unit of GitHub requests while holding the process-wide request lock, within bounded waits.
+
+    Every GitHub request the workflow store makes runs inside such a unit, so no two requests are ever in flight
+    at once and a stuck unit cannot hold the lock for ever.
+    """
+    io_loop = shared_github_io_loop()
+    if io_loop.request_lock is None:
+        raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
+    try:
+        await asyncio.wait_for(io_loop.request_lock.acquire(), _LOCK_WAIT_SECONDS)
+    except TimeoutError:
+        raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_LOCK_WAIT_DETAIL) from None
+    try:
+        async with asyncio.timeout(_UNIT_SECONDS):
+            return await work()
+    except TimeoutError:
+        raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=unit_detail) from None
+    finally:
+        io_loop.request_lock.release()
