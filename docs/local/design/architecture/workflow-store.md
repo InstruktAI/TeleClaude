@@ -567,10 +567,11 @@ master admits each conversation request before sending it:
 - GitHub I/O runs on an adapter-owned I/O thread: a sync caller blocks on it
   without starting an event loop of its own, and an async caller awaits it
   without blocking the daemon's loop. Requests on that thread run one at a
-  time. While a push whose transaction holds the working copy's writer is
-  under way, requests of any other work, another project's push included, wait
-  until it ends: the push waits only for the one request already in flight
-  when it began, so the push deadline is spent on the push's own requests. An
+  time. While a push runs under the push deadline, requests of any other work,
+  another project's push included, wait until it ends: the push waits only for
+  the one request already in flight when it began, so the push deadline is
+  spent on the push's own requests. A paced restore keeps the per-request
+  serialization. An
   issue reflection, a pull request unit or a board unit never runs alongside
   another one, and holds the request serialization only for each of its own
   requests.
