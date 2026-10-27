@@ -29,6 +29,7 @@ _MAY_BE_SAVED = (
     "The working copy ran out of time after the change was sent to GitHub, so it may have been saved "
     "and will appear once the store refreshes. Check before sending it again."
 )
+_GITHUB_STORE_REFUSED_EVENT = "github_store_refused"
 _GITHUB_STORE_REFUSED = (
     "The GitHub store refused this request ({reason}). "
     "A change already sent to GitHub may have been saved and will appear once the store refreshes."
@@ -69,7 +70,7 @@ async def github_store_refusal_handler(request: Request, exc: Exception) -> JSON
     if not isinstance(exc, GitHubIORefused):
         raise exc
     logger.warning(
-        "github_store_refused",
+        _GITHUB_STORE_REFUSED_EVENT,
         reason=exc.reason.value,
         method=request.method,
         path=request.url.path,
