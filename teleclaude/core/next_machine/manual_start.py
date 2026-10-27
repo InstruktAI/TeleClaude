@@ -95,6 +95,7 @@ __all__ = [
 ]
 
 
+_SECTIONED_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
 _LANE_ROLES: dict[RunnerLane, frozenset[str]] = {
     RunnerLane.PREPARE: PREPARE_AUTHOR_ROLES,
     RunnerLane.WORK: WORK_LANE_ROLES,
@@ -587,6 +588,29 @@ async def _record_prepare_claim(
     await writer.commit(todos_db, slug)
 
 
+async def _claim_for_caller(
+    runtime_db: Db,
+    todos_db: WorkflowStore,
+    slug: str,
+    session: Session,
+    lane: RunnerLane,
+) -> bool:
+    """Make ``session`` the slug's orchestrator: write ``active_runner``, then reflect the claim onto its row.
+
+    Returns ``False`` when the slug has no workflow state to claim.
+    """
+    adopted = await adopt_headless_session(
+        runtime_db=runtime_db,
+        todos_db=todos_db,
+        slug=slug,
+        session_id=session.session_id,
+        lane=lane,
+    )
+    if adopted:
+        await _reflect_claim_on_caller_session(runtime_db, session, slug, lane)
+    return adopted
+
+
 async def adopt_manual_lifecycle_session(
     project_path: str | Path,
     slug: str,
@@ -616,6 +640,12 @@ async def adopt_manual_lifecycle_session(
     value. A caller that knows which command it invoked removes the ambiguity;
     a caller that does not (existing test call sites, headless adoption)
     falls back to the heuristic unchanged.
+
+    A prepare or work adoption makes the caller the slug's orchestrator without a new
+    session row, so it takes the todo's driver-start section (:func:`driver_start_section`)
+    around a slug-scoped holder re-check and the ownership writes: a holder that appeared
+    since the guard returns ``ALREADY_DRIVEN`` naming it, and a start already in progress
+    raises :class:`DriverStartBusy`. Task lanes take no section.
 
     Raises :class:`LaneCrossingRefused` before any claim write or role reflection
     when the caller holds ``slug`` in the other SDLC lane.
@@ -702,13 +732,23 @@ async def adopt_manual_lifecycle_session(
             reason=f"conflicting session binding: caller owns working_slug={session.working_slug}",
             work_feedback=_CONFLICTING_SESSION_BINDING_FEEDBACK,
         )
-    adopted = await adopt_headless_session(
-        runtime_db=runtime_db,
-        todos_db=todos_db,
-        slug=slug,
-        session_id=caller_session_id,
-        lane=lane,
-    )
+    if lane in _SECTIONED_LANES:
+        async with driver_start_section(project_root, slug, starting_session_id=caller_session_id):
+            holder = await recheck_slug_holder(
+                runtime_db, todos_db, project_root, slug, exempt_session_id=caller_session_id
+            )
+            if holder is not None:
+                return ManualLifecycleSessionResult(
+                    slug=slug,
+                    lane=lane,
+                    status=ManualLifecycleStatus.ALREADY_DRIVEN,
+                    session_id=holder,
+                    reason=RunnerSkipReason.ALREADY_DRIVEN,
+                    work_feedback=work_feedback_for_manual_skip(RunnerSkipReason.ALREADY_DRIVEN),
+                )
+            adopted = await _claim_for_caller(runtime_db, todos_db, slug, session, lane)
+    else:
+        adopted = await _claim_for_caller(runtime_db, todos_db, slug, session, lane)
     if not adopted:
         return ManualLifecycleSessionResult(
             slug=slug,
@@ -716,7 +756,6 @@ async def adopt_manual_lifecycle_session(
             status=ManualLifecycleStatus.SKIPPED,
             reason=RunnerSkipReason.MISSING_STATE,
         )
-    await _reflect_claim_on_caller_session(runtime_db, session, slug, lane)
     if lane is RunnerLane.PREPARE:
         await _record_prepare_claim(todos_db, slug, caller_session_id, project_root, continuing_claim_is_recorded=False)
     return ManualLifecycleSessionResult(
