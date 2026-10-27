@@ -545,7 +545,8 @@ If the todo is grouped instead:
 ### 7. Final step — advance
 
 When the implementation-plan artifact is written (or child grouping has been
-executed via `telec todo create ... --group`), call:
+executed via `telec todo create ... --group` and each child's filing outcome
+reports it created), call:
 
 ```
 telec todo prepare {slug}

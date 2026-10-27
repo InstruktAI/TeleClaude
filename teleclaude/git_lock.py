@@ -125,49 +125,17 @@ def wait_for_index_lock_clear(project_root: Path) -> None:
         time.sleep(INDEX_LOCK_POLL_INTERVAL_SEC)
 
 
-_LOCK_POLL_INTERVAL_SEC = 0.05
-_LOCK_BUSY_MESSAGE = "main-branch lock still held by other git work after {bound_s:g}s"
-
-
-class MainBranchLockBusy(Exception):
-    """The main-branch lock stayed held by another process for the whole acquisition bound."""
-
-    def __init__(self, bound_s: float) -> None:
-        super().__init__(_LOCK_BUSY_MESSAGE.format(bound_s=bound_s))
-        self.bound_s = bound_s
-
-
-def _flock_exclusive(fd: int, bound_s: float | None) -> None:
-    """Take the exclusive flock, waiting at most ``bound_s`` seconds (unbounded when None)."""
-    if bound_s is None:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        return
-    deadline = time.monotonic() + bound_s
-    while True:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return
-        except BlockingIOError:
-            remaining_s = deadline - time.monotonic()
-            if remaining_s <= 0:
-                raise MainBranchLockBusy(bound_s) from None
-            time.sleep(min(_LOCK_POLL_INTERVAL_SEC, remaining_s))
-
-
 @contextmanager
-def main_branch_lock(*, bound_s: float | None = None) -> Generator[None, None, None]:
-    """Acquire an exclusive flock on the main-branch lock file.
+def main_branch_lock() -> Generator[None, None, None]:
+    """Acquire an exclusive flock on the main-branch lock file, blocking until it is acquired.
 
-    Without ``bound_s`` it blocks until the lock is acquired. With ``bound_s`` it
-    raises ``MainBranchLockBusy``, holding nothing, once that many seconds pass
-    without acquiring. The lock is released when the context manager exits
-    (fd closed → flock released).
+    The lock is released when the context manager exits (fd closed → flock released).
     """
     _LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
     fd = _LOCK_PATH.open("w", encoding="utf-8")
     try:
         logger.debug("Acquiring main-branch lock at %s", _LOCK_PATH)
-        _flock_exclusive(fd.fileno(), bound_s)
+        fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
         logger.debug("Main-branch lock acquired")
         yield
     finally:
@@ -176,13 +144,9 @@ def main_branch_lock(*, bound_s: float | None = None) -> Generator[None, None, N
 
 
 @asynccontextmanager
-async def main_branch_lock_async(*, bound_s: float | None = None) -> AsyncIterator[None]:
-    """Hold the shared Git mutation lock without blocking the event loop.
-
-    ``bound_s`` is passed to ``main_branch_lock``; the acquisition thread ends
-    within it, so the cancellation cleanup below always awaits a finite task.
-    """
-    lock_context = main_branch_lock(bound_s=bound_s)
+async def main_branch_lock_async() -> AsyncIterator[None]:
+    """Hold the shared Git mutation lock without blocking the event loop."""
+    lock_context = main_branch_lock()
     acquire_task = asyncio.create_task(asyncio.to_thread(lock_context.__enter__))
     try:
         await asyncio.shield(acquire_task)
