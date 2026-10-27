@@ -144,7 +144,8 @@ stays local. A consumer whose interest names only local types reads the local
 Redis; one naming only cluster types reads the cluster Redis; one taking any
 type reads both and keeps separate progress on each, while its reaction still
 handles one event at a time. Own-computer filtering applies to what each Redis
-delivers. A consumer that takes any type from every computer, such as
+delivers. The live consumers of a stream on one Redis share one read of it, so a
+live entry crosses the network once per computer, not once per consumer. A consumer that takes any type from every computer, such as
 event-bound maintenance, receives another computer's events only when they are
 cluster events.
 
