@@ -63,6 +63,7 @@ from teleclaude.core.next_machine.state_mutation import StateMutationError, Stat
 from teleclaude.core.next_machine.todo_creation import (
     NewTodo,
 )
+from teleclaude.core.operations import todo_board_repair as todo_board_repair_operation
 from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.operations.todo_filing import FilingSeed, TodoFiling
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
@@ -653,6 +654,22 @@ async def todo_switch_to_github(
     """Submit the current project's one-way local-to-GitHub store migration."""
     operations = get_operations_service()
     return await operations.submit_todo_store_switch(
+        cwd=cwd or _default_cwd(),
+        caller_session_id=identity.session_id,
+        client_request_id=client_request_id,
+    )
+
+
+@router.post("/board/repair", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
+async def todo_board_repair(
+    cwd: Annotated[str | None, Body()] = None,
+    client_request_id: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(carried_caller),
+) -> SerializedOperation:
+    """Submit the repair of the current project's GitHub board from its workflow record."""
+    operations = get_operations_service()
+    return await todo_board_repair_operation.submit_todo_board_repair(
+        operations,
         cwd=cwd or _default_cwd(),
         caller_session_id=identity.session_id,
         client_request_id=client_request_id,

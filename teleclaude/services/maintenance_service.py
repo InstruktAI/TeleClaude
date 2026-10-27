@@ -16,6 +16,7 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.config.machine import config
 from teleclaude.config.project_models import TodoStoreBackend
 from teleclaude.constants import (
     REMOVED_TODO_RETENTION_WINDOW,
@@ -717,7 +718,7 @@ class MaintenanceService:
                 if selected_workflow_store_backend(project_root) is not TodoStoreBackend.GITHUB:
                     continue
                 started = perf_counter()
-                refreshed_items = await refresh_github_workflow_store(project_root)
+                refreshed_items = await refresh_github_workflow_store(project_root, computer=config.computer.name)
                 logger.info(
                     _GITHUB_STORE_REFRESH_COMPLETED,
                     project=project_root.name,

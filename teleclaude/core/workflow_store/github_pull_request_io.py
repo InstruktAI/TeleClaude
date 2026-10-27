@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from concurrent.futures import Future
 from enum import StrEnum
+from functools import partial
 from typing import Any, TypeVar
 
 from githubkit_schemas.v2026_03_10.types import AppPermissionsType
@@ -18,23 +19,19 @@ from teleclaude.core.workflow_store.github_io_models import (
     GitHubRepositoryScope,
     GitHubReview,
 )
-from teleclaude.core.workflow_store.github_io_runtime import shared_github_io_loop
 from teleclaude.core.workflow_store.github_io_transport import (
     GitHubIOFailure,
     GitHubIORefused,
     GitHubTransport,
     split_repository,
 )
+from teleclaude.core.workflow_store.github_io_unit import submit_serialized_unit
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 _PAGE_SIZE = 100
 _REPOSITORY_SEPARATOR = "/"
 _HEAD_TEMPLATE = "{owner}:{branch}"
 _EMPTY = ""
-_LOCK_WAIT_SECONDS = 30.0
-_UNIT_SECONDS = 180.0
-_LOCK_WAIT_DETAIL = "unit lock wait exceeded"
-_UNIT_DETAIL = "pull request unit exceeded its time bound"
 _PULL_REQUEST_PERMISSIONS: AppPermissionsType = {"pull_requests": "write"}
 _BRANCH_READ_PERMISSIONS: AppPermissionsType = {"contents": "read"}
 _Result = TypeVar("_Result")
@@ -107,23 +104,7 @@ class GitHubPullRequestIO:
 
     def submit(self, work: Callable[[GitHubPullRequestIO], Awaitable[_Result]]) -> Future[_Result]:
         """Queue one serialized unit of pull request work on the shared GitHub I/O loop."""
-        return shared_github_io_loop().submit(self._serialized(work))
-
-    async def _serialized(self, work: Callable[[GitHubPullRequestIO], Awaitable[_Result]]) -> _Result:
-        io_loop = shared_github_io_loop()
-        if io_loop.unit_lock is None:
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
-        try:
-            await asyncio.wait_for(io_loop.unit_lock.acquire(), _LOCK_WAIT_SECONDS)
-        except TimeoutError:
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_LOCK_WAIT_DETAIL) from None
-        try:
-            async with asyncio.timeout(_UNIT_SECONDS):
-                return await work(self)
-        except TimeoutError:
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_UNIT_DETAIL) from None
-        finally:
-            io_loop.unit_lock.release()
+        return submit_serialized_unit(partial(work, self))
 
     async def reviewer_login(self) -> str:
         """Return the login the reviewer App's reviews are authored under."""
