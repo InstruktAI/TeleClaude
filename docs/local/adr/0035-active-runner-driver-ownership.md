@@ -94,5 +94,5 @@ steady-state ownership and is not the ownership signal itself.
 
 Superseded in part by ADR-0078: time-bound dispatch claims are removed; the
 active-runner ownership decision remains accepted. Superseded in part by
-ADR-0135: a claim names its session's computer, the master records it for a
-project on the GitHub store, and only the computer it names clears it as stale.
+ADR-0135: for a project on the GitHub store the master records the claim, and
+a claim naming a session a computer never ran is not stale there.
