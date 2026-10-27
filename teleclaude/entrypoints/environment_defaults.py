@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import sys
+
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config._defaults import _DEFAULT_REDIS_URL
 from teleclaude.config._environment import write_environment_values
 from teleclaude.config.environment_renames import carry_renamed_environment
+from teleclaude.logging_config import setup_logging
 from teleclaude.paths import ENV_PATH
 
 logger = get_logger("teleclaude.entrypoints.environment_defaults")
@@ -25,3 +28,14 @@ def ensure_environment_defaults() -> bool:
     carry_renamed_environment()
     logger.info(_ENVIRONMENT_DEFAULTS_FINISHED, path=str(ENV_PATH), created=created)
     return created
+
+
+def main() -> int:
+    """Run the installation environment-default operation."""
+    setup_logging()
+    ensure_environment_defaults()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

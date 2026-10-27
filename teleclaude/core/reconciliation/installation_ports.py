@@ -56,6 +56,12 @@ _TARGET_OPTION = "--target"
 _PREVIOUS_OPTION = "--previous"
 _REPOSITORY_OPTION = "--repository"
 _MIGRATE_TIMEOUT_SECONDS = 3600.0
+_LOCAL_REDIS_MODULE = "teleclaude.install.local_redis"
+_LOCAL_REDIS_SOURCE = Path("teleclaude") / "install" / "local_redis.py"
+_PREPARE_OPTION = "--prepare"
+# A Redis package install is the slow part; the daemon keeps serving throughout.
+_LOCAL_REDIS_PREPARE_TIMEOUT_SECONDS = 1200.0
+_LOCAL_REDIS_PREPARE_FAILED_EVENT = "install_local_redis_preparation_failed"
 # The statuses that say no migration started that the record does not hold: the entrypoint's own plain
 # failure, and a command that could not start at all. Any other end, a kill or a crash included, is uncertain.
 _MIGRATE_CERTAIN_FAILURES = frozenset({MigrationExitCode.FAILED, COMMAND_START_FAILURE_EXIT_CODE})
@@ -110,8 +116,30 @@ class LiveInstallPorts:
         return transition_refusal(Repo(str(self._layout.repository)), active, target, release_tag)
 
     def prepare(self, revision: str) -> None:
-        """Add and build the release while the daemon serves."""
+        """Add and build the release, then let it prepare this machine for itself, while the daemon serves."""
         prepare_release(self._layout, revision)
+        self._prepare_machine(revision)
+
+    def _prepare_machine(self, revision: str) -> None:
+        """Run the release's local Redis preparation; it logs its own refusals and never fails the install."""
+        release = self._layout.release_path(revision)
+        if not (release / _LOCAL_REDIS_SOURCE).is_file():
+            return
+        result = run_process_group_command(
+            [str(release / _RELEASE_PYTHON), _MODULE_OPTION, _LOCAL_REDIS_MODULE, _PREPARE_OPTION],
+            release,
+            release_process_environment(),
+            timeout_seconds=_LOCAL_REDIS_PREPARE_TIMEOUT_SECONDS,
+            capture_output=secret_output_masker(release),
+        )
+        if result.timed_out or result.exit_code != 0:
+            logger.warning(
+                _LOCAL_REDIS_PREPARE_FAILED_EVENT,
+                revision=revision,
+                exit_code=result.exit_code,
+                timed_out=result.timed_out,
+                output_tail=result.output_tail,
+            )
 
     def daemon_serving(self) -> bool:
         """Whether a daemon serves the machine: anything listening on its socket counts."""

@@ -7,15 +7,19 @@ group, so every process of that user can open the socket at once, sessions alrea
 
 Nothing is set up where the cluster Redis is on this computer, since it already keeps local events local, or where
 the environment names a local Redis of the operator's own that answers. A Redis that another program uses or that
-someone else configured is never taken over: setup refuses and names the variables that point TeleClaude at a
-dedicated instance instead. Running it again changes nothing that is already in place.
+someone else configured is never taken over, and names the variables that point TeleClaude at a dedicated instance
+instead. Running it again changes nothing that is already in place.
 
-The install act runs it before the release's migrations (``teleclaude.install.migrate_release``), so a refusal leaves
-the previous release serving and no process of the new release runs before the local Redis is in place.
+The install act runs it in two steps (ADR-0141). ``prepare`` runs while the previous release serves: it installs the
+Redis package when missing and checks everything that can refuse, and may prompt for sudo. ``apply_or_fall_back``
+runs in the stopped window before the release's migrations: it writes the configuration, restarts Redis, verifies it
+and writes the variables that make the platform use it, never installs and never prompts. Neither fails the install:
+a refusal is logged with its reason and what resolves it, and the computer keeps its local events on the cluster Redis.
 """
 
 from __future__ import annotations
 
+import argparse
 import grp
 import os
 import secrets
@@ -34,7 +38,8 @@ from instrukt_ai_logging import get_logger
 from redis import Redis
 from redis.exceptions import AuthenticationError, RedisError, ResponseError
 
-from teleclaude.config._environment import read_environment_file, write_environment_values
+from teleclaude.config._environment import read_environment_file, reconcile_environment_values, write_environment_values
+from teleclaude.logging_config import setup_logging
 from teleclaude.paths import ENV_PATH, TELECLAUDE_HOME
 
 logger = get_logger(__name__)
@@ -140,6 +145,10 @@ _OPERATOR_OWNED_EVENT: Final = "local_redis_operator_configured"
 _CONFIGURED_EVENT: Final = "local_redis_configured"
 _UNCHANGED_EVENT: Final = "local_redis_unchanged"
 _PACKAGE_INSTALLED_EVENT: Final = "local_redis_package_installed"
+_PREPARED_EVENT: Final = "local_redis_prepared"
+_FALLBACK_EVENT: Final = "local_redis_refused_local_events_stay_on_cluster"
+_WITHDRAWN_EVENT: Final = "local_redis_unanswering_socket_withdrawn"
+_PREPARE_OPTION: Final = "--prepare"
 _DOOR: Final = (
     "Run a dedicated Redis on a Unix socket with an ACL user and set REDIS_LOCAL_URL, REDIS_LOCAL_USERNAME and "
     "REDIS_LOCAL_PASSWORD in {env} to reach it, or resolve the cause, then install again"
@@ -158,6 +167,8 @@ _NO_BREW: Final = "Homebrew is not installed"
 _NO_PACKAGE_MANAGER: Final = "no supported package manager to install Redis with"
 _NO_LAYOUT: Final = "the installed Redis matches none of the known configuration and service locations"
 _NO_PLATFORM: Final = "platform {platform}"
+_NOT_PREPARED: Final = "Redis is not installed; the install's preparation installs it"
+_SUDO_CHECK: Final = "use sudo without a prompt, which the install's stopped window needs"
 
 
 def _run(step: str, command: list[str], *, stdin: str | None = None, timeout: float | None = None) -> str:
@@ -171,10 +182,10 @@ def _run(step: str, command: list[str], *, stdin: str | None = None, timeout: fl
     return completed.stdout
 
 
-def _sudo(step: str, *command: str, stdin: str | None = None, timeout: float | None = None) -> str:
-    # The system Redis configuration and service belong to root. An interactive install may prompt for the
-    # password; an unattended one fails at once instead of waiting for a prompt nobody answers.
-    prefix = ["sudo"] if sys.stdin.isatty() else ["sudo", "-n"]
+def _sudo(step: str, *command: str, interactive: bool, stdin: str | None = None, timeout: float | None = None) -> str:
+    # The system Redis configuration and service belong to root. Preparation from a terminal may prompt for the
+    # password; anything else fails at once instead of waiting for a prompt nobody answers.
+    prefix = ["sudo"] if interactive and sys.stdin.isatty() else ["sudo", "-n"]
     return _run(step, [*prefix, *command], stdin=stdin, timeout=timeout)
 
 
@@ -207,13 +218,15 @@ def _brew() -> Path | None:
     return next((candidate for candidate in _BREW_CANDIDATES if candidate.exists()), None)
 
 
-def _macos_platform() -> _Platform:
+def _macos_platform(*, install: bool) -> _Platform:
     brew = _brew()
     if brew is None:
         raise LocalRedisRefused(_UNSUPPORTED_ERROR.format(detail=_NO_BREW, env=ENV_PATH))
     # Homebrew names its prefix, installs Redis and serves it; none of that has a Python API.
     prefix = Path(_run("read the Homebrew prefix", [str(brew), "--prefix"]).strip())
     if not (prefix / "bin" / _SERVER_BINARY).exists():
+        if not install:
+            raise LocalRedisRefused(_UNSUPPORTED_ERROR.format(detail=_NOT_PREPARED, env=ENV_PATH))
         _run("install Redis with Homebrew", [str(brew), "install", "redis"], timeout=_PACKAGE_TIMEOUT_S)
         logger.info(_PACKAGE_INSTALLED_EVENT, manager=_BREW)
     return _Platform(prefix / _MACOS_CONF, _MACOS_SOCKET, _MACOS_SOCKET_MODE, brew, None)
@@ -236,15 +249,17 @@ def _install_linux_package() -> None:
     for manager, command, package in _PACKAGE_COMMANDS:
         if shutil.which(manager) is None:
             continue
-        _sudo("install Redis", *command, package, timeout=_PACKAGE_TIMEOUT_S)
+        _sudo("install Redis", *command, package, interactive=True, timeout=_PACKAGE_TIMEOUT_S)
         logger.info(_PACKAGE_INSTALLED_EVENT, manager=manager, package=package)
         return
     raise LocalRedisRefused(_UNSUPPORTED_ERROR.format(detail=_NO_PACKAGE_MANAGER, env=ENV_PATH))
 
 
-def _linux_platform() -> _Platform:
+def _linux_platform(*, install: bool) -> _Platform:
     layout = _installed_layout()
     if layout is None:
+        if not install:
+            raise LocalRedisRefused(_UNSUPPORTED_ERROR.format(detail=_NOT_PREPARED, env=ENV_PATH))
         _install_linux_package()
         layout = _installed_layout()
     if layout is None:
@@ -252,11 +267,11 @@ def _linux_platform() -> _Platform:
     return _Platform(layout.conf, layout.socket, _LINUX_SOCKET_MODE, None, layout.service)
 
 
-def _platform() -> _Platform:
+def _platform(*, install: bool) -> _Platform:
     if sys.platform == "darwin":
-        return _macos_platform()
+        return _macos_platform(install=install)
     if sys.platform.startswith("linux"):
-        return _linux_platform()
+        return _linux_platform(install=install)
     raise LocalRedisRefused(_UNSUPPORTED_ERROR.format(detail=_NO_PLATFORM.format(platform=sys.platform), env=ENV_PATH))
 
 
@@ -286,12 +301,12 @@ def _read_conf(platform: _Platform) -> str:
     except PermissionError:
         if not platform.privileged:
             raise
-        return _sudo("read the Redis configuration", "cat", str(platform.conf))
+        return _sudo("read the Redis configuration", "cat", str(platform.conf), interactive=False)
 
 
 def _write_conf(platform: _Platform, text: str) -> None:
     if platform.privileged:
-        _sudo("write the Redis configuration", "tee", str(platform.conf), stdin=text)
+        _sudo("write the Redis configuration", "tee", str(platform.conf), interactive=False, stdin=text)
     else:
         platform.conf.write_text(text)
 
@@ -318,11 +333,11 @@ def _restart(platform: _Platform) -> None:
     service = str(platform.service)
     drop_in = _drop_in_path(platform)
     if not _drop_in_current(platform):
-        _sudo("create the Redis service drop-in directory", "mkdir", "-p", str(drop_in.parent))
-        _sudo("write the Redis service drop-in", "tee", str(drop_in), stdin=_drop_in())
-        _sudo("reload systemd", "systemctl", "daemon-reload")
-    _sudo("enable the Redis service", "systemctl", "enable", service)
-    _sudo("restart the Redis service", "systemctl", "restart", service)
+        _sudo("create the Redis service drop-in directory", "mkdir", "-p", str(drop_in.parent), interactive=False)
+        _sudo("write the Redis service drop-in", "tee", str(drop_in), interactive=False, stdin=_drop_in())
+        _sudo("reload systemd", "systemctl", "daemon-reload", interactive=False)
+    _sudo("enable the Redis service", "systemctl", "enable", service, interactive=False)
+    _sudo("restart the Redis service", "systemctl", "restart", service, interactive=False)
 
 
 def _active_directives(conf_text: str) -> list[list[str]]:
@@ -398,9 +413,8 @@ def _operator_configured(environment: dict[str, str]) -> bool:
     return _answers(url, username, environment.get(_Variable.LOCAL_PASSWORD, ""))
 
 
-def ensure_local_redis() -> bool:
-    """Configure and verify the local Redis; True when something changed. Raises ``LocalRedisRefused``."""
-    environment = read_environment_file(ENV_PATH)
+def _wanted(environment: dict[str, str]) -> bool:
+    """Whether this computer should get a local Redis from this module at all."""
     cluster_url = environment.get(_Variable.CLUSTER_URL) or environment.get(_Variable.EARLIER_CLUSTER_URL)
     if cluster_is_on_this_computer(cluster_url):
         logger.info(_SKIPPED_EVENT)
@@ -408,7 +422,35 @@ def ensure_local_redis() -> bool:
     if _operator_configured(environment):
         logger.info(_OPERATOR_OWNED_EVENT)
         return False
-    platform = _platform()
+    return True
+
+
+def prepare() -> None:
+    """While the previous release serves: install Redis when missing and check everything that can refuse.
+
+    Raises ``LocalRedisRefused``; nothing it does makes the platform use the local Redis.
+    """
+    environment = read_environment_file(ENV_PATH)
+    if not _wanted(environment):
+        return
+    platform = _platform(install=True)
+    current = _read_conf(platform)
+    if _BLOCK_START not in current:
+        _refuse_if_taken(platform, current)
+    if platform.privileged:
+        _sudo(_SUDO_CHECK, "true", interactive=False)
+    logger.info(_PREPARED_EVENT, socket=str(platform.socket))
+
+
+def apply() -> bool:
+    """In the stopped window: configure, restart and verify the local Redis, then write its variables.
+
+    Installs nothing and never prompts. True when something changed; raises ``LocalRedisRefused``.
+    """
+    environment = read_environment_file(ENV_PATH)
+    if not _wanted(environment):
+        return False
+    platform = _platform(install=False)
     password = environment.get(_Variable.LOCAL_PASSWORD) or secrets.token_urlsafe(_PASSWORD_BYTES)
     if platform.brew is not None:
         platform.socket.parent.mkdir(parents=True, exist_ok=True)
@@ -436,3 +478,43 @@ def ensure_local_redis() -> bool:
     )
     logger.info(_CONFIGURED_EVENT if changed else _UNCHANGED_EVENT, socket=str(platform.socket))
     return changed
+
+
+def _withdraw_unanswering_socket() -> None:
+    """Stop naming a managed local socket that does not answer, so the platform starts on the cluster Redis."""
+    environment = read_environment_file(ENV_PATH)
+    url = environment.get(_Variable.LOCAL_URL)
+    if url not in _MANAGED_SOCKETS:
+        return
+    if _answers(str(url), environment.get(_Variable.LOCAL_USERNAME), environment.get(_Variable.LOCAL_PASSWORD, "")):
+        return
+    reconcile_environment_values(ENV_PATH, {}, frozenset({_Variable.LOCAL_URL, _Variable.LOCAL_USERNAME}))
+    logger.warning(_WITHDRAWN_EVENT, socket=url)
+
+
+def apply_or_fall_back() -> bool:
+    """Apply the local Redis; on a refusal log why and keep local events on the cluster Redis. True when applied."""
+    try:
+        apply()
+    except LocalRedisRefused as error:
+        logger.warning(_FALLBACK_EVENT, reason=str(error))
+        _withdraw_unanswering_socket()
+        return False
+    return True
+
+
+def main(arguments: list[str] | None = None) -> int:
+    """Prepare the local Redis for an install; a refusal is logged, never a failure of the install."""
+    setup_logging()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(_PREPARE_OPTION, action="store_true", required=True)
+    parser.parse_args(arguments)
+    try:
+        prepare()
+    except LocalRedisRefused as error:
+        logger.warning(_FALLBACK_EVENT, reason=str(error))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
