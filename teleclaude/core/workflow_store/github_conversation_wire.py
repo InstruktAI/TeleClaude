@@ -68,7 +68,8 @@ class PostTurnResponse(_Wire):
     """What the master did with a hand-over: how many comments are now on GitHub, in order from the first given.
 
     ``uncertain`` is set when the master cannot tell whether the comment it was creating when it stopped reached
-    GitHub, as when the connection broke before the answer; the sender then keeps the turn marked as possibly sent.
+    GitHub, as when the connection broke before the answer, and when it was asked to read the destination first
+    (``possibly_sent``) and stopped before it had; the sender then keeps the turn marked as possibly sent.
     """
 
     outcome: Outcome

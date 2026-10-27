@@ -109,13 +109,13 @@ class GitHubConversationPoster:
         try:
             assignment = await conversation_assignment_for_app(request.app_id)
         except GitHubIORefused as error:
-            return _post_response(_halt_for(error), written=0)
+            return _post_response(_halt_for(error), written=0, still_unreconciled=request.possibly_sent)
         destination = request.destination
         present: frozenset[int] = frozenset()
         if request.possibly_sent:
             envelopes = await self._read_envelopes(assignment, destination, request.session_id)
             if isinstance(envelopes, _Halt):
-                return _post_response(envelopes, written=0)
+                return _post_response(envelopes, written=0, still_unreconciled=True)
             present = frozenset(envelope.part for envelope in envelopes if envelope.ordinal == request.ordinal)
         written = 0
         for body in request.bodies:
@@ -230,11 +230,13 @@ async def _read_page(
     return await io.list_comments_page(assignment, number, page)
 
 
-def _post_response(halted: _Halt, *, written: int) -> PostTurnResponse:
+def _post_response(halted: _Halt, *, written: int, still_unreconciled: bool = False) -> PostTurnResponse:
+    """The answer to a halted hand-over. One that was asked to read the destination first and stopped before it
+    had still not settled the earlier hand-over's effect, so the sender keeps its mark that the turn may be written."""
     return PostTurnResponse(
         outcome=halted.outcome,
         written=written,
         retry_at=halted.retry_at,
         cause=halted.cause,
-        uncertain=halted.uncertain,
+        uncertain=halted.uncertain or still_unreconciled,
     )

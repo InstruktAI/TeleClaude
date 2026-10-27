@@ -41,7 +41,7 @@ async def post_turn(body: PostTurnRequest, _identity: CallerIdentity = Depends(_
     """Write a captured turn's comments to GitHub, as the master."""
     poster = registered_conversation_poster()
     if poster is None:
-        return PostTurnResponse(outcome=Outcome.REFUSED, cause=RefusalCause.NOT_MASTER)
+        return PostTurnResponse(outcome=Outcome.REFUSED, cause=RefusalCause.NOT_MASTER, uncertain=body.possibly_sent)
     return await poster.post_turn(body)
 
 
