@@ -1,9 +1,4 @@
-"""Create-route helpers for the todo workflow endpoints.
-
-Houses the cohesive sub-behaviors of ``todo_content_create`` that would
-otherwise inflate the route module: currently the ``--plan`` seeding step that
-turns a supplied implementation-plan into a plan-drafting seed.
-"""
+"""Seeding a filed todo's supplied plan: a plan-drafting basis for a change, a pre-authorized task-plan for a task."""
 
 from __future__ import annotations
 

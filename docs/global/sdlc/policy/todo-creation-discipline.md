@@ -154,6 +154,14 @@ description: Decide whether a todo should exist, audit that decision at preparat
   creation. The surface verifies the decisions were faced, never that the
   answers are true; judging the answers stays with intelligence.
 
+- **A filing exists once its outcome says so.** An accepted `telec todo create`
+  or `telec bugs report` returns a receipt, and the filing completes after it:
+  its outcome, created or refused, is delivered to the filing session. Act on
+  the filed todo — prepare it, write to it, release its hold — only once that
+  outcome reports it created. Filings in one project complete in the order they
+  were accepted, so a todo filed with `--after` or `--group` naming one filed
+  just before it needs no wait.
+
 - **A failed required check files its own bug.** When a required CI check fails
   on main or on a dependency update, the platform files a bug from that result
   without interrogation, because the filing carries no judgment to face: it
@@ -379,6 +387,11 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   human identity at the root is not authorship evidence.
 
 ## Rationale
+
+A filing waits on the shared git lock and on the workflow store's remote round
+trips, and no caller's deadline bounds either. Completing it after its receipt
+keeps every filing request inside its deadline; an act on the todo before its
+outcome meets a todo that does not exist yet.
 
 Keeping an item alive spends attention and invites further work. An unresolved
 question alone justifies neither expense. Concrete next contributions and
