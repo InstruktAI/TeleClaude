@@ -15,6 +15,15 @@ _CLAIM_CONFLICT_WORK_FEEDBACK_WITH_HOLDER = (
     "Another session is already working on {slug}; contact it with `telec sessions send {holder} <message>`."
 )
 _CLAIM_CONFLICT_WORK_FEEDBACK = "Another lifecycle run is already working on {slug}; try again after it finishes."
+_DRIVER_START_BUSY_WORK_FEEDBACK_WITH_START = (
+    "Another start of {slug} is in progress as session {in_flight}; contact it with "
+    "`telec sessions send {in_flight} <message>`."
+)
+_DRIVER_START_BUSY_WORK_FEEDBACK_WITH_REFUSAL = "Another start of {slug} is in progress: {refusal}"
+_DRIVER_START_BUSY_WORK_FEEDBACK = "Another start of {slug} is in progress; try again after it finishes."
+_DRIVER_START_BUSY_SUMMARY_WITH_START = "DriverStartBusy: another start of {slug} is in progress as session {in_flight}"
+_DRIVER_START_BUSY_SUMMARY_WITH_REFUSAL = "DriverStartBusy: another start of {slug} is in progress: {refusal}"
+_DRIVER_START_BUSY_SUMMARY = "DriverStartBusy: another start of {slug} is in progress"
 _LANE_CROSSING_WORK_FEEDBACK = (
     "This todo is held in the {held_lane} lane and cannot be started from {requested_lane}. {sanctioned_path}."
 )
@@ -40,6 +49,14 @@ class ClaimConflictErrorPayload(OperationErrorPayload):
 
     slug: str
     holder: str | None
+
+
+class DriverStartBusyErrorPayload(OperationErrorPayload):
+    """Structured payload for a driver start refused while another start of the todo is in progress."""
+
+    slug: str
+    in_flight: str | None
+    refusal: str | None
 
 
 class OperationFailure(Exception):
@@ -209,6 +226,46 @@ class ClaimConflict(OperationFailure):
         if self.holder:
             return f"ClaimConflict: {self.slug} is already driven by session {self.holder}"
         return f"ClaimConflict: {self.slug} is already driven"
+
+
+class DriverStartBusy(OperationFailure):
+    """Driver-start refused because another start of the same todo is in progress.
+
+    Raised by the admission section when a start finds the section held by another
+    start of the todo. The refusal never waits: a colliding start is a concurrent
+    start of the same todo, which is exactly the start that must lose. ``in_flight``
+    is the session the holding start is creating or claiming, so the refusal names
+    who is in the way just as :class:`ClaimConflict` does. A caller that learns of the
+    refusal across the create door's HTTP boundary holds the refusal's prose, which names
+    that session; it carries the prose as ``refusal`` and reports it unchanged, never
+    parsing it for the identity.
+    """
+
+    error_kind = "driver_start_busy"
+
+    def __init__(self, *, slug: str, in_flight: str | None = None, refusal: str | None = None) -> None:
+        self.slug = slug
+        self.in_flight = in_flight
+        self.refusal = refusal
+        if in_flight:
+            self.work_feedback = _DRIVER_START_BUSY_WORK_FEEDBACK_WITH_START.format(slug=slug, in_flight=in_flight)
+        elif refusal:
+            self.work_feedback = _DRIVER_START_BUSY_WORK_FEEDBACK_WITH_REFUSAL.format(slug=slug, refusal=refusal)
+        else:
+            self.work_feedback = _DRIVER_START_BUSY_WORK_FEEDBACK.format(slug=slug)
+        super().__init__(slug)
+
+    def to_error_payload(self) -> DriverStartBusyErrorPayload:
+        return DriverStartBusyErrorPayload(
+            kind=self.error_kind, slug=self.slug, in_flight=self.in_flight, refusal=self.refusal
+        )
+
+    def summary(self) -> str:
+        if self.in_flight:
+            return _DRIVER_START_BUSY_SUMMARY_WITH_START.format(slug=self.slug, in_flight=self.in_flight)
+        if self.refusal:
+            return _DRIVER_START_BUSY_SUMMARY_WITH_REFUSAL.format(slug=self.slug, refusal=self.refusal)
+        return _DRIVER_START_BUSY_SUMMARY.format(slug=self.slug)
 
 
 _LANE_CROSSING_SUMMARY_TEMPLATE = (
