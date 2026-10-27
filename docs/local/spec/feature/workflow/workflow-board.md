@@ -1,7 +1,8 @@
 ---
-description: A GitHub-backed project's work shown on one organization-owned GitHub Projects board, every item in its lane and the items that need a person in their own view, kept true by the platform from the workflow record and never moved by hand.
-delivered_by:
-  - github-work-board
+description: A GitHub-backed project's work shown on one organization-owned GitHub
+  Projects board, every item in its lane and the items that need a person in their
+  own view, kept true by the platform from the workflow record and never moved by
+  hand.
 ---
 
 # Workflow Board — Spec

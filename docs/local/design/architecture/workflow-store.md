@@ -207,8 +207,6 @@ working copy and the repository.
 
 <!-- /planned-change:github-store-owed-pull-request-without-branch -->
 
-<!-- planned:github-work-board -->
-
 - **Board.** In a repository an organization owns, the project's board
   (`local/projects/teleclaude/spec/feature/workflow/workflow-board`) is a
   further reflection, written after the local commit, owed apart from the
@@ -264,8 +262,6 @@ working copy and the repository.
     and its outcome names each one it could not write and the cause. On a
     computer that does not hold setup it never creates the board, and its
     outcome names the holding computer.
-
-<!-- /planned:github-work-board -->
 
 - **Repository work.** Only repository work is published: an item whose
   kind is `task`, or whose workflow state carries a creative-track section,
@@ -590,15 +586,11 @@ master admits each conversation request before sending it:
 - The working copy's reads never reach GitHub; only writes, rebuild and
   refresh do.
 
-<!-- planned:github-work-board -->
-
 - A project has one board: only the computer holding the board issue's first
   board claim creates it, and every computer uses the board its entries
   record. The
   board's lanes, markers, fields and views are written from the record and
   never read back.
-
-<!-- /planned:github-work-board -->
 
 ## Primary flows
 
@@ -750,8 +742,6 @@ sequenceDiagram
 
 <!-- /planned:github-store-owed-pull-request-without-branch -->
 
-<!-- planned:github-work-board -->
-
 - A repository a personal account owns has no board. The board's setup
   records that cause and writes nothing; the issues and the workflow are
   unaffected.
@@ -769,8 +759,6 @@ sequenceDiagram
   that is still running from creating its board as well. A holding computer
   that leaves before creating the board leaves setup owed on every computer
   until a computer of that name serves the project again and resumes it.
-
-<!-- /planned:github-work-board -->
 
 - Work that is not repository work exists only in the working copy of the
   computer that holds it; a lost working copy loses it, as a lost local
