@@ -78,11 +78,10 @@ class TodosDbBase:
         self._before_commit_callback: Callable[[SqlSession], None] | None = None
         self._after_commit_callback: Callable[[SqlSession], None] | None = None
         self._after_transaction_end_callback: Callable[[SqlSession], None] | None = None
-        self._before_commit_listener: Callable[[SqlSession], None] | None = None
-        self._after_commit_listener: Callable[[SqlSession], None] | None = None
-        self._after_transaction_end_listener: Callable[[SqlSession, SessionTransaction], None] | None = None
         self._session_class: type[SqlSession]
-        self._session_listeners_registered = False
+        # Every engine this store has bound a session factory to. Never shrunk: a session already in flight when
+        # the store closes must keep its commit-boundary callbacks, or it would commit locally without the push.
+        self._binds: set[object] = set()
         self._on_mutation: Callable[[str, Mapping[str, object] | None], None] = _default_on_mutation
         self._on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None] = _default_on_phase_transition
         self._on_delivered: Callable[[str, str | None, str], None] = _default_on_delivered
@@ -91,14 +90,14 @@ class TodosDbBase:
             """Session class scoped to one store instance's commit seam."""
 
         def before_commit(session: SqlSession) -> None:
-            if session.bind not in (self._sync_engine, self._engine.sync_engine if self._engine else None):
+            if session.bind not in self._binds:
                 return
             if self._before_commit_callback is not None:
                 session.flush()
                 self._before_commit_callback(session)
 
         def after_commit(session: SqlSession) -> None:
-            if session.bind not in (self._sync_engine, self._engine.sync_engine if self._engine else None):
+            if session.bind not in self._binds:
                 return
             if self._after_commit_callback is not None:
                 self._after_commit_callback(session)
@@ -106,19 +105,17 @@ class TodosDbBase:
         def after_transaction_end(session: SqlSession, transaction: SessionTransaction) -> None:
             if transaction.parent is not None:
                 return
-            if session.bind not in (self._sync_engine, self._engine.sync_engine if self._engine else None):
+            if session.bind not in self._binds:
                 return
             if self._after_transaction_end_callback is not None:
                 self._after_transaction_end_callback(session)
 
+        # Registered once and never removed: the listeners belong to this store's own session class and end with
+        # it, and removing one while a session is dispatching events breaks that session's iteration.
         sqlalchemy_event.listen(StoreSession, StoreSessionEvent.BEFORE_COMMIT, before_commit)
         sqlalchemy_event.listen(StoreSession, StoreSessionEvent.AFTER_COMMIT, after_commit)
         sqlalchemy_event.listen(StoreSession, StoreSessionEvent.AFTER_TRANSACTION_END, after_transaction_end)
         self._session_class = StoreSession
-        self._before_commit_listener = before_commit
-        self._after_commit_listener = after_commit
-        self._after_transaction_end_listener = after_transaction_end
-        self._session_listeners_registered = True
 
     def set_commit_callbacks(
         self,
@@ -154,6 +151,7 @@ class TodosDbBase:
             self._engine, expire_on_commit=False, class_=SqlAsyncSession, sync_session_class=self._session_class
         )
         self._sync_sessionmaker = sessionmaker(self._sync_engine, expire_on_commit=False, class_=self._session_class)
+        self._track_binds()
 
         self.conn = await aiosqlite.connect(self.db_path)
         self.conn.row_factory = aiosqlite.Row
@@ -177,6 +175,14 @@ class TodosDbBase:
             self._sessionmaker = async_sessionmaker(
                 self._engine, expire_on_commit=False, class_=SqlAsyncSession, sync_session_class=self._session_class
             )
+        self._track_binds()
+
+    def _track_binds(self) -> None:
+        """Remember the engines whose sessions belong to this store's commit boundary."""
+        if self._sync_engine is not None:
+            self._binds.add(self._sync_engine)
+        if self._engine is not None:
+            self._binds.add(self._engine.sync_engine)
 
     def _session(self) -> SqlAsyncSession:
         """Create an async ORM session from the initialized session factory."""
@@ -252,17 +258,3 @@ class TodosDbBase:
             self._sync_engine = None
         self._sessionmaker = None
         self._sync_sessionmaker = None
-        if self._session_listeners_registered:
-            if self._before_commit_listener is not None:
-                sqlalchemy_event.remove(
-                    self._session_class, StoreSessionEvent.BEFORE_COMMIT, self._before_commit_listener
-                )
-            if self._after_commit_listener is not None:
-                sqlalchemy_event.remove(
-                    self._session_class, StoreSessionEvent.AFTER_COMMIT, self._after_commit_listener
-                )
-            if self._after_transaction_end_listener is not None:
-                sqlalchemy_event.remove(
-                    self._session_class, StoreSessionEvent.AFTER_TRANSACTION_END, self._after_transaction_end_listener
-                )
-            self._session_listeners_registered = False

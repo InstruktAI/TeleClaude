@@ -44,6 +44,7 @@ class ConflictRefreshScheduler:
         self._refresh: Callable[[], Awaitable[object]] | None = None
         self._store_loop: asyncio.AbstractEventLoop | None = None
         self._active: _Run | None = None
+        self._stopped = False
         self._lock = threading.Lock()
 
     def attach(self, refresh: Callable[[], Awaitable[object]]) -> None:
@@ -61,6 +62,8 @@ class ConflictRefreshScheduler:
         store_loop = self._store_loop
         serving = running or (store_loop if store_loop is not None and store_loop.is_running() else None)
         with self._lock:
+            if self._stopped:
+                return
             run = self._live_run()
             starting = run is None
             if run is None:
@@ -74,8 +77,12 @@ class ConflictRefreshScheduler:
             self._wait(run)
 
     async def stop(self) -> None:
-        """Cancel the running chain and wait until it has ended."""
+        """Cancel the running chain, wait until it has ended, and schedule nothing further.
+
+        Terminal: the store this scheduler served is closing, and a write still in flight may yet end on a conflict.
+        """
         with self._lock:
+            self._stopped = True
             run = self._active
             if run is None:
                 return
