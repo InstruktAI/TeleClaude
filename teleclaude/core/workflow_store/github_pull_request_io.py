@@ -36,6 +36,7 @@ _UNIT_SECONDS = 180.0
 _LOCK_WAIT_DETAIL = "unit lock wait exceeded"
 _UNIT_DETAIL = "pull request unit exceeded its time bound"
 _PULL_REQUEST_PERMISSIONS: AppPermissionsType = {"pull_requests": "write"}
+_BRANCH_READ_PERMISSIONS: AppPermissionsType = {"contents": "read"}
 _Result = TypeVar("_Result")
 
 
@@ -43,6 +44,7 @@ class GitHubPullRequestOperation(StrEnum):
     """Closed set of provider operations made for pull requests, named in refusals."""
 
     DEFAULT_BRANCH = "default_branch"
+    GET_BRANCH = "get_branch"
     LIST_PULL_REQUESTS = "list_pull_requests"
     CREATE_PULL_REQUEST = "create_pull_request"
     UPDATE_PULL_REQUEST = "update_pull_request"
@@ -136,6 +138,24 @@ class GitHubPullRequestIO:
             return str(response.parsed_data.default_branch)
 
         return await self._request(RoleName.BUILDER, GitHubPullRequestOperation.DEFAULT_BRANCH, request)
+
+    async def branch_exists(self, branch: str) -> bool:
+        """Report whether `branch` is on GitHub, read as the builder App with Contents read alone."""
+        owner, repo = split_repository(self.repository.repository)
+
+        async def request(client: Any) -> None:
+            await client.rest.repos.async_get_branch(owner, repo, branch)
+
+        assignment = await self._assignment(RoleName.BUILDER)
+        try:
+            await self._transport.call(
+                assignment, _BRANCH_READ_PERMISSIONS, GitHubPullRequestOperation.GET_BRANCH, request
+            )
+        except GitHubIORefused as refused:
+            if refused.reason is GitHubIOFailure.NOT_FOUND:
+                return False
+            raise
+        return True
 
     async def list_pull_requests(self, branch: str) -> tuple[GitHubPullRequest, ...]:
         """List the builder App's pull requests whose head is `branch`, open or closed."""
