@@ -21,10 +21,11 @@ def local_redis_configured() -> bool:
 
 
 def cluster_redis_client() -> Redis:
-    """A client of the shared cluster Redis."""
+    """A client of the cluster Redis; a lone computer's cluster settings name its own local Redis (ADR-0144)."""
     cluster = config.redis.cluster
     return create_redis_client(
-        cluster.url,
+        cluster.required_url(),
+        username=cluster.username,
         password=cluster.password,
         max_connections=cluster.max_connections,
         socket_timeout=cluster.socket_timeout,
@@ -32,10 +33,11 @@ def cluster_redis_client() -> Redis:
 
 
 def scoped_redis_clients() -> ScopedClients[Redis]:
-    """A client of each scope's Redis; the local scope shares the cluster client when no local Redis is configured."""
+    """A client of each scope's Redis, shared when both scopes name the same Redis or no local Redis is configured."""
     cluster = cluster_redis_client()
     local = config.redis.local
-    if not local.url:
+    same_redis = (local.url, local.username) == (config.redis.cluster.url, config.redis.cluster.username)
+    if not local.url or same_redis:
         return ScopedClients(local=cluster, cluster=cluster)
     return ScopedClients(
         local=create_redis_client(

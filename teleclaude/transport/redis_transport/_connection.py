@@ -51,6 +51,7 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
         _redis_last_error: str | None
         redis: Redis
         redis_url: str
+        redis_username: str | None
         redis_password: str | None
         max_connections: int
         socket_timeout: float | None
@@ -174,6 +175,7 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
         """Create a Redis client with the configured settings."""
         return create_redis_client(
             self.redis_url,
+            username=self.redis_username,
             password=self.redis_password,
             max_connections=self.max_connections,
             socket_timeout=self.socket_timeout,

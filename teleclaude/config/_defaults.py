@@ -16,8 +16,6 @@ from teleclaude.constants import (
     REDIS_SOCKET_TIMEOUT,
 )
 
-_DEFAULT_REDIS_URL = "redis://localhost:6379"
-
 DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration structure
     "hook_outbox": {
         "poll_interval_s": 1,
@@ -80,7 +78,8 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
             "socket_timeout": REDIS_SOCKET_TIMEOUT,
         },
         "cluster": {
-            "url": _DEFAULT_REDIS_URL,
+            "url": None,
+            "username": None,
             "password": None,
             "max_connections": REDIS_MAX_CONNECTIONS,
             "socket_timeout": REDIS_SOCKET_TIMEOUT,

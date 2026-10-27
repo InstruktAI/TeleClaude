@@ -1,178 +1,214 @@
-"""Set up this computer's local Redis for its local events (``local/projects/teleclaude/design/architecture/event-delivery``).
+"""TeleClaude's own local Redis on this computer (``local/projects/teleclaude/design/architecture/event-delivery``).
 
-A computer whose cluster Redis is on another computer runs the operating system's Redis as its local Redis: on a
-Unix socket only its user and the Redis service can open, with the TCP port off, the default user off and one ACL user
-whose password lives in the machine environment. On Linux the Redis service runs with the TeleClaude user's primary
-group, so every process of that user can open the socket at once, sessions already running included.
+Every computer, the cluster host included, runs a Redis server process of TeleClaude's own: its configuration and data
+live in the platform home, it listens only on a Unix socket only the TeleClaude user can open, its TCP port and default
+user are off, and one ACL user's password lives in the machine environment. A unit the installation owns keeps it
+running, and stopping the daemon leaves it running. It never touches another Redis on the computer.
 
-Nothing is set up where the cluster Redis is on this computer, since it already keeps local events local, or where
-the environment names a local Redis of the operator's own that answers. A Redis that another program uses or that
-someone else configured is never taken over, and names the variables that point TeleClaude at a dedicated instance
-instead. Running it again changes nothing that is already in place.
-
-The install act runs it in two steps (ADR-0141). ``prepare`` runs while the previous release serves: it installs the
-Redis package when missing and checks everything that can refuse, and may prompt for sudo. ``apply_or_fall_back``
-runs in the stopped window before the release's migrations: it writes the configuration, restarts Redis, verifies it
-and writes the variables that make the platform use it, never installs and never prompts. Neither fails the install:
-a refusal is logged with its reason and what resolves it, and the computer keeps its local events on the cluster Redis.
+The install act runs it in two steps. ``prepare`` runs while the previous release serves: it installs the Redis server
+binary when missing and checks what the stopped window will need, and may prompt for sudo. ``apply`` runs in the
+stopped window before the release's migrations: it writes the configuration and the unit, starts the instance,
+verifies it and writes the variables that make the platform use it, never installing and never prompting. A computer
+with no cluster Redis of its own names this local Redis as its cluster Redis. Neither step fails the install: a refusal
+is logged with its reason and what resolves it, and local events stay on the cluster Redis.
 """
 
 from __future__ import annotations
 
 import argparse
-import grp
 import os
+import pwd
 import secrets
 import shutil
-import socket
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Final, cast
-from urllib.parse import urlparse
+from typing import Final
 
 from instrukt_ai_logging import get_logger
 from redis import Redis
-from redis.exceptions import AuthenticationError, RedisError, ResponseError
+from redis.exceptions import RedisError
 
 from teleclaude.config._environment import read_environment_file, reconcile_environment_values, write_environment_values
+from teleclaude.core.reconciliation.template_installation import render_template
 from teleclaude.logging_config import setup_logging
-from teleclaude.paths import ENV_PATH, TELECLAUDE_HOME
+from teleclaude.paths import ENV_PATH, LOGS_DIR, REPO_ROOT, TELECLAUDE_HOME
 
 logger = get_logger(__name__)
 
 
 class _Variable(StrEnum):
     CLUSTER_URL = "REDIS_CLUSTER_URL"
+    CLUSTER_USERNAME = "REDIS_CLUSTER_USERNAME"
+    CLUSTER_PASSWORD = "REDIS_CLUSTER_PASSWORD"
     EARLIER_CLUSTER_URL = "REDIS_URL"
     LOCAL_URL = "REDIS_LOCAL_URL"
     LOCAL_USERNAME = "REDIS_LOCAL_USERNAME"
     LOCAL_PASSWORD = "REDIS_LOCAL_PASSWORD"
 
 
+class _Placeholder(StrEnum):
+    REDIS_SERVER = "REDIS_SERVER"
+    REDIS_CONF = "REDIS_CONF"
+    LOG_PATH = "LOG_PATH"
+    USER = "USER"
+
+
+class _Program(StrEnum):
+    """The host programs this module drives; none has a Python API."""
+
+    LAUNCHCTL = "launchctl"
+    SYSTEMCTL = "systemctl"
+    SUDO = "sudo"
+    TEE = "tee"
+    REMOVE = "rm"
+    TRUE = "true"
+    BREW = "brew"
+    SERVER = "redis-server"
+
+
+class _Argument(StrEnum):
+    """The arguments passed to those programs."""
+
+    SUDO_NO_PROMPT = "-n"
+    REMOVE_FORCE = "-f"
+    LAUNCHCTL_PRINT = "print"
+    LAUNCHCTL_BOOTSTRAP = "bootstrap"
+    LAUNCHCTL_BOOTOUT = "bootout"
+    LAUNCHCTL_KICKSTART = "kickstart"
+    LAUNCHCTL_KILL_FIRST = "-k"
+    SYSTEMCTL_IS_ACTIVE = "is-active"
+    SYSTEMCTL_QUIET = "--quiet"
+    SYSTEMCTL_DAEMON_RELOAD = "daemon-reload"
+    SYSTEMCTL_ENABLE = "enable"
+    SYSTEMCTL_DISABLE = "disable"
+    SYSTEMCTL_NOW = "--now"
+    SYSTEMCTL_RESTART = "restart"
+    SYSTEMCTL_START = "start"
+    BREW_PREFIX = "--prefix"
+    BREW_INSTALL = "install"
+    BREW_SERVICES = "services"
+    BREW_RESTART = "restart"
+    BREW_FORMULA = "redis"
+
+
+class _Step(StrEnum):
+    """What each host command does, as a refusal names it."""
+
+    BREW_PREFIX = "read the Homebrew prefix"
+    BREW_INSTALL = "install Redis with Homebrew"
+    PACKAGE_INSTALL = "install Redis"
+    DISABLE_SYSTEM_SERVICE = "disable the Redis service the package started"
+    UNLOAD_AGENT = "unload the local Redis agent"
+    LOAD_AGENT = "load the local Redis agent"
+    RESTART_AGENT = "restart the local Redis agent"
+    DEPLOY_UNIT = "deploy the local Redis unit"
+    RELOAD_SYSTEMD = "reload systemd"
+    ENABLE_UNIT = "enable the local Redis unit"
+    RESTART_UNIT = "restart the local Redis unit"
+    START_UNIT = "start the local Redis unit"
+    RESTORE_SYSTEM_CONF = "restore the operating system's Redis configuration"
+    REMOVE_DROP_IN = "remove the earlier Redis drop-in"
+    RESTART_SYSTEM_REDIS = "restart the operating system's Redis"
+    SUDO_CHECK = "use sudo without a prompt, which the install's stopped window needs"
+
+
 class LocalRedisRefused(RuntimeError):
     """The local Redis could not be set up; the message names the cause and what resolves it."""
 
 
-@dataclass(frozen=True)
-class _LinuxLayout:
-    """How one distribution family packages Redis: its package, service, configuration and runtime socket."""
-
-    package: str
-    service: str
-    conf: Path
-    socket: Path
-
-
-@dataclass(frozen=True)
-class _Platform:
-    """Where this computer's Redis keeps its configuration and socket, and how it is restarted."""
-
-    conf: Path
-    socket: Path
-    socket_mode: str
-    brew: Path | None
-    service: str | None
-
-    @property
-    def privileged(self) -> bool:
-        """Whether the configuration and service belong to root (Linux) rather than the user (Homebrew)."""
-        return self.brew is None
-
-
+_MACOS_PLATFORM: Final = "darwin"
+_LINUX_PLATFORM_PREFIX: Final = "linux"
+_NEWLINE: Final = "\n"
 _USERNAME: Final = "teleclaude"
 _UNIX_SCHEME: Final = "unix://"
-_BLOCK_START: Final = "# >>> teleclaude local redis"
-_BLOCK_END: Final = "# <<< teleclaude local redis"
+_REDIS_DIR: Final = TELECLAUDE_HOME / "redis"
+_CONF_PATH: Final = _REDIS_DIR / "local.conf"
+_DATA_DIR: Final = _REDIS_DIR / "local"
+_SOCKET_PATH: Final = _REDIS_DIR / "local.sock"
+_LOG_PATH: Final = LOGS_DIR / "redis-local.log"
+_LOCAL_URL: Final = _UNIX_SCHEME + str(_SOCKET_PATH)
+_PRIVATE_DIR_MODE: Final = 0o700
+_PRIVATE_FILE_MODE: Final = 0o600
+_CONF_TEMPLATE: Final = (
+    "# TeleClaude's own local Redis. Written by the installation; edits are replaced.\n"
+    "port 0\n"
+    "unixsocket {socket}\n"
+    "unixsocketperm 700\n"
+    "dir {data}\n"
+    "appendonly yes\n"
+    "appendfsync everysec\n"
+    "user default off\n"
+    "user {username} on >{password} ~* &* +@all\n"
+)
+_TEMPLATES_DIR: Final = REPO_ROOT / "templates"
+_LAUNCHD_LABEL: Final = "ai.instrukt.teleclaude.redis"
+_LAUNCHD_TEMPLATE: Final = _TEMPLATES_DIR / "ai.instrukt.teleclaude.redis.plist"
+_LAUNCHD_PLIST: Final = Path.home() / "Library" / "LaunchAgents" / "ai.instrukt.teleclaude.redis.plist"
+_LAUNCHD_DOMAIN_TEMPLATE: Final = "gui/{uid}"
+_LAUNCHD_TARGET_TEMPLATE: Final = "gui/{uid}/{label}"
+_SYSTEMD_SERVICE: Final = "teleclaude-redis"
+_SYSTEMD_TEMPLATE: Final = _TEMPLATES_DIR / "teleclaude-redis.service"
+_SYSTEMD_UNITS_DIR: Final = Path("/etc/systemd/system")
+_SYSTEMD_UNIT: Final = _SYSTEMD_UNITS_DIR / "teleclaude-redis.service"
+_DROP_IN_DIR_TEMPLATE: Final = "{service}.service.d"
+# Homebrew's own locations, for an installing process whose PATH does not name it (a launchd-run install).
+_BREW_CANDIDATES: Final = (Path("/opt/homebrew/bin/brew"), Path("/usr/local/bin/brew"))
+_BREW_BIN_DIR: Final = Path("bin")
+_BREW_CONF: Final = Path("etc") / "redis.conf"
+_SYSTEM_BINARIES: Final = (Path("/usr/bin/redis-server"), Path("/usr/sbin/redis-server"))
+_PACKAGE_COMMANDS: Final = (
+    ("apt-get", ("apt-get", "install", "-y"), "redis-server"),
+    ("dnf", ("dnf", "install", "-y"), "redis"),
+    ("pacman", ("pacman", "-S", "--noconfirm"), "redis"),
+)
+# The services an operating system's Redis package may start by itself; one the install added is disabled.
+_SYSTEM_SERVICES: Final = ("redis-server", "redis")
+_PACKAGE_TIMEOUT_S: Final = 900
 _SOCKET_WAIT_S: Final = 15.0
 _SOCKET_POLL_S: Final = 0.25
 _PROBE_TIMEOUT_S: Final = 2
 _PASSWORD_BYTES: Final = 32
-_PACKAGE_TIMEOUT_S: Final = 900
-_SERVER_BINARY: Final = "redis-server"
-_MACOS_SOCKET: Final = TELECLAUDE_HOME / "redis" / "redis.sock"
-_MACOS_SOCKET_MODE: Final = "700"
-_MACOS_CONF: Final = Path("etc") / "redis.conf"
-_BREW: Final = "brew"
-# Homebrew's own locations, for an installing process whose PATH does not name it (a launchd-run install).
-_BREW_CANDIDATES: Final = (Path("/opt/homebrew/bin/brew"), Path("/usr/local/bin/brew"))
-_LINUX_SOCKET_MODE: Final = "770"
-_LINUX_LAYOUTS: Final = (
-    # Debian, Ubuntu, Raspberry Pi OS.
-    _LinuxLayout("redis-server", "redis-server", Path("/etc/redis/redis.conf"), Path("/run/redis/redis-server.sock")),
-    # Fedora, RHEL, Arch.
-    _LinuxLayout("redis", "redis", Path("/etc/redis/redis.conf"), Path("/run/redis/redis.sock")),
-    _LinuxLayout("redis", "redis", Path("/etc/redis.conf"), Path("/run/redis/redis.sock")),
+# The earlier installer configured the operating system's Redis with a marked block, a Linux drop-in, and these sockets.
+_EARLIER_BLOCK_START: Final = "# >>> teleclaude local redis"
+_EARLIER_BLOCK_END: Final = "# <<< teleclaude local redis"
+_EARLIER_CONFS: Final = (Path("/etc/redis/redis.conf"), Path("/etc/redis.conf"))
+_EARLIER_DROP_IN: Final = "teleclaude.conf"
+_EARLIER_SOCKETS: Final = frozenset(
+    {
+        _UNIX_SCHEME + str(TELECLAUDE_HOME / "redis" / "redis.sock"),
+        _UNIX_SCHEME + "/run/redis/redis-server.sock",
+        _UNIX_SCHEME + "/run/redis/redis.sock",
+    }
 )
-_DEBIAN_PACKAGE: Final = "redis-server"
-_OTHER_PACKAGE: Final = "redis"
-_PACKAGE_COMMANDS: Final = (
-    ("apt-get", ("apt-get", "install", "-y"), _DEBIAN_PACKAGE),
-    ("dnf", ("dnf", "install", "-y"), _OTHER_PACKAGE),
-    ("pacman", ("pacman", "-S", "--noconfirm"), _OTHER_PACKAGE),
-)
-_MANAGED_SOCKETS: Final = frozenset(
-    {_UNIX_SCHEME + str(_MACOS_SOCKET), *(_UNIX_SCHEME + str(layout.socket) for layout in _LINUX_LAYOUTS)}
-)
-_SYSTEMD_UNITS: Final = Path("/etc/systemd/system")
-_DROP_IN_NAME: Final = "teleclaude.conf"
-_DROP_IN_TEMPLATE: Final = (
-    "# TeleClaude: the local Redis socket belongs to the TeleClaude user's group.\n[Service]\nGroup={group}\n"
-)
-_BLOCK_TEMPLATE: Final = (
-    "{start}\n"
-    "port 0\n"
-    "unixsocket {socket}\n"
-    "unixsocketperm {mode}\n"
-    "user default off\n"
-    "user {username} on >{password} ~* &* +@all\n"
-    "{end}\n"
-)
-_PORT_DIRECTIVE: Final = "port"
-_DEFAULT_PORT: Final = 6379
-# Directives that say someone configured this Redis for socket or authenticated access of their own.
-_CONFIGURED_DIRECTIVES: Final = frozenset({"unixsocket", "requirepass", "user", "aclfile"})
-_COMMENT: Final = "#"
-_LOOPBACK_ADDRESS: Final = "127.0.0.1"
-_CLIENTS_SECTION: Final = "clients"
-_CONNECTED_CLIENTS: Final = "connected_clients"
-_NOAUTH_PREFIX: Final = "NOAUTH"
-_SKIPPED_EVENT: Final = "local_redis_skipped_cluster_on_this_computer"
-_OPERATOR_OWNED_EVENT: Final = "local_redis_operator_configured"
+_PREPARE_OPTION: Final = "--prepare"
+_PREPARED_EVENT: Final = "local_redis_prepared"
 _CONFIGURED_EVENT: Final = "local_redis_configured"
 _UNCHANGED_EVENT: Final = "local_redis_unchanged"
+_OPERATOR_OWNED_EVENT: Final = "local_redis_operator_configured"
 _PACKAGE_INSTALLED_EVENT: Final = "local_redis_package_installed"
-_PREPARED_EVENT: Final = "local_redis_prepared"
+_SYSTEM_SERVICE_DISABLED_EVENT: Final = "local_redis_system_service_disabled"
+_CLUSTER_ON_LOCAL_EVENT: Final = "local_redis_named_as_cluster_redis"
+_EARLIER_SETUP_RETIRED_EVENT: Final = "local_redis_earlier_setup_retired"
+_EARLIER_SETUP_RETIRE_FAILED_EVENT: Final = "local_redis_earlier_setup_retire_failed"
 _FALLBACK_EVENT: Final = "local_redis_refused_local_events_stay_on_cluster"
 _WITHDRAWN_EVENT: Final = "local_redis_unanswering_socket_withdrawn"
 _WITHDRAW_FAILED_EVENT: Final = "local_redis_socket_withdrawal_failed"
-_PREPARE_OPTION: Final = "--prepare"
 _DOOR: Final = (
-    "Run a dedicated Redis on a Unix socket with an ACL user and set REDIS_LOCAL_URL, REDIS_LOCAL_USERNAME and "
-    "REDIS_LOCAL_PASSWORD in {env} to reach it, or resolve the cause, then install again"
-)
-_UNREACHABLE_ERROR: Final = "the local Redis did not answer on {socket} with its ACL user within {seconds:g}s. " + _DOOR
-_UNSUPPORTED_ERROR: Final = "no known Redis layout on this computer ({detail}). " + _DOOR
-_IN_USE_ERROR: Final = (
-    "the Redis configured in {conf} is in use by another program or was configured by someone else ({reason}); "
-    "TeleClaude does not take it over. " + _DOOR
+    "Resolve the cause, or run a Redis of your own on a Unix socket with an ACL user and set REDIS_LOCAL_URL, "
+    "REDIS_LOCAL_USERNAME and REDIS_LOCAL_PASSWORD in {env} to reach it, then install again"
 )
 _COMMAND_ERROR: Final = "{step} failed: {detail}. " + _DOOR
-_OTHER_CLIENTS_REASON: Final = "{count} other connected clients"
-_AUTH_REASON: Final = "it requires authentication TeleClaude was not given"
-_DIRECTIVE_REASON: Final = "it already sets {directive}"
-_NO_BREW: Final = "Homebrew is not installed"
-_NO_PACKAGE_MANAGER: Final = "no supported package manager to install Redis with"
-_NO_LAYOUT: Final = "the installed Redis matches none of the known configuration and service locations"
-_NO_PLATFORM: Final = "platform {platform}"
-_NOT_PREPARED: Final = "Redis is not installed; the install's preparation installs it"
-_SUDO_CHECK: Final = "use sudo without a prompt, which the install's stopped window needs"
+_NO_BINARY_ERROR: Final = "the Redis server binary is not installed; the install's preparation installs it. " + _DOOR
+_NO_INSTALLER_ERROR: Final = "no Homebrew or supported package manager to install Redis with. " + _DOOR
+_UNSUPPORTED_ERROR: Final = "no local Redis setup for platform {platform}. " + _DOOR
+_UNREACHABLE_ERROR: Final = "the local Redis did not answer on {socket} with its ACL user within {seconds:g}s. " + _DOOR
 
 
-def _run(step: str, command: list[str], *, stdin: str | None = None, timeout: float | None = None) -> str:
+def _run(step: _Step, command: list[str], *, stdin: str | None = None, timeout: float | None = None) -> str:
+    # launchctl, systemctl, Homebrew and the package managers have no Python API.
     try:
         completed = subprocess.run(command, input=stdin, check=True, capture_output=True, text=True, timeout=timeout)
     except subprocess.CalledProcessError as error:
@@ -183,206 +219,73 @@ def _run(step: str, command: list[str], *, stdin: str | None = None, timeout: fl
     return completed.stdout
 
 
-def _sudo(step: str, *command: str, interactive: bool, stdin: str | None = None, timeout: float | None = None) -> str:
-    # The system Redis configuration and service belong to root. Preparation from a terminal may prompt for the
-    # password; anything else fails at once instead of waiting for a prompt nobody answers.
-    prefix = ["sudo"] if interactive and sys.stdin.isatty() else ["sudo", "-n"]
-    return _run(step, [*prefix, *command], stdin=stdin, timeout=timeout)
+def _sudo(step: _Step, *command: str, interactive: bool, stdin: str | None = None, timeout: float | None = None) -> str:
+    # System units and packages belong to root. Preparation from a terminal may prompt for the password;
+    # anything else fails at once instead of waiting for a prompt nobody answers.
+    prompt = [] if interactive and sys.stdin.isatty() else [_Argument.SUDO_NO_PROMPT]
+    return _run(step, [_Program.SUDO, *prompt, *command], stdin=stdin, timeout=timeout)
 
 
-def cluster_is_on_this_computer(cluster_url: str | None) -> bool:
-    """Whether the cluster Redis URL names this computer: by a socket, or by an address this computer holds."""
-    if not cluster_url:
-        return True
-    host = urlparse(cluster_url).hostname
-    if not host:
-        return True
-    try:
-        addresses = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
-    except (OSError, UnicodeError):
-        return False
-    for family, kind, _protocol, _name, address in addresses:
-        # An address this computer can bind is one of its own; a family it does not support is not.
-        try:
-            with socket.socket(family, kind) as probe:
-                probe.bind((address[0], 0))
-        except OSError:
-            continue
-        return True
-    return False
+def _is_macos() -> bool:
+    return sys.platform == _MACOS_PLATFORM
+
+
+def _is_linux() -> bool:
+    return sys.platform.startswith(_LINUX_PLATFORM_PREFIX)
 
 
 def _brew() -> Path | None:
-    found = shutil.which(_BREW)
+    found = shutil.which(_Program.BREW)
     if found is not None:
         return Path(found)
     return next((candidate for candidate in _BREW_CANDIDATES if candidate.exists()), None)
 
 
-def _macos_platform(*, install: bool) -> _Platform:
+def _brew_prefix(brew: Path) -> Path:
+    return Path(_run(_Step.BREW_PREFIX, [str(brew), _Argument.BREW_PREFIX]).strip())
+
+
+def _server_binary() -> Path | None:
+    found = shutil.which(_Program.SERVER)
+    if found is not None:
+        return Path(found)
     brew = _brew()
-    if brew is None:
-        raise LocalRedisRefused(_UNSUPPORTED_ERROR.format(detail=_NO_BREW, env=ENV_PATH))
-    # Homebrew names its prefix, installs Redis and serves it; none of that has a Python API.
-    prefix = Path(_run("read the Homebrew prefix", [str(brew), "--prefix"]).strip())
-    if not (prefix / "bin" / _SERVER_BINARY).exists():
-        if not install:
-            raise LocalRedisRefused(_UNSUPPORTED_ERROR.format(detail=_NOT_PREPARED, env=ENV_PATH))
-        _run("install Redis with Homebrew", [str(brew), "install", "redis"], timeout=_PACKAGE_TIMEOUT_S)
-        logger.info(_PACKAGE_INSTALLED_EVENT, manager=_BREW)
-    return _Platform(prefix / _MACOS_CONF, _MACOS_SOCKET, _MACOS_SOCKET_MODE, brew, None)
+    if brew is not None and (candidate := _brew_prefix(brew) / _BREW_BIN_DIR / _Program.SERVER).exists():
+        return candidate
+    return next((candidate for candidate in _SYSTEM_BINARIES if candidate.exists()), None)
 
 
-def _known_service(service: str) -> bool:
-    # systemd answers whether it knows a unit; it has no Python API.
+def _system_service_active(service: str) -> bool:
+    command = [_Program.SYSTEMCTL, _Argument.SYSTEMCTL_IS_ACTIVE, _Argument.SYSTEMCTL_QUIET, service]
     try:
-        completed = subprocess.run(["systemctl", "cat", f"{service}.service"], capture_output=True, check=False)
+        completed = subprocess.run(command, check=False, capture_output=True)
     except OSError:
         return False
     return completed.returncode == 0
 
 
-def _installed_layout() -> _LinuxLayout | None:
-    return next((layout for layout in _LINUX_LAYOUTS if layout.conf.exists() and _known_service(layout.service)), None)
-
-
-def _install_linux_package() -> None:
+def _install_binary() -> None:
+    """Install the Redis server binary; a system service the package started by itself is disabled."""
+    if _is_macos():
+        brew = _brew()
+        if brew is None:
+            raise LocalRedisRefused(_NO_INSTALLER_ERROR.format(env=ENV_PATH))
+        install = [str(brew), _Argument.BREW_INSTALL, _Argument.BREW_FORMULA]
+        _run(_Step.BREW_INSTALL, install, timeout=_PACKAGE_TIMEOUT_S)
+        logger.info(_PACKAGE_INSTALLED_EVENT, manager=_Program.BREW)
+        return
     for manager, command, package in _PACKAGE_COMMANDS:
         if shutil.which(manager) is None:
             continue
-        _sudo("install Redis", *command, package, interactive=True, timeout=_PACKAGE_TIMEOUT_S)
+        _sudo(_Step.PACKAGE_INSTALL, *command, package, interactive=True, timeout=_PACKAGE_TIMEOUT_S)
         logger.info(_PACKAGE_INSTALLED_EVENT, manager=manager, package=package)
+        for service in _SYSTEM_SERVICES:
+            if _system_service_active(service):
+                disable = (_Program.SYSTEMCTL, _Argument.SYSTEMCTL_DISABLE, _Argument.SYSTEMCTL_NOW, service)
+                _sudo(_Step.DISABLE_SYSTEM_SERVICE, *disable, interactive=True)
+                logger.info(_SYSTEM_SERVICE_DISABLED_EVENT, service=service)
         return
-    raise LocalRedisRefused(_UNSUPPORTED_ERROR.format(detail=_NO_PACKAGE_MANAGER, env=ENV_PATH))
-
-
-def _linux_platform(*, install: bool) -> _Platform:
-    layout = _installed_layout()
-    if layout is None:
-        if not install:
-            raise LocalRedisRefused(_UNSUPPORTED_ERROR.format(detail=_NOT_PREPARED, env=ENV_PATH))
-        _install_linux_package()
-        layout = _installed_layout()
-    if layout is None:
-        raise LocalRedisRefused(_UNSUPPORTED_ERROR.format(detail=_NO_LAYOUT, env=ENV_PATH))
-    return _Platform(layout.conf, layout.socket, _LINUX_SOCKET_MODE, None, layout.service)
-
-
-def _platform(*, install: bool) -> _Platform:
-    if sys.platform == "darwin":
-        return _macos_platform(install=install)
-    if sys.platform.startswith("linux"):
-        return _linux_platform(install=install)
-    raise LocalRedisRefused(_UNSUPPORTED_ERROR.format(detail=_NO_PLATFORM.format(platform=sys.platform), env=ENV_PATH))
-
-
-def _block(platform: _Platform, password: str) -> str:
-    return _BLOCK_TEMPLATE.format(
-        start=_BLOCK_START,
-        socket=platform.socket,
-        mode=platform.socket_mode,
-        username=_USERNAME,
-        password=password,
-        end=_BLOCK_END,
-    )
-
-
-def _with_block(conf_text: str, block: str) -> str:
-    """The configuration with this module's block replaced, or appended when it is absent."""
-    start = conf_text.find(_BLOCK_START)
-    end = conf_text.find(_BLOCK_END)
-    if start != -1 and end != -1:
-        return conf_text[:start] + block + conf_text[end + len(_BLOCK_END) :].lstrip("\n")
-    return conf_text.rstrip("\n") + "\n\n" + block
-
-
-def _read_conf(platform: _Platform) -> str:
-    try:
-        return platform.conf.read_text()
-    except PermissionError:
-        if not platform.privileged:
-            raise
-        return _sudo("read the Redis configuration", "cat", str(platform.conf), interactive=False)
-
-
-def _write_conf(platform: _Platform, text: str) -> None:
-    if platform.privileged:
-        _sudo("write the Redis configuration", "tee", str(platform.conf), interactive=False, stdin=text)
-    else:
-        platform.conf.write_text(text)
-
-
-def _drop_in_path(platform: _Platform) -> Path:
-    return _SYSTEMD_UNITS / f"{platform.service}.service.d" / _DROP_IN_NAME
-
-
-def _drop_in() -> str:
-    return _DROP_IN_TEMPLATE.format(group=grp.getgrgid(os.getgid()).gr_name)
-
-
-def _drop_in_current(platform: _Platform) -> bool:
-    try:
-        return _drop_in_path(platform).read_text() == _drop_in()
-    except OSError:
-        return False
-
-
-def _restart(platform: _Platform) -> None:
-    if platform.brew is not None:
-        _run("restart Redis with Homebrew", [str(platform.brew), "services", "restart", "redis"])
-        return
-    service = str(platform.service)
-    drop_in = _drop_in_path(platform)
-    if not _drop_in_current(platform):
-        _sudo("create the Redis service drop-in directory", "mkdir", "-p", str(drop_in.parent), interactive=False)
-        _sudo("write the Redis service drop-in", "tee", str(drop_in), interactive=False, stdin=_drop_in())
-        _sudo("reload systemd", "systemctl", "daemon-reload", interactive=False)
-    _sudo("enable the Redis service", "systemctl", "enable", service, interactive=False)
-    _sudo("restart the Redis service", "systemctl", "restart", service, interactive=False)
-
-
-def _active_directives(conf_text: str) -> list[list[str]]:
-    lines = (line.split() for line in conf_text.splitlines())
-    return [parts for parts in lines if parts and not parts[0].startswith(_COMMENT)]
-
-
-def _configured_port(directives: list[list[str]]) -> int:
-    """The TCP port the configuration ends up with; Redis takes the last directive."""
-    port = _DEFAULT_PORT
-    for parts in directives:
-        if len(parts) == 2 and parts[0] == _PORT_DIRECTIVE and parts[1].isdigit():
-            port = int(parts[1])
-    return port
-
-
-def _refuse_if_taken(platform: _Platform, conf_text: str) -> None:
-    """Refuse a Redis this module never configured that someone else configured or another program uses."""
-    directives = _active_directives(conf_text)
-    configured = next((parts[0] for parts in directives if parts[0] in _CONFIGURED_DIRECTIVES), None)
-    if configured is not None:
-        reason = _DIRECTIVE_REASON.format(directive=configured)
-        raise LocalRedisRefused(_IN_USE_ERROR.format(conf=platform.conf, reason=reason, env=ENV_PATH))
-    port = _configured_port(directives)
-    if port == 0:
-        return
-    client = Redis(host=_LOOPBACK_ADDRESS, port=port, socket_timeout=_PROBE_TIMEOUT_S)
-    try:
-        # The synchronous client returns the parsed section; its stubs also admit the asynchronous result.
-        clients = int(cast("dict[str, int]", client.info(_CLIENTS_SECTION))[_CONNECTED_CLIENTS])
-    except AuthenticationError:
-        raise LocalRedisRefused(_IN_USE_ERROR.format(conf=platform.conf, reason=_AUTH_REASON, env=ENV_PATH)) from None
-    except ResponseError as error:
-        if _NOAUTH_PREFIX not in str(error):
-            raise
-        raise LocalRedisRefused(_IN_USE_ERROR.format(conf=platform.conf, reason=_AUTH_REASON, env=ENV_PATH)) from None
-    except (RedisError, OSError):
-        return  # Not running: nothing uses it.
-    finally:
-        client.close()
-    others = clients - 1
-    if others > 0:
-        reason = _OTHER_CLIENTS_REASON.format(count=others)
-        raise LocalRedisRefused(_IN_USE_ERROR.format(conf=platform.conf, reason=reason, env=ENV_PATH))
+    raise LocalRedisRefused(_NO_INSTALLER_ERROR.format(env=ENV_PATH))
 
 
 def _answers(url: str, username: str | None, password: str) -> bool:
@@ -395,89 +298,217 @@ def _answers(url: str, username: str | None, password: str) -> bool:
         client.close()
 
 
-def _await_answer(platform: _Platform, password: str) -> None:
-    url = _UNIX_SCHEME + str(platform.socket)
-    deadline = time.monotonic() + _SOCKET_WAIT_S
-    while time.monotonic() < deadline:
-        if _answers(url, _USERNAME, password):
-            return
-        time.sleep(_SOCKET_POLL_S)
-    raise LocalRedisRefused(_UNREACHABLE_ERROR.format(socket=platform.socket, seconds=_SOCKET_WAIT_S, env=ENV_PATH))
-
-
 def _operator_configured(environment: dict[str, str]) -> bool:
-    """Whether the environment names a local Redis of the operator's own, at no socket this module manages, that answers."""
+    """Whether the environment names a local Redis of the operator's own, at no socket the installation manages."""
     url = environment.get(_Variable.LOCAL_URL)
-    if not url or url in _MANAGED_SOCKETS:
+    if not url or url == _LOCAL_URL or url in _EARLIER_SOCKETS:
         return False
     username = environment.get(_Variable.LOCAL_USERNAME) or None
-    return _answers(url, username, environment.get(_Variable.LOCAL_PASSWORD, ""))
+    return _answers(url, username, environment.get(_Variable.LOCAL_PASSWORD) or "")
 
 
-def _wanted(environment: dict[str, str]) -> bool:
-    """Whether this computer should get a local Redis from this module at all."""
-    cluster_url = environment.get(_Variable.CLUSTER_URL) or environment.get(_Variable.EARLIER_CLUSTER_URL)
-    if cluster_is_on_this_computer(cluster_url):
-        logger.info(_SKIPPED_EVENT)
+def _write_private(path: Path, text: str) -> bool:
+    """Write ``text`` readable by the TeleClaude user only; True when the file changed."""
+    if path.exists() and path.read_text() == text:
         return False
-    if _operator_configured(environment):
-        logger.info(_OPERATOR_OWNED_EVENT)
-        return False
+    path.write_text(text)
+    path.chmod(_PRIVATE_FILE_MODE)
     return True
 
 
+def _rendered_unit(template: Path, binary: Path) -> str:
+    values: dict[str, str] = {
+        _Placeholder.REDIS_SERVER: str(binary),
+        _Placeholder.REDIS_CONF: str(_CONF_PATH),
+        _Placeholder.LOG_PATH: str(_LOG_PATH),
+        _Placeholder.USER: pwd.getpwuid(os.getuid()).pw_name,
+    }
+    return render_template(template.read_text(), template=template, values=values, environ={})
+
+
+def _launchd_domain() -> str:
+    return _LAUNCHD_DOMAIN_TEMPLATE.format(uid=os.getuid())
+
+
+def _launchd_target() -> str:
+    return _LAUNCHD_TARGET_TEMPLATE.format(uid=os.getuid(), label=_LAUNCHD_LABEL)
+
+
+def _launchd_loaded() -> bool:
+    command = [_Program.LAUNCHCTL, _Argument.LAUNCHCTL_PRINT, _launchd_target()]
+    return subprocess.run(command, check=False, capture_output=True).returncode == 0
+
+
+def _kickstart_launchd() -> None:
+    kickstart = [_Program.LAUNCHCTL, _Argument.LAUNCHCTL_KICKSTART, _Argument.LAUNCHCTL_KILL_FIRST, _launchd_target()]
+    _run(_Step.RESTART_AGENT, kickstart)
+
+
+def _start_launchd(binary: Path, *, conf_changed: bool) -> bool:
+    """Deploy the user agent and start or restart it as needed; True when it was (re)started."""
+    _LAUNCHD_PLIST.parent.mkdir(parents=True, exist_ok=True)
+    plist = _rendered_unit(_LAUNCHD_TEMPLATE, binary)
+    unit_changed = not _LAUNCHD_PLIST.exists() or _LAUNCHD_PLIST.read_text() != plist
+    if unit_changed:
+        _LAUNCHD_PLIST.write_text(plist)
+    loaded = _launchd_loaded()
+    if unit_changed or not loaded:
+        if loaded:
+            _run(_Step.UNLOAD_AGENT, [_Program.LAUNCHCTL, _Argument.LAUNCHCTL_BOOTOUT, _launchd_target()])
+        bootstrap = [_Program.LAUNCHCTL, _Argument.LAUNCHCTL_BOOTSTRAP, _launchd_domain(), str(_LAUNCHD_PLIST)]
+        _run(_Step.LOAD_AGENT, bootstrap)
+        return True
+    if conf_changed:
+        _kickstart_launchd()
+        return True
+    return False
+
+
+def _systemctl(step: _Step, *arguments: str) -> None:
+    _sudo(step, _Program.SYSTEMCTL, *arguments, interactive=False)
+
+
+def _start_systemd(binary: Path, *, conf_changed: bool) -> bool:
+    """Deploy the system unit and start or restart it as needed; True when it was (re)started."""
+    unit = _rendered_unit(_SYSTEMD_TEMPLATE, binary)
+    unit_changed = not _SYSTEMD_UNIT.exists() or _SYSTEMD_UNIT.read_text() != unit
+    if unit_changed:
+        _sudo(_Step.DEPLOY_UNIT, _Program.TEE, str(_SYSTEMD_UNIT), interactive=False, stdin=unit)
+        _systemctl(_Step.RELOAD_SYSTEMD, _Argument.SYSTEMCTL_DAEMON_RELOAD)
+    _systemctl(_Step.ENABLE_UNIT, _Argument.SYSTEMCTL_ENABLE, _SYSTEMD_SERVICE)
+    if unit_changed or conf_changed:
+        _systemctl(_Step.RESTART_UNIT, _Argument.SYSTEMCTL_RESTART, _SYSTEMD_SERVICE)
+        return True
+    _systemctl(_Step.START_UNIT, _Argument.SYSTEMCTL_START, _SYSTEMD_SERVICE)
+    return False
+
+
+def _restart() -> None:
+    if _is_macos():
+        _kickstart_launchd()
+    else:
+        _systemctl(_Step.RESTART_UNIT, _Argument.SYSTEMCTL_RESTART, _SYSTEMD_SERVICE)
+
+
+def _await_answer(password: str) -> None:
+    deadline = time.monotonic() + _SOCKET_WAIT_S
+    while time.monotonic() < deadline:
+        if _answers(_LOCAL_URL, _USERNAME, password):
+            return
+        time.sleep(_SOCKET_POLL_S)
+    raise LocalRedisRefused(_UNREACHABLE_ERROR.format(socket=_SOCKET_PATH, seconds=_SOCKET_WAIT_S, env=ENV_PATH))
+
+
+def _without_earlier_block(text: str) -> str | None:
+    start = text.find(_EARLIER_BLOCK_START)
+    end = text.find(_EARLIER_BLOCK_END)
+    if start == -1 or end == -1:
+        return None
+    return text[:start].rstrip(_NEWLINE) + _NEWLINE + text[end + len(_EARLIER_BLOCK_END) :].lstrip(_NEWLINE)
+
+
+def _retire_earlier_macos_setup() -> None:
+    brew = _brew()
+    if brew is None:
+        return
+    conf = _brew_prefix(brew) / _BREW_CONF
+    if not conf.exists() or (retired := _without_earlier_block(conf.read_text())) is None:
+        return
+    conf.write_text(retired)
+    restart = [str(brew), _Argument.BREW_SERVICES, _Argument.BREW_RESTART, _Argument.BREW_FORMULA]
+    _run(_Step.RESTART_SYSTEM_REDIS, restart)
+    logger.info(_EARLIER_SETUP_RETIRED_EVENT, conf=str(conf))
+
+
+def _retire_earlier_linux_setup() -> None:
+    for conf in _EARLIER_CONFS:
+        try:
+            text = conf.read_text()
+        except OSError:
+            continue
+        if (retired := _without_earlier_block(text)) is None:
+            continue
+        _sudo(_Step.RESTORE_SYSTEM_CONF, _Program.TEE, str(conf), interactive=False, stdin=retired)
+        for service in _SYSTEM_SERVICES:
+            drop_in = _SYSTEMD_UNITS_DIR / _DROP_IN_DIR_TEMPLATE.format(service=service) / _EARLIER_DROP_IN
+            if drop_in.exists():
+                _sudo(_Step.REMOVE_DROP_IN, _Program.REMOVE, _Argument.REMOVE_FORCE, str(drop_in), interactive=False)
+        _systemctl(_Step.RELOAD_SYSTEMD, _Argument.SYSTEMCTL_DAEMON_RELOAD)
+        for service in _SYSTEM_SERVICES:
+            if _system_service_active(service):
+                _systemctl(_Step.RESTART_SYSTEM_REDIS, _Argument.SYSTEMCTL_RESTART, service)
+        logger.info(_EARLIER_SETUP_RETIRED_EVENT, conf=str(conf))
+
+
+def _has_cluster_redis(environment: dict[str, str]) -> bool:
+    return bool(environment.get(_Variable.CLUSTER_URL) or environment.get(_Variable.EARLIER_CLUSTER_URL))
+
+
+def _require_supported_platform() -> None:
+    if not (_is_macos() or _is_linux()):
+        raise LocalRedisRefused(_UNSUPPORTED_ERROR.format(platform=sys.platform, env=ENV_PATH))
+
+
 def prepare() -> None:
-    """While the previous release serves: install Redis when missing and check everything that can refuse.
+    """While the previous release serves: install the Redis server binary when missing and check the stopped window.
 
     Raises ``LocalRedisRefused``; nothing it does makes the platform use the local Redis.
     """
-    environment = read_environment_file(ENV_PATH)
-    if not _wanted(environment):
+    _require_supported_platform()
+    if _operator_configured(read_environment_file(ENV_PATH)):
+        logger.info(_OPERATOR_OWNED_EVENT)
         return
-    platform = _platform(install=True)
-    current = _read_conf(platform)
-    if _BLOCK_START not in current:
-        _refuse_if_taken(platform, current)
-    if platform.privileged:
-        _sudo(_SUDO_CHECK, "true", interactive=False)
-    logger.info(_PREPARED_EVENT, socket=str(platform.socket))
+    if _server_binary() is None:
+        _install_binary()
+    if _is_linux():
+        _sudo(_Step.SUDO_CHECK, _Program.TRUE, interactive=False)
+    logger.info(_PREPARED_EVENT, socket=str(_SOCKET_PATH))
 
 
 def apply() -> bool:
-    """In the stopped window: configure, restart and verify the local Redis, then write its variables.
+    """In the stopped window: configure, start and verify the local Redis, then write its variables.
 
     Installs nothing and never prompts. True when something changed; raises ``LocalRedisRefused``.
     """
+    _require_supported_platform()
     environment = read_environment_file(ENV_PATH)
-    if not _wanted(environment):
+    if _operator_configured(environment):
+        logger.info(_OPERATOR_OWNED_EVENT)
         return False
-    platform = _platform(install=False)
+    binary = _server_binary()
+    if binary is None:
+        raise LocalRedisRefused(_NO_BINARY_ERROR.format(env=ENV_PATH))
     password = environment.get(_Variable.LOCAL_PASSWORD) or secrets.token_urlsafe(_PASSWORD_BYTES)
-    if platform.brew is not None:
-        platform.socket.parent.mkdir(parents=True, exist_ok=True)
-        platform.socket.parent.chmod(0o700)
-    current = _read_conf(platform)
-    if _BLOCK_START not in current:
-        _refuse_if_taken(platform, current)
-    wanted = _with_block(current, _block(platform, password))
-    changed = wanted != current or (platform.privileged and not _drop_in_current(platform))
-    if changed:
-        if wanted != current:
-            _write_conf(platform, wanted)
-        _restart(platform)
-    elif not _answers(_UNIX_SCHEME + str(platform.socket), _USERNAME, password):
-        _restart(platform)
+    for directory in (_REDIS_DIR, _DATA_DIR):
+        directory.mkdir(parents=True, exist_ok=True)
+        directory.chmod(_PRIVATE_DIR_MODE)
+    _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conf = _CONF_TEMPLATE.format(socket=_SOCKET_PATH, data=_DATA_DIR, username=_USERNAME, password=password)
+    conf_changed = _write_private(_CONF_PATH, conf)
+    start = _start_launchd if _is_macos() else _start_systemd
+    changed = start(binary, conf_changed=conf_changed)
+    if not changed and not _answers(_LOCAL_URL, _USERNAME, password):
+        _restart()
         changed = True
-    _await_answer(platform, password)
-    write_environment_values(
-        ENV_PATH,
-        {
-            _Variable.LOCAL_URL: _UNIX_SCHEME + str(platform.socket),
-            _Variable.LOCAL_USERNAME: _USERNAME,
-            _Variable.LOCAL_PASSWORD: password,
-        },
-    )
-    logger.info(_CONFIGURED_EVENT if changed else _UNCHANGED_EVENT, socket=str(platform.socket))
+    _await_answer(password)
+    values: dict[str, str] = {
+        _Variable.LOCAL_URL: _LOCAL_URL,
+        _Variable.LOCAL_USERNAME: _USERNAME,
+        _Variable.LOCAL_PASSWORD: password,
+    }
+    if not _has_cluster_redis(environment):
+        values |= {
+            _Variable.CLUSTER_URL: _LOCAL_URL,
+            _Variable.CLUSTER_USERNAME: _USERNAME,
+            _Variable.CLUSTER_PASSWORD: password,
+        }
+        logger.info(_CLUSTER_ON_LOCAL_EVENT, socket=str(_SOCKET_PATH))
+    write_environment_values(ENV_PATH, values)
+    try:
+        _retire_earlier_macos_setup() if _is_macos() else _retire_earlier_linux_setup()
+    except Exception as error:  # supervision boundary: the earlier setup's leftovers never fail the new one
+        logger.warning(_EARLIER_SETUP_RETIRE_FAILED_EVENT, reason=str(error), exc_info=True)
+    logger.info(_CONFIGURED_EVENT if changed else _UNCHANGED_EVENT, socket=str(_SOCKET_PATH))
     return changed
 
 
@@ -485,16 +516,16 @@ def _withdraw_unanswering_socket() -> None:
     """Stop naming a managed local socket that does not answer, so the platform starts on the cluster Redis."""
     environment = read_environment_file(ENV_PATH)
     url = environment.get(_Variable.LOCAL_URL)
-    if url not in _MANAGED_SOCKETS:
+    if url is None or (url != _LOCAL_URL and url not in _EARLIER_SOCKETS):
         return
-    if _answers(str(url), environment.get(_Variable.LOCAL_USERNAME), environment.get(_Variable.LOCAL_PASSWORD, "")):
+    if _answers(url, environment.get(_Variable.LOCAL_USERNAME), environment.get(_Variable.LOCAL_PASSWORD) or ""):
         return
     reconcile_environment_values(ENV_PATH, {}, frozenset({_Variable.LOCAL_URL, _Variable.LOCAL_USERNAME}))
     logger.warning(_WITHDRAWN_EVENT, socket=url)
 
 
 def apply_or_fall_back() -> bool:
-    """Apply the local Redis; on a refusal log why and keep local events on the cluster Redis. True when applied."""
+    """Apply the local Redis; on any failure log why and keep local events on the cluster Redis. True when applied."""
     try:
         apply()
     except Exception as error:  # supervision boundary: no cause of the local Redis may fail the install

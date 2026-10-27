@@ -99,7 +99,8 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._redis_last_error: str | None = None
 
         # Extract Redis configuration from global config
-        self.redis_url = config.redis.cluster.url
+        self.redis_url = config.redis.cluster.required_url()
+        self.redis_username = config.redis.cluster.username
         self.redis_password = config.redis.cluster.password
         self.computer_name = config.computer.name
 

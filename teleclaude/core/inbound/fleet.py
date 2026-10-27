@@ -201,7 +201,8 @@ async def observe_fleet_from_heartbeats() -> FleetView:
     """Observe the fleet straight from the heartbeat keys, for a process that holds no transport."""
     redis_config = config.redis.cluster
     redis_client = create_redis_client(
-        redis_config.url,
+        redis_config.required_url(),
+        username=redis_config.username,
         password=redis_config.password,
         max_connections=redis_config.max_connections,
         socket_timeout=redis_config.socket_timeout,

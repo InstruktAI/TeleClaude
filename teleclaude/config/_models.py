@@ -108,8 +108,6 @@ _COMPUTER_MAPPING_ERROR = "Invalid config key `config.yml:computer`: expected a 
 _REDIS_MAPPING_ERROR = "Invalid config key `config.yml:redis`: expected a mapping."
 _REDIS_LOCAL_MAPPING_ERROR = "Invalid config key `config.yml:redis.local`: expected a mapping."
 _UNIX_SOCKET_SCHEME = "unix://"
-_LOCAL_SCOPE = "local"
-_CLUSTER_SCOPE = "cluster"
 _REDIS_SOCKET_TIMEOUT_ERROR = (
     "Invalid config key `config.yml:redis.{scope}.socket_timeout`: it must exceed the {seconds}s an idle stream "
     "read blocks."
@@ -118,6 +116,10 @@ _REDIS_LOCAL_SOCKET_ERROR = (
     "Invalid config key `config.yml:redis.local.url`: the local Redis is reached over a unix:// socket only."
 )
 _REDIS_CLUSTER_MAPPING_ERROR = "Invalid config key `config.yml:redis.cluster`: expected a mapping."
+_REDIS_CLUSTER_URL_MISSING_ERROR = (
+    "Missing config key `config.yml:redis.cluster.url`: set REDIS_CLUSTER_URL in the machine environment, "
+    "or install again so a lone computer names its own local Redis."
+)
 _HOOK_OUTBOX_MAPPING_ERROR = "Invalid config key `config.yml:hook_outbox`: expected a mapping."
 _API_MAPPING_ERROR = "Invalid config key `config.yml:api`: expected a mapping."
 _DAEMON_MAPPING_ERROR = "Invalid config key `config.yml:daemon`: expected a mapping."
@@ -388,14 +390,21 @@ class AgentConfig(ClosedModel):
         return self.get_command("default")
 
 
-def _require_outlasting_block(socket_timeout: int, scope: str) -> None:
+class _RedisScope(StrEnum):
+    """The Redis configuration blocks a socket timeout is checked for."""
+
+    LOCAL = "local"
+    CLUSTER = "cluster"
+
+
+def _require_outlasting_block(socket_timeout: int, scope: _RedisScope) -> None:
     """An idle stream read blocks on Redis; a socket timeout that ends first turns every idle read into an error."""
     if socket_timeout <= REDIS_STREAM_BLOCK_S:
         raise ValueError(_REDIS_SOCKET_TIMEOUT_ERROR.format(scope=scope, seconds=REDIS_STREAM_BLOCK_S))
 
 
 class LocalRedisConfig(ClosedModel):
-    """This computer's own Redis for local events, reached over a Unix socket only; unset, local events use cluster."""
+    """This computer's own Redis for local events (ADR-0143), reached over a Unix socket only; unset, they use cluster."""
 
     url: Annotated[TRUTHY_TEXT, SENSITIVE]
     username: Annotated[TRUTHY_TEXT, SENSITIVE]
@@ -412,14 +421,15 @@ class LocalRedisConfig(ClosedModel):
     def _require_unix_socket(self) -> Self:
         if self.url is not None and not self.url.startswith(_UNIX_SOCKET_SCHEME):
             raise ValueError(_REDIS_LOCAL_SOCKET_ERROR)
-        _require_outlasting_block(self.socket_timeout, _LOCAL_SCOPE)
+        _require_outlasting_block(self.socket_timeout, _RedisScope.LOCAL)
         return self
 
 
 class ClusterRedisConfig(ClosedModel):
-    """The shared Redis for cluster events and the cross-computer transport."""
+    """The shared Redis for cluster events and the cross-computer transport; a lone computer names its local Redis."""
 
-    url: Annotated[TEXT, SENSITIVE]
+    url: Annotated[TRUTHY_TEXT, SENSITIVE]
+    username: Annotated[TRUTHY_TEXT, SENSITIVE]
     password: Annotated[TRUTHY_TEXT, SENSITIVE]
     max_connections: INT_LENIENT
     socket_timeout: INT_LENIENT
@@ -434,8 +444,14 @@ class ClusterRedisConfig(ClosedModel):
 
     @model_validator(mode="after")
     def _require_socket_timeout(self) -> Self:
-        _require_outlasting_block(self.socket_timeout, _CLUSTER_SCOPE)
+        _require_outlasting_block(self.socket_timeout, _RedisScope.CLUSTER)
         return self
+
+    def required_url(self) -> str:
+        """The cluster Redis URL; the platform cannot reach other computers, or run its cluster scope, without one."""
+        if not self.url:
+            raise ValueError(_REDIS_CLUSTER_URL_MISSING_ERROR)
+        return self.url
 
 
 class RedisConfig(ClosedModel):

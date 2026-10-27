@@ -875,26 +875,6 @@ install_gog() {
 }
 
 # Install system dependencies
-# Brings a local Redis up without assuming it is down. Probing first keeps a
-# repeat install quiet instead of re-announcing a service that never stopped.
-ensure_local_redis_running() {
-    if redis-cli ping 2>/dev/null | grep -q PONG; then
-        print_info "Redis already running"
-        return 0
-    fi
-
-    print_info "Starting Redis service..."
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        brew services start redis >> "$LOG_FILE" 2>&1 || true
-    else
-        if ! _run_sudo "enable and start the Redis service" systemctl enable --now redis 2>&1 | tee -a "$LOG_FILE" > /dev/null; then
-            print_error "Could not enable and start Redis; ensure the unattended installer can use sudo and re-run make install"
-            exit 1
-        fi
-    fi
-    print_success "Redis service management delegated to OS"
-}
-
 install_system_deps() {
     print_header "Installing System Dependencies"
 
@@ -950,21 +930,6 @@ install_system_deps() {
 
         install_gog
         install_sqlite3_rsync
-
-        # Redis: every computer runs one. Where the cluster Redis is remote it is this computer's local Redis,
-        # configured by the install act before the release's migrations (teleclaude.install.local_redis); where the
-        # cluster Redis URL is loopback or unset it is the cluster Redis itself. Classification (loopback vs remote) lives in bin/init/redis_locality.sh.
-        local redis_url_value
-        redis_url_value="$(machine_cluster_redis_url "${TELECLAUDE_HOME:-$HOME/.teleclaude}/.env")"
-        if command -v redis-server &> /dev/null; then
-            print_info "Redis already installed"
-        else
-            print_info "Installing Redis..."
-            install_package redis
-        fi
-        if ! redis_url_skips_local_install "$redis_url_value"; then
-            ensure_local_redis_running
-        fi
 
         # macOS-only optional GUI casks (LM Studio: local summarizer; Handy: STT)
         install_macos_casks
@@ -1663,8 +1628,6 @@ run_environment_defaults() {
 }
 
 # Load modular install steps
-# shellcheck source=/dev/null
-source "$INSTALL_DIR/bin/init/redis_locality.sh"
 # shellcheck source=/dev/null
 source "$INSTALL_DIR/bin/init/setup_mcp_config.sh"
 # shellcheck source=/dev/null
