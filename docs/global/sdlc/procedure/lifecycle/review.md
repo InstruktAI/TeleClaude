@@ -219,8 +219,11 @@ establish the same invariant, or a remediation chain that introduces another
 defect while leaving its premise unresolved, requires re-derivation of the
 affected unit before another pass: a remediation applied only where a finding
 points converges one leftover per pass
-(`sdlc/policy/preparation-artifact-quality`). A second edit to the same region
-establishes neither by itself.
+(`sdlc/policy/preparation-artifact-quality`). The re-derivation begins at the
+criterion the failing invariant serves: it is traced to the authorized intent
+before the mechanism is rebuilt, and a criterion the intent does not carry is
+taken out rather than defended by further mechanism. A second edit to the same
+region establishes neither by itself.
 
 Review passes are counted within a review cycle. A valid substantive-drift stamp
 ends the current cycle for every review target it invalidates and starts a new
