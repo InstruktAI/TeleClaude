@@ -176,6 +176,7 @@ concerned:
 - `local/projects/teleclaude/adr/0126-non-repository-work-stays-in-the-github-store-working-copy` — non-repository work kept in the GitHub store's working copy
 - `local/projects/teleclaude/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors` — concurrent driver starts for one todo serialized on one computer
 - `local/projects/teleclaude/adr/0134-a-colliding-driver-start-is-refused-without-waiting` — a colliding driver start refused at once instead of waiting
+- `local/projects/teleclaude/adr/0135-github-backed-driver-starts-are-admitted-by-the-mesh-master` — driver starts of a GitHub-backed project admitted by the fleet's master
 
 ## See Also
 

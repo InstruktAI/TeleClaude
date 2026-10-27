@@ -66,6 +66,12 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 <!-- /planned:single-orchestrator-concurrent-starts -->
 
+<!-- planned:single-orchestrator-across-computers -->
+
+- **One orchestrator per todo across computers**: for a project on the GitHub workflow store, the fleet's master admits every orchestrator start of a todo, from any computer, one at a time, and records the claim naming the session and its computer before the session is created or claimed; the starting computer holds its own admission section across that admission. Only the computer a claim names judges whether the claim has ended; every other computer treats it as held. A start that finds the todo held is refused naming the holding session and its computer.
+
+<!-- /planned:single-orchestrator-across-computers -->
+
 - **Crash recovery**: all three machines are re-entrant. Re-calling after a crash resumes from durable state.
 
 ## Primary flows
@@ -220,5 +226,17 @@ Each state machine has its own design document with full state diagrams, sequenc
 
 <!-- /planned:single-orchestrator-concurrent-starts -->
 
+<!-- planned:single-orchestrator-across-computers -->
+
+- **Holder's computer does not answer**: a claim naming a computer that does not answer the master stays held, and a start of that todo is refused naming the session and its computer; the todo can be started again once that computer reports the session ended.
+- **No master to admit a start**: while no unique live master holds the project and answers, starts of a GitHub-backed todo on other computers are refused naming why and create nothing, and lifecycle runner passes skip those todos.
+- **Admission answered but the start failed**: a claim the master recorded for a start that never created or claimed its session is reported ended by its computer once that start has given up, and is cleared at the next admission or by that computer's reconciliation.
+
+<!-- /planned:single-orchestrator-across-computers -->
+
 - **Stale artifacts**: PRD or architecture updated but downstream artifacts not regenerated. Grounding check catches and triggers re-grounding.
 - **Stale artifacts**: PRD or architecture updated but downstream artifacts not regenerated. Grounding check catches and triggers re-grounding.
+
+## See Also
+
+- docs/local/adr/0135-github-backed-driver-starts-are-admitted-by-the-mesh-master.md
