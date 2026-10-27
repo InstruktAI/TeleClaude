@@ -66,7 +66,7 @@ from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatus
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TodoKind
-from teleclaude.types.todos import HoldAuditState, TodoState
+from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, HoldAuditState, TodoState
 
 logger = get_logger(__name__)
 
@@ -595,7 +595,7 @@ async def recheck_slug_holder(
     project-wide load and no writes. ``exempt_session_id`` is treated as no holder.
     """
     state = await todos_db.read_state(slug)
-    raw_runner = state.get("active_runner") if state is not None else None
+    raw_runner = state.get(ACTIVE_RUNNER_STATE_KEY) if state is not None else None
     active_runner = raw_runner if isinstance(raw_runner, str) else None
     holders = await resolve_slug_holders(runtime_db, project_path, slug, active_runner)
     for holder in (holders.orchestrator_owner, holders.live_runner):

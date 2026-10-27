@@ -138,6 +138,7 @@ def work_feedback_for_manual_skip(reason: RunnerSkipReason | str | None) -> str 
     return None
 
 
+_START_REFUSED_BUSY_EVENT = "driver start refused while another start is in progress"
 _STARTS_IN_FLIGHT: dict[tuple[Path, str], str] = {}
 
 
@@ -164,7 +165,7 @@ async def driver_start_section(
     if in_flight is not None:
         busy = DriverStartBusy(slug=slug, in_flight=in_flight)
         logger.warning(
-            "driver start refused while another start is in progress",
+            _START_REFUSED_BUSY_EVENT,
             project=str(key[0]),
             slug=slug,
             in_flight=in_flight,
