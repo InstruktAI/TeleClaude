@@ -37,6 +37,7 @@ from teleclaude.core.todos_db._working_copy import (
     item_snapshot,
     item_unverifiable,
 )
+from teleclaude.core.todos_db._write_admission import WorkingCopyWriteRefused
 from teleclaude.core.workflow_store.github_board_io import GitHubBoardIO
 from teleclaude.core.workflow_store.github_board_reflection import (
     ABSENT_DIGEST,
@@ -44,7 +45,7 @@ from teleclaude.core.workflow_store.github_board_reflection import (
     reflect_board_item,
 )
 from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused, failure_reason
-from teleclaude.core.workflow_store.github_reflection_queue import owe_unwritten_pull_request
+from teleclaude.core.workflow_store.github_reflection_queue import acknowledge_off_loop, owe_unwritten_pull_request
 
 _BOARD_ITEMS_KEY = "github_store_board_reflections"
 _QUEUE_FAILED = "github_store_board_queue_failed"
@@ -175,7 +176,7 @@ async def _repair_item(store: TodosDb, board: GitHubBoardIO, item_id: str) -> Bo
         item_id=item_id, node_id=node_id, desired=reflect_board_item(snapshot), known=known, targets=targets
     )
     result = await asyncio.wrap_future(board.submit(partial(_apply, item)))
-    store_board_item(Path(store.db_path), item_id, result, owed=False)
+    await asyncio.to_thread(store_board_item, Path(store.db_path), item_id, result, owed=False)
     return None
 
 
@@ -222,11 +223,16 @@ def _finished(db_path: Path, item_id: str, future: Future[Any]) -> None:
         result = future.result()
     except Exception as error:
         logger.warning(_FAILED, item_id=item_id, reason=failure_reason(error), exc_info=True)
-        _keep_owed(db_path, item_id)
+        # Runs on the GitHub I/O loop thread: the write waits for the writer on the acknowledgement thread instead.
+        acknowledge_off_loop(_keep_owed, db_path, item_id)
         return
+    acknowledge_off_loop(_acknowledge, db_path, item_id, result)
+
+
+def _acknowledge(db_path: Path, item_id: str, result: BoardItemBookkeeping) -> None:
     try:
         store_board_item(db_path, item_id, result, owed=False)
-    except sqlite3.Error as error:
+    except (sqlite3.Error, WorkingCopyWriteRefused) as error:
         # The item stays owed, so refresh writes it again.
         logger.warning(_STORE_FAILED, item_id=item_id, reason=type(error).__name__, exc_info=True)
 
@@ -235,7 +241,7 @@ def _keep_owed(db_path: Path, item_id: str) -> None:
     """Re-mark the item owed: a newer write may have cleared the marker while this one was in flight."""
     try:
         mark_board_item_owed_at(db_path, item_id)
-    except sqlite3.Error as error:
+    except (sqlite3.Error, WorkingCopyWriteRefused) as error:
         logger.warning(_STORE_FAILED, item_id=item_id, reason=type(error).__name__, exc_info=True)
 
 

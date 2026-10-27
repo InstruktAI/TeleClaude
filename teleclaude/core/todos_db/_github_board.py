@@ -19,6 +19,8 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from ._write_admission import WRITE_ADMISSION_BUDGET_S, connect_admitted
+
 _SETUP_TABLE_DDL = (
     "CREATE TABLE IF NOT EXISTS github_board_setup (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), "
     "board_issue_number INTEGER, project_number INTEGER, project_id TEXT, status_field_id TEXT, "
@@ -150,8 +152,11 @@ def read_board_setup(db_path: Path) -> BoardSetup:
 
 
 def store_board_setup(db_path: Path, setup: BoardSetup) -> None:
-    """Record what setup learned or still owes, from the daemon's setup run."""
-    connection = sqlite3.connect(db_path)
+    """Record what setup learned or still owes, from the daemon's setup run.
+
+    Runs on a thread no working-copy write depends on, and waits for the writer up to the admission budget.
+    """
+    connection = connect_admitted(str(db_path), WRITE_ADMISSION_BUDGET_S)
     try:
         connection.execute(_SAVE_SETUP_SQL, _setup_parameters(setup))
         connection.commit()
@@ -173,8 +178,11 @@ def board_item_bookkeeping(session: Session, item_id: str) -> BoardItemBookkeepi
 
 
 def store_board_item(db_path: Path, item_id: str, known: BoardItemBookkeeping, *, owed: bool) -> None:
-    """Record one item's board progress from a completion callback or a repair."""
-    connection = sqlite3.connect(db_path)
+    """Record one item's board progress from a completion callback or a repair.
+
+    Runs on a thread no working-copy write depends on, and waits for the writer up to the admission budget.
+    """
+    connection = connect_admitted(str(db_path), WRITE_ADMISSION_BUDGET_S)
     try:
         connection.execute(
             _SAVE_ITEM_SQL,
@@ -191,8 +199,11 @@ def store_board_item(db_path: Path, item_id: str, known: BoardItemBookkeeping, *
 
 
 def mark_board_item_owed_at(db_path: Path, item_id: str) -> None:
-    """Record that the item's board item is owed again, from a completion callback whose write failed."""
-    connection = sqlite3.connect(db_path)
+    """Record that the item's board item is owed again, from a completion callback whose write failed.
+
+    Runs on a thread no working-copy write depends on, and waits for the writer up to the admission budget.
+    """
+    connection = connect_admitted(str(db_path), WRITE_ADMISSION_BUDGET_S)
     try:
         connection.execute(_MARK_OWED_SQL, {BoardField.ITEM_ID.value: item_id})
         connection.commit()
@@ -201,8 +212,11 @@ def mark_board_item_owed_at(db_path: Path, item_id: str) -> None:
 
 
 def forget_board_items(db_path: Path) -> None:
-    """Forget every cached board item, after setup recorded a board that is not the one they belonged to."""
-    connection = sqlite3.connect(db_path)
+    """Forget every cached board item, after setup recorded a board that is not the one they belonged to.
+
+    Runs on a thread no working-copy write depends on, and waits for the writer up to the admission budget.
+    """
+    connection = connect_admitted(str(db_path), WRITE_ADMISSION_BUDGET_S)
     try:
         connection.execute(_FORGET_ALL_ITEMS_SQL)
         connection.commit()
@@ -226,8 +240,11 @@ def mark_all_board_items_owed(session: Session) -> None:
 
 
 def mark_all_board_items_owed_at(db_path: Path) -> None:
-    """Record that every item the project holds owes its board item, from the daemon's setup run."""
-    connection = sqlite3.connect(db_path)
+    """Record that every item the project holds owes its board item, from the daemon's setup run.
+
+    Runs on a thread no working-copy write depends on, and waits for the writer up to the admission budget.
+    """
+    connection = connect_admitted(str(db_path), WRITE_ADMISSION_BUDGET_S)
     try:
         connection.execute(_MARK_ALL_OWED_SQL)
         connection.commit()

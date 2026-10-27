@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
@@ -63,6 +64,11 @@ _ACKNOWLEDGEMENT_THREAD = "teleclaude-github-acknowledgements"
 logger = get_logger(__name__)
 # One process-wide thread keeps an item's acknowledgements in order and keeps their writer waits off every event loop.
 _acknowledgements = ThreadPoolExecutor(max_workers=1, thread_name_prefix=_ACKNOWLEDGEMENT_THREAD)
+
+
+def acknowledge_off_loop(work: Callable[..., None], *arguments: Any) -> None:
+    """Run a completed reflection's bookkeeping on the acknowledgement thread, off every event loop."""
+    _acknowledgements.submit(work, *arguments)
 
 
 def stage_issue_reflections(

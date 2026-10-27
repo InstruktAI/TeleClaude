@@ -217,7 +217,7 @@ class GitHubWorkflowStore(TodosDb):
     async def repair_board(self, computer: str) -> BoardRepairOutcome:
         """Owe every item's board item, set the board up and write them all; only the daemon calls this."""
         async with self._board_setup_lock:
-            mark_all_board_items_owed_at(Path(self.db_path))
+            await asyncio.to_thread(mark_all_board_items_owed_at, Path(self.db_path))
             setup = await self._board_setup(computer).run()
             left = await repair_owed_board_items(self, self._board, set())
             async with self._session() as session:

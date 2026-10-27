@@ -164,12 +164,12 @@ class GitHubBoardSetup:
         try:
             return await self._run(setup)
         except (GitHubIORefused, GitHubBoardRecordRefused) as refused:
-            return self._owed(setup, str(refused))
+            return await self._owed(setup, str(refused))
 
     async def _run(self, setup: BoardSetup) -> BoardSetupOutcome:
         owner = await self._call(lambda io: io.read_owner())
         if not owner.is_organization:
-            return self._owed(setup, BoardSetupCause.PERSONAL_ACCOUNT.value)
+            return await self._owed(setup, BoardSetupCause.PERSONAL_ACCOUNT.value)
         issue_number = (
             setup.board_issue_number if setup.board_issue_number is not None else await self._board_issue_number()
         )
@@ -179,7 +179,7 @@ class GitHubBoardSetup:
         if project is None:
             record = await self._claim_if_unclaimed(issue_number, record)
             if record.holder != self.computer:
-                return self._owed(setup, _CAUSE_HELD_ELSEWHERE.format(record.holder), holder=record.holder)
+                return await self._owed(setup, _CAUSE_HELD_ELSEWHERE.format(record.holder), holder=record.holder)
             project = await self._call(lambda io: io.find_project(owner.owner_id, self._title))
             if project is None:
                 project = await self._call(lambda io: io.create_project(owner.owner_id, self._title))
@@ -193,9 +193,9 @@ class GitHubBoardSetup:
             setup = BoardSetup(
                 board_issue_number=issue_number, project_number=project.number, project_id=project.project_id
             )
-            store_board_setup(self.db_path, setup)
-            forget_board_items(self.db_path)
-            mark_all_board_items_owed_at(self.db_path)
+            await asyncio.to_thread(store_board_setup, self.db_path, setup)
+            await asyncio.to_thread(forget_board_items, self.db_path)
+            await asyncio.to_thread(mark_all_board_items_owed_at, self.db_path)
         state = await self._call(lambda io: io.read_board(project.project_id))
         causes: list[str] = []
         targets = _Targets(
@@ -228,7 +228,8 @@ class GitHubBoardSetup:
         if linked is not None:
             targets = replace(targets, linked=linked)
         cause = _CAUSE_SEPARATOR.join(causes) if causes else None
-        store_board_setup(
+        await asyncio.to_thread(
+            store_board_setup,
             self.db_path,
             BoardSetup(
                 board_issue_number=issue_number,
@@ -375,8 +376,8 @@ class GitHubBoardSetup:
     async def _call[Result](self, work: Callable[[GitHubBoardIO], Awaitable[Result]]) -> Result:
         return await asyncio.wrap_future(self.board.submit(work))
 
-    def _owed(self, setup: BoardSetup, cause: str, *, holder: str | None = None) -> BoardSetupOutcome:
-        store_board_setup(self.db_path, replace(setup, owed_cause=cause))
+    async def _owed(self, setup: BoardSetup, cause: str, *, holder: str | None = None) -> BoardSetupOutcome:
+        await asyncio.to_thread(store_board_setup, self.db_path, replace(setup, owed_cause=cause))
         logger.info(_SETUP_OWED, project=self.repository.project_path.name, reason=cause)
         return BoardSetupOutcome(cause=cause, holder=holder)
 
