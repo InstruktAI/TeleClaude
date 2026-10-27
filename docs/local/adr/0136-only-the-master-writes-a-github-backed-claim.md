@@ -9,9 +9,7 @@ description: For a project on the GitHub workflow store, every write that sets o
 
 ## Status
 
-Superseded in part by ADR-0137: the single writer covers todos an
-orchestrator start can be admitted for, and a release is ordered by the
-releasing computer's admission section.
+Superseded by ADR-0142
 
 ## Context
 

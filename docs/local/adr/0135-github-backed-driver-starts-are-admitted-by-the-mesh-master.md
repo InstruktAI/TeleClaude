@@ -9,10 +9,7 @@ description: For a project on the GitHub workflow store, every lifecycle orchest
 
 ## Status
 
-Superseded in part by ADR-0136: only the master writes a GitHub-backed claim;
-other computers ask it to release, and its runner passes clear ended claims. Superseded in
-part by ADR-0137: a computer answers for a claimed session as the driver of
-that todo, not by the session being open.
+Superseded by ADR-0142
 
 ## Context
 

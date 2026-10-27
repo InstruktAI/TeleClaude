@@ -7,6 +7,10 @@ description: A computer answers for a claimed session only as the driver of that
 
 # A GitHub-Backed Claim Is Settled per Todo — ADR
 
+## Status
+
+Superseded by ADR-0142
+
 ## Context
 
 ADR-0135 has the master admit every orchestrator start of a todo in a project
