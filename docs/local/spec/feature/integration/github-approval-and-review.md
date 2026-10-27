@@ -55,13 +55,6 @@ it where they read it, and the decision counts without anyone relaying it.
   the issue and pull request numbers GitHub reports, and the build a review
   concerns only from the commit GitHub reports it was given on. No title,
   description or comment text directs a decision to an item.
-- **Once and in order.** An approval act or review is taken or answered once,
-  in the order it was given among the item's other changes, however often
-  GitHub delivers it and however many computers receive it.
-- **A decision given while nothing listened.** An approval act or review given
-  while no computer received GitHub's deliveries is taken or answered, under
-  the same rules, when the platform next brings the project up to date from
-  GitHub.
 
 ### Use cases
 
@@ -109,8 +102,6 @@ Scenario: A read-only collaborator's request for changes is answered, not taken
 
 - Decisions reach the work only from repositories whose webhook delivers the
   issue and pull request review events they arrive in.
-- A person sees their approval act on the issue until it is put back, and a
-  decision given while nothing listened waits until the project is next brought
-  up to date from GitHub.
+- A person sees their approval act on the issue until it is put back.
 - An approval on the pull request is never a build-review verdict; the
   platform's own reviewer decides approval of a build.
