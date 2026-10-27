@@ -259,21 +259,21 @@ async def _repair_pull_request(store: TodosDb, pull_requests: GitHubPullRequestI
         await asyncio.to_thread(store_pull_request_bookkeeping, db_path, item_id, known, owed=False)
         return
     try:
-        await asyncio.wrap_future(pull_requests.submit(partial(_apply, desired, known)))
+        settled = await asyncio.wrap_future(pull_requests.submit(partial(_apply, desired, known)))
     except BaseException:
         await asyncio.to_thread(store_pull_request_bookkeeping, db_path, item_id, known, owed=True)
         raise
-    await asyncio.to_thread(store_pull_request_bookkeeping, db_path, item_id, known, owed=False)
+    await asyncio.to_thread(store_pull_request_bookkeeping, db_path, item_id, known, owed=not settled)
 
 
-async def _apply(desired: PullRequestReflection, known: PullRequestBookkeeping, io: GitHubPullRequestIO) -> None:
-    await apply_pull_request(io, desired, known)
+async def _apply(desired: PullRequestReflection, known: PullRequestBookkeeping, io: GitHubPullRequestIO) -> bool:
+    return await apply_pull_request(io, desired, known)
 
 
-def _pull_request_finished(db_path: Path, item_id: str, known: PullRequestBookkeeping, future: Future[Any]) -> None:
+def _pull_request_finished(db_path: Path, item_id: str, known: PullRequestBookkeeping, future: Future[bool]) -> None:
     owed = False
     try:
-        future.result()
+        owed = not future.result()
     except Exception as error:
         owed = True
         logger.warning(
