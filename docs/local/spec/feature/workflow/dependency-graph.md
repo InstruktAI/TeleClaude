@@ -114,7 +114,7 @@ Scenario: An iceboxed todo receives no warning about its prerequisites
   Given an iceboxed todo "frozen-parent"
   When a caller creates an active todo with "telec todo create open-child '<content>' --kind change --after frozen-parent"
   Then the todo is created and the edge is persisted
-  And the creation response carries a warning naming "frozen-parent" as an iceboxed dependency
+  And the outcome delivered to the filing session carries a warning naming "frozen-parent" as an iceboxed dependency
   But the same creation with "--icebox" produces no warning
 ```
 

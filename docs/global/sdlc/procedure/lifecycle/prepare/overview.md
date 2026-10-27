@@ -84,7 +84,8 @@ The slug's presence and the human's presence determine the posture:
   `telec todo create <slug> <content> --kind <kind> --hold --reason "<why this waits, or the gate or owner it waits on>"`.
   The hold keeps the runner from claiming the new todo before you continue;
   release it with `telec todo update <slug> --release` once the todo is ready to
-  enter its normal lane. Then continue as its prepare orchestrator from Step 0a.
+  enter its normal lane. Once the filing's outcome reports the todo created,
+  continue as its prepare orchestrator from Step 0a.
 - **Slug + a human in the conversation.** The human is reassessing or refining
   that todo. Assess the conversation and the human's intent for the slug before
   calling `telec todo prepare {slug}`, then proceed from Step 0a.
