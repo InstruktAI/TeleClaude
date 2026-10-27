@@ -16,6 +16,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.person_display import with_person_chips_on_todos
 from teleclaude.api.todo_routes import _default_cwd, _get_workflow_store_from_cwd
+from teleclaude.api.working_copy_request import working_copy_request_deadline
 from teleclaude.api_models import TodoDTO
 from teleclaude.constants import SLUG_NOT_FOUND_DETAIL
 from teleclaude.core.todos_db._show import assemble_show_payload
@@ -25,7 +26,7 @@ from teleclaude.services.work.slug_actions import SlugActionResult, deliver_todo
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/todos", tags=["todos"])
+router = APIRouter(prefix="/todos", tags=["todos"], dependencies=[Depends(working_copy_request_deadline)])
 
 
 def request_project_root(cwd: str | None) -> Path:

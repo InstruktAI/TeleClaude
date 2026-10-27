@@ -65,6 +65,7 @@ from teleclaude.api.todo_routes import router as todo_router
 from teleclaude.api.todo_slug_routes import router as todo_slug_router
 from teleclaude.api.todo_stamp_routes import router as todo_stamp_router
 from teleclaude.api.work_feedback import DeclaredWorkRefusal, declared_refusal_response
+from teleclaude.api.working_copy_request import working_copy_refusal_response
 from teleclaude.api.ws_constants import API_WS_PING_INTERVAL_S, API_WS_PING_TIMEOUT_S
 from teleclaude.api.ws_mixin import _WebSocketMixin
 from teleclaude.api.ws_options import (
@@ -107,6 +108,7 @@ from teleclaude.core.relayed_request import configure as configure_relayed_reque
 from teleclaude.core.session_lifecycle import LifecycleTransitionReason
 from teleclaude.core.session_materialization import SessionMaterializer
 from teleclaude.core.shutdown_drain import CONTINUATION_HEADER, ShutdownRefusal, get_shutdown_drain
+from teleclaude.core.todos_db._write_admission import WorkingCopyWriteRefused
 from teleclaude.events.schemas.system import (
     RuntimeAgentActivityData,
     RuntimeAgentAvailabilityData,
@@ -471,6 +473,11 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         async def _shutdown_refusal(request, exc):  # type: ignore[no-untyped-def]
             """Service-level refusal of new work while draining: explicit and retryable."""
             return shutdown_refusal_response(exc)
+
+        @self.app.exception_handler(WorkingCopyWriteRefused)
+        async def _working_copy_write_refused(request, exc):  # type: ignore[no-untyped-def]
+            """A working-copy wait ran out: an explicit, truthful 503 instead of an unhandled 500."""
+            return working_copy_refusal_response(exc)
 
         @self.app.exception_handler(DeclaredWorkRefusal)
         async def _declared_work_refusal(request, exc):  # type: ignore[no-untyped-def]
