@@ -60,8 +60,6 @@ A todo is held when either of these exists in its project on this computer:
 - A dispatch repeated after its own earlier start was accepted records that
   started session as the todo's driver instead of starting another.
 
-<!-- planned:single-orchestrator-across-computers -->
-
 ### Across computers
 
 For a project on the GitHub workflow store, every computer holding a checkout
@@ -95,20 +93,11 @@ of them.
   that todo as skipped and continues; a lifecycle operation fails with that
   refusal.
 
-<!-- /planned:single-orchestrator-across-computers -->
-
 ## Known caveats
 
 - A start whose session never leaves initializing — its bootstrap failed —
   holds the todo until that session is ended; the bootstrap failure is
   published for a person to act on.
-
-<!-- planned-change:single-orchestrator-across-computers -->
-
-- Admission covers one computer. Computers that see one todo through a shared
-  workflow store do not decide their starts against each other.
-
-<!-- change:single-orchestrator-across-computers -->
 
 - Across computers, a claim stays held while the computer running its session
   does not answer the master, and every start of a GitHub-backed todo is
@@ -116,18 +105,12 @@ of them.
 - A computer on a release without cross-computer admission still decides its
   own starts by its own registry until it is updated.
 
-<!-- /planned-change:single-orchestrator-across-computers -->
-
 ## See Also
 
 - docs/local/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors.md
 - docs/local/adr/0134-a-colliding-driver-start-is-refused-without-waiting.md
 - docs/local/adr/0052-orchestrator-dedup-registry-authoritative.md
 
-<!-- planned:single-orchestrator-across-computers -->
-
 - docs/local/adr/0135-github-backed-driver-starts-are-admitted-by-the-mesh-master.md
 - docs/local/adr/0136-only-the-master-writes-a-github-backed-claim.md
 - docs/local/adr/0137-a-github-backed-claim-is-settled-per-todo.md
-
-<!-- /planned:single-orchestrator-across-computers -->

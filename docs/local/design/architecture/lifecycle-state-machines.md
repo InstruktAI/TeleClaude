@@ -62,11 +62,7 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 - **One orchestrator per todo on a computer**: every start of a lifecycle orchestrator for a todo — a session create door or a lifecycle operation adopting its caller — passes its live-holder check and the creation or claim it admits inside one in-process critical section per project and todo, whatever its lane, so at most one live orchestrator holds the todo. The section records nothing; the session registry and `active_runner` remain the ownership facts (`local/projects/teleclaude/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors`, `local/projects/teleclaude/adr/0134-a-colliding-driver-start-is-refused-without-waiting`).
 
-<!-- planned:single-orchestrator-across-computers -->
-
 - **One orchestrator per todo across computers**: for a project on the GitHub workflow store, the fleet's master admits every orchestrator start of a todo, from any computer, one at a time, and records the claim before the session is created or claimed; the starting computer holds its own admission section across that admission. Each computer answers for the sessions it runs, as drivers of one todo: a claimed session holds the todo while it is open, not closing, and drives that todo, or while a start of it for that todo is inside its computer's admission section. The master judges a claim by asking every computer the platform knows, and a claim stays held until the computer running its session shows it no longer drives the todo, or every computer answers that the session is not its own. While a start can be admitted for the todo, only the master writes the claim, inside its section for the todo: other computers ask it to release a claim for a session they ran, from inside their own section for the todo and holding it until the release is answered or its deadline has passed, and its lifecycle runner passes clear claims it judges ended. Reactivating a removed todo restores the claim its removal set aside. A start that finds the todo held is refused naming the holding session and the computer running it, or the computers that did not answer. A caller waits for an admission only within a bounded budget; a start still undecided when it expires is refused and creates nothing, and a claim recorded for it is cleared by the master.
-
-<!-- /planned:single-orchestrator-across-computers -->
 
 - **Crash recovery**: all three machines are re-entrant. Re-calling after a crash resumes from durable state.
 
@@ -215,19 +211,9 @@ Each state machine has its own design document with full state diagrams, sequenc
 - **Phase mark failure**: worker must commit before marking phase.
 - **Integration contention**: serialized by lease; concurrent candidates are queued in FIFO order.
 
-<!-- planned-change:single-orchestrator-across-computers -->
-
-- **Concurrent orchestrator starts**: orchestrator starts of one todo on one computer are decided one at a time; the first creates or claims the orchestrator and each later one is refused naming it. A start that arrives while another is being decided does not wait; it is refused as busy, naming the session being started. Starts on different computers sharing one workflow store are not serialized against each other.
-
-<!-- change:single-orchestrator-across-computers -->
-
 - **Concurrent orchestrator starts**: orchestrator starts of one todo on one computer are decided one at a time; the first creates or claims the orchestrator and each later one is refused naming it. A start that arrives while another is being decided does not wait; it is refused as busy, naming the session being started.
 
-<!-- /planned-change:single-orchestrator-across-computers -->
-
 - **Orchestrator stranded in initializing**: an orchestrator session counts as the todo's holder from its creation, so one whose bootstrap failed keeps holding the todo until it is ended; the bootstrap failure is published for a person to act on.
-
-<!-- planned:single-orchestrator-across-computers -->
 
 - **Holder's computer does not answer**: while the computer running a claimed session, or any computer when none answers for it, does not answer the master, the claim stays held and a start of that todo is refused naming the session and the computer running it, or the computers that did not answer; the todo can be started again once the claim is shown ended.
 - **No master to admit a start**: while no unique live master holds the project and answers, starts of a GitHub-backed todo on other computers are refused naming why and create nothing, and lifecycle runner passes skip those todos; no computer decides the start by its own registry instead.
@@ -235,8 +221,6 @@ Each state machine has its own design document with full state diagrams, sequenc
 - **Release does not reach the master**: a claim for a session that ended on another computer stays held until the master's next runner pass judges it ended; while the master is unreachable it stays held.
 - **Removal while a driver runs on another computer**: a removal that a caller forces sets the todo's claim aside; reactivating the todo restores it, so the master judges it before admitting a start.
 - **Computer on an older release**: a computer that does not run cross-computer admission still judges claims by its own registry and can start a second orchestrator until it is updated.
-
-<!-- /planned:single-orchestrator-across-computers -->
 
 - **Stale artifacts**: PRD or architecture updated but downstream artifacts not regenerated. Grounding check catches and triggers re-grounding.
 - **Stale artifacts**: PRD or architecture updated but downstream artifacts not regenerated. Grounding check catches and triggers re-grounding.
