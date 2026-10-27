@@ -567,12 +567,13 @@ master admits each conversation request before sending it:
 - GitHub I/O runs on an adapter-owned I/O thread: a sync caller blocks on it
   without starting an event loop of its own, and an async caller awaits it
   without blocking the daemon's loop. Requests on that thread run one at a
-  time. A request made by a push whose transaction holds the working copy's
-  writer is served ahead of every waiting request that no such push made, so
-  each of the push's requests waits behind at most the one request in flight
-  and the push deadline is spent on the push's own requests. An issue
-  reflection or a pull request unit never runs alongside another one, and
-  holds the request serialization only for each of its own requests.
+  time. While a push whose transaction holds the working copy's writer is
+  under way, requests of any other work, another project's push included, wait
+  until it ends: the push waits only for the one request already in flight
+  when it began, so the push deadline is spent on the push's own requests. An
+  issue reflection, a pull request unit or a board unit never runs alongside
+  another one, and holds the request serialization only for each of its own
+  requests.
 
 <!-- /planned-change:artifact-writes-outlast-push-deadline -->
 
