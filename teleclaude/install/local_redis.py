@@ -102,7 +102,8 @@ class _Step(StrEnum):
     BREW_PREFIX = "read the Homebrew prefix"
     BREW_INSTALL = "install Redis with Homebrew"
     PACKAGE_INSTALL = "install Redis"
-    DISABLE_SYSTEM_SERVICE = "disable the Redis service the package started"
+    DISABLE_SYSTEM_SERVICE = "disable the Redis service the package added"
+    QUERY_SERVICE = "query a systemd service's state"
     UNLOAD_AGENT = "unload the local Redis agent"
     LOAD_AGENT = "load the local Redis agent"
     RESTART_AGENT = "restart the local Redis agent"
@@ -262,22 +263,22 @@ def _server_binary() -> Path | None:
     return next((candidate for candidate in _SYSTEM_BINARIES if candidate.exists()), None)
 
 
-def _system_service_active(service: str) -> bool:
-    command = [_Program.SYSTEMCTL, _Argument.SYSTEMCTL_IS_ACTIVE, _Argument.SYSTEMCTL_QUIET, service]
+def _system_service_in_state(state: _Argument, service: str) -> bool:
+    """Whether systemd reports ``service`` in ``state``; a query that cannot run refuses instead of answering no."""
+    command = [_Program.SYSTEMCTL, state, _Argument.SYSTEMCTL_QUIET, service]
     try:
         completed = subprocess.run(command, check=False, capture_output=True)
-    except OSError:
-        return False
+    except OSError as error:
+        raise LocalRedisRefused(_COMMAND_ERROR.format(step=_Step.QUERY_SERVICE, detail=error, env=ENV_PATH)) from error
     return completed.returncode == 0
+
+
+def _system_service_active(service: str) -> bool:
+    return _system_service_in_state(_Argument.SYSTEMCTL_IS_ACTIVE, service)
 
 
 def _system_service_enabled(service: str) -> bool:
-    command = [_Program.SYSTEMCTL, _Argument.SYSTEMCTL_IS_ENABLED, _Argument.SYSTEMCTL_QUIET, service]
-    try:
-        completed = subprocess.run(command, check=False, capture_output=True)
-    except OSError:
-        return False
-    return completed.returncode == 0
+    return _system_service_in_state(_Argument.SYSTEMCTL_IS_ENABLED, service)
 
 
 def _install_binary() -> None:
