@@ -5,14 +5,17 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.claim_authority import ClaimOwnership, classify_claim_ownership
-from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
+from teleclaude.core.next_machine.driver_admission import schedule_claim_release
+from teleclaude.core.next_machine.runtime.sessions import claim_is_held, is_github_backed
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.core.workflow_store.store import get_workflow_store
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
+from teleclaude.types.state_value import StateValue
 
 _TODO_NOT_FOUND_MESSAGE = "error: todo {slug!r} was not found"
 _CONFLICTING_BINDING_MESSAGE = (
@@ -184,6 +187,27 @@ def format_claim_release_outcome(*, outcome: ClaimReleaseOutcome) -> str:
     return _CLEARED_CLAIM_MESSAGE.format(slug=slug, cleared_claims=outcome.fields.value)
 
 
+async def _release_active_runner(
+    todos_db: WorkflowStore,
+    project_root: Path,
+    slug: str,
+    raw_state: dict[str, StateValue],
+    claimed_session_id: str | None,
+) -> None:
+    """Release the caller's own claim: written here for a local store, requested of the master for a GitHub one.
+
+    A GitHub-backed claim is written only on the master, so the release is requested of it without the
+    caller waiting; a release that does not reach the master is cleared by the master's reconciliation.
+    """
+    if claimed_session_id is not None and is_github_backed(project_root):
+        schedule_claim_release(project_root, slug, claimed_session_id)
+        return
+    writer = StateWriter(raw_state)
+    writer.state.active_runner = None
+    writer.state.manually_started = False
+    await writer.commit(todos_db, slug)
+
+
 async def unclaim_todo_for_caller(
     db: Db,
     *,
@@ -202,7 +226,9 @@ async def unclaim_todo_for_caller(
     active_runner = raw_state.get("active_runner")
     claimed_session_id = active_runner if isinstance(active_runner, str) and active_runner else None
     live_claimant = (
-        claimed_session_id if claimed_session_id and await is_live_session_id(db, claimed_session_id) else None
+        claimed_session_id
+        if claimed_session_id and await claim_is_held(db, project_root, slug, claimed_session_id)
+        else None
     )
     ownership = classify_claim_ownership(
         slug=slug,
@@ -226,10 +252,7 @@ async def unclaim_todo_for_caller(
 
     cleared_active_runner = False
     if ownership is ClaimOwnership.OWNS_CLAIM:
-        writer = StateWriter(raw_state)
-        writer.state.active_runner = None
-        writer.state.manually_started = False
-        await writer.commit(todos_db, slug)
+        await _release_active_runner(todos_db, project_root, slug, raw_state, claimed_session_id)
         cleared_active_runner = True
 
     cleared_working_slug = False
@@ -237,10 +260,7 @@ async def unclaim_todo_for_caller(
         await db.update_session(caller_session_id, working_slug=None)
         cleared_working_slug = True
         if claimed_session_id == caller_session_id:
-            writer = StateWriter(raw_state)
-            writer.state.active_runner = None
-            writer.state.manually_started = False
-            await writer.commit(todos_db, slug)
+            await _release_active_runner(todos_db, project_root, slug, raw_state, claimed_session_id)
             cleared_active_runner = True
 
     if cleared_active_runner or cleared_working_slug:

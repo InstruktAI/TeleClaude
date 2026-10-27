@@ -76,6 +76,14 @@ def project_folder(reference: str) -> Path | None:
     return registered_home_folder(ConfigSubjectKind.PROJECT, reference)
 
 
+def project_identity_for_folder(root: Path) -> str:
+    """Answer the identity a project's folder is registered under: how another computer names the project.
+
+    A path means nothing on another computer; the identity is what its own registry resolves to its folder.
+    """
+    return _raw_project_identity(root) or root.name
+
+
 def _registered_project_root(slug: str) -> Path | None:
     """Find the registered project root whose identity is ``slug``.
 

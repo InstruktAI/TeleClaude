@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import NotRequired, Required, TypedDict
 
 from teleclaude.core.command_input import CommandInputMode
+
+
+class RunSessionField(StrEnum):
+    """Run-session fields the client reads or writes by name outside the argument shape."""
+
+    MANUALLY_STARTED = "manually_started"
 
 
 class CreateSessionArgs(TypedDict, total=False):
@@ -41,3 +48,4 @@ class RunSessionArgs(TypedDict, total=False):
     entry_point: NotRequired[str]
     company: NotRequired[str | None]
     job: NotRequired[str | None]
+    manually_started: NotRequired[bool]

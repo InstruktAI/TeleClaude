@@ -30,7 +30,6 @@ from fastapi.responses import JSONResponse, Response
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, carried_caller_of, principal_for_carried_caller
-from teleclaude.api.computers_routes import known_computer_names
 from teleclaude.api.session_route_helpers import http_exception_for_relay_failure
 from teleclaude.api.work_feedback import declared_refusal_response
 from teleclaude.caller_identity import RelayedAct, cleared_command_path
@@ -41,6 +40,7 @@ from teleclaude.core.command_dispatch import (
     RemoteDispatchReason,
     is_remote_target,
 )
+from teleclaude.core.inbound.fleet import known_computer_names
 from teleclaude.core.operation_caller_identity import get_relayed_caller
 from teleclaude.core.relay_carrier import carry_request
 from teleclaude.types.commands import CommandType, RelayedResponse
