@@ -28,7 +28,11 @@ from teleclaude.api.auth import (
     carried_caller,
     resolve_caller_provenance,
 )
-from teleclaude.api.driver_start_guard import enforce_driver_start_guard, terminal_driver_email
+from teleclaude.api.driver_start_guard import (
+    admission_caller_for,
+    enforce_driver_start_guard,
+    terminal_driver_email,
+)
 from teleclaude.api.run_session_job import normalize_job_run_request
 from teleclaude.api.run_session_procedure import manual_activation
 from teleclaude.api.run_session_refusals import RunSessionRefusal, resolve_run_session_agent
@@ -264,6 +268,7 @@ async def guard_generic_create_session(
         thinking_mode=cmd.launch_intent.thinking_mode if cmd.launch_intent else "",
         starting_session_id=cmd.session_id,
         local_target=local_target,
+        admission_caller=admission_caller_for(identity),
     ) as guard_result:
         yield guard_result
 
@@ -700,6 +705,8 @@ async def _create_planned_session(
             caller_human_email=terminal_driver_email(identity),
             thinking_mode=plan.launch_intent.thinking_mode if plan.launch_intent else "",
             starting_session_id=plan.session_id,
+            admission_caller=admission_caller_for(identity),
+            manually_started=request.manually_started,
         ) as guard_result:
             data = await _dispatch_planned_session(cmd, identity, plan, dispatch_mode)
     except RunSessionRefusal as exc:

@@ -18,6 +18,7 @@ from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
+from teleclaude.api.driver_start_guard import admission_caller_for
 from teleclaude.api.todo_artifact_authority import (
     refuse_todo_update_outside_claiming_group,
     resolve_creation_lineage,
@@ -45,7 +46,6 @@ from teleclaude.constants import (
     ARTIFACT_INPUT,
     ARTIFACT_TASK_PLAN,
     SLUG_NOT_FOUND_DETAIL,
-    SYSTEM_DAEMON_PRINCIPAL,
 )
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.human_involvement import (
@@ -54,7 +54,6 @@ from teleclaude.core.human_involvement import (
     resolve_human_involvement,
 )
 from teleclaude.core.next_machine.driver_admission import (
-    AdmissionCaller,
     StartRequest,
     admit_relayed_start,
     release_relayed_claim,
@@ -703,15 +702,6 @@ class _DriverClaimResponse(BaseModel):
     cleared: bool = False
 
 
-def _admission_caller(identity: CallerIdentity) -> AdmissionCaller:
-    """The principal a start's relayed requests are cleared as: its own, else the daemon's."""
-    return AdmissionCaller(
-        principal=identity.principal or SYSTEM_DAEMON_PRINCIPAL,
-        cleared_command=identity.command,
-        session_id=identity.session_id or None,
-    )
-
-
 def _driver_refusal(failure: OperationFailure, status_code: int) -> DeclaredWorkRefusal:
     """The refusal a master answers a relayed admission or release with: the failure's own payload as the detail."""
     return DeclaredWorkRefusal(
@@ -739,7 +729,7 @@ async def todo_driver_admission(
         lane=body.lane,
         manually_started=body.manually_started,
         release_hold=body.release_hold,
-        caller=_admission_caller(identity),
+        caller=admission_caller_for(identity),
     )
     try:
         await admit_relayed_start(request)

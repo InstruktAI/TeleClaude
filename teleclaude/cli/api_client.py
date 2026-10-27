@@ -773,6 +773,8 @@ class _TelecSessionAPI:
         job = kwargs.get("job")
         if job is not None:
             request_data["job"] = job
+        if kwargs.get("manually_started"):
+            request_data["manually_started"] = True
         request = RunSessionRequest.model_validate(request_data)
         if "agent" in kwargs:
             request = request.model_copy(update={"agent": kwargs["agent"]})

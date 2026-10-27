@@ -18,7 +18,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from collections.abc import Coroutine, Mapping
+from collections.abc import AsyncIterator, Coroutine, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from http import HTTPMethod
 from pathlib import Path
@@ -31,7 +32,7 @@ from teleclaude.caller_identity import cleared_command_path
 from teleclaude.config.machine import config
 from teleclaude.config.registered_homes import project_identity_for_folder
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
-from teleclaude.core.command_dispatch import RelayFailure
+from teleclaude.core.command_dispatch import RemoteDispatchError, RemoteDispatchReason
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.inbound.fleet import MasterUnavailability, known_computer_names, observe_fleet_from_heartbeats
 from teleclaude.core.next_machine.driver_claim import set_active_runner
@@ -89,6 +90,9 @@ _REFUSED_EVENT = "driver start refused by held claim"
 _RELEASED_EVENT = "driver claim released"
 _RECONCILED_EVENT = "driver claim reconciled"
 _RECONCILE_SKIPPED_EVENT = "driver claim reconciliation skipped"
+ADMISSION_CONFLICT_KIND = "driver_admission_conflict"
+_KIND_FIELD = "kind"
+_SUMMARY_FIELD = "summary"
 
 
 @dataclass(frozen=True)
@@ -202,7 +206,7 @@ async def _ask_computer(
             caller=caller,
             deadline_s=QUESTION_DEADLINE_S,
         )
-    except (RelayFailure, RuntimeError, ValueError) as error:
+    except (RemoteDispatchError, RuntimeError, ValueError) as error:
         logger.warning(
             _QUESTION_UNANSWERED_EVENT, computer=computer, slug=slug, session_id=session_id, error=str(error)
         )
@@ -461,3 +465,264 @@ async def release_relayed_claim(project_root: Path, slug: str, session_id: str) 
     if await resolve_admission_master(slug) is not None:
         raise AdmissionUnavailable(slug=slug, reason=AdmissionUnavailableReason.NOT_THE_MASTER)
     return await release_driver_claim(project_root, slug, session_id)
+
+
+_HTTP_OK = 200
+_HTTP_CONFLICT = 409
+_HTTP_LOCKED = 423
+_HOLDER_FIELD = "holder"
+_COMPUTER_FIELD = "computer"
+_UNANSWERED_FIELD = "unanswered"
+_IN_FLIGHT_FIELD = "in_flight"
+_DETAIL_FIELD = "detail"
+_ADMISSION_DECLINED_STATUS = "status {status}"
+_START_RELEASED_EVENT = "driver start withdrew its claim"
+_RELEASE_UNANSWERED_EVENT = "driver claim release left to reconciliation"
+_RELEASE_SKIPPED_EVENT = "driver claim release skipped while a start of the todo is in progress"
+
+
+@dataclass
+class _StartState:
+    """Whether the caller of a start is still waiting for its outcome."""
+
+    waiting: bool = True
+
+
+def _detail_of(response: RelayedResponse) -> Mapping[str, object]:
+    """The payload a refusing master carried as its response detail; empty when it carried none."""
+    try:
+        payload: object = json.loads(base64.b64decode(response.body_b64))
+    except (ValueError, UnicodeError):
+        return {}
+    detail = payload.get(_DETAIL_FIELD) if isinstance(payload, dict) else None
+    return {str(key): value for key, value in detail.items()} if isinstance(detail, dict) else {}
+
+
+def _text_of(detail: Mapping[str, object], key: str) -> str | None:
+    value = detail.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+async def _post_to_master(
+    master: str, slug: str, path: str, body: bytes, caller: AdmissionCaller, deadline_s: float
+) -> RelayedResponse:
+    """Carry a request to the master; a crossing that fails is :class:`AdmissionUnavailable`, never success."""
+    try:
+        return await _carry(master, HTTPMethod.POST, path, query=[], body=body, caller=caller, deadline_s=deadline_s)
+    except RemoteDispatchError as error:
+        reason = (
+            AdmissionUnavailableReason.MASTER_CANNOT_CARRY
+            if error.reason is RemoteDispatchReason.RELAY_UNSUPPORTED
+            else AdmissionUnavailableReason.MASTER_DID_NOT_ANSWER
+        )
+        raise AdmissionUnavailable(slug=slug, reason=reason, detail=str(error)) from error
+    except (RuntimeError, ValueError) as error:
+        raise AdmissionUnavailable(
+            slug=slug, reason=AdmissionUnavailableReason.MASTER_DID_NOT_ANSWER, detail=str(error)
+        ) from error
+
+
+async def _request_admission(master: str, request: StartRequest) -> None:
+    """Ask the master to admit the start; its refusal is raised as the failure it names."""
+    slug = request.slug
+    response = await _post_to_master(
+        master, slug, ADMISSION_PATH, request.to_body(), request.caller, ADMISSION_RELAY_DEADLINE_S
+    )
+    if response.status_code == _HTTP_OK:
+        return
+    detail = _detail_of(response)
+    if response.status_code == _HTTP_CONFLICT:
+        unanswered = detail.get(_UNANSWERED_FIELD)
+        raise ClaimConflict(
+            slug=slug,
+            holder=_text_of(detail, _HOLDER_FIELD),
+            computer=_text_of(detail, _COMPUTER_FIELD),
+            unanswered=tuple(item for item in unanswered if isinstance(item, str))
+            if isinstance(unanswered, list)
+            else (),
+        )
+    if response.status_code == _HTTP_LOCKED:
+        raise DriverStartBusy(slug=slug, in_flight=_text_of(detail, _IN_FLIGHT_FIELD))
+    raise AdmissionUnavailable(
+        slug=slug,
+        reason=AdmissionUnavailableReason.MASTER_CANNOT_CARRY,
+        detail=_ADMISSION_DECLINED_STATUS.format(status=response.status_code),
+    )
+
+
+async def _release_within_section(project_root: Path, slug: str, session_id: str, caller: AdmissionCaller) -> None:
+    """Ask the master to release the claim naming ``session_id``; run inside this computer's section for the todo.
+
+    On the master the clear is made here. On another computer the request is relayed and its answer awaited
+    until the relay deadline. A release that does not reach the master, or that the master refuses as busy,
+    is logged and left to the master's reconciliation.
+    """
+    try:
+        master = await resolve_admission_master(slug)
+    except AdmissionUnavailable as unavailable:
+        logger.warning(_RELEASE_UNANSWERED_EVENT, slug=slug, session_id=session_id, reason=unavailable.reason.value)
+        return
+    if master is None:
+        await clear_matching_claim(project_root, slug, session_id)
+        return
+    body = json.dumps(
+        {
+            _PROJECT_PATH_FIELD: project_identity_for_folder(project_root),
+            _SLUG_FIELD: slug,
+            _SESSION_ID_FIELD: session_id,
+        }
+    ).encode()
+    try:
+        response = await _post_to_master(master, slug, RELEASE_PATH, body, caller, RELEASE_RELAY_DEADLINE_S)
+    except AdmissionUnavailable as unavailable:
+        logger.warning(_RELEASE_UNANSWERED_EVENT, slug=slug, session_id=session_id, reason=unavailable.reason.value)
+        return
+    if response.status_code != _HTTP_OK:
+        logger.warning(_RELEASE_UNANSWERED_EVENT, slug=slug, session_id=session_id, status=response.status_code)
+
+
+async def _release_in_own_section(project_root: Path, slug: str, session_id: str, caller: AdmissionCaller) -> None:
+    try:
+        async with driver_start_section(project_root, slug, starting_session_id=session_id):
+            await _release_within_section(project_root, slug, session_id, caller)
+    except DriverStartBusy:
+        logger.info(_RELEASE_SKIPPED_EVENT, slug=slug, session_id=session_id)
+
+
+def schedule_claim_release(
+    project_root: Path, slug: str, session_id: str, caller: AdmissionCaller = AdmissionCaller()
+) -> None:
+    """Ask the master to release the claim naming ``session_id`` on ``slug``, without blocking the caller.
+
+    The request is issued by a task that holds this computer's section for the todo until the master has
+    answered or the relay deadline has passed, so no later start of the todo on this computer is admitted
+    before the master has received this release, and a start of the todo meanwhile is refused at once as
+    busy. A todo whose section is busy is skipped and left to the master's reconciliation.
+    """
+    spawn_tracked(_release_in_own_section(project_root, slug, session_id, caller))
+
+
+async def _admit_within_section(request: StartRequest) -> None:
+    """Decide the start: this computer's own holders first, then the master's admission."""
+    root, slug = request.project_root, request.slug
+    holder = await recheck_slug_holder(
+        await get_db(), await get_workflow_store(root), root, slug, exempt_session_id=request.session_id
+    )
+    if holder is not None:
+        raise ClaimConflict(slug=slug, holder=holder, computer=config.computer.name)
+    master = await resolve_admission_master(slug)
+    if master is None:
+        await decide_driver_admission(request)
+        return
+    await _request_admission(master, request)
+    await refresh_github_workflow_store(root)
+
+
+def _refuse_waiter(decided: asyncio.Future[None], state: _StartState, refusal: OperationFailure) -> None:
+    """Hand a refusal to the caller still waiting for the start's outcome; a caller that left learns nothing."""
+    if state.waiting and not decided.done():
+        decided.set_exception(refusal)
+
+
+async def _run_start(
+    request: StartRequest, state: _StartState, decided: asyncio.Future[None], finished: asyncio.Future[bool]
+) -> None:
+    """Own the todo's section on this computer from the start's admission until its caller has finished creating.
+
+    A start that is refused nothing was recorded for. A start whose outcome is unknown (the master could not
+    be reached or did not answer), whose caller stopped waiting, or whose creation failed asks the master to
+    release the claim named for its session, still inside the section, so a release always reaches the
+    master before any later start of the todo from this computer.
+    """
+    try:
+        async with driver_start_section(request.project_root, request.slug, starting_session_id=request.session_id):
+            try:
+                await _admit_within_section(request)
+            except (ClaimConflict, DriverStartBusy) as refusal:
+                _refuse_waiter(decided, state, refusal)
+                return
+            except AdmissionUnavailable as unavailable:
+                await _release_within_section(request.project_root, request.slug, request.session_id, request.caller)
+                _refuse_waiter(decided, state, unavailable)
+                return
+            created = False
+            if state.waiting:
+                decided.set_result(None)
+                created = await finished
+            if not created:
+                logger.info(_START_RELEASED_EVENT, slug=request.slug, session_id=request.session_id)
+                await _release_within_section(request.project_root, request.slug, request.session_id, request.caller)
+    except DriverStartBusy as busy:
+        _refuse_waiter(decided, state, busy)
+
+
+@asynccontextmanager
+async def admitted_start(request: StartRequest) -> AsyncIterator[None]:
+    """Hold this computer's section for a GitHub-backed start while the master admits it and the caller creates.
+
+    The start runs as a task that owns the todo's section on this computer; the caller waits for its
+    outcome only up to :data:`START_BUDGET_S`. Entering returns once the master has recorded the claim, or
+    raises the refusal: :class:`ClaimConflict` naming the holder and its computer, :class:`DriverStartBusy`,
+    or :class:`AdmissionUnavailable` (also when the budget expires first, in which case the task finishes
+    on its own and withdraws a claim it recorded). The caller creates its session or reflects its adoption
+    inside the context; leaving it with an error withdraws the claim, leaving it cleanly ends the section.
+    """
+    loop = asyncio.get_running_loop()
+    decided: asyncio.Future[None] = loop.create_future()
+    finished: asyncio.Future[bool] = loop.create_future()
+    state = _StartState()
+    spawn_tracked(_run_start(request, state, decided, finished))
+    try:
+        await asyncio.wait_for(asyncio.shield(decided), START_BUDGET_S)
+    except TimeoutError as error:
+        state.waiting = False
+        _finish(finished, created=False)
+        raise AdmissionUnavailable(
+            slug=request.slug, reason=AdmissionUnavailableReason.UNDECIDED_WITHIN_BUDGET
+        ) from error
+    except BaseException:
+        state.waiting = False
+        _finish(finished, created=False)
+        raise
+    try:
+        yield
+    except BaseException:
+        _finish(finished, created=False)
+        raise
+    _finish(finished, created=True)
+
+
+def _finish(finished: asyncio.Future[bool], *, created: bool) -> None:
+    if not finished.done():
+        finished.set_result(created)
+
+
+def admission_conflict_detail(conflict: ClaimConflict) -> str:
+    """The create door's 409 detail for a held GitHub-backed todo: a declared kind, the holder and its computer.
+
+    The kind is distinct from every other 409 of the create door, so the runner reads the refusal by its
+    declared kind and never by its prose.
+    """
+    payload: dict[str, object] = dict(conflict.to_error_payload())  # guard: loose-dict - declared wire payload
+    payload[_KIND_FIELD] = ADMISSION_CONFLICT_KIND
+    payload[_SUMMARY_FIELD] = conflict.summary()
+    return json.dumps(payload)
+
+
+def parse_admission_conflict(slug: str, detail: str | None) -> ClaimConflict | None:
+    """Rebuild the :class:`ClaimConflict` a create door's admission refusal declared; ``None`` for any other 409."""
+    if not detail:
+        return None
+    try:
+        payload: object = json.loads(detail)
+    except ValueError:
+        return None
+    if not isinstance(payload, dict) or payload.get(_KIND_FIELD) != ADMISSION_CONFLICT_KIND:
+        return None
+    unanswered = payload.get(_UNANSWERED_FIELD)
+    return ClaimConflict(
+        slug=slug,
+        holder=_text_of(payload, _HOLDER_FIELD),
+        computer=_text_of(payload, _COMPUTER_FIELD),
+        unanswered=tuple(item for item in unanswered if isinstance(item, str)) if isinstance(unanswered, list) else (),
+    )

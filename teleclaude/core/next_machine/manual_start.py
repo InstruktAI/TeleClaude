@@ -18,6 +18,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import DriverLaunchClass
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
+from teleclaude.core.next_machine.driver_admission import StartRequest, admitted_start
 from teleclaude.core.next_machine.driver_claim import set_active_runner
 from teleclaude.core.next_machine.git_ops import get_ref_commit
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
@@ -47,6 +48,7 @@ from teleclaude.core.next_machine.runtime.sessions import (
     find_live_commit_reviewer_for_initiator,
     find_live_commit_reviewer_for_terminal_human,
     find_live_reviewer_for_slug,
+    is_github_backed,
     recheck_slug_holder,
     resolve_slug_holders,
 )
@@ -82,6 +84,7 @@ __all__ = [
     "adopt_headless_session",
     "adopt_manual_lifecycle_session",
     "guard_driver_start",
+    "lane_of_role",
     "resolve_manual_dispatch_intent",
     "work_feedback_for_manual_skip",
 ]
@@ -392,7 +395,7 @@ async def guard_driver_start(
     return DriverStartGuardResult(held_without_driver=bool(todo and todo.hold and holder is None))
 
 
-def _lane_of_role(role: str | None) -> RunnerLane | None:
+def lane_of_role(role: str | None) -> RunnerLane | None:
     """Return the SDLC lane a session role belongs to, or ``None`` when no lane owns it."""
     for lane, roles in _LANE_ROLES.items():
         if role in roles:
@@ -418,7 +421,7 @@ async def _refuse_lane_crossing(
     holds_slug = (todo is not None and todo.active_runner == caller_session_id) or (
         session is not None and session.working_slug == slug
     )
-    held_lane = _lane_of_role(session.role if session is not None else None)
+    held_lane = lane_of_role(session.role if session is not None else None)
     if not holds_slug or held_lane is None or held_lane is requested_lane or requested_lane not in _LANE_ROLES:
         return
     raise LaneCrossingRefused(
@@ -530,6 +533,13 @@ async def adopt_manual_lifecycle_session(
     since the guard returns ``ALREADY_DRIVEN`` naming it, and a start already in progress
     raises :class:`DriverStartBusy`. Task lanes take no section.
 
+    On a project on the GitHub store the section is held across the master's admission
+    (:func:`admitted_start`), which records the claim before the reflection onto the caller and
+    is the only writer of ``active_runner``: the adoption writes none of its own. A todo held
+    by a session on another computer raises :class:`ClaimConflict` naming the holder and its
+    computer (or the computers that did not answer for it); a master that cannot decide the
+    start raises :class:`AdmissionUnavailable`. Neither returns a result.
+
     Raises :class:`LaneCrossingRefused` before any claim write or role reflection
     when the caller holds ``slug`` in the other SDLC lane.
     """
@@ -556,7 +566,10 @@ async def adopt_manual_lifecycle_session(
             lane = RunnerLane.WORK
     await _refuse_lane_crossing(runtime_db, todo, slug, caller_session_id, lane)
     if todo is not None and todo.active_runner == caller_session_id:
-        await set_active_runner(todos_db, slug, caller_session_id, lane=lane, manually_started=True, release_hold=False)
+        if not is_github_backed(project_root):
+            await set_active_runner(
+                todos_db, slug, caller_session_id, lane=lane, manually_started=True, release_hold=False
+            )
         active_session = await runtime_db.get_session(caller_session_id)
         if active_session is not None:
             await _reflect_claim_on_caller_session(runtime_db, active_session, slug, lane)
@@ -615,7 +628,21 @@ async def adopt_manual_lifecycle_session(
             reason=f"conflicting session binding: caller owns working_slug={session.working_slug}",
             work_feedback=_CONFLICTING_SESSION_BINDING_FEEDBACK,
         )
-    if lane in _SECTIONED_LANES:
+    if lane in _SECTIONED_LANES and is_github_backed(project_root):
+        # The master admits and records the claim; this computer's section is held across the admission
+        # and the reflection onto the caller, and the adoption writes no ``active_runner`` of its own.
+        start = StartRequest(
+            project_root=project_root,
+            slug=slug,
+            session_id=caller_session_id,
+            lane=lane,
+            manually_started=True,
+            release_hold=True,
+        )
+        async with admitted_start(start):
+            await _reflect_claim_on_caller_session(runtime_db, session, slug, lane)
+        adopted = True
+    elif lane in _SECTIONED_LANES:
         async with driver_start_section(project_root, slug, starting_session_id=caller_session_id):
             holder = await recheck_slug_holder(
                 runtime_db, todos_db, project_root, slug, exempt_session_id=caller_session_id
