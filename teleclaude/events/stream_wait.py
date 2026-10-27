@@ -11,8 +11,10 @@ import contextlib
 from collections.abc import Awaitable
 from typing import Final
 
+from teleclaude.constants import REDIS_STREAM_BLOCK_S
+
 #: How long an idle reader blocks on Redis before it asks again; an arriving entry returns the read at once.
-STREAM_BLOCK_MS: Final = 10_000
+STREAM_BLOCK_MS: Final = REDIS_STREAM_BLOCK_S * 1000
 
 
 async def read_until_shutdown[T](read: Awaitable[T], shutdown_event: asyncio.Event) -> T | None:

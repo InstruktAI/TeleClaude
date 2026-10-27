@@ -731,6 +731,8 @@ class UiScope(str, Enum):
 # Redis internal settings
 REDIS_MAX_CONNECTIONS = 50
 REDIS_SOCKET_TIMEOUT = 60  # Increased to accommodate poor network conditions
+# How long an idle stream reader blocks on Redis before it asks again; a socket timeout must outlast it.
+REDIS_STREAM_BLOCK_S: Final = 10
 REDIS_POOL_TIMEOUT: float = 30.0  # Max seconds to wait for a pooled connection before erroring
 REDIS_MESSAGE_STREAM_MAXLEN = 10000  # Max messages to keep per computer
 REDIS_OUTPUT_STREAM_MAXLEN = 10000  # Max output messages per session
