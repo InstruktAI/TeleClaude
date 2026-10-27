@@ -37,6 +37,7 @@ from teleclaude.transport.redis_client import create_redis_client
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.cache import DaemonCache
 
 logger = get_logger(__name__)
 
@@ -48,6 +49,7 @@ _PEER_VERSION_FIELD = "version"
 _PEER_CHANNEL_FIELD = "channel"
 _MASTER_CONFLICT_EVENT = "conversation_master_conflict"
 _FLEET_OBSERVATION_FAILED_EVENT = "fleet_observation_failed"
+_KNOWN_COMPUTERS_CACHE: dict[str, DaemonCache | None] = {"value": None}
 
 
 class MasterUnavailability(StrEnum):
@@ -231,14 +233,70 @@ async def observe_fleet(client: AdapterClient) -> FleetView:
     return build_fleet_view(local_fleet_member(), await client.discover_peers())
 
 
+class KnownComputerStatus(StrEnum):
+    """Whether a known remote computer was discovered live or is only configured."""
+
+    ONLINE = "online"
+    OFFLINE = "offline"
+
+
+@dataclass(frozen=True)
+class KnownRemoteComputer:
+    """A remote computer this computer has discovered (online) or only configured (offline)."""
+
+    name: str
+    status: KnownComputerStatus
+    user: str | None
+    host: str | None
+
+
+def configure_known_computers(cache: DaemonCache | None) -> None:
+    """Wire the daemon cache whose discovered computers join the configured roster."""
+    _KNOWN_COMPUTERS_CACHE["value"] = cache
+
+
+def known_remote_computers() -> list[KnownRemoteComputer]:
+    """Remote computers this computer has discovered (online) or has configured (offline when not discovered)."""
+    # Track names already listed (case-insensitive) to avoid duplicates, starting with this computer.
+    seen_names: set[str] = {config.computer.name.lower()}
+    remotes: list[KnownRemoteComputer] = []
+
+    cache = _KNOWN_COMPUTERS_CACHE["value"]
+    if cache:
+        for comp in cache.get_computers():
+            remotes.append(
+                KnownRemoteComputer(name=comp.name, status=KnownComputerStatus.ONLINE, user=comp.user, host=comp.host)
+            )
+            seen_names.add(comp.name.lower())
+
+    for remote in config.remote_computers:
+        if remote.name.lower() not in seen_names:
+            remotes.append(
+                KnownRemoteComputer(
+                    name=remote.name, status=KnownComputerStatus.OFFLINE, user=remote.user, host=remote.host
+                )
+            )
+    return remotes
+
+
+def known_computer_names() -> frozenset[str]:
+    """Every computer name this computer has configured or discovered, itself included."""
+    return frozenset({config.computer.name, *(remote.name for remote in known_remote_computers())})
+
+
 __all__ = [
     "FleetMember",
     "FleetView",
+    "KnownComputerStatus",
+    "KnownRemoteComputer",
     "MasterResolution",
     "MasterUnavailability",
     "build_fleet_view",
+    "configure_known_computers",
     "contraction_answer_from_heartbeats",
     "fleet_member_from_peer",
+    "known_computer_names",
+    "known_remote_computers",
     "local_conversation_adapters",
     "local_fleet_member",
     "observe_fleet",
