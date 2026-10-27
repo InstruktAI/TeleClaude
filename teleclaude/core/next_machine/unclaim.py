@@ -8,7 +8,7 @@ from enum import StrEnum
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.claim_authority import ClaimOwnership, classify_claim_ownership
-from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
+from teleclaude.core.next_machine.runtime.sessions import claim_is_held
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
@@ -202,7 +202,9 @@ async def unclaim_todo_for_caller(
     active_runner = raw_state.get("active_runner")
     claimed_session_id = active_runner if isinstance(active_runner, str) and active_runner else None
     live_claimant = (
-        claimed_session_id if claimed_session_id and await is_live_session_id(db, claimed_session_id) else None
+        claimed_session_id
+        if claimed_session_id and await claim_is_held(db, project_root, slug, claimed_session_id)
+        else None
     )
     ownership = classify_claim_ownership(
         slug=slug,

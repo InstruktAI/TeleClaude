@@ -46,8 +46,9 @@ from teleclaude.core.next_machine.runner_types import (
     RunnerTodo,
 )
 from teleclaude.core.next_machine.runtime.sessions import (
+    claim_is_driven_here,
+    claim_is_held,
     find_accepted_lifecycle_start,
-    is_live_session_id,
     live_orchestrator_owned_slugs,
     resolve_slug_holders,
 )
@@ -301,10 +302,6 @@ def decide_dispatches(
     return decision
 
 
-async def _is_live_runner(db: Db, session_id: str | None) -> bool:
-    return bool(session_id and await is_live_session_id(db, session_id))
-
-
 def _read_runner_todo(row: TodoRow, status_read: TodoStatusStateRead) -> _RunnerTodoRead:
     current_status = status_read.status
     state = status_read.state
@@ -536,7 +533,7 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                     reviewed_plan_digest=todo.reviewed_plan_digest,
                     dependency_drift_pending_on=tuple(sorted(moved_dependencies)),
                 )
-        if todo.active_runner and not await _is_live_runner(db, todo.active_runner):
+        if todo.active_runner and not await claim_is_held(db, todos_db.project_root, todo.slug, todo.active_runner):
             await _clear_active_runner(todos_db, row)
             reconciled.append(todo.slug)
             todo = RunnerTodo(
@@ -562,20 +559,26 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
     return loaded, reconciled
 
 
-async def _live_active_runners(db: Db, todos: Mapping[str, RunnerTodo]) -> tuple[set[str], int]:
-    """Resolve live driver session ids and the non-manual live-driver count.
+async def _live_active_runners(
+    db: Db, project_path: str | Path, todos: Mapping[str, RunnerTodo]
+) -> tuple[set[str], int]:
+    """Resolve held driver session ids and the non-manual live-driver count.
 
     The full id set drives ALREADY_DRIVEN suppression (a manually-started todo is
-    still driven and must never be auto-duplicated). The count excludes
-    `manually_started` drivers because a human START or a headless adoption is
-    never charged against the auto-dispatch concurrency cap.
+    still driven and must never be auto-duplicated). On a GitHub-backed project it includes
+    a claim held by another computer, which this computer cannot verify ended. The count
+    excludes `manually_started` drivers because a human START or a headless adoption is
+    never charged against the auto-dispatch concurrency cap, and counts only drivers this
+    computer runs: a todo driven elsewhere uses that computer's slots, not this one's.
     """
     live: set[str] = set()
     auto_count = 0
     for todo in todos.values():
-        if todo.active_runner and await _is_live_runner(db, todo.active_runner):
+        if todo.active_runner and await claim_is_held(db, project_path, todo.slug, todo.active_runner):
             live.add(todo.active_runner)
-            if not todo.manually_started:
+            if not todo.manually_started and await claim_is_driven_here(
+                db, project_path, todo.slug, todo.active_runner
+            ):
                 auto_count += 1
     return live, auto_count
 
@@ -712,7 +715,7 @@ async def run_lifecycle_runner(
         KIND_BUG: workflow.autostart.bug,
         KIND_TASK: workflow.autostart.task,
     }
-    live_session_ids, auto_driver_count = await _live_active_runners(runtime_db, todos)
+    live_session_ids, auto_driver_count = await _live_active_runners(runtime_db, project_root, todos)
     orchestrator_owned_slugs = await live_orchestrator_owned_slugs(runtime_db, project_root)
     if workflow.runner is WorkflowRunnerMode.MANUAL:
         logger.info(

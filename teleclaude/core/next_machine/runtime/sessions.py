@@ -175,6 +175,18 @@ async def claim_is_held(db: Db, project_path: str | Path, slug: str, session_id:
     return answer is not OwnSessionAnswer.ENDED
 
 
+async def claim_is_driven_here(db: Db, project_path: str | Path, slug: str, session_id: str) -> bool:
+    """Return whether the claim naming ``session_id`` is a driver this computer runs, for its dispatch budget.
+
+    On the GitHub store only a session this computer ran that still drives the todo counts; a claim held
+    by another computer, or one this computer cannot verify, holds the todo without using this computer's
+    slots. Any other project keeps the local rule: the claim counts while its session is live.
+    """
+    if not is_github_backed(project_path):
+        return await is_live_session_id(db, session_id)
+    return await own_session_answer(db, project_path, slug, session_id) is OwnSessionAnswer.HELD
+
+
 async def find_live_prepare_worker_for_slug(db: Db, slug: str, command_value: str) -> str | None:
     """Return the newest live prepare worker id for an exact slug+command match.
 
