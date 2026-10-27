@@ -488,11 +488,28 @@ master admits each conversation request before sending it:
   worktree and its owning checkout resolve to the same adapter. Sync and async
   facades share this identity and event-hook attachment; sync calls stay native
   sync and do not invoke a nested event loop.
+
+<!-- planned-change:artifact-writes-outlast-push-deadline -->
+
 - Adapter commands retain existing transaction boundaries and callback
   multiplicity. Artifact content and version append commit together and notify;
   provenance state is a later, separate commit and notification. A failure
   between those commits remains observable as it is today. Delivery and later
   dependency cleanup likewise retain their source-defined boundaries.
+
+<!-- change:artifact-writes-outlast-push-deadline -->
+
+- Adapter commands retain existing transaction boundaries and callback
+  multiplicity. Artifact content and version append commit together and notify;
+  provenance state is a later, separate commit and notification. A failure
+  between those commits remains observable as it is today. Delivery likewise
+  retains its source-defined boundary. Dependency cleanup after a delivery
+  removes the delivered item from each dependent item in a transaction of its
+  own, so every cleanup commit changes one item, and a cleanup cut short leaves
+  only the references it had not yet removed.
+
+<!-- /planned-change:artifact-writes-outlast-push-deadline -->
+
 - A phase mutation persists before its existing transition notification. Failed
   persistence emits no successful transition. Hook registration occurs once
   per cached adapter.
@@ -535,12 +552,30 @@ master admits each conversation request before sending it:
   deadline: every admission and push of its transactions ends by that
   deadline, however many transactions the request commits. Waiting for a
   database connection before a transaction starts is not cut short by it.
+
+<!-- planned-change:artifact-writes-outlast-push-deadline -->
+
 - GitHub I/O runs on an adapter-owned I/O thread: a sync caller blocks on it
   without starting an event loop of its own, and an async caller awaits it
   without blocking the daemon's loop. Requests on that thread run one at a
   time. An issue reflection or a pull request unit never runs alongside
   another one, but holds the request serialization only for each of its own
   requests, so a push waits behind at most one request in flight.
+
+<!-- change:artifact-writes-outlast-push-deadline -->
+
+- GitHub I/O runs on an adapter-owned I/O thread: a sync caller blocks on it
+  without starting an event loop of its own, and an async caller awaits it
+  without blocking the daemon's loop. Requests on that thread run one at a
+  time. A request made by a push whose transaction holds the working copy's
+  writer is served ahead of every waiting request that no such push made, so
+  each of the push's requests waits behind at most the one request in flight
+  and the push deadline is spent on the push's own requests. An issue
+  reflection or a pull request unit never runs alongside another one, and
+  holds the request serialization only for each of its own requests.
+
+<!-- /planned-change:artifact-writes-outlast-push-deadline -->
+
 - No working-copy write waits for the writer on a thread that runs an event
   loop. A commit whose reflection needs no GitHub write records that in the
   same transaction. Bookkeeping that records a completed reflection or pull
