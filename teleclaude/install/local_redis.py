@@ -63,6 +63,7 @@ class _Program(StrEnum):
     SYSTEMCTL = "systemctl"
     SUDO = "sudo"
     TEE = "tee"
+    CAT = "cat"
     REMOVE = "rm"
     TRUE = "true"
     BREW = "brew"
@@ -109,6 +110,7 @@ class _Step(StrEnum):
     ENABLE_UNIT = "enable the local Redis unit"
     RESTART_UNIT = "restart the local Redis unit"
     START_UNIT = "start the local Redis unit"
+    READ_SYSTEM_CONF = "read the operating system's Redis configuration"
     RESTORE_SYSTEM_CONF = "restore the operating system's Redis configuration"
     REMOVE_DROP_IN = "remove the earlier Redis drop-in"
     RESTART_SYSTEM_REDIS = "restart the operating system's Redis"
@@ -184,6 +186,10 @@ _EARLIER_SOCKETS: Final = frozenset(
     }
 )
 _PREPARE_OPTION: Final = "--prepare"
+_FLAG_ACTION: Final = "store_true"
+_NO_PASSWORD: Final = ""
+# The machine environment holds the Redis credentials, so only its owner may read a file this creates.
+_OWNER_ONLY_MODE: Final = 0o600
 _PREPARED_EVENT: Final = "local_redis_prepared"
 _CONFIGURED_EVENT: Final = "local_redis_configured"
 _UNCHANGED_EVENT: Final = "local_redis_unchanged"
@@ -304,7 +310,7 @@ def _operator_configured(environment: dict[str, str]) -> bool:
     if not url or url == _LOCAL_URL or url in _EARLIER_SOCKETS:
         return False
     username = environment.get(_Variable.LOCAL_USERNAME) or None
-    return _answers(url, username, environment.get(_Variable.LOCAL_PASSWORD) or "")
+    return _answers(url, username, environment.get(_Variable.LOCAL_PASSWORD) or _NO_PASSWORD)
 
 
 def _write_private(path: Path, text: str) -> bool:
@@ -422,10 +428,13 @@ def _retire_earlier_macos_setup() -> None:
 
 def _retire_earlier_linux_setup() -> None:
     for conf in _EARLIER_CONFS:
+        if not conf.exists():
+            continue
         try:
             text = conf.read_text()
-        except OSError:
-            continue
+        except PermissionError:
+            # The package keeps its configuration readable by the Redis service only.
+            text = _sudo(_Step.READ_SYSTEM_CONF, _Program.CAT, str(conf), interactive=False)
         if (retired := _without_earlier_block(text)) is None:
             continue
         _sudo(_Step.RESTORE_SYSTEM_CONF, _Program.TEE, str(conf), interactive=False, stdin=retired)
@@ -503,7 +512,7 @@ def apply() -> bool:
             _Variable.CLUSTER_PASSWORD: password,
         }
         logger.info(_CLUSTER_ON_LOCAL_EVENT, socket=str(_SOCKET_PATH))
-    write_environment_values(ENV_PATH, values)
+    write_environment_values(ENV_PATH, values, creation_mode=_OWNER_ONLY_MODE)
     try:
         _retire_earlier_macos_setup() if _is_macos() else _retire_earlier_linux_setup()
     except Exception as error:  # supervision boundary: the earlier setup's leftovers never fail the new one
@@ -518,7 +527,9 @@ def _withdraw_unanswering_socket() -> None:
     url = environment.get(_Variable.LOCAL_URL)
     if url is None or (url != _LOCAL_URL and url not in _EARLIER_SOCKETS):
         return
-    if _answers(url, environment.get(_Variable.LOCAL_USERNAME), environment.get(_Variable.LOCAL_PASSWORD) or ""):
+    if _answers(
+        url, environment.get(_Variable.LOCAL_USERNAME), environment.get(_Variable.LOCAL_PASSWORD) or _NO_PASSWORD
+    ):
         return
     reconcile_environment_values(ENV_PATH, {}, frozenset({_Variable.LOCAL_URL, _Variable.LOCAL_USERNAME}))
     logger.warning(_WITHDRAWN_EVENT, socket=url)
@@ -542,7 +553,7 @@ def main(arguments: list[str] | None = None) -> int:
     """Prepare the local Redis for an install; a refusal is logged, never a failure of the install."""
     setup_logging()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(_PREPARE_OPTION, action="store_true", required=True)
+    parser.add_argument(_PREPARE_OPTION, action=_FLAG_ACTION, required=True)
     parser.parse_args(arguments)
     try:
         prepare()
