@@ -28,11 +28,11 @@ logger = get_logger(__name__)
 
 _REFRESH_EXCEPTIONS = (RedisError, TimeoutError, OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError)
 _PEER_RECORD_FAILED_EVENT = "heartbeat_peer_record_failed"
-# One pull answers every one of these, so they share one refresh per peer.
 _SESSIONS_DATA_TYPE = "sessions"
 FIRST_HEARTBEAT_REASON = "first_heartbeat"
 STARTUP_REASON = "startup"
 OBSERVED_STOP_REASON = "observed_stop"
+# One projects-with-todos pull answers every one of these, so they share one refresh per peer.
 PROJECTS_DATA_TYPES = frozenset({PROJECTS_DATA_TYPE, "todos", "preparation"})
 _PROJECTS_REFRESH_KEY_TEMPLATE = "{computer}:projects"
 DIGEST_CHANGED_REASON = "digest_changed"
