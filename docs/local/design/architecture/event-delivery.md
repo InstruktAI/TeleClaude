@@ -127,8 +127,7 @@ own: a Redis server process with its configuration and data in the
 platform home, listening only on a Unix socket only the TeleClaude user can
 open, with its TCP port and default user off and one ACL user whose password
 lives in the machine environment. A unit the installation owns keeps it running,
-and stopping the daemon leaves it running, because commands and periodic jobs
-publish local events while the daemon is down. It never touches another Redis on
+and stopping the daemon leaves it running. It never touches another Redis on
 the computer; the block an earlier installer added to the operating system's
 Redis configuration is removed. Setup has two steps: while the
 previous release serves, the new release installs the Redis server binary when
