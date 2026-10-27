@@ -110,7 +110,7 @@ def _emit_content_dump_event(
     # The inbox entry is already durably written by the time this runs, and the
     # command's documented contract makes notification delivery optional — so an
     # unavailable notification service is logged rather than failed.
-    if not config.redis.local.url:
+    if not config.redis.cluster.url:
         _log.warning(_EMIT_FAILED_LOG_EVENT, inbox_path=inbox_path, error=_REDIS_UNCONFIGURED_REASON)
         return
 

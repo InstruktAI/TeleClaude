@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 from instrukt_ai_logging import get_logger
+from redis.exceptions import ResponseError
 
 from teleclaude.events.stream_wait import STREAM_BLOCK_MS, read_until_shutdown
 from teleclaude.events.wire import EntryCodec, StreamEntry, StreamEvent
@@ -21,6 +22,7 @@ _READER_STARTED_EVENT = "live_event_reader_started"
 _READER_RECOVERING_EVENT = "live_event_reader_recovering"
 _ENTRY_FAILED_EVENT = "live_event_entry_failed"
 _POSITION_RETIRED_EVENT = "live_event_position_retired"
+_RETIRED_GROUP_ABSENT_EVENT = "live_event_retired_group_absent"
 
 type StreamRows = list[tuple[bytes, StreamEntry]]
 type StreamBatch = list[tuple[bytes, StreamRows]]
@@ -94,7 +96,7 @@ class LiveEventReader:
                     if self._recover is not None:
                         await self._recover()
                     if not self._retired:
-                        await self._redis.xgroup_destroy(self._stream, self._retired_group)
+                        await self._retire_group()
                         self._retired = True
                         logger.info(_POSITION_RETIRED_EVENT, name=self._name, group=self._retired_group)
                     self._recovered = True
@@ -123,6 +125,13 @@ class LiveEventReader:
                     await asyncio.wait_for(shutdown_event.wait(), timeout=_RETRY_PAUSE_S)
                 except TimeoutError:
                     pass
+
+    async def _retire_group(self) -> None:
+        """Destroy the retired consumer group; a stream that does not exist yet holds no group to destroy."""
+        try:
+            await self._redis.xgroup_destroy(self._stream, self._retired_group)
+        except ResponseError:
+            logger.info(_RETIRED_GROUP_ABSENT_EVENT, name=self._name, stream=self._stream)
 
     async def _deliver(self, rows: StreamRows) -> None:
         events: list[StreamEvent] = []

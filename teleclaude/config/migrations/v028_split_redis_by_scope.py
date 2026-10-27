@@ -16,36 +16,26 @@ _CLUSTER = "cluster"
 _URL = "url"
 _USERNAME = "username"
 _PASSWORD = "password"
-_EARLIER_CLUSTER_URL = "${REDIS_URL}"
-_EARLIER_CLUSTER_PASSWORD = "${REDIS_PASSWORD}"
-_CLUSTER_URL = "${REDIS_CLUSTER_URL}"
-_CLUSTER_PASSWORD = "${REDIS_CLUSTER_PASSWORD}"
 _LOCAL_DECLARATION: Final[dict[str, str]] = {
     _URL: "${REDIS_LOCAL_URL}",
     _USERNAME: "${REDIS_LOCAL_USERNAME}",
     _PASSWORD: "${REDIS_LOCAL_PASSWORD}",
 }
-_RENAMED_REFERENCES: Final[dict[str, str]] = {
-    _EARLIER_CLUSTER_URL: _CLUSTER_URL,
-    _EARLIER_CLUSTER_PASSWORD: _CLUSTER_PASSWORD,
-}
 
 
 def up(document: MutableMapping[str, object], _subject: SubjectRef) -> None:
-    """Keep every flat Redis setting as the cluster Redis's and read the local Redis from its own variables.
+    """Keep every flat Redis setting, environment references included, as the cluster Redis's.
 
-    The earlier environment references are renamed to the cluster ones, so a computer's `.env` carries the
-    same values under `REDIS_CLUSTER_*`. A block that already names `local` or `cluster` is left as it is, and
-    a Redis value that is not a mapping is left for validation to name.
+    The local Redis is read from its own variables; a computer that sets none keeps its local events on the
+    cluster Redis. A block that already names `local` or `cluster` is left as it is, and a Redis value that is
+    not a mapping is left for validation to name.
     """
     redis = document.get(_REDIS)
     if redis is None:
         return
     if not isinstance(redis, MutableMapping) or _LOCAL in redis or _CLUSTER in redis:
         return
-    cluster = {
-        key: _RENAMED_REFERENCES.get(value, value) if isinstance(value, str) else value for key, value in redis.items()
-    }
+    cluster = dict(redis)
     redis.clear()
     redis[_LOCAL] = dict(_LOCAL_DECLARATION)
     redis[_CLUSTER] = cluster

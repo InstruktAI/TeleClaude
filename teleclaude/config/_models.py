@@ -106,6 +106,10 @@ class AggregateInputDerivation(Protocol):
 _COMPUTER_MAPPING_ERROR = "Invalid config key `config.yml:computer`: expected a mapping."
 _REDIS_MAPPING_ERROR = "Invalid config key `config.yml:redis`: expected a mapping."
 _REDIS_LOCAL_MAPPING_ERROR = "Invalid config key `config.yml:redis.local`: expected a mapping."
+_UNIX_SOCKET_SCHEME = "unix://"
+_REDIS_LOCAL_SOCKET_ERROR = (
+    "Invalid config key `config.yml:redis.local.url`: the local Redis is reached over a unix:// socket only."
+)
 _REDIS_CLUSTER_MAPPING_ERROR = "Invalid config key `config.yml:redis.cluster`: expected a mapping."
 _HOOK_OUTBOX_MAPPING_ERROR = "Invalid config key `config.yml:hook_outbox`: expected a mapping."
 _API_MAPPING_ERROR = "Invalid config key `config.yml:api`: expected a mapping."
@@ -378,9 +382,9 @@ class AgentConfig(ClosedModel):
 
 
 class LocalRedisConfig(ClosedModel):
-    """This computer's own Redis for local events; it is reached over a Unix socket only."""
+    """This computer's own Redis for local events, reached over a Unix socket only; unset, local events use cluster."""
 
-    url: Annotated[TEXT, SENSITIVE]
+    url: Annotated[TRUTHY_TEXT, SENSITIVE]
     username: Annotated[TRUTHY_TEXT, SENSITIVE]
     password: Annotated[TRUTHY_TEXT, SENSITIVE]
     max_connections: INT_LENIENT
@@ -390,6 +394,12 @@ class LocalRedisConfig(ClosedModel):
     @classmethod
     def _validate_redis_mapping(cls, value: object) -> object:
         return _require_mapping(value, _REDIS_LOCAL_MAPPING_ERROR)
+
+    @model_validator(mode="after")
+    def _require_unix_socket(self) -> Self:
+        if self.url is not None and not self.url.startswith(_UNIX_SOCKET_SCHEME):
+            raise ValueError(_REDIS_LOCAL_SOCKET_ERROR)
+        return self
 
 
 class ClusterRedisConfig(ClosedModel):

@@ -124,9 +124,15 @@ class _ConsumerPipeline:
         self._consumer = consumer
         self._db = db
         self._computer = computer
+        # A consumer that reads two scopes' Redis has a reader on each; its reaction still handles one event at a time.
+        self._serial = asyncio.Lock()
 
     async def execute(self, event: StreamEvent, /) -> None:
         """Apply interest and delivery lifetime before invoking the owning reaction."""
+        async with self._serial:
+            await self._execute(event)
+
+    async def _execute(self, event: StreamEvent) -> None:
         consumer = self._consumer
         if not consumer.interest.selects(event, self._computer):
             return
@@ -141,17 +147,17 @@ class _ConsumerPipeline:
 
 def _reader(
     consumer: Consumer,
+    pipeline: _ConsumerPipeline,
     redis_client: Any,
-    db: EventDB,
     computer: str,
     stream: str,
     codec: EntryCodec[StreamEvent],
 ) -> EventProcessor[StreamEvent] | LiveEventReader:
-    """The reader that hands one Redis's entries of a stream to one consumer."""
+    """The reader that hands one Redis's entries of a stream to one consumer's pipeline."""
     if consumer.delivery is ConsumerDelivery.LIVE:
         return LiveEventReader(
             cast(LiveStreamClient, redis_client),
-            _ConsumerPipeline(consumer, db, computer).execute,
+            pipeline.execute,
             stream=stream,
             name=consumer.name,
             retired_group=consumer_group_name(consumer.name, computer),
@@ -161,7 +167,7 @@ def _reader(
         )
     return EventProcessor(
         redis_client,
-        _ConsumerPipeline(consumer, db, computer),
+        pipeline,
         codec=codec,
         declared_name=consumer.name,
         ordered=True,
@@ -188,14 +194,22 @@ class ConsumerRuntime:
         repeated = sorted({name for name in names if names.count(name) > 1})
         if repeated:
             raise ValueError(_DUPLICATE_NAMES_ERROR.format(names=_NAME_SEPARATOR.join(repeated)))
-        self._processors = [
-            (
-                _SCOPED_NAME_TEMPLATE.format(name=consumer.name, scope=scope.value),
-                _reader(consumer, redis_clients.for_scope(scope), db, computer, stream, codec),
-            )
-            for consumer in consumers
-            for scope in sorted(scopes_of_interest(consumer.interest.types))
-        ]
+        self._processors: list[tuple[str, EventProcessor[StreamEvent] | LiveEventReader]] = []
+        for consumer in consumers:
+            pipeline = _ConsumerPipeline(consumer, db, computer)
+            read_clients: list[object] = []
+            for scope in sorted(scopes_of_interest(consumer.interest.types)):
+                client = redis_clients.for_scope(scope)
+                # Scopes that share one Redis are read once.
+                if any(client is read for read in read_clients):
+                    continue
+                read_clients.append(client)
+                self._processors.append(
+                    (
+                        _SCOPED_NAME_TEMPLATE.format(name=consumer.name, scope=scope.value),
+                        _reader(consumer, pipeline, client, computer, stream, codec),
+                    )
+                )
 
     async def prepare_group_positions(self) -> None:
         """Prepare retained positions and live boundaries before any handler executes."""

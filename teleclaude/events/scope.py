@@ -1,8 +1,9 @@
 """Event scopes: which Redis an event lives on (``local/projects/teleclaude/design/architecture/event-delivery``).
 
-A declared platform event type is local unless a consumer on another computer acts on it; then it is cluster.
-A relayed type, whose name the platform catalog does not declare, is cluster: it enters on the ingress computer
-for the consumers of every computer. A consumer reads from the Redis of every scope its interest can select.
+A platform event type is local unless a consumer on another computer acts on it; then it is cluster. A relayed
+event is cluster: it enters on the ingress computer for the consumers of every computer, and a type outside every
+namespace the platform declares is a relayed type. A consumer reads from the Redis of every scope its interest can
+select.
 """
 
 from __future__ import annotations
@@ -12,12 +13,20 @@ from dataclasses import dataclass
 from enum import StrEnum
 from functools import cache
 from importlib import import_module
-from typing import Final
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from teleclaude.events.type_pattern import ANY_TYPE, TypePattern
 
 _CATALOG_MODULE: Final = "teleclaude.events.catalog"
-_CATALOG_BUILDER: Final = "build_default_catalog"
+_NAMESPACE_SEPARATOR: Final = "."
+_FAMILY_SUFFIX: Final = ".*"
+
+if TYPE_CHECKING:
+    from teleclaude.events.catalog import EventCatalog
+
+
+class _CatalogModule(Protocol):
+    def build_default_catalog(self) -> EventCatalog: ...
 
 
 class EventScope(StrEnum):
@@ -44,13 +53,24 @@ CLUSTER_EVENT_TYPES: Final = frozenset(
 
 @cache
 def _declared_types() -> frozenset[str]:
-    catalog = getattr(import_module(_CATALOG_MODULE), _CATALOG_BUILDER)()
-    return frozenset(declaration.name for declaration in catalog.list_all())
+    # The catalog imports every schema module, so it is loaded on first use instead of at import.
+    catalog_module = cast("_CatalogModule", import_module(_CATALOG_MODULE))
+    return frozenset(declaration.name for declaration in catalog_module.build_default_catalog().list_all())
+
+
+@cache
+def _platform_namespaces() -> frozenset[str]:
+    return frozenset(event_type.split(_NAMESPACE_SEPARATOR, 1)[0] for event_type in _declared_types())
 
 
 def scope_of(event_type: str) -> EventScope:
-    """The scope of one event type: cluster for the listed and the relayed types, local for every other."""
-    if event_type in CLUSTER_EVENT_TYPES or event_type not in _declared_types():
+    """The scope of one event type: cluster for the listed types and for relayed types outside the platform's namespaces.
+
+    A platform type the catalog no longer declares, such as a retired one, stays local.
+    """
+    if event_type in CLUSTER_EVENT_TYPES:
+        return EventScope.CLUSTER
+    if event_type.split(_NAMESPACE_SEPARATOR, 1)[0] not in _platform_namespaces():
         return EventScope.CLUSTER
     return EventScope.LOCAL
 
@@ -64,9 +84,11 @@ def scopes_of_interest(patterns: Iterable[TypePattern]) -> frozenset[EventScope]
             return frozenset(EventScope)
         matched = [event_type for event_type in declared if pattern.matches(event_type)]
         scopes.update(scope_of(event_type) for event_type in matched)
-        if not matched or any(event_type in CLUSTER_EVENT_TYPES for event_type in matched):
-            # A pattern no declared type answers selects relayed types.
+        if any(pattern.matches(event_type) for event_type in CLUSTER_EVENT_TYPES):
             scopes.add(EventScope.CLUSTER)
+        if not matched:
+            # A pattern no declared type answers names a relayed type, or a retired platform type.
+            scopes.add(scope_of(pattern.text.removesuffix(_FAMILY_SUFFIX)))
     return frozenset(scopes)
 
 
@@ -80,3 +102,7 @@ class ScopedClients[ClientT]:
     def for_scope(self, scope: EventScope) -> ClientT:
         """The client of one scope."""
         return self.local if scope is EventScope.LOCAL else self.cluster
+
+    def distinct(self) -> tuple[ClientT, ...]:
+        """Each client once; a local scope that shares the cluster client is one client."""
+        return (self.local,) if self.local is self.cluster else (self.local, self.cluster)

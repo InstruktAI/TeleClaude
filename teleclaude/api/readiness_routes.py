@@ -4,7 +4,7 @@ Liveness (``/health``, process up) answers "is the daemon running?". Readiness
 (``/ready``) answers "has the daemon connected to Redis at least once?". The two
 are deliberately distinct: a service-supervised daemon stays alive and retries a
 blipping Redis (resilience), but ``make start`` gates on readiness so a
-misconfigured ``REDIS_CLUSTER_URL`` fails fast at the start boundary instead of passing
+misconfigured ``REDIS_URL`` fails fast at the start boundary instead of passing
 silently.
 """
 

@@ -61,6 +61,7 @@ from teleclaude.events.processor import STREAM_NAME as PLATFORM_STREAM_NAME
 from teleclaude.events.references import ComputerRef
 from teleclaude.events.schemas.system import DaemonRestarted, DaemonRestartedData, RuntimeSessionStatusData
 from teleclaude.events.scope import ScopedClients
+from teleclaude.events.scoped_redis import close_scoped_clients, local_redis_configured, scoped_redis_clients
 from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, LegacyFacts
 from teleclaude.hooks.dispatcher import HookDispatcher
 from teleclaude.hooks.github_handler import GitHubCommentEvent, handle_github_event
@@ -81,7 +82,6 @@ from teleclaude.transport.internal_event_compat import (
     decode_compat_ingress_context,
     internal_event_entry_codec,
 )
-from teleclaude.transport.scoped_redis import scoped_redis_clients
 from teleclaude.types.commands import CloseSessionCommand
 
 if TYPE_CHECKING:
@@ -95,19 +95,20 @@ _GITHUB_COMMENT_HANDLER = "github_comment_routing"
 _GITHUB_COMMENT_CONTRACT = "builtin-github-comment-routing"
 logger = get_logger(__name__)
 
-_REDIS_UNCONFIGURED_ERROR = "Event platform startup failed: config.redis.local.url or config.redis.cluster.url is empty"
+_REDIS_UNCONFIGURED_ERROR = "Event platform startup failed: config.redis.cluster.url is empty"
+# A computer without its own local Redis carries its local events on the cluster Redis.
+_LOCAL_REDIS_UNCONFIGURED_EVENT = "local_redis_unconfigured_local_events_on_cluster"
 
 
 async def _ping_both(clients: ScopedClients[Any]) -> None:
-    """Confirm both scopes' Redis answer before any reader or producer relies on them."""
-    await clients.local.ping()
-    await clients.cluster.ping()
+    """Confirm each scope's Redis answers before any reader or producer relies on it."""
+    for client in clients.distinct():
+        await client.ping()
 
 
 async def _close_both(clients: ScopedClients[Any]) -> None:
-    """Close both scopes' clients and their owned pools."""
-    await clients.local.aclose()
-    await clients.cluster.aclose()
+    """Close each scope's client and its owned pool."""
+    await close_scoped_clients(clients)
 
 
 _EVENT_DB_REQUIRED_FOR_PIPELINE_CONTEXT = "_build_pipeline_context always runs after _init_event_db_storage"
@@ -187,8 +188,10 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     async def _open_event_redis_client(self) -> ScopedClients[Any]:
         """Open the event platform's owned clients of both scopes' Redis independently of adapter startup."""
-        if not config.redis.local.url or not config.redis.cluster.url:
+        if not config.redis.cluster.url:
             raise RuntimeError(_REDIS_UNCONFIGURED_ERROR)
+        if not local_redis_configured():
+            logger.warning(_LOCAL_REDIS_UNCONFIGURED_EVENT, computer=config.computer.name)
         if self._event_redis_client is not None:
             clients = self._event_redis_client
             try:
@@ -456,7 +459,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     async def _start_event_platform_prepare(self) -> None:
         """Prepare the owned producer, both reader positions, and ingress boundary before startup producers run."""
-        redis_configured = bool(config.redis.local.url and config.redis.cluster.url)
+        redis_configured = bool(config.redis.cluster.url)
         self._event_platform_status = _EventPlatformStatus(redis_configured=redis_configured)
         await self._init_event_db_storage()
         event_catalog = build_default_catalog()
@@ -505,7 +508,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         event_producer = self._event_producer
         assert event_producer is not None  # built by _start_event_platform_prepare
         assert clients is not None  # opened by _start_event_platform_prepare
-        # The retired pipeline's group lived on the shared Redis.
+        # The retired pipeline's group is on the cluster Redis.
         await self._destroy_retired_system_group(clients.cluster)
         computer_label = config.computer.name
         await self._run_conversation_memory_transition()
