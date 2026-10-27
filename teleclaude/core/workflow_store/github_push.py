@@ -37,6 +37,7 @@ from teleclaude.core.todos_db._working_copy import (
 )
 from teleclaude.core.workflow_store import github_reflection as _github_reflection
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
+from teleclaude.core.workflow_store.github_conflict_refresh import ConflictRefreshScheduler
 from teleclaude.core.workflow_store.github_io import (
     GitHubComment,
     GitHubOperation,
@@ -96,7 +97,6 @@ from teleclaude.core.workflow_store.github_reflection_queue import (
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 _CONFLICT_REFRESH_KEY = "github_store_conflict_refresh"
-_CONFLICT_DRIVER_KEY = "github_store_conflict_driver"
 _EMPTY = ""
 _ENCODING = "utf-8"
 _MAX_INLINE_STATE = 40_000
@@ -104,7 +104,6 @@ _STATE_NAME = WorkflowField.STATE
 _RUN_ASYNC_METHOD = "run_async"
 _LEDGER_TITLE = "TeleClaude workflow ledger"
 _LEDGER_DESCRIPTION = "Project-level workflow records."
-_CONFLICT_REFRESH_FAILED = "github_store_conflict_refresh_failed"
 _LEGACY_VERSION_ID = "legacy-{}-{}"
 logger = get_logger(__name__)
 
@@ -125,11 +124,19 @@ class GitHubWorkflowPush:
         self.assignment = assignment
         self.io = io
         self.pull_requests = pull_requests
-        self._refresh_callback: Callable[[], Awaitable[int]] | None = None
+        self._conflict_refresh = ConflictRefreshScheduler()
 
     def set_conflict_refresh(self, callback: Callable[[], Awaitable[int]]) -> None:
-        """Attach the store's post-rollback refresh operation."""
-        self._refresh_callback = callback
+        """Attach the store refresh that conflict recovery schedules once a refused write's transaction has ended."""
+        self._conflict_refresh.attach(callback)
+
+    def serve_conflict_refresh_on(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Record the loop that serves the store's async sessions, where recovery is scheduled."""
+        self._conflict_refresh.serve_store_loop(loop)
+
+    async def stop_conflict_refresh(self) -> None:
+        """Cancel an in-flight conflict refresh and wait until it has ended."""
+        await self._conflict_refresh.stop()
 
     def before_commit(self, session: Session) -> None:
         """Push every captured row before SQLite can commit the workflow transaction."""
@@ -340,7 +347,6 @@ class GitHubWorkflowPush:
         old_revision = effective_revision(old_record, committed_transactions) if old_record else None
         if old_revision is not None and old_revision.revision > base_revision:
             session.info[_CONFLICT_REFRESH_KEY] = True
-            session.info[_CONFLICT_DRIVER_KEY] = session.connection().connection
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
         if old_revision is not None and issue_number is not None and record_comment_id is not None:
             self._verify_item_content(session, issue_number, old_revision)
@@ -828,44 +834,9 @@ class GitHubWorkflowPush:
         )
 
     def refresh_after_conflict(self, session: Session) -> None:
-        """Refresh a stale item after SQLAlchemy rolls back the refused write."""
-        if not session.info.pop(_CONFLICT_REFRESH_KEY, False):
-            session.info.pop(_CONFLICT_DRIVER_KEY, None)
-            return
-        driver = session.info.pop(_CONFLICT_DRIVER_KEY, None)
-        runner = getattr(driver, _RUN_ASYNC_METHOD, None)
-        if callable(runner):
-
-            async def refresh(_driver_connection: Any) -> None:
-                await self._refresh_after_conflict()
-
-            try:
-                runner(refresh)
-            except Exception as error:
-                logger.warning(
-                    _CONFLICT_REFRESH_FAILED,
-                    reason=type(error).__name__,
-                    exc_info=True,
-                )
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            try:
-                asyncio.run(self._refresh_after_conflict())
-            except Exception as error:
-                logger.warning(
-                    _CONFLICT_REFRESH_FAILED,
-                    reason=type(error).__name__,
-                    exc_info=True,
-                )
-        else:
-            task = loop.create_task(self._refresh_after_conflict())
-            task.add_done_callback(_log_conflict_refresh_failure)
-
-    async def _refresh_after_conflict(self) -> None:
-        if self._refresh_callback is not None:
-            await self._refresh_callback()
+        """Schedule the store refresh once the outermost transaction of a conflict-refused write has ended."""
+        if session.info.pop(_CONFLICT_REFRESH_KEY, False):
+            self._conflict_refresh.request()
 
 
 def _io_call(
@@ -960,14 +931,3 @@ def _scalar_row(row: Mapping[str, object]) -> dict[str, str | int | float | bool
         else:
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
     return result
-
-
-def _log_conflict_refresh_failure(task: asyncio.Task[Any]) -> None:
-    try:
-        task.result()
-    except Exception as error:
-        logger.warning(
-            _CONFLICT_REFRESH_FAILED,
-            reason=type(error).__name__,
-            exc_info=True,
-        )

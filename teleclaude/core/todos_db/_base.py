@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import Engine
 from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import SessionTransaction, sessionmaker
 from sqlmodel import Session as SqlSession
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
@@ -41,7 +41,7 @@ class StoreSessionEvent(StrEnum):
 
     BEFORE_COMMIT = "before_commit"
     AFTER_COMMIT = "after_commit"
-    AFTER_ROLLBACK = "after_rollback"
+    AFTER_TRANSACTION_END = "after_transaction_end"
 
 
 def _default_on_mutation(_event_hint: str, _event_data: Mapping[str, object] | None = None) -> None:
@@ -80,10 +80,10 @@ class TodosDbBase:
         self._sync_sessionmaker: sessionmaker[SqlSession] | None = None
         self._before_commit_callback: Callable[[SqlSession], None] | None = None
         self._after_commit_callback: Callable[[SqlSession], None] | None = None
-        self._after_rollback_callback: Callable[[SqlSession], None] | None = None
+        self._after_transaction_end_callback: Callable[[SqlSession], None] | None = None
         self._before_commit_listener: Callable[[SqlSession], None] | None = None
         self._after_commit_listener: Callable[[SqlSession], None] | None = None
-        self._after_rollback_listener: Callable[[SqlSession], None] | None = None
+        self._after_transaction_end_listener: Callable[[SqlSession, SessionTransaction], None] | None = None
         self._session_class: type[SqlSession]
         self._session_listeners_registered = False
         self._on_mutation: Callable[[str, Mapping[str, object] | None], None] = _default_on_mutation
@@ -106,31 +106,37 @@ class TodosDbBase:
             if self._after_commit_callback is not None:
                 self._after_commit_callback(session)
 
-        def after_rollback(session: SqlSession) -> None:
+        def after_transaction_end(session: SqlSession, transaction: SessionTransaction) -> None:
+            if transaction.parent is not None:
+                return
             if session.bind not in (self._sync_engine, self._engine.sync_engine if self._engine else None):
                 return
-            if self._after_rollback_callback is not None:
-                self._after_rollback_callback(session)
+            if self._after_transaction_end_callback is not None:
+                self._after_transaction_end_callback(session)
 
         sqlalchemy_event.listen(StoreSession, StoreSessionEvent.BEFORE_COMMIT, before_commit)
         sqlalchemy_event.listen(StoreSession, StoreSessionEvent.AFTER_COMMIT, after_commit)
-        sqlalchemy_event.listen(StoreSession, StoreSessionEvent.AFTER_ROLLBACK, after_rollback)
+        sqlalchemy_event.listen(StoreSession, StoreSessionEvent.AFTER_TRANSACTION_END, after_transaction_end)
         self._session_class = StoreSession
         self._before_commit_listener = before_commit
         self._after_commit_listener = after_commit
-        self._after_rollback_listener = after_rollback
+        self._after_transaction_end_listener = after_transaction_end
         self._session_listeners_registered = True
 
     def set_commit_callbacks(
         self,
         before_commit: Callable[[SqlSession], None] | None,
         after_commit: Callable[[SqlSession], None] | None,
-        after_rollback: Callable[[SqlSession], None] | None = None,
+        after_transaction_end: Callable[[SqlSession], None] | None = None,
     ) -> None:
-        """Install the optional working-copy commit boundary for this store."""
+        """Install the optional working-copy commit boundary for this store.
+
+        ``after_transaction_end`` runs once per session when its outermost transaction ends, whether by commit,
+        rollback or the close of a session whose owner never rolled back.
+        """
         self._before_commit_callback = before_commit
         self._after_commit_callback = after_commit
-        self._after_rollback_callback = after_rollback
+        self._after_transaction_end_callback = after_transaction_end
 
     def on_committed(self, event_hint: str = "todo_updated", event_data: Mapping[str, object] | None = None) -> None:
         """Signal that a caller-managed transaction has committed.
@@ -274,8 +280,8 @@ class TodosDbBase:
                 sqlalchemy_event.remove(
                     self._session_class, StoreSessionEvent.AFTER_COMMIT, self._after_commit_listener
                 )
-            if self._after_rollback_listener is not None:
+            if self._after_transaction_end_listener is not None:
                 sqlalchemy_event.remove(
-                    self._session_class, StoreSessionEvent.AFTER_ROLLBACK, self._after_rollback_listener
+                    self._session_class, StoreSessionEvent.AFTER_TRANSACTION_END, self._after_transaction_end_listener
                 )
             self._session_listeners_registered = False

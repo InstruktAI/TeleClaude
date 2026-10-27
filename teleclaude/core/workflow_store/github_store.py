@@ -115,7 +115,7 @@ class GitHubWorkflowStore(TodosDb):
         self.set_commit_callbacks(
             self._push.before_commit,
             self._push.after_commit,
-            after_rollback=self._push.refresh_after_conflict,
+            after_transaction_end=self._push.refresh_after_conflict,
         )
 
     async def restore_migration_item(self, snapshot: WorkingCopyItemSnapshot) -> None:
@@ -170,6 +170,16 @@ class GitHubWorkflowStore(TodosDb):
         """Open the local substrate and install its working-copy triggers."""
         await self.initialize()
         initialize_working_copy(self.db_path)
+        self.serve_async_callers()
+
+    def serve_async_callers(self) -> None:
+        """Make the running loop the one where conflict recovery is scheduled for this store."""
+        self._push.serve_conflict_refresh_on(asyncio.get_running_loop())
+
+    async def close(self) -> None:
+        """Stop an in-flight conflict refresh before the storage it uses is disposed."""
+        await self._push.stop_conflict_refresh()
+        await super().close()
 
     def initialize_github_sync(self) -> None:
         """Synchronous sibling for CLI and integration processes."""
@@ -292,6 +302,7 @@ async def get_github_workflow_store(project_root_or_cwd: str | Path) -> Workflow
     try:
         existing = _instances.get(key)
         if existing is not None:
+            existing.serve_async_callers()
             return existing
         path = Path(key)
         existed = path.is_file()
