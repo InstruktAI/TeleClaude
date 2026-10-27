@@ -68,6 +68,7 @@ from teleclaude.core.supervisory_silence import (
     SilenceObservationKind,
     SilenceTimeoutOwner,
 )
+from teleclaude.events.stream_wait import STREAM_BLOCK_MS
 from teleclaude.history.service import HistoryRelayCommand
 
 if TYPE_CHECKING:
@@ -406,7 +407,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 redis_client = await self._get_redis()
                 messages: list[tuple[bytes, list[tuple[bytes, dict[bytes, bytes]]]]] = await redis_client.xread(
                     {message_stream.encode("utf-8"): last_id},
-                    block=1000,  # Block for 1 second
+                    block=STREAM_BLOCK_MS,
                     count=5,
                 )
 

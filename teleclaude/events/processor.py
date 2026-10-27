@@ -19,6 +19,7 @@ from teleclaude.events.pipeline import failing_stage_from_exception
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import StreamEntryRef
 from teleclaude.events.schemas.system import DeadLetteredData, EventDeadLettered
+from teleclaude.events.stream_wait import STREAM_BLOCK_MS, read_until_shutdown
 from teleclaude.events.wire import EntryCodec, LegacyFacts, StreamEntry
 
 logger = get_logger(__name__)
@@ -162,12 +163,15 @@ class EventProcessor[DecodedT: BaseModel]:
         """Read and process stream entries until shutdown is requested."""
         while not shutdown_event.is_set():
             try:
-                entries = await self._redis.xreadgroup(
-                    self._group,
-                    self._consumer,
-                    {self._stream: ">"},
-                    count=10,
-                    block=1000,
+                entries = await read_until_shutdown(
+                    self._redis.xreadgroup(
+                        self._group,
+                        self._consumer,
+                        {self._stream: ">"},
+                        count=10,
+                        block=STREAM_BLOCK_MS,
+                    ),
+                    shutdown_event,
                 )
                 if not entries:
                     await asyncio.sleep(0)

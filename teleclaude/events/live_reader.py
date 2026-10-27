@@ -8,12 +8,12 @@ from typing import Protocol
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.events.stream_wait import STREAM_BLOCK_MS, read_until_shutdown
 from teleclaude.events.wire import EntryCodec, StreamEntry, StreamEvent
 
 logger = get_logger(__name__)
 
 _BATCH_SIZE = 100
-_READ_BLOCK_MS = 1000
 _RETRY_PAUSE_S = 1.0
 _INITIAL_CURSOR = "0-0"
 _ID_SEPARATOR = "-"
@@ -100,7 +100,12 @@ class LiveEventReader:
                     self._recovered = True
                     logger.info(_READER_STARTED_EVENT, name=self._name, stream=self._stream)
                 cursor = self._cursor or _INITIAL_CURSOR
-                batch = await self._redis.xread({self._stream: cursor}, count=_BATCH_SIZE, block=_READ_BLOCK_MS)
+                batch = await read_until_shutdown(
+                    self._redis.xread({self._stream: cursor}, count=_BATCH_SIZE, block=STREAM_BLOCK_MS),
+                    shutdown_event,
+                )
+                if batch is None:
+                    return
                 rows = [row for _stream, messages in batch for row in messages]
                 if len(rows) >= _BATCH_SIZE:
                     newest = await self._redis.xrevrange(self._stream, count=_BATCH_SIZE)
