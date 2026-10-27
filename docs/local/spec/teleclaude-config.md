@@ -542,6 +542,7 @@ environment_variables:
   # complete until REDIS_CLUSTER_URL is set). Also listed in the config TUI's environment section.
   # Every install gives them the values of the earlier REDIS_URL and REDIS_PASSWORD before migrating.
   - REDIS_CLUSTER_URL
+  - REDIS_CLUSTER_USERNAME
   - REDIS_CLUSTER_PASSWORD
   - REDIS_LOCAL_URL
   - REDIS_LOCAL_USERNAME
@@ -697,14 +698,15 @@ agents:
         - model: string # model identity, matched against model-scoped availability records
           flags: string # complete, opaque launch flags for this entry; the platform never derives flags from a template. Startup validation rejects unknown modes and malformed entries, referencing the concrete config.yml path.
 redis:
-  local: # this computer's own Redis for local events; never reachable from another computer
-    url: string | null # normally ${REDIS_LOCAL_URL}: a unix:// socket only this computer's user and the Redis service can open; any other scheme is refused. Unset, local events use the cluster Redis
+  local: # TeleClaude's own local Redis for local events; never reachable from another computer
+    url: string | null # normally ${REDIS_LOCAL_URL}: a unix:// socket only the TeleClaude user can open, written by the install; any other scheme is refused. Unset, local events use the cluster Redis
     username: string | null # normally ${REDIS_LOCAL_USERNAME}: the ACL user the local Redis requires
     password: string | null # normally ${REDIS_LOCAL_PASSWORD}
     max_connections: integer # connection pool size
     socket_timeout: integer # seconds
-  cluster: # the shared Redis for cluster events and the cross-computer transport
-    url: string # normally ${REDIS_CLUSTER_URL}
+  cluster: # the shared Redis for cluster events and the cross-computer transport; a lone computer names its own local Redis
+    url: string # normally ${REDIS_CLUSTER_URL}; required to start. The install writes the local Redis's socket here when no cluster Redis is set
+    username: string | null # normally ${REDIS_CLUSTER_USERNAME}: the ACL user the cluster Redis requires, if any
     password: string | null # normally ${REDIS_CLUSTER_PASSWORD}
     max_connections: integer # connection pool size
     socket_timeout: integer # seconds
