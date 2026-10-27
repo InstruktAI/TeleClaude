@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple, Protocol, Unpack
@@ -471,25 +472,7 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                     current_status=read.current_status,
                 )
             continue
-        todo = RunnerTodo(
-            slug=todo.slug,
-            status=todo.status,
-            kind=todo.kind,
-            lifecycle_phase=todo.lifecycle_phase,
-            human_approval_pending=todo.human_approval_pending,
-            hold=todo.hold,
-            active_runner=todo.active_runner,
-            manually_started=todo.manually_started,
-            after=tuple(deps.get(todo.slug, [])),
-            schedule=todo.schedule,
-            task_plan_digest=todo.task_plan_digest,
-            task_approved=todo.task_approved,
-            task_approved_digest=todo.task_approved_digest,
-            plan_review_current=todo.plan_review_current,
-            current_plan_digest=todo.current_plan_digest,
-            reviewed_plan_digest=todo.reviewed_plan_digest,
-            dependency_drift_pending_on=todo.dependency_drift_pending_on,
-        )
+        todo = replace(todo, after=tuple(deps.get(todo.slug, [])))
         state = states_by_slug.get(todo.slug)
         if state is not None and todo.kind in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
             dependency_snapshot = build_dependency_artifact_snapshot(
@@ -505,47 +488,11 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                     state.artifacts.implementation_plan.dependency_artifact_digests,
                     dependency_snapshot,
                 )
-                todo = RunnerTodo(
-                    slug=todo.slug,
-                    status=todo.status,
-                    kind=todo.kind,
-                    lifecycle_phase=todo.lifecycle_phase,
-                    human_approval_pending=todo.human_approval_pending,
-                    hold=todo.hold,
-                    active_runner=todo.active_runner,
-                    manually_started=todo.manually_started,
-                    after=todo.after,
-                    schedule=todo.schedule,
-                    task_plan_digest=todo.task_plan_digest,
-                    task_approved=todo.task_approved,
-                    task_approved_digest=todo.task_approved_digest,
-                    plan_review_current=todo.plan_review_current,
-                    current_plan_digest=todo.current_plan_digest,
-                    reviewed_plan_digest=todo.reviewed_plan_digest,
-                    dependency_drift_pending_on=tuple(sorted(moved_dependencies)),
-                )
+                todo = replace(todo, dependency_drift_pending_on=tuple(sorted(moved_dependencies)))
         if todo.active_runner and not await claim_is_held(db, todos_db.project_root, todo.slug, todo.active_runner):
             await _clear_ended_claim(todos_db, row, todo.active_runner)
             reconciled.append(todo.slug)
-            todo = RunnerTodo(
-                slug=todo.slug,
-                status=todo.status,
-                kind=todo.kind,
-                lifecycle_phase=todo.lifecycle_phase,
-                human_approval_pending=todo.human_approval_pending,
-                hold=todo.hold,
-                active_runner=None,
-                manually_started=False,
-                after=todo.after,
-                schedule=todo.schedule,
-                task_plan_digest=todo.task_plan_digest,
-                task_approved=todo.task_approved,
-                task_approved_digest=todo.task_approved_digest,
-                plan_review_current=todo.plan_review_current,
-                current_plan_digest=todo.current_plan_digest,
-                reviewed_plan_digest=todo.reviewed_plan_digest,
-                dependency_drift_pending_on=todo.dependency_drift_pending_on,
-            )
+            todo = replace(todo, active_runner=None, manually_started=False)
         loaded[todo.slug] = todo
     return loaded, reconciled
 
