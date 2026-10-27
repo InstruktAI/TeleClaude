@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -34,6 +36,7 @@ from teleclaude.api.run_session_shapes import RunSessionPlan
 from teleclaude.api.session_authority import ACT_RESTART, ACT_UNSUBSCRIBE, refuse_act_on_dispatching_orchestrator
 from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
 from teleclaude.api.session_pane_routes import router as session_pane_router
+from teleclaude.api.session_remote import is_remote_create_target
 from teleclaude.api.session_result_routes import router as session_result_router
 from teleclaude.api.session_route_helpers import dispatch_caller_command
 from teleclaude.api.sessions_coordinate_routes import router as sessions_coordinate_router
@@ -72,6 +75,7 @@ from teleclaude.core.command_service import UnsubscribeUnknownSessionError
 from teleclaude.core.db import db
 from teleclaude.core.models import (
     AgentDispatchMode,
+    JsonDict,
     MessageMetadata,
     SessionEntryPoint,
     SessionLaunchIntent,
@@ -102,6 +106,7 @@ from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.commands import (
     CreateSessionCommand,
     HandoffAgentCommand,
+    InternalCommand,
     RestartAgentCommand,
     ReviveAgentCommand,
     UnsubscribeSessionCommand,
@@ -229,20 +234,27 @@ async def _resolve_revive_session_id(
     return new_session_id
 
 
+@asynccontextmanager
 async def guard_generic_create_session(
     request: CreateSessionRequest,
     cmd: object,
     identity: CallerIdentity,
-) -> DriverStartGuardResult:
-    """Guard generic session creation against duplicate drivers.
+) -> AsyncIterator[DriverStartGuardResult]:
+    """Guard generic session creation against duplicate drivers, holding the todo's start section.
 
     An interactive procedure invocation arrives with the procedure and the role it declares; ordinary
-    conversation carries neither and passes the guard unclassified.
+    conversation carries neither and passes the guard unclassified. The caller creates the session
+    inside the context (see :func:`enforce_driver_start_guard`); a create that stays on this computer
+    gets its session id assigned here so a colliding start can name it.
     """
     if not isinstance(cmd, CreateSessionCommand):
-        return DriverStartGuardResult()
+        yield DriverStartGuardResult()
+        return
+    local_target = not is_remote_create_target(request.computer, config.computer.name)
+    if local_target and cmd.session_id is None:
+        cmd.session_id = str(uuid.uuid4())
     working_slug = resolve_working_slug_from_subdir(request.subdir) or cmd.working_slug
-    return await enforce_driver_start_guard(
+    async with enforce_driver_start_guard(
         project_path=request.project_path,
         working_slug=working_slug,
         procedure_id=cmd.command,
@@ -250,7 +262,10 @@ async def guard_generic_create_session(
         caller_session_id=identity.session_id,
         caller_human_email=terminal_driver_email(identity),
         thinking_mode=cmd.launch_intent.thinking_mode if cmd.launch_intent else "",
-    )
+        starting_session_id=cmd.session_id,
+        local_target=local_target,
+    ) as guard_result:
+        yield guard_result
 
 
 def _prepare_run_session(
@@ -676,7 +691,7 @@ async def _create_planned_session(
         if cmd.launch_intent is not None:
             cmd.launch_intent.accepted_at_origin = True
     try:
-        guard_result = await enforce_driver_start_guard(
+        async with enforce_driver_start_guard(
             project_path=plan.project_path,
             working_slug=plan.working_slug,
             procedure_id=plan.command,
@@ -684,7 +699,9 @@ async def _create_planned_session(
             caller_session_id=plan.initiator_session_id,
             caller_human_email=terminal_driver_email(identity),
             thinking_mode=plan.launch_intent.thinking_mode if plan.launch_intent else "",
-        )
+            starting_session_id=plan.session_id,
+        ) as guard_result:
+            data = await _dispatch_planned_session(cmd, identity, plan, dispatch_mode)
     except RunSessionRefusal as exc:
         emit_run_outcome(
             selected_agent=None,
@@ -704,38 +721,48 @@ async def _create_planned_session(
         if plan.working_slug
         else None
     )
+    session_id = data.get("session_id")
+    tmux_session_name = data.get("tmux_session_name")
+    if not session_id or not tmux_session_name:
+        raise HTTPException(status_code=500, detail="Failed to create session")
+    routing_explanation = present_routing_explanation(
+        data,
+        human_facing=not identity.role and bool(identity.email),
+        request_id=cmd.request_id,
+        session_id=str(session_id),
+        entry_point=plan.entry_point,
+    )
+    emit_run_outcome(
+        selected_agent=data.get("agent") if isinstance(data.get("agent"), str) else None,
+        request_id=cmd.request_id,
+        session_id=str(session_id),
+        entry_point=plan.entry_point,
+        dispatch_mode=dispatch_mode,
+        reason=success_reason,
+        working_slug_present=True if success_reason is AgentDispatchReason.WORKING_SLUG_INFERRED else None,
+    )
+    return CreateSessionResponseDTO(
+        status="success",
+        session_id=str(session_id),
+        tmux_session_name=str(tmux_session_name),
+        agent=data.get("agent") if isinstance(data.get("agent"), str) else None,
+        routing_explanation=routing_explanation,
+        routing_reason=read_routing_reason(data),
+    )
+
+
+async def _dispatch_planned_session(
+    cmd: InternalCommand,
+    identity: CallerIdentity,
+    plan: RunSessionPlan,
+    dispatch_mode: AgentDispatchMode,
+) -> JsonDict:
+    """Dispatch the create command and return its payload, mapping dispatch failures to API refusals."""
     try:
         data = await dispatch_caller_command(_STATE.client, cmd, identity)
         if not isinstance(data, dict):
             raise HTTPException(status_code=500, detail="Failed to create session")
-        session_id = data.get("session_id")
-        tmux_session_name = data.get("tmux_session_name")
-        if not session_id or not tmux_session_name:
-            raise HTTPException(status_code=500, detail="Failed to create session")
-        routing_explanation = present_routing_explanation(
-            data,
-            human_facing=not identity.role and bool(identity.email),
-            request_id=cmd.request_id,
-            session_id=str(session_id),
-            entry_point=plan.entry_point,
-        )
-        emit_run_outcome(
-            selected_agent=data.get("agent") if isinstance(data.get("agent"), str) else None,
-            request_id=cmd.request_id,
-            session_id=str(session_id),
-            entry_point=plan.entry_point,
-            dispatch_mode=dispatch_mode,
-            reason=success_reason,
-            working_slug_present=True if success_reason is AgentDispatchReason.WORKING_SLUG_INFERRED else None,
-        )
-        return CreateSessionResponseDTO(
-            status="success",
-            session_id=str(session_id),
-            tmux_session_name=str(tmux_session_name),
-            agent=data.get("agent") if isinstance(data.get("agent"), str) else None,
-            routing_explanation=routing_explanation,
-            routing_reason=read_routing_reason(data),
-        )
+        return data
     except HTTPException:
         raise
     except Exception as e:
