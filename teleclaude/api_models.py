@@ -445,7 +445,7 @@ class SetAgentStatusRequest(BaseModel):
 
 
 class TodoDumpRequest(BaseModel):
-    """Request body for POST /todos/dump.
+    """Request body for POST /todos/dump, answered with a filing receipt.
 
     ``kind`` selects the lifecycle entry point:
       - "feature": content is the "input" artifact; enters intake (authors a PRD).
@@ -478,6 +478,7 @@ class TodoDumpRequest(BaseModel):
     reason: str | None = None
     human_involved: bool = False
     human_involvement_reason: str | None = None
+    client_request_id: str | None = None
 
     @model_validator(mode="before")
     @classmethod

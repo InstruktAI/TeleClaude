@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -22,7 +23,7 @@ from pydantic import SecretStr
 from teleclaude.core.workflow_store.github_io_models import GitHubRepositoryScope
 from teleclaude.core.workflow_store.github_io_runtime import shared_github_io_loop
 from teleclaude.github.accounts import GitHubRateLimitFacts
-from teleclaude.github.client import create_github_client
+from teleclaude.github.client import ResponseObserver, create_github_client
 from teleclaude.github.credentials import (
     GitHubCredentialFailure,
     GitHubCredentialRefused,
@@ -49,7 +50,7 @@ _HTTP_REFUSALS = (400, 401, 403, 422)
 _RATE_LIMIT_HOOK_FAILED_EVENT = "github_rate_limit_hook_failed"
 _LOCK_WAIT_SECONDS = 30.0
 _UNIT_SECONDS = 180.0
-_LOCK_WAIT_DETAIL = "request lock wait exceeded"
+_LOCK_WAIT_DETAIL = "unit lock wait exceeded"
 _Result = TypeVar("_Result")
 _CredentialKey = tuple[int, tuple[tuple[str, str], ...]]
 _InstallationKey = tuple[int, str]
@@ -117,6 +118,16 @@ class GitHubIOFailure(StrEnum):
     ROLE_UNMAPPED = "role_unmapped"
 
 
+@asynccontextmanager
+async def _request_gate() -> AsyncIterator[None]:
+    """One provider request at a time, process-wide: held for a single wire request, never across several."""
+    lock = shared_github_io_loop().request_lock
+    if lock is None:
+        raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
+    async with lock:
+        yield
+
+
 class GitHubIORefused(RuntimeError):
     """A bounded reason why one store operation could not reach GitHub."""
 
@@ -143,16 +154,33 @@ class GitHubTransport:
         operation: StrEnum,
         request: Callable[[Any], Awaitable[_Result]],
     ) -> _Result:
-        """Run one client request as the assigned App, mapping every provider failure to a bounded refusal."""
+        """Run client requests as the assigned App, mapping every provider failure to a bounded refusal.
+
+        The client's transport takes the process-wide request gate for each wire request, never across the
+        callback or the credential issuance, so GitHub sees one request at a time.
+        """
         installation: _InstallationKey = (assignment.app_id, self.scope.repository)
 
         async def observe(response: Response) -> None:
             _record_reading(installation, response.headers)
 
+        return await self._call(assignment, permissions, operation, request, observe)
+
+    async def _call(
+        self,
+        assignment: GitHubActorAssignment,
+        permissions: AppPermissionsType,
+        operation: StrEnum,
+        request: Callable[[Any], Awaitable[_Result]],
+        observe: ResponseObserver,
+    ) -> _Result:
         try:
             token = await self._credential_token(assignment, permissions)
             async with create_github_client(
-                TokenAuthStrategy(token.get_secret_value()), MemCacheStrategy(), response_observer=observe
+                TokenAuthStrategy(token.get_secret_value()),
+                MemCacheStrategy(),
+                response_observer=observe,
+                request_gate=_request_gate,
             ) as client:
                 return await request(client)
         except GitHubIORefused:
@@ -185,7 +213,9 @@ class GitHubTransport:
         if cached is not None and cached[1] > datetime.now(UTC) + _TOKEN_REFRESH_MARGIN:
             return cached[0]
         try:
-            credential = await issue_github_installation_credential(assignment, self.scope, permissions)
+            credential = await issue_github_installation_credential(
+                assignment, self.scope, permissions, request_gate=_request_gate
+            )
         except GitHubCredentialRefused as error:
             if error.reason is GitHubCredentialFailure.RATE_LIMITED:
                 resume_at = error.rate_limit.resume_at if error.rate_limit is not None else None
@@ -243,16 +273,17 @@ def split_repository(value: str) -> tuple[str, str]:
 
 
 async def run_serialized_unit[Result](work: Callable[[], Awaitable[Result]], *, unit_detail: str) -> Result:
-    """Run one unit of GitHub requests while holding the process-wide request lock, within bounded waits.
+    """Run one unit of GitHub requests while holding the process-wide unit lock, within bounded waits.
 
-    Every GitHub request the workflow store makes runs inside such a unit, so no two requests are ever in flight
-    at once and a stuck unit cannot hold the lock for ever.
+    Units never interleave, and a stuck unit cannot hold the lock for ever. The requests inside a unit take the
+    process-wide request gate one wire request at a time, so a push that owns the working copy's writer waits behind
+    at most one request.
     """
     io_loop = shared_github_io_loop()
-    if io_loop.request_lock is None:
+    if io_loop.unit_lock is None:
         raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
     try:
-        await asyncio.wait_for(io_loop.request_lock.acquire(), _LOCK_WAIT_SECONDS)
+        await asyncio.wait_for(io_loop.unit_lock.acquire(), _LOCK_WAIT_SECONDS)
     except TimeoutError:
         raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_LOCK_WAIT_DETAIL) from None
     try:
@@ -261,4 +292,4 @@ async def run_serialized_unit[Result](work: Callable[[], Awaitable[Result]], *, 
     except TimeoutError:
         raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=unit_detail) from None
     finally:
-        io_loop.request_lock.release()
+        io_loop.unit_lock.release()

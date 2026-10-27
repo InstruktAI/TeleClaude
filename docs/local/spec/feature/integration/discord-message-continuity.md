@@ -129,3 +129,8 @@ Scenario Outline: A message posted while the daemon restarts
   installation and older than the window is not recovered. Whether such a
   message was processed can no longer be told, and recovering it could repeat
   a message the session already received.
+- A message that carries several voice recordings is deleted from Discord as
+  soon as the first of them is transcribed, because a transcribed recording's
+  source is removed (`local/projects/teleclaude/policy/ux-message-cleanup`). A
+  recording of that message that was not yet accepted when the restart began
+  is then absent from Discord's copy and is not recovered.

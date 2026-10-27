@@ -564,16 +564,6 @@ master admits each conversation request before sending it:
   it. Every write channel of the working copy, including raw connections,
   commits through the push.
 
-<!-- planned-change:working-copy-writers-refused-database-locked -->
-
-- Processes on one computer stay serialized by the working copy's
-  transactions, exactly as on the local backend. GitHub I/O runs on an
-  adapter-owned I/O thread: a sync caller blocks on it without starting an
-  event loop of its own, and an async caller awaits it without blocking the
-  daemon's loop.
-
-<!-- change:working-copy-writers-refused-database-locked -->
-
 - Processes on one computer stay serialized by the working copy's
   transactions, exactly as on the local backend. A write that finds the
   writer held waits for it up to the store's admission budget, measured in
@@ -596,8 +586,6 @@ master admits each conversation request before sending it:
   same transaction. Bookkeeping that records a completed reflection or pull
   request is written from a thread no write depends on, within the admission
   budget.
-
-<!-- /planned-change:working-copy-writers-refused-database-locked -->
 
 - The working copy's reads never reach GitHub; only writes, rebuild and
   refresh do.
@@ -709,24 +697,6 @@ sequenceDiagram
   refuse, and rebuild refuses store resolution naming the item. No working
   copy is ever published in its place.
 
-<!-- planned-change:working-copy-writers-refused-database-locked -->
-
-- A write holds the working copy's single writer from its first change until
-  its local commit, across the GitHub round trips the write path places before
-  that commit
-  (`local/projects/teleclaude/adr/0125-github-store-keeps-the-local-implementation-as-its-working-copy`).
-  Another write on the same computer that cannot gain the writer
-  within its connection's busy budget is refused with `database is locked`:
-  that operation fails and its change is lost, and on the API an unhandled
-  server error reaches the caller. Writers are ordered while they wait, but a
-  hold that outlasts the busy budget refuses them.
-- A synchronous reflection acknowledgement that waits for the writer stops the
-  event loop it runs on for its whole wait. A write that already holds the
-  writer and needs that loop to reach its commit cannot finish meanwhile, so
-  the acknowledgement's wait lengthens the very hold it is waiting on.
-
-<!-- change:working-copy-writers-refused-database-locked -->
-
 - A write holds the working copy's single writer from its first change until
   its local commit, across the GitHub round trips the write path places before
   that commit
@@ -749,8 +719,6 @@ sequenceDiagram
   store refreshes.
 - Bookkeeping refused for the writer after a completed reflection or pull
   request leaves that reflection owed, and refresh writes it again.
-
-<!-- /planned-change:working-copy-writers-refused-database-locked -->
 
 <!-- planned-change:github-store-owed-pull-request-without-branch -->
 

@@ -1,0 +1,56 @@
+"""The request deadline of workflow API requests, and the explicit refusal their working-copy waits end in."""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from http import HTTPStatus
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+from teleclaude.api.work_feedback import declared_refusal_response
+from teleclaude.core.todos_db._write_admission import WorkingCopyWriteRefused, request_deadline
+
+_RETRY_AFTER_HEADER = "Retry-After"
+_RETRY_AFTER_SECONDS = "5"
+
+_NOTHING_WRITTEN = (
+    "The working copy was busy past this request's deadline, so nothing was written. Send the request again."
+)
+_PART_SAVED = (
+    "Part of this request was saved before the working copy refused the rest. "
+    "Check the current state before sending the remainder again."
+)
+_MAY_BE_SAVED = (
+    "The working copy ran out of time after the change was sent to GitHub, so it may have been saved "
+    "and will appear once the store refreshes. Check before sending it again."
+)
+
+
+async def working_copy_request_deadline() -> AsyncIterator[None]:
+    """Router dependency: every working-copy wait of this request shares one deadline.
+
+    FastAPI runs an async dependency in the request's own task, which is the task the scope is honoured in.
+    """
+    with request_deadline():
+        yield
+
+
+def working_copy_refusal_response(refusal: WorkingCopyWriteRefused) -> JSONResponse:
+    """The explicit 503 for a refused working-copy wait, stating only what the refusal establishes."""
+    if refusal.commit_point_sent:
+        feedback, headers = _MAY_BE_SAVED, None
+    elif refusal.request_saved:
+        feedback, headers = _PART_SAVED, None
+    else:
+        feedback, headers = _NOTHING_WRITTEN, {_RETRY_AFTER_HEADER: _RETRY_AFTER_SECONDS}
+    return declared_refusal_response(
+        status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=feedback, work_feedback=feedback, headers=headers
+    )
+
+
+async def working_copy_refusal_handler(_request: Request, exc: Exception) -> JSONResponse:
+    """Exception handler for the store's working-copy refusal."""
+    if not isinstance(exc, WorkingCopyWriteRefused):
+        raise exc
+    return working_copy_refusal_response(exc)

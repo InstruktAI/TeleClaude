@@ -260,6 +260,7 @@ work that will fail gate validation. Group first:
 
 - read the parent's full authorized scope from its resolved intent artifact and any approved architecture context
 - create each child with `telec todo create <child> "<child-content>" --kind <k> --group <slug>`, partitioning the parent's existing scope — adding no functional or business scope absent from the parent
+- act on a child only once its filing outcome reports it created
 - narrow each child to its scope slice, referencing that parent intent and any applicable approved architecture context
 - add dependency ordering between the children with `telec todo update <child> --after <dep>`
 - stop treating the parent as directly prepare/work-ready; it is now a structural holder
@@ -545,7 +546,8 @@ If the todo is grouped instead:
 ### 7. Final step — advance
 
 When the implementation-plan artifact is written (or child grouping has been
-executed via `telec todo create ... --group`), call:
+executed via `telec todo create ... --group` and each child's filing outcome
+reports it created), call:
 
 ```
 telec todo prepare {slug}

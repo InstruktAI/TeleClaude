@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import re
 import sys
+import uuid
 from datetime import UTC, datetime
+from http import HTTPMethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -56,6 +58,8 @@ __all__ = [
 _FILING_ACK_FLAG = "--approved"
 _BUGS_REPORT_PATH = "bugs report"
 _BUGS_PATH = "/bugs"
+_BUG_FILING_PATH = "/todos/dump"
+_JSON_DUMP_MODE = "json"
 _SUPPRESSIONS_PATH = "/bugs/suppressions"
 _UNEXPECTED_RESPONSE = "unexpected bugs response: {answer}"
 _BUGS_SUPPRESS_PATH = "bugs suppress"
@@ -216,6 +220,9 @@ def _handle_bugs_report(args: list[str]) -> None:
 
     from teleclaude.api_models import TodoDumpRequest  # noqa: PLC0415 - deferred command-local dependency.
     from teleclaude.cli.tool_client import tool_api_request  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.cli.tool_commands._receipt import (  # noqa: PLC0415 - deferred command-local dependency.
+        render_receipt,
+    )
     from teleclaude.slug import normalize_slug  # noqa: PLC0415 - deferred command-local dependency.
 
     parsed = parse_command_args(BUGS_REPORT, args)
@@ -271,18 +278,11 @@ def _handle_bugs_report(args: list[str]) -> None:
         cwd=str(project_root),
         human_involved=human_involvement_reason is not None,
         human_involvement_reason=human_involvement_reason,
+        client_request_id=str(uuid.uuid4()),
     )
-    api_result = tool_api_request(
-        "POST",
-        "/todos/dump",
-        json_body=bug_request.model_dump(mode="json"),
+    render_receipt(
+        tool_api_request(HTTPMethod.POST, _BUG_FILING_PATH, json_body=bug_request.model_dump(mode=_JSON_DUMP_MODE))
     )
-    if not (isinstance(api_result, dict) and api_result.get("status") == "ok"):
-        detail = api_result.get("detail", api_result) if isinstance(api_result, dict) else api_result
-        print(f"Error: {detail}")
-        raise SystemExit(1)
-
-    print(f"Created bug: {slug}")
 
 
 def _handle_bugs_list(args: list[str]) -> None:

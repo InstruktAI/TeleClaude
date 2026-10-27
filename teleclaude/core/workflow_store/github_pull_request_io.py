@@ -95,8 +95,8 @@ class GitHubPullRequestIO:
     The pull request is opened, edited and closed as the App mapped to `builder` and
     reviewed as the App mapped to `reviewer`: GitHub refuses approving or
     requesting changes on a pull request from its own author. Every primitive runs
-    inside `submit`, which holds the process-wide request lock like every store
-    request.
+    inside `submit`, which holds the unit lock for the whole unit; each primitive's
+    request takes the process-wide request lock alone, like every store request.
     """
 
     def __init__(self, repository: GitHubRepositoryIdentity) -> None:

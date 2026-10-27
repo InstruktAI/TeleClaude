@@ -92,7 +92,6 @@ class WorkflowStore(Protocol):
         artifact_body: str,
         updated_by: str | None,
         documentation_admission: DocumentationAdmission | None = None,
-        lock_wait_bound_s: float | None = None,
     ) -> WorkItemId: ...
     async def replace_item_state_and_artifacts(
         self,

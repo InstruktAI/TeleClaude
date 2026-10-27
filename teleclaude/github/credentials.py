@@ -22,7 +22,7 @@ from pydantic import SecretStr
 
 from teleclaude.config.github_app_key import GitHubAppKeyFailure, GitHubAppKeyRefused, resolve_github_app_private_key
 from teleclaude.github.accounts import GitHubAccountDirectory, GitHubAccountLookupRefused, GitHubRateLimitFacts
-from teleclaude.github.client import create_github_client
+from teleclaude.github.client import RequestGate, create_github_client
 from teleclaude.types.github_account import github_app_bot_login
 from teleclaude.types.github_binding import GitHubActorAssignment
 
@@ -141,8 +141,12 @@ async def issue_github_installation_credential(
     assignment: GitHubActorAssignment,
     target: _GitHubRepositoryScope,
     permissions: AppPermissionsType,
+    *,
+    request_gate: RequestGate | None = None,
 ) -> GitHubInstallationCredential:
     """Consume owner-selected facts and the config-owned key before verified token export.
+
+    A caller that schedules provider traffic passes `request_gate`; each request of the issuance runs inside it.
 
     The trusted composition calls this only after invocation/operation admission.
     No argument is an actor selector at a native command boundary. This component
@@ -160,6 +164,7 @@ async def issue_github_installation_credential(
             create_github_client(
                 AppAuthStrategy(app_id=assignment.app_id, private_key=private_key.get_secret_value()),
                 cache,
+                request_gate=request_gate,
             ) as app_client,
         ):
             app_response = await app_client.rest.apps.async_get_authenticated()
@@ -198,7 +203,9 @@ async def issue_github_installation_credential(
             issued = response.parsed_data
             expiry = _verify_issued_scope(issued, target, requested_permissions)
             # Account metadata needs an installation token; /user is not App identity.
-            async with create_github_client(TokenAuthStrategy(issued.token), cache) as token_client:
+            async with create_github_client(
+                TokenAuthStrategy(issued.token), cache, request_gate=request_gate
+            ) as token_client:
                 account = await GitHubAccountDirectory(token_client).read(github_app_bot_login(app.slug))
                 if not account.same_account(assignment.actor):
                     raise GitHubCredentialRefused(GitHubCredentialFailure.ACTOR_MISMATCH)

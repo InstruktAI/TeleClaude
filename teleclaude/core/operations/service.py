@@ -72,12 +72,15 @@ from teleclaude.core.operations._receipt import recovery_command
 from teleclaude.core.operations._relayed_ownership import was_started_by_principal
 from teleclaude.core.operations._rename_payload import ensure_rename_target_matches, rename_payload
 from teleclaude.core.operations.job_run import JobRunRequest, job_project_path, job_run_payload, run_job_run_operation
+from teleclaude.core.operations.todo_filing import FilingOrder, run_todo_filing_operation
+from teleclaude.core.operations.todo_filing import submit_todo_filing as _submit_todo_filing
 from teleclaude.core.operations.todo_identity import (
     pin_operation_todo_identity,
     todo_operation_context,
     todo_operation_submission,
 )
 from teleclaude.core.operations.todo_removal import run_todo_remove_operation
+from teleclaude.core.operations.todo_removal import submit_todo_remove as _submit_todo_remove
 from teleclaude.core.operations.todo_store_switch import run_todo_store_switch_operation
 from teleclaude.core.operations.todo_store_switch import submit_todo_store_switch as _submit_todo_store_switch
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
@@ -150,6 +153,8 @@ class OperationsService:
     """Submit, track, and inspect durable background operations."""
 
     submit_todo_store_switch = _submit_todo_store_switch
+    submit_todo_remove = _submit_todo_remove
+    submit_todo_filing = _submit_todo_filing
 
     def __init__(
         self,
@@ -172,6 +177,7 @@ class OperationsService:
         self._live_guard = asyncio.Lock()
         self._lifecycle_client_factory = lifecycle_client_factory
         self._pending_startup_recovery: list[Operation] = []
+        self._filing_order = FilingOrder()
 
     async def start(self) -> None:
         """Normalize abandoned nonterminal operations; retain them for `deliver_startup_recovery`."""
@@ -351,36 +357,6 @@ class OperationsService:
         )
         return await self._submit_operation(
             kind=OperationKind.TODO_PREPARE,
-            caller_session_id=caller_session_id,
-            cwd=cwd,
-            slug=slug,
-            client_request_id=client_request_id,
-            payload_json=payload_json,
-            existing_match_ok=existing_match_ok,
-            on_existing=on_existing,
-        )
-
-    async def submit_todo_remove(
-        self,
-        *,
-        slug: str,
-        cwd: str,
-        caller_session_id: str,
-        client_request_id: str | None,
-        force: bool = False,
-        addressed_todo_id: str | None = None,
-    ) -> SerializedOperation:
-        """Create or reattach a receipt-backed todo-remove operation."""
-        payload_json, existing_match_ok, on_existing = todo_operation_submission(
-            kind=OperationKind.TODO_REMOVE,
-            slug=slug,
-            cwd=cwd,
-            addressed_todo_id=addressed_todo_id,
-            client_request_id=client_request_id,
-            force=force,
-        )
-        return await self._submit_operation(
-            kind=OperationKind.TODO_REMOVE,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=slug,
@@ -637,6 +613,7 @@ class OperationsService:
             OperationKind.TODO_PREPARE: self._run_todo_prepare,
             OperationKind.TODO_RENAME: self._run_todo_rename,
             OperationKind.TODO_REMOVE: lambda op: run_todo_remove_operation(self._db, op),
+            OperationKind.TODO_FILING: lambda op: run_todo_filing_operation(self._db, op, self._filing_order),
             OperationKind.TODO_STORE_SWITCH: lambda op: run_todo_store_switch_operation(self._db, op),
             OperationKind.SESSION_CLOSE: self._run_command_backed_operation,
             OperationKind.AGENT_RESTART: self._run_command_backed_operation,
