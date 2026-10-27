@@ -61,4 +61,4 @@ instead, to take over a Redis that another program uses.
 
 ## Status
 
-Superseded in part by ADR-0141
+Superseded in part by ADR-0141 and ADR-0143

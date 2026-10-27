@@ -77,4 +77,4 @@ before.
 
 ## Status
 
-Superseded in part by ADR-0140
+Superseded in part by ADR-0140 and ADR-0143
