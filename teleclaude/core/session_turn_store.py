@@ -30,16 +30,30 @@ class SessionTurnStore:
             rows = (await db_session.exec(statement)).all()
         return {row.turn_identity: row.ordinal for row in rows}
 
-    async def record_turns(self, session_id: str, identities: Sequence[str]) -> dict[str, int]:
+    async def known_sources(self, session_id: str) -> frozenset[str]:
+        """Return the digest of every transcript file of a session that a read has taken turns from."""
+        statement = select(db_models.SessionTurnSourceRow).where(
+            db_models.SessionTurnSourceRow.session_id == session_id
+        )
+        async with self._open_session() as db_session:
+            rows = (await db_session.exec(statement)).all()
+        return frozenset(row.source_digest for row in rows)
+
+    async def record_turns(
+        self, session_id: str, identities: Sequence[str], sources: Sequence[str] = ()
+    ) -> dict[str, int]:
         """Give each identity not yet recorded the next ordinal, in the order given, and return all ordinals.
 
-        An identity that already has an ordinal keeps it, so an ordinal is never rewritten. Two concurrent
-        recorders of one session meet at the unique ordinal; the loser reads what the winner wrote.
+        An identity that already has an ordinal keeps it, so an ordinal is never rewritten. The files the turns were
+        taken from are recorded in the same write, so a file is never known as read without its turns recorded. Two
+        concurrent recorders of one session meet at the unique ordinal; the loser reads what the winner wrote.
         """
         for attempt in range(_RECORD_ATTEMPTS):
             known = await self.known_ordinals(session_id)
+            known_sources = await self.known_sources(session_id)
             fresh = [identity for identity in dict.fromkeys(identities) if identity not in known]
-            if not fresh:
+            fresh_sources = [digest for digest in dict.fromkeys(sources) if digest not in known_sources]
+            if not fresh and not fresh_sources:
                 return known
             next_ordinal = max(known.values(), default=_FIRST_ORDINAL - 1) + 1
             now = datetime.now(UTC).isoformat()
@@ -52,6 +66,10 @@ class SessionTurnStore:
                             ordinal=next_ordinal + offset,
                             created_at=now,
                         )
+                    )
+                for digest in fresh_sources:
+                    db_session.add(
+                        db_models.SessionTurnSourceRow(session_id=session_id, source_digest=digest, created_at=now)
                     )
                 try:
                     await db_session.commit()

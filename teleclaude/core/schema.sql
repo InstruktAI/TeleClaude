@@ -212,6 +212,15 @@ CREATE TABLE IF NOT EXISTS session_turns (
     UNIQUE (session_id, ordinal)
 );
 
+-- The transcript files of a session a completed-turns read has taken turns from, so a file gone later is known to have
+-- held only turns that were recorded, and one never read is known to have held turns nothing recorded.
+CREATE TABLE IF NOT EXISTS session_turn_sources (
+    session_id TEXT NOT NULL,
+    source_digest TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, source_digest)
+);
+
 -- The fleet master's conversation request budget: the time of each append it sent within the last hour, the end of
 -- any pause a limit response set, and the limit responses other computers still owe the master.
 CREATE TABLE IF NOT EXISTS github_conversation_sends (

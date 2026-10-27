@@ -238,13 +238,18 @@ def _entry_time(entry: JsonDict) -> datetime | None:
     return ensure_utc(parsed) if parsed is not None else None
 
 
+def _source_digest(path: str) -> str:
+    """Name a transcript file of a session's chain, for the record of which files a read has taken turns from."""
+    return hashlib.sha256(path.encode()).hexdigest()[:_MISSING_DIGEST_LENGTH]
+
+
 def _derive_turns(stream: Sequence[JsonDict | _MissingSource], agent: AgentName) -> list[_OpenTurn]:
     """Cut one ordered entry stream into turns; a missing source stands as one turn that cannot be read."""
     turns: list[_OpenTurn] = []
     current: _OpenTurn | None = None
     for entry in stream:
         if isinstance(entry, _MissingSource):
-            digest = hashlib.sha256(entry.path.encode()).hexdigest()[:_MISSING_DIGEST_LENGTH]
+            digest = _source_digest(entry.path)
             current = None
             turns.append(
                 _OpenTurn(
@@ -275,36 +280,28 @@ def _derive_turns(stream: Sequence[JsonDict | _MissingSource], agent: AgentName)
     return turns
 
 
-def _read_chain(chain: Sequence[str], agent: AgentName, *, work_completed: bool) -> list[_OpenTurn]:
-    """Read every file of the chain, oldest first, into one turn sequence.
+def _read_chain(
+    chain: Sequence[str], agent: AgentName, *, work_completed: bool, recorded_sources: frozenset[str]
+) -> tuple[list[_OpenTurn], list[str]]:
+    """Read every file of the chain, oldest first, into one turn sequence, and name the files that were read.
 
-    A file the chain names that is gone stands in the sequence as a turn that cannot be read, when the session has
-    stopped at least once and so completed work somewhere. Whether it held turns that were already taken is not
-    known here; ``_without_covered_sources`` settles that against the recorded turns.
+    A file the chain names that is gone stands in the sequence as a turn that cannot be read when the session has
+    stopped at least once and so completed work somewhere, and no earlier read took turns from that file: whatever
+    it held was deleted before it was taken. A file an earlier read took turns from needs no stand-in, since those
+    turns are recorded under their own identities and ordinals.
     """
     stream: list[JsonDict | _MissingSource] = []
+    read: list[str] = []
     for path in chain:
         file_entries = _get_entries_for_agent(path, agent)
         if file_entries is None:
             logger.warning(_UNREADABLE_CHAIN_FILE_EVENT, file=Path(path).name)
-            if work_completed:
+            if work_completed and _source_digest(path) not in recorded_sources:
                 stream.append(_MissingSource(path))
             continue
+        read.append(_source_digest(path))
         stream.extend(file_entries)
-    return _derive_turns(stream, agent)
-
-
-def _without_covered_sources(derived: list[_OpenTurn], known: Mapping[str, int]) -> list[_OpenTurn]:
-    """Drop the stand-in of a missing file when a recorded turn is no longer readable.
-
-    That turn already carries the loss under its own identity and ordinal, so a stand-in beside it would be a turn
-    the session never had. A stand-in stays when no read ever recorded what the file held, and when an earlier read
-    already recorded the stand-in itself, which keeps its place.
-    """
-    readable = {turn.identity for turn in derived}
-    if all(identity in readable for identity in known):
-        return derived
-    return [turn for turn in derived if not turn.source_missing or turn.identity in known]
+    return _derive_turns(stream, agent), read
 
 
 async def _bind_routed_comments(session: Session, agent: AgentName) -> None:
@@ -376,7 +373,8 @@ async def read_completed_turns(
     A turn whose transcript can no longer be read, but which an earlier read recorded, is returned as unreadable
     with its identity and ordinal, and so is a transcript file the session's chain names that is gone though no read
     ever recorded what it held: one unreadable turn stands for its span, completed no later than the session's last
-    agent stop. A file gone after a read recorded its turns adds nothing beyond those turns. An ``after_identity`` this session has no record of reads from the first turn.
+    agent stop. A file gone after a read took its turns adds nothing beyond those turns. An ``after_identity`` this
+    session has no record of reads from the first turn.
     Raises ``LookupError`` when the session does not exist on this computer.
     """
     session = await db.get_session(session_id)
@@ -385,12 +383,16 @@ async def read_completed_turns(
     agent = resolve_parser_agent(session.active_agent)
     await _bind_routed_comments(session, agent)
     chain = build_message_chain(session.transcript_files, session.native_log_file)
-    known = await store.known_ordinals(session_id)
-    derived = _without_covered_sources(
-        await asyncio.to_thread(partial(_read_chain, chain, agent, work_completed=bool(session.last_agent_stop_at))),
-        known,
+    derived, read_sources = await asyncio.to_thread(
+        partial(
+            _read_chain,
+            chain,
+            agent,
+            work_completed=bool(session.last_agent_stop_at),
+            recorded_sources=await store.known_sources(session_id),
+        )
     )
-    ordinals = await store.record_turns(session_id, [turn.identity for turn in derived])
+    ordinals = await store.record_turns(session_id, [turn.identity for turn in derived], read_sources)
     held_ordinal = 0
     if after_identity is not None:
         held_ordinal = ordinals.get(after_identity, 0)

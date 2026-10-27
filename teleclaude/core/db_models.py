@@ -395,6 +395,17 @@ class SessionTurnRow(SQLModel, table=True):
     created_at: str
 
 
+class SessionTurnSourceRow(SQLModel, table=True):
+    """A transcript file of a session that a completed-turns read has taken turns from."""
+
+    __tablename__ = "session_turn_sources"
+    __table_args__ = {"extend_existing": True}
+
+    session_id: str = Field(primary_key=True)
+    source_digest: str = Field(primary_key=True)
+    created_at: str
+
+
 class GitHubConversationSendRow(SQLModel, table=True):
     """The time of one conversation append the fleet master sent."""
 
