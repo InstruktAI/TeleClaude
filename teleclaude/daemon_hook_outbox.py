@@ -49,7 +49,6 @@ from teleclaude.runtime.environment import (
     runtime_run_mismatch,
     take_normalized_launch_context,
 )
-from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types.commands import CreateSessionCommand
 
 if TYPE_CHECKING:
@@ -146,23 +145,6 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             await polling_coordinator.schedule_session_projection(session_id, self.client, headless_only=True)
         else:
             await polling_coordinator.schedule_session_projection(session_id, self.client)
-
-    @staticmethod
-    def _make_stale_read_callback(
-        local_computer_name: str,
-        get_adapter: Callable[[], object],
-    ) -> Callable[[str, str], None]:
-        """Return the on_stale_read callback for DaemonCache."""
-
-        def _on_stale_read(resource_type: str, computer: str) -> None:
-            # Local computers manage freshness via startup warming and todo watcher notifications
-            if computer in ("local", local_computer_name, ""):
-                return
-            adapter = get_adapter()
-            if isinstance(adapter, RedisTransport):
-                adapter.request_refresh(computer, resource_type, reason="ttl")
-
-        return _on_stale_read
 
     def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
         """Return a done-callback that logs unexpected background task failures."""

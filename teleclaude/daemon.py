@@ -461,12 +461,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         )
 
         # Initialize cache for remote data
-        self.cache = DaemonCache(
-            on_stale_read=TeleClaudeDaemon._make_stale_read_callback(
-                local_computer_name=config.computer.name,
-                get_adapter=lambda: self.client.transport,
-            )
-        )
+        self.cache = DaemonCache()
         self.client.cache = self.cache
         logger.info("DaemonCache initialized")
 
