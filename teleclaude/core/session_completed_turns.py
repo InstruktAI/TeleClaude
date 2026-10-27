@@ -36,7 +36,7 @@ from teleclaude.core.injected_text import (
 from teleclaude.core.models import JsonDict, Session
 from teleclaude.core.session_status import is_session_final
 from teleclaude.core.session_transcript_chain import build_message_chain
-from teleclaude.core.session_turn_store import SessionTurnStore
+from teleclaude.core.session_turn_store import SessionTurnStore, SourceCoverage
 from teleclaude.core.turn_binding import bind_pending_native_turns, binding_id_for_native_entry
 from teleclaude.utils.transcript import native_entry_id, normalize_transcript_entry_message
 from teleclaude.utils.transcript._iterators import _get_entries_for_agent
@@ -280,23 +280,38 @@ def _derive_turns(stream: Sequence[JsonDict | _MissingSource], agent: AgentName)
     return turns
 
 
+def _lost_since_read(coverage: SourceCoverage, stopped_at: datetime | None) -> bool:
+    """Whether the session completed something after the read that last took a file, beyond what that read left open."""
+    if coverage.tail_open or stopped_at is None:
+        return False
+    return coverage.stop_at is None or stopped_at > coverage.stop_at
+
+
 def _read_chain(
-    chain: Sequence[str], agent: AgentName, *, work_completed: bool, recorded_sources: frozenset[str]
+    chain: Sequence[str],
+    agent: AgentName,
+    *,
+    stopped_at: datetime | None,
+    recorded_sources: Mapping[str, SourceCoverage],
 ) -> tuple[list[_OpenTurn], list[str]]:
     """Read every file of the chain, oldest first, into one turn sequence, and name the files that were read.
 
     A file the chain names that is gone stands in the sequence as a turn that cannot be read when the session has
-    stopped at least once and so completed work somewhere, and no earlier read took turns from that file: whatever
-    it held was deleted before it was taken. A file an earlier read took turns from needs no stand-in, since those
-    turns are recorded under their own identities and ordinals.
+    stopped at least once and so completed work somewhere, and either no earlier read took turns from that file, or
+    the file is the session's current log and the session has stopped since the read that last took it, with nothing
+    left open that the stop completes: a turn was added to it that no read saw. Any other file an earlier read took
+    turns from needs no stand-in, since those turns are recorded under their own identities and ordinals.
     """
     stream: list[JsonDict | _MissingSource] = []
     read: list[str] = []
-    for path in chain:
+    for index, path in enumerate(chain):
         file_entries = _get_entries_for_agent(path, agent)
         if file_entries is None:
             logger.warning(_UNREADABLE_CHAIN_FILE_EVENT, file=Path(path).name)
-            if work_completed and _source_digest(path) not in recorded_sources:
+            coverage = recorded_sources.get(_source_digest(path))
+            if stopped_at is not None and (
+                coverage is None or (index == len(chain) - 1 and _lost_since_read(coverage, stopped_at))
+            ):
                 stream.append(_MissingSource(path))
             continue
         read.append(_source_digest(path))
@@ -372,9 +387,10 @@ async def read_completed_turns(
 
     A turn whose transcript can no longer be read, but which an earlier read recorded, is returned as unreadable
     with its identity and ordinal, and so is a transcript file the session's chain names that is gone though no read
-    ever recorded what it held: one unreadable turn stands for its span, completed no later than the session's last
-    agent stop. A file gone after a read took its turns adds nothing beyond those turns. An ``after_identity`` this
-    session has no record of reads from the first turn.
+    ever recorded what it held, or the session's current log that is gone after the session stopped again since it was
+    last read: one unreadable turn stands for its span, completed no later than the session's last agent stop. A
+    file gone after a read took all its turns adds nothing beyond those turns. An ``after_identity`` this session has
+    no record of reads from the first turn.
     Raises ``LookupError`` when the session does not exist on this computer.
     """
     session = await db.get_session(session_id)
@@ -383,24 +399,32 @@ async def read_completed_turns(
     agent = resolve_parser_agent(session.active_agent)
     await _bind_routed_comments(session, agent)
     chain = build_message_chain(session.transcript_files, session.native_log_file)
+    stopped_at = ensure_utc(session.last_agent_stop_at) if session.last_agent_stop_at else None
+    session_is_final = is_session_final(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at)
     derived, read_sources = await asyncio.to_thread(
         partial(
             _read_chain,
             chain,
             agent,
-            work_completed=bool(session.last_agent_stop_at),
+            stopped_at=stopped_at,
             recorded_sources=await store.known_sources(session_id),
         )
     )
-    ordinals = await store.record_turns(session_id, [turn.identity for turn in derived], read_sources)
+    tail_open = (
+        bool(derived)
+        and not derived[-1].source_missing
+        and not _is_completed(derived[-1], is_last=True, stopped_at=stopped_at, session_is_final=session_is_final)
+    )
+    coverage = SourceCoverage(stop_at=stopped_at, tail_open=tail_open)
+    ordinals = await store.record_turns(
+        session_id, [turn.identity for turn in derived], {digest: coverage for digest in read_sources}
+    )
     held_ordinal = 0
     if after_identity is not None:
         held_ordinal = ordinals.get(after_identity, 0)
         if held_ordinal == 0:
             logger.warning(_UNKNOWN_HELD_TURN_EVENT, session_id=session_id)
 
-    stopped_at = ensure_utc(session.last_agent_stop_at) if session.last_agent_stop_at else None
-    session_is_final = is_session_final(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at)
     completed: list[CompletedTurn] = []
     for index, turn in enumerate(derived):
         ordinal = ordinals[turn.identity]

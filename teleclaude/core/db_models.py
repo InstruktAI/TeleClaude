@@ -404,6 +404,8 @@ class SessionTurnSourceRow(SQLModel, table=True):
     session_id: str = Field(primary_key=True)
     source_digest: str = Field(primary_key=True)
     created_at: str
+    stop_at: str | None = None
+    tail_open: bool = False
 
 
 class GitHubConversationSendRow(SQLModel, table=True):

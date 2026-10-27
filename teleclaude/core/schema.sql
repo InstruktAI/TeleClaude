@@ -212,12 +212,15 @@ CREATE TABLE IF NOT EXISTS session_turns (
     UNIQUE (session_id, ordinal)
 );
 
--- The transcript files of a session a completed-turns read has taken turns from, so a file gone later is known to have
--- held only turns that were recorded, and one never read is known to have held turns nothing recorded.
+-- The transcript files of a session a completed-turns read has taken turns from, and how far the session's completions
+-- were covered when it last did: the session's stop boundary then, and whether the file's last turn was still open. A
+-- file gone later is known to have held only recorded turns when no stop followed that read.
 CREATE TABLE IF NOT EXISTS session_turn_sources (
     session_id TEXT NOT NULL,
     source_digest TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    stop_at TEXT,
+    tail_open INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (session_id, source_digest)
 );
 
