@@ -658,6 +658,24 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(human=_HR_ADMIN, scope=CommandScope.PLATFORM),
             ),
+            "board": CommandDef(
+                desc="Keep the project's GitHub board true to its workflow record",
+                subcommands={
+                    "repair": CommandDef(
+                        desc="Rebuild every item, lane and marker on the project's board from its GitHub store",
+                        flags=[F.FLAG_HELP],
+                        notes=[
+                            "Corrects a hand edit or a missed update on the board; the workflow itself is unchanged.",
+                            "Names each write it could not make and why, such as a missing App permission or a "
+                            "repository owned by a personal account, and the computer that creates the board "
+                            "while it does not exist yet.",
+                            _RECEIPT_RETURN_NOTE,
+                        ],
+                        examples=["telec todo board repair"],
+                        auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
+                    ),
+                },
+            ),
             "create": CommandDef(
                 desc="Create a todo with substantive content",
                 args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--approved] [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved <reason>]",
@@ -2179,6 +2197,7 @@ OPERATIONS_GET = CLI_SURFACE["operations"].subcommands["get"]
 TODO_CREATE = CLI_SURFACE["todo"].subcommands["create"]
 TODO_DELIVER = CLI_SURFACE["todo"].subcommands["deliver"]
 TODO_REMOVE = CLI_SURFACE["todo"].subcommands["remove"]
+TODO_BOARD_REPAIR = CLI_SURFACE["todo"].subcommands["board"].subcommands["repair"]
 TODO_STAMP = CLI_SURFACE["todo"].subcommands["stamp"]
 TODO_RETURN_TO_WORK = CLI_SURFACE["todo"].subcommands["return-to-work"]
 TODO_REACTIVATE = CLI_SURFACE["todo"].subcommands["reactivate"]

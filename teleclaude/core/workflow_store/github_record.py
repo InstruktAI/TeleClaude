@@ -65,6 +65,9 @@ class CommentEnvelopeField(StrEnum):
     VERSION = "version"
     ISSUE = "issue"
     ROUND = "round"
+    COMPUTER = "computer"
+    PROJECT = "project"
+    REPOSITORY = "repository"
 
 
 class CommentEnvelopeAction(StrEnum):
@@ -78,6 +81,8 @@ class CommentEnvelopeAction(StrEnum):
     PULL_REQUEST = "pull-request"
     REVIEW = "review"
     DELIVERED = "delivered"
+    BOARD = "board"
+    BOARD_CLAIM = "board-claim"
 
 
 _ACTION_FIELD = CommentEnvelopeField.ACTION
@@ -393,6 +398,19 @@ def render_comment_envelope(fields: Sequence[tuple[CommentEnvelopeField, Scalar]
             continue
         rendered.append(key if value is True else f"{key}{_ENVELOPE_KEY_VALUE_SEPARATOR}{value}")
     return _ENVELOPE_OPEN + _ENVELOPE_SEPARATOR.join(rendered) + _ENVELOPE_CLOSE
+
+
+def comment_envelope_fields(body: str) -> dict[str, str]:
+    """Read the `key:value` fields of the envelope a comment or body opens with; empty when it has none."""
+    line = body.split(_LINE_BREAK, 1)[0].strip()
+    if not (line.startswith(_ENVELOPE_OPEN) and line.endswith(_ENVELOPE_CLOSE)):
+        return {}
+    fields: dict[str, str] = {}
+    for part in line[1:-1].split(_ENVELOPE_SEPARATOR):
+        key, separator, value = part.partition(_ENVELOPE_KEY_VALUE_SEPARATOR)
+        if separator:
+            fields[key] = value
+    return fields
 
 
 def artifact_version_envelope_fields(name: str, ordinal: int) -> tuple[tuple[CommentEnvelopeField, Scalar], ...]:

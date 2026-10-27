@@ -24,6 +24,7 @@ from teleclaude.config.loader import github_actor_for_app_id
 from teleclaude.config.project_models import TodoStoreBackend, TodoStoreConfig
 from teleclaude.constants import TodoStatus
 from teleclaude.core.todos_db._adapter import TodosDb
+from teleclaude.core.todos_db._github_board import board_setup, mark_all_board_items_owed_at, owed_board_items
 from teleclaude.core.todos_db._github_pull_requests import work_item_for_number
 from teleclaude.core.todos_db._github_questions import insert_awaiting_question
 from teleclaude.core.todos_db._working_copy import (
@@ -45,6 +46,9 @@ from teleclaude.core.workflow_store.github import (
     GitHubRepositoryIdentity,
     resolve_github_repository_identity,
 )
+from teleclaude.core.workflow_store.github_board_io import GitHubBoardIO
+from teleclaude.core.workflow_store.github_board_queue import repair_owed_board_items
+from teleclaude.core.workflow_store.github_board_setup import BoardRepairOutcome, BoardSetupCause, GitHubBoardSetup
 from teleclaude.core.workflow_store.github_io import GitHubMutationPacing, GitHubWorkflowIO
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_push import GitHubWorkflowPush
@@ -85,6 +89,7 @@ _ISSUE_UNREADABLE_EVENT = "github_item_issue_unreadable"
 _READ_ONLY_URI = "file:{}?mode=ro"
 _IN_MEMORY_ENGINE_URL = "sqlite://"
 _ACTIVE_RUNNER = "active_runner"
+_BOARD_SETUP_FAILED = "github_store_board_setup_failed"
 _ITEM_ID = "item_id"
 logger = get_logger(__name__)
 _unreadable_working_copies: set[Path] = set()
@@ -109,8 +114,10 @@ class GitHubWorkflowStore(TodosDb):
         self._migration_lock = asyncio.Lock()
         self._io = GitHubWorkflowIO(repository, assignment)
         self._pull_requests = GitHubPullRequestIO(repository)
-        self._push = GitHubWorkflowPush(path, repository, assignment, self._io, self._pull_requests)
-        self._sync = GitHubWorkflowSync(self, repository, assignment, self._io, self._pull_requests)
+        self._board = GitHubBoardIO(repository, assignment)
+        self._push = GitHubWorkflowPush(path, repository, assignment, self._io, self._pull_requests, self._board)
+        self._board_setup_lock = asyncio.Lock()
+        self._sync = GitHubWorkflowSync(self, repository, assignment, self._io, self._pull_requests, self._board)
         self._push.set_conflict_refresh(self._sync.refresh)
         self.set_commit_callbacks(
             self._push.before_commit,
@@ -193,6 +200,37 @@ class GitHubWorkflowStore(TodosDb):
     async def refresh_working_copy(self) -> int:
         """Adopt committed changes made by another computer and repair owed reflections."""
         return await self._sync.refresh()
+
+    async def refresh_board_setup(self, computer: str) -> None:
+        """Set the project's board up when none is recorded or setup is owed; only the daemon calls this."""
+        async with self._board_setup_lock:
+            async with self._session() as session:
+                setup, owed = await session.run_sync(
+                    lambda sync_session: (board_setup(sync_session), owed_board_items(sync_session))
+                )
+            if setup.owed_cause == BoardSetupCause.PERSONAL_ACCOUNT or not (
+                setup.targets() is None or setup.owed_cause is not None or owed
+            ):
+                return
+            await self._board_setup(computer).run()
+
+    async def repair_board(self, computer: str) -> BoardRepairOutcome:
+        """Owe every item's board item, set the board up and write them all; only the daemon calls this."""
+        async with self._board_setup_lock:
+            await asyncio.to_thread(mark_all_board_items_owed_at, Path(self.db_path))
+            setup = await self._board_setup(computer).run()
+            left = await repair_owed_board_items(self, self._board, set())
+            async with self._session() as session:
+                slugs = await session.run_sync(
+                    lambda sync_session: [_slug_of(sync_session, item_id) for item_id, _reason in left]
+                )
+            return BoardRepairOutcome(
+                setup=setup,
+                unwritten=tuple((slug, reason) for slug, (_item_id, reason) in zip(slugs, left, strict=True)),
+            )
+
+    def _board_setup(self, computer: str) -> GitHubBoardSetup:
+        return GitHubBoardSetup(Path(self.db_path), self._repository, self._assignment, self._io, self._board, computer)
 
     async def surface_question(
         self,
@@ -449,10 +487,24 @@ def read_github_item_issue(project_root: str | Path, slug: str) -> GitHubIssueRe
     return GitHubIssueReference(number=number, url=HttpUrl(_ISSUE_URL.format(identity.repository, number)))
 
 
-async def refresh_github_workflow_store(project_root_or_cwd: str | Path) -> int:
-    """Refresh the selected project's shared GitHub working copy."""
-    store = await get_github_workflow_store(project_root_or_cwd)
-    return await cast(GitHubWorkflowStore, store).refresh_working_copy()
+async def refresh_github_workflow_store(project_root_or_cwd: str | Path, *, computer: str) -> int:
+    """Refresh the selected project's shared GitHub working copy from the daemon.
+
+    The daemon alone sets the project's board up, as `computer`, ahead of the refresh so the items the
+    setup owes are written by it.
+    """
+    store = cast(GitHubWorkflowStore, await get_github_workflow_store(project_root_or_cwd))
+    try:
+        await store.refresh_board_setup(computer)
+    except Exception as error:  # supervision boundary: the board never holds back the refresh
+        logger.warning(_BOARD_SETUP_FAILED, reason=type(error).__name__, exc_info=True)
+    return await store.refresh_working_copy()
+
+
+async def repair_github_board(project_root_or_cwd: str | Path, *, computer: str) -> BoardRepairOutcome:
+    """Rebuild every item, lane and marker on the selected project's board from its GitHub store."""
+    store = cast(GitHubWorkflowStore, await get_github_workflow_store(project_root_or_cwd))
+    return await store.repair_board(computer)
 
 
 async def surface_github_question(
@@ -483,6 +535,11 @@ def _resolve_selection(
     if assignment is None:
         raise ValueError(_UNKNOWN_APP)
     return identity.project_path, identity, assignment
+
+
+def _slug_of(session: SyncSession, item_id: str) -> str:
+    slug = session.execute(text(_ITEM_SLUG_BY_ID), {_ITEM_ID: item_id}).scalar_one_or_none()
+    return slug if isinstance(slug, str) else item_id
 
 
 def _lock_for(key: str) -> threading.Lock:

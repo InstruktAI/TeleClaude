@@ -38,7 +38,12 @@ from teleclaude.core.workflow_store.github_io_transport import (
     int_argument,
     split_repository,
 )
-from teleclaude.core.workflow_store.github_reflection import ISSUE_FIELD_PARTS, IssueReflection, ProjectionPart
+from teleclaude.core.workflow_store.github_reflection import (
+    ISSUE_FIELD_PARTS,
+    IssueReflection,
+    IssueState,
+    ProjectionPart,
+)
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 _EMPTY = ""
@@ -333,7 +338,7 @@ class GitHubWorkflowIO:
                 owner, repo, data={GitHubField.TITLE: title, GitHubField.BODY: body}
             )
             issue = response.parsed_data
-            return GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
+            return _github_issue(issue)
 
         return await self._with_client(GitHubOperation.OPEN_ISSUE, request)
 
@@ -445,7 +450,7 @@ class GitHubWorkflowIO:
                 )
                 issues = response.parsed_data
                 found.extend(
-                    GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
+                    _github_issue(issue)
                     for issue in issues
                     if getattr(issue, GitHubField.PULL_REQUEST, UNSET) in (None, UNSET)
                 )
@@ -461,7 +466,7 @@ class GitHubWorkflowIO:
         async def request(client: Any) -> GitHubIssue:
             response = await client.rest.issues.async_get(owner, repo, number)
             issue = response.parsed_data
-            return GitHubIssue(issue.number, issue.id, issue.node_id, issue.user.login, issue.updated_at)
+            return _github_issue(issue)
 
         return await self._with_client(GitHubOperation.GET_ISSUE, request)
 
@@ -865,3 +870,15 @@ _OPERATION_HANDLERS: dict[GitHubOperation, Callable[[GitHubWorkflowIO, tuple[obj
     GitHubOperation.CREATE_COMMENT: _dispatch_create_comment,
     GitHubOperation.UPDATE_COMMENT: _dispatch_update_comment,
 }
+
+
+def _github_issue(issue: Any) -> GitHubIssue:
+    return GitHubIssue(
+        issue.number,
+        issue.id,
+        issue.node_id,
+        issue.user.login,
+        issue.updated_at,
+        issue.body if isinstance(issue.body, str) else _EMPTY,
+        issue.state == IssueState.CLOSED,
+    )
