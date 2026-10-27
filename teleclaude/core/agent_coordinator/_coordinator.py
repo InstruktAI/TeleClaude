@@ -860,17 +860,18 @@ class AgentCoordinator(
         output_version: str | None,
     ) -> None:
         """Complete stop fan-out, listener notification, and forwarding."""
+        # The hook receiver stamps the moment the agent's stop hook fired.
+        stopped_at = parse_iso_datetime(payload.raw.get(_RECEIVED_AT_FIELD))
         schedule_debounced_delivery(
             session_id,
             client=self.client,
             command_service=get_command_service(),
             source_computer=source_computer,
+            completed_through=stopped_at,
         )
 
         title_raw = payload.raw.get("title")
         title = title_raw if isinstance(title_raw, str) and title_raw else None
-        # The hook receiver stamps the moment the agent's stop hook fired.
-        stopped_at = parse_iso_datetime(payload.raw.get(_RECEIVED_AT_FIELD))
         await self._notify_session_listener(
             session_id,
             variant=notification_variant,
