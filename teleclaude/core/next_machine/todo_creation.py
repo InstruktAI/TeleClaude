@@ -64,10 +64,6 @@ _CREATED_EVENT_DOMAIN: Final = "sdlc"
 _CREATION_MODE_PICKUP: Final = "pickup"
 _CREATION_MODE_SILENT: Final = "silent"
 
-# Longest a filing that answers a waiting caller holds for other git work before it is refused as busy. It stays
-# below that caller's response deadline by more than the work that follows acquisition.
-SYNCHRONOUS_FILING_LOCK_WAIT_BOUND_S: Final = 20.0
-
 
 @dataclass(frozen=True)
 class NewTodo:
@@ -88,7 +84,6 @@ class NewTodo:
     group: str | None = None
     icebox: bool = False
     context: str | None = None
-    lock_wait_bound_s: float | None = None
 
 
 async def write_new_todo(todos_db: WorkflowStore, new: NewTodo) -> str:
@@ -116,7 +111,6 @@ async def write_new_todo(todos_db: WorkflowStore, new: NewTodo) -> str:
         artifact_body=new.artifact_body,
         updated_by=new.session_id,
         documentation_admission=documentation_admission,
-        lock_wait_bound_s=new.lock_wait_bound_s,
     )
     if new.artifact_name in DRIFT_TRACKED_ARTIFACT_NAMES:
         await sync_artifact_provenance_state(

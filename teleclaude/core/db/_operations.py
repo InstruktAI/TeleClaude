@@ -227,6 +227,34 @@ class DbOperationsMixin:
                     return operation
             return None
 
+    async def earlier_nonterminal_operation_ids(
+        self,
+        *,
+        kind: str,
+        cwd: str,
+        created_at: str,
+        operation_id: str,
+    ) -> list[str]:
+        """Ids of the queued or running operations of ``kind`` in ``cwd`` accepted before the given one."""
+        stmt = (
+            select(db_models.Operation.operation_id)
+            .where(db_models.Operation.kind == kind)
+            .where(db_models.Operation.cwd == cwd)
+            .where(db_models.Operation.state.in_(_NONTERMINAL_STATES))
+            .where(
+                or_(
+                    db_models.Operation.created_at < created_at,
+                    and_(
+                        db_models.Operation.created_at == created_at,
+                        db_models.Operation.operation_id < operation_id,
+                    ),
+                )
+            )
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            return list(result.all())
+
     async def find_nonterminal_operations_bound_to_todo(
         self,
         *,
