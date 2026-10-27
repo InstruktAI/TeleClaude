@@ -14,6 +14,7 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy.orm import Session
 
 from teleclaude.core.todos_db._working_copy import (
+    WorkingCopyChanges,
     WorkingCopyField,
     WorkingCopyItemSnapshot,
     artifact_remote_version_id,
@@ -43,6 +44,18 @@ from teleclaude.core.workflow_store.github_io import (
 from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused
 from teleclaude.core.workflow_store.github_ledger import GitHubLedgerRefused, find_ledger
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
+from teleclaude.core.workflow_store.github_push_deadline import (
+    COMMIT_POINT_SENT_KEY as _COMMIT_POINT_SENT_KEY,
+)
+from teleclaude.core.workflow_store.github_push_deadline import (
+    PUSH_DEADLINE_KEY as _PUSH_DEADLINE_KEY,
+)
+from teleclaude.core.workflow_store.github_push_deadline import (
+    PushDeadline,
+    await_within_push_deadline,
+    begin_push_deadline,
+    push_deadline_expired,
+)
 from teleclaude.core.workflow_store.github_record import (
     ArtifactHistoryAction,
     ArtifactHistoryNode,
@@ -123,6 +136,16 @@ class GitHubWorkflowPush:
         changes = pending_changes(session)
         if not changes.item_ids and not changes.project_records:
             return
+        # A paced push (the GitHub store switch) publishes at one write per second and keeps the switch's own limits.
+        session.info[_PUSH_DEADLINE_KEY] = None if self.io.paced else begin_push_deadline()
+        session.info.pop(_COMMIT_POINT_SENT_KEY, None)
+        try:
+            self._push_changes(session, changes)
+        finally:
+            session.info.pop(_PUSH_DEADLINE_KEY, None)
+            session.info.pop(_COMMIT_POINT_SENT_KEY, None)
+
+    def _push_changes(self, session: Session, changes: WorkingCopyChanges) -> None:
         ledger = read_repository_bookkeeping(session)
         cached_ledger_issue = _int_or_none(ledger.get(WorkflowField.LEDGER_ISSUE_NUMBER))
         ledger_issue_number = self._discover_ledger(session, cached_ledger_issue)
@@ -185,7 +208,9 @@ class GitHubWorkflowPush:
                 if transaction_id is not None
                 else WorkflowRecord(committed=revision)
             )
-            comment = self._write_item_record(session, issue_number, record_comment_id, record)
+            comment = self._write_item_record(
+                session, issue_number, record_comment_id, record, commit_point=transaction_id is None
+            )
             revision_number = revision.revision
             record_ids.append(
                 (revision.item_id, issue_number, issue_id, issue_node_id, comment.database_id, revision_number)
@@ -219,6 +244,7 @@ class GitHubWorkflowPush:
                 items=ledger_items,
                 project_records=project_entries,
             )
+            session.info[_COMMIT_POINT_SENT_KEY] = True
             ledger_comment = _io_call(
                 session,
                 self.io,
@@ -734,11 +760,19 @@ class GitHubWorkflowPush:
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED) from None
 
     def _write_item_record(
-        self, session: Session, issue_number: int, comment_id: int | None, record: WorkflowRecord
+        self,
+        session: Session,
+        issue_number: int,
+        comment_id: int | None,
+        record: WorkflowRecord,
+        *,
+        commit_point: bool,
     ) -> GitHubComment:
         effective = record.pending.revision if record.pending is not None else record.committed
         body = render_record_comment(record, self._effective_state(session, issue_number, effective))
         if comment_id is None:
+            if commit_point:
+                session.info[_COMMIT_POINT_SENT_KEY] = True
             return cast(
                 GitHubComment,
                 _io_call(session, self.io, GitHubOperation.CREATE_COMMENT, issue_number, body),
@@ -753,6 +787,8 @@ class GitHubWorkflowPush:
         )
         if comment is None or self._trusted(comment) is None:
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
+        if commit_point:
+            session.info[_COMMIT_POINT_SENT_KEY] = True
         return cast(
             GitHubComment,
             _io_call(session, self.io, GitHubOperation.UPDATE_COMMENT, comment.database_id, body),
@@ -866,17 +902,31 @@ def _io_call(
     operation: GitHubOperation,
     *arguments: object,
 ) -> Any:
-    """Await the I/O loop through SQLAlchemy's async driver when inside AsyncSession."""
+    """Await the I/O loop through SQLAlchemy's async driver when inside AsyncSession.
+
+    The call ends within the push's deadline when the push has one.
+    """
+    deadline: PushDeadline | None = session.info.get(_PUSH_DEADLINE_KEY)
+    commit_point_sent = bool(session.info.get(_COMMIT_POINT_SENT_KEY))
     connection = session.connection().connection
     run_async = getattr(connection, _RUN_ASYNC_METHOD, None)
     if callable(run_async):
         async_method = _ASYNC_IO[operation]
 
         async def invoke(_driver_connection: Any) -> Any:
-            return await async_method(io, *arguments)
+            if deadline is None:
+                return await async_method(io, *arguments)
+            return await await_within_push_deadline(
+                deadline, async_method(io, *arguments), commit_point_sent=commit_point_sent
+            )
 
         return run_async(invoke)
-    return _SYNC_IO[operation](io, *arguments)
+    if deadline is None:
+        return _SYNC_IO[operation](io, *arguments)
+    try:
+        return io.call_sync_within(operation, max(deadline.remaining, 0.0), *arguments)
+    except TimeoutError:
+        raise push_deadline_expired(deadline, commit_point_sent=commit_point_sent) from None
 
 
 _ASYNC_IO: dict[GitHubOperation, Callable[..., Awaitable[Any]]] = {

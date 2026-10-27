@@ -191,6 +191,11 @@ class GitHubWorkflowIO:
         self._transport = GitHubTransport(self.scope)
         self._pacing_window: GitHubMutationPacing | None = None
 
+    @property
+    def paced(self) -> bool:
+        """Whether a paced-mutation window (the GitHub store switch) is open on this IO."""
+        return self._pacing_window is not None
+
     @asynccontextmanager
     async def paced_mutations(self) -> AsyncIterator[GitHubMutationPacing]:
         """Pace mutative requests during one migration without changing ordinary traffic."""
@@ -370,6 +375,15 @@ class GitHubWorkflowIO:
 
     def _sync(self, operation: GitHubOperation, *arguments: object) -> Any:
         return shared_github_io_loop().submit(self._serialized_dispatch(operation, *arguments)).result()
+
+    def call_sync_within(self, operation: GitHubOperation, timeout: float, *arguments: object) -> Any:
+        """Run one operation for a sync caller, abandoning it when `timeout` seconds pass (raises TimeoutError)."""
+        future = shared_github_io_loop().submit(self._serialized_dispatch(operation, *arguments))
+        try:
+            return future.result(timeout=timeout)
+        except TimeoutError:
+            future.cancel()
+            raise
 
     async def _serialized_dispatch(self, operation: GitHubOperation, *arguments: object) -> Any:
         # Each request of the dispatch takes the request lock itself (`GitHubTransport.call`).

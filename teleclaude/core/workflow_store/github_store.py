@@ -48,6 +48,7 @@ from teleclaude.core.workflow_store.github import (
 from teleclaude.core.workflow_store.github_io import GitHubMutationPacing, GitHubWorkflowIO
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_push import GitHubWorkflowPush
+from teleclaude.core.workflow_store.github_push_deadline import await_within_push_deadline, begin_push_deadline
 from teleclaude.core.workflow_store.github_record import (
     CommentEnvelopeAction,
     CommentEnvelopeField,
@@ -265,7 +266,11 @@ class GitHubWorkflowStore(TodosDb):
                     mark_reflection_owed(sync_session, item_id)
 
                 await session.run_sync(record_question)
-                await self._io.async_create_comment(issue_number_value, body)
+                await await_within_push_deadline(
+                    begin_push_deadline(),
+                    self._io.async_create_comment(issue_number_value, body),
+                    commit_point_sent=False,
+                )
         await self.refresh_working_copy()
 
     def rebuild_sync(self) -> None:
