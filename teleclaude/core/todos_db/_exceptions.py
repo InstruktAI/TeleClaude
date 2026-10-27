@@ -19,7 +19,11 @@ _DRIVER_START_BUSY_WORK_FEEDBACK_WITH_START = (
     "Another start of {slug} is in progress as session {in_flight}; contact it with "
     "`telec sessions send {in_flight} <message>`."
 )
+_DRIVER_START_BUSY_WORK_FEEDBACK_WITH_REFUSAL = "Another start of {slug} is in progress: {refusal}"
 _DRIVER_START_BUSY_WORK_FEEDBACK = "Another start of {slug} is in progress; try again after it finishes."
+_DRIVER_START_BUSY_SUMMARY_WITH_START = "DriverStartBusy: another start of {slug} is in progress as session {in_flight}"
+_DRIVER_START_BUSY_SUMMARY_WITH_REFUSAL = "DriverStartBusy: another start of {slug} is in progress: {refusal}"
+_DRIVER_START_BUSY_SUMMARY = "DriverStartBusy: another start of {slug} is in progress"
 _LANE_CROSSING_WORK_FEEDBACK = (
     "This todo is held in the {held_lane} lane and cannot be started from {requested_lane}. {sanctioned_path}."
 )
@@ -52,6 +56,7 @@ class DriverStartBusyErrorPayload(OperationErrorPayload):
 
     slug: str
     in_flight: str | None
+    refusal: str | None
 
 
 class OperationFailure(Exception):
@@ -231,29 +236,36 @@ class DriverStartBusy(OperationFailure):
     start of the same todo, which is exactly the start that must lose. ``in_flight``
     is the session the holding start is creating or claiming, so the refusal names
     who is in the way just as :class:`ClaimConflict` does. A caller that learns of the
-    refusal across the create door's HTTP boundary holds only its prose detail and
-    raises it with no ``in_flight``.
+    refusal across the create door's HTTP boundary holds the refusal's prose, which names
+    that session; it carries the prose as ``refusal`` and reports it unchanged, never
+    parsing it for the identity.
     """
 
     error_kind = "driver_start_busy"
 
-    def __init__(self, *, slug: str, in_flight: str | None = None) -> None:
+    def __init__(self, *, slug: str, in_flight: str | None = None, refusal: str | None = None) -> None:
         self.slug = slug
         self.in_flight = in_flight
-        self.work_feedback = (
-            _DRIVER_START_BUSY_WORK_FEEDBACK_WITH_START.format(slug=slug, in_flight=in_flight)
-            if in_flight
-            else _DRIVER_START_BUSY_WORK_FEEDBACK.format(slug=slug)
-        )
+        self.refusal = refusal
+        if in_flight:
+            self.work_feedback = _DRIVER_START_BUSY_WORK_FEEDBACK_WITH_START.format(slug=slug, in_flight=in_flight)
+        elif refusal:
+            self.work_feedback = _DRIVER_START_BUSY_WORK_FEEDBACK_WITH_REFUSAL.format(slug=slug, refusal=refusal)
+        else:
+            self.work_feedback = _DRIVER_START_BUSY_WORK_FEEDBACK.format(slug=slug)
         super().__init__(slug)
 
     def to_error_payload(self) -> DriverStartBusyErrorPayload:
-        return {"kind": self.error_kind, "slug": self.slug, "in_flight": self.in_flight}
+        return DriverStartBusyErrorPayload(
+            kind=self.error_kind, slug=self.slug, in_flight=self.in_flight, refusal=self.refusal
+        )
 
     def summary(self) -> str:
         if self.in_flight:
-            return f"DriverStartBusy: another start of {self.slug} is in progress as session {self.in_flight}"
-        return f"DriverStartBusy: another start of {self.slug} is in progress"
+            return _DRIVER_START_BUSY_SUMMARY_WITH_START.format(slug=self.slug, in_flight=self.in_flight)
+        if self.refusal:
+            return _DRIVER_START_BUSY_SUMMARY_WITH_REFUSAL.format(slug=self.slug, refusal=self.refusal)
+        return _DRIVER_START_BUSY_SUMMARY.format(slug=self.slug)
 
 
 _LANE_CROSSING_SUMMARY_TEMPLATE = (

@@ -605,6 +605,7 @@ async def recheck_slug_holder(
 
 
 _HTTP_LOCKED = 423
+_LOST_START_EVENT = "lifecycle start lost to a start in progress"
 _HTTP_CONFLICT = 409
 
 
@@ -617,8 +618,8 @@ async def _raise_lost_start(
 ) -> None:
     """Raise the typed outcome of a lost concurrent start; return when ``error`` is another refusal."""
     if error.status_code == _HTTP_LOCKED:
-        logger.warning("lifecycle start lost to a start in progress", slug=slug, detail=error.detail)
-        raise DriverStartBusy(slug=slug) from error
+        logger.warning(_LOST_START_EVENT, slug=slug, detail=error.detail)
+        raise DriverStartBusy(slug=slug, refusal=error.detail) from error
     if error.status_code == _HTTP_CONFLICT:
         holder = await recheck_slug_holder(runtime_db, todos_db, project_path, slug, exempt_session_id=None)
         if holder is not None:
