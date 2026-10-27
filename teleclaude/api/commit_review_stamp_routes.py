@@ -8,12 +8,13 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
+from teleclaude.api.working_copy_request import working_copy_request_deadline
 from teleclaude.core.next_machine.commit_review_stamps import apply_commit_review_stamp
 from teleclaude.core.next_machine.state_mutation import StateMutationError
 from teleclaude.git import GitCommandError
 from teleclaude.types.todos import CommitReviewVerdict
 
-router = APIRouter(prefix="/code", tags=["code"])
+router = APIRouter(prefix="/code", tags=["code"], dependencies=[Depends(working_copy_request_deadline)])
 
 _ERR_NO_SESSION = "a commit-review stamp requires a TeleClaude session: the record must name the stamping session"
 _ERR_NO_CWD = "cwd required: working directory not provided"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -23,10 +23,17 @@ from teleclaude.core.todos_db._github_pull_requests import (
 from teleclaude.core.todos_db._working_copy import (
     WorkingCopyField,
     WorkingCopyItemSnapshot,
+    clear_reflection_owed,
     issue_relations,
     item_bookkeeping,
     item_snapshot,
     item_unverifiable,
+    save_issue_projection_digest,
+)
+from teleclaude.core.todos_db._write_admission import (
+    WRITE_ADMISSION_BUDGET_S,
+    WorkingCopyWriteRefused,
+    connect_admitted,
 )
 from teleclaude.core.workflow_store import github_reflection as _github_reflection
 from teleclaude.core.workflow_store.github_io import GitHubWorkflowIO
@@ -52,12 +59,23 @@ _REFLECTION_FAILED = "github_store_reflection_failed"
 _REFLECTION_STORE_FAILED = "github_store_reflection_store_failed"
 _CLEAR_OWED_REFLECTION_SQL = "DELETE FROM github_owed_reflection WHERE item_id = ?"
 _SAVE_PROJECTION_DIGEST_SQL = "UPDATE github_item SET projection_digest = ? WHERE item_id = ?"
+_ACKNOWLEDGEMENT_THREAD = "teleclaude-github-acknowledgements"
 logger = get_logger(__name__)
+# One process-wide thread keeps an item's acknowledgements in order and keeps their writer waits off every event loop.
+_acknowledgements = ThreadPoolExecutor(max_workers=1, thread_name_prefix=_ACKNOWLEDGEMENT_THREAD)
 
 
-def stage_issue_reflections(session: Session, reflection_rows: list[tuple[int, str, WorkingCopyItemSnapshot]]) -> None:
-    """Derive each row's issue reflection inside the committing transaction and hold it for dispatch."""
+def stage_issue_reflections(
+    session: Session, reflection_rows: list[tuple[int, str, WorkingCopyItemSnapshot]]
+) -> frozenset[str]:
+    """Derive each row's issue reflection inside the committing transaction and hold it for dispatch.
+
+    A reflection that changes nothing on GitHub needs no write, so its acknowledgement is recorded here, in
+    the transaction that established the projection: the digest is saved and the owed marker cleared before
+    any later commit can mark the item owed again. Returns the items settled this way.
+    """
     projections: list[_github_reflection.ProjectionQueueEntry] = []
+    settled: set[str] = set()
     for issue_number, item_id, snapshot in reflection_rows:
         bookkeeping = item_bookkeeping(session, item_id)
         issue_id = _int_or_none(bookkeeping.get(WorkingCopyField.ISSUE_ID)) if bookkeeping else None
@@ -72,20 +90,23 @@ def stage_issue_reflections(session: Session, reflection_rows: list[tuple[int, s
         previous = parse_projection_digests((bookkeeping or {}).get(WorkingCopyField.PROJECTION_DIGEST))
         changed = _github_reflection.changed_projection_parts(reflection, previous)
         digest = _github_reflection.serialize_projection_digests(reflection.projection_digests)
+        if issue_id is not None and not changed:
+            save_issue_projection_digest(session, item_id, digest)
+            clear_reflection_owed(session, item_id)
+            settled.add(item_id)
+            continue
         projections.append((issue_number, issue_id, item_id, reflection, changed, digest))
     session.info[_REFLECTIONS_KEY] = projections
+    return frozenset(settled)
 
 
 def dispatch_staged_reflections(session: Session, db_path: Path, io: GitHubWorkflowIO) -> None:
-    """Queue the reflections staged for this commit and record those that need no write."""
+    """Queue the reflections staged for this commit; each acknowledges itself when GitHub accepted it."""
     reflections = session.info.pop(_REFLECTIONS_KEY, [])
     for issue_number, issue_id, item_id, reflection, changed, digest in reflections:
         if issue_id is None:
             continue
         try:
-            if not changed:
-                _store_projection_reflection(db_path, item_id, digest)
-                continue
             future = io.queue_reflection(issue_number, issue_id, reflection, changed)
             future.add_done_callback(partial(_reflection_finished, db_path, item_id, digest))
         except Exception as error:
@@ -108,15 +129,20 @@ def _reflection_finished(db_path: Path, item_id: str, projection_digest: str, fu
             exc_info=True,
         )
         return
+    # Runs on the GitHub I/O loop thread: the write waits for the writer on the acknowledgement thread instead.
+    _acknowledgements.submit(_acknowledge_reflection, db_path, item_id, projection_digest)
+
+
+def _acknowledge_reflection(db_path: Path, item_id: str, projection_digest: str) -> None:
     try:
         _store_projection_reflection(db_path, item_id, projection_digest)
-    except sqlite3.Error as error:
+    except (sqlite3.Error, WorkingCopyWriteRefused) as error:
         # The digest update and the owed-row delete share one transaction, so the item stays owed and refresh repairs it.
         logger.warning(_REFLECTION_STORE_FAILED, item_id=item_id, reason=type(error).__name__, exc_info=True)
 
 
 def _store_projection_reflection(db_path: Path, item_id: str, projection_digest: str) -> None:
-    connection = sqlite3.connect(db_path)
+    connection = connect_admitted(str(db_path), WRITE_ADMISSION_BUDGET_S)
     try:
         connection.execute(_SAVE_PROJECTION_DIGEST_SQL, (projection_digest, item_id))
         connection.execute(_CLEAR_OWED_REFLECTION_SQL, (item_id,))
@@ -228,15 +254,16 @@ async def _repair_pull_request(store: TodosDb, pull_requests: GitHubPullRequestI
     if snapshot is None or issue_number is None or unverifiable:
         return
     desired = reflect_pull_request(snapshot, issue_number)
+    db_path = Path(store.db_path)
     if desired is None:
-        store_pull_request_bookkeeping(Path(store.db_path), item_id, known, owed=False)
+        await asyncio.to_thread(store_pull_request_bookkeeping, db_path, item_id, known, owed=False)
         return
     try:
         await asyncio.wrap_future(pull_requests.submit(partial(_apply, desired, known)))
     except BaseException:
-        store_pull_request_bookkeeping(Path(store.db_path), item_id, known, owed=True)
+        await asyncio.to_thread(store_pull_request_bookkeeping, db_path, item_id, known, owed=True)
         raise
-    store_pull_request_bookkeeping(Path(store.db_path), item_id, known, owed=False)
+    await asyncio.to_thread(store_pull_request_bookkeeping, db_path, item_id, known, owed=False)
 
 
 async def _apply(desired: PullRequestReflection, known: PullRequestBookkeeping, io: GitHubPullRequestIO) -> None:
@@ -255,7 +282,12 @@ def _pull_request_finished(db_path: Path, item_id: str, known: PullRequestBookke
             reason=failure_reason(error),
             exc_info=True,
         )
+    # Runs on the GitHub I/O loop thread: the write waits for the writer on the acknowledgement thread instead.
+    _acknowledgements.submit(_acknowledge_pull_request, db_path, item_id, known, owed)
+
+
+def _acknowledge_pull_request(db_path: Path, item_id: str, known: PullRequestBookkeeping, owed: bool) -> None:
     try:
         store_pull_request_bookkeeping(db_path, item_id, known, owed=owed)
-    except sqlite3.Error as error:
+    except (sqlite3.Error, WorkingCopyWriteRefused) as error:
         logger.warning(_PULL_REQUEST_STORE_FAILED, item_id=item_id, reason=type(error).__name__, exc_info=True)

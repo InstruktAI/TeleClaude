@@ -39,6 +39,7 @@ from teleclaude.core.todos_db._working_copy import (
     restore_project_record,
 )
 from teleclaude.core.todos_db._working_copy_schema import initialize_working_copy
+from teleclaude.core.todos_db._write_admission import WRITE_ADMISSION_BUDGET_S
 from teleclaude.core.todos_db_path import github_working_copy_path
 from teleclaude.core.workflow_store.github import (
     GitHubIdentityRefused,
@@ -51,6 +52,7 @@ from teleclaude.core.workflow_store.github_board_setup import BoardRepairOutcome
 from teleclaude.core.workflow_store.github_io import GitHubMutationPacing, GitHubWorkflowIO
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_push import GitHubWorkflowPush
+from teleclaude.core.workflow_store.github_push_deadline import await_within_push_deadline, begin_push_deadline
 from teleclaude.core.workflow_store.github_record import (
     CommentEnvelopeAction,
     CommentEnvelopeField,
@@ -106,7 +108,7 @@ class GitHubWorkflowStore(TodosDb):
         repository: GitHubRepositoryIdentity,
         assignment: GitHubActorAssignment,
     ) -> None:
-        super().__init__(str(path))
+        super().__init__(str(path), write_admission_budget=WRITE_ADMISSION_BUDGET_S)
         self._repository = repository
         self._assignment = assignment
         self._migration_lock = asyncio.Lock()
@@ -302,7 +304,11 @@ class GitHubWorkflowStore(TodosDb):
                     mark_reflection_owed(sync_session, item_id)
 
                 await session.run_sync(record_question)
-                await self._io.async_create_comment(issue_number_value, body)
+                await await_within_push_deadline(
+                    begin_push_deadline(),
+                    self._io.async_create_comment(issue_number_value, body),
+                    commit_point_sent=False,
+                )
         await self.refresh_working_copy()
 
     def rebuild_sync(self) -> None:

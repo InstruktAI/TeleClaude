@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, TypeVar
@@ -16,6 +17,7 @@ from httpx import HTTPError
 from pydantic import SecretStr
 
 from teleclaude.core.workflow_store.github_io_models import GitHubRepositoryScope
+from teleclaude.core.workflow_store.github_io_runtime import shared_github_io_loop
 from teleclaude.github.client import create_github_client
 from teleclaude.github.credentials import GitHubCredentialRefused, issue_github_installation_credential
 from teleclaude.types.github_binding import GitHubActorAssignment
@@ -45,6 +47,16 @@ class GitHubIOFailure(StrEnum):
     ROLE_UNMAPPED = "role_unmapped"
 
 
+@asynccontextmanager
+async def _request_gate() -> AsyncIterator[None]:
+    """One provider request at a time, process-wide: held for a single wire request, never across several."""
+    lock = shared_github_io_loop().request_lock
+    if lock is None:
+        raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
+    async with lock:
+        yield
+
+
 class GitHubIORefused(RuntimeError):
     """A bounded reason why one store operation could not reach GitHub."""
 
@@ -68,10 +80,25 @@ class GitHubTransport:
         operation: StrEnum,
         request: Callable[[Any], Awaitable[_Result]],
     ) -> _Result:
-        """Run one client request as the assigned App, mapping every provider failure to a bounded refusal."""
+        """Run client requests as the assigned App, mapping every provider failure to a bounded refusal.
+
+        The client's transport takes the process-wide request gate for each wire request, never across the
+        callback or the credential issuance, so GitHub sees one request at a time.
+        """
+        return await self._call(assignment, permissions, operation, request)
+
+    async def _call(
+        self,
+        assignment: GitHubActorAssignment,
+        permissions: AppPermissionsType,
+        operation: StrEnum,
+        request: Callable[[Any], Awaitable[_Result]],
+    ) -> _Result:
         try:
             token = await self._credential_token(assignment, permissions)
-            async with create_github_client(TokenAuthStrategy(token.get_secret_value()), MemCacheStrategy()) as client:
+            async with create_github_client(
+                TokenAuthStrategy(token.get_secret_value()), MemCacheStrategy(), request_gate=_request_gate
+            ) as client:
                 return await request(client)
         except GitHubIORefused:
             raise
@@ -96,7 +123,9 @@ class GitHubTransport:
         if cached is not None and cached[1] > datetime.now(UTC) + _TOKEN_REFRESH_MARGIN:
             return cached[0]
         try:
-            credential = await issue_github_installation_credential(assignment, self.scope, permissions)
+            credential = await issue_github_installation_credential(
+                assignment, self.scope, permissions, request_gate=_request_gate
+            )
         except GitHubCredentialRefused:
             raise GitHubIORefused(GitHubIOFailure.CREDENTIAL_REFUSED) from None
         self._credentials[key] = (credential.token, credential.expires_at)

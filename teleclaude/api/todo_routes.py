@@ -36,6 +36,7 @@ from teleclaude.api.todo_update_support import (
     validate_update_request,
 )
 from teleclaude.api.work_feedback import DeclaredWorkRefusal
+from teleclaude.api.working_copy_request import working_copy_request_deadline
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.config.machine import config
@@ -79,7 +80,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/todos", tags=["todos"])
+router = APIRouter(prefix="/todos", tags=["todos"], dependencies=[Depends(working_copy_request_deadline)])
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 _CLAIMED_HOLD_WARNING = (
