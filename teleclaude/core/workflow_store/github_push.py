@@ -6,13 +6,14 @@ import asyncio
 import hashlib
 import json
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Container, Mapping
 from pathlib import Path
 from typing import Any, cast
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy.orm import Session
 
+from teleclaude.core.todos_db._ledger_knowledge import record_ledger_commits
 from teleclaude.core.todos_db._working_copy import (
     WorkingCopyField,
     WorkingCopyItemSnapshot,
@@ -43,7 +44,9 @@ from teleclaude.core.workflow_store.github_io import (
     GitHubWorkflowIO,
 )
 from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused
+from teleclaude.core.workflow_store.github_item_trust import validate_revision_content
 from teleclaude.core.workflow_store.github_ledger import GitHubLedgerRefused, find_ledger
+from teleclaude.core.workflow_store.github_ledger_commits import LedgerCommitView
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_record import (
     ArtifactHistoryAction,
@@ -59,13 +62,10 @@ from teleclaude.core.workflow_store.github_record import (
     WorkflowRecord,
     WorkflowTodoStatus,
     effective_revision,
-    has_ledger_marker,
-    is_content_comment,
     join_content_comments,
     latest_artifact_pointer,
     make_item_revision,
     parse_content_comment,
-    parse_ledger_commit,
     parse_record_comment,
     render_ledger_commit,
     render_record_comment,
@@ -130,7 +130,10 @@ class GitHubWorkflowPush:
         ledger = read_repository_bookkeeping(session)
         cached_ledger_issue = _int_or_none(ledger.get(WorkflowField.LEDGER_ISSUE_NUMBER))
         ledger_issue_number = self._discover_ledger(session, cached_ledger_issue)
-        committed_transactions = self._committed_transactions(session, ledger_issue_number)
+        ledger_commits = LedgerCommitView(
+            session, self.assignment.actor.login, self._ledger_reader(session, ledger_issue_number)
+        )
+        record_comments: dict[int, GitHubComment] = {}
         snapshots: list[
             tuple[WorkingCopyItemSnapshot, int, int | None, str, int, ItemRevision, WorkflowRecord | None, int | None]
         ] = []
@@ -144,7 +147,7 @@ class GitHubWorkflowPush:
                 if existing_bookkeeping
                 else False
             )
-            prepared = self._prepare_item_revision(session, item_id, committed_transactions)
+            prepared = self._prepare_item_revision(session, item_id, ledger_commits, record_comments)
             if prepared is None:
                 continue
             snapshot, issue_number, issue_id, node_id, base_revision, revision, old_record, record_comment_id = prepared
@@ -171,7 +174,7 @@ class GitHubWorkflowPush:
         ledger_items: list[LedgerItem] = []
 
         for (
-            _snapshot,
+            snapshot,
             issue_number,
             issue_id,
             issue_node_id,
@@ -189,7 +192,9 @@ class GitHubWorkflowPush:
                 if transaction_id is not None
                 else WorkflowRecord(committed=revision)
             )
-            comment = self._write_item_record(session, issue_number, record_comment_id, record)
+            comment = self._write_item_record(
+                session, issue_number, record_comment_id, record, record_comments, _state_text(snapshot.state)
+            )
             revision_number = revision.revision
             record_ids.append(
                 (revision.item_id, issue_number, issue_id, issue_node_id, comment.database_id, revision_number)
@@ -231,6 +236,7 @@ class GitHubWorkflowPush:
                 render_ledger_commit(commit),
             )
             ledger_comment_id = ledger_comment.database_id
+            record_ledger_commits(session, [(transaction_id, ledger_comment.database_id)])
 
         for item_id, issue_number, issue_id, node_id, record_comment_id, revision_number in record_ids:
             save_item_bookkeeping(
@@ -276,7 +282,8 @@ class GitHubWorkflowPush:
         self,
         session: Session,
         item_id: str,
-        committed_transactions: set[str],
+        committed_transactions: Container[str],
+        record_comments: dict[int, GitHubComment],
     ) -> (
         tuple[
             WorkingCopyItemSnapshot,
@@ -301,12 +308,16 @@ class GitHubWorkflowPush:
         node_id = _string_or_none(bookkeeping.get(WorkflowField.NODE_ID)) if bookkeeping else None
         record_comment_id = _int_or_none(bookkeeping.get(WorkflowField.RECORD_COMMENT_ID)) if bookkeeping else None
         base_revision = (_int_or_none(bookkeeping.get(WorkflowField.BASE_REVISION)) or 0) if bookkeeping else 0
-        old_record = self._item_record(session, issue_number, record_comment_id, committed_transactions)
+        old_record: WorkflowRecord | None = None
+        if issue_number is not None and record_comment_id is not None:
+            old_record, record_comments[record_comment_id] = self._item_record(session, issue_number, record_comment_id)
         old_revision = effective_revision(old_record, committed_transactions) if old_record else None
         if old_revision is not None and old_revision.revision > base_revision:
             session.info[_CONFLICT_REFRESH_KEY] = True
             session.info[_CONFLICT_DRIVER_KEY] = session.connection().connection
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
+        if old_revision is not None and issue_number is not None and record_comment_id is not None:
+            self._verify_item_content(session, issue_number, old_revision)
         if (
             snapshot is None
             and old_revision is not None
@@ -564,7 +575,7 @@ class GitHubWorkflowPush:
         item_id: str,
         issue_number: int | None,
         record: WorkflowRecord | None,
-        committed_transactions: set[str],
+        committed_transactions: Container[str],
     ) -> tuple[dict[str, list[ArtifactPointer]], WorkflowRecord | None]:
         if record is None:
             return {}, None
@@ -650,21 +661,12 @@ class GitHubWorkflowPush:
         )
 
     def _item_record(
-        self,
-        session: Session,
-        issue_number: int | None,
-        comment_id: int | None,
-        committed_transactions: set[str],
-    ) -> WorkflowRecord | None:
-        if issue_number is None or comment_id is None:
-            return None
-        comments = _io_call(session, self.io, GitHubOperation.READ_COMMENTS, issue_number)
-        comment = next(
-            (item for item in comments if item.database_id == comment_id),
-            None,
+        self, session: Session, issue_number: int, comment_id: int
+    ) -> tuple[WorkflowRecord, GitHubComment]:
+        """Read and trust the item's one record comment by its id."""
+        comment = cast(
+            GitHubComment, _io_call(session, self.io, GitHubOperation.READ_COMMENT, issue_number, comment_id)
         )
-        if comment is None:
-            raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
         trusted = self._trusted(comment)
         if trusted is None:
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
@@ -672,53 +674,14 @@ class GitHubWorkflowPush:
             record = parse_record_comment(trusted)
         except ValueError:
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED) from None
-        self._validate_revision_content(effective_revision(record, committed_transactions), comments)
-        return record
+        return record, comment
 
-    def _validate_revision_content(
-        self, revision: ItemRevision, comments: list[GitHubComment] | tuple[GitHubComment, ...]
-    ) -> None:
-        by_id = {comment.database_id: comment for comment in comments}
-        pointers = [(name, pointer) for name, values in revision.artifacts.items() for pointer in values]
-        if revision.state_content_pointer is not None:
-            pointers.append((_STATE_NAME, revision.state_content_pointer))
-        for name, pointer in pointers:
-            if name != _STATE_NAME and pointer.head_comment_id is not None:
-                try:
-                    history = resolve_artifact_history(
-                        pointer,
-                        revision.item_id,
-                        name,
-                        comments,
-                        self.assignment.actor.login,
-                    )
-                except ValueError:
-                    raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED) from None
-                if not history:
-                    raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-                continue
-            parts: list[tuple[Any, str]] = []
-            for comment_id in pointer.comment_ids:
-                comment = by_id.get(comment_id)
-                trusted = self._trusted(comment) if comment is not None else None
-                if trusted is None:
-                    raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-                try:
-                    header, content = parse_content_comment(trusted)
-                except ValueError:
-                    raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED) from None
-                if (
-                    header.item_id != revision.item_id
-                    or header.name != name
-                    or header.version != (pointer.remote_version_id or pointer.version)
-                    or header.digest != pointer.digest
-                ):
-                    raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-                parts.append((header, content))
-            try:
-                join_content_comments(parts)
-            except ValueError:
-                raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED) from None
+    def _verify_item_content(self, session: Session, issue_number: int, revision: ItemRevision) -> None:
+        """Refuse a write whose current revision references content without a recoverable bot version."""
+        comments = cast(
+            tuple[GitHubComment, ...], _io_call(session, self.io, GitHubOperation.READ_COMMENTS, issue_number)
+        )
+        validate_revision_content(revision, comments, self.assignment.actor.login)
 
     def _read_item_content(self, session: Session, issue_number: int, revision: ItemRevision, name: str) -> str:
         pointers = revision.artifacts.get(name, [])
@@ -739,32 +702,39 @@ class GitHubWorkflowPush:
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED) from None
 
     def _write_item_record(
-        self, session: Session, issue_number: int, comment_id: int | None, record: WorkflowRecord
+        self,
+        session: Session,
+        issue_number: int,
+        comment_id: int | None,
+        record: WorkflowRecord,
+        record_comments: Mapping[int, GitHubComment],
+        known_state_text: str | None,
     ) -> GitHubComment:
         effective = record.pending.revision if record.pending is not None else record.committed
-        body = render_record_comment(record, self._effective_state(session, issue_number, effective))
+        body = render_record_comment(record, self._effective_state(session, issue_number, effective, known_state_text))
         if comment_id is None:
             return cast(
                 GitHubComment,
                 _io_call(session, self.io, GitHubOperation.CREATE_COMMENT, issue_number, body),
             )
-        comment = next(
-            (
-                item
-                for item in _io_call(session, self.io, GitHubOperation.READ_COMMENTS, issue_number)
-                if item.database_id == comment_id
-            ),
-            None,
-        )
-        if comment is None or self._trusted(comment) is None:
+        comment = record_comments.get(comment_id)
+        if comment is None:
+            comment = cast(
+                GitHubComment, _io_call(session, self.io, GitHubOperation.READ_COMMENT, issue_number, comment_id)
+            )
+        if self._trusted(comment) is None:
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
         return cast(
             GitHubComment,
             _io_call(session, self.io, GitHubOperation.UPDATE_COMMENT, comment.database_id, body),
         )
 
-    def _effective_state(self, session: Session, issue_number: int, revision: ItemRevision) -> Mapping[str, object]:
-        if revision.state_content_pointer is not None:
+    def _effective_state(
+        self, session: Session, issue_number: int, revision: ItemRevision, known_state_text: str | None
+    ) -> Mapping[str, object]:
+        if revision.state_content_pointer is not None and known_state_text is not None:
+            state_text: str | None = known_state_text
+        elif revision.state_content_pointer is not None:
             pointer = revision.state_content_pointer
             comments = {
                 comment.database_id: comment
@@ -796,23 +766,25 @@ class GitHubWorkflowPush:
             return {}
         return values if isinstance(values, dict) else {}
 
-    def _committed_transactions(self, session: Session, issue_number: int | None) -> set[str]:
-        if issue_number is None:
-            return set()
-        committed: set[str] = set()
-        for comment in _io_call(session, self.io, GitHubOperation.READ_COMMENTS, issue_number):
-            trusted = self._trusted(comment)
-            if trusted is None:
-                if comment.author == self.assignment.actor.login and not is_content_comment(comment.body):
-                    raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-                continue
-            if is_content_comment(trusted) or not has_ledger_marker(trusted):
-                continue
-            try:
-                committed.add(parse_ledger_commit(trusted).transaction_id)
-            except ValueError:
-                raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED) from None
-        return committed
+    def _ledger_reader(
+        self, session: Session, ledger_issue_number: int | None
+    ) -> Callable[[int | None], tuple[GitHubComment, ...]] | None:
+        """Read the ledger comments after a comment id, or all of them, inside this commit."""
+        if ledger_issue_number is None:
+            return None
+
+        def read(after_id: int | None) -> tuple[GitHubComment, ...]:
+            if after_id is None:
+                return cast(
+                    tuple[GitHubComment, ...],
+                    _io_call(session, self.io, GitHubOperation.READ_COMMENTS, ledger_issue_number),
+                )
+            return cast(
+                tuple[GitHubComment, ...],
+                _io_call(session, self.io, GitHubOperation.READ_COMMENTS_AFTER, ledger_issue_number, after_id),
+            )
+
+        return read
 
     def _trusted(self, comment: GitHubComment) -> str | None:
         return trusted_comment_body(
@@ -890,6 +862,8 @@ _ASYNC_IO: dict[GitHubOperation, Callable[..., Awaitable[Any]]] = {
     GitHubOperation.ENSURE_LABEL: GitHubWorkflowIO.async_ensure_label,
     GitHubOperation.LIST_ISSUES: GitHubWorkflowIO.async_list_issues,
     GitHubOperation.READ_COMMENTS: GitHubWorkflowIO.async_read_comments,
+    GitHubOperation.READ_COMMENT: GitHubWorkflowIO.async_read_comment,
+    GitHubOperation.READ_COMMENTS_AFTER: GitHubWorkflowIO.async_read_comments_after,
     GitHubOperation.CREATE_COMMENT: GitHubWorkflowIO.async_create_comment,
     GitHubOperation.UPDATE_COMMENT: GitHubWorkflowIO.async_update_comment,
 }
@@ -899,9 +873,18 @@ _SYNC_IO: dict[GitHubOperation, Callable[..., Any]] = {
     GitHubOperation.ENSURE_LABEL: GitHubWorkflowIO.ensure_label,
     GitHubOperation.LIST_ISSUES: GitHubWorkflowIO.list_issues,
     GitHubOperation.READ_COMMENTS: GitHubWorkflowIO.read_comments,
+    GitHubOperation.READ_COMMENT: GitHubWorkflowIO.read_comment,
+    GitHubOperation.READ_COMMENTS_AFTER: GitHubWorkflowIO.read_comments_after,
     GitHubOperation.CREATE_COMMENT: GitHubWorkflowIO.create_comment,
     GitHubOperation.UPDATE_COMMENT: GitHubWorkflowIO.update_comment,
 }
+
+
+def _state_text(state: Mapping[str, object] | None) -> str | None:
+    """The full state text a snapshot carries, before a long state moves out to content comments."""
+    if state is None:
+        return None
+    return _string_or_none(state.get(WorkflowField.STATE))
 
 
 def _empty_revision(item_id: str) -> ItemRevision:

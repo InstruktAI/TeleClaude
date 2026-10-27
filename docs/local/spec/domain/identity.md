@@ -122,14 +122,14 @@ TeleClaudeNext.
 
 ### Governing designs and decisions
 
-- **local/projects/teleclaude/design/architecture/organizational-membership** — How the company-tier roster is stored, validated, mutated, and resolved — config declaring the relationship, identity answering what it means, and the membership an assignment presupposes.
-- **local/projects/teleclaude/design/architecture/scoped-roles** — One person-role vocabulary held at a platform or company scope; every person authorization decision reads the caller's effective role for the object it acts on.
-- **local/projects/teleclaude/design/cli-authorization-matrix** — How telec command declarations admit agent roles through named command capabilities and person roles through a band per command — each capability's command membership in one place.
-- **local/projects/teleclaude/design/architecture/local-caller-attestation** — Historical reference anchor for the withdrawn local caller attestation design cited by ADR-0079.
-- **local/projects/teleclaude/adr/0093-bind-mcp-credentials-to-verified-owner** — Bind personal MCP credentials and reusable client state to TeleClaude's verified person identity.
-- **local/projects/teleclaude/adr/0097-involvement-is-observed-not-adjudicated** — The human-involvement record is resolved from the acting session's observed human-input recency and never refuses the act it annotates.
-- **local/projects/teleclaude/adr/0101-clients-authorize-and-the-daemon-trusts-carried-identity** — A local client authorizes its caller in its own process and carries the resolved identity; the daemon neither verifies nor authorizes a local caller.
-- **local/projects/teleclaude/adr/0103-person-roles-are-one-vocabulary-held-at-a-scope** — A person role means the same at every scope; where it is held bounds what it reaches, so a company administrator is an administrator inside that company's lineage.
+- `local/projects/teleclaude/design/architecture/organizational-membership` — the company roster and its resolution
+- `local/projects/teleclaude/design/architecture/scoped-roles` — person roles held at a scope
+- `local/projects/teleclaude/design/cli-authorization-matrix` — which roles and bands may run each command
+- `local/projects/teleclaude/design/architecture/local-caller-attestation` — the withdrawn local caller attestation design
+- `local/projects/teleclaude/adr/0093-bind-mcp-credentials-to-verified-owner` — binding personal MCP credentials to the verified owner
+- `local/projects/teleclaude/adr/0097-involvement-is-observed-not-adjudicated` — the involvement record resolved from observed input
+- `local/projects/teleclaude/adr/0101-clients-authorize-and-the-daemon-trusts-carried-identity` — clients authorizing their caller and the daemon trusting carried identity
+- `local/projects/teleclaude/adr/0103-person-roles-are-one-vocabulary-held-at-a-scope` — one person-role vocabulary held at a scope
 
 ## See Also
 

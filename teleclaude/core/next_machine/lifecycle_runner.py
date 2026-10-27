@@ -45,7 +45,11 @@ from teleclaude.core.next_machine.runner_types import (
     RunnerSkipReason,
     RunnerTodo,
 )
-from teleclaude.core.next_machine.runtime.sessions import is_live_session_id, live_orchestrator_owned_slugs
+from teleclaude.core.next_machine.runtime.sessions import (
+    find_accepted_lifecycle_start,
+    is_live_session_id,
+    live_orchestrator_owned_slugs,
+)
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
 from teleclaude.core.next_machine.slug_resolution import (
     effective_delivered_slugs_for_dependencies,
@@ -583,36 +587,52 @@ async def dispatch_lifecycle_session(
     intent: DispatchIntent,
     origin: DispatchOrigin,
 ) -> str:
-    """Start a lifecycle driver and record its ownership directly."""
-    kwargs: RunSessionArgs = {
-        "command": intent.command,
-        "project_path": project_path,
-        "args": intent.slug,
-        "detach": True,
-    }
-    if intent.additional_context:
-        kwargs["additional_context"] = intent.additional_context
-    response = await client.run_session(**kwargs)
+    """Start a lifecycle driver and record its ownership directly.
+
+    The start is idempotent per todo and lane: a repeated dispatch records the driver an earlier
+    dispatch already started instead of starting another (``event-consumers``, Retained occurrences).
+    """
+    # An earlier dispatch whose ``active_runner`` record failed left an accepted, unrecorded start.
+    # Recording that session is the same direct adoption ADR-0078 sanctions, so re-entry completes the
+    # interrupted operation rather than creating a second orchestrator. The session is found by the
+    # subject its creation wrote (lane role, slug, project); no reservation or pre-ownership state exists.
+    session_id = await find_accepted_lifecycle_start(
+        runtime_db,
+        project_path,
+        intent.slug,
+        _role_for_lane(intent.lane, Path(project_path)),
+    )
+    if session_id is None:
+        kwargs: RunSessionArgs = {
+            "command": intent.command,
+            "project_path": project_path,
+            "args": intent.slug,
+            "detach": True,
+        }
+        if intent.additional_context:
+            kwargs["additional_context"] = intent.additional_context
+        response = await client.run_session(**kwargs)
+        session_id = response.session_id
     await _set_active_runner(
         todos_db,
         intent.slug,
-        response.session_id,
+        session_id,
         lane=intent.lane,
         manually_started=origin.manually_started,
         release_hold=origin.manually_started,
     )
-    session = await runtime_db.get_session(response.session_id)
+    session = await runtime_db.get_session(session_id)
     if session is not None and is_session_terminal(
         lifecycle_status=session.lifecycle_status,
         closed_at=session.closed_at,
     ):
-        reconciliation = await reconcile_driver_ownership_for_session(todos_db, response.session_id)
+        reconciliation = await reconcile_driver_ownership_for_session(todos_db, session_id)
         logger.info(
             "terminal lifecycle spawn reconciled",
-            session_id=response.session_id,
+            session_id=session_id,
             cleared_slugs=",".join(reconciliation.cleared_slugs),
         )
-    return response.session_id
+    return session_id
 
 
 async def run_lifecycle_runner(

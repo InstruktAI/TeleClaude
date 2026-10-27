@@ -341,19 +341,19 @@ installation belongs to no registered project, person, or company.
 
 ### Governing designs and decisions
 
-- **local/projects/teleclaude/design/architecture/installation** — The deployment shape that separates a project from the platform it runs — one installation per machine under the XDG data directory, whose releases are worktrees of one kept repository, every live surface bound through the active-release pointer, runtime state kept outside every release, and the install act as the one path by which a revision becomes live.
-- **local/projects/teleclaude/design/architecture/release-publication** — Immutable release candidates, independently advancing main, native provider jobs, and recoverable publication state.
-- **local/projects/teleclaude/design/architecture/home-repository** — How the TeleClaude home's local-only history is realized — a declared retained set evaluated by an authoritative membership predicate isolated from ambient ignore sources and index state, a fail-closed validation guarding the write activation itself performs, and a canonical three-result membership contract for the consumers that ask.
-- **local/projects/teleclaude/adr/0024-reconciliation-bounded-context** — Keeping a fleet of installations converged to a desired state (version, schema, health, upkeep) is its own bounded context — reconciliation — not part of integration. Integration owns foreign-protocol boundaries; reconciliation owns the control loop that drives actual state toward desired state and guards cross-version fleet interop.
-- **local/projects/teleclaude/adr/0025-two-layer-migration-model** — Two distinct migration concerns are separated: per-aggregate data evolution via lazy upcasting owned by each domain on a shared engine, and installation-level structural convergence owned by reconciliation. There is no central migrations domain; backward-compatibility branches in domain code are forbidden because the upcaster guarantees the domain only ever sees the latest shape.
-- **local/projects/teleclaude/adr/0026-cross-version-fleet-compatibility** — A deliberately multi-version fleet (alpha ahead of beta ahead of stable, permanently) keeps interoperating only by an engineered contract, not by SemVer labels: schema-versioned event envelopes, tolerant readers as law, wire upcasters for non-additive changes, and expand/contract gated on the slowest channel. Automating deployment without this contract amplifies breakage rather than preventing it.
-- **local/projects/teleclaude/adr/0041-agents-own-daemon-lifecycle-via-make** — Agents operate the daemon through the make targets; routine service operations are not gated on human approval.
-- **local/projects/teleclaude/adr/0083-retain-node-toolchain-for-non-frontend-tooling** — bin/install.sh keeps requiring and provisioning Node/corepack after the frontend removal, because non-frontend tooling still depends on it.
-- **local/projects/teleclaude/adr/0124-maintenance-replaces-the-daemon-inside-a-stopped-window** — A maintenance run that replaces the daemon stops it first, performs every owed step against the stopped process, and starts it last with a verified start, instead of ordering steps around a live daemon.
-- **local/projects/teleclaude/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start** — A maintenance run that replaces the daemon performs Blueprint maintenance and publication after the window's verified start instead of inside the stopped window, because both already run against a serving daemon whenever no replacement is owed.
-- **local/projects/teleclaude/adr/0128-maintenance-actions-declare-serving-tolerance-per-action** — Whether a maintenance action runs while the daemon serves is declared per action in the platform base or a project overlay, and such actions run only after a verified start; configuration-schema publication is declared so.
-- **local/projects/teleclaude/adr/0129-overlays-can-declare-maintenance-actions-that-run-while-the-daemon-serves** — Whether a maintenance action runs while the daemon serves is declared per action by the platform base or a project overlay, so this repository's configuration-schema publication also leaves the stopped window.
-- **local/projects/teleclaude/adr/0130-the-platform-runs-from-an-installation-not-its-project** — The platform runs from installed releases kept apart from every project and from the platform home; a commit changes nothing live, an install is the only path to live, and agents operate the installation through telec app.
+- `local/projects/teleclaude/design/architecture/installation` — the installation, its releases and the install act
+- `local/projects/teleclaude/design/architecture/release-publication` — release candidates and their publication
+- `local/projects/teleclaude/design/architecture/home-repository` — the home's retained set and local-only history
+- `local/projects/teleclaude/adr/0024-reconciliation-bounded-context` — fleet convergence as its own context
+- `local/projects/teleclaude/adr/0025-two-layer-migration-model` — separating aggregate upcasting from schema migration
+- `local/projects/teleclaude/adr/0026-cross-version-fleet-compatibility` — interoperation across a multi-version fleet
+- `local/projects/teleclaude/adr/0041-agents-own-daemon-lifecycle-via-make` — agents operating the daemon lifecycle
+- `local/projects/teleclaude/adr/0083-retain-node-toolchain-for-non-frontend-tooling` — keeping the Node toolchain in the installer
+- `local/projects/teleclaude/adr/0124-maintenance-replaces-the-daemon-inside-a-stopped-window` — replacing the daemon inside a stopped window
+- `local/projects/teleclaude/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start` — serving-tolerant steps after the verified start
+- `local/projects/teleclaude/adr/0128-maintenance-actions-declare-serving-tolerance-per-action` — serving tolerance declared per maintenance action
+- `local/projects/teleclaude/adr/0129-overlays-can-declare-maintenance-actions-that-run-while-the-daemon-serves` — overlays declaring serving-tolerant maintenance actions
+- `local/projects/teleclaude/adr/0130-the-platform-runs-from-an-installation-not-its-project` — the platform running from an installation
 
 ## See Also
 

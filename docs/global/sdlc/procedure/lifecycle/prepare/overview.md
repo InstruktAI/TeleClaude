@@ -294,8 +294,9 @@ withholds, or propagates it.
 For an item of a project on the GitHub workflow store, the first approval may
 also be given on the item's issue, through the approval act its work record
 defines, by a configured person who owns the repository or is a member of the
-organization that owns it; approving intent is authority the human grants
-only to them (`general/policy/human-contract`). Such an approval counts only
+organization that owns it, and who holds write access to the repository;
+approving intent is authority the human grants only to them
+(`general/policy/human-contract`). Such an approval counts only
 while the item waits for human approval of its current reviewed PRD, and the
 platform records it from that act; no agent stamps it and no agent reads one
 from a person's words. An approval act by anyone else, or at any other moment,

@@ -48,6 +48,14 @@ state every installed release reads, and no release carries any of it.
   from. Exactly one release is active, and its revision is observable.
 - **The previous release** — the one active before the most recent install —
   stays installed.
+
+- **A release a running terminal interface runs from** stays installed for as
+  long as that interface's registry record names it
+  (`local/projects/teleclaude/design/architecture/tui-state-layout`), whether
+  or not it is the active or previous release. When the registry cannot be
+  read, or a running interface's record names no release, an install removes
+  no release.
+
 - **Posture.** A release selects one immutable revision; nothing edits or
   commits in it. Release identity and source preservation follow
   `local/projects/teleclaude/spec/feature/reconciliation/release-checkout`.
@@ -88,6 +96,13 @@ starts the daemon on it, under the guarantees of
   active and serving, and reports why. One that fails after a migration started
   reports the failure and which stores its migrations reached, is never
   reported as complete, and is repaired forward.
+
+- **Running terminal interfaces move with the install.** A completed install
+  reloads every running terminal interface onto the new active release
+  (`local/projects/teleclaude/design/architecture/tui-state-layout`), so the
+  operator never restarts one to reach installed code. An interface the reload
+  does not reach is reported and keeps its release installed under Releases; it
+  never changes the install's outcome.
 
 - **Publication follows the install.** Publishing the installed release's
   configuration schemas
@@ -249,6 +264,15 @@ Then the platform runs from an installation
 And the project keeps every todo, worktree and claim where it was
 ```
 
+#### UC-IR6: An operator keeps working in the terminal interface across installs
+
+```gherkin
+Given an operator's terminal interface is running from the active release
+When an agent installs a newer revision, and later another one
+Then the terminal interface runs the most recently installed revision without the operator restarting it
+And no release a running terminal interface runs from is removed
+```
+
 ## Known caveats
 
 - Installation machinery for projects other than the platform is outside this
@@ -256,14 +280,10 @@ And the project keeps every todo, worktree and claim where it was
 - Rollback returns one step only. After an install that ran migrations the way
   back is a forward repair.
 
-<!-- planned:install-unverified-start-not-returned -->
-
 - An install whose started daemon does not verify, and that cannot then stop
   that daemon, leaves the release it attempted active and its daemon running,
   and reports why; while no migration has started, rollback returns the
   platform once that daemon can be stopped.
-
-<!-- /planned:install-unverified-start-not-returned -->
 
 - Whether a migration started is what the store owners signal. The install
   opens, inside its stopped window, every store the daemon opens at startup and

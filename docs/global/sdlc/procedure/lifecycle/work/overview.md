@@ -62,7 +62,8 @@ a routing instruction.
 
 For an item of a project on the GitHub workflow store, a configured person who
 owns the repository, is a member of the organization that owns it, or
-collaborates on it may review the item's pull request. Their request for
+collaborates on it, and who holds write access to the repository, may review
+the item's pull request. Their request for
 changes, given on the commit the build currently stands on and before
 delivery, is a `changes_requested` build-review verdict: the platform records
 their review as that round's review report, and the build returns to fix. The

@@ -26,9 +26,11 @@ it where they read it, and the decision counts without anyone relaying it.
 ## Canonical fields
 
 - **Who counts.** A configured person whose changes to an item count on GitHub
-  (`local/projects/teleclaude/spec/feature/integration/github-work-control`).
-  Approving a spec is narrower: only a configured person who owns the
-  repository or is a member of the organization that owns it.
+  (`local/projects/teleclaude/spec/feature/integration/github-work-control`)
+  and who holds write access to the repository. Approving a spec is narrower:
+  only such a person who owns the repository or is a member of the
+  organization that owns it. An owner, member or collaborator without write
+  access counts for neither decision.
 - **Approving the spec.** The approval act on the item's issue
   (`local/projects/teleclaude/spec/feature/workflow/github-work-record`), by a
   person who may approve a spec, is their approval of the item's spec, as when
@@ -68,7 +70,7 @@ it where they read it, and the decision counts without anyone relaying it.
 ```gherkin
 Scenario: An owner approves a spec that waits for approval
   Given a GitHub-backed project with an item whose reviewed spec waits for a person's approval
-  And the repository's owner is a configured person
+  And the repository's owner is a configured person with write access
   When the owner approves the spec on the item's issue
   Then the item's spec is approved by the owner
 
@@ -85,15 +87,22 @@ Scenario: A collaborator's approval does not count
 ```gherkin
 Scenario: A collaborator requests changes on the current build
   Given a GitHub-backed project with an item whose build is under way on its pull request
-  And a configured collaborator on the repository
+  And a configured collaborator with write access to the repository
   When they request changes in a review of the commit the build stands on
   Then the build returns to fix with their review as its findings
 
 Scenario: A review of an earlier commit is answered, not taken
-  Given an item whose build has moved past the commit a configured collaborator reviewed
+  Given an item whose build has moved past the commit a configured collaborator with write access reviewed
   When they request changes in a review of that earlier commit
   Then the build carries on unchanged
   And the pull request carries a comment saying the review concerns an earlier commit
+
+Scenario: A read-only collaborator's request for changes is answered, not taken
+  Given an item whose build is under way on its pull request
+  And a configured collaborator who holds only read access to the repository
+  When they request changes in a review of the commit the build stands on
+  Then the build carries on unchanged
+  And the pull request carries a comment saying who may send a build back
 ```
 
 ## Known caveats

@@ -66,6 +66,16 @@ _ROW_ACTION_DELETE = "DELETE"
 _TODO_BY_ID_ACTION_PATH_TEMPLATE = "/todos/by-id/{todo_id}/{action}"
 _TODO_BY_ID_ARTIFACT_PATH_TEMPLATE = "/todos/by-id/{todo_id}/artifacts/{name}"
 _TODO_PREPARE_PATH = "/todos/prepare"
+_TODO_DUMP_PATH = "/todos/dump"
+_JSON_DUMP_MODE = "json"
+_BUGS_REPORT_VERB = "bugs report"
+_TODO_CREATE_VERB = "todo create"
+_WORK_FEEDBACK_ATTRIBUTE = "work_feedback"
+_FILING_WORKER_GROUP = "todo-filing"
+_FILING_STARTED_TEMPLATE = "Filing {slug}…"
+_FILING_CREATED_TEMPLATE = "Created {slug}"
+_FILING_FAILED_TEMPLATE = "Filing {slug} failed: {error}"
+_NOTIFY_SEVERITY_ERROR = "error"
 _TODO_WORK_PATH = "/todos/work"
 _REMOVE_ARTIFACT_SUCCESS_TEMPLATE = "Removed artifact '{artifact_name}' from {slug}"
 _INPUT_ARTIFACT_REMOVAL_WARNING = "The 'input' artifact cannot be removed."
@@ -652,34 +662,8 @@ class PreparationViewActionsMixin:
                 kind=kind,
                 cwd=project_root,
             )
-
-            try:
-                result = tool_api_request(
-                    "POST",
-                    "/todos/dump",
-                    json_body=request.model_dump(mode="json"),
-                    params=_with_computer(None, computer),
-                    clearance_scope=ClearanceScope.verb(
-                        "bugs report" if kind == TODO_KIND_BUG else "todo create",
-                        role_target=ProjectPath(Path(project_root)),
-                        target_computer=remote_computer(computer),
-                    ),
-                    clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
-                )
-            except Exception as exc:
-                feedback = getattr(exc, "work_feedback", None)
-                if isinstance(feedback, str):
-                    self.app.present_work_feedback(feedback)  # type: ignore[attr-defined]
-                else:
-                    logger.error(_ROW_ACTION_FAILURE_EVENT, action=kind.value, slug=slug, exc_info=True)
-                return
-
-            if isinstance(result, dict) and result.get("status") == "ok":
-                self.app.notify(f"Created {slug}")  # type: ignore[attr-defined]
-            elif isinstance(result, dict) and result.get("detail"):
-                logger.error(_ROW_ACTION_FAILURE_EVENT, action=kind.value, slug=slug, detail=result["detail"])
-            else:
-                logger.error(_ROW_ACTION_FAILURE_EVENT, action=kind.value, slug=slug, response=repr(result))
+            self.app.notify(_FILING_STARTED_TEMPLATE.format(slug=slug))  # type: ignore[attr-defined]
+            self._submit_filing(request, project_root, computer, kind)
 
         self.app.push_screen(  # type: ignore[attr-defined]
             ContentInputModal(title=f"New {'Bug' if kind == 'bug' else 'Todo'}"),
@@ -860,6 +844,52 @@ class PreparationViewActionsMixin:
             logger.error(_ROW_ACTION_FAILURE_EVENT, action=path, detail=result["detail"])
             return
         logger.error(_ROW_ACTION_FAILURE_EVENT, action=path, response=repr(result))
+
+    @work(thread=True, group=_FILING_WORKER_GROUP)
+    def _submit_filing(
+        self, request: TodoDumpRequest, project_root: str, computer: str | None, kind: TodoDumpKind
+    ) -> None:
+        """File a todo or bug off the event loop, so the TUI stays usable while the daemon works.
+
+        ``tool_api_request`` is synchronous and a filing can wait on git and the workflow store; every
+        notification crosses back via ``call_from_thread``.
+        """
+        app = self.app
+        slug = request.slug
+        try:
+            result = tool_api_request(
+                _ROW_ACTION_POST,
+                _TODO_DUMP_PATH,
+                json_body=request.model_dump(mode=_JSON_DUMP_MODE),
+                params=_with_computer(None, computer),
+                clearance_scope=ClearanceScope.verb(
+                    _BUGS_REPORT_VERB if kind == TODO_KIND_BUG else _TODO_CREATE_VERB,
+                    role_target=ProjectPath(Path(project_root)),
+                    target_computer=remote_computer(computer),
+                ),
+                clearance_identity=app._clearance_identity,  # type: ignore[attr-defined]
+            )
+        except Exception as exc:
+            feedback = getattr(exc, _WORK_FEEDBACK_ATTRIBUTE, None)
+            if isinstance(feedback, str):
+                app.call_from_thread(app.present_work_feedback, feedback)  # type: ignore[attr-defined]
+            else:
+                logger.error(_ROW_ACTION_FAILURE_EVENT, action=kind.value, slug=slug, exc_info=True)
+                app.call_from_thread(
+                    app.notify,
+                    _FILING_FAILED_TEMPLATE.format(slug=slug, error=exc),
+                    severity=_NOTIFY_SEVERITY_ERROR,
+                )
+            return
+        if isinstance(result, dict) and result.get(_RESPONSE_KEY_STATUS) == _RESPONSE_STATUS_OK:
+            app.call_from_thread(app.notify, _FILING_CREATED_TEMPLATE.format(slug=slug))
+            return
+        logger.error(_ROW_ACTION_FAILURE_EVENT, action=kind.value, slug=slug, response=repr(result))
+        app.call_from_thread(
+            app.notify,
+            _FILING_FAILED_TEMPLATE.format(slug=slug, error=repr(result)),
+            severity=_NOTIFY_SEVERITY_ERROR,
+        )
 
     @work(thread=True, group="lifecycle-op")
     def _follow_lifecycle_operation(

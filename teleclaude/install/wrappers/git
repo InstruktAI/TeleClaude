@@ -131,74 +131,28 @@ _real_git() {
     export "GIT_CONFIG_KEY_$((_count + 2))=pull.autoStash"
     export "GIT_CONFIG_VALUE_$((_count + 2))=false"
 
-    # Per-invocation id correlates stderr and end/error lines in WRAPPER_LOG
-    # across concurrent git invocations.
-    local _inv_id
-    _inv_id="$$.$(date +%s).$RANDOM"
-
-    # stdout passes through unchanged — logging every line of `git log` /
-    # `git status` produced too much noise.
-    #
-    # stderr is captured to a temp file rather than `2> >(...)`. Process
-    # substitution does not block on subshell drain: when the git binary
-    # exits, the wrapper continues without waiting for the proc-sub child
-    # to finish reading the pipe, so closing the saved FDs could truncate
-    # the tail of large outputs. Temp-file capture is bounded by git's own
-    # write completion (which IS synchronous with its exit), then drained
-    # to the log + the caller's stderr in order with no race.
-    local _stderr_capture
-    _stderr_capture="$(mktemp -t teleclaude-git-wrapper.XXXXXX)"
-    # Capture rc with `|| _rc=$?` so a non-zero git exit does not trip `set -e`
-    # and abort before the captured stderr is drained to the caller. Without
-    # this, a failing git command (e.g. a pre-push hook block) exits the
-    # wrapper silently — rc surfaces but the diagnostic stderr is lost.
-    local _rc=0
-    "$_real_git_bin" "$@" 2>"$_stderr_capture" || _rc=$?
-    if [ -s "$_stderr_capture" ]; then
-        while IFS= read -r _line || [ -n "$_line" ]; do
-            # Git writes routine progress and diagnostics to stderr even on
-            # successful invocations. Keep the captured text available for
-            # investigation without presenting it as a warning; non-zero
-            # failures are recorded separately by _log_wrapper_end.
-            if _level_enabled DEBUG; then
-                echo "$(_ts_cmd) level=DEBUG logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
-            fi
-            printf '%s\n' "$_line" >&2
-        done < "$_stderr_capture"
-    fi
-    rm -f "$_stderr_capture"
-
-    _log_wrapper_end "$_inv_id" "$_rc" "${1:-}"
-    return $_rc
+    # Git's exit status and output belong to the caller, which alone knows
+    # whether a non-zero exit answers its question or reports a failure.
+    "$_real_git_bin" "$@"
 }
 
-# A non-zero git exit is an error outcome, whether or not the command wrote
-# stderr. The captured stderr stays at DEBUG because its contents can be routine
-# progress or diagnostics; this ERROR record carries the process result, with the
-# first argument and working directory that identify which invocation failed. The
-# remaining arguments stay out: a remote URL can carry a credential.
-_log_wrapper_end() {
-    local _inv_id="$1"
-    local _rc="$2"
-    local _first_arg="$3"
-    if [ "$_rc" -ne 0 ]; then
-        if _level_enabled ERROR; then
-            { echo "$(_ts_cmd) level=ERROR logger=git-wrapper inv=$_inv_id event=end rc=$_rc cmd=\"$_first_arg\" cwd=\"$PWD\"" >> "$WRAPPER_LOG"; } 2>/dev/null || true
-        fi
-    fi
-}
-
-# Block-event logger. Emitted from every wrapper-side block path so the
-# WRAPPER_LOG carries a queryable record of expected-friction events.
-# Grep frequency by reason to find where agent instructions need tuning:
-#   grep 'event=blocked' WRAPPER_LOG | sed 's/.*reason=\([^ ]*\).*/\1/' \
-#     | sort | uniq -c | sort -rn
-# Level is DEBUG because blocks are expected outcomes, not alarms — actual
-# git-binary errors keep their level=ERROR via _log_wrapper_end.
+# Refusal logger. The wrapper's refusals are the only git outcomes it can
+# classify, so each refusal path records one event=blocked line:
+#   DEBUG — the wrapper refused an operation the session attempted, as designed.
+#   ERROR — the wrapper could not establish what to enforce (pass ERROR).
+# The session id names the transcript that shows why the operation was attempted.
 _log_block() {
     local _reason="$1"
-    if _level_enabled DEBUG; then
-        { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper event=blocked reason=$_reason subcmd=${_subcmd:-} role=${_role:-} cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+    local _level="${2:-DEBUG}"
+    local _session_id="" _identity_doc=""
+    if _level_enabled "$_level"; then
+        if [ -r "${TMPDIR:-}/teleclaude_identity.json" ]; then
+            IFS= read -r _identity_doc < "$TMPDIR/teleclaude_identity.json" || true
+            if [[ "$_identity_doc" =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+                _session_id="${BASH_REMATCH[1]}"
+            fi
+        fi
+        { echo "$(_ts_cmd) level=$_level logger=git-wrapper event=blocked reason=$_reason subcmd=${_subcmd:-} role=${_role:-} session_id=$_session_id cwd=$PWD" >> "$WRAPPER_LOG"; } 2>/dev/null || true
     fi
 }
 
@@ -334,7 +288,7 @@ fi
 # shellcheck source=teleclaude/install/wrappers/teleclaude-capabilities.sh
 source "$SCRIPT_DIR/teleclaude-capabilities.sh"
 if ! teleclaude_read_declaration "$_toplevel/teleclaude.yml"; then
-    _log_block declaration_unreadable
+    _log_block declaration_unreadable ERROR
     echo "ERROR: $TC_DECL_ERROR" >&2
     echo "       Repair the declaration before git can proceed in this session." >&2
     exit 1
@@ -938,7 +892,7 @@ case "$_subcmd" in
             _current_branch="$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
             if [ "$_current_branch" = "main" ]; then
                 if ! _resolve_caller_role; then
-                    _log_block caller_role_resolution_failed
+                    _log_block caller_role_resolution_failed ERROR
                     echo "ERROR: Could not resolve caller role for git $_subcmd on main." >&2
                     exit 1
                 fi
@@ -965,7 +919,7 @@ if { [ "$_code_enabled" -eq 1 ] || [ "$_sealed_invocation_context" -eq 1 ]; } &&
     _current_branch="$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
     if [ "$_current_branch" = "main" ]; then
         if ! _resolve_caller_role; then
-            _log_block caller_role_resolution_failed
+            _log_block caller_role_resolution_failed ERROR
             echo "ERROR: Could not resolve caller role for git push from main." >&2
             exit 1
         fi

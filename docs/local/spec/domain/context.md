@@ -149,19 +149,19 @@ any location.
 
 ### Governing designs and decisions
 
-- **local/projects/teleclaude/design/architecture/agent-artifact-distribution** — How authored skill packages flow from tiered sources through reach-gated validation into the global skill catalog and project delivery locations, which path boundaries the source registry declares, and what each consumer derives from it.
-- **local/projects/teleclaude/design/architecture/context-index** — Snippet index generation that produces one catalog per documentation half from snippet paths and frontmatter.
-- **local/projects/teleclaude/design/architecture/context-selection** — Context selection pipeline that picks relevant docs for the two-phase context retrieval flow.
-- **local/projects/teleclaude/adr/0016-graphify-as-codebase-blueprint-engine** — Adopt the Graphify CLI (graphifyy, MIT) as the codebase blueprint engine. Generation is integrate-time `graphify update` (no-LLM) writing .teleclaude/blueprint/graph.json plus a manifest; the agent-facing surface is one value-add primitive, `telec context blueprint affected <changed-files>`, with `graphify query`/`path` for discovery. No MCP, no verb-for-verb wrapper. The seam is the graph.json data contract plus the CLI method, not the vendor identity, so the engine is replaceable at low cost.
-- **local/projects/teleclaude/adr/0023-index-as-single-source-of-truth-for-snippet-metadata** — The per-project index derives id/type/scope/domain from the snippet path and is the single source of truth; frontmatter stops authoring these fields and consumers read only the index.
-- **local/projects/teleclaude/adr/0029-doc-snippet-bodies-state-present-contract** — A doc-snippet body states present-tense intent and contract only. History belongs in git, rationale in an ADR, pending status and provenance in the delivered_by frontmatter field, and forward design is written as present-tense contract — never as narration in the body. This is enforced by a reviewer lane (doc-snippet hygiene), not an automated grader, because scoring free-text quality in code would violate intelligence-boundaries.
-- **local/projects/teleclaude/adr/0058-adr-status-supersession** — ADRs gain a single mutable ## Status section: the body stays immutable, but Status may be set to Superseded by / Superseded in part by / Deprecated when a later ADR supersedes it. Superseded ADRs are kept and marked, never deleted; the status pointer is the one permitted forward link.
-- **local/projects/teleclaude/adr/0059-domain-publication-and-universal-awareness** — Domains are published by the side projects that own them and surfaced to every project as universal one-line awareness with on-demand depth; the per-project subscriber model is dropped.
-- **local/projects/teleclaude/adr/0088-deployment-happens-at-the-commit-boundary** — Documentation and agent-artifact deployment runs at the commit boundary; the filesystem watcher is retired and the deploy command keeps only explicit callers.
-- **local/projects/teleclaude/adr/0094-publication-activates-from-recorded-commits** — Documentation and agent-artifact publication activates only from validated recorded commits and recovers by replaying their maintenance action.
-- **local/projects/teleclaude/adr/0106-a-homes-local-half-is-its-own-identity-namespace** — Every home's local half is addressed by its own identity namespace — `local/<kind>/<slug>/…` — and by its own selector, so a published and a private snippet at the same relative path coexist and any reader tells from an identity alone whether it is published.
-- **local/projects/teleclaude/adr/0107-a-persons-local-half-is-owner-only** — A person's local documentation half is readable only by sessions carrying that person's identity and by the system principal; every other caller, administrators included, is refused with the door named, while company and project local halves keep visibility-based depth.
-- **local/projects/teleclaude/adr/0131-the-platforms-documentation-publishes-from-its-project-commits** — The platform's published documentation and agent artifacts publish from its project's commits on main, like every project's; an install publishes them only on a machine where no platform project checkout does.
+- `local/projects/teleclaude/design/architecture/agent-artifact-distribution` — how skill packages are validated and published
+- `local/projects/teleclaude/design/architecture/context-index` — generating the snippet catalogs
+- `local/projects/teleclaude/design/architecture/context-selection` — selecting docs for retrieval
+- `local/projects/teleclaude/adr/0016-graphify-as-codebase-blueprint-engine` — Graphify as the codebase blueprint engine
+- `local/projects/teleclaude/adr/0023-index-as-single-source-of-truth-for-snippet-metadata` — the index as the source of snippet metadata
+- `local/projects/teleclaude/adr/0029-doc-snippet-bodies-state-present-contract` — snippet bodies stating present contract only
+- `local/projects/teleclaude/adr/0058-adr-status-supersession` — ADR status supersession
+- `local/projects/teleclaude/adr/0059-domain-publication-and-universal-awareness` — domain publication and universal awareness
+- `local/projects/teleclaude/adr/0088-deployment-happens-at-the-commit-boundary` — deployment of docs and artifacts at the commit boundary
+- `local/projects/teleclaude/adr/0094-publication-activates-from-recorded-commits` — publication only from recorded commits
+- `local/projects/teleclaude/adr/0106-a-homes-local-half-is-its-own-identity-namespace` — a home's local half as its own identity namespace
+- `local/projects/teleclaude/adr/0107-a-persons-local-half-is-owner-only` — a person's local half readable by its owner only
+- `local/projects/teleclaude/adr/0131-the-platforms-documentation-publishes-from-its-project-commits` — platform docs publishing from project commits
 
 ## See Also
 

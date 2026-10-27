@@ -3,8 +3,9 @@
 The bootstrap, the channel reaction, ``telec app install`` and the move off a project checkout all call
 ``install``. It refuses a target older than the active release, prepares the release while the daemon
 serves, stops the daemon through its lifecycle, runs the release's migrations in the stopped window,
-switches ``current``, starts and verifies the new revision, records the outcome and prunes releases
-older than the previous. The store owners' start signals alone decide how a failure recovers: before any
+switches ``current``, starts and verifies the new revision, records the outcome, moves every running
+terminal interface onto it and prunes releases older than the previous that no running terminal interface
+still holds. The store owners' start signals alone decide how a failure recovers: before any
 migration started the previously active release is returned to service; after one started the daemon
 stays stopped and the failure is repaired forward
 (``local/projects/teleclaude/spec/feature/reconciliation/installed-releases``).
@@ -14,6 +15,7 @@ Everything that touches git, processes or the filesystem is a port the act drive
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass, replace
@@ -24,6 +26,7 @@ from typing import Protocol
 from instrukt_ai_logging import get_logger
 from pydantic import ValidationError
 
+from teleclaude.core.integration.daemon_window import ADMISSION_WAIT_BOUND_SECONDS
 from teleclaude.core.reconciliation.installation import (
     ActOutcome,
     InstallAct,
@@ -43,10 +46,15 @@ logger = get_logger(__name__)
 _DECISION_EVENT = "install_act_decision"
 _PUBLICATION_EVENT = "install_act_publication_failed"
 _UNACCOUNTED_NOT_PERSISTED_EVENT = "install_act_outcome_not_persisted"
+_TUI_RELOAD_FAILED_EVENT = "install_act_tui_reload_failed"
+_TUI_REGISTRY_UNREADABLE_EVENT = "install_act_tui_registry_unreadable"
+_TUI_HOLD_UNKNOWN_EVENT = "install_act_prune_skipped_tui_hold_unknown"
 _STOP_WITHHELD = "the daemon's stop was withheld: {detail}"
 _MIGRATION_FAILED = "the release's migrations failed: {detail}"
 _START_UNVERIFIED = "the daemon did not verify on revision {revision}: {detail}"
 _NOT_SETTLED = "; the attempted release could not be stopped, so nothing was switched back: {detail}"
+_SETTLE_BOUND_EXPIRED = "; the bound of {seconds:g}s for the attempted release to become stoppable expired"
+_SETTLE_POLL_SECONDS = 1.0
 _RESTORE_UNVERIFIED = "; the previously active release did not verify either: {detail}"
 _PREPARATION_FAILED = "preparing the release failed at {step}: {detail}"
 _IN_PROGRESS = "another install or rollback is in progress"
@@ -176,6 +184,14 @@ class InstallPorts(Protocol):
 
     def publish_cli(self) -> None:
         """Publish the global ``telec`` through ``current``."""
+        ...
+
+    def reload_tuis(self) -> None:
+        """Signal every running terminal interface to reload onto the installed code."""
+        ...
+
+    def held_tui_revisions(self) -> frozenset[str | None]:
+        """The start revision each running terminal interface's record names; ``None`` stands for a record naming none."""
         ...
 
     def prune(self, keep: frozenset[str]) -> None:
@@ -371,11 +387,25 @@ def _settle(
 ) -> InstallResult | None:
     """Stop the release that was attempted; ``None`` once the lifecycle recorded it stopped.
 
-    A stop that is withheld or fails is an unresolved recovery condition: nothing is switched back and
-    nothing is started over a daemon that may still be running.
+    A stop is withheld while the attempted daemon cannot yet prepare, which is the ordinary state of a
+    daemon still starting and not listening on its API. While nothing listens, the lifecycle is asked
+    again until the bound expires. The clock is read after each pause, immediately before the next
+    attempt, so none starts after the bound; an attempt that is running when it expires still ends by
+    its own waits. A stop that is withheld while the daemon answers, or that has not succeeded when the
+    bound expires, is an unresolved recovery condition: nothing is switched back and nothing is started
+    over a daemon that may still be running.
     """
+    deadline = time.monotonic() + ADMISSION_WAIT_BOUND_SECONDS
     stop = ports.ensure_stopped()
-    if stop.stopped:
+    while not stop.stopped:
+        if ports.daemon_serving():
+            break
+        time.sleep(_SETTLE_POLL_SECONDS)
+        if time.monotonic() >= deadline:
+            reason += _SETTLE_BOUND_EXPIRED.format(seconds=ADMISSION_WAIT_BOUND_SECONDS)
+            break
+        stop = ports.ensure_stopped()
+    else:
         return None
     return _ended(layout, ActOutcome.FAILED_UNSETTLED, revision, reason + _NOT_SETTLED.format(detail=stop.reason), act)
 
@@ -400,8 +430,10 @@ def _left_stopped(
 
 
 def _completed(layout: InstallationLayout, target: str, ports: InstallPorts) -> InstallResult:
-    """Record the completed act, prune the releases older than the previous, and publish the installed release.
+    """Record the completed act, move running terminal interfaces onto it, prune, and publish the installed release.
 
+    Every running terminal interface is signalled to reload onto the new active release, and the prune keeps
+    the active and previous releases plus every release a running terminal interface's record still names.
     Publication follows the completed install and never changes which release is active: a failure is
     recorded as owed and replayed by the next install of the active revision.
     """
@@ -411,11 +443,35 @@ def _completed(layout: InstallationLayout, target: str, ports: InstallPorts) -> 
         ),
         layout,
     )
-    ports.prune(frozenset(revision for revision in (record.active, record.previous) if revision is not None))
+    held = _after_reload_held_revisions(ports)
+    if held is not None:
+        ports.prune(frozenset(revision for revision in (record.active, record.previous, *held) if revision is not None))
     logger.info(_DECISION_EVENT, decision=InstallStatus.COMPLETED, revision=target)
     return InstallResult(
         status=InstallStatus.COMPLETED, revision=target, publication_failure=_publish(target, ports, layout)
     )
+
+
+def _after_reload_held_revisions(ports: InstallPorts) -> frozenset[str] | None:
+    """Reload running terminal interfaces, then name the releases they still hold; ``None`` when a hold is unknown.
+
+    A failed reload never changes the act's outcome. A registry that cannot be read, or a record that names no
+    revision, leaves a running terminal interface's dependency unknown, so the act prunes nothing: a later
+    install prunes, and a retained release costs only disk.
+    """
+    try:
+        ports.reload_tuis()
+    except OSError as error:
+        logger.error(_TUI_RELOAD_FAILED_EVENT, error=str(error))
+    try:
+        held = ports.held_tui_revisions()
+    except OSError as error:
+        logger.error(_TUI_REGISTRY_UNREADABLE_EVENT, error=str(error))
+        return None
+    if None in held:
+        logger.warning(_TUI_HOLD_UNKNOWN_EVENT)
+        return None
+    return frozenset(revision for revision in held if revision is not None)
 
 
 def _publish(revision: str, ports: InstallPorts, layout: InstallationLayout) -> str | None:

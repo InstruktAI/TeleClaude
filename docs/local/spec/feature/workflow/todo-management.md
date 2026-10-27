@@ -23,6 +23,12 @@ Delivered history is ordered by delivery recency. Group membership supplies the 
 
 Group membership is set when a todo is created under a parent and can be changed later through the update facade: a live todo moves into a group, into a different group, or out of any group. The move changes only which holder labels the todo and which holder's roll-up counts it; the todo keeps its own lifecycle state, artifacts, and dependencies. Moving into a parent that is not yet a holder makes it one through the same transition group creation uses, and a holder that loses its last live child stays a holder that renders nowhere.
 
+<!-- planned:github-item-acts -->
+
+A todo's title is set or cleared through the same update facade (`telec todo update <slug> --title <text>`, an empty value clearing it). The title is the todo's readable name beside its slug; setting it renames nothing, and the slug stays the todo's identity and handle.
+
+<!-- /planned:github-item-acts -->
+
 Removal and delivery are lifecycle transitions on the same aggregate. `telec todo remove` soft-removes a todo while retaining its state, artifacts, version history, and identity-addressed recovery metadata for the retention window. `telec todo deliver` stamps delivery metadata, moves the todo to delivered history, and runs delivered-slug cleanup.
 
 Lifecycle and artifact-changing actions are addressable by slug or by a todo's durable identity. A slug-addressed action resolves to the live todo that holds the slug. An identity-addressed action acts on exactly the identified todo and never resolves to another todo that shares its slug: on a live todo it performs the same action a slug-addressed request performs, and on a removed or delivered todo it is refused without effect, with a refusal that names the todo's state and the way forward — reactivation for a removed todo; a delivered todo's record is read-only. Reactivating a removed todo is the one change a retained todo accepts, and its retained content stays readable.

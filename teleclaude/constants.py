@@ -554,7 +554,7 @@ COMMIT_REVIEW_DISCARD_PLACEHOLDER = "<sha>"
 CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
     LOG_CHECK_ACTION_ID: CheckpointAction(
         id=LOG_CHECK_ACTION_ID,
-        run="Check logs: `instrukt-ai-logs {slug} --since {window} --exclude git-wrapper`",
+        run="Check logs: `instrukt-ai-logs {slug} --since {window}`",
         evidence=("instrukt-ai-logs",),
         main_only=True,
         off_main_eligible=False,

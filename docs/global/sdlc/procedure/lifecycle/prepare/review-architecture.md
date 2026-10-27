@@ -46,6 +46,11 @@ First read the sdlc principles as listed in the sdlc baseline that apply to this
   (`telec todo artifacts list {slug}`) — read `log` when present, and any
   other present artifact relevant to this review.
 - `telec todo artifacts read {slug} prd` — the approved product contract.
+- From the PRD and the code alone, before any design material, name the
+  nearest existing in-system path that does the same job and the primitives
+  the work's external systems offer for it, read from their current
+  documentation (`sdlc/procedure/lifecycle/prepare/architecture`, step 1a).
+  This is the baseline step 3 judges the design against.
 - `telec todo artifacts read {slug} architecture` — the index of the design
   under review.
 - Every indexed snippet in its pending view, `telec docs get <id> --target {slug}`,
@@ -93,6 +98,14 @@ never weighs that alternative, rejects it without an argument, or places an
 operation callers see outside its governing paradigm without saying what those
 callers then wait for (`preparation-artifact-quality`, Structural decisions
 carry architecture review).
+
+Against the baseline of the existing path and external primitives named in
+step 1, judge every part of the design that departs from them as a cost the
+artifact must justify
+from an approved outcome; a mechanism built where the existing path or a
+primitive already serves is a finding. When a finding you raised is answered by
+more mechanism, check before the next pass that the criterion it defends is
+carried by the approved intent, not only by the artifact.
 
 Reject bespoke infrastructure or security mechanisms without authoritative
 prior-art evidence and an adopt-vs-build judgment. Also reject prior art used as

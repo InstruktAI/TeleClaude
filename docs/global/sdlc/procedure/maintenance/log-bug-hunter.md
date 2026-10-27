@@ -43,7 +43,7 @@ whose records support a failure in the scanned project's own handling through
    - If `incomplete_scan` is present, retry its recorded start/end window. Otherwise, fix the end at the current UTC time and start at `completed_until`; with no completed cursor, start one declared schedule interval before that end. Process records in the half-open interval `[start, end)`. A completed window advances the next start to its end.
 
    - Collect that window with
-     `instrukt-ai-logs {project_slug} --since <window> --exclude 'logger=git-wrapper'`.
+     `instrukt-ai-logs {project_slug} --since <window>`.
      A successful empty result is a clean scan. A failed collection is an
      incomplete scan, reported under Recovery.
 

@@ -194,15 +194,15 @@ responsibility.
 
 ### Governing designs and decisions
 
-- **local/projects/teleclaude/design/architecture/event-delivery** — One domain-event delivery model, with source reconciliation, command ownership and runtime-local coordination kept at their existing owners.
-- **local/projects/teleclaude/adr/0013-unified-cluster-events** — Cross-computer state propagation moves to a single `cluster.*` Redis pub/sub channel namespace. Local cache becomes a materialized view of cluster events; the legacy heartbeat-digest pull and the per-data-type "interest" gate are retired.
-- **local/projects/teleclaude/adr/0105-event-access-follows-the-subject-its-producer-states** — A platform event states facts about itself — its origin and its subject, with a project subject's owner as known where it happened — and who may receive it is derived from that subject on the receiving computer; producers never decide or validate an audience.
-- **local/projects/teleclaude/adr/0109-an-event-that-cannot-establish-its-subject-says-so** — An event's subject has three values — a registered home, none when the event concerns no registered home, or unknown when the subject cannot be established — so a missing fact is never read as a claim, and events from computers that predate the subject read as unknown.
-- **local/projects/teleclaude/adr/0114-events-take-the-cloudevents-attribute-model** — Platform events take the CloudEvents attribute model internally — id, type, source, subject, time and data, with home, related and causationid as extensions — so subject names the one thing an event is about and home carries the registered home that ADR-0105 and ADR-0109 placed in subject; type names are namespaced by who owns them, and conformance to the CloudEvents specification waits for an external consumer.
-- **local/projects/teleclaude/adr/0115-an-event-states-facts-and-its-consumers-own-every-reaction** — A platform event states only facts about what happened; notification rules, action affordances and routing scope leave the event and its catalog declaration, and each consumer decides its own reaction from the event's stated type, source, subject and home.
-- **local/projects/teleclaude/adr/0116-each-reaction-to-a-platform-event-is-an-independent-consumer** — Each reaction to a platform event is an independent consumer with its own progress through the stream, core-owned duplicate protection, a declared interest read only from event attributes, and its own bounded retry and dead letter; the system pipeline stops being where reactions live.
-- **local/projects/teleclaude/adr/0117-a-platform-event-type-names-the-state-it-reports** — A platform event that reports the state of a thing names that state in the last segment of its type, under a family prefix shared by every state of that lifecycle, from a closed failing/ok vocabulary the event catalog owns; every family that can report a failing state also declares an ok state.
-- **local/projects/teleclaude/adr/0118-an-event-states-its-origin-and-a-home-is-a-consumers** — The registered project, person or company an act happened in is part of the event's origin, stated with its emitting computer as its source; an event states no home, because a home is where a consumer works and only a consumer resolves it, on its own computer, from the event's origin.
+- `local/projects/teleclaude/design/architecture/event-delivery` — the one delivery model for domain events
+- `local/projects/teleclaude/adr/0013-unified-cluster-events` — cluster-wide state propagation on one event namespace
+- `local/projects/teleclaude/adr/0105-event-access-follows-the-subject-its-producer-states` — event access following the stated subject
+- `local/projects/teleclaude/adr/0109-an-event-that-cannot-establish-its-subject-says-so` — an event that cannot establish its subject
+- `local/projects/teleclaude/adr/0114-events-take-the-cloudevents-attribute-model` — the CloudEvents attribute model
+- `local/projects/teleclaude/adr/0115-an-event-states-facts-and-its-consumers-own-every-reaction` — events stating facts while consumers own reactions
+- `local/projects/teleclaude/adr/0116-each-reaction-to-a-platform-event-is-an-independent-consumer` — each reaction as an independent consumer
+- `local/projects/teleclaude/adr/0117-a-platform-event-type-names-the-state-it-reports` — event types naming the state they report
+- `local/projects/teleclaude/adr/0118-an-event-states-its-origin-and-a-home-is-a-consumers` — an event's origin and a consumer's home
 
 ## Known caveats
 

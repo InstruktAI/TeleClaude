@@ -254,11 +254,11 @@ concerned:
 
 ### Governing designs and decisions
 
-- **local/projects/teleclaude/design/architecture/config-tier-resolution** — How an invocation resolves the configuration tier that governs it and where a project's shared state lives — two questions, two published config-context resolvers, one reading the file's own declaration and one reading git topology.
-- **local/projects/teleclaude/design/architecture/feature-flags** — Design of the experiment and feature-flag system for safe feature toggling.
-- **local/projects/teleclaude/adr/0027-feature-id-capability-gating** — New cross-node behavior is gated behind spec-like feature-IDs that unaware nodes safely ignore — the explicit, named form of the expand step. Each feature-ID is marked ignorable or must-negotiate, nodes advertise their capability set into a fleet capability map, and an ID is retired (with its gated code path) only once the slowest channel universally carries it. Feature-IDs gate new capabilities; they do not replace envelope versioning for evolving shared shapes.
-- **local/projects/teleclaude/adr/0077-runtime-catalog-is-separate-from-machine-settings** — Vendor-shaped runtime and model material is a built-in catalog with its own contract, outside the tiered machine-settings schema, which holds only closed-vocabulary knobs and references into that catalog.
-- **local/projects/teleclaude/adr/0099-address-configuration-by-kind** — Address configuration through its declared kind and instance rather than unrelated command namespaces.
+- `local/projects/teleclaude/design/architecture/config-tier-resolution` — which configuration tier governs an invocation
+- `local/projects/teleclaude/design/architecture/feature-flags` — feature flags and experiments
+- `local/projects/teleclaude/adr/0027-feature-id-capability-gating` — gating cross-node behavior behind feature ids
+- `local/projects/teleclaude/adr/0077-runtime-catalog-is-separate-from-machine-settings` — the runtime catalog apart from machine settings
+- `local/projects/teleclaude/adr/0099-address-configuration-by-kind` — addressing configuration by kind
 
 ## See Also
 

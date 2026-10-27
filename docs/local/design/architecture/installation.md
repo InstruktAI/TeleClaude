@@ -87,8 +87,13 @@ flowchart LR
 - **Nothing live names a release.** Every live surface and every path the
   runtime composes for a session addresses the active release through
   `current`, never through a release folder. Switching `current` therefore
-  rewrites no service definition, hook command or link, and a release that is
-  pruned breaks nothing that runs.
+  rewrites no service definition, hook command or link. A running terminal
+  interface is the one process that holds the release it started from; the
+  install act moves it to the new release and keeps its release installed
+  while it still runs there
+  (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`),
+  so a release that is pruned breaks nothing that runs.
+
 - **Runtime state lives outside every release.** The machine environment file,
   the daemon's process record, the install record and every store a migration
   changes live in the platform home or the installation root, never inside a
@@ -131,6 +136,7 @@ sequenceDiagram
   participant Rel as new release
   participant Life as daemon lifecycle
   participant Home as platform home
+  participant TUI as presentation (TUI registry)
   Caller->>Rec: install(target)
   Rec->>Rec: refuse when target is older than the active release
   Rec->>Rel: fetch, add worktree at target, build environment (daemon serving)
@@ -140,7 +146,10 @@ sequenceDiagram
   Rel->>Home: migrate stores
   Rec->>Rec: switch current
   Rec->>Life: start; verify the daemon serves the new revision
-  Rec->>Rec: record outcome and whether migrations ran, prune older releases
+  Rec->>Rec: record outcome and whether migrations ran
+  Rec->>TUI: reload every running terminal interface
+  Rec->>TUI: read the releases running terminal interfaces hold
+  Rec->>Rec: prune older releases no running terminal interface holds
   Rec->>Rel: publish schemas, and documentation where no platform checkout does
 ```
 
@@ -169,6 +178,15 @@ sequenceDiagram
   definitions are deployed only when their rendered content changed, and the
   start is verified against the new revision with admission open, as the
   lifecycle contract verifies any start. The install completes there.
+
+- **Move running terminal interfaces, then prune.** The completed act sends
+  presentation's reload signal to every terminal interface its registry records
+  (`local/projects/teleclaude/design/architecture/tui-state-layout`), then
+  prunes against the releases the registry's records name as well as the
+  active and previous ones; which releases stay installed is
+  `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`'s.
+  An interface still on its old release at prune time keeps that release until
+  a later install finds it moved.
 
 - **Publication follows the install.** Publication of the configuration
   schemas
@@ -278,16 +296,6 @@ checkout stays a registered project.
   the lifecycle contract's outcome is reported and the active release stays
   active.
 
-<!-- planned-change:install-unverified-start-not-returned -->
-
-- **A failure after the stop before any migration started** — including a
-  start that does not verify after an install in which no migration started:
-  `current`
-  returns to the previously active release, the daemon is started on it and
-  verified, and the failure is recorded.
-
-<!-- change:install-unverified-start-not-returned -->
-
 - **A failure after the stop before any migration started** — including a
   start that does not verify after an install in which no migration started:
   the attempted daemon is stopped through its lifecycle first. While nothing
@@ -303,8 +311,6 @@ checkout stays a registered project.
   recorded where `telec app status` shows it. While no migration has started,
   rollback returns the platform once that daemon can be stopped.
 
-<!-- /planned-change:install-unverified-start-not-returned -->
-
 - **A failure after a migration started**: `current`
   is left where the failure found it and the daemon stays stopped, because
   neither release is known to serve the partly migrated state; the install
@@ -316,6 +322,14 @@ checkout stays a registered project.
   outcome and replayed.
 - **A release folder disappears**: nothing live names it, so only a rollback to
   it is affected, and rollback refuses with that reason.
+
+- **A running terminal interface does not move**: its reload signal is
+  refused, or it has not yet reloaded when the act prunes. Its registry record
+  still names its release, so that release stays installed, and the first
+  install that finds the interface on newer code removes it. An act that
+  cannot read the registry, or finds a running interface whose record names
+  no release, prunes no release.
+
 - **A store first opened after the install completes** migrates when the
   active release opens it; its owner signals that migration to the install
   record, and from then on rollback refuses. The stopped window opens every

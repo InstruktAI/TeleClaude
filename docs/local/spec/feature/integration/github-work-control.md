@@ -39,11 +39,13 @@ the work.
   (`local/projects/teleclaude/design/architecture/workflow-store`, work item
   lookup). Nothing is read from a title, a description or a comment to decide
   which item a change concerns.
-- **Whose changes count.** Only a GitHub user — never a bot or App — whom
-  GitHub reports as an owner, member or collaborator of the repository, and
-  whose login resolves to a configured person
+- **Whose changes count.** Only a GitHub user — never a bot or App — who
+  holds write access to the repository and whose login resolves to a
+  configured person
   (`local/projects/teleclaude/spec/feature/identity/human-identity-resolution`).
-  The act is taken as that person, as when they act in the TUI.
+  Being an owner, member or collaborator without write access is not enough,
+  and neither is being the issue's author. The act is taken as that person,
+  as when they act in the TUI.
 - **The acts.**
 
 | On the item's issue                                 | Act                                                              |
@@ -74,6 +76,12 @@ the work.
 - **Once and in order.** A change GitHub delivers more than once, or that
   several computers receive, is taken or put back once. Changes to one issue
   are taken in the order they were made.
+- **Which computer acts.** One computer serving the project handles its
+  changes: the first to claim it, until it releases the claim. While that
+  computer is not running, changes wait for it. An operator moves the claim off
+  a computer that no longer serves the project with
+  `telec todo work-control release <computer>`, which refuses while that
+  computer is online.
 - **Missed deliveries.** A change made while no computer received GitHub's
   deliveries is taken or put back when the platform next brings the project
   up to date from GitHub, under the same rules.
@@ -86,7 +94,7 @@ the work.
 Scenario Outline: A configured person's change becomes the workflow act
   Given a GitHub-backed project with a work item
   And the person's configuration declares their GitHub account
-  And they are a member of the repository
+  And they hold write access to the repository
   When they <change> on the item's issue
   Then the item <outcome> in the workflow, as when they do it in the TUI
   And the issue keeps their change
@@ -103,7 +111,7 @@ Scenario Outline: A configured person's change becomes the workflow act
 
 Scenario: A change the workflow refuses is put back with its reason
   Given a GitHub-backed project with a work item whose build has started
-  And a configured member of the repository
+  And a configured person with write access to the repository
   When they change the issue type on the item's issue
   Then the issue type is back to the item's kind
   And a comment on the issue says the workflow refused the change and why
@@ -112,16 +120,22 @@ Scenario: A change the workflow refuses is put back with its reason
 #### UC-GWC2: GitHub shows only what the work holds
 
 ```gherkin
-Scenario: A change by someone whose changes do not count is put back
+Scenario Outline: A change by someone whose changes do not count is put back
   Given a public GitHub-backed project with a work item
-  When someone who is not a configured owner, member or collaborator closes the item's issue
+  When <someone> closes the item's issue
   Then the issue is open again
   And a comment on the issue says who may change the work from GitHub
   And the item is unchanged in the workflow
 
+  Examples:
+    | someone                                                   |
+    | a GitHub user who is not a configured person               |
+    | a configured member of the repository without write access |
+    | the outside author of the issue the item was accepted from |
+
 Scenario: A change that stands for no workflow act is put back
   Given a GitHub-backed project with a work item being prepared
-  When a configured member adds a stage label to the item's issue by hand
+  When a configured person with write access adds a stage label to the item's issue by hand
   Then the label is removed again
   And a comment on the issue says the change stands for no act
 ```
