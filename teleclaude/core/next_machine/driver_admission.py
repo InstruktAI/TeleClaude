@@ -477,6 +477,7 @@ _IN_FLIGHT_FIELD = "in_flight"
 _DETAIL_FIELD = "detail"
 _ADMISSION_DECLINED_STATUS = "status {status}"
 _START_RELEASED_EVENT = "driver start withdrew its claim"
+_START_FAILED_EVENT = "driver start failed before it was decided"
 _RELEASE_UNANSWERED_EVENT = "driver claim release left to reconciliation"
 _RELEASE_SKIPPED_EVENT = "driver claim release skipped while a start of the todo is in progress"
 
@@ -644,6 +645,14 @@ async def _run_start(
             except AdmissionUnavailable as unavailable:
                 await _release_within_section(request.project_root, request.slug, request.session_id, request.caller)
                 _refuse_waiter(decided, state, unavailable)
+                return
+            except Exception as error:  # supervision boundary of the start task: contain the failure, then withdraw
+                logger.exception(_START_FAILED_EVENT, slug=request.slug, session_id=request.session_id)
+                await _release_within_section(request.project_root, request.slug, request.session_id, request.caller)
+                failure = AdmissionUnavailable(
+                    slug=request.slug, reason=AdmissionUnavailableReason.ADMISSION_FAILED, detail=str(error)
+                )
+                _refuse_waiter(decided, state, failure)
                 return
             created = False
             if state.waiting:
