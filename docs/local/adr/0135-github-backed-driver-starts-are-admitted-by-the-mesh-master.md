@@ -59,6 +59,11 @@ returns its outcome to the requesting computer.
   master is judged against its own registry; a claim naming another computer
   is judged by asking that computer. A computer that does not answer leaves the
   claim held.
+- **A start that finds the todo held is refused naming its holder.** The
+  refusal names the holding session and the computer it runs on, and says so
+  when that computer did not answer; the start creates and claims nothing. The
+  refusal is the same driver-start conflict a start on one computer receives
+  (ADR-0133), now carrying the holder's computer.
 - **The claim names its computer and is recorded before the session exists.**
   When nothing holds the todo, the master records the claim — the session id,
   the computer the relay names as the start's source, and its origin marker —
@@ -77,12 +82,20 @@ returns its outcome to the requesting computer.
   project, or a relay that does not answer refuses the start with that reason.
 - **Local-store projects are unchanged.** Their starts are decided on their own
   computer as ADR-0133 and ADR-0134 state.
+- **It takes effect when the fleet agrees.** Cross-computer admission is a
+  capability every computer must share, marked as one that must be negotiated
+  (ADR-0027). While any live computer does not carry it, starts are decided on
+  each computer as ADR-0133 and ADR-0134 state and no claim names a computer, so
+  an older release never reads a claim shape it does not know.
 
 ## Consequences
 
-- At most one live orchestrator holds a todo of a GitHub-backed project across
-  every computer that runs a release carrying this decision, through runner
-  autostart and manual starts alike.
+- Once every live computer carries the capability, at most one live
+  orchestrator holds a todo of a GitHub-backed project across the fleet, through
+  runner autostart and manual starts alike. Before that, two computers can still
+  each start one, as before this decision.
+- A computer on an older release that comes online after claims naming a
+  computer were recorded cannot read those items until it is updated.
 - Starting an orchestrator for a GitHub-backed project depends on the master:
   while no master is live and reachable, starts on other computers are refused
   and runner passes skip those todos.

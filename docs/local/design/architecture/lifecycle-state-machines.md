@@ -68,7 +68,7 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 <!-- planned:single-orchestrator-across-computers -->
 
-- **One orchestrator per todo across computers**: for a project on the GitHub workflow store, the fleet's master admits every orchestrator start of a todo, from any computer, one at a time, and records the claim naming the session and its computer before the session is created or claimed; the starting computer holds its own admission section across that admission. Only the computer a claim names judges whether the claim has ended; every other computer treats it as held (`local/projects/teleclaude/adr/0135-github-backed-driver-starts-are-admitted-by-the-mesh-master`).
+- **One orchestrator per todo across computers**: for a project on the GitHub workflow store, the fleet's master admits every orchestrator start of a todo, from any computer, one at a time, and records the claim naming the session and its computer before the session is created or claimed; the starting computer holds its own admission section across that admission. Only the computer a claim names judges whether the claim has ended; every other computer treats it as held. A start that finds the todo held is refused naming the holding session and its computer.
 
 <!-- /planned:single-orchestrator-across-computers -->
 
@@ -236,3 +236,7 @@ Each state machine has its own design document with full state diagrams, sequenc
 
 - **Stale artifacts**: PRD or architecture updated but downstream artifacts not regenerated. Grounding check catches and triggers re-grounding.
 - **Stale artifacts**: PRD or architecture updated but downstream artifacts not regenerated. Grounding check catches and triggers re-grounding.
+
+## See Also
+
+- docs/local/adr/0135-github-backed-driver-starts-are-admitted-by-the-mesh-master.md
