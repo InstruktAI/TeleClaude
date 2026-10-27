@@ -21,6 +21,7 @@ import json
 from collections.abc import AsyncIterator, Coroutine, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
+from enum import StrEnum
 from http import HTTPMethod
 from pathlib import Path
 from typing import Any
@@ -63,6 +64,7 @@ logger = get_logger(__name__)
 SESSION_ANSWER_PATH = "/todos/session-answer"
 ADMISSION_PATH = "/todos/driver-admission"
 RELEASE_PATH = "/todos/driver-release"
+CLAIM_HOLDER_PATH = "/todos/claim-holder"
 
 # The waits nest: a question to a computer < the master's answer to an admission < the relay deadline
 # of that admission < the start's whole budget, which leaves room inside the request timeout of
@@ -74,6 +76,12 @@ ADMISSION_BUDGET_S = 7.0
 ADMISSION_RELAY_DEADLINE_S = 9.0
 RELEASE_RELAY_DEADLINE_S = 9.0
 START_BUDGET_S = 12.0
+# A read of the holder nests the same way: a question to a computer < the master's answer < the relay
+# deadline of that read < the wait of the CLI that asked, which also leaves room for the one session
+# read that names a remote holder's role.
+CLAIM_HOLDER_BUDGET_S = 10.0
+CLAIM_HOLDER_RELAY_DEADLINE_S = 12.0
+HOLDER_ROLE_RELAY_DEADLINE_S = 5.0
 
 _JSON_CONTENT_TYPE = "application/json"
 _PROJECT_PATH_FIELD = "project_path"
@@ -742,3 +750,148 @@ def parse_admission_conflict(slug: str, detail: str | None) -> ClaimConflict | N
     if not isinstance(payload, dict) or payload.get(_KIND_FIELD) != ADMISSION_CONFLICT_KIND:
         return None
     return ClaimConflict.from_error_payload(slug, {str(key): value for key, value in payload.items()})
+
+
+_CLAIM_HOLDER_UNDETERMINED_EVENT = "driver claim holder undetermined"
+_CLAIM_HOLDER_BUDGET_REASON = "the master did not answer within {budget:g}s"
+_CLAIM_HOLDER_MASTER_STATUS_REASON = "the master answered status {status}"
+_CLAIM_HOLDER_MASTER_BODY_REASON = "the master's answer could not be read"
+_CLAIM_HOLDER_MASTER_REFUSED_REASON = "the master could not read the claim: {summary}"
+
+
+class ClaimStatus(StrEnum):
+    """What a read of a todo's driver claim found."""
+
+    HELD = "held"
+    FREE = "free"
+    UNDETERMINED = "undetermined"
+
+
+class ClaimHolderReport(BaseModel):
+    """Who holds a todo's driver claim, as a driver start from this computer would find it.
+
+    ``HELD`` names the holding session and the computer that answered for it, or, when no computer
+    answered for it, the computers that did not (``unanswered``). ``UNDETERMINED`` carries why the
+    claim could not be read; it is never ``FREE``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+    status: ClaimStatus
+    session_id: str | None = None
+    computer: str | None = None
+    unanswered: tuple[str, ...] = ()
+    reason: str | None = None
+
+
+def _undetermined(slug: str, reason: str) -> ClaimHolderReport:
+    logger.warning(_CLAIM_HOLDER_UNDETERMINED_EVENT, slug=slug, reason=reason)
+    return ClaimHolderReport(status=ClaimStatus.UNDETERMINED, reason=reason)
+
+
+def _unavailable_reason(unavailable: AdmissionUnavailable) -> str:
+    return f"{unavailable.reason.value} ({unavailable.detail})" if unavailable.detail else unavailable.reason.value
+
+
+async def _local_holder(project_root: Path, slug: str) -> ClaimHolderReport | None:
+    """The session holding ``slug`` on this computer, as the start's own re-check finds it, with no exemption."""
+    holder = await recheck_slug_holder(
+        await get_db(), await get_workflow_store(project_root), project_root, slug, exempt_session_id=None
+    )
+    if holder is None:
+        return None
+    return ClaimHolderReport(status=ClaimStatus.HELD, session_id=holder, computer=config.computer.name)
+
+
+async def _judge_recorded_claim(project_root: Path, slug: str, caller: AdmissionCaller) -> ClaimHolderReport:
+    """The recorded claim on ``slug`` as the master judges it; free when none is recorded or it ended."""
+    state = await (await get_workflow_store(project_root)).read_state(slug)
+    claim = state.get(ACTIVE_RUNNER_STATE_KEY) if state is not None else None
+    if not isinstance(claim, str) or not claim:
+        return ClaimHolderReport(status=ClaimStatus.FREE)
+    judgment = await judge_claim(project_root, slug, claim, caller=caller)
+    if not judgment.held:
+        return ClaimHolderReport(status=ClaimStatus.FREE)
+    return ClaimHolderReport(
+        status=ClaimStatus.HELD, session_id=claim, computer=judgment.computer, unanswered=judgment.unanswered
+    )
+
+
+async def _holder_on_master(project_root: Path, slug: str, caller: AdmissionCaller) -> ClaimHolderReport:
+    """Read the holder in the order a start's admission decides it, with no section, exemption or write."""
+    await refresh_github_workflow_store(project_root, computer=config.computer.name)
+    local = await _local_holder(project_root, slug)
+    if local is not None:
+        return local
+    return await _judge_recorded_claim(project_root, slug, caller)
+
+
+async def master_claim_holder(project_root: Path, slug: str, caller: AdmissionCaller) -> ClaimHolderReport:
+    """Read who holds ``slug``'s claim, as the master; answer within :data:`CLAIM_HOLDER_BUDGET_S`.
+
+    Applies the holder rule of :func:`decide_driver_admission` against the item refreshed from GitHub:
+    this computer's own holders, then the recorded claim judged across the fleet. It takes no start
+    section and writes no claim. The read runs as a task that outlives its waiter, so the refresh it
+    begins is never cancelled midway; a budget that expires first, or a refresh that is refused,
+    answers ``UNDETERMINED``.
+    """
+    task = spawn_tracked(_holder_on_master(project_root, slug, caller))
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), CLAIM_HOLDER_BUDGET_S)
+    except TimeoutError:
+        return _undetermined(slug, _CLAIM_HOLDER_BUDGET_REASON.format(budget=CLAIM_HOLDER_BUDGET_S))
+    except OperationFailure as refusal:
+        return _undetermined(slug, _CLAIM_HOLDER_MASTER_REFUSED_REASON.format(summary=refusal.summary()))
+
+
+async def answer_relayed_claim_holder(project_root: Path, slug: str, caller: AdmissionCaller) -> ClaimHolderReport:
+    """Answer a holder read another computer relayed here; refuse unless this computer is the master."""
+    if await resolve_admission_master(slug) is not None:
+        raise AdmissionUnavailable(slug=slug, reason=AdmissionUnavailableReason.NOT_THE_MASTER)
+    return await master_claim_holder(project_root, slug, caller)
+
+
+async def _ask_master_claim_holder(
+    master: str, project_root: Path, slug: str, caller: AdmissionCaller
+) -> ClaimHolderReport:
+    """Ask the master who holds ``slug``; whatever keeps its answer from being read is ``UNDETERMINED``."""
+    query = [[_PROJECT_PATH_FIELD, project_identity_for_folder(project_root)], [_SLUG_FIELD, slug]]
+    try:
+        response = await _carry(
+            master,
+            HTTPMethod.GET,
+            CLAIM_HOLDER_PATH,
+            query=query,
+            body=b"",
+            caller=caller,
+            deadline_s=CLAIM_HOLDER_RELAY_DEADLINE_S,
+        )
+    except (RemoteDispatchError, RuntimeError, ValueError) as error:
+        return _undetermined(slug, f"{AdmissionUnavailableReason.MASTER_DID_NOT_ANSWER.value} ({error})")
+    if response.status_code != _HTTP_OK:
+        return _undetermined(slug, _CLAIM_HOLDER_MASTER_STATUS_REASON.format(status=response.status_code))
+    try:
+        return ClaimHolderReport.model_validate_json(base64.b64decode(response.body_b64))
+    except ValueError:
+        return _undetermined(slug, _CLAIM_HOLDER_MASTER_BODY_REASON)
+
+
+async def claim_holder(project_root: Path, slug: str, caller: AdmissionCaller) -> ClaimHolderReport:
+    """Read who holds ``slug``'s claim, as a driver start from this computer would find it.
+
+    This computer's own holders answer first, as a start's re-check does. A local-store project has no
+    other. A GitHub-backed project's recorded claim is judged by the fleet's master: this computer when
+    it is the master, otherwise the master it relays the read to. When the master cannot be resolved or
+    reached, the answer is ``UNDETERMINED`` naming why, never ``FREE``.
+    """
+    local = await _local_holder(project_root, slug)
+    if local is not None:
+        return local
+    if not is_github_backed(project_root):
+        return ClaimHolderReport(status=ClaimStatus.FREE)
+    try:
+        master = await resolve_admission_master(slug)
+    except AdmissionUnavailable as unavailable:
+        return _undetermined(slug, _unavailable_reason(unavailable))
+    if master is None:
+        return await master_claim_holder(project_root, slug, caller)
+    return await _ask_master_claim_holder(master, project_root, slug, caller)
