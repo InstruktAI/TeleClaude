@@ -918,7 +918,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 },
             ),
             "show": CommandDef(
-                desc="Show diagnostic state payload for a todo; artifact bodies are omitted by default",
+                desc="Show diagnostic state payload for a todo, including who holds an active todo's claim; artifact bodies are omitted by default",
                 args="<slug> [--include-removed] [--include-artifact-content]",
                 flags=[
                     F.FLAG_HELP,
