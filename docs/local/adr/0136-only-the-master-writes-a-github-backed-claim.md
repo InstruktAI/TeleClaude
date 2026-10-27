@@ -30,10 +30,11 @@ held from every lifecycle runner's view.
 
 ## Decision
 
-- **One writer.** Every write that sets or clears the claim of a todo in a
-  project on the GitHub store is made by the master, inside its admission
-  section for that todo, against the item it has just read from GitHub. No
-  other computer writes the claim.
+- **One writer while a todo can be started.** For a todo in a project on the
+  GitHub store that a lifecycle orchestrator can still be started for, every
+  write that sets or clears its claim is made by the master, inside its
+  admission section for that todo, against the item it has just read from
+  GitHub. No other computer writes that claim.
 - **Other computers ask the master to release.** When a computer would clear a
   claim for a session it ran — the session ended, its housekeeping finds it
   ended, its caller releases it, or a start it made gave up after asking for
@@ -48,8 +49,11 @@ held from every lifecycle runner's view.
   pass.
 - **Clears the master makes stay as before.** The master clears a claim for its
   own ended session the same way, inside its section.
-- Clears that are part of a todo's delivery, removal or other state transitions
-  outside lifecycle driving are unchanged.
+- **Delivery and removal keep their own clears.** Delivering or removing a todo
+  clears its claim as part of that transition, as before. No orchestrator start
+  is admitted for a delivered or removed todo, and removal is refused while a
+  live session holds the todo, so such a clear cannot erase a claim the master
+  recorded for a new start.
 
 ## Consequences
 
