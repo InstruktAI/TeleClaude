@@ -29,6 +29,7 @@ from ._working_copy import (
     item_snapshot,
     move_set,
 )
+from ._write_admission import attach_write_admission, connect_admitted_async
 
 logger = get_logger(__name__)
 _SQLITE_BUSY_TIMEOUT_S = 5.0
@@ -67,8 +68,10 @@ def _default_on_delivered(
 class TodosDbBase:
     """Database base class for the todos lifecycle store."""
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, *, write_admission_budget: float | None = None) -> None:
+        """Open a store; a budget bounds in wall-clock seconds how long a write waits for the writer."""
         self.db_path = db_path
+        self._write_admission_budget = write_admission_budget
         self._db_path = Path(db_path)
         self.conn: aiosqlite.Connection | None = None
         self._engine: AsyncEngine | None = None
@@ -150,6 +153,8 @@ class TodosDbBase:
 
         self._engine = create_async_db_engine(self.db_path)
         self._sync_engine = create_sync_db_engine(self.db_path)
+        self._admit_writes(self._engine.sync_engine)
+        self._admit_writes(self._sync_engine)
         self._sessionmaker = async_sessionmaker(
             self._engine, expire_on_commit=False, class_=SqlAsyncSession, sync_session_class=self._session_class
         )
@@ -170,13 +175,20 @@ class TodosDbBase:
         """
         bootstrap_todos_db(self.db_path)
         self._sync_engine = create_sync_db_engine(self.db_path)
+        self._admit_writes(self._sync_engine)
         self._sync_sessionmaker = sessionmaker(self._sync_engine, expire_on_commit=False, class_=self._session_class)
         if self._engine is None:
             self._engine = create_async_db_engine(self.db_path)
+            self._admit_writes(self._engine.sync_engine)
         if self._sessionmaker is None:
             self._sessionmaker = async_sessionmaker(
                 self._engine, expire_on_commit=False, class_=SqlAsyncSession, sync_session_class=self._session_class
             )
+
+    def _admit_writes(self, engine: Engine) -> None:
+        """Bound this store's wait for the writer when it was opened with an admission budget."""
+        if self._write_admission_budget is not None:
+            attach_write_admission(engine, self._write_admission_budget)
 
     def _session(self) -> SqlAsyncSession:
         """Create an async ORM session from the initialized session factory."""
@@ -231,9 +243,16 @@ class TodosDbBase:
     @asynccontextmanager
     async def hold_write_window(self) -> AsyncIterator[None]:
         """Hold SQLite's writer reservation without committing changes."""
-        connection = await aiosqlite.connect(self.db_path, timeout=_SQLITE_BUSY_TIMEOUT_S)
+        if self._write_admission_budget is not None:
+            connection = await connect_admitted_async(self.db_path, self._write_admission_budget)
+        else:
+            connection = await aiosqlite.connect(self.db_path, timeout=_SQLITE_BUSY_TIMEOUT_S)
+            try:
+                await connection.execute(_BEGIN_IMMEDIATE_SQL)
+            except BaseException:
+                await connection.close()
+                raise
         try:
-            await connection.execute(_BEGIN_IMMEDIATE_SQL)
             yield
         finally:
             await connection.rollback()
