@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from teleclaude.core.todos_db._ledger_knowledge import record_ledger_commits
 from teleclaude.core.todos_db._working_copy import (
+    WorkingCopyChanges,
     WorkingCopyField,
     WorkingCopyItemSnapshot,
     artifact_remote_version_id,
@@ -36,6 +37,7 @@ from teleclaude.core.todos_db._working_copy import (
 )
 from teleclaude.core.workflow_store import github_reflection as _github_reflection
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
+from teleclaude.core.workflow_store.github_conflict_refresh import ConflictRefreshScheduler
 from teleclaude.core.workflow_store.github_io import (
     GitHubComment,
     GitHubOperation,
@@ -46,6 +48,18 @@ from teleclaude.core.workflow_store.github_item_trust import validate_revision_c
 from teleclaude.core.workflow_store.github_ledger import GitHubLedgerRefused, find_ledger
 from teleclaude.core.workflow_store.github_ledger_commits import LedgerCommitView
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
+from teleclaude.core.workflow_store.github_push_deadline import (
+    COMMIT_POINT_SENT_KEY as _COMMIT_POINT_SENT_KEY,
+)
+from teleclaude.core.workflow_store.github_push_deadline import (
+    PUSH_DEADLINE_KEY as _PUSH_DEADLINE_KEY,
+)
+from teleclaude.core.workflow_store.github_push_deadline import (
+    PushDeadline,
+    await_within_push_deadline,
+    begin_push_deadline,
+    push_deadline_expired,
+)
 from teleclaude.core.workflow_store.github_record import (
     ArtifactHistoryAction,
     ArtifactHistoryNode,
@@ -83,7 +97,6 @@ from teleclaude.core.workflow_store.github_reflection_queue import (
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 _CONFLICT_REFRESH_KEY = "github_store_conflict_refresh"
-_CONFLICT_DRIVER_KEY = "github_store_conflict_driver"
 _EMPTY = ""
 _ENCODING = "utf-8"
 _MAX_INLINE_STATE = 40_000
@@ -91,7 +104,6 @@ _STATE_NAME = WorkflowField.STATE
 _RUN_ASYNC_METHOD = "run_async"
 _LEDGER_TITLE = "TeleClaude workflow ledger"
 _LEDGER_DESCRIPTION = "Project-level workflow records."
-_CONFLICT_REFRESH_FAILED = "github_store_conflict_refresh_failed"
 _LEGACY_VERSION_ID = "legacy-{}-{}"
 logger = get_logger(__name__)
 
@@ -112,17 +124,35 @@ class GitHubWorkflowPush:
         self.assignment = assignment
         self.io = io
         self.pull_requests = pull_requests
-        self._refresh_callback: Callable[[], Awaitable[int]] | None = None
+        self._conflict_refresh = ConflictRefreshScheduler()
 
     def set_conflict_refresh(self, callback: Callable[[], Awaitable[int]]) -> None:
-        """Attach the store's post-rollback refresh operation."""
-        self._refresh_callback = callback
+        """Attach the store refresh that conflict recovery schedules once a refused write's transaction has ended."""
+        self._conflict_refresh.attach(callback)
+
+    def serve_conflict_refresh_on(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Record the loop that serves the store's async sessions, where recovery is scheduled."""
+        self._conflict_refresh.serve_store_loop(loop)
+
+    async def stop_conflict_refresh(self) -> None:
+        """Cancel an in-flight conflict refresh and wait until it has ended."""
+        await self._conflict_refresh.stop()
 
     def before_commit(self, session: Session) -> None:
         """Push every captured row before SQLite can commit the workflow transaction."""
         changes = pending_changes(session)
         if not changes.item_ids and not changes.project_records:
             return
+        # A paced push (the GitHub store switch) keeps the switch's own mutation pacing instead of the push deadline.
+        session.info[_PUSH_DEADLINE_KEY] = None if self.io.paced else begin_push_deadline()
+        session.info.pop(_COMMIT_POINT_SENT_KEY, None)
+        try:
+            self._push_changes(session, changes)
+        finally:
+            session.info.pop(_PUSH_DEADLINE_KEY, None)
+            session.info.pop(_COMMIT_POINT_SENT_KEY, None)
+
+    def _push_changes(self, session: Session, changes: WorkingCopyChanges) -> None:
         ledger = read_repository_bookkeeping(session)
         cached_ledger_issue = _int_or_none(ledger.get(WorkflowField.LEDGER_ISSUE_NUMBER))
         ledger_issue_number = self._discover_ledger(session, cached_ledger_issue)
@@ -189,7 +219,13 @@ class GitHubWorkflowPush:
                 else WorkflowRecord(committed=revision)
             )
             comment = self._write_item_record(
-                session, issue_number, record_comment_id, record, record_comments, _state_text(snapshot.state)
+                session,
+                issue_number,
+                record_comment_id,
+                record,
+                record_comments,
+                _state_text(snapshot.state),
+                commit_point=transaction_id is None,
             )
             revision_number = revision.revision
             record_ids.append(
@@ -224,6 +260,7 @@ class GitHubWorkflowPush:
                 items=ledger_items,
                 project_records=project_entries,
             )
+            session.info[_COMMIT_POINT_SENT_KEY] = True
             ledger_comment = _io_call(
                 session,
                 self.io,
@@ -248,10 +285,11 @@ class GitHubWorkflowPush:
         if ledger_comment_id is not None:
             for table, row_id in changes.project_records:
                 mark_project_record_pushed(session, table, row_id, ledger_comment_id)
-        stage_issue_reflections(session, reflection_rows)
+        settled = stage_issue_reflections(session, reflection_rows)
         stage_pull_request_reflections(session, reflection_rows)
         for _issue_number, item_id, _snapshot in reflection_rows:
-            mark_reflection_owed(session, item_id)
+            if item_id not in settled:
+                mark_reflection_owed(session, item_id)
         clear_pending_changes(session)
 
     @staticmethod
@@ -309,7 +347,6 @@ class GitHubWorkflowPush:
         old_revision = effective_revision(old_record, committed_transactions) if old_record else None
         if old_revision is not None and old_revision.revision > base_revision:
             session.info[_CONFLICT_REFRESH_KEY] = True
-            session.info[_CONFLICT_DRIVER_KEY] = session.connection().connection
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
         if old_revision is not None and issue_number is not None and record_comment_id is not None:
             self._verify_item_content(session, issue_number, old_revision)
@@ -703,10 +740,14 @@ class GitHubWorkflowPush:
         record: WorkflowRecord,
         record_comments: Mapping[int, GitHubComment],
         known_state_text: str | None,
+        *,
+        commit_point: bool,
     ) -> GitHubComment:
         effective = record.pending.revision if record.pending is not None else record.committed
         body = render_record_comment(record, self._effective_state(session, issue_number, effective, known_state_text))
         if comment_id is None:
+            if commit_point:
+                session.info[_COMMIT_POINT_SENT_KEY] = True
             return cast(
                 GitHubComment,
                 _io_call(session, self.io, GitHubOperation.CREATE_COMMENT, issue_number, body),
@@ -718,6 +759,8 @@ class GitHubWorkflowPush:
             )
         if self._trusted(comment) is None:
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
+        if commit_point:
+            session.info[_COMMIT_POINT_SENT_KEY] = True
         return cast(
             GitHubComment,
             _io_call(session, self.io, GitHubOperation.UPDATE_COMMENT, comment.database_id, body),
@@ -791,44 +834,9 @@ class GitHubWorkflowPush:
         )
 
     def refresh_after_conflict(self, session: Session) -> None:
-        """Refresh a stale item after SQLAlchemy rolls back the refused write."""
-        if not session.info.pop(_CONFLICT_REFRESH_KEY, False):
-            session.info.pop(_CONFLICT_DRIVER_KEY, None)
-            return
-        driver = session.info.pop(_CONFLICT_DRIVER_KEY, None)
-        runner = getattr(driver, _RUN_ASYNC_METHOD, None)
-        if callable(runner):
-
-            async def refresh(_driver_connection: Any) -> None:
-                await self._refresh_after_conflict()
-
-            try:
-                runner(refresh)
-            except Exception as error:
-                logger.warning(
-                    _CONFLICT_REFRESH_FAILED,
-                    reason=type(error).__name__,
-                    exc_info=True,
-                )
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            try:
-                asyncio.run(self._refresh_after_conflict())
-            except Exception as error:
-                logger.warning(
-                    _CONFLICT_REFRESH_FAILED,
-                    reason=type(error).__name__,
-                    exc_info=True,
-                )
-        else:
-            task = loop.create_task(self._refresh_after_conflict())
-            task.add_done_callback(_log_conflict_refresh_failure)
-
-    async def _refresh_after_conflict(self) -> None:
-        if self._refresh_callback is not None:
-            await self._refresh_callback()
+        """Schedule the store refresh once the outermost transaction of a conflict-refused write has ended."""
+        if session.info.pop(_CONFLICT_REFRESH_KEY, False):
+            self._conflict_refresh.request()
 
 
 def _io_call(
@@ -837,17 +845,31 @@ def _io_call(
     operation: GitHubOperation,
     *arguments: object,
 ) -> Any:
-    """Await the I/O loop through SQLAlchemy's async driver when inside AsyncSession."""
+    """Await the I/O loop through SQLAlchemy's async driver when inside AsyncSession.
+
+    The call ends within the push's deadline when the push has one.
+    """
+    deadline: PushDeadline | None = session.info.get(_PUSH_DEADLINE_KEY)
+    commit_point_sent = bool(session.info.get(_COMMIT_POINT_SENT_KEY))
     connection = session.connection().connection
     run_async = getattr(connection, _RUN_ASYNC_METHOD, None)
     if callable(run_async):
         async_method = _ASYNC_IO[operation]
 
         async def invoke(_driver_connection: Any) -> Any:
-            return await async_method(io, *arguments)
+            if deadline is None:
+                return await async_method(io, *arguments)
+            return await await_within_push_deadline(
+                deadline, async_method(io, *arguments), commit_point_sent=commit_point_sent
+            )
 
         return run_async(invoke)
-    return _SYNC_IO[operation](io, *arguments)
+    if deadline is None:
+        return _SYNC_IO[operation](io, *arguments)
+    try:
+        return io.call_sync_within(operation, max(deadline.remaining, 0.0), *arguments)
+    except TimeoutError:
+        raise push_deadline_expired(deadline, commit_point_sent=commit_point_sent) from None
 
 
 _ASYNC_IO: dict[GitHubOperation, Callable[..., Awaitable[Any]]] = {
@@ -909,14 +931,3 @@ def _scalar_row(row: Mapping[str, object]) -> dict[str, str | int | float | bool
         else:
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
     return result
-
-
-def _log_conflict_refresh_failure(task: asyncio.Task[Any]) -> None:
-    try:
-        task.result()
-    except Exception as error:
-        logger.warning(
-            _CONFLICT_REFRESH_FAILED,
-            reason=type(error).__name__,
-            exc_info=True,
-        )

@@ -33,6 +33,12 @@ Removal and delivery are lifecycle transitions on the same aggregate. `telec tod
 
 Lifecycle and artifact-changing actions are addressable by slug or by a todo's durable identity. A slug-addressed action resolves to the live todo that holds the slug. An identity-addressed action acts on exactly the identified todo and never resolves to another todo that shares its slug: on a live todo it performs the same action a slug-addressed request performs, and on a removed or delivered todo it is refused without effect, with a refusal that names the todo's state and the way forward — reactivation for a removed todo; a delivered todo's record is read-only. Reactivating a removed todo is the one change a retained todo accepts, and its retained content stays readable.
 
+<!-- planned:todo-show-claim-holder -->
+
+`telec todo show` reports who holds an active todo's lifecycle claim in a `claim` block. The block names the holding session, the computer running it and that session's role, or states that no session holds the todo. The holder it names is the one a driver start of the todo from the same computer would be refused naming at that moment, decided by the holder rule of `local/projects/teleclaude/spec/feature/workflow/driver-admission`; when no session holds it, such a start is not refused for a holder. When that decision cannot be made, because the daemon or the fleet's master cannot be reached, the block says the holder is undetermined and why, and never reports the todo as free. A claim that the computers able to answer for it leave unanswered is reported held, naming those computers, as a start would be refused. The state block's `active_runner` keeps its own meaning as the recorded driver link, and can differ from the holder: it can name a session that no longer holds the todo, or be empty while a session holds it. Iceboxed, delivered and removed todos and the structural projection of a holder carry no `claim` block.
+
+<!-- /planned:todo-show-claim-holder -->
+
 ## Canonical fields
 
 ### Use cases
@@ -492,3 +498,9 @@ And its active children remain in the active section
 
 - `telec todo remove` is soft and retained during the recovery window; hard purge is routine maintenance and identity-only.
 - The ordered todo list is per-project: one project root, one todo list. There is no global todo list.
+
+<!-- planned:todo-show-claim-holder -->
+
+- A `claim` block names the holding session's role only when the session's record can be read from the computer running it; otherwise it names the session and its computer without a role.
+
+<!-- /planned:todo-show-claim-holder -->

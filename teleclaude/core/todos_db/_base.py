@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import Engine
 from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import SessionTransaction, sessionmaker
 from sqlmodel import Session as SqlSession
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
@@ -29,6 +29,7 @@ from ._working_copy import (
     item_snapshot,
     move_set,
 )
+from ._write_admission import attach_write_admission, connect_admitted_async
 
 logger = get_logger(__name__)
 _SQLITE_BUSY_TIMEOUT_S = 5.0
@@ -40,7 +41,7 @@ class StoreSessionEvent(StrEnum):
 
     BEFORE_COMMIT = "before_commit"
     AFTER_COMMIT = "after_commit"
-    AFTER_ROLLBACK = "after_rollback"
+    AFTER_TRANSACTION_END = "after_transaction_end"
 
 
 def _default_on_mutation(_event_hint: str, _event_data: Mapping[str, object] | None = None) -> None:
@@ -67,8 +68,10 @@ def _default_on_delivered(
 class TodosDbBase:
     """Database base class for the todos lifecycle store."""
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, *, write_admission_budget: float | None = None) -> None:
+        """Open a store; a budget bounds in wall-clock seconds how long a write waits for the writer."""
         self.db_path = db_path
+        self._write_admission_budget = write_admission_budget
         self._db_path = Path(db_path)
         self.conn: aiosqlite.Connection | None = None
         self._engine: AsyncEngine | None = None
@@ -77,10 +80,10 @@ class TodosDbBase:
         self._sync_sessionmaker: sessionmaker[SqlSession] | None = None
         self._before_commit_callback: Callable[[SqlSession], None] | None = None
         self._after_commit_callback: Callable[[SqlSession], None] | None = None
-        self._after_rollback_callback: Callable[[SqlSession], None] | None = None
+        self._after_transaction_end_callback: Callable[[SqlSession], None] | None = None
         self._before_commit_listener: Callable[[SqlSession], None] | None = None
         self._after_commit_listener: Callable[[SqlSession], None] | None = None
-        self._after_rollback_listener: Callable[[SqlSession], None] | None = None
+        self._after_transaction_end_listener: Callable[[SqlSession, SessionTransaction], None] | None = None
         self._session_class: type[SqlSession]
         self._session_listeners_registered = False
         self._on_mutation: Callable[[str, Mapping[str, object] | None], None] = _default_on_mutation
@@ -103,31 +106,37 @@ class TodosDbBase:
             if self._after_commit_callback is not None:
                 self._after_commit_callback(session)
 
-        def after_rollback(session: SqlSession) -> None:
+        def after_transaction_end(session: SqlSession, transaction: SessionTransaction) -> None:
+            if transaction.parent is not None:
+                return
             if session.bind not in (self._sync_engine, self._engine.sync_engine if self._engine else None):
                 return
-            if self._after_rollback_callback is not None:
-                self._after_rollback_callback(session)
+            if self._after_transaction_end_callback is not None:
+                self._after_transaction_end_callback(session)
 
         sqlalchemy_event.listen(StoreSession, StoreSessionEvent.BEFORE_COMMIT, before_commit)
         sqlalchemy_event.listen(StoreSession, StoreSessionEvent.AFTER_COMMIT, after_commit)
-        sqlalchemy_event.listen(StoreSession, StoreSessionEvent.AFTER_ROLLBACK, after_rollback)
+        sqlalchemy_event.listen(StoreSession, StoreSessionEvent.AFTER_TRANSACTION_END, after_transaction_end)
         self._session_class = StoreSession
         self._before_commit_listener = before_commit
         self._after_commit_listener = after_commit
-        self._after_rollback_listener = after_rollback
+        self._after_transaction_end_listener = after_transaction_end
         self._session_listeners_registered = True
 
     def set_commit_callbacks(
         self,
         before_commit: Callable[[SqlSession], None] | None,
         after_commit: Callable[[SqlSession], None] | None,
-        after_rollback: Callable[[SqlSession], None] | None = None,
+        after_transaction_end: Callable[[SqlSession], None] | None = None,
     ) -> None:
-        """Install the optional working-copy commit boundary for this store."""
+        """Install the optional working-copy commit boundary for this store.
+
+        ``after_transaction_end`` runs once per session when its outermost transaction ends, whether by commit,
+        rollback or the close of a session whose owner never rolled back.
+        """
         self._before_commit_callback = before_commit
         self._after_commit_callback = after_commit
-        self._after_rollback_callback = after_rollback
+        self._after_transaction_end_callback = after_transaction_end
 
     def on_committed(self, event_hint: str = "todo_updated", event_data: Mapping[str, object] | None = None) -> None:
         """Signal that a caller-managed transaction has committed.
@@ -144,6 +153,8 @@ class TodosDbBase:
 
         self._engine = create_async_db_engine(self.db_path)
         self._sync_engine = create_sync_db_engine(self.db_path)
+        self._admit_writes(self._engine.sync_engine)
+        self._admit_writes(self._sync_engine)
         self._sessionmaker = async_sessionmaker(
             self._engine, expire_on_commit=False, class_=SqlAsyncSession, sync_session_class=self._session_class
         )
@@ -164,13 +175,20 @@ class TodosDbBase:
         """
         bootstrap_todos_db(self.db_path)
         self._sync_engine = create_sync_db_engine(self.db_path)
+        self._admit_writes(self._sync_engine)
         self._sync_sessionmaker = sessionmaker(self._sync_engine, expire_on_commit=False, class_=self._session_class)
         if self._engine is None:
             self._engine = create_async_db_engine(self.db_path)
+            self._admit_writes(self._engine.sync_engine)
         if self._sessionmaker is None:
             self._sessionmaker = async_sessionmaker(
                 self._engine, expire_on_commit=False, class_=SqlAsyncSession, sync_session_class=self._session_class
             )
+
+    def _admit_writes(self, engine: Engine) -> None:
+        """Bound this store's wait for the writer when it was opened with an admission budget."""
+        if self._write_admission_budget is not None:
+            attach_write_admission(engine, self._write_admission_budget)
 
     def _session(self) -> SqlAsyncSession:
         """Create an async ORM session from the initialized session factory."""
@@ -225,9 +243,16 @@ class TodosDbBase:
     @asynccontextmanager
     async def hold_write_window(self) -> AsyncIterator[None]:
         """Hold SQLite's writer reservation without committing changes."""
-        connection = await aiosqlite.connect(self.db_path, timeout=_SQLITE_BUSY_TIMEOUT_S)
+        if self._write_admission_budget is not None:
+            connection = await connect_admitted_async(self.db_path, self._write_admission_budget)
+        else:
+            connection = await aiosqlite.connect(self.db_path, timeout=_SQLITE_BUSY_TIMEOUT_S)
+            try:
+                await connection.execute(_BEGIN_IMMEDIATE_SQL)
+            except BaseException:
+                await connection.close()
+                raise
         try:
-            await connection.execute(_BEGIN_IMMEDIATE_SQL)
             yield
         finally:
             await connection.rollback()
@@ -255,8 +280,8 @@ class TodosDbBase:
                 sqlalchemy_event.remove(
                     self._session_class, StoreSessionEvent.AFTER_COMMIT, self._after_commit_listener
                 )
-            if self._after_rollback_listener is not None:
+            if self._after_transaction_end_listener is not None:
                 sqlalchemy_event.remove(
-                    self._session_class, StoreSessionEvent.AFTER_ROLLBACK, self._after_rollback_listener
+                    self._session_class, StoreSessionEvent.AFTER_TRANSACTION_END, self._after_transaction_end_listener
                 )
             self._session_listeners_registered = False
