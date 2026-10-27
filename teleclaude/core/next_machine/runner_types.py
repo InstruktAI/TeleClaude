@@ -25,6 +25,7 @@ class DispatchOrigin(StrEnum):
 
 
 class RunnerSkipReason(StrEnum):
+    ADMISSION_UNAVAILABLE = "admission-unavailable"
     ALREADY_DRIVEN = "already-driven"
     APPROVAL_PENDING = "approval-pending"
     AT_CAPACITY = "at-capacity"

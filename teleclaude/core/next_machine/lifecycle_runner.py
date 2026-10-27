@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple, Protocol, Unpack
@@ -18,6 +19,12 @@ from teleclaude.constants import TodoStatus
 from teleclaude.context_selector import resolve_snippet_meta
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
+from teleclaude.core.next_machine.driver_admission import (
+    parse_admission_conflict,
+    reconcile_ended_claims,
+    schedule_claim_release,
+)
+from teleclaude.core.next_machine.driver_claim import set_active_runner
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
     build_dependency_artifact_snapshot,
@@ -46,10 +53,12 @@ from teleclaude.core.next_machine.runner_types import (
     RunnerTodo,
 )
 from teleclaude.core.next_machine.runtime.sessions import (
+    claim_is_driven_here,
+    claim_is_held,
     find_accepted_lifecycle_start,
-    is_live_session_id,
+    is_github_backed,
     live_orchestrator_owned_slugs,
-    resolve_slug_holders,
+    recheck_slug_holder,
 )
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
 from teleclaude.core.next_machine.slug_resolution import (
@@ -59,14 +68,19 @@ from teleclaude.core.next_machine.slug_resolution import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
-from teleclaude.core.todos_db._exceptions import ClaimConflict, DriverStartBusy
+from teleclaude.core.todos_db._exceptions import (
+    AdmissionUnavailable,
+    AdmissionUnavailableReason,
+    ClaimConflict,
+    DriverStartBusy,
+)
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TodoKind
-from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, HoldAuditState, TodoState
+from teleclaude.types.todos import TodoState
 
 logger = get_logger(__name__)
 
@@ -301,10 +315,6 @@ def decide_dispatches(
     return decision
 
 
-async def _is_live_runner(db: Db, session_id: str | None) -> bool:
-    return bool(session_id and await is_live_session_id(db, session_id))
-
-
 def _read_runner_todo(row: TodoRow, status_read: TodoStatusStateRead) -> _RunnerTodoRead:
     current_status = status_read.status
     state = status_read.state
@@ -399,7 +409,16 @@ def _approval_from_state(state: Mapping[str, StateValue], approval_key: str) -> 
     return approval.get("approved") is True, approved_digest if isinstance(approved_digest, str) else ""
 
 
-async def _clear_active_runner(todos_db: WorkflowStore, row: TodoRow) -> None:
+async def _clear_ended_claim(todos_db: WorkflowStore, row: TodoRow, session_id: str) -> None:
+    """Clear a claim whose session this computer shows ended: written here, or requested of the master.
+
+    A claim on a GitHub-backed project is written only on the master, so its release is requested of the
+    master without waiting for the answer; the pass treats the todo as free meanwhile, and the start the
+    runner then makes is admitted by the master, which judges the same claim ended.
+    """
+    if is_github_backed(todos_db.project_root):
+        schedule_claim_release(todos_db.project_root, row["slug"], session_id)
+        return
     state = await todos_db.read_state_by_id(row["id"])
     if state is None:
         return
@@ -407,36 +426,6 @@ async def _clear_active_runner(todos_db: WorkflowStore, row: TodoRow) -> None:
     writer.state.active_runner = None
     writer.state.manually_started = False
     await writer.commit_by_id(todos_db, row["id"])
-
-
-async def _set_active_runner(
-    todos_db: WorkflowStore,
-    slug: str,
-    session_id: str,
-    *,
-    lane: RunnerLane,
-    manually_started: bool,
-    release_hold: bool,
-) -> None:
-    """Write the driver link and its manual marker as one guarded mutation.
-
-    ``active_runner`` and ``manually_started`` are always written together so a
-    todo never carries a driver link without its origin marker. ``release_hold``
-    is the caller-owned intent to clear a stored hold: true only for a fresh
-    claim/start of a held unclaimed todo, false for a live owner's continuation.
-    """
-    state = await todos_db.read_state(slug)
-    if state is None:
-        return
-    writer = StateWriter(state)
-    writer.state.active_runner = session_id
-    writer.state.manually_started = manually_started
-    if release_hold:
-        writer.state.hold = False
-        writer.state.hold_audit = HoldAuditState()
-    if lane is RunnerLane.TASK_RUN:
-        writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING
-    await writer.commit(todos_db, slug)
 
 
 async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, RunnerTodo], list[str]]:
@@ -483,25 +472,7 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                     current_status=read.current_status,
                 )
             continue
-        todo = RunnerTodo(
-            slug=todo.slug,
-            status=todo.status,
-            kind=todo.kind,
-            lifecycle_phase=todo.lifecycle_phase,
-            human_approval_pending=todo.human_approval_pending,
-            hold=todo.hold,
-            active_runner=todo.active_runner,
-            manually_started=todo.manually_started,
-            after=tuple(deps.get(todo.slug, [])),
-            schedule=todo.schedule,
-            task_plan_digest=todo.task_plan_digest,
-            task_approved=todo.task_approved,
-            task_approved_digest=todo.task_approved_digest,
-            plan_review_current=todo.plan_review_current,
-            current_plan_digest=todo.current_plan_digest,
-            reviewed_plan_digest=todo.reviewed_plan_digest,
-            dependency_drift_pending_on=todo.dependency_drift_pending_on,
-        )
+        todo = replace(todo, after=tuple(deps.get(todo.slug, [])))
         state = states_by_slug.get(todo.slug)
         if state is not None and todo.kind in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
             dependency_snapshot = build_dependency_artifact_snapshot(
@@ -517,96 +488,43 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                     state.artifacts.implementation_plan.dependency_artifact_digests,
                     dependency_snapshot,
                 )
-                todo = RunnerTodo(
-                    slug=todo.slug,
-                    status=todo.status,
-                    kind=todo.kind,
-                    lifecycle_phase=todo.lifecycle_phase,
-                    human_approval_pending=todo.human_approval_pending,
-                    hold=todo.hold,
-                    active_runner=todo.active_runner,
-                    manually_started=todo.manually_started,
-                    after=todo.after,
-                    schedule=todo.schedule,
-                    task_plan_digest=todo.task_plan_digest,
-                    task_approved=todo.task_approved,
-                    task_approved_digest=todo.task_approved_digest,
-                    plan_review_current=todo.plan_review_current,
-                    current_plan_digest=todo.current_plan_digest,
-                    reviewed_plan_digest=todo.reviewed_plan_digest,
-                    dependency_drift_pending_on=tuple(sorted(moved_dependencies)),
-                )
-        if todo.active_runner and not await _is_live_runner(db, todo.active_runner):
-            await _clear_active_runner(todos_db, row)
+                todo = replace(todo, dependency_drift_pending_on=tuple(sorted(moved_dependencies)))
+        if todo.active_runner and not await claim_is_held(db, todos_db.project_root, todo.slug, todo.active_runner):
+            await _clear_ended_claim(todos_db, row, todo.active_runner)
             reconciled.append(todo.slug)
-            todo = RunnerTodo(
-                slug=todo.slug,
-                status=todo.status,
-                kind=todo.kind,
-                lifecycle_phase=todo.lifecycle_phase,
-                human_approval_pending=todo.human_approval_pending,
-                hold=todo.hold,
-                active_runner=None,
-                manually_started=False,
-                after=todo.after,
-                schedule=todo.schedule,
-                task_plan_digest=todo.task_plan_digest,
-                task_approved=todo.task_approved,
-                task_approved_digest=todo.task_approved_digest,
-                plan_review_current=todo.plan_review_current,
-                current_plan_digest=todo.current_plan_digest,
-                reviewed_plan_digest=todo.reviewed_plan_digest,
-                dependency_drift_pending_on=todo.dependency_drift_pending_on,
-            )
+            todo = replace(todo, active_runner=None, manually_started=False)
         loaded[todo.slug] = todo
     return loaded, reconciled
 
 
-async def _live_active_runners(db: Db, todos: Mapping[str, RunnerTodo]) -> tuple[set[str], int]:
-    """Resolve live driver session ids and the non-manual live-driver count.
+async def _live_active_runners(
+    db: Db, project_path: str | Path, todos: Mapping[str, RunnerTodo]
+) -> tuple[set[str], int]:
+    """Resolve held driver session ids and the non-manual live-driver count.
 
     The full id set drives ALREADY_DRIVEN suppression (a manually-started todo is
-    still driven and must never be auto-duplicated). The count excludes
-    `manually_started` drivers because a human START or a headless adoption is
-    never charged against the auto-dispatch concurrency cap.
+    still driven and must never be auto-duplicated). On a GitHub-backed project it includes
+    a claim held by another computer, which this computer cannot verify ended. The count
+    excludes `manually_started` drivers because a human START or a headless adoption is
+    never charged against the auto-dispatch concurrency cap, and counts only drivers this
+    computer runs: a todo driven elsewhere uses that computer's slots, not this one's.
     """
     live: set[str] = set()
     auto_count = 0
     for todo in todos.values():
-        if todo.active_runner and await _is_live_runner(db, todo.active_runner):
+        if todo.active_runner and await claim_is_held(db, project_path, todo.slug, todo.active_runner):
             live.add(todo.active_runner)
-            if not todo.manually_started:
+            if not todo.manually_started and await claim_is_driven_here(
+                db, project_path, todo.slug, todo.active_runner
+            ):
                 auto_count += 1
     return live, auto_count
-
-
-async def recheck_slug_holder(
-    runtime_db: Db,
-    todos_db: WorkflowStore,
-    project_path: str | Path,
-    slug: str,
-    *,
-    exempt_session_id: str | None,
-) -> str | None:
-    """Return the session holding ``slug`` as a driver, or ``None`` when no other session does.
-
-    The narrow holder re-check taken inside :func:`driver_start_section`: the slug's own
-    ``active_runner`` and the registry owner through :func:`resolve_slug_holders`, with no
-    project-wide load and no writes. ``exempt_session_id`` is treated as no holder.
-    """
-    state = await todos_db.read_state(slug)
-    raw_runner = state.get(ACTIVE_RUNNER_STATE_KEY) if state is not None else None
-    active_runner = raw_runner if isinstance(raw_runner, str) else None
-    holders = await resolve_slug_holders(runtime_db, project_path, slug, active_runner)
-    for holder in (holders.orchestrator_owner, holders.live_runner):
-        if holder is not None and holder != exempt_session_id:
-            return holder
-    return None
 
 
 _HTTP_LOCKED = 423
 _LOST_START_EVENT = "lifecycle start lost to a start in progress"
 _HTTP_CONFLICT = 409
+_HTTP_UNAVAILABLE = 503
 
 
 async def _raise_lost_start(
@@ -616,11 +534,24 @@ async def _raise_lost_start(
     slug: str,
     error: APIError,
 ) -> None:
-    """Raise the typed outcome of a lost concurrent start; return when ``error`` is another refusal."""
+    """Raise the typed outcome of a lost concurrent start; return when ``error`` is another refusal.
+
+    A 409 the create door declared as an admission conflict names the holding session and its computer (or
+    the computers that did not answer for it) and is read by that declared kind, ahead of this computer's own
+    re-read, which cannot see a driver on another computer. A 503 the door gave for a start it could not
+    decide is :class:`AdmissionUnavailable`; a draining daemon's 503 is another refusal.
+    """
     if error.status_code == _HTTP_LOCKED:
         logger.warning(_LOST_START_EVENT, slug=slug, detail=error.detail)
         raise DriverStartBusy(slug=slug, refusal=error.detail) from error
+    if error.status_code == _HTTP_UNAVAILABLE and error.not_accepted_cause is None:
+        raise AdmissionUnavailable(
+            slug=slug, reason=AdmissionUnavailableReason.REFUSED_AT_CREATE_DOOR, detail=error.detail
+        ) from error
     if error.status_code == _HTTP_CONFLICT:
+        declared = parse_admission_conflict(slug, error.detail)
+        if declared is not None:
+            raise declared from error
         holder = await recheck_slug_holder(runtime_db, todos_db, project_path, slug, exempt_session_id=None)
         if holder is not None:
             raise ClaimConflict(slug=slug, holder=holder) from error
@@ -639,6 +570,11 @@ async def dispatch_lifecycle_session(
 
     The start is idempotent per todo and lane: a repeated dispatch records the driver an earlier
     dispatch already started instead of starting another (``event-consumers``, Retained occurrences).
+
+    On a project on the GitHub store the create door's admission has already recorded the claim, through
+    the master and before the session existed, so this writes no ``active_runner`` of its own; the door's
+    503 for a start it could not decide raises :class:`AdmissionUnavailable`, and a terminal session
+    reconciles through a release request of the master.
 
     A start that loses to a concurrent start of the same todo is reported, not failed generically:
     the create door's 423 raises :class:`DriverStartBusy`, and its 409 raises :class:`ClaimConflict`
@@ -662,6 +598,8 @@ async def dispatch_lifecycle_session(
             "args": intent.slug,
             "detach": True,
         }
+        if origin.manually_started:
+            kwargs["manually_started"] = True
         if intent.additional_context:
             kwargs["additional_context"] = intent.additional_context
         try:
@@ -670,14 +608,15 @@ async def dispatch_lifecycle_session(
             await _raise_lost_start(runtime_db, todos_db, project_path, intent.slug, error)
             raise
         session_id = response.session_id
-    await _set_active_runner(
-        todos_db,
-        intent.slug,
-        session_id,
-        lane=intent.lane,
-        manually_started=origin.manually_started,
-        release_hold=origin.manually_started,
-    )
+    if not is_github_backed(project_path):
+        await set_active_runner(
+            todos_db,
+            intent.slug,
+            session_id,
+            lane=intent.lane,
+            manually_started=origin.manually_started,
+            release_hold=origin.manually_started,
+        )
     session = await runtime_db.get_session(session_id)
     if session is not None and is_session_terminal(
         lifecycle_status=session.lifecycle_status,
@@ -703,6 +642,12 @@ async def run_lifecycle_runner(
     runtime_db = db or await get_db()
     todos_db = await get_workflow_store(project_root)
     todos, reconciled = await _load_todos(todos_db, runtime_db)
+    cleared_by_master = await reconcile_ended_claims(runtime_db, project_root, todos)
+    reconciled = [
+        *reconciled,
+        *(slug for slug, todo in todos.items() if todo.active_runner and not cleared_by_master[slug].active_runner),
+    ]
+    todos = cleared_by_master
     prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
     delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
     workflow = config.workflow
@@ -712,7 +657,7 @@ async def run_lifecycle_runner(
         KIND_BUG: workflow.autostart.bug,
         KIND_TASK: workflow.autostart.task,
     }
-    live_session_ids, auto_driver_count = await _live_active_runners(runtime_db, todos)
+    live_session_ids, auto_driver_count = await _live_active_runners(runtime_db, project_root, todos)
     orchestrator_owned_slugs = await live_orchestrator_owned_slugs(runtime_db, project_root)
     if workflow.runner is WorkflowRunnerMode.MANUAL:
         logger.info(
@@ -752,6 +697,11 @@ async def run_lifecycle_runner(
                 # Lost to a start of the same todo: it is driven or being started, which is
                 # the state the pass wants. The next pass re-evaluates it.
                 decision.skip(RunnerSkipReason.ALREADY_DRIVEN, intent.slug)
+                continue
+            except AdmissionUnavailable:
+                # The master could not decide the start, so nothing was created. The pass keeps its other
+                # todos and the next pass tries again.
+                decision.skip(RunnerSkipReason.ADMISSION_UNAVAILABLE, intent.slug)
                 continue
             dispatched.append(intent)
     finally:
@@ -796,7 +746,6 @@ role_for_lane = _role_for_lane
 make_intent = _intent
 load_runner_todos = _load_todos
 resolve_kinded_dispatch = _resolve_kinded_dispatch
-set_active_runner = _set_active_runner
 
 
 __all__ = [
@@ -819,9 +768,7 @@ __all__ = [
     "make_intent",
     "plan_review_current_from_state",
     "project_path_from_event_payload",
-    "recheck_slug_holder",
     "resolve_kinded_dispatch",
     "role_for_lane",
     "run_lifecycle_runner",
-    "set_active_runner",
 ]

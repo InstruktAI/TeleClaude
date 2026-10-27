@@ -63,7 +63,7 @@ from teleclaude.core.next_machine.provenance import (
     sync_artifact_provenance,
 )
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
-from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
+from teleclaude.core.next_machine.runtime.sessions import claim_is_held
 from teleclaude.core.next_machine.session_hold import hold_todo_for_diagnosis_unresolved
 from teleclaude.core.next_machine.state_io import (
     _BUILD_VERDICT_PHASE,
@@ -196,6 +196,7 @@ async def apply_todo_stamp(
 
     writer = StateWriter(raw_state)
     await _validate_stamp_authority(
+        project_root=project_root,
         slug=slug,
         stamp_type=stamp_type,
         caller_session_id=caller_session_id,
@@ -910,6 +911,7 @@ async def _apply_task_outcome_stamp(
 
 async def _validate_stamp_authority(
     *,
+    project_root: str | Path,
     slug: str,
     stamp_type: str,
     caller_session_id: str | None,
@@ -929,7 +931,9 @@ async def _validate_stamp_authority(
                 "A worker session or a plain operator shell cannot kick a todo back to plan drafting."
             )
 
-    live_claimant = active_runner if active_runner and await is_live_session_id(runtime_db, active_runner) else None
+    live_claimant = (
+        active_runner if active_runner and await claim_is_held(runtime_db, project_root, slug, active_runner) else None
+    )
     raw_working_slug = (
         get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "working_slug") if caller_session_id else None
     )

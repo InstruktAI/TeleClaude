@@ -60,8 +60,13 @@ async def carry_request(
     principal: str,
     caller_session_id: str | None,
     cleared_command: str | None,
+    deadline_s: float = RELAY_REQUEST_TIMEOUT_S,
 ) -> JsonValue | None:
     """Carry the request to ``destination`` and return the data block of its wire response.
+
+    ``deadline_s`` is the seconds the request may take end to end: the owner refuses it after that,
+    and this side waits no longer. A caller whose own wait is shorter than the default passes its
+    budget so the relay never outlives the wait that issued it.
 
     Raises ``RelayFailure`` for a failure the relay names, ``RemoteDispatchError`` for any other
     refusal of the crossing, and ``RuntimeError`` or ``ValueError`` when the transport cannot send.
@@ -70,7 +75,7 @@ async def carry_request(
         computer=destination,
         method=method,
         path=path,
-        deadline_at=time.time() + RELAY_REQUEST_TIMEOUT_S,
+        deadline_at=time.time() + deadline_s,
         query=query,
         body_b64=base64.b64encode(body).decode(),
         content_type=content_type,

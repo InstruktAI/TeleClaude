@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -17,6 +18,7 @@ from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
+from teleclaude.api.driver_start_guard import admission_caller_for
 from teleclaude.api.todo_artifact_authority import (
     refuse_todo_update_outside_claiming_group,
     resolve_creation_lineage,
@@ -52,11 +54,19 @@ from teleclaude.core.human_involvement import (
     HumanInvolvementSurface,
     resolve_human_involvement,
 )
+from teleclaude.core.next_machine.driver_admission import (
+    DriverAdmissionRequest,
+    DriverReleaseRequest,
+    StartRequest,
+    admit_relayed_start,
+    release_relayed_claim,
+)
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
     KindMigrationResult,
     migrate_todo_kind,
 )
+from teleclaude.core.next_machine.runtime.sessions import OwnSessionAnswer, own_session_answer
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
@@ -67,6 +77,12 @@ from teleclaude.core.operations import todo_board_repair as todo_board_repair_op
 from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.operations.todo_filing import FilingSeed, TodoFiling
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
+from teleclaude.core.todos_db._exceptions import (
+    AdmissionUnavailable,
+    ClaimConflict,
+    DriverStartBusy,
+    OperationFailure,
+)
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.slug import validate_slug
@@ -658,6 +674,92 @@ async def todo_switch_to_github(
         caller_session_id=identity.session_id,
         client_request_id=client_request_id,
     )
+
+
+class _DriverClaimResponse(BaseModel):
+    """The master's answer to an admission or a release."""
+
+    model_config = ConfigDict(frozen=True)
+    admitted: bool = False
+    cleared: bool = False
+
+
+def _driver_refusal(failure: OperationFailure, status_code: int) -> DeclaredWorkRefusal:
+    """The refusal a master answers a relayed admission or release with: the failure's own payload as the detail."""
+    return DeclaredWorkRefusal(
+        status_code=status_code,
+        detail=dict(failure.to_error_payload()),
+        work_feedback=failure.work_feedback or failure.summary(),
+    )
+
+
+@router.post("/driver-admission")
+async def todo_driver_admission(
+    body: DriverAdmissionRequest,
+    identity: CallerIdentity = Depends(carried_caller),
+) -> _DriverClaimResponse:
+    """Admit a start of a GitHub-backed todo's driver on the master, recording its claim before its session exists.
+
+    Answers 200 when admitted, 409 naming the holder and its computer (or the computers that did not
+    answer for it) when the todo is held, 423 when another start of the todo is in progress, and 503 when
+    this computer is not the unique live master or the start was not decided within its budget.
+    """
+    request = StartRequest(
+        project_root=resolve_project_root(body.project_path),
+        slug=body.slug,
+        session_id=body.session_id,
+        lane=body.lane,
+        manually_started=body.manually_started,
+        release_hold=body.release_hold,
+        caller=admission_caller_for(identity),
+    )
+    try:
+        await admit_relayed_start(request)
+    except ClaimConflict as conflict:
+        raise _driver_refusal(conflict, HTTPStatus.CONFLICT) from conflict
+    except DriverStartBusy as busy:
+        raise _driver_refusal(busy, HTTPStatus.LOCKED) from busy
+    except AdmissionUnavailable as unavailable:
+        raise _driver_refusal(unavailable, HTTPStatus.SERVICE_UNAVAILABLE) from unavailable
+    return _DriverClaimResponse(admitted=True)
+
+
+@router.post("/driver-release")
+async def todo_driver_release(
+    body: DriverReleaseRequest,
+    _identity: CallerIdentity = Depends(carried_caller),
+) -> _DriverClaimResponse:
+    """Release a GitHub-backed todo's claim on the master, in the todo's section, while it still names the session."""
+    try:
+        cleared = await release_relayed_claim(resolve_project_root(body.project_path), body.slug, body.session_id)
+    except DriverStartBusy as busy:
+        raise _driver_refusal(busy, HTTPStatus.LOCKED) from busy
+    except AdmissionUnavailable as unavailable:
+        raise _driver_refusal(unavailable, HTTPStatus.SERVICE_UNAVAILABLE) from unavailable
+    return _DriverClaimResponse(cleared=cleared)
+
+
+class _SessionAnswerResponse(BaseModel):
+    """This computer's answer about one session id, for one todo."""
+
+    model_config = ConfigDict(frozen=True)
+    answer: OwnSessionAnswer
+
+
+@router.get("/session-answer")
+async def todo_session_answer(
+    project_path: str,
+    slug: str,
+    session_id: str,
+    _identity: CallerIdentity = Depends(carried_caller),
+) -> _SessionAnswerResponse:
+    """Say whether a session this computer ran drives the todo, has ended, or was never run here.
+
+    The master asks every known computer this when it judges a claim it cannot verify itself.
+    The answer discloses only held, ended or not-own for a session id the asker already holds.
+    """
+    project_root = resolve_project_root(project_path)
+    return _SessionAnswerResponse(answer=await own_session_answer(runtime_db, project_root, slug, session_id))
 
 
 @router.post("/board/repair", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
