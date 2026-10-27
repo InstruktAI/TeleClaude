@@ -65,10 +65,10 @@ ADMISSION_PATH = "/todos/driver-admission"
 RELEASE_PATH = "/todos/driver-release"
 
 # The waits nest: a question to a computer < the master's answer to an admission < the relay deadline
-# of that admission < the start's whole budget, which leaves room inside the create door's 30 second
-# client timeout for the guard before it and the session creation after it. Every wait is on a task
-# that keeps running when its waiter gives up, so no GitHub write is cancelled midway; what such a
-# task leaves behind is released by its start or reconciled by the master.
+# of that admission < the start's whole budget, which leaves room inside the request timeout of
+# ``TelecAPIClient.run_session`` for the guard before it and the session creation after it. Every wait
+# is on a task that keeps running when its waiter gives up, so no GitHub write is cancelled midway;
+# what such a task leaves behind is released by its start or reconciled by the master.
 QUESTION_DEADLINE_S = 4.0
 ADMISSION_BUDGET_S = 7.0
 ADMISSION_RELAY_DEADLINE_S = 9.0

@@ -198,10 +198,10 @@ class TodoIdentityNotFound(Exception):
 async def _restore_set_aside_claim(db_session: SqlAsyncSession, todo_id: str, removed_claim: str | None) -> None:
     """Put the ``active_runner`` a removal set aside back into the todo's state.
 
-    Removal records the claim it popped from the state, and reactivation used to discard it. On a GitHub-backed
-    project the driver it names may still run on another computer, held by nothing the master could then judge,
-    so the claim returns with the todo: the master judges it like any other and clears it when its holder ended.
-    No start is admitted while the todo is removed, so this write cannot race an admission.
+    Removal records the claim it popped from the state. On a GitHub-backed project the driver that claim names
+    may still run on another computer, so the claim returns with the todo: the master judges it like any other
+    and clears it when its holder ended. A start of a removed todo is refused for want of live state, so this
+    write cannot race an admission.
     """
     if removed_claim is None:
         return
