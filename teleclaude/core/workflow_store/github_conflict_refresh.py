@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import threading
 from collections.abc import Awaitable, Callable
 
@@ -11,70 +12,43 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.workflow_store.github_io_runtime import shared_github_io_loop
 
 _CONFLICT_REFRESH_FAILED = "github_store_conflict_refresh_failed"
+_LIVENESS_POLL_S = 1.0
 logger = get_logger(__name__)
 
 
-class _LoopRefresh:
-    """Run refreshes on one loop: one at a time, plus one follow-up for conflicts that arrive meanwhile."""
+class _Run:
+    """One chain of conflict refreshes: the running one plus the follow-up that conflicts arriving meanwhile ask for.
 
-    def __init__(self, loop: asyncio.AbstractEventLoop, refresh: Callable[[], Awaitable[object]]) -> None:
+    Every field except ``loop`` is guarded by the owning scheduler's lock.
+    """
+
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop = loop
-        self._refresh = refresh
-        self._task: asyncio.Task[None] | None = None
-        self._follow_up = False
-
-    def request(self) -> asyncio.Task[None]:
-        """Start a refresh, or ask the running one for a follow-up. Runs on this loop's thread."""
-        if self._task is None:
-            self._task = self.loop.create_task(self._run())
-        else:
-            self._follow_up = True
-        return self._task
-
-    async def stop(self) -> None:
-        """Cancel the running refresh and wait until it has ended, from any loop."""
-        if _running_loop() is self.loop:
-            await self._cancel()
-        elif self.loop.is_running():
-            await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(self._cancel(), self.loop))
-
-    async def _cancel(self) -> None:
-        task = self._task
-        if task is None:
-            return
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
-
-    async def _run(self) -> None:
-        try:
-            while True:
-                self._follow_up = False
-                try:
-                    await self._refresh()
-                except Exception as error:
-                    logger.warning(_CONFLICT_REFRESH_FAILED, reason=type(error).__name__, exc_info=True)
-                if not self._follow_up:
-                    return
-        finally:
-            self._task = None
+        self.follow_up = False
+        self.started = False
+        self.future: concurrent.futures.Future[None] | None = None
+        self.task: asyncio.Task[None] | None = None
+        self.done: concurrent.futures.Future[None] = concurrent.futures.Future()
 
 
 class ConflictRefreshScheduler:
     """Hand the store's refresh to a loop when a write's transaction ended on a conflict.
 
     The refresh never runs inside the failed transaction: its connection is already back in the pool, and the
-    refresh takes the working-copy writer itself. Where a loop is running, the caller does not wait for it. A
-    native-sync caller in a process with no running store loop waits for the refresh on the adapter-owned
-    GitHub I/O loop, because nothing else in that process would run it before the process ends.
+    refresh takes the working-copy writer itself. One scheduler belongs to one store, and at most one chain of
+    refreshes runs per scheduler whichever loop carries it: a conflict that arrives while one runs joins it and
+    asks for one follow-up. Where a loop is running, the caller does not wait. A native-sync caller in a process
+    with no running loop waits for the chain on the adapter-owned GitHub I/O loop, because nothing else in that
+    process would run it before the process ends.
     """
 
     def __init__(self) -> None:
-        self._refresh: Callable[[], Awaitable[int]] | None = None
+        self._refresh: Callable[[], Awaitable[object]] | None = None
         self._store_loop: asyncio.AbstractEventLoop | None = None
-        self._by_loop: dict[asyncio.AbstractEventLoop, _LoopRefresh] = {}
+        self._active: _Run | None = None
         self._lock = threading.Lock()
 
-    def attach(self, refresh: Callable[[], Awaitable[int]]) -> None:
+    def attach(self, refresh: Callable[[], Awaitable[object]]) -> None:
         """Attach the store's refresh operation."""
         self._refresh = refresh
 
@@ -82,55 +56,95 @@ class ConflictRefreshScheduler:
         """Record the loop that serves this store's async sessions in this process."""
         with self._lock:
             self._store_loop = loop
-            for known in [known for known in self._by_loop if known.is_closed()]:
-                del self._by_loop[known]
 
     def request(self) -> None:
-        """Run the refresh once for a write that ended on a conflict, coalescing with one already running."""
+        """Run the refresh for a write that ended on a conflict, joining the chain already running."""
         running = _running_loop()
-        if running is not None:
-            self._schedule(running)
-            return
         store_loop = self._store_loop
-        if store_loop is not None and store_loop.is_running():
-            self._schedule(store_loop)
-            return
-        self._run_on_io_loop()
+        serving = running or (store_loop if store_loop is not None and store_loop.is_running() else None)
+        with self._lock:
+            run = self._live_run()
+            starting = run is None
+            if run is None:
+                run = _Run(serving or shared_github_io_loop().loop)
+                self._active = run
+            else:
+                run.follow_up = True
+        if starting:
+            self._start(run)
+        if serving is None:
+            self._wait(run)
 
     async def stop(self) -> None:
-        """Cancel every in-flight refresh and wait until each has ended."""
+        """Cancel the running chain and wait until it has ended."""
         with self._lock:
-            entries = list(self._by_loop.values())
-        for entry in entries:
-            await entry.stop()
+            run = self._active
+            if run is None:
+                return
+            future = run.future
+            if not run.started or not run.loop.is_running():
+                self._release(run)
+                run = None
+        if future is not None:
+            future.cancel()
+        if run is not None:
+            await asyncio.wrap_future(run.done)
 
-    def _entry(self, loop: asyncio.AbstractEventLoop) -> _LoopRefresh:
-        with self._lock:
-            entry = self._by_loop.get(loop)
-            if entry is None:
-                entry = self._by_loop[loop] = _LoopRefresh(loop, self._run_refresh)
-            return entry
+    def _live_run(self) -> _Run | None:
+        """Return the active chain, dropping one whose loop is gone and so can never end it. Lock held."""
+        run = self._active
+        if run is not None and not run.loop.is_running():
+            self._release(run)
+            return None
+        return run
 
-    def _schedule(self, loop: asyncio.AbstractEventLoop) -> None:
-        entry = self._entry(loop)
-        if _running_loop() is loop:
-            entry.request()
-            return
+    def _release(self, run: _Run) -> None:
+        """End a chain's bookkeeping. Lock held; safe to repeat."""
+        if self._active is run:
+            self._active = None
+        if not run.done.done():
+            run.done.set_result(None)
+
+    def _start(self, run: _Run) -> None:
+        coroutine = self._run(run)
         try:
-            loop.call_soon_threadsafe(entry.request)
+            run.future = asyncio.run_coroutine_threadsafe(coroutine, run.loop)
         except RuntimeError as error:
+            coroutine.close()
             logger.warning(_CONFLICT_REFRESH_FAILED, reason=type(error).__name__, exc_info=True)
+            with self._lock:
+                self._release(run)
 
-    def _run_on_io_loop(self) -> None:
-        future = shared_github_io_loop().submit(self._wait_on_io_loop())
+    def _wait(self, run: _Run) -> None:
+        while True:
+            try:
+                run.done.result(timeout=_LIVENESS_POLL_S)
+                return
+            except concurrent.futures.TimeoutError:
+                if not run.loop.is_running():
+                    return
+
+    async def _run(self, run: _Run) -> None:
+        with self._lock:
+            if run.done.done():
+                return
+            run.started = True
+            run.task = asyncio.current_task()
         try:
-            future.result()
-        except Exception as error:
-            logger.warning(_CONFLICT_REFRESH_FAILED, reason=type(error).__name__, exc_info=True)
-
-    async def _wait_on_io_loop(self) -> None:
-        # Shielded: a waiter that gives up must not cancel the refresh other waiters share.
-        await asyncio.shield(self._entry(asyncio.get_running_loop()).request())
+            while True:
+                with self._lock:
+                    run.follow_up = False
+                try:
+                    await self._run_refresh()
+                except Exception as error:
+                    logger.warning(_CONFLICT_REFRESH_FAILED, reason=type(error).__name__, exc_info=True)
+                with self._lock:
+                    if not run.follow_up:
+                        self._release(run)
+                        return
+        finally:
+            with self._lock:
+                self._release(run)
 
     async def _run_refresh(self) -> None:
         if self._refresh is not None:
