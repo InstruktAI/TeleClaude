@@ -1,4 +1,4 @@
-"""The request deadline of workflow API requests, and the explicit refusal their working-copy waits end in."""
+"""The request deadline of workflow API requests, and the explicit refusals their store waits end in."""
 
 from __future__ import annotations
 
@@ -7,9 +7,13 @@ from http import HTTPStatus
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from instrukt_ai_logging import get_logger
 
 from teleclaude.api.work_feedback import declared_refusal_response
 from teleclaude.core.todos_db._write_admission import WorkingCopyWriteRefused, request_deadline
+from teleclaude.core.workflow_store.store import GitHubIORefused
+
+logger = get_logger(__name__)
 
 _RETRY_AFTER_HEADER = "Retry-After"
 _RETRY_AFTER_SECONDS = "5"
@@ -24,6 +28,11 @@ _PART_SAVED = (
 _MAY_BE_SAVED = (
     "The working copy ran out of time after the change was sent to GitHub, so it may have been saved "
     "and will appear once the store refreshes. Check before sending it again."
+)
+_GITHUB_STORE_REFUSED_EVENT = "github_store_refused"
+_GITHUB_STORE_REFUSED = (
+    "The GitHub store refused this request ({reason}). "
+    "A change already sent to GitHub may have been saved and will appear once the store refreshes."
 )
 
 
@@ -54,3 +63,19 @@ async def working_copy_refusal_handler(_request: Request, exc: Exception) -> JSO
     if not isinstance(exc, WorkingCopyWriteRefused):
         raise exc
     return working_copy_refusal_response(exc)
+
+
+async def github_store_refusal_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Exception handler for the GitHub store's refusal: the response names its bounded reason, never provider text."""
+    if not isinstance(exc, GitHubIORefused):
+        raise exc
+    logger.warning(
+        _GITHUB_STORE_REFUSED_EVENT,
+        reason=exc.reason.value,
+        method=request.method,
+        path=request.url.path,
+    )
+    feedback = _GITHUB_STORE_REFUSED.format(reason=exc.reason.value)
+    return declared_refusal_response(
+        status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=feedback, work_feedback=feedback
+    )
