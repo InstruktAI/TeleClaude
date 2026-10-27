@@ -19,13 +19,13 @@ from teleclaude.core.workflow_store.github_io_models import (
     GitHubRepositoryScope,
     GitHubReview,
 )
-from teleclaude.core.workflow_store.github_io_runtime import submit_serialized_unit
 from teleclaude.core.workflow_store.github_io_transport import (
     GitHubIOFailure,
     GitHubIORefused,
     GitHubTransport,
     split_repository,
 )
+from teleclaude.core.workflow_store.github_io_unit import submit_serialized_unit
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 _PAGE_SIZE = 100

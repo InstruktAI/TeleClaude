@@ -4,18 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Awaitable, Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
 from time import monotonic
 from typing import Any
 
-from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused
-
-_LOCK_WAIT_SECONDS = 30.0
-_UNIT_SECONDS = 180.0
-_LOCK_WAIT_DETAIL = "request lock wait exceeded"
-_UNIT_DETAIL = "unit of work exceeded its time bound"
 _THREAD_NAME = "teleclaude-github-io"
 _PACED_WRITE_INTERVAL_S = 1.0
 _INTER_ITEM_WRITE_INTERVAL_S = 10.0
@@ -44,11 +37,17 @@ class GitHubMutationPacing:
 
 
 class _GitHubIOLoop:
-    """Own the single process loop used by every project's sync and async caller."""
+    """Own the single process loop used by every project's sync and async caller.
+
+    `request_lock` keeps GitHub requests one at a time, held for a single request. `unit_lock` keeps
+    background units (a reflection, a pull request unit) from interleaving; only background units hold it,
+    never a push that owns the working copy's writer, so a push waits behind at most one request.
+    """
 
     def __init__(self) -> None:
         self.loop = asyncio.new_event_loop()
         self.request_lock: asyncio.Lock | None = None
+        self.unit_lock: asyncio.Lock | None = None
         self.ready = threading.Event()
         self.thread = threading.Thread(target=self._run, name=_THREAD_NAME, daemon=True)
         self.thread.start()
@@ -60,6 +59,7 @@ class _GitHubIOLoop:
     def _run(self) -> None:
         asyncio.set_event_loop(self.loop)
         self.request_lock = asyncio.Lock()
+        self.unit_lock = asyncio.Lock()
         self.ready.set()
         self.loop.run_forever()
 
@@ -75,29 +75,3 @@ def shared_github_io_loop() -> _GitHubIOLoop:
         if _io_loop is None:
             _io_loop = _GitHubIOLoop()
         return _io_loop
-
-
-def submit_serialized_unit[Result](work: Callable[[], Awaitable[Result]]) -> Future[Result]:
-    """Queue one unit of GitHub work on the shared I/O loop behind the process-wide request lock.
-
-    The wait for the lock and the unit itself are bounded, so a caller with a deadline is answered
-    with a refusal instead of an unbounded wait.
-    """
-    return shared_github_io_loop().submit(_run_serialized_unit(work))
-
-
-async def _run_serialized_unit[Result](work: Callable[[], Awaitable[Result]]) -> Result:
-    io_loop = shared_github_io_loop()
-    if io_loop.request_lock is None:
-        raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
-    try:
-        await asyncio.wait_for(io_loop.request_lock.acquire(), _LOCK_WAIT_SECONDS)
-    except TimeoutError:
-        raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_LOCK_WAIT_DETAIL) from None
-    try:
-        async with asyncio.timeout(_UNIT_SECONDS):
-            return await work()
-    except TimeoutError:
-        raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_UNIT_DETAIL) from None
-    finally:
-        io_loop.request_lock.release()

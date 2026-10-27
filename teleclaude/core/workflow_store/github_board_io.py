@@ -3,7 +3,8 @@
 Every request is a GraphQL document with variables, never an interpolated id, run through the shared
 transport so credentials, refusals and rate limits behave as for the issue and pull request reflections.
 The board is a reflection: nothing here is read back as workflow state. Setup and item application
-compose these primitives inside `submit`, which holds the process-wide request lock like every store request.
+compose these primitives inside `submit`, which holds the unit lock for the whole unit; each primitive's
+request takes the process-wide request lock alone, like every store request.
 """
 
 from __future__ import annotations
@@ -27,13 +28,13 @@ from teleclaude.core.workflow_store.github_io_models import (
     GitHubBoardView,
     GitHubRepositoryScope,
 )
-from teleclaude.core.workflow_store.github_io_runtime import submit_serialized_unit
 from teleclaude.core.workflow_store.github_io_transport import (
     GitHubIOFailure,
     GitHubIORefused,
     GitHubTransport,
     split_repository,
 )
+from teleclaude.core.workflow_store.github_io_unit import submit_serialized_unit
 from teleclaude.types.github_account import GitHubAccountKind, github_app_bot_login
 from teleclaude.types.github_binding import GitHubActorAssignment
 
