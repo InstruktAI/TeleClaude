@@ -9,7 +9,8 @@ helpers; ``lifecycle_runner`` never imports this module.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -64,6 +65,7 @@ from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.todos_db._exceptions import (
     ClaimConflict,
+    DriverStartBusy,
     LaneCrossingRefused,
     ReviewerConflict,
     ReviewerIdentityUnresolved,
@@ -84,8 +86,10 @@ __all__ = [
     "DriverStartGuardResult",
     "adopt_headless_session",
     "adopt_manual_lifecycle_session",
+    "driver_start_section",
     "guard_driver_start",
     "manual_start_lifecycle_session",
+    "recheck_slug_holder",
     "resolve_manual_dispatch_intent",
     "work_feedback_for_manual_skip",
 ]
@@ -129,6 +133,70 @@ def work_feedback_for_manual_skip(reason: RunnerSkipReason | str | None) -> str 
     """Publish feedback only for deliberate manual-start work refusals."""
     if isinstance(reason, RunnerSkipReason):
         return _MANUAL_SKIP_FEEDBACK.get(reason)
+    return None
+
+
+_STARTS_IN_FLIGHT: dict[tuple[Path, str], str] = {}
+
+
+@asynccontextmanager
+async def driver_start_section(
+    project_path: str | Path,
+    slug: str,
+    *,
+    starting_session_id: str,
+) -> AsyncIterator[None]:
+    """Hold the one-start-at-a-time section for a todo while a start creates or claims its orchestrator.
+
+    Keyed by the canonical project root and slug, whatever lane is asked for: the
+    holder check admits one driver per todo. Entering never waits. A free key records
+    ``starting_session_id`` and enters; a key held by another start raises
+    :class:`DriverStartBusy` naming the session that start is creating or claiming.
+    Leaving drops the record on success and on exception, so a failed start leaves
+    nothing behind. The record lives in this process only; the registry check-and-set
+    has no await in it, so on the daemon's event loop it is atomic. The caller
+    re-checks the slug's holder inside the section and creates or claims before leaving.
+    """
+    key = (resolve_project_root(project_path), slug)
+    in_flight = _STARTS_IN_FLIGHT.get(key)
+    if in_flight is not None:
+        busy = DriverStartBusy(slug=slug, in_flight=in_flight)
+        logger.warning(
+            "driver start refused while another start is in progress",
+            project=str(key[0]),
+            slug=slug,
+            in_flight=in_flight,
+            starting_session_id=starting_session_id,
+        )
+        raise busy
+    _STARTS_IN_FLIGHT[key] = starting_session_id
+    try:
+        yield
+    finally:
+        del _STARTS_IN_FLIGHT[key]
+
+
+async def recheck_slug_holder(
+    runtime_db: Db,
+    todos_db: WorkflowStore,
+    project_path: str | Path,
+    slug: str,
+    *,
+    exempt_session_id: str | None,
+) -> str | None:
+    """Return the session holding ``slug`` as a driver, or ``None`` when no other session does.
+
+    The narrow holder re-check taken inside :func:`driver_start_section`: the slug's own
+    ``active_runner`` and the registry owner through :func:`resolve_slug_holders`, with no
+    project-wide load and no writes. ``exempt_session_id`` is treated as no holder.
+    """
+    state = await todos_db.read_state(slug)
+    raw_runner = state.get("active_runner") if state is not None else None
+    active_runner = raw_runner if isinstance(raw_runner, str) else None
+    holders = await resolve_slug_holders(runtime_db, project_path, slug, active_runner)
+    for holder in (holders.orchestrator_owner, holders.live_runner):
+        if holder is not None and holder != exempt_session_id:
+            return holder
     return None
 
 
