@@ -9,7 +9,7 @@ helpers; ``lifecycle_runner`` never imports this module.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -25,12 +25,9 @@ from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATU
 from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES, WORK_LANE_ROLES
 from teleclaude.core.next_machine.lifecycle import pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
-    SessionRunner,
     approval_from_state,
     artifact_digest_from_state,
     command_for_lane,
-    default_session_runner,
-    dispatch_lifecycle_session,
     load_runner_todos,
     make_intent,
     plan_review_current_from_state,
@@ -41,7 +38,6 @@ from teleclaude.core.next_machine.lifecycle_runner import (
 )
 from teleclaude.core.next_machine.runner_types import (
     DispatchIntent,
-    DispatchOrigin,
     ManualLifecycleSessionResult,
     ManualLifecycleStatus,
     RunnerLane,
@@ -89,7 +85,6 @@ __all__ = [
     "adopt_manual_lifecycle_session",
     "driver_start_section",
     "guard_driver_start",
-    "manual_start_lifecycle_session",
     "recheck_slug_holder",
     "resolve_manual_dispatch_intent",
     "work_feedback_for_manual_skip",
@@ -440,59 +435,6 @@ async def guard_driver_start(
     if reason is RunnerSkipReason.ALREADY_DRIVEN:
         raise ClaimConflict(slug=slug, holder=holder)
     return DriverStartGuardResult(held_without_driver=bool(todo and todo.hold and holder is None))
-
-
-async def manual_start_lifecycle_session(
-    project_path: str | Path,
-    slug: str,
-    *,
-    lane: RunnerLane,
-    db: Db | None = None,
-    client_factory: Callable[[], SessionRunner] = default_session_runner,
-) -> ManualLifecycleSessionResult:
-    project_root = resolve_project_root(project_path)
-    runtime_db = db or await get_db()
-    todos_db = await get_workflow_store(project_root)
-    _todo, reason, owner_session_id = await _target_for_manual_start(todos_db, runtime_db, slug, lane, project_root)
-    if reason is not None:
-        return ManualLifecycleSessionResult(
-            slug=slug,
-            lane=lane,
-            status=ManualLifecycleStatus.ALREADY_DRIVEN
-            if reason is RunnerSkipReason.ALREADY_DRIVEN
-            else ManualLifecycleStatus.SKIPPED,
-            session_id=owner_session_id if reason is RunnerSkipReason.ALREADY_DRIVEN else None,
-            reason=reason,
-        )
-
-    client = client_factory()
-    await client.connect()
-    try:
-        session_id = await dispatch_lifecycle_session(
-            client=client,
-            runtime_db=runtime_db,
-            todos_db=todos_db,
-            project_path=str(project_root),
-            intent=make_intent(slug, lane),
-            origin=DispatchOrigin.MANUAL,
-        )
-    except ClaimConflict as conflict:
-        return ManualLifecycleSessionResult(
-            slug=slug,
-            lane=lane,
-            status=ManualLifecycleStatus.ALREADY_DRIVEN,
-            session_id=conflict.holder,
-            reason=RunnerSkipReason.ALREADY_DRIVEN,
-        )
-    finally:
-        await client.close()
-
-    return ManualLifecycleSessionResult(
-        slug=slug,
-        lane=lane,
-        status=ManualLifecycleStatus.DISPATCHED,
-        session_id=session_id,
-    )
 
 
 def _lane_of_role(role: str | None) -> RunnerLane | None:
