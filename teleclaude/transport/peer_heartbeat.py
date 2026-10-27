@@ -13,6 +13,8 @@ _HEARTBEAT_KEY_SUFFIX = ":heartbeat"
 _HEARTBEAT_KEY_ENCODING = "utf-8"
 CONVERSATION_ADAPTERS_FIELD = "conversation_adapters"
 PROJECTS_DIGEST_FIELD = "projects_digest"
+# The refresh data type one projects-with-todos pull answers; shared by the refresh and its invalidation.
+PROJECTS_DATA_TYPE = "projects"
 _COMPUTER_NAME_FIELD = "computer_name"
 _USER_FIELD = "user"
 _HOST_FIELD = "host"

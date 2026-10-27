@@ -14,6 +14,7 @@ from teleclaude.constants import CacheEvent
 from teleclaude.core import command_handlers
 from teleclaude.transport.peer_heartbeat import (
     CONVERSATION_ADAPTERS_FIELD,
+    PROJECTS_DATA_TYPE,
     PROJECTS_DIGEST_FIELD,
     heartbeat_key,
     projects_digest,
@@ -26,7 +27,6 @@ _HEARTBEAT_RECOVERABLE_ERRORS = (RedisError, OSError, RuntimeError, TypeError, V
 _HEARTBEAT_SAMPLE_FAILED_EVENT = "heartbeat_sample_failed"
 _PROJECTS_DIGEST_FAILED_EVENT = "projects_digest_failed"
 _COMPUTER_FIELD = "computer"
-_PROJECTS_DATA_TYPE = "projects"
 _PEER_INVALIDATION_EVENTS = frozenset({CacheEvent.TODOS_UPDATED.value, CacheEvent.PROJECTS_UPDATED.value})
 
 if TYPE_CHECKING:
@@ -148,4 +148,4 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         computer = data.get(_COMPUTER_FIELD)
         if isinstance(computer, str) and computer != self.computer_name:
             self._pulled_projects_digest.pop(computer, None)
-            self._bootstrapped.discard((computer, _PROJECTS_DATA_TYPE))
+            self._bootstrapped.discard((computer, PROJECTS_DATA_TYPE))

@@ -50,7 +50,7 @@ flowchart LR
 - **Stream Per Computer**: Each computer polls exactly one command stream named after its computer identity.
 - **One-Shot Responses**: Response streams are created per-message and auto-expire after TTL.
 - **Heartbeat TTL**: Computer registry entries expire after 60s without heartbeat; marks computer offline.
-- **Digest-Driven Refresh**: A peer's projects and todos are pulled at its first heartbeat and afterwards only when the digest its heartbeat advertises differs from the one advertised at the last pull. Nothing is pulled because a cached copy aged, and one pull per peer answers projects, todos and preparation views alike.
+- **Digest-Driven Refresh**: A peer's projects and todos are pulled at its first heartbeat, when the digest its heartbeat advertises differs from the one advertised at the last pull, and once after a workflow change invalidates the cached copy. Nothing is pulled because a cached copy aged, and one pull per peer answers projects, todos and preparation views alike.
 - **Single Connection Lifecycle**: Redis connection is managed by one reconnect loop; all tasks wait on readiness.
 
 - **Bounded Backpressure**: The shared Redis client draws connections from a single bounded pool that blocks a caller for a bounded time when every connection is in use, rather than failing immediately. A momentary saturation waits for a connection to be released instead of surfacing a connection error to every subsystem at once; only a saturation that outlasts the bound raises.
@@ -156,8 +156,8 @@ refuses it without running it.
 - **Stream Accumulation**: If consumer lags, streams grow beyond MAXLEN. Oldest messages trimmed. Commands may be lost if not processed in time.
 - **Response Stream Collision**: Extremely rare. Two messages with same ID overwrite response stream. Mitigated by UUID message IDs.
 - **Digest Not Recomputed**: The digest is a SHA-256 of the exact projects-with-todos answer, so an unchanged digest means an unchanged answer. When this computer cannot read its own projects, it keeps advertising the last digest, and peers keep their copy until a later pass succeeds.
-- **Peer Without a Digest**: A computer whose heartbeat advertises no digest is pulled at its first heartbeat only; its copy stays as pulled until its heartbeat advertises a digest.
-- **Invalidated Peer Copy**: When a workflow change drops a peer's cached projects or todos, the digest recorded at its last pull is forgotten, so the next heartbeat pulls that peer once and refills them.
+- **Peer Without a Digest**: A computer whose heartbeat advertises no digest is pulled at its first heartbeat and after an invalidation of its cached copy, never on a timer.
+- **Invalidated Peer Copy**: When a workflow change drops a peer's cached projects or todos, the digest recorded at its last pull and its projects bootstrap are both forgotten, so the next heartbeat pulls that peer once, by digest or by bootstrap, and refills them.
 - **Heartbeat Storm**: Many computers restart simultaneously and publish heartbeats. Redis handles gracefully; cache refresh tasks may queue.
 - **Reconnect Storm Prevention**: Redis reconnects are serialized; tasks wait on readiness to avoid connection floods.
 - **Stale Registry**: Computer dies without sending offline heartbeat. Registry shows online until TTL expires (max 60s stale window).

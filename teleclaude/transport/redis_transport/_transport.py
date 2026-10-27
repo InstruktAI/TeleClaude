@@ -24,7 +24,13 @@ from ._heartbeat import _HeartbeatMixin
 from ._messaging import _MessagingMixin
 from ._peers import _PeersMixin
 from ._pull import _PullMixin
-from ._refresh import DIGEST_CHANGED_REASON, _RefreshMixin
+from ._refresh import (
+    DIGEST_CHANGED_REASON,
+    FIRST_HEARTBEAT_REASON,
+    OBSERVED_STOP_REASON,
+    STARTUP_REASON,
+    _RefreshMixin,
+)
 from ._request_response import _RequestResponseMixin
 
 if TYPE_CHECKING:
@@ -63,7 +69,7 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
     - Comp2 → XADD output:{computer}:{message_id} → Comp1 reads response for request/response
     """
 
-    _ALLOWED_REFRESH_REASONS = {"startup", "first_heartbeat", "observed_stop", DIGEST_CHANGED_REASON}
+    _ALLOWED_REFRESH_REASONS = {STARTUP_REASON, FIRST_HEARTBEAT_REASON, OBSERVED_STOP_REASON, DIGEST_CHANGED_REASON}
 
     def __init__(self, adapter_client: AdapterClient, task_registry: TaskRegistry):
         """Initialize Redis transport.
