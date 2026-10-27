@@ -81,6 +81,7 @@ class _Argument(StrEnum):
     LAUNCHCTL_KICKSTART = "kickstart"
     LAUNCHCTL_KILL_FIRST = "-k"
     SYSTEMCTL_IS_ACTIVE = "is-active"
+    SYSTEMCTL_IS_ENABLED = "is-enabled"
     SYSTEMCTL_QUIET = "--quiet"
     SYSTEMCTL_DAEMON_RELOAD = "daemon-reload"
     SYSTEMCTL_ENABLE = "enable"
@@ -270,6 +271,15 @@ def _system_service_active(service: str) -> bool:
     return completed.returncode == 0
 
 
+def _system_service_enabled(service: str) -> bool:
+    command = [_Program.SYSTEMCTL, _Argument.SYSTEMCTL_IS_ENABLED, _Argument.SYSTEMCTL_QUIET, service]
+    try:
+        completed = subprocess.run(command, check=False, capture_output=True)
+    except OSError:
+        return False
+    return completed.returncode == 0
+
+
 def _install_binary() -> None:
     """Install the Redis server binary; a system service the package started by itself is disabled."""
     if _is_macos():
@@ -286,7 +296,8 @@ def _install_binary() -> None:
         _sudo(_Step.PACKAGE_INSTALL, *command, package, interactive=True, timeout=_PACKAGE_TIMEOUT_S)
         logger.info(_PACKAGE_INSTALLED_EVENT, manager=manager, package=package)
         for service in _SYSTEM_SERVICES:
-            if _system_service_active(service):
+            # A package's service that failed to start, such as on a port another server holds, is still enabled.
+            if _system_service_active(service) or _system_service_enabled(service):
                 disable = (_Program.SYSTEMCTL, _Argument.SYSTEMCTL_DISABLE, _Argument.SYSTEMCTL_NOW, service)
                 _sudo(_Step.DISABLE_SYSTEM_SERVICE, *disable, interactive=True)
                 logger.info(_SYSTEM_SERVICE_DISABLED_EVENT, service=service)
