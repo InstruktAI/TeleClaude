@@ -75,6 +75,7 @@ from teleclaude.hooks.edit_declarations import (
     hold_certain_edit,
     settle_certain_edit,
 )
+from teleclaude.hooks.receiver._command_shell import command_shell_context
 from teleclaude.hooks.receiver._tool_admission import native_tool_denial_for_source
 from teleclaude.hooks.receiver_args import parse_receiver_args
 from teleclaude.hooks.session_map import (
@@ -801,7 +802,8 @@ def _print_additional_context(
         identity_key=identity_key,
         strict_identity_keys=scope.identity_keys if strict_scope and scope is not None else None,
     )
-    if not memory_context and not person_header and not company_header:
+    shell_context = command_shell_context(provider)
+    if not memory_context and not person_header and not company_header and not shell_context:
         logger.info(
             EVENT_SESSION_START_CONTEXT_COMPOSED,
             session_id=session_id,
@@ -811,6 +813,7 @@ def _print_additional_context(
             company=company or "",
             person_context_present=False,
             memory_context_present=False,
+            command_shell_context_present=False,
             memberships_listed=memberships_listed,
         )
         return None
@@ -822,6 +825,8 @@ def _print_additional_context(
         parts.append(person_header)
     if memory_context:
         parts.append(memory_context)
+    if shell_context:
+        parts.append(shell_context)
     context = "\n\n".join(parts)
 
     logger.debug(
@@ -836,6 +841,7 @@ def _print_additional_context(
         company=company or "",
         person_context_present=bool(person_header),
         memory_context_present=bool(memory_context),
+        command_shell_context_present=bool(shell_context),
         memberships_listed=memberships_listed,
     )
     return context
