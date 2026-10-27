@@ -34,6 +34,7 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     load_runner_todos,
     make_intent,
     plan_review_current_from_state,
+    recheck_slug_holder,
     resolve_kinded_dispatch,
     role_for_lane,
     set_active_runner,
@@ -175,30 +176,6 @@ async def driver_start_section(
         yield
     finally:
         del _STARTS_IN_FLIGHT[key]
-
-
-async def recheck_slug_holder(
-    runtime_db: Db,
-    todos_db: WorkflowStore,
-    project_path: str | Path,
-    slug: str,
-    *,
-    exempt_session_id: str | None,
-) -> str | None:
-    """Return the session holding ``slug`` as a driver, or ``None`` when no other session does.
-
-    The narrow holder re-check taken inside :func:`driver_start_section`: the slug's own
-    ``active_runner`` and the registry owner through :func:`resolve_slug_holders`, with no
-    project-wide load and no writes. ``exempt_session_id`` is treated as no holder.
-    """
-    state = await todos_db.read_state(slug)
-    raw_runner = state.get("active_runner") if state is not None else None
-    active_runner = raw_runner if isinstance(raw_runner, str) else None
-    holders = await resolve_slug_holders(runtime_db, project_path, slug, active_runner)
-    for holder in (holders.orchestrator_owner, holders.live_runner):
-        if holder is not None and holder != exempt_session_id:
-            return holder
-    return None
 
 
 @dataclass(frozen=True)
@@ -497,6 +474,14 @@ async def manual_start_lifecycle_session(
             project_path=str(project_root),
             intent=make_intent(slug, lane),
             origin=DispatchOrigin.MANUAL,
+        )
+    except ClaimConflict as conflict:
+        return ManualLifecycleSessionResult(
+            slug=slug,
+            lane=lane,
+            status=ManualLifecycleStatus.ALREADY_DRIVEN,
+            session_id=conflict.holder,
+            reason=RunnerSkipReason.ALREADY_DRIVEN,
         )
     finally:
         await client.close()
