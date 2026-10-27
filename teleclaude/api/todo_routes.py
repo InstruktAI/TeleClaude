@@ -56,6 +56,7 @@ from teleclaude.core.next_machine.kind_migration import (
     KindMigrationResult,
     migrate_todo_kind,
 )
+from teleclaude.core.next_machine.runtime.sessions import OwnSessionAnswer, own_session_answer
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
@@ -656,6 +657,29 @@ async def todo_switch_to_github(
         caller_session_id=identity.session_id,
         client_request_id=client_request_id,
     )
+
+
+class _SessionAnswerResponse(BaseModel):
+    """This computer's answer about one session id, for one todo."""
+
+    model_config = ConfigDict(frozen=True)
+    answer: OwnSessionAnswer
+
+
+@router.get("/session-answer")
+async def todo_session_answer(
+    project_path: str,
+    slug: str,
+    session_id: str,
+    _identity: CallerIdentity = Depends(carried_caller),
+) -> _SessionAnswerResponse:
+    """Say whether a session this computer ran drives the todo, has ended, or was never run here.
+
+    The master asks every known computer this when it judges a claim it cannot verify itself.
+    The answer discloses only held, ended or not-own for a session id the asker already holds.
+    """
+    project_root = resolve_project_root(project_path)
+    return _SessionAnswerResponse(answer=await own_session_answer(runtime_db, project_root, slug, session_id))
 
 
 @router.post("/{slug}/reactivate")

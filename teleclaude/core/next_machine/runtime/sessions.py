@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 
+from teleclaude.config.project_models import TodoStoreBackend
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.agent_status_projection import read_session_agent_status
 from teleclaude.core.db import Db
 from teleclaude.core.models import Session
 from teleclaude.core.next_machine.lanes import DRIVER_ROLES, LifecycleProcedure
+from teleclaude.core.next_machine.runtime.driver_starts import is_starting
+from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.core.session_status import AgentStatusValue, SessionLifecycleStatus
+from teleclaude.core.workflow_store.selection import selected_workflow_store_backend
 
 CommandValues = str | tuple[str, ...]
 PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (
@@ -110,6 +115,64 @@ async def is_live_session_id(db: Db, session_id: str) -> bool:
     if session.closed_at is not None:
         return False
     return session.lifecycle_status != "closed"
+
+
+class OwnSessionAnswer(StrEnum):
+    """What one computer says about a session id it is asked about, for one todo."""
+
+    HELD = "held"
+    ENDED = "ended"
+    NOT_OWN = "not_own"
+
+
+def is_github_backed(project_path: str | Path) -> bool:
+    """Return whether the project's workflow records live in the GitHub store shared across computers."""
+    return selected_workflow_store_backend(resolve_project_state_root(project_path)) is TodoStoreBackend.GITHUB
+
+
+async def own_session_answer(db: Db, project_path: str | Path, slug: str, session_id: str) -> OwnSessionAnswer:
+    """Answer, for this computer only, whether ``session_id`` drives ``slug`` in this project.
+
+    Each computer's registry is authoritative for the sessions it ran, and its retained records
+    (closed, closing and deleted sessions stay) let it say "mine and ended" as well as "mine and held":
+
+    - ``HELD`` — a start of that session for this todo is inside this computer's admission section, or
+      the session is open, not closing, carries a lifecycle driver role and has ``slug`` as its working
+      slug in this project;
+    - ``ENDED`` — this computer holds a record of that session and it neither holds nor is starting
+      (closed, closing, deleted, or open without driving this todo);
+    - ``NOT_OWN`` — this computer has no record of it and no start of it.
+
+    Judging the session as the driver of this todo, not as merely open, is what lets an in-place start
+    that gave up, whose caller stays open without driving the todo, be judged ended.
+    """
+    if is_starting(project_path, slug, session_id):
+        return OwnSessionAnswer.HELD
+    session = await db.get_session(session_id)
+    if session is None:
+        return OwnSessionAnswer.NOT_OWN
+    drives_slug = (
+        session.closed_at is None
+        and session.deleted_at is None
+        and session.lifecycle_status not in {SessionLifecycleStatus.CLOSED, SessionLifecycleStatus.CLOSING}
+        and session.role in DRIVER_ROLES
+        and session.working_slug == slug
+        and _same_project_root(session.project_path, Path(project_path).resolve())
+    )
+    return OwnSessionAnswer.HELD if drives_slug else OwnSessionAnswer.ENDED
+
+
+async def claim_is_held(db: Db, project_path: str | Path, slug: str, session_id: str) -> bool:
+    """Return whether the claim naming ``session_id`` on ``slug`` still holds the todo, for a reading caller.
+
+    For a project on the GitHub store, a claim for a session this computer never ran cannot be verified
+    here, so it is held; a session this computer ran holds the claim only while it drives the todo.
+    Any other project keeps the local rule: the claim holds while its session is live.
+    """
+    if not is_github_backed(project_path):
+        return await is_live_session_id(db, session_id)
+    answer = await own_session_answer(db, project_path, slug, session_id)
+    return answer is not OwnSessionAnswer.ENDED
 
 
 async def find_live_prepare_worker_for_slug(db: Db, slug: str, command_value: str) -> str | None:
@@ -376,12 +439,16 @@ class SlugHolders:
     ``orchestrator_owner`` is a live orchestrator bound to the slug
     (:func:`live_orchestrator_owner`); ``live_runner`` is the slug's
     ``active_runner`` when it still names a live session. Either may be ``None``.
+    ``foreign_claim`` is the slug's ``active_runner`` on a GitHub-backed project when it
+    names a session this computer never ran: it blocks nothing here, because the master
+    judges it, names its computer, or frees it when ended.
     Caller-exemption — is a holder the caller itself? — is applied by the
     dispatch guard for its launch class.
     """
 
     orchestrator_owner: str | None
     live_runner: str | None
+    foreign_claim: str | None = None
 
 
 async def resolve_slug_holders(
@@ -395,11 +462,23 @@ async def resolve_slug_holders(
     The single source of the holder algorithm for lifecycle dispatch guards: a
     live orchestrator bound to the slug, and a live ``active_runner`` claim.
     Liveness is checked here; precedence and caller-exemption are the caller's
-    to apply.
+    to apply. For a project on the GitHub store, ``live_runner`` is set only when the
+    claim's session is this computer's own and still drives the todo; a claim for a
+    session this computer never ran is returned as ``foreign_claim``, and a claim for
+    one it ran that has ended is neither.
     """
     owner = await live_orchestrator_owner(db, project_path, slug)
-    live_runner = active_runner if active_runner and await is_live_session_id(db, active_runner) else None
-    return SlugHolders(orchestrator_owner=owner, live_runner=live_runner)
+    if not active_runner:
+        return SlugHolders(orchestrator_owner=owner, live_runner=None)
+    if not is_github_backed(project_path):
+        live_runner = active_runner if await is_live_session_id(db, active_runner) else None
+        return SlugHolders(orchestrator_owner=owner, live_runner=live_runner)
+    answer = await own_session_answer(db, project_path, slug, active_runner)
+    return SlugHolders(
+        orchestrator_owner=owner,
+        live_runner=active_runner if answer is OwnSessionAnswer.HELD else None,
+        foreign_claim=active_runner if answer is OwnSessionAnswer.NOT_OWN else None,
+    )
 
 
 async def live_orchestrator_owned_slugs(db: Db, project_path: str | Path) -> set[str]:

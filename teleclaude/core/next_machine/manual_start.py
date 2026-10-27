@@ -44,6 +44,7 @@ from teleclaude.core.next_machine.runner_types import (
     RunnerSkipReason,
     RunnerTodo,
 )
+from teleclaude.core.next_machine.runtime.driver_starts import STARTS_IN_FLIGHT, start_key
 from teleclaude.core.next_machine.runtime.sessions import (
     PREPARE_LIFECYCLE_COMMANDS,
     find_live_commit_reviewer_for_initiator,
@@ -134,7 +135,6 @@ def work_feedback_for_manual_skip(reason: RunnerSkipReason | str | None) -> str 
 
 
 _START_REFUSED_BUSY_EVENT = "driver start refused while another start is in progress"
-_STARTS_IN_FLIGHT: dict[tuple[Path, str], str] = {}
 
 
 @asynccontextmanager
@@ -155,8 +155,8 @@ async def driver_start_section(
     has no await in it, so on the daemon's event loop it is atomic. The caller
     re-checks the slug's holder inside the section and creates or claims before leaving.
     """
-    key = (resolve_project_root(project_path), slug)
-    in_flight = _STARTS_IN_FLIGHT.get(key)
+    key = start_key(project_path, slug)
+    in_flight = STARTS_IN_FLIGHT.get(key)
     if in_flight is not None:
         busy = DriverStartBusy(slug=slug, in_flight=in_flight)
         logger.warning(
@@ -167,11 +167,11 @@ async def driver_start_section(
             starting_session_id=starting_session_id,
         )
         raise busy
-    _STARTS_IN_FLIGHT[key] = starting_session_id
+    STARTS_IN_FLIGHT[key] = starting_session_id
     try:
         yield
     finally:
-        del _STARTS_IN_FLIGHT[key]
+        del STARTS_IN_FLIGHT[key]
 
 
 @dataclass(frozen=True)
