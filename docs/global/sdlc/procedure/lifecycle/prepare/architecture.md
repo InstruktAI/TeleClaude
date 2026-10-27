@@ -133,6 +133,25 @@ Read:
 - The architectural defaults principle (already in required reads) sets the
   baseline stance.
 
+### 1a. Ground state and external primitives before any mechanism
+
+Before choosing a mechanism, settle two things from the substrate, as
+`general/principle/grounding` directs:
+
+- **Each piece of state the design needs.** Name who decides it, how often it
+  changes, and where the platform already keeps facts of that kind — a
+  configuration fact, a domain store's record, a runtime coordination value —
+  and place it there. A fact decided by intent and changed by a deliberate act
+  is configuration, whatever component reads it.
+- **Each external system the design depends on.** Inventory the primitives it
+  offers for the problem: where state can live and who may change it, what
+  guarantees its writes give, how it delivers events, and what identity and
+  permission facts it exposes. Read them from its current documentation.
+
+Then name the existing in-system path that already does the nearest job and
+the external primitive each part of the design rests on. The design builds
+only what neither provides.
+
 ### 2. Reason through the architecture
 
 Begin from the approved target, then introduce implementation reality. For
@@ -172,7 +191,7 @@ restates the other; live contracts are not decision journals:
 | **State ownership** | State introduced or modified, its single owner, and the explicit contracts through which others observe it. |
 | **Platform defaults assessed** | Defaults and flavors reused where they fit; gaps, adaptations, and deliberate divergences with their evidenced trade-offs. A missing flavor is a design constraint to resolve, not automatic permission to hack or an automatic veto on the target. |
 
-| **Prior art & adopt-vs-build** | When the design introduces unfamiliar infrastructure or a security boundary: the reference implementations, current vendor documentation, and at least one comparable production architecture surveyed, and the adopt-vs-build decision with its reason. Bespoke infrastructure or a custom security mechanism with no prior-art evidence is a blocking finding (`general/principle/grounding`). |
+| **Prior art & adopt-vs-build** | For every external system the design depends on, its primitives inventory from step 1a; and when the design introduces infrastructure or a security boundary of its own: the reference implementations, current vendor documentation, and at least one comparable production architecture surveyed, and the adopt-vs-build decision with its reason. Bespoke infrastructure or a custom security mechanism with no prior-art evidence is a blocking finding (`general/principle/grounding`). |
 | **Decomposition** | If the work is non-trivial, a decomposition into architectural units. Each unit is something a plan task can hang off. |
 | **Open architectural questions** | Resolve technical uncertainty through evidence and independent challenge; route only human-owned consequences to the human (`general/policy/human-contract`). An unresolved product-intent gap returns to intake. |
 

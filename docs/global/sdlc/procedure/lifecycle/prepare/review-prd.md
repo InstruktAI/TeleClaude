@@ -55,9 +55,12 @@ not review architecture, implementation mechanism, or concrete proof.
      input carries; a detail beyond it is scope the PRD added on its own
      authority. If another reasonable realization could satisfy the input while
      omitting or varying that detail, it is unspecified and cannot enter the
-     PRD as decided scope.
-   - Each consequential inclusion and exclusion explains why it belongs here,
-     resting on an inspectable premise or a named assumption.
+     PRD as decided scope. This test decides: a stated reason for a detail,
+     including that it follows from the input's outcome, never stands in for
+     the input carrying it.
+   - Each consequential inclusion the input carries, and each exclusion,
+     explains why it belongs here, resting on an inspectable premise or a named
+     assumption.
    - The present slice is coherent for the project's scale and phase. A future
      concern appears only when it constrains today's choice or has a meaningful
      deferral trigger.
