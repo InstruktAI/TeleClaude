@@ -20,7 +20,7 @@ _CLAIM_CONFLICT_WORK_FEEDBACK_WITH_HOLDER = (
 _CLAIM_CONFLICT_WORK_FEEDBACK = "Another lifecycle run is already working on {slug}; try again after it finishes."
 _CLAIM_CONFLICT_WORK_FEEDBACK_ON_COMPUTER = (
     "Session {holder} on {computer} is already working on {slug}; contact it with "
-    "`telec sessions send {holder} <message>`."
+    "`telec sessions send {holder} <message> --computer {computer}`."
 )
 _CLAIM_CONFLICT_WORK_FEEDBACK_UNANSWERED = (
     "Session {holder} holds {slug}, and {unanswered} did not answer for it, so it is still held; "
