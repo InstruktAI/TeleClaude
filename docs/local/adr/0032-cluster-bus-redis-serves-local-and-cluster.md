@@ -63,3 +63,7 @@ today.
 Rejected: it would silently stop cross-host delivery on every current install that
 configures only the original Redis variable — the breakage the cross-version
 compatibility work exists to prevent.
+
+## Status
+
+Superseded by ADR-0139

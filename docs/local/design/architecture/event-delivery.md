@@ -47,6 +47,12 @@ coordination capability under
   separate effects unless the source owner's contract supplies a durable
   handover. Publication failure stays observable and does not manufacture a
   rollback or successful delivery.
+- **Each scope its own Redis:** every event type states its scope, local by
+  default and cluster when a consumer on another computer acts on it.
+  Publication appends an event to the Redis of its scope: the computer's own
+  local Redis, or the shared cluster Redis. A consumer reads from the Redis of
+  every scope its event types belong to, so an event produced and consumed on
+  one computer never crosses the network.
 - **Compatibility at the boundary:** required earlier wire representations are
   translated at transport boundaries under
   `local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`.
@@ -111,6 +117,29 @@ voice focus completes through its command-owned voice continuation. Local
 project-cache changes use the existing cache-change capability. These operations
 retain their local payload reach and completion boundaries under
 `local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`.
+
+### Scopes and their Redis
+
+The local Redis runs on each computer under the operating system's service
+manager, listens only on a Unix socket that only the computer's user and the
+Redis service can open, and requires its own user and password.
+The cluster Redis is shared by the computers of one cluster; it also carries
+the cross-computer transport of
+`local/projects/teleclaude/design/architecture/redis-transport`.
+
+Both Redis instances hold the platform stream and the stream owned by
+`INTERNAL_EVENT_STREAM`; an entry is on exactly one of them. The cluster types
+are those a consumer on another computer acts on: relayed ingress events, the
+revision and release facts installation reaction admits, the session status,
+agent activity and error notifications that views of another computer's
+sessions show, and the earlier internal compatibility ingress. Every other type
+is local. The set of cluster types has one owner in code, and a new
+cross-computer consumer changes it in the same change.
+
+A consumer whose interest names only local types reads the local Redis; one
+naming only cluster types reads the cluster Redis; one taking any type reads
+both and keeps separate progress on each. Own-computer filtering applies to
+what each Redis delivers.
 
 ### Earlier internal wire interoperability
 
@@ -192,5 +221,6 @@ ordering guarantee for these separate transports.
 ## See Also
 
 - docs/local/adr/0116-each-reaction-to-a-platform-event-is-an-independent-consumer.md
+- docs/local/adr/0139-each-event-scope-has-its-own-redis.md — why each event scope has its own Redis.
 - docs/local/design/architecture/cache.md
 - docs/local/design/architecture/api-server.md

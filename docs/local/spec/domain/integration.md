@@ -263,7 +263,8 @@ implementation remain the current appliance contract.
 - `local/projects/teleclaude/design/architecture/notification-delivery` — how people are told about events
 - `local/projects/teleclaude/adr/0012-master-only-shared-discord-channels` — provisioning shared Discord channels on the master only
 - `local/projects/teleclaude/adr/0028-single-lan-bound-ingress` — one ingress computer for external webhooks
-- `local/projects/teleclaude/adr/0032-cluster-bus-redis-serves-local-and-cluster` — one Redis serving local and cluster scopes
+- `local/projects/teleclaude/adr/0032-cluster-bus-redis-serves-local-and-cluster` — one Redis serving local and cluster scopes (superseded by ADR-0139)
+- `local/projects/teleclaude/adr/0139-each-event-scope-has-its-own-redis` — a local Redis per computer for local events, the shared Redis for cluster events only
 - `local/projects/teleclaude/adr/0055-proxy-fronted-ingress-reuse` — the webhook ingress behind a same-host reverse proxy
 - `local/projects/teleclaude/adr/0063-core-resolves-admin-reflection-adapter-via-contract` — reaching the admin-reflection adapter through a capability contract
 - `local/projects/teleclaude/adr/0084-discord-voice-receive-runs-in-a-node-sidecar` — Discord voice reception in a Node sidecar
