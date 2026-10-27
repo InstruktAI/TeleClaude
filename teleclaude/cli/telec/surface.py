@@ -695,6 +695,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Creates the todo entry, canonical state, and stores content as the input artifact.",
+                    "Returns a filing receipt; the outcome, created or refused, is delivered to the calling session. "
+                    "Act on the todo once that outcome reports it created; filings in one project complete in the "
+                    "order they were accepted.",
                     "Active creation with declared pending documentation requires an associated commit and current "
                     "independent approval. A refusal writes no todo; submit a fresh create request after review.",
                     "Icebox creation remains available while work is forming; unfreeze checks the same documentation "
@@ -1026,6 +1029,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "pre-filing decisions (bug or change, fix-directly, duplication, ordering, validity and "
                     "ownership) and "
                     "only that output names how to complete the filing.",
+                    "A completed filing returns a receipt; the outcome, created or refused, is delivered to the "
+                    "calling session.",
                     "File against the project that OWNS the defective code, not the one you happen to be "
                     "standing in. Platform behavior misbehaving inside a side project is a platform bug: "
                     "pass --project so the orchestrator that picks it up can actually deliver the fix. A bug "

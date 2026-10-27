@@ -62,7 +62,8 @@ _REASON_REQUIRES_HOLD = "Error: --reason is valid only with --hold"
 _UNKNOWN_TODO_SUBCOMMAND_TEMPLATE = "Unknown todo subcommand: {subcommand}"
 _TODO_CREATE_KIND_REQUIRED_TEMPLATE = "Error: --kind is required. Valid values: {valid_kinds}"
 _TODO_CREATE_KIND_INVALID_TEMPLATE = "Error: invalid --kind '{kind}'. Valid values: {valid_kinds}"
-_TODO_CREATED_KIND_TEMPLATE = "Created todo: {slug} (kind={kind})"
+_TODO_FILING_PATH = "/todos/dump"
+_JSON_DUMP_MODE = "json"
 _TODO_STORE_SWITCH_PATH = "/todos/switch-to-github"
 _TODO_SWITCH_CWD_FIELD = "cwd"
 _TODO_SWITCH_REQUEST_FIELD = "client_request_id"
@@ -400,6 +401,9 @@ def _handle_todo_create(args: list[str]) -> None:
         render_todo_creation_gate,
     )
     from teleclaude.cli.tool_client import tool_api_request  # noqa: PLC0415 - command boundary: daemon API client.
+    from teleclaude.cli.tool_commands._receipt import (  # noqa: PLC0415 - command boundary: receipt rendering.
+        render_receipt,
+    )
     from teleclaude.types.todo_kind import (  # noqa: PLC0415 - command boundary: kind vocabulary.
         ALL_DUMP_KINDS,
         TODO_KIND_USAGE,
@@ -457,25 +461,11 @@ def _handle_todo_create(args: list[str]) -> None:
         reason=parsed.reason.strip() if parsed.reason is not None else None,
         human_involved=parsed.human_involvement_reason is not None,
         human_involvement_reason=parsed.human_involvement_reason,
+        client_request_id=str(uuid.uuid4()),
     )
-    result = tool_api_request(
-        "POST",
-        "/todos/dump",
-        json_body=request.model_dump(mode="json"),
+    render_receipt(
+        tool_api_request(HTTPMethod.POST, _TODO_FILING_PATH, json_body=request.model_dump(mode=_JSON_DUMP_MODE))
     )
-
-    if isinstance(result, dict) and result.get("status") == "ok":
-        print(_TODO_CREATED_KIND_TEMPLATE.format(slug=slug, kind=dump_kind))
-        if not parsed.icebox and not parsed.hold:
-            print("Dispatched to the coordinator. Do not offer, ask about, or narrate further action on this todo.")
-        warnings = result.get("warnings")
-        if isinstance(warnings, list):
-            for warning in warnings:
-                if isinstance(warning, str):
-                    print(warning)
-    else:
-        print(f"Error: unexpected response: {result}")
-        raise SystemExit(1)
 
 
 def _handle_todo_design(args: list[str]) -> None:

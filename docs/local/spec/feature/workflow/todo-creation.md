@@ -14,7 +14,7 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
   - `--icebox` — creates the todo directly in the icebox (roadmap `status="icebox"`) instead of `active`. The lifecycle runner skips iceboxed entries, so no session is dispatched; the todo's kind, state, and `input` artifact are written normally, and unfreezing it later returns it to `active` and starts its lane. It is the only flag that parks a new todo instead of letting it enter its lifecycle.
   - `--project-root <path>` (alias `-p`) — targets an explicit project root instead of the invocation cwd. The path resolves the project's workflow state root server-side, and the todo-created event payload's `project_path` reflects it so the lifecycle runner acts against the targeted project.
 
-- `--group <parent-slug>` — attaches the new todo as a child of `<parent-slug>` by recording a group reference to the parent's durable row id. The child is created complete (content + kind + state + `input` artifact) in one call. The first grouped child transitions the parent's row to status `holder` — a one-way exit from the todo lifecycle: the parent's `todo_state` is removed, any claim or hold on it is void, and all of its artifacts and their version history are preserved as frozen evidence, so a parent still in the prepare lane — including one carrying a PRD, architecture, or plan — can be grouped (see UC-WTC24). A parent whose `lifecycle_phase` has reached `prepared` or a work-lane phase is refused with a 409, because a todo cannot exit the lifecycle mid-build (see UC-WTC16). Grouping under an existing holder attaches the child the same way, including a holder whose earlier group has ended. `create --group` is the atomic, fully-formed way to attach a grouped child. Grouping also moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and `delivered_by` membership naming the parent is rewritten to that child and committed as part of the same transition.
+- `--group <parent-slug>` — attaches the new todo as a child of `<parent-slug>` by recording a group reference to the parent's durable row id. The child is created complete (content + kind + state + `input` artifact) in one call. The first grouped child transitions the parent's row to status `holder` — a one-way exit from the todo lifecycle: the parent's `todo_state` is removed, any claim or hold on it is void, and all of its artifacts and their version history are preserved as frozen evidence, so a parent still in the prepare lane — including one carrying a PRD, architecture, or plan — can be grouped (see UC-WTC24). A parent whose `lifecycle_phase` has reached `prepared` or a work-lane phase is refused, because a todo cannot exit the lifecycle mid-build (see UC-WTC16). Grouping under an existing holder attaches the child the same way, including a holder whose earlier group has ended. `create --group` is the atomic, fully-formed way to attach a grouped child. Grouping also moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and `delivered_by` membership naming the parent is rewritten to that child and committed as part of the same transition.
 
 - `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
 - `--schedule <iso-instant | recurring-rule>` — valid only for `--kind task`. It records the task's execution eligibility: a one-shot ISO-8601 instant, or a recurring rule that re-fires the task against its durable `task-plan` on each occurrence. It is mutually exclusive with `--after`; the workflow service rejects a create request that supplies both.
@@ -34,6 +34,32 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
 The Todo aggregate's invariants — unique kebab-case slug, a canonical kind present from creation, `after` dependencies validated against the todo list — are enforced before the entry is written. The workflow service is the single emission point for the todo-created event.
 
 ## Canonical fields
+
+### Filing under a receipt
+
+A filing through `telec todo create`, `telec bugs report` or the TUI is answered
+in two steps.
+
+The request itself checks everything it can answer without the shared git lock
+or the project's workflow store write: the slug, dependency and group formats,
+non-empty content, the schedule, plan and hold rules, a live todo already
+holding the slug, the creation lineage, and the involvement record resolved
+from the human's presence at that moment. A request failing one of these is
+refused with its diagnostic and nothing is filed.
+
+A request passing them returns a durable operation receipt
+(`local/projects/teleclaude/design/architecture/operation-receipts`), and the
+filing runs after the response: the documentation evidence check, the todo
+entry with its first artifact, plan or task seeding, and the todo-created
+event. Its outcome is delivered to the filing session. A created todo's outcome
+names it and carries any dependency warnings; a refused filing's outcome carries
+the refusal's diagnostic, and nothing of it was created. The command line prints
+the receipt and returns without waiting.
+
+Filings of one project complete in the order their requests were accepted. A
+filing starts only once every filing that project accepted before it has ended,
+created or refused, so a todo filed with `--after` or `--group` naming a todo
+filed just before it finds that todo created.
 
 ### Reviewed documentation evidence
 
@@ -101,7 +127,7 @@ And submits a creation request with kind="feature"
 And the workflow service creates the todo entry, default state, and an `input` artifact whose body is "# my-feature — Input\n\n<content>\n" in one transaction
 And the workflow service emits the todo-created event with kind="feature" and pickup_requested=true
 And the lifecycle router consumes the event and dispatches /sdlc/prepare
-And the CLI reports "Created todo: my-feature"
+And the outcome delivered to the filing session names the created todo "my-feature"
 ```
 
 #### UC-WTC11: Icebox create parks the todo and suppresses dispatch
@@ -175,7 +201,7 @@ And the caller is directed to write to the holder's children instead
 ```
 Given "parent-slug"'s lifecycle_phase has reached "prepared" or a work-lane phase (build_started, review_approved, etc.)
 When an operator runs `telec todo create child-a "<content>" --kind change --group parent-slug`
-Then the create is refused with a 409 naming "parent-slug" and its lifecycle_phase
+Then the filing is refused, naming "parent-slug" and its lifecycle_phase
 And "parent-slug"'s `todo_state` and artifacts are left intact
 And no roadmap row, state, or artifact is created for "child-a"
 ```
@@ -209,7 +235,7 @@ And the route writes the content as the `implementation-plan` artifact (body pre
 And the route seeds the prepare lifecycle at plan-drafting so lifecycle_phase becomes "plan_drafting"
 And the route emits the todo-created event with canonical kind="change" and pickup_requested=true
 And the lifecycle router dispatches /sdlc/prepare, where the planner grounds the supplied plan, reflects affected doc snippets, and the plan is reviewed before prepared
-And the CLI prints "Created todo: my-feature (kind=change)"
+And the outcome delivered to the filing session names the created todo "my-feature" and its kind
 ```
 
 ```
@@ -458,14 +484,23 @@ And a subsequent write or remove against "parent-slug" is refused with a 409, so
 ```gherkin
 Given an agent files acknowledged work through `telec todo create` or `telec bugs report`
 And another session is committing or publishing to main at the same time
-When that git work finishes within creation's bounded wait for it
-Then creation checks the filing's documentation evidence as it stands once that work is done
-And the agent sees, before the command's response deadline, the todo created when that evidence holds
+When the filing's request passes its request checks
+Then the command returns the filing's receipt within its response deadline, without waiting for that git work
+And the filing waits for that git work to finish, then checks its documentation evidence as it stands once that work is done
+And the agent's session is delivered the todo created when that evidence holds
 And otherwise the filing refused for the missing, unresolved or stale evidence, with no todo state, artifact or dispatch produced
-When that git work is still running when the wait ends
-Then the agent sees the filing refused before the command's response deadline, with no todo state, artifact or dispatch produced
-And the refusal says that nothing was created, that other git work was in progress, and that running the same command again is safe
-And a filing whose todo was created is never reported to the agent as a timeout
+And a filing whose todo was created is never reported to the agent as a timeout or a refusal
+```
+
+#### UC-WTC36: Filings of one project complete in the order they were accepted
+
+```gherkin
+Given an agent files "parent-slug" and, before that filing has completed, files "child-a" with `--after parent-slug`
+When both requests pass their request checks and return receipts
+Then the filing of "child-a" starts only after the filing of "parent-slug" has ended
+And when "parent-slug" was created, "child-a" is created with its dependency on "parent-slug" recorded
+And when "parent-slug" was refused, "child-a" is refused for its unknown dependency, and each outcome is delivered to the agent's session
+And a filing in another project neither waits for these filings nor is waited for by them
 ```
 
 ### Dependency gate at create-time
@@ -530,7 +565,7 @@ And each `--after` dependency slug and the `--group` parent slug are held to tha
 
 ### Cross-context references
 
-- `operations` — async, receipt-backed long-running operations (e.g., `telec todo remove`) are surfaced through the operations subsystem; create itself is synchronous.
+- `operations` — async, receipt-backed operations (e.g., `telec todo remove`) are surfaced through the operations subsystem; a filing is one of them, as Filing under a receipt states.
 
 - `integration` — the lifecycle router consumer consumes the todo-created event and dispatches lane-appropriate orchestrators (`/sdlc/prepare`, `/sdlc/work`).
 
@@ -544,7 +579,7 @@ And each `--after` dependency slug and the `--group` parent slug are held to tha
 
 - A created todo enters its kind's lifecycle; nothing holds it back at creation by default. Two flags suppress create-time dispatch (`pickup_requested=false`): `--icebox` parks it in the icebox (`status="icebox"`), and `--hold` leaves it **active** but sets the durable dispatch brake (`hold=True`, `hold_audit.source="creation"`). The lifecycle runner skips both — iceboxed entries by status, held entries by the hold brake — until the icebox is unfrozen or the hold is released. The two are mutually exclusive. The route always emits the todo-created event after a successful create.
 
-- `--group <parent-slug>` is the create-time path to a grouped child. It records the child's group reference to the parent row's durable id inside the create transaction. The first grouped child transitions the parent's row to status `holder` in the same transaction — removing its `todo_state` and voiding any claim or hold — while preserving all of its artifacts and their version history as frozen evidence, so a parent still in the prepare lane can be grouped without shredding prepared work (see UC-WTC24). A parent whose lifecycle_phase has reached `prepared` or the work lane is refused with a 409 instead (see UC-WTC16). `--release` is not accepted on create; `--hold` is the hidden create-time dispatch brake (see UC-WTC18). Grouping also moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and `delivered_by` membership naming the parent is rewritten to that child and committed as part of the same transition.
+- `--group <parent-slug>` is the create-time path to a grouped child. It records the child's group reference to the parent row's durable id inside the create transaction. The first grouped child transitions the parent's row to status `holder` in the same transaction — removing its `todo_state` and voiding any claim or hold — while preserving all of its artifacts and their version history as frozen evidence, so a parent still in the prepare lane can be grouped without shredding prepared work (see UC-WTC24). A parent whose lifecycle_phase has reached `prepared` or the work lane is refused instead (see UC-WTC16). `--release` is not accepted on create; `--hold` is the hidden create-time dispatch brake (see UC-WTC18). Grouping also moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and `delivered_by` membership naming the parent is rewritten to that child and committed as part of the same transition.
 
 - The `bugs report` helper wraps the same creation path with `kind=bug`. The prior CLI-side bug-emit helper has been removed; the workflow service is now the single emission point for bug creation as well.
 - The lifecycle router selects the lane from the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`, then consults todo state only for dependency gating before auto-dispatch. `telec todo create` emits canonical `feature`, `change`, `bug`, or `task` kinds.
@@ -561,3 +596,4 @@ And each `--after` dependency slug and the `--group` parent slug are held to tha
 ## See Also
 
 - docs/local/adr/0104-every-todo-is-created-with-its-kind.md — why kind is required at creation.
+- docs/local/adr/0138-a-filing-completes-after-its-request-under-a-receipt.md — why a filing returns a receipt and completes in its project's acceptance order.

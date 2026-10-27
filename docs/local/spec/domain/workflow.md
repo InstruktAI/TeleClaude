@@ -179,6 +179,7 @@ concerned:
 - `local/projects/teleclaude/adr/0135-github-backed-driver-starts-are-admitted-by-the-mesh-master` — driver starts of a GitHub-backed project admitted by the fleet's master
 - `local/projects/teleclaude/adr/0136-only-the-master-writes-a-github-backed-claim` — every write of a GitHub-backed claim made by the master
 - `local/projects/teleclaude/adr/0137-a-github-backed-claim-is-settled-per-todo` — settling a GitHub-backed claim per todo: driver answers, ordered releases, reactivation
+- `local/projects/teleclaude/adr/0138-a-filing-completes-after-its-request-under-a-receipt` — a filing returns a receipt and completes after its request, in its project's acceptance order
 
 ## See Also
 

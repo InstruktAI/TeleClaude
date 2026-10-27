@@ -19,6 +19,7 @@ class OperationKind(StrEnum):
     TODO_REMOVE = "todo_remove"
     TODO_STORE_SWITCH = "todo_store_switch"
     TODO_BOARD_REPAIR = "todo_board_repair"
+    TODO_FILING = "todo_filing"
     SESSION_CLOSE = "session_close"
     AGENT_RESTART = "agent_restart"
     AGENT_HANDOFF = "agent_handoff"
@@ -38,6 +39,7 @@ class OperationSucceededEvent(StrEnum):
     TODO_REMOVE = "operation.todo_remove.completed"
     TODO_STORE_SWITCH = "operation.todo_store_switch.completed"
     TODO_BOARD_REPAIR = "operation.todo_board_repair.completed"
+    TODO_FILING = "operation.todo_filing.completed"
     SESSION_CLOSE = "session.close.completed"
     AGENT_RESTART = "agent.restart.completed"
     AGENT_HANDOFF = "agent_runtime.handoff.completed"
@@ -57,6 +59,7 @@ class OperationFailedEvent(StrEnum):
     TODO_REMOVE = "operation.todo_remove.failed"
     TODO_STORE_SWITCH = "operation.todo_store_switch.failed"
     TODO_BOARD_REPAIR = "operation.todo_board_repair.failed"
+    TODO_FILING = "operation.todo_filing.failed"
     SESSION_CLOSE = "session.close.failed"
     AGENT_RESTART = "agent.restart.failed"
     AGENT_HANDOFF = "agent_runtime.handoff.failed"
@@ -80,6 +83,7 @@ _OUTCOME_EVENTS: dict[OperationKind, tuple[OperationSucceededEvent, OperationFai
         OperationSucceededEvent.TODO_BOARD_REPAIR,
         OperationFailedEvent.TODO_BOARD_REPAIR,
     ),
+    OperationKind.TODO_FILING: (OperationSucceededEvent.TODO_FILING, OperationFailedEvent.TODO_FILING),
     OperationKind.SESSION_CLOSE: (OperationSucceededEvent.SESSION_CLOSE, OperationFailedEvent.SESSION_CLOSE),
     OperationKind.AGENT_RESTART: (OperationSucceededEvent.AGENT_RESTART, OperationFailedEvent.AGENT_RESTART),
     OperationKind.AGENT_HANDOFF: (OperationSucceededEvent.AGENT_HANDOFF, OperationFailedEvent.AGENT_HANDOFF),

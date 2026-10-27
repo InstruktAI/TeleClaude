@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable, Mapping
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple, TypedDict
+from typing import TYPE_CHECKING, Any, NamedTuple, TypedDict, cast
 from urllib.parse import quote
 
 from instrukt_ai_logging import get_logger
@@ -73,6 +73,7 @@ _TODO_CREATE_VERB = "todo create"
 _WORK_FEEDBACK_ATTRIBUTE = "work_feedback"
 _FILING_WORKER_GROUP = "todo-filing"
 _FILING_STARTED_TEMPLATE = "Filing {slug}…"
+_FILING_ACCEPTED_TEMPLATE = "Filing {slug} accepted"
 _FILING_CREATED_TEMPLATE = "Created {slug}"
 _FILING_FAILED_TEMPLATE = "Filing {slug} failed: {error}"
 _NOTIFY_SEVERITY_ERROR = "error"
@@ -856,17 +857,18 @@ class PreparationViewActionsMixin:
         """
         app = self.app
         slug = request.slug
+        scope = ClearanceScope.verb(
+            _BUGS_REPORT_VERB if kind == TODO_KIND_BUG else _TODO_CREATE_VERB,
+            role_target=ProjectPath(Path(project_root)),
+            target_computer=remote_computer(computer),
+        )
         try:
             result = tool_api_request(
                 _ROW_ACTION_POST,
                 _TODO_DUMP_PATH,
                 json_body=request.model_dump(mode=_JSON_DUMP_MODE),
                 params=_with_computer(None, computer),
-                clearance_scope=ClearanceScope.verb(
-                    _BUGS_REPORT_VERB if kind == TODO_KIND_BUG else _TODO_CREATE_VERB,
-                    role_target=ProjectPath(Path(project_root)),
-                    target_computer=remote_computer(computer),
-                ),
+                clearance_scope=scope,
                 clearance_identity=app._clearance_identity,  # type: ignore[attr-defined]
             )
         except Exception as exc:
@@ -881,8 +883,20 @@ class PreparationViewActionsMixin:
                     severity=_NOTIFY_SEVERITY_ERROR,
                 )
             return
-        if isinstance(result, dict) and result.get(_RESPONSE_KEY_STATUS) == _RESPONSE_STATUS_OK:
-            app.call_from_thread(app.notify, _FILING_CREATED_TEMPLATE.format(slug=slug))
+        operation_id = result.get(_OPERATION_RESPONSE_KEY_OPERATION_ID) if isinstance(result, dict) else None
+        if isinstance(operation_id, str):
+            app.call_from_thread(app.notify, _FILING_ACCEPTED_TEMPLATE.format(slug=slug))
+            outcome = self._observe_operation(operation_id, scope, computer)
+            if outcome is None:
+                return
+            if outcome.get(_OPERATION_RESPONSE_KEY_STATE) == _OPERATION_STATE_COMPLETED:
+                app.call_from_thread(app.notify, _FILING_CREATED_TEMPLATE.format(slug=slug))
+                return
+            app.call_from_thread(
+                app.notify,
+                _FILING_FAILED_TEMPLATE.format(slug=slug, error=outcome.get(_OPERATION_RESPONSE_KEY_ERROR)),
+                severity=_NOTIFY_SEVERITY_ERROR,
+            )
             return
         logger.error(_ROW_ACTION_FAILURE_EVENT, action=kind.value, slug=slug, response=repr(result))
         app.call_from_thread(
@@ -902,6 +916,14 @@ class PreparationViewActionsMixin:
         the event loop because ``tool_api_request`` is synchronous; every
         notification crosses back via ``call_from_thread``.
         """
+        response = self._observe_operation(operation_id, scope, computer)
+        if response is not None:
+            self._report_lifecycle_outcome(response)  # type: ignore[attr-defined]
+
+    def _observe_operation(
+        self, operation_id: str, scope: ClearanceScope, computer: str | None
+    ) -> dict[str, object] | None:  # guard: loose-dict - JSON-deserialized API response
+        """Poll an operation to its terminal state on a worker thread; None once the observation bound passes."""
         start = time.monotonic()
         delay_s = 0.0
         response: object = None
@@ -930,14 +952,13 @@ class PreparationViewActionsMixin:
                         error=repr(exc),
                         exc_info=True,
                     )
-                    return
+                    return None
                 delay_s = _LIFECYCLE_POLL_DEFAULT_DELAY_S
                 continue
 
             state = response.get(_OPERATION_RESPONSE_KEY_STATE) if isinstance(response, dict) else None
-            if isinstance(state, str) and state in TERMINAL_OPERATION_STATES:
-                self._report_lifecycle_outcome(response)  # type: ignore[attr-defined]
-                return
+            if isinstance(response, dict) and isinstance(state, str) and state in TERMINAL_OPERATION_STATES:
+                return cast(dict[str, object], response)  # guard: loose-dict - JSON-deserialized API response
 
             if time.monotonic() - start > _LIFECYCLE_POLL_BUDGET_S:
                 recovery = (
@@ -948,7 +969,7 @@ class PreparationViewActionsMixin:
                     operation_id=operation_id,
                     recovery_command=recovery or _RECOVERY_COMMAND_TEMPLATE.format(operation_id=operation_id),
                 )
-                return
+                return None
 
             poll_after_ms = response.get(_OPERATION_RESPONSE_KEY_POLL_AFTER_MS) if isinstance(response, dict) else None
             delay_s = (

@@ -16,13 +16,11 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict, Field
 
-import teleclaude.core.todo_dependency_warnings as dependency_warnings
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.todo_artifact_authority import (
     refuse_todo_update_outside_claiming_group,
     resolve_creation_lineage,
 )
-from teleclaude.api.todo_create_support import seed_plan_drafting, seed_task_plan_authorization
 from teleclaude.api.todo_update_support import TASK_ERROR_RELEASE_REFUSAL as TASK_ERROR_RELEASE_REFUSAL
 from teleclaude.api.todo_update_support import (
     apply_dependency_update,
@@ -53,9 +51,6 @@ from teleclaude.core.human_involvement import (
     HumanInvolvementSurface,
     resolve_human_involvement,
 )
-from teleclaude.core.next_machine.documentation_evidence import (
-    DocumentationEvidenceRefused,
-)
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
     KindMigrationResult,
@@ -65,18 +60,14 @@ from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.next_machine.todo_creation import (
-    SYNCHRONOUS_FILING_LOCK_WAIT_BOUND_S,
     NewTodo,
-    announce_todo_created,
-    write_new_todo,
 )
 from teleclaude.core.operations import todo_board_repair as todo_board_repair_operation
 from teleclaude.core.operations.service import SerializedOperation, get_operations_service
+from teleclaude.core.operations.todo_filing import FilingSeed, TodoFiling
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.core.todos_db._errors import HolderReconciliationRefused, HolderTransitionRefused
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.core.workflow_store.store import get_workflow_store
-from teleclaude.git_lock import MainBranchLockBusy
 from teleclaude.slug import validate_slug
 from teleclaude.types.creation_record import EntryPoint
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
@@ -96,11 +87,6 @@ _CLAIMED_HOLD_WARNING = (
     "Contact it with `telec sessions send {session_id} <message>`."
 )
 _TODO_UPDATE_EVENT_SOURCE = "api.todo.update"
-_CREATION_BUSY_MESSAGE = (
-    "Todo creation was refused and nothing was created, because other git work was in progress. "
-    "Running the same command again is safe."
-)
-_CREATION_BUSY_LOG_EVENT = "todo creation refused: main-branch lock busy"
 _REACTIVATE_NO_MATCH_DETAIL_TEMPLATE = "No soft-removed entry found for slug '{slug}'"
 _REACTIVATE_AMBIGUOUS_DETAIL_TEMPLATE = (
     "Ambiguous slug '{slug}': multiple removed rows exist ({details}). Restore by id instead."
@@ -494,12 +480,15 @@ async def _get_workflow_store_from_cwd(cwd: str) -> WorkflowStore:
     return await get_workflow_store(project_root)
 
 
-@router.post("/dump")
+@router.post("/dump", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
 async def todo_content_create(
     request: TodoDumpRequest,
     identity: CallerIdentity | None = Depends(carried_caller),
-) -> _SlugStatusResponse:
-    """Create a todo: state + artifact + todo entry in todos.db.
+) -> SerializedOperation:
+    """File a todo: answer the request checks, then accept the filing with a receipt.
+
+    The filing itself (documentation evidence, state + artifact + todo entry, seeding, the todo-created
+    event) runs after the response as a receipt-backed operation in its project's acceptance order.
 
     Kind selects the entry point (see TodoDumpRequest):
       - "feature" | "change": content is the "input" artifact; enters prepare
@@ -613,66 +602,21 @@ async def todo_content_create(
             group=request.group,
             icebox=request.icebox,
             context=creation_context,
-            lock_wait_bound_s=SYNCHRONOUS_FILING_LOCK_WAIT_BOUND_S,
         )
-        created_identity = await write_new_todo(todos_db, new_todo)
-
-        if request.plan and request.kind == TodoKind.CHANGE:
-            # Seed the supplied plan as a plan-drafting basis (see
-            # seed_plan_drafting); it must run after the seeding write's
-            # provenance sync above, which would otherwise clear the seed.
-            state["lifecycle_phase"] = await seed_plan_drafting(todos_db, created_identity, repo_root=effective_cwd)
-            todos_db.notify_committed("todo_updated")
-        elif request.plan and request.kind == TodoKind.TASK:
-            state["lifecycle_phase"] = await seed_task_plan_authorization(
-                todos_db,
-                created_identity,
-                caller_session_id=identity.session_id,
-                prepared_session_id=identity.session_id,
-            )
-            todos_db.notify_committed("todo_updated")
-
-        lifecycle_phase = state.get("lifecycle_phase")
-        await announce_todo_created(
-            new_todo,
-            identity=created_identity,
-            lifecycle_phase=lifecycle_phase if isinstance(lifecycle_phase, str) else None,
-            pickup_requested=pickup_requested,
+        if request.plan:
+            seed = FilingSeed.TASK_PLAN if request.kind == TodoKind.TASK else FilingSeed.IMPLEMENTATION_PLAN
+        else:
+            seed = FilingSeed.NONE
+        return await get_operations_service().submit_todo_filing(
+            filing=TodoFiling.of(new_todo, seed=seed, pickup_requested=pickup_requested),
+            project_root=str(resolve_project_root(effective_cwd)),
+            caller_session_id=identity.session_id,
+            client_request_id=request.client_request_id,
         )
-
-        logger.info(
-            "todo creation completed",
-            slug=created_identity,
-            kind=request.kind,
-            cwd=effective_cwd,
-            artifact=written_artifact_name,
-        )
-
-        warnings = (
-            dependency_warnings.frozen_dep_warnings(
-                created_identity, await todos_db.get_deps_with_status(created_identity)
-            )
-            if not request.icebox and request.after
-            else []
-        )
-        return _SlugStatusResponse(status="ok", slug=created_identity, warnings=warnings)
     except HTTPException:
         raise
-    except HolderReconciliationRefused as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except HolderTransitionRefused as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except DocumentationEvidenceRefused as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except MainBranchLockBusy as exc:
-        logger.warning(_CREATION_BUSY_LOG_EVENT, slug=slug, bound_s=exc.bound_s)
-        raise DeclaredWorkRefusal(
-            status_code=503,
-            detail=_CREATION_BUSY_MESSAGE,
-            work_feedback=_CREATION_BUSY_MESSAGE,
-        ) from exc
     except Exception:
-        logger.error("todo creation failed", slug=slug, exc_info=True)
+        logger.error("todo filing refused", slug=slug, exc_info=True)
         raise
 
 
