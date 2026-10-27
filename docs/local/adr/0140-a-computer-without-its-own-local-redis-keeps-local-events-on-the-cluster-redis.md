@@ -58,3 +58,7 @@ instead, to take over a Redis that another program uses.
   Rejected for now: it adds a service the installation must own, start and stop
   apart from the daemon, where the operating system's Redis is already present
   on every computer and unused by anything else on the computers this serves.
+
+## Status
+
+Superseded in part by ADR-0141

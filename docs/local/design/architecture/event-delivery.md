@@ -128,18 +128,22 @@ computer's user and the Redis service can open, turns its TCP port and default
 user off, and gives it one ACL user whose password lives in the machine
 environment. On Linux the Redis service runs with the TeleClaude user's primary
 group, so every process of that user opens the socket at once; an account that
-shares that group can reach the socket but not authenticate. The install
-verifies the local Redis answers with its ACL user before it writes the
-variables that make the platform use it.
+shares that group can reach the socket but not authenticate. Setup has
+two steps (ADR-0141): while the previous release serves, the new release
+installs the package when missing and checks everything that can refuse; in the
+stopped window it writes the configuration, restarts Redis and verifies it with
+its ACL user before it writes the variables that make the platform use it, never
+installing and never prompting.
 
 A cluster Redis is on this computer when its URL names a socket or an address
 this computer holds; such a computer gets no local Redis. A local Redis the
 operator configured that answers is kept. A Redis someone else configured for
 socket or authenticated access, or that another program is connected to, is not
 taken over; a program that connects only now and then is not seen. When the
-local Redis cannot be set up, the install fails with the reason and what
-resolves it before any migration starts, so the previous release keeps serving
-(ADR-0140). A computer whose
+local Redis cannot be set up, neither step fails the install: the install log
+names the reason and what resolves it, a managed local socket that no longer
+answers is withdrawn, and the computer keeps its local events on the cluster
+Redis. A computer whose
 local Redis is not configured carries its local events on the cluster Redis, and
 its event platform logs that at startup.
 The cluster Redis is shared by the computers of one cluster; it also carries
