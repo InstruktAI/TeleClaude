@@ -45,6 +45,11 @@ _FILING_COMPLETED_EVENT: Final = "todo creation completed"
 _OPERATION_CWD_REQUIRED: Final = "todo filing operation requires its project root"
 _TASK_SEED_SESSION_REQUIRED: Final = "a task filing with a supplied task-plan requires its filing session"
 _LIFECYCLE_PHASE_FIELD: Final = "lifecycle_phase"
+_UNKNOWN_DEPENDENCY_TEMPLATE: Final = "dependency '{dependency}' is not a todo in this project; nothing was created"
+
+
+class FilingRefused(Exception):
+    """A filing refused for a reason only its run can establish; nothing of it was created."""
 
 
 class FilingSeed(StrEnum):
@@ -141,7 +146,6 @@ class FilingOrder:
                     created_at=operation.created_at,
                     operation_id=operation.operation_id,
                 )
-                ended.intersection_update(earlier)
                 if not set(earlier) - ended:
                     return
                 try:
@@ -194,6 +198,9 @@ async def run_todo_filing_operation(db: Db, operation: Operation, order: FilingO
 async def _file(filing: TodoFiling, project_root: str) -> str:
     new_todo = filing.new_todo()
     todos_db = await get_workflow_store(resolve_project_root(project_root))
+    for dependency in filing.after or []:
+        if not await todos_db.slug_conflicts_non_removed(dependency):
+            raise FilingRefused(_UNKNOWN_DEPENDENCY_TEMPLATE.format(dependency=dependency))
     created_identity = await write_new_todo(todos_db, new_todo)
     lifecycle_phase = new_todo.state.get(_LIFECYCLE_PHASE_FIELD)
     if filing.seed is FilingSeed.IMPLEMENTATION_PLAN:
