@@ -51,10 +51,12 @@ A request passing them returns a durable operation receipt
 (`local/projects/teleclaude/design/architecture/operation-receipts`), and the
 filing runs after the response: the documentation evidence check, the todo
 entry with its first artifact, plan or task seeding, and the todo-created
-event. Its outcome is delivered to the filing session. A created todo's outcome
-names it and carries any dependency warnings; a refused filing's outcome carries
-the refusal's diagnostic, and nothing of it was created. The command line prints
-the receipt and returns without waiting.
+event. Its outcome is delivered to the filing session as an address to its
+operation record. The record of a created todo names it and carries any
+dependency warnings; the record of a refused filing carries the refusal's
+diagnostic, and nothing of it was created. A filing whose `--after` names no
+todo of its project is refused. The command line prints the receipt and returns
+without waiting.
 
 Filings of one project complete in the order their requests were accepted. A
 filing starts only once every filing that project accepted before it has ended,
@@ -127,7 +129,7 @@ And submits a creation request with kind="feature"
 And the workflow service creates the todo entry, default state, and an `input` artifact whose body is "# my-feature — Input\n\n<content>\n" in one transaction
 And the workflow service emits the todo-created event with kind="feature" and pickup_requested=true
 And the lifecycle router consumes the event and dispatches /sdlc/prepare
-And the outcome delivered to the filing session names the created todo "my-feature"
+And the filing's operation record names the created todo "my-feature"
 ```
 
 #### UC-WTC11: Icebox create parks the todo and suppresses dispatch
@@ -235,7 +237,7 @@ And the route writes the content as the `implementation-plan` artifact (body pre
 And the route seeds the prepare lifecycle at plan-drafting so lifecycle_phase becomes "plan_drafting"
 And the route emits the todo-created event with canonical kind="change" and pickup_requested=true
 And the lifecycle router dispatches /sdlc/prepare, where the planner grounds the supplied plan, reflects affected doc snippets, and the plan is reviewed before prepared
-And the outcome delivered to the filing session names the created todo "my-feature" and its kind
+And the filing's operation record names the created todo "my-feature" and its kind
 ```
 
 ```
