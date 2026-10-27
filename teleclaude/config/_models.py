@@ -105,6 +105,8 @@ class AggregateInputDerivation(Protocol):
 
 _COMPUTER_MAPPING_ERROR = "Invalid config key `config.yml:computer`: expected a mapping."
 _REDIS_MAPPING_ERROR = "Invalid config key `config.yml:redis`: expected a mapping."
+_REDIS_LOCAL_MAPPING_ERROR = "Invalid config key `config.yml:redis.local`: expected a mapping."
+_REDIS_CLUSTER_MAPPING_ERROR = "Invalid config key `config.yml:redis.cluster`: expected a mapping."
 _HOOK_OUTBOX_MAPPING_ERROR = "Invalid config key `config.yml:hook_outbox`: expected a mapping."
 _API_MAPPING_ERROR = "Invalid config key `config.yml:api`: expected a mapping."
 _DAEMON_MAPPING_ERROR = "Invalid config key `config.yml:daemon`: expected a mapping."
@@ -375,8 +377,23 @@ class AgentConfig(ClosedModel):
         return self.get_command("default")
 
 
-class RedisConfig(ClosedModel):
-    """Redis configuration with user-configurable and internal settings."""
+class LocalRedisConfig(ClosedModel):
+    """This computer's own Redis for local events; it is reached over a Unix socket only."""
+
+    url: Annotated[TEXT, SENSITIVE]
+    username: Annotated[TRUTHY_TEXT, SENSITIVE]
+    password: Annotated[TRUTHY_TEXT, SENSITIVE]
+    max_connections: INT_LENIENT
+    socket_timeout: INT_LENIENT
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_redis_mapping(cls, value: object) -> object:
+        return _require_mapping(value, _REDIS_LOCAL_MAPPING_ERROR)
+
+
+class ClusterRedisConfig(ClosedModel):
+    """The shared Redis for cluster events and the cross-computer transport."""
 
     url: Annotated[TEXT, SENSITIVE]
     password: Annotated[TRUTHY_TEXT, SENSITIVE]
@@ -385,6 +402,18 @@ class RedisConfig(ClosedModel):
     message_stream_maxlen: INT_LENIENT
     output_stream_maxlen: INT_LENIENT
     output_stream_ttl: INT_LENIENT
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_redis_mapping(cls, value: object) -> object:
+        return _require_mapping(value, _REDIS_CLUSTER_MAPPING_ERROR)
+
+
+class RedisConfig(ClosedModel):
+    """One Redis per event scope: this computer's local Redis and the shared cluster Redis."""
+
+    local: LocalRedisConfig
+    cluster: ClusterRedisConfig
 
     @model_validator(mode="before")
     @classmethod

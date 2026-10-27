@@ -32,6 +32,7 @@ from teleclaude.config.migrations import (
     v025_declare_todo_repository,
     v026_declare_maintenance_runs_while_serving,
     v027_channel_enrollment,
+    v028_split_redis_by_scope,
 )
 
 STEPS: Final = (
@@ -62,4 +63,5 @@ STEPS: Final = (
     v025_declare_todo_repository,
     v026_declare_maintenance_runs_while_serving,
     v027_channel_enrollment,
+    v028_split_redis_by_scope,
 )

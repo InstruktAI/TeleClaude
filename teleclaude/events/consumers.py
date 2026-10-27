@@ -23,6 +23,7 @@ from teleclaude.events.envelope import EventHomeKind, EventHomeRef, ReceivedEven
 from teleclaude.events.live_reader import LiveEventReader, LiveStreamClient, SourceRecovery
 from teleclaude.events.processor import STREAM_NAME, EventProcessor
 from teleclaude.events.references import ReferenceKind
+from teleclaude.events.scope import ScopedClients, scopes_of_interest
 from teleclaude.events.type_pattern import TypePattern
 from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, EntryCodec, StreamEvent
 
@@ -45,6 +46,7 @@ _NAME_SEPARATOR = ", "
 _CONSUMER_STARTED_EVENT = "Event consumer starting"
 _RECOVERY_REQUIRES_LIVE_ERROR = "Source recovery and coalescing belong to live consumers"
 _CONSUMER_TASK_TEMPLATE = "event-consumer-{name}"
+_SCOPED_NAME_TEMPLATE = "{name}@{scope}"
 
 
 class ConsumerDelivery(StrEnum):
@@ -137,14 +139,46 @@ class _ConsumerPipeline:
         await self._db.record_handled_event(consumer.name, event.id, datetime.now(UTC))
 
 
+def _reader(
+    consumer: Consumer,
+    redis_client: Any,
+    db: EventDB,
+    computer: str,
+    stream: str,
+    codec: EntryCodec[StreamEvent],
+) -> EventProcessor[StreamEvent] | LiveEventReader:
+    """The reader that hands one Redis's entries of a stream to one consumer."""
+    if consumer.delivery is ConsumerDelivery.LIVE:
+        return LiveEventReader(
+            cast(LiveStreamClient, redis_client),
+            _ConsumerPipeline(consumer, db, computer).execute,
+            stream=stream,
+            name=consumer.name,
+            retired_group=consumer_group_name(consumer.name, computer),
+            codec=codec,
+            recover=consumer.recover,
+            coalesce=consumer.coalesce,
+        )
+    return EventProcessor(
+        redis_client,
+        _ConsumerPipeline(consumer, db, computer),
+        codec=codec,
+        declared_name=consumer.name,
+        ordered=True,
+        stream=stream,
+        group=consumer_group_name(consumer.name, computer),
+        consumer_name=consumer_reader_name(consumer.name, computer),
+    )
+
+
 class ConsumerRuntime:
-    """Compose independent retained and live readers on one computer."""
+    """Compose independent retained and live readers on one computer, each on the Redis of a scope it reads."""
 
     def __init__(
         self,
         consumers: Sequence[Consumer],
         *,
-        redis_client: Any,
+        redis_clients: ScopedClients[Any],
         db: EventDB,
         computer: str,
         stream: str = STREAM_NAME,
@@ -156,30 +190,11 @@ class ConsumerRuntime:
             raise ValueError(_DUPLICATE_NAMES_ERROR.format(names=_NAME_SEPARATOR.join(repeated)))
         self._processors = [
             (
-                consumer.name,
-                LiveEventReader(
-                    cast(LiveStreamClient, redis_client),
-                    _ConsumerPipeline(consumer, db, computer).execute,
-                    stream=stream,
-                    name=consumer.name,
-                    retired_group=consumer_group_name(consumer.name, computer),
-                    codec=codec,
-                    recover=consumer.recover,
-                    coalesce=consumer.coalesce,
-                )
-                if consumer.delivery is ConsumerDelivery.LIVE
-                else EventProcessor(
-                    redis_client,
-                    _ConsumerPipeline(consumer, db, computer),
-                    codec=codec,
-                    declared_name=consumer.name,
-                    ordered=True,
-                    stream=stream,
-                    group=consumer_group_name(consumer.name, computer),
-                    consumer_name=consumer_reader_name(consumer.name, computer),
-                ),
+                _SCOPED_NAME_TEMPLATE.format(name=consumer.name, scope=scope.value),
+                _reader(consumer, redis_clients.for_scope(scope), db, computer, stream, codec),
             )
             for consumer in consumers
+            for scope in sorted(scopes_of_interest(consumer.interest.types))
         ]
 
     async def prepare_group_positions(self) -> None:

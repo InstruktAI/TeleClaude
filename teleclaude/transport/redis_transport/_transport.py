@@ -99,18 +99,18 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._redis_last_error: str | None = None
 
         # Extract Redis configuration from global config
-        self.redis_url = config.redis.url
-        self.redis_password = config.redis.password
+        self.redis_url = config.redis.cluster.url
+        self.redis_password = config.redis.cluster.password
         self.computer_name = config.computer.name
 
         # Redis connection settings
-        self.max_connections = config.redis.max_connections
-        self.socket_timeout = config.redis.socket_timeout
+        self.max_connections = config.redis.cluster.max_connections
+        self.socket_timeout = config.redis.cluster.socket_timeout
 
         # Stream configuration
-        self.message_stream_maxlen = config.redis.message_stream_maxlen
-        self.output_stream_maxlen = config.redis.output_stream_maxlen
-        self.output_stream_ttl = config.redis.output_stream_ttl
+        self.message_stream_maxlen = config.redis.cluster.message_stream_maxlen
+        self.output_stream_maxlen = config.redis.cluster.output_stream_maxlen
+        self.output_stream_ttl = config.redis.cluster.output_stream_ttl
 
         # Heartbeat config
         self.heartbeat_interval = 30  # Send heartbeat every 30s

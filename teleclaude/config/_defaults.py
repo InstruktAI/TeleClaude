@@ -15,8 +15,10 @@ from teleclaude.constants import (
     REDIS_OUTPUT_STREAM_TTL,
     REDIS_SOCKET_TIMEOUT,
 )
+from teleclaude.paths import LOCAL_REDIS_SOCKET_PATH
 
 _DEFAULT_REDIS_URL = "redis://localhost:6379"
+_DEFAULT_LOCAL_REDIS_URL = "unix://" + str(LOCAL_REDIS_SOCKET_PATH)
 
 DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration structure
     "hook_outbox": {
@@ -72,13 +74,22 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
     },
     "remote_computers": {},
     "redis": {
-        "url": _DEFAULT_REDIS_URL,
-        "password": None,
-        "max_connections": REDIS_MAX_CONNECTIONS,
-        "socket_timeout": REDIS_SOCKET_TIMEOUT,
-        "message_stream_maxlen": REDIS_MESSAGE_STREAM_MAXLEN,
-        "output_stream_maxlen": REDIS_OUTPUT_STREAM_MAXLEN,
-        "output_stream_ttl": REDIS_OUTPUT_STREAM_TTL,
+        "local": {
+            "url": _DEFAULT_LOCAL_REDIS_URL,
+            "username": None,
+            "password": None,
+            "max_connections": REDIS_MAX_CONNECTIONS,
+            "socket_timeout": REDIS_SOCKET_TIMEOUT,
+        },
+        "cluster": {
+            "url": _DEFAULT_REDIS_URL,
+            "password": None,
+            "max_connections": REDIS_MAX_CONNECTIONS,
+            "socket_timeout": REDIS_SOCKET_TIMEOUT,
+            "message_stream_maxlen": REDIS_MESSAGE_STREAM_MAXLEN,
+            "output_stream_maxlen": REDIS_OUTPUT_STREAM_MAXLEN,
+            "output_stream_ttl": REDIS_OUTPUT_STREAM_TTL,
+        },
     },
     "telegram": {
         "enabled": False,

@@ -199,7 +199,7 @@ def build_fleet_view(local: FleetMember, peers: Sequence[Mapping[str, object]]) 
 
 async def observe_fleet_from_heartbeats() -> FleetView:
     """Observe the fleet straight from the heartbeat keys, for a process that holds no transport."""
-    redis_config = config.redis
+    redis_config = config.redis.cluster
     redis_client = create_redis_client(
         redis_config.url,
         password=redis_config.password,

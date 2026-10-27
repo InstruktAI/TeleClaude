@@ -28,9 +28,10 @@ from teleclaude.events.envelope import (
 )
 from teleclaude.events.envelope_facts import EnvelopeFactResolver, cli_envelope_fact_resolver, home_owner_of
 from teleclaude.events.references import EventRef, InboundSourceRef, SessionRef
+from teleclaude.events.scope import ScopedClients, scope_of
 from teleclaude.events.wire import LegacyFacts, StreamEvent, encode
 from teleclaude.transport.internal_event_compat import encode_internal_compatibility
-from teleclaude.transport.redis_client import create_redis_client
+from teleclaude.transport.scoped_redis import scoped_redis_clients
 
 logger = get_logger(__name__)
 
@@ -39,6 +40,7 @@ DEFAULT_EVENT_STREAM = "teleclaude:events"
 _PRODUCER_MISSING_EVENT_TEMPLATE = "event emitted but EventProducer not configured: event=%s stream=%s"
 _PRODUCER_NOT_CONFIGURED_TEMPLATE = "EventProducer not configured for stream {stream}. Call configure_producer() first."
 _CONFIGURED_PRODUCER_ACCESS_EVENT = "configured producer access"
+_REDIS_UNCONFIGURED_ERROR = "EventProducer cannot be built: config.redis.local.url or config.redis.cluster.url is empty"
 
 # Process-wide producers by source stream. The daemon registers them at startup,
 # via `configure_producer`; short-lived CLI processes opt in to lazy construction
@@ -65,17 +67,17 @@ class RelayedEvent(BaseModel):
 
 
 class EventProducer:
-    """Publish events to the configured Redis stream."""
+    """Publish events to their stream on the Redis of their scope."""
 
     def __init__(
         self,
-        redis_client: Any,
+        redis_clients: ScopedClients[Any],
         fact_resolver: EnvelopeFactResolver,
         contraction_answer: ContractionAnswer | None = None,
         stream: str = DEFAULT_EVENT_STREAM,
         maxlen: int = 10000,
     ) -> None:
-        self._redis = redis_client
+        self._clients = redis_clients
         self._fact_resolver = fact_resolver
         self._contraction_answer = contraction_answer
         self._stream = stream
@@ -158,7 +160,8 @@ class EventProducer:
             self._stream,
         )
         try:
-            entry_id = await self._redis.xadd(self._stream, entry, maxlen=self._maxlen)
+            client = self._clients.for_scope(scope_of(event_type))
+            entry_id = await client.xadd(self._stream, entry, maxlen=self._maxlen)
         except Exception:
             logger.exception("EventProducer.emit xadd FAILED: event=%s", event_type)
             raise
@@ -171,8 +174,9 @@ class EventProducer:
         return self._stream
 
     async def aclose(self) -> None:
-        """Close the Redis client and its owned connection pool."""
-        await self._redis.aclose()
+        """Close both Redis clients and their owned connection pools."""
+        await self._clients.local.aclose()
+        await self._clients.cluster.aclose()
 
 
 def configure_producer(producer: EventProducer) -> None:
@@ -181,17 +185,12 @@ def configure_producer(producer: EventProducer) -> None:
 
 
 def _build_producer_from_config(stream: str = DEFAULT_EVENT_STREAM) -> EventProducer:
-    """Construct an `EventProducer` from `config.redis` via the shared client factory."""
-    redis_cfg = config.redis
-    if not redis_cfg.url:
-        raise RuntimeError("EventProducer cannot be built: config.redis.url is empty")
-    client = create_redis_client(
-        redis_cfg.url,
-        password=redis_cfg.password,
-        max_connections=redis_cfg.max_connections,
-        socket_timeout=redis_cfg.socket_timeout,
+    """Construct an `EventProducer` from `config.redis`, with a client of each scope's Redis."""
+    if not config.redis.local.url or not config.redis.cluster.url:
+        raise RuntimeError(_REDIS_UNCONFIGURED_ERROR)
+    return EventProducer(
+        scoped_redis_clients(), cli_envelope_fact_resolver(), contraction_answer_from_heartbeats, stream=stream
     )
-    return EventProducer(client, cli_envelope_fact_resolver(), contraction_answer_from_heartbeats, stream=stream)
 
 
 def ensure_event_producer() -> EventProducer:

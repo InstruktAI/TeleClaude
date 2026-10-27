@@ -47,7 +47,7 @@ _OVERLAY_PREFIX = "overlay."
 _JSON_MODE = "json"
 _DAEMON_UNAVAILABLE = "The daemon is not reachable."
 
-_REDIS_URL_ID = "redis.url"
+_REDIS_URL_ID = "redis.cluster.url"
 type WriteAction = Callable[[ConfigOperations], Awaitable[None]]
 
 

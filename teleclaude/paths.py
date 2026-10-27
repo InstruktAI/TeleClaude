@@ -69,6 +69,8 @@ DEFAULT_BIN_DIR = DEFAULT_TELECLAUDE_HOME / "bin"
 SHELL_DIR = TELECLAUDE_HOME / "shell"
 PEOPLE_DIR = TELECLAUDE_HOME / "people"
 INTEGRATION_DIR = TELECLAUDE_HOME / "integration"
+# The socket of this computer's local Redis, in a directory only its user can open.
+LOCAL_REDIS_SOCKET_PATH = TELECLAUDE_HOME / "redis" / "redis.sock"
 TMP_SESSIONS_DIR = TELECLAUDE_HOME / "tmp" / "sessions"
 SESSION_AUTH_DIR = TELECLAUDE_HOME / "session-auth"
 LAUNCHER_SIGNING_DIR = TELECLAUDE_HOME / "launcher-signing"

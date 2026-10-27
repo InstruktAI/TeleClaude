@@ -95,7 +95,7 @@ async def lookup_peer_address(computer_name: str) -> PeerAddress | PeerNotOnline
         create_redis_client,
     )
 
-    redis_config = config.redis
+    redis_config = config.redis.cluster
     redis_client = create_redis_client(
         redis_config.url,
         password=redis_config.password,

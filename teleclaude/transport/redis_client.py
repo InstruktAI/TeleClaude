@@ -19,6 +19,7 @@ def create_redis_client(
     redis_url: str,
     *,
     password: str | None,
+    username: str | None = None,
     max_connections: int,
     socket_timeout: float | None,
     health_check_interval: int = 10,
@@ -39,6 +40,7 @@ def create_redis_client(
     if redis_url.startswith("rediss://"):
         pool = BlockingConnectionPool.from_url(
             redis_url,
+            username=username,
             password=password,
             max_connections=max_connections,
             socket_timeout=socket_timeout,
@@ -50,6 +52,7 @@ def create_redis_client(
     else:
         pool = BlockingConnectionPool.from_url(
             redis_url,
+            username=username,
             password=password,
             max_connections=max_connections,
             socket_timeout=socket_timeout,
