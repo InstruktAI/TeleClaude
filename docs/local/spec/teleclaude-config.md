@@ -539,9 +539,10 @@ environment_variables:
   # their references are authored in the configuration, not derived here.
   # Redis — essential infrastructure. Editable in the Infra subtab (Redis section)
   # as ${VAR}-backed fields, and a mandatory guided-wizard step (the Infra step is not
-  # complete until REDIS_URL is set). Also listed in the config TUI's environment section.
-  - REDIS_URL # the cluster Redis
-  - REDIS_PASSWORD
+  # complete until REDIS_CLUSTER_URL is set). Also listed in the config TUI's environment section.
+  # The installation's environment stage gives them the values of the earlier REDIS_URL and REDIS_PASSWORD.
+  - REDIS_CLUSTER_URL
+  - REDIS_CLUSTER_PASSWORD
   - REDIS_LOCAL_URL
   - REDIS_LOCAL_USERNAME
   - REDIS_LOCAL_PASSWORD
@@ -703,8 +704,8 @@ redis:
     max_connections: integer # connection pool size
     socket_timeout: integer # seconds
   cluster: # the shared Redis for cluster events and the cross-computer transport
-    url: string # normally ${REDIS_URL}
-    password: string | null # normally ${REDIS_PASSWORD}
+    url: string # normally ${REDIS_CLUSTER_URL}
+    password: string | null # normally ${REDIS_CLUSTER_PASSWORD}
     max_connections: integer # connection pool size
     socket_timeout: integer # seconds
     message_stream_maxlen: integer # length cap of each computer's request stream

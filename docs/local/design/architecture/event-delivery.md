@@ -120,9 +120,17 @@ retain their local payload reach and completion boundaries under
 
 ### Scopes and their Redis
 
-The local Redis runs on each computer under the operating system's service
-manager, listens only on a Unix socket that only the computer's user and the
-Redis service can open, and requires its own user and password. A computer whose
+The local Redis is the operating system's Redis, run by its service manager.
+The installer configures it on every computer whose cluster Redis is on another
+computer: it listens only on a Unix socket that only the computer's user and the
+Redis service can open, its TCP port is off, its default user is off, and it
+requires one ACL user whose password lives in the machine environment. On
+Linux the Redis service runs with the TeleClaude user's primary group, so every
+process of that user opens the socket at once. The installer verifies the local
+Redis answers before the install continues. It configures none on a computer
+that hosts the cluster Redis, keeps a local Redis the operator configured that
+answers, and refuses to take over a Redis another program uses, naming the
+variables that point TeleClaude at a dedicated one (ADR-0140). A computer whose
 local Redis is not configured carries its local events on the cluster Redis, and
 its event platform logs that at startup.
 The cluster Redis is shared by the computers of one cluster; it also carries
@@ -145,7 +153,12 @@ Redis; one naming only cluster types reads the cluster Redis; one taking any
 type reads both and keeps separate progress on each, while its reaction still
 handles one event at a time. Own-computer filtering applies to what each Redis
 delivers. The live consumers of a stream on one Redis share one read of it, so a
-live entry crosses the network once per computer, not once per consumer. A consumer that takes any type from every computer, such as
+live entry crosses the network once per computer, not once per consumer. Each
+live consumer handles what that read hands it in its own task, from a bounded
+backlog: a consumer that falls behind it drops the batches it cannot hold and
+recovers its current source before its next one, and delays no other consumer.
+A socket timeout shorter than the idle read's block is refused at configuration
+load. A consumer that takes any type from every computer, such as
 event-bound maintenance, receives another computer's events only when they are
 cluster events.
 

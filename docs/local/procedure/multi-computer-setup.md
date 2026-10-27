@@ -38,7 +38,7 @@ Set up a distributed TeleClaude deployment across multiple computers.
 - Multiple computers with `telegram.is_master: true` — causes duplicate command handling and message collisions.
 - Reusing bot tokens across computers — Telegram will deliver updates to only one instance.
 - A project missing from a computer's listing — it was never adopted there; run `telec config project adopt` in its folder on that computer.
-- Redis unreachable — `make start` fails fast and surfaces the unreachable Redis at startup instead of reporting a healthy runtime; verify `REDIS_URL` and that the Redis server is reachable, then re-run `make start`.
+- Redis unreachable — `make start` fails fast and surfaces the unreachable Redis at startup instead of reporting a healthy runtime; verify `REDIS_CLUSTER_URL` and that the cluster Redis server is reachable, then re-run `make start`.
 - TUI remote-session attach prompts for password or fails — SSH key auth between peers is missing or not loaded into the agent (step 4). Verify with `ssh -o BatchMode=yes user@peerhost true` from a non-interactive shell.
 - Peer shows in `telec computers` with `host=null` / `user=null` — that peer is running the pre-cluster-events daemon. Upgrade and restart the peer; the next heartbeat will publish full identity.
 - Peer disappears from remote attach even though Redis is reachable — verify the peer's `user` and `host` values match the shell-safe identifier grammar `[A-Za-z0-9._-]+`. Unsafe values are rejected before cache ingestion so they cannot be interpolated into SSH/tmux commands.

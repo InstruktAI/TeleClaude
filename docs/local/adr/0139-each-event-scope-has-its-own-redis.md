@@ -49,12 +49,10 @@ before.
 ## Consequences
 
 - An event produced and consumed on one computer never crosses the network, so
-  a computer's local activity no longer costs network traffic for every consumer
-  it runs. Cluster events still reach every computer that reads them.
-- Every computer is meant to run a local Redis service. One that has none
-  configured carries its local events on the cluster Redis, as before, so a
-  computer that installs the release before its local Redis exists keeps working
-  and gains the split once its local Redis is configured.
+  a computer's network use no longer grows with its own activity or with the
+  number of consumers it runs.
+- Every computer installs and runs a local Redis service; the platform does not
+  start without it.
 - A type wrongly stated local silently stops reaching other computers. The
   scope of a type is decided from the consumers that act on it, and a new
   cross-computer consumer changes its types' scope in the same change.
@@ -76,3 +74,7 @@ before.
   Redis streams already provide to the existing consumers.
 - **Fewer events instead of a split.** Rejected: it removes symptoms one event
   type at a time and leaves every future local event on the network.
+
+## Status
+
+Superseded in part by ADR-0140
