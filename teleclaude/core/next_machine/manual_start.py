@@ -9,7 +9,8 @@ helpers; ``lifecycle_runner`` never imports this module.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,22 +25,19 @@ from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATU
 from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES, WORK_LANE_ROLES
 from teleclaude.core.next_machine.lifecycle import pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
-    SessionRunner,
     approval_from_state,
     artifact_digest_from_state,
     command_for_lane,
-    default_session_runner,
-    dispatch_lifecycle_session,
     load_runner_todos,
     make_intent,
     plan_review_current_from_state,
+    recheck_slug_holder,
     resolve_kinded_dispatch,
     role_for_lane,
     set_active_runner,
 )
 from teleclaude.core.next_machine.runner_types import (
     DispatchIntent,
-    DispatchOrigin,
     ManualLifecycleSessionResult,
     ManualLifecycleStatus,
     RunnerLane,
@@ -64,6 +62,7 @@ from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.todos_db._exceptions import (
     ClaimConflict,
+    DriverStartBusy,
     LaneCrossingRefused,
     ReviewerConflict,
     ReviewerIdentityUnresolved,
@@ -84,13 +83,15 @@ __all__ = [
     "DriverStartGuardResult",
     "adopt_headless_session",
     "adopt_manual_lifecycle_session",
+    "driver_start_section",
     "guard_driver_start",
-    "manual_start_lifecycle_session",
+    "recheck_slug_holder",
     "resolve_manual_dispatch_intent",
     "work_feedback_for_manual_skip",
 ]
 
 
+_SECTIONED_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
 _LANE_ROLES: dict[RunnerLane, frozenset[str]] = {
     RunnerLane.PREPARE: PREPARE_AUTHOR_ROLES,
     RunnerLane.WORK: WORK_LANE_ROLES,
@@ -130,6 +131,47 @@ def work_feedback_for_manual_skip(reason: RunnerSkipReason | str | None) -> str 
     if isinstance(reason, RunnerSkipReason):
         return _MANUAL_SKIP_FEEDBACK.get(reason)
     return None
+
+
+_START_REFUSED_BUSY_EVENT = "driver start refused while another start is in progress"
+_STARTS_IN_FLIGHT: dict[tuple[Path, str], str] = {}
+
+
+@asynccontextmanager
+async def driver_start_section(
+    project_path: str | Path,
+    slug: str,
+    *,
+    starting_session_id: str,
+) -> AsyncIterator[None]:
+    """Hold the one-start-at-a-time section for a todo while a start creates or claims its orchestrator.
+
+    Keyed by the canonical project root and slug, whatever lane is asked for: the
+    holder check admits one driver per todo. Entering never waits. A free key records
+    ``starting_session_id`` and enters; a key held by another start raises
+    :class:`DriverStartBusy` naming the session that start is creating or claiming.
+    Leaving drops the record on success and on exception, so a failed start leaves
+    nothing behind. The record lives in this process only; the registry check-and-set
+    has no await in it, so on the daemon's event loop it is atomic. The caller
+    re-checks the slug's holder inside the section and creates or claims before leaving.
+    """
+    key = (resolve_project_root(project_path), slug)
+    in_flight = _STARTS_IN_FLIGHT.get(key)
+    if in_flight is not None:
+        busy = DriverStartBusy(slug=slug, in_flight=in_flight)
+        logger.warning(
+            _START_REFUSED_BUSY_EVENT,
+            project=str(key[0]),
+            slug=slug,
+            in_flight=in_flight,
+            starting_session_id=starting_session_id,
+        )
+        raise busy
+    _STARTS_IN_FLIGHT[key] = starting_session_id
+    try:
+        yield
+    finally:
+        del _STARTS_IN_FLIGHT[key]
 
 
 @dataclass(frozen=True)
@@ -395,51 +437,6 @@ async def guard_driver_start(
     return DriverStartGuardResult(held_without_driver=bool(todo and todo.hold and holder is None))
 
 
-async def manual_start_lifecycle_session(
-    project_path: str | Path,
-    slug: str,
-    *,
-    lane: RunnerLane,
-    db: Db | None = None,
-    client_factory: Callable[[], SessionRunner] = default_session_runner,
-) -> ManualLifecycleSessionResult:
-    project_root = resolve_project_root(project_path)
-    runtime_db = db or await get_db()
-    todos_db = await get_workflow_store(project_root)
-    _todo, reason, owner_session_id = await _target_for_manual_start(todos_db, runtime_db, slug, lane, project_root)
-    if reason is not None:
-        return ManualLifecycleSessionResult(
-            slug=slug,
-            lane=lane,
-            status=ManualLifecycleStatus.ALREADY_DRIVEN
-            if reason is RunnerSkipReason.ALREADY_DRIVEN
-            else ManualLifecycleStatus.SKIPPED,
-            session_id=owner_session_id if reason is RunnerSkipReason.ALREADY_DRIVEN else None,
-            reason=reason,
-        )
-
-    client = client_factory()
-    await client.connect()
-    try:
-        session_id = await dispatch_lifecycle_session(
-            client=client,
-            runtime_db=runtime_db,
-            todos_db=todos_db,
-            project_path=str(project_root),
-            intent=make_intent(slug, lane),
-            origin=DispatchOrigin.MANUAL,
-        )
-    finally:
-        await client.close()
-
-    return ManualLifecycleSessionResult(
-        slug=slug,
-        lane=lane,
-        status=ManualLifecycleStatus.DISPATCHED,
-        session_id=session_id,
-    )
-
-
 def _lane_of_role(role: str | None) -> RunnerLane | None:
     """Return the SDLC lane a session role belongs to, or ``None`` when no lane owns it."""
     for lane, roles in _LANE_ROLES.items():
@@ -519,6 +516,29 @@ async def _record_prepare_claim(
     await writer.commit(todos_db, slug)
 
 
+async def _claim_for_caller(
+    runtime_db: Db,
+    todos_db: WorkflowStore,
+    slug: str,
+    session: Session,
+    lane: RunnerLane,
+) -> bool:
+    """Make ``session`` the slug's orchestrator: write ``active_runner``, then reflect the claim onto its row.
+
+    Returns ``False`` when the slug has no workflow state to claim.
+    """
+    adopted = await adopt_headless_session(
+        runtime_db=runtime_db,
+        todos_db=todos_db,
+        slug=slug,
+        session_id=session.session_id,
+        lane=lane,
+    )
+    if adopted:
+        await _reflect_claim_on_caller_session(runtime_db, session, slug, lane)
+    return adopted
+
+
 async def adopt_manual_lifecycle_session(
     project_path: str | Path,
     slug: str,
@@ -548,6 +568,12 @@ async def adopt_manual_lifecycle_session(
     value. A caller that knows which command it invoked removes the ambiguity;
     a caller that does not (existing test call sites, headless adoption)
     falls back to the heuristic unchanged.
+
+    A prepare or work adoption makes the caller the slug's orchestrator without a new
+    session row, so it takes the todo's driver-start section (:func:`driver_start_section`)
+    around a slug-scoped holder re-check and the ownership writes: a holder that appeared
+    since the guard returns ``ALREADY_DRIVEN`` naming it, and a start already in progress
+    raises :class:`DriverStartBusy`. Task lanes take no section.
 
     Raises :class:`LaneCrossingRefused` before any claim write or role reflection
     when the caller holds ``slug`` in the other SDLC lane.
@@ -634,13 +660,23 @@ async def adopt_manual_lifecycle_session(
             reason=f"conflicting session binding: caller owns working_slug={session.working_slug}",
             work_feedback=_CONFLICTING_SESSION_BINDING_FEEDBACK,
         )
-    adopted = await adopt_headless_session(
-        runtime_db=runtime_db,
-        todos_db=todos_db,
-        slug=slug,
-        session_id=caller_session_id,
-        lane=lane,
-    )
+    if lane in _SECTIONED_LANES:
+        async with driver_start_section(project_root, slug, starting_session_id=caller_session_id):
+            holder = await recheck_slug_holder(
+                runtime_db, todos_db, project_root, slug, exempt_session_id=caller_session_id
+            )
+            if holder is not None:
+                return ManualLifecycleSessionResult(
+                    slug=slug,
+                    lane=lane,
+                    status=ManualLifecycleStatus.ALREADY_DRIVEN,
+                    session_id=holder,
+                    reason=RunnerSkipReason.ALREADY_DRIVEN,
+                    work_feedback=work_feedback_for_manual_skip(RunnerSkipReason.ALREADY_DRIVEN),
+                )
+            adopted = await _claim_for_caller(runtime_db, todos_db, slug, session, lane)
+    else:
+        adopted = await _claim_for_caller(runtime_db, todos_db, slug, session, lane)
     if not adopted:
         return ManualLifecycleSessionResult(
             slug=slug,
@@ -648,7 +684,6 @@ async def adopt_manual_lifecycle_session(
             status=ManualLifecycleStatus.SKIPPED,
             reason=RunnerSkipReason.MISSING_STATE,
         )
-    await _reflect_claim_on_caller_session(runtime_db, session, slug, lane)
     if lane is RunnerLane.PREPARE:
         await _record_prepare_claim(todos_db, slug, caller_session_id, project_root, continuing_claim_is_recorded=False)
     return ManualLifecycleSessionResult(
