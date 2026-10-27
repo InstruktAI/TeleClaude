@@ -20,10 +20,10 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.events.db import EventDB
 from teleclaude.events.envelope import EventHomeKind, EventHomeRef, ReceivedEvent
-from teleclaude.events.live_reader import LiveEventReader, LiveStreamClient, SourceRecovery
+from teleclaude.events.live_reader import LiveEventReader, LiveStreamClient, SharedLiveFeed, SourceRecovery
 from teleclaude.events.processor import STREAM_NAME, EventProcessor
 from teleclaude.events.references import ReferenceKind
-from teleclaude.events.scope import ScopedClients, scopes_of_interest
+from teleclaude.events.scope import EventScope, ScopedClients, scopes_of_interest
 from teleclaude.events.type_pattern import TypePattern
 from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, EntryCodec, StreamEvent
 
@@ -47,6 +47,7 @@ _CONSUMER_STARTED_EVENT = "Event consumer starting"
 _RECOVERY_REQUIRES_LIVE_ERROR = "Source recovery and coalescing belong to live consumers"
 _CONSUMER_TASK_TEMPLATE = "event-consumer-{name}"
 _SCOPED_NAME_TEMPLATE = "{name}@{scope}"
+_LIVE_FEED_NAME = "live-feed"
 
 
 class ConsumerDelivery(StrEnum):
@@ -145,26 +146,36 @@ class _ConsumerPipeline:
         await self._db.record_handled_event(consumer.name, event.id, datetime.now(UTC))
 
 
-def _reader(
+def _live_view(
     consumer: Consumer,
     pipeline: _ConsumerPipeline,
     redis_client: Any,
     computer: str,
     stream: str,
     codec: EntryCodec[StreamEvent],
-) -> EventProcessor[StreamEvent] | LiveEventReader:
-    """The reader that hands one Redis's entries of a stream to one consumer's pipeline."""
-    if consumer.delivery is ConsumerDelivery.LIVE:
-        return LiveEventReader(
-            cast(LiveStreamClient, redis_client),
-            pipeline.execute,
-            stream=stream,
-            name=consumer.name,
-            retired_group=consumer_group_name(consumer.name, computer),
-            codec=codec,
-            recover=consumer.recover,
-            coalesce=consumer.coalesce,
-        )
+) -> LiveEventReader:
+    """One live consumer's view of a stream, fed by the stream's shared live feed on that Redis."""
+    return LiveEventReader(
+        cast(LiveStreamClient, redis_client),
+        pipeline.execute,
+        stream=stream,
+        name=consumer.name,
+        retired_group=consumer_group_name(consumer.name, computer),
+        codec=codec,
+        recover=consumer.recover,
+        coalesce=consumer.coalesce,
+    )
+
+
+def _retained_reader(
+    consumer: Consumer,
+    pipeline: _ConsumerPipeline,
+    redis_client: Any,
+    computer: str,
+    stream: str,
+    codec: EntryCodec[StreamEvent],
+) -> EventProcessor[StreamEvent]:
+    """The consumer group reader that hands one Redis's entries of a stream to one retained consumer."""
     return EventProcessor(
         redis_client,
         pipeline,
@@ -194,7 +205,9 @@ class ConsumerRuntime:
         repeated = sorted({name for name in names if names.count(name) > 1})
         if repeated:
             raise ValueError(_DUPLICATE_NAMES_ERROR.format(names=_NAME_SEPARATOR.join(repeated)))
-        self._processors: list[tuple[str, EventProcessor[StreamEvent] | LiveEventReader]] = []
+        self._processors: list[tuple[str, EventProcessor[StreamEvent] | SharedLiveFeed]] = []
+        live_views: dict[EventScope, list[LiveEventReader]] = {}
+        live_clients: dict[EventScope, Any] = {}
         for consumer in consumers:
             pipeline = _ConsumerPipeline(consumer, db, computer)
             read_clients: list[object] = []
@@ -204,12 +217,28 @@ class ConsumerRuntime:
                 if any(client is read for read in read_clients):
                     continue
                 read_clients.append(client)
+                if consumer.delivery is ConsumerDelivery.LIVE:
+                    feed_scope = next(
+                        (known for known, known_client in live_clients.items() if known_client is client), scope
+                    )
+                    live_clients[feed_scope] = client
+                    live_views.setdefault(feed_scope, []).append(
+                        _live_view(consumer, pipeline, client, computer, stream, codec)
+                    )
+                    continue
                 self._processors.append(
                     (
                         _SCOPED_NAME_TEMPLATE.format(name=consumer.name, scope=scope.value),
-                        _reader(consumer, pipeline, client, computer, stream, codec),
+                        _retained_reader(consumer, pipeline, client, computer, stream, codec),
                     )
                 )
+        for scope, views in live_views.items():
+            self._processors.append(
+                (
+                    _SCOPED_NAME_TEMPLATE.format(name=_LIVE_FEED_NAME, scope=scope.value),
+                    SharedLiveFeed(cast(LiveStreamClient, live_clients[scope]), stream=stream, readers=views),
+                )
+            )
 
     async def prepare_group_positions(self) -> None:
         """Prepare retained positions and live boundaries before any handler executes."""
@@ -227,7 +256,7 @@ class ConsumerRuntime:
         )
 
     async def _run_one(
-        self, name: str, processor: EventProcessor[StreamEvent] | LiveEventReader, shutdown_event: asyncio.Event
+        self, name: str, processor: EventProcessor[StreamEvent] | SharedLiveFeed, shutdown_event: asyncio.Event
     ) -> None:
         logger.info(_CONSUMER_STARTED_EVENT, consumer=name)
         await processor.start(shutdown_event)
