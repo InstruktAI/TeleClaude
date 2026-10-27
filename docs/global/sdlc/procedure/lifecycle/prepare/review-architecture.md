@@ -94,6 +94,15 @@ operation callers see outside its governing paradigm without saying what those
 callers then wait for (`preparation-artifact-quality`, Structural decisions
 carry architecture review).
 
+Before reading the author's mechanism, also name the nearest existing
+in-system path that does the same job and the external primitives the work's
+third-party systems offer for it (`prepare/architecture` step 1a). Judge every
+part of the design that departs from them as a cost the artifact must justify
+from an approved outcome; a mechanism built where the existing path or a
+primitive already serves is a finding. When a finding you raised is answered by
+more mechanism, check before the next pass that the criterion it defends is
+carried by the approved intent, not only by the artifact.
+
 Reject bespoke infrastructure or security mechanisms without authoritative
 prior-art evidence and an adopt-vs-build judgment. Also reject prior art used as
 authority to add product scope: solution evidence advises mechanism and
