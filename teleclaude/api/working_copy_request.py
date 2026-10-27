@@ -66,7 +66,7 @@ async def working_copy_refusal_handler(_request: Request, exc: Exception) -> JSO
 
 
 async def github_store_refusal_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Exception handler for the GitHub store's refusal: the 503 names its bounded reason, never provider text."""
+    """Exception handler for the GitHub store's refusal: the response names its bounded reason, never provider text."""
     if not isinstance(exc, GitHubIORefused):
         raise exc
     logger.warning(
