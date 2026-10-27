@@ -131,6 +131,8 @@ How the store maps onto the repository is owned by
 | `status:icebox`            | (iceboxed)                              | `#5fafd7` | Parked in the icebox; not planned for now.     |
 | `status:on-hold`           | (dispatch hold set)                     | `#d75f00` | Deliberately paused until someone releases it. |
 
+<!-- planned-change:github-item-acts -->
+
 - **Comments:** every comment the platform writes opens with one envelope line
   `[key:value ...]` that names only fields carrying information; the platform
   App as author is not repeated, and the machine data stays hidden below it.
@@ -146,6 +148,33 @@ How the store maps onto the repository is owned by
   - A question to a person: `[session:<id> role:<role> action:question]`,
     followed by the message and the link to the session.
   - A project ledger entry: `[action:ledger tx:<transaction>]`.
+
+<!-- change:github-item-acts -->
+
+- **Comments:** every comment the platform writes opens with one envelope line
+  `[key:value ...]` that names only fields carrying information; the platform
+  App as author is not repeated, and the machine data stays hidden below it.
+  - The item's record: `[action:record phase:<phase> rev:<n>]`, adding
+    `session:<id>` while a session holds the item's claim, `hold` while it
+    is held, and `commit:<sha>` once it is delivered, with the hold reason as
+    one sentence under the envelope.
+  - An artifact version: `[action:artifact name:<artifact> version:<n>]`,
+    where `<n>` counts that artifact's versions on the item, followed by its
+    content. Every version of every artifact (input, plan, findings, review
+    reports, log and the rest) is appended in order and its content is never
+    rewritten. A version too large for one comment continues in the next.
+  - A question to a person: `[session:<id> role:<role> action:question]`,
+    followed by the message and the link to the session.
+  - A project ledger entry: `[action:ledger tx:<transaction>]`.
+  - A change put back: `[action:put-back field:<field> change:<id>]`, where
+    `<id>` names the change in the issue's history, followed by the change it
+    puts back and why it did not count.
+  - Which computer handles people's changes on GitHub, on the ledger issue:
+    `[action:work-control-claim computer:<name>]` and
+    `[action:work-control-release computer:<name>]`.
+
+<!-- /planned-change:github-item-acts -->
+
 - **Project records:** commit reviews and documentation transfers, which
   belong to the project rather than one item, are appended to one
   platform-opened ledger issue.

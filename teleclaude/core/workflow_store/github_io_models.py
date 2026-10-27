@@ -26,6 +26,7 @@ class GitHubComment:
     editor: str | None
     edit_history: tuple[Mapping[str, object], ...]
     history_complete: bool
+    updated_at: datetime | None = None
 
 
 @dataclass(frozen=True)

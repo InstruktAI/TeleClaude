@@ -49,14 +49,12 @@ state every installed release reads, and no release carries any of it.
 - **The previous release** — the one active before the most recent install —
   stays installed.
 
-<!-- planned:tui-stranded-on-pruned-release -->
-
 - **A release a running terminal interface runs from** stays installed for as
   long as that interface's registry record names it
   (`local/projects/teleclaude/design/architecture/tui-state-layout`), whether
-  or not it is the active or previous release.
-
-<!-- /planned:tui-stranded-on-pruned-release -->
+  or not it is the active or previous release. When the registry cannot be
+  read, or a running interface's record names no release, an install removes
+  no release.
 
 - **Posture.** A release selects one immutable revision; nothing edits or
   commits in it. Release identity and source preservation follow
@@ -99,16 +97,12 @@ starts the daemon on it, under the guarantees of
   reports the failure and which stores its migrations reached, is never
   reported as complete, and is repaired forward.
 
-<!-- planned:tui-stranded-on-pruned-release -->
-
 - **Running terminal interfaces move with the install.** A completed install
   reloads every running terminal interface onto the new active release
   (`local/projects/teleclaude/design/architecture/tui-state-layout`), so the
   operator never restarts one to reach installed code. An interface the reload
   does not reach is reported and keeps its release installed under Releases; it
   never changes the install's outcome.
-
-<!-- /planned:tui-stranded-on-pruned-release -->
 
 - **Publication follows the install.** Publishing the installed release's
   configuration schemas
@@ -270,8 +264,6 @@ Then the platform runs from an installation
 And the project keeps every todo, worktree and claim where it was
 ```
 
-<!-- planned:tui-stranded-on-pruned-release -->
-
 #### UC-IR6: An operator keeps working in the terminal interface across installs
 
 ```gherkin
@@ -280,8 +272,6 @@ When an agent installs a newer revision, and later another one
 Then the terminal interface runs the most recently installed revision without the operator restarting it
 And no release a running terminal interface runs from is removed
 ```
-
-<!-- /planned:tui-stranded-on-pruned-release -->
 
 ## Known caveats
 

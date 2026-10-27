@@ -59,6 +59,13 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 - **Artifact immutability**: machines never modify artifacts directly; they delegate to workers.
 - **Dependency blocking**: cannot claim a work item until all its dependencies are complete.
 - **Integration serialization**: only one integrator pushes `main` at a time, enforced by a singleton lease.
+
+<!-- planned:single-orchestrator-concurrent-starts -->
+
+- **One orchestrator per todo on a computer**: every start of a lifecycle orchestrator for a todo — a session create door or a lifecycle operation adopting its caller — passes its live-holder check and the creation or claim it admits inside one in-process critical section per project and todo, whatever its lane, so at most one live orchestrator holds the todo. The section records nothing; the session registry and `active_runner` remain the ownership facts (`local/projects/teleclaude/adr/0133-concurrent-driver-starts-serialize-in-process-at-the-start-doors`, `local/projects/teleclaude/adr/0134-a-colliding-driver-start-is-refused-without-waiting`).
+
+<!-- /planned:single-orchestrator-concurrent-starts -->
+
 - **Crash recovery**: all three machines are re-entrant. Re-calling after a crash resumes from durable state.
 
 ## Primary flows
@@ -205,4 +212,13 @@ Each state machine has its own design document with full state diagrams, sequenc
 - **Worker crash**: orchestrator retries once, then escalates.
 - **Phase mark failure**: worker must commit before marking phase.
 - **Integration contention**: serialized by lease; concurrent candidates are queued in FIFO order.
+
+<!-- planned:single-orchestrator-concurrent-starts -->
+
+- **Concurrent orchestrator starts**: orchestrator starts of one todo on one computer are decided one at a time; the first creates or claims the orchestrator and each later one is refused naming it. A start that arrives while another is being decided does not wait; it is refused as busy, naming the session being started. Starts on different computers sharing one workflow store are not serialized against each other.
+- **Orchestrator stranded in initializing**: an orchestrator session counts as the todo's holder from its creation, so one whose bootstrap failed keeps holding the todo until it is ended; the bootstrap failure is published for a person to act on.
+
+<!-- /planned:single-orchestrator-concurrent-starts -->
+
+- **Stale artifacts**: PRD or architecture updated but downstream artifacts not regenerated. Grounding check catches and triggers re-grounding.
 - **Stale artifacts**: PRD or architecture updated but downstream artifacts not regenerated. Grounding check catches and triggers re-grounding.

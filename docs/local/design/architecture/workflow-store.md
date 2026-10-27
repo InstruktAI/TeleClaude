@@ -240,6 +240,9 @@ working copy and the repository.
   planned. An item that becomes repository work opens its issue in the next
   push and publishes every version the repository lacks
   (`local/projects/teleclaude/adr/0126-non-repository-work-stays-in-the-github-store-working-copy`).
+
+<!-- planned-change:github-item-acts -->
+
 - **Repository layout.** Each repository work item is one issue the platform
   App created. The item's `WorkItemId` and `StoreAddress` are those of its
   working-copy row, exactly as on the local backend, so every port result
@@ -263,6 +266,35 @@ working copy and the repository.
   closed state, labels, issue type, sub-issues, blocked-by relations and
   assignees are reflections the adapter writes from the record and its own
   bookkeeping and never reads.
+
+<!-- change:github-item-acts -->
+
+- **Repository layout.** Each repository work item is one issue the platform
+  App created. The item's `WorkItemId` and `StoreAddress` are those of its
+  working-copy row, exactly as on the local backend, so every port result
+  names items in one vocabulary; the issue is reached through the adapter's
+  own bookkeeping and never through a port identity. The item's **record** is
+  one platform-authored comment on that issue, edited in place: the item's
+  row facts, dependencies, workflow state, a revision counter and, for each
+  artifact, a pointer to its current content. Artifact versions are
+  platform-authored content comments appended to the issue and never edited
+  in content, so every version stays readable; content larger than one
+  comment is split across consecutive parts, the version's history link sits
+  hidden in its last part, and workflow state that does not fit in the record
+  is stored the same way. A history link in a comment of its own, as earlier
+  versions carry it, is read the same way. Content digests are computed from
+  the stored content exactly as the local implementation computes them. One
+  platform-created **ledger** issue per repository holds the project-level
+  records, commit reviews and documentation transfers, as appended entries.
+  Every platform comment opens with the envelope line the work record
+  specifies; the machine data follows it hidden, and every reader accepts a
+  comment with or without the envelope. The issue's title, body, open or
+  closed state, labels, issue type, sub-issues, blocked-by relations and
+  assignees are reflections the adapter writes from the record and its own
+  bookkeeping and never reads as state; the issue field read below reads
+  them only to report a person's change to the work-control handler.
+
+<!-- /planned-change:github-item-acts -->
 
 - **Write path.** Every transaction on the working copy records which items
   and project-level records it changes. Before the local commit completes,
@@ -399,6 +431,58 @@ master admits each conversation request before sending it:
 - **Selected-store helpers.** Presence, validation reads and integrity
   checks answer for the working copy. Transfer and database location refuse
   for a GitHub-backed project: each computer reaches the state from GitHub.
+
+<!-- planned:github-item-acts -->
+
+- **Item title.** An item's title is a workflow fact: the title a person last
+  set through the update facade, or none. The record carries it with the
+  item's row facts, and the issue's title reflection is that title when set,
+  otherwise the heading the input derives.
+- **Platform labels only.** A label reflection adds and removes only the
+  platform's own labels on the issue and leaves every other label as it is.
+- **Issue history and field read.** For an item of a project on this computer
+  and a history position, the adapter module reads, in the order GitHub
+  recorded them, the changes after that position to the issue's title, open
+  state and state reason, labels, issue type, sub-issues and blocked-by
+  relations, each with the account that made it and its previous and new
+  value; and the current values of those fields beside the values its
+  projection holds. It is a module call like the work item lookup,
+  authenticated as the project's App, and retains nothing.
+- **History position.** The record carries, per item, the position in its
+  issue's history up to which every change has its disposition. A transaction
+  may carry the position it advances to; the position commits in the same
+  record revision as the transaction's other changes, and a position advanced
+  with no other change is a record write of its own. Only the holder of the
+  project's work-control claim advances positions.
+- **Work-control claim.** The ledger issue holds the project's work-control
+  claim as platform comments appended and never edited, opening with
+  `[action:work-control-claim computer:<name>]` or
+  `[action:work-control-release computer:<name>]`; the ledger's readers take
+  neither as a ledger entry. The claim that holds is the first claim the
+  ledger orders after the latest release. The module answers whether this
+  computer holds it, appends this computer's claim when none holds, appends a
+  release for this computer, and, for an operator, appends a release for
+  another computer once the fleet no longer reports that computer online. A
+  claim never expires.
+- **Put-back notices.** The record carries the notices an item owes: the
+  history entry each answers, the field, the change and the reason. Each is
+  reflected as one comment under the work record's put-back envelope, which
+  names the entry, written only by the holder of the project's work-control
+  claim. Before appending one, the holder looks for a notice the App already
+  wrote for that entry and adopts it instead; a notice found on the issue
+  leaves the record with the item's next revision.
+- **Changed issues.** For a project on this computer and a moment, the module
+  lists the issues the platform App opened that GitHub reports updated since
+  then.
+- **Field restore.** For an item and a set of its reflected fields, the module
+  writes the projected value of each, whatever the field's last written
+  digest. A restore that fails is owed and written by the next refresh like
+  any reflection.
+- **Repository permission read.** For a project on this computer and a GitHub
+  login, the module reads that account's permission on the repository through
+  the project's App.
+
+<!-- /planned:github-item-acts -->
 
 ## Invariants
 

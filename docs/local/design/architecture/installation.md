@@ -84,17 +84,6 @@ flowchart LR
 
 ## Invariants
 
-<!-- planned-change:tui-stranded-on-pruned-release -->
-
-- **Nothing live names a release.** Every live surface and every path the
-  runtime composes for a session addresses the active release through
-  `current`, never through a release folder. Switching `current` therefore
-  rewrites no service definition, hook command or link. A running terminal
-  interface is not such a surface: it holds the release it started from (see
-  Failure modes).
-
-<!-- change:tui-stranded-on-pruned-release -->
-
 - **Nothing live names a release.** Every live surface and every path the
   runtime composes for a session addresses the active release through
   `current`, never through a release folder. Switching `current` therefore
@@ -104,8 +93,6 @@ flowchart LR
   while it still runs there
   (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`),
   so a release that is pruned breaks nothing that runs.
-
-<!-- /planned-change:tui-stranded-on-pruned-release -->
 
 - **Runtime state lives outside every release.** The machine environment file,
   the daemon's process record, the install record and every store a migration
@@ -142,30 +129,6 @@ flowchart LR
 The act is reconciliation's; each step consumes the owning context's contract
 and restates none of it.
 
-<!-- planned-change:tui-stranded-on-pruned-release -->
-
-```mermaid
-sequenceDiagram
-  participant Caller as bootstrap / channel reaction / telec app install
-  participant Rec as reconciliation (install act)
-  participant Rel as new release
-  participant Life as daemon lifecycle
-  participant Home as platform home
-  Caller->>Rec: install(target)
-  Rec->>Rec: refuse when target is older than the active release
-  Rec->>Rel: fetch, add worktree at target, build environment (daemon serving)
-  Rec->>Life: stop (preparation settles accepted work)
-  Rec->>Rel: run ledger migrations, then open every store the daemon opens
-  Rel-->>Rec: each owner: starting a migration
-  Rel->>Home: migrate stores
-  Rec->>Rec: switch current
-  Rec->>Life: start; verify the daemon serves the new revision
-  Rec->>Rec: record outcome and whether migrations ran, prune older releases
-  Rec->>Rel: publish schemas, and documentation where no platform checkout does
-```
-
-<!-- change:tui-stranded-on-pruned-release -->
-
 ```mermaid
 sequenceDiagram
   participant Caller as bootstrap / channel reaction / telec app install
@@ -189,8 +152,6 @@ sequenceDiagram
   Rec->>Rec: prune older releases no running terminal interface holds
   Rec->>Rel: publish schemas, and documentation where no platform checkout does
 ```
-
-<!-- /planned-change:tui-stranded-on-pruned-release -->
 
 - **Prepare while serving.** Fetching, adding the release worktree and building
   its environment happen while the daemon keeps serving on the active release.
@@ -218,8 +179,6 @@ sequenceDiagram
   start is verified against the new revision with admission open, as the
   lifecycle contract verifies any start. The install completes there.
 
-<!-- planned:tui-stranded-on-pruned-release -->
-
 - **Move running terminal interfaces, then prune.** The completed act sends
   presentation's reload signal to every terminal interface its registry records
   (`local/projects/teleclaude/design/architecture/tui-state-layout`), then
@@ -228,8 +187,6 @@ sequenceDiagram
   `local/projects/teleclaude/spec/feature/reconciliation/installed-releases`'s.
   An interface still on its old release at prune time keeps that release until
   a later install finds it moved.
-
-<!-- /planned:tui-stranded-on-pruned-release -->
 
 - **Publication follows the install.** Publication of the configuration
   schemas
@@ -366,24 +323,12 @@ checkout stays a registered project.
 - **A release folder disappears**: nothing live names it, so only a rollback to
   it is affected, and rollback refuses with that reason.
 
-<!-- planned-change:tui-stranded-on-pruned-release -->
-
-- **A running terminal interface outlives its release**: the interface keeps
-  the code, interpreter and package data of the release it started from, and a
-  completed install neither moves it nor keeps that release. Once the release
-  is pruned, whatever the interface launches from it or reads from it at
-  request time fails: an artifact viewer exits at once and is started again on
-  every layout pass, and a bug filing fails before its request is sent.
-
-<!-- change:tui-stranded-on-pruned-release -->
-
 - **A running terminal interface does not move**: its reload signal is
   refused, or it has not yet reloaded when the act prunes. Its registry record
   still names its release, so that release stays installed, and the first
   install that finds the interface on newer code removes it. An act that
-  cannot read the registry prunes no release.
-
-<!-- /planned-change:tui-stranded-on-pruned-release -->
+  cannot read the registry, or finds a running interface whose record names
+  no release, prunes no release.
 
 - **A store first opened after the install completes** migrates when the
   active release opens it; its owner signals that migration to the install

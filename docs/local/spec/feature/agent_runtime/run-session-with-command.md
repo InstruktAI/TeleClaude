@@ -385,6 +385,8 @@ And the caller's own slug — when the caller is itself the holder — continues
 And an operation for the other lane is refused, because a session never changes lanes
 ```
 
+<!-- planned-change:single-orchestrator-concurrent-starts -->
+
 ```
 Given a driver-start request that would bind slug X
 And no live driver yet holds X (the autonomous runner is mid-spawn establishing the first driver, before active_runner is written and before the orchestrator session exists)
@@ -392,13 +394,18 @@ When the shared driver-start dedup check runs
 Then no live-holder conflict is found and the session is created
 ```
 
-```
-Given slug X already has a live holder
-And a dispatch claim for X is still held (retained briefly after the holder's active_runner was written)
-And a second orchestrator-class request for X arrives
-When the shared driver-start dedup check runs
-Then the live-holder signal is authoritative and the request is refused — the retained claim does not exempt it
-```
+<!-- change:single-orchestrator-concurrent-starts -->
+
+An orchestrator-class create request for a todo created on this computer is
+admitted under driver admission
+(`local/projects/teleclaude/spec/feature/workflow/driver-admission`), which
+decides whether the todo is held and orders concurrent starts. A request it
+refuses for a holder returns HTTP 409 with the driver-start conflict naming the
+holder. A request refused as busy returns HTTP 423 with a detail stating that
+another start of the todo is in progress and naming the session it is starting.
+Neither creates a session.
+
+<!-- /planned-change:single-orchestrator-concurrent-starts -->
 
 #### UC-DSD3: A second commit reviewer for the same driver, project, and mode is refused
 
