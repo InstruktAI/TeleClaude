@@ -151,7 +151,7 @@ class StartRequest:
     lane: RunnerLane
     manually_started: bool
     release_hold: bool
-    caller: AdmissionCaller = AdmissionCaller()
+    caller: AdmissionCaller
 
     def to_body(self) -> bytes:
         """The admission request body, naming the project by the identity another computer resolves."""

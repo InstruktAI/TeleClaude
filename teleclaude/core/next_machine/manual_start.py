@@ -15,10 +15,11 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.caller_identity import resolve_session_principal
 from teleclaude.constants import DriverLaunchClass
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
-from teleclaude.core.next_machine.driver_admission import StartRequest, admitted_start
+from teleclaude.core.next_machine.driver_admission import AdmissionCaller, StartRequest, admitted_start
 from teleclaude.core.next_machine.driver_claim import set_active_runner
 from teleclaude.core.next_machine.git_ops import get_ref_commit
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
@@ -91,6 +92,10 @@ __all__ = [
 
 
 _SECTIONED_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
+_ADOPTION_COMMAND_BY_LANE: dict[RunnerLane, str] = {
+    RunnerLane.PREPARE: "telec todo prepare",
+    RunnerLane.WORK: "telec todo work",
+}
 _LANE_ROLES: dict[RunnerLane, frozenset[str]] = {
     RunnerLane.PREPARE: PREPARE_AUTHOR_ROLES,
     RunnerLane.WORK: WORK_LANE_ROLES,
@@ -631,6 +636,7 @@ async def adopt_manual_lifecycle_session(
     if lane in _SECTIONED_LANES and is_github_backed(project_root):
         # The master admits and records the claim; this computer's section is held across the admission
         # and the reflection onto the caller, and the adoption writes no ``active_runner`` of its own.
+        principal, _ = resolve_session_principal(session)
         start = StartRequest(
             project_root=project_root,
             slug=slug,
@@ -638,6 +644,11 @@ async def adopt_manual_lifecycle_session(
             lane=lane,
             manually_started=True,
             release_hold=True,
+            caller=AdmissionCaller(
+                principal=principal,
+                cleared_command=_ADOPTION_COMMAND_BY_LANE[lane],
+                session_id=caller_session_id,
+            ),
         )
         async with admitted_start(start):
             await _reflect_claim_on_caller_session(runtime_db, session, slug, lane)
