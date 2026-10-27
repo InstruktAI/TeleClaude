@@ -1,8 +1,8 @@
 ---
-description: Which session may become a todo's lifecycle orchestrator on one computer, how concurrent starts of one todo are decided, and what a losing start and a losing lifecycle runner pass do.
+description: Which session may become a todo's lifecycle orchestrator on one computer,
+  how concurrent starts of one todo are decided, and what a losing start and a losing
+  lifecycle runner pass do.
 visibility: internal
-delivered_by:
-  - single-orchestrator-concurrent-starts
 ---
 
 # Driver Admission — Spec
