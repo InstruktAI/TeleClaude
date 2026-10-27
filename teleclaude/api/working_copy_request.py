@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from http import HTTPStatus
 
+from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from teleclaude.api.work_feedback import declared_refusal_response
@@ -46,3 +47,10 @@ def working_copy_refusal_response(refusal: WorkingCopyWriteRefused) -> JSONRespo
     return declared_refusal_response(
         status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=feedback, work_feedback=feedback, headers=headers
     )
+
+
+async def working_copy_refusal_handler(_request: Request, exc: Exception) -> JSONResponse:
+    """Exception handler for the store's working-copy refusal."""
+    if not isinstance(exc, WorkingCopyWriteRefused):
+        raise exc
+    return working_copy_refusal_response(exc)

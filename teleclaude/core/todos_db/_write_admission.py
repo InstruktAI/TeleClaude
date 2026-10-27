@@ -23,7 +23,7 @@ from sqlalchemy import Engine, event
 
 # The three limits the working-copy waits are sized against. The push deadline H must not exceed the
 # admission budget A, so a contender queued behind one holder that respects H is admitted; the request
-# deadline R fits inside the CLI caller's default 30 s wait.
+# deadline R must end inside the CLI caller's default wait (`teleclaude/cli/tool_client.py`).
 WRITE_ADMISSION_BUDGET_S: Final = 15.0
 PUSH_DEADLINE_S: Final = 12.0
 REQUEST_DEADLINE_S: Final = 25.0
@@ -32,6 +32,8 @@ _BUSY_SLICE_S: Final = 0.01
 _BUSY_SLICE_MS: Final = int(_BUSY_SLICE_S * 1000)
 _BUSY_TIMEOUT_SQL: Final = f"PRAGMA busy_timeout = {_BUSY_SLICE_MS}"
 _BEGIN_IMMEDIATE_SQL: Final = "BEGIN IMMEDIATE"
+_SQLITE_ERROR_CODE_ATTRIBUTE: Final = "sqlite_errorcode"
+_DRIVER_CONNECTION_ATTRIBUTE: Final = "driver_connection"
 _REFUSAL_MESSAGE: Final = "the working copy's writer stayed busy past the admission deadline"
 
 
@@ -114,12 +116,12 @@ def refuse_write(*, commit_point_sent: bool = False) -> WorkingCopyWriteRefused:
 
 def _is_busy(error: sqlite3.OperationalError) -> bool:
     """Whether the writer was merely contended: retrying can succeed (a stale snapshot never does)."""
-    code = getattr(error, "sqlite_errorcode", None)
+    code = getattr(error, _SQLITE_ERROR_CODE_ATTRIBUTE, None)
     return code is not None and code == sqlite3.SQLITE_BUSY
 
 
 def _driver_connection(dbapi_connection: Any) -> Any:
-    return getattr(dbapi_connection, "driver_connection", dbapi_connection)
+    return getattr(dbapi_connection, _DRIVER_CONNECTION_ATTRIBUTE, dbapi_connection)
 
 
 def _admit_statement(cursor: Any, statement: str, parameters: Any, context: Any, *, many: bool, budget: float) -> None:

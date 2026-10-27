@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -12,7 +13,7 @@ from githubkit.auth.token import TokenAuthStrategy
 from githubkit.cache.mem_cache import MemCacheStrategy
 from githubkit.exception import GitHubException, RateLimitExceeded, RequestFailed
 from githubkit_schemas.v2026_03_10.types import AppPermissionsType
-from httpx import HTTPError
+from httpx import AsyncBaseTransport, AsyncHTTPTransport, HTTPError, Request, Response
 from pydantic import SecretStr
 
 from teleclaude.core.workflow_store.github_io_models import GitHubRepositoryScope
@@ -46,6 +47,33 @@ class GitHubIOFailure(StrEnum):
     ROLE_UNMAPPED = "role_unmapped"
 
 
+def _request_lock() -> asyncio.Lock:
+    lock = shared_github_io_loop().request_lock
+    if lock is None:
+        raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
+    return lock
+
+
+class _SerializedTransport(AsyncBaseTransport):
+    """Send each wire request under the process-wide request lock, releasing it once the response is read.
+
+    The lock covers one provider request, so a caller that needs the next request waits behind at most the
+    one in flight, however many requests the operation holding the client issues.
+    """
+
+    def __init__(self) -> None:
+        self._wire = AsyncHTTPTransport()
+
+    async def handle_async_request(self, request: Request) -> Response:
+        async with _request_lock():
+            response = await self._wire.handle_async_request(request)
+            await response.aread()
+        return response
+
+    async def aclose(self) -> None:
+        await self._wire.aclose()
+
+
 class GitHubIORefused(RuntimeError):
     """A bounded reason why one store operation could not reach GitHub."""
 
@@ -69,16 +97,12 @@ class GitHubTransport:
         operation: StrEnum,
         request: Callable[[Any], Awaitable[_Result]],
     ) -> _Result:
-        """Run one client request as the assigned App, mapping every provider failure to a bounded refusal.
+        """Run client requests as the assigned App, mapping every provider failure to a bounded refusal.
 
-        The process-wide request lock is held for this request alone, so GitHub sees one request at a time
-        while a caller that needs the next request waits behind at most the one in flight.
+        The client's transport takes the process-wide request lock for each wire request, never across the
+        callback, so GitHub sees one request at a time.
         """
-        request_lock = shared_github_io_loop().request_lock
-        if request_lock is None:
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
-        async with request_lock:
-            return await self._call(assignment, permissions, operation, request)
+        return await self._call(assignment, permissions, operation, request)
 
     async def _call(
         self,
@@ -89,7 +113,9 @@ class GitHubTransport:
     ) -> _Result:
         try:
             token = await self._credential_token(assignment, permissions)
-            async with create_github_client(TokenAuthStrategy(token.get_secret_value()), MemCacheStrategy()) as client:
+            async with create_github_client(
+                TokenAuthStrategy(token.get_secret_value()), MemCacheStrategy(), async_transport=_SerializedTransport()
+            ) as client:
                 return await request(client)
         except GitHubIORefused:
             raise
@@ -114,7 +140,8 @@ class GitHubTransport:
         if cached is not None and cached[1] > datetime.now(UTC) + _TOKEN_REFRESH_MARGIN:
             return cached[0]
         try:
-            credential = await issue_github_installation_credential(assignment, self.scope, permissions)
+            async with _request_lock():
+                credential = await issue_github_installation_credential(assignment, self.scope, permissions)
         except GitHubCredentialRefused:
             raise GitHubIORefused(GitHubIOFailure.CREDENTIAL_REFUSED) from None
         self._credentials[key] = (credential.token, credential.expires_at)

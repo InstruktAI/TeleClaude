@@ -136,7 +136,7 @@ class GitHubWorkflowPush:
         changes = pending_changes(session)
         if not changes.item_ids and not changes.project_records:
             return
-        # A paced push (the GitHub store switch) publishes at one write per second and keeps the switch's own limits.
+        # A paced push (the GitHub store switch) keeps the switch's own mutation pacing instead of the push deadline.
         session.info[_PUSH_DEADLINE_KEY] = None if self.io.paced else begin_push_deadline()
         session.info.pop(_COMMIT_POINT_SENT_KEY, None)
         try:
