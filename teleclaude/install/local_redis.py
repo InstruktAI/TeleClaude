@@ -148,6 +148,7 @@ _PACKAGE_INSTALLED_EVENT: Final = "local_redis_package_installed"
 _PREPARED_EVENT: Final = "local_redis_prepared"
 _FALLBACK_EVENT: Final = "local_redis_refused_local_events_stay_on_cluster"
 _WITHDRAWN_EVENT: Final = "local_redis_unanswering_socket_withdrawn"
+_WITHDRAW_FAILED_EVENT: Final = "local_redis_socket_withdrawal_failed"
 _PREPARE_OPTION: Final = "--prepare"
 _DOOR: Final = (
     "Run a dedicated Redis on a Unix socket with an ACL user and set REDIS_LOCAL_URL, REDIS_LOCAL_USERNAME and "
@@ -198,16 +199,16 @@ def cluster_is_on_this_computer(cluster_url: str | None) -> bool:
         return True
     try:
         addresses = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
-    except socket.gaierror:
+    except (OSError, UnicodeError):
         return False
     for family, kind, _protocol, _name, address in addresses:
-        # An address this computer can bind is one of its own.
-        with socket.socket(family, kind) as probe:
-            try:
+        # An address this computer can bind is one of its own; a family it does not support is not.
+        try:
+            with socket.socket(family, kind) as probe:
                 probe.bind((address[0], 0))
-            except OSError:
-                continue
-            return True
+        except OSError:
+            continue
+        return True
     return False
 
 
@@ -496,9 +497,12 @@ def apply_or_fall_back() -> bool:
     """Apply the local Redis; on a refusal log why and keep local events on the cluster Redis. True when applied."""
     try:
         apply()
-    except LocalRedisRefused as error:
-        logger.warning(_FALLBACK_EVENT, reason=str(error))
-        _withdraw_unanswering_socket()
+    except Exception as error:  # supervision boundary: no cause of the local Redis may fail the install
+        logger.warning(_FALLBACK_EVENT, reason=str(error), exc_info=not isinstance(error, LocalRedisRefused))
+        try:
+            _withdraw_unanswering_socket()
+        except Exception:  # supervision boundary: the daemon still starts on the cluster Redis it reads
+            logger.exception(_WITHDRAW_FAILED_EVENT)
         return False
     return True
 
@@ -511,8 +515,8 @@ def main(arguments: list[str] | None = None) -> int:
     parser.parse_args(arguments)
     try:
         prepare()
-    except LocalRedisRefused as error:
-        logger.warning(_FALLBACK_EVENT, reason=str(error))
+    except Exception as error:  # supervision boundary: preparation never fails the install
+        logger.warning(_FALLBACK_EVENT, reason=str(error), exc_info=not isinstance(error, LocalRedisRefused))
     return 0
 
 
