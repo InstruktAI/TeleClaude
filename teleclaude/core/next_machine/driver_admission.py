@@ -289,7 +289,7 @@ async def decide_driver_admission(request: StartRequest) -> None:
     an admission always has recorded its claim.
     """
     project_root, slug = request.project_root, request.slug
-    await refresh_github_workflow_store(project_root)
+    await refresh_github_workflow_store(project_root, computer=config.computer.name)
     todos_db = await get_workflow_store(project_root)
     holder = await recheck_slug_holder(
         await get_db(), todos_db, project_root, slug, exempt_session_id=request.session_id
@@ -313,7 +313,7 @@ async def decide_driver_admission(request: StartRequest) -> None:
                 unanswered=_COMPUTER_SEPARATOR.join(judgment.unanswered),
             )
             raise ClaimConflict(slug=slug, holder=claim, computer=judgment.computer, unanswered=judgment.unanswered)
-    await set_active_runner(
+    recorded = await set_active_runner(
         todos_db,
         slug,
         request.session_id,
@@ -321,6 +321,8 @@ async def decide_driver_admission(request: StartRequest) -> None:
         manually_started=request.manually_started,
         release_hold=request.release_hold,
     )
+    if not recorded:
+        raise AdmissionUnavailable(slug=slug, reason=AdmissionUnavailableReason.NO_LIVE_TODO)
     logger.info(_ADMITTED_EVENT, project=str(project_root), slug=slug, session_id=request.session_id)
 
 
@@ -330,7 +332,7 @@ async def clear_matching_claim(project_root: Path, slug: str, session_id: str) -
     The item is refreshed from GitHub first so the clear is written against what GitHub holds. Returns
     whether a claim was cleared.
     """
-    await refresh_github_workflow_store(project_root)
+    await refresh_github_workflow_store(project_root, computer=config.computer.name)
     todos_db = await get_workflow_store(project_root)
     cleared = False
     for row in await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True):
@@ -390,7 +392,7 @@ async def reconcile_ended_claims(
 
 async def _clear_ended_claim(project_root: Path, slug: str, claim: str) -> bool:
     """Judge ``claim`` against the refreshed item and clear it when ended; run inside the todo's section."""
-    await refresh_github_workflow_store(project_root)
+    await refresh_github_workflow_store(project_root, computer=config.computer.name)
     todos_db = await get_workflow_store(project_root)
     state = await todos_db.read_state(slug)
     current = state.get(ACTIVE_RUNNER_STATE_KEY) if state is not None else None
@@ -627,7 +629,7 @@ async def _admit_within_section(request: StartRequest) -> None:
         await decide_driver_admission(request)
         return
     await _request_admission(master, request)
-    await refresh_github_workflow_store(root)
+    await refresh_github_workflow_store(root, computer=config.computer.name)
 
 
 def _refuse_waiter(decided: asyncio.Future[None], state: _StartState, refusal: OperationFailure) -> None:
