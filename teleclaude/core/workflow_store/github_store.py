@@ -24,7 +24,13 @@ from teleclaude.config.loader import github_actor_for_app_id
 from teleclaude.config.project_models import TodoStoreBackend, TodoStoreConfig
 from teleclaude.constants import TodoStatus
 from teleclaude.core.todos_db._adapter import TodosDb
-from teleclaude.core.todos_db._github_pull_requests import work_item_for_number
+from teleclaude.core.todos_db._github_conversation import ConversationBookkeeping
+from teleclaude.core.todos_db._github_pull_requests import (
+    PullRequestInterval,
+    owed_pull_requests,
+    pull_request_bookkeeping,
+    work_item_for_number,
+)
 from teleclaude.core.todos_db._github_questions import insert_awaiting_question
 from teleclaude.core.todos_db._working_copy import (
     WorkingCopyField,
@@ -45,6 +51,7 @@ from teleclaude.core.workflow_store.github import (
     GitHubRepositoryIdentity,
     resolve_github_repository_identity,
 )
+from teleclaude.core.workflow_store.github_conversation_start import ensure_conversation_start
 from teleclaude.core.workflow_store.github_io import GitHubMutationPacing, GitHubWorkflowIO
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_push import GitHubWorkflowPush
@@ -193,6 +200,22 @@ class GitHubWorkflowStore(TodosDb):
     async def refresh_working_copy(self) -> int:
         """Adopt committed changes made by another computer and repair owed reflections."""
         return await self._sync.refresh()
+
+    async def conversation_start(self) -> datetime | None:
+        """The moment this project's conversation began, written to its ledger issue if no computer has yet.
+
+        None while the store has opened no ledger issue: a project without one publishes nothing.
+        """
+        bookkeeping = ConversationBookkeeping(Path(self.db_path))
+        cached = await asyncio.to_thread(bookkeeping.conversation_start)
+        if cached is not None:
+            return cached
+        ledger_issue_number = await asyncio.to_thread(bookkeeping.ledger_issue_number)
+        if ledger_issue_number is None:
+            return None
+        started = await ensure_conversation_start(self._io, self._assignment.actor.login, ledger_issue_number)
+        await asyncio.to_thread(bookkeeping.save_conversation_start, started)
+        return started
 
     async def surface_question(
         self,
@@ -447,6 +470,78 @@ def read_github_item_issue(project_root: str | Path, slug: str) -> GitHubIssueRe
     if not isinstance(number, int):
         return None
     return GitHubIssueReference(number=number, url=HttpUrl(_ISSUE_URL.format(identity.repository, number)))
+
+
+@dataclass(frozen=True)
+class ConversationItem:
+    """What the conversation needs to know of a repository work item: where it lives on GitHub and where it has been.
+
+    ``pull_request_owed`` is true while the working copy has not yet caught up with the item's pull request on
+    GitHub, so its intervals may be incomplete.
+    """
+
+    item_id: str
+    issue_number: int
+    repository_id: int
+    repository: str
+    intervals: Mapping[int, PullRequestInterval]
+    pull_request_owed: bool
+
+
+def read_conversation_item(project_root: str | Path, slug: str) -> ConversationItem | None:
+    """Read the live repository work item with this slug from a working copy that already exists.
+
+    No provider call, no rebuild, no writer lock. None for a project outside the GitHub store, a missing working
+    copy, an item that is not repository work, or an item the store has not yet given an issue.
+    """
+    try:
+        identity = resolve_github_repository_identity(project_root)
+    except GitHubIdentityRefused:
+        return None
+    path = github_working_copy_path(identity.project_path)
+    if not path.is_file():
+        return None
+    with _open_working_copy_read_only(path) as session:
+        found = session.execute(text(_ITEM_ID_BY_SLUG), {_SLUG: slug}).scalar_one_or_none()
+        if found is None:
+            return None
+        item_id = str(found)
+        snapshot = item_snapshot(session, item_id)
+        bookkeeping = item_bookkeeping(session, item_id)
+        if snapshot is None or bookkeeping is None or not is_repository_work(snapshot.state):
+            return None
+        issue_number = bookkeeping.get(WorkflowField.ISSUE_NUMBER)
+        if not isinstance(issue_number, int):
+            return None
+        known = pull_request_bookkeeping(session, item_id)
+        owed = item_id in owed_pull_requests(session)
+    return ConversationItem(
+        item_id=item_id,
+        issue_number=issue_number,
+        repository_id=identity.repository_id,
+        repository=identity.repository,
+        intervals=known.intervals,
+        pull_request_owed=owed,
+    )
+
+
+def github_working_copy_paths() -> tuple[Path, ...]:
+    """The existing working copies of every registered GitHub-backed project on this computer.
+
+    Reads the project registry and the files that exist: no provider call, no rebuild, no writer lock.
+    """
+    paths: list[Path] = []
+    for project_root in load_roots():
+        if not project_root.exists() or not is_project_checkout(project_root):
+            continue
+        try:
+            identity = resolve_github_repository_identity(project_root)
+        except GitHubIdentityRefused:
+            continue
+        path = github_working_copy_path(identity.project_path)
+        if path.is_file() and path not in paths:
+            paths.append(path)
+    return tuple(paths)
 
 
 async def refresh_github_workflow_store(project_root_or_cwd: str | Path) -> int:

@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS binding_conflict_candidates (
 CREATE TABLE IF NOT EXISTS turn_authored_parts (
     binding_id TEXT NOT NULL,
     part_id INTEGER NOT NULL,
-    part_kind TEXT NOT NULL CHECK(part_kind IN ('local', 'caller', 'peer')),
+    part_kind TEXT NOT NULL CHECK(part_kind IN ('local', 'caller', 'peer', 'github')),
     span_start INTEGER NOT NULL,
     span_end INTEGER NOT NULL,
     original_source_session_id TEXT,
@@ -196,8 +196,54 @@ CREATE TABLE IF NOT EXISTS turn_authored_parts (
     author_thinking_mode TEXT,
     author_machine_role TEXT,
     author_job_role TEXT,
+    author_channel_login TEXT,
+    author_channel_link TEXT,
     PRIMARY KEY (binding_id, part_id),
     FOREIGN KEY (binding_id) REFERENCES accepted_turn_bindings(binding_id) ON DELETE CASCADE
+);
+
+-- The ordinal of each turn of a session, recorded the first time the completed-turns read finds it.
+CREATE TABLE IF NOT EXISTS session_turns (
+    session_id TEXT NOT NULL,
+    turn_identity TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, turn_identity),
+    UNIQUE (session_id, ordinal)
+);
+
+-- The transcript files of a session a completed-turns read has taken turns from, and how far the session's completions
+-- were covered when it last did: the session's stop boundary then, and whether the file's last turn was still open. A
+-- file gone later is known to have held only recorded turns when no stop followed that read.
+CREATE TABLE IF NOT EXISTS session_turn_sources (
+    session_id TEXT NOT NULL,
+    source_digest TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    stop_at TEXT,
+    tail_open INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (session_id, source_digest)
+);
+
+-- The fleet master's conversation request budget: the time of each append it sent within the last hour, the end of
+-- any pause a limit response set, and the limit responses other computers still owe the master.
+CREATE TABLE IF NOT EXISTS github_conversation_sends (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sent_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_github_conversation_sends_sent_at ON github_conversation_sends(sent_at);
+
+CREATE TABLE IF NOT EXISTS github_conversation_budget (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    pause_until TEXT,
+    unnamed_limits INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS github_rate_limit_notices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    observed_at TEXT NOT NULL,
+    resume_at TEXT,
+    delivered_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_accepted_turn_bindings_session ON accepted_turn_bindings(session_id, created_at);

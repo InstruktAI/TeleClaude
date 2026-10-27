@@ -7,6 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from teleclaude.core.migration_signal import MigrationStore, signal_migration_started
+from teleclaude.core.todos_db._github_conversation import initialize_conversation_bookkeeping
 from teleclaude.core.todos_db._github_pull_requests import initialize_pull_request_bookkeeping
 from teleclaude.core.todos_db._github_questions import initialize_question_bookkeeping
 from teleclaude.core.todos_db._ledger_knowledge import LEDGER_COMMIT_DDL, LEDGER_COMMIT_TABLE, LedgerKnowledgeField
@@ -128,6 +129,7 @@ def initialize_working_copy(path: str | Path) -> None:
                 connection.execute(seed_sql)
         initialize_question_bookkeeping(connection)
         initialize_pull_request_bookkeeping(connection)
+        initialize_conversation_bookkeeping(connection)
         repository_columns = {str(row[1]) for row in connection.execute(_REPOSITORY_COLUMNS_SQL)}
         if WorkingCopyField.INITIALIZED not in repository_columns:
             signal_migration_started(MigrationStore.TODOS)

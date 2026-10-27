@@ -10,7 +10,7 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.conversation_messages import peer_segments_from_entry
 from teleclaude.core.db import InboundQueueRow, NativeReference, TurnAuthoredPartInput, TurnReceiptEnvelopeInput, db
 from teleclaude.core.identity import local_human_author
-from teleclaude.core.inbound_types import TurnPartKind
+from teleclaude.core.inbound_types import GITHUB_ACTOR_ID_PREFIX, TurnPartKind
 from teleclaude.core.injected_text import (
     InjectedEnvelopeCandidate,
     TranscriptEntryKind,
@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 _BINDING_ID_SEPARATOR = ":"
+_GITHUB_UNKNOWN_DISPLAY = "GitHub user"
 
 
 def binding_id_for_native_entry(session_id: str, entry_id: str) -> str:
@@ -112,6 +113,61 @@ def _keyed_caller_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
     ]
 
 
+def _github_author(row: InboundQueueRow) -> tuple[MessageAuthor, str | None]:
+    """Return the person who wrote a delivered GitHub comment and the login it was written under."""
+    actor_id = row["actor_id"]
+    login = actor_id.removeprefix(GITHUB_ACTOR_ID_PREFIX) if isinstance(actor_id, str) else None
+    display = row["actor_name"] or login or _GITHUB_UNKNOWN_DISPLAY
+    return MessageAuthor(kind=MessageAuthorKind.HUMAN, display=display), login
+
+
+async def _bind_github_comment(
+    session: Session,
+    text: str,
+    entry_id: str,
+    agent_name: AgentName,
+    pending: list[InboundQueueRow],
+) -> None:
+    """Bind a native entry to the delivered GitHub comment whose accepted text it carries.
+
+    The accepted row is the authority for what the entry is: its stored content is the text the platform injected,
+    so an entry whose authored text is exactly that content is the row's entry. Nothing is inferred from the text's shape.
+    """
+    if not session.native_session_id:
+        return
+    body = text.strip()
+    row = next((candidate for candidate in pending if candidate["content"].strip() == body), None)
+    occurrence_key = row["occurrence_key"] if row is not None else None
+    if row is None or occurrence_key is None:
+        return
+    author, login = _github_author(row)
+    part = TurnAuthoredPartInput(
+        TurnPartKind.GITHUB,
+        0,
+        len(text),
+        None,
+        author,
+        channel_login=login,
+        channel_link=row["source_channel_id"],
+    )
+    created = await db.create_turn_binding(
+        binding_id=binding_id_for_native_entry(session.session_id, entry_id),
+        session_id=session.session_id,
+        native_reference=NativeReference(agent_name.value, session.native_session_id, entry_id),
+        parts=[part],
+        receipt=TurnReceiptEnvelopeInput(
+            inbound_queue_id=row["id"],
+            envelope_index=0,
+            occurrence_key=occurrence_key,
+            envelope_span=(0, len(text)),
+            body_span=(0, len(text)),
+            authored_part_id=0,
+        ),
+    )
+    if created:
+        pending.remove(row)
+
+
 async def bind_pending_native_turns(session: Session, entries: Sequence[JsonDict], agent_name: AgentName) -> None:
     """Persist keyed caller-envelope correlations before projection advances its watermark.
 
@@ -125,6 +181,7 @@ async def bind_pending_native_turns(session: Session, entries: Sequence[JsonDict
         occurrence_key = row["occurrence_key"]
         if isinstance(occurrence_key, str):
             rows_by_key.setdefault(occurrence_key, []).append(row)
+    pending_github_rows = await db.get_unbound_delivered_github_inbound(session.session_id)
     local_author = local_human_author(session)
     for entry in entries:
         text = extract_authored_user_text(entry, agent_name)
@@ -132,6 +189,10 @@ async def bind_pending_native_turns(session: Session, entries: Sequence[JsonDict
             continue
         keyed_envelopes = _keyed_caller_envelopes(text)
         if not keyed_envelopes:
+            if pending_github_rows:
+                github_entry_id = native_entry_id(entry, agent_name)
+                if github_entry_id is not None:
+                    await _bind_github_comment(session, text, github_entry_id, agent_name, pending_github_rows)
             continue
         entry_id = native_entry_id(entry, agent_name)
         if entry_id is None:

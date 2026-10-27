@@ -20,7 +20,7 @@ from instrukt_ai_logging import get_logger
 from jwt.exceptions import PyJWTError
 from pydantic import SecretStr
 
-from teleclaude.config.loader import GitHubAppKeyFailure, GitHubAppKeyRefused, resolve_github_app_private_key
+from teleclaude.config.github_app_key import GitHubAppKeyFailure, GitHubAppKeyRefused, resolve_github_app_private_key
 from teleclaude.github.accounts import GitHubAccountDirectory, GitHubAccountLookupRefused, GitHubRateLimitFacts
 from teleclaude.github.client import RequestGate, create_github_client
 from teleclaude.types.github_account import github_app_bot_login

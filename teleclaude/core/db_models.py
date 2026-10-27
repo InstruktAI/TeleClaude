@@ -379,6 +379,66 @@ class TurnAuthoredPartRow(SQLModel, table=True):
     author_thinking_mode: str | None = None
     author_machine_role: str | None = None
     author_job_role: str | None = None
+    author_channel_login: str | None = None
+    author_channel_link: str | None = None
+
+
+class SessionTurnRow(SQLModel, table=True):
+    """The ordinal of one turn of a session, fixed when the completed-turns read first finds it."""
+
+    __tablename__ = "session_turns"
+    __table_args__ = {"extend_existing": True}
+
+    session_id: str = Field(primary_key=True)
+    turn_identity: str = Field(primary_key=True)
+    ordinal: int
+    created_at: str
+
+
+class SessionTurnSourceRow(SQLModel, table=True):
+    """A transcript file of a session that a completed-turns read has taken turns from."""
+
+    __tablename__ = "session_turn_sources"
+    __table_args__ = {"extend_existing": True}
+
+    session_id: str = Field(primary_key=True)
+    source_digest: str = Field(primary_key=True)
+    created_at: str
+    stop_at: str | None = None
+    tail_open: bool = False
+
+
+class GitHubConversationSendRow(SQLModel, table=True):
+    """The time of one conversation append the fleet master sent."""
+
+    __tablename__ = "github_conversation_sends"
+    __table_args__ = {"extend_existing": True}
+
+    id: int | None = Field(default=None, primary_key=True)
+    sent_at: str
+
+
+class GitHubConversationBudgetRow(SQLModel, table=True):
+    """The one row of conversation pause state: when requests may resume and how many unnamed limits ran in a row."""
+
+    __tablename__ = "github_conversation_budget"
+    __table_args__ = {"extend_existing": True}
+
+    id: int = Field(default=1, primary_key=True)
+    pause_until: str | None = None
+    unnamed_limits: int = 0
+
+
+class GitHubRateLimitNoticeRow(SQLModel, table=True):
+    """A limit response this computer received that the fleet master has not yet been told."""
+
+    __tablename__ = "github_rate_limit_notices"
+    __table_args__ = {"extend_existing": True}
+
+    id: int | None = Field(default=None, primary_key=True)
+    observed_at: str
+    resume_at: str | None = None
+    delivered_at: str | None = None
 
 
 class ConversationLinkMode(StrEnum):

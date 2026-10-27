@@ -52,6 +52,8 @@ class GitHubPullRequest:
     draft: bool
     open: bool
     head_branch: str
+    created_at: datetime | None = None
+    closed_at: datetime | None = None
 
 
 @dataclass(frozen=True)

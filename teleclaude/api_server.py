@@ -31,6 +31,7 @@ from teleclaude.api import (
     audio_routes,
     chiptunes_routes,
     computers_routes,
+    conversation_routes,
     history_routes,
     jobs_routes,
     mcp_routes,
@@ -220,6 +221,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(agents_routes.router)
         self.app.include_router(audio_routes.router)
         self.app.include_router(people_routes.router)
+        self.app.include_router(conversation_routes.router)
         self.app.include_router(settings_routes.router)
         self.app.include_router(tui_routes.router)
         self.app.include_router(chiptunes_routes.router)

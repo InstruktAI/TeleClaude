@@ -23,6 +23,7 @@ from teleclaude.core.workflow_store.github_io_transport import (
     GitHubIOFailure,
     GitHubIORefused,
     GitHubTransport,
+    run_serialized_unit,
     split_repository,
 )
 from teleclaude.types.github_binding import GitHubActorAssignment
@@ -31,9 +32,6 @@ _PAGE_SIZE = 100
 _REPOSITORY_SEPARATOR = "/"
 _HEAD_TEMPLATE = "{owner}:{branch}"
 _EMPTY = ""
-_LOCK_WAIT_SECONDS = 30.0
-_UNIT_SECONDS = 180.0
-_LOCK_WAIT_DETAIL = "unit lock wait exceeded"
 _UNIT_DETAIL = "pull request unit exceeded its time bound"
 _PULL_REQUEST_PERMISSIONS: AppPermissionsType = {"pull_requests": "write"}
 _Result = TypeVar("_Result")
@@ -86,6 +84,8 @@ def _pull_request(pull: Any) -> GitHubPullRequest:
         draft=bool(pull.draft),
         open=pull.state == GitHubPullRequestField.OPEN,
         head_branch=pull.head.ref,
+        created_at=pull.created_at,
+        closed_at=pull.closed_at,
     )
 
 
@@ -108,20 +108,7 @@ class GitHubPullRequestIO:
         return shared_github_io_loop().submit(self._serialized(work))
 
     async def _serialized(self, work: Callable[[GitHubPullRequestIO], Awaitable[_Result]]) -> _Result:
-        io_loop = shared_github_io_loop()
-        if io_loop.unit_lock is None:
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
-        try:
-            await asyncio.wait_for(io_loop.unit_lock.acquire(), _LOCK_WAIT_SECONDS)
-        except TimeoutError:
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_LOCK_WAIT_DETAIL) from None
-        try:
-            async with asyncio.timeout(_UNIT_SECONDS):
-                return await work(self)
-        except TimeoutError:
-            raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE, detail=_UNIT_DETAIL) from None
-        finally:
-            io_loop.unit_lock.release()
+        return await run_serialized_unit(lambda: work(self), unit_detail=_UNIT_DETAIL)
 
     async def reviewer_login(self) -> str:
         """Return the login the reviewer App's reviews are authored under."""
@@ -211,16 +198,17 @@ class GitHubPullRequestIO:
 
         await self._request(RoleName.BUILDER, GitHubPullRequestOperation.COMMENT_PULL_REQUEST, request)
 
-    async def close_pull_request(self, number: int) -> None:
-        """Close a pull request without merging it."""
+    async def close_pull_request(self, number: int) -> GitHubPullRequest:
+        """Close a pull request without merging it, returning it as GitHub now reports it."""
         owner, repo = split_repository(self.repository.repository)
 
-        async def request(client: Any) -> None:
-            await client.rest.pulls.async_update(
+        async def request(client: Any) -> GitHubPullRequest:
+            response = await client.rest.pulls.async_update(
                 owner, repo, number, data={GitHubPullRequestField.STATE.value: GitHubPullRequestField.CLOSED.value}
             )
+            return _pull_request(response.parsed_data)
 
-        await self._request(RoleName.BUILDER, GitHubPullRequestOperation.CLOSE_PULL_REQUEST, request)
+        return await self._request(RoleName.BUILDER, GitHubPullRequestOperation.CLOSE_PULL_REQUEST, request)
 
     async def list_own_comments(self, number: int) -> tuple[str, ...]:
         """List the bodies of the comments the builder App wrote on a pull request."""

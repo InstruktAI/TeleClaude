@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 
 import httpx
@@ -15,6 +15,9 @@ _HTTP_CACHE = False
 _FOLLOW_REDIRECTS = False
 _TRUST_ENV = False
 _TIMEOUT_SECONDS = 10.0
+_RESPONSE_EVENT = "response"
+
+type ResponseObserver = Callable[[httpx.Response], Awaitable[None]]
 
 
 RequestGate = Callable[[], AbstractAsyncContextManager[object]]
@@ -41,11 +44,16 @@ class _GatedTransport(httpx.AsyncBaseTransport):
 
 
 def create_github_client[AuthStrategyT: BaseAuthStrategy](
-    auth: AuthStrategyT, cache: BaseCacheStrategy, *, request_gate: RequestGate | None = None
+    auth: AuthStrategyT,
+    cache: BaseCacheStrategy,
+    *,
+    response_observer: ResponseObserver | None = None,
+    request_gate: RequestGate | None = None,
 ) -> GitHub[AuthStrategyT]:
     """Create one client with retries, caching, redirects, and env trust disabled.
 
-    A caller that must schedule every wire request passes the gate each request runs inside.
+    ``response_observer`` sees every response, including a refused one, before the SDK interprets it. A caller that
+    must schedule every wire request passes the gate each request runs inside.
     """
     return GitHub(
         auth,
@@ -55,5 +63,6 @@ def create_github_client[AuthStrategyT: BaseAuthStrategy](
         follow_redirects=_FOLLOW_REDIRECTS,
         trust_env=_TRUST_ENV,
         timeout=_TIMEOUT_SECONDS,
+        async_event_hooks={_RESPONSE_EVENT: [response_observer]} if response_observer is not None else None,
         async_transport=None if request_gate is None else _GatedTransport(request_gate),
     )

@@ -54,7 +54,7 @@ async def reflect_user_turn_segments(
         if not body.strip():
             continue
         try:
-            if part.part_kind is TurnPartKind.LOCAL:
+            if part.part_kind in (TurnPartKind.LOCAL, TurnPartKind.GITHUB):
                 platform_message_ids.extend(await adapter_client.broadcast_user_input(session, body, source))
                 continue
             actor_name, actor_avatar_url = resolve_discord_author_alias(

@@ -19,7 +19,9 @@
     "anthropic>=0.42.0",
     "boto3>=1.34.0",
     "dateparser>=1.2.0",
+    "detect-secrets>=1.5.0",
     "discord.py>=2.4.0",
+    "en-core-web-sm",
     "fastapi>=0.115.0",
     "greenlet>=3.3.0",
     "httpx>=0.28.0",
@@ -30,6 +32,8 @@
     "nest-asyncio>=1.6.0",
     "openai>=2.6.1",
     "packaging>=24.0",
+    "presidio-analyzer>=2.2.0",
+    "presidio-anonymizer>=2.2.0",
     "psutil>=5.9.0",
     "py65emu>=0.1.0",
     "libarchive-c>=5.3",
@@ -46,6 +50,7 @@
     "sqlmodel>=0.0.16",
     "telegramify-markdown==1.4.1",
     "textual>=1.0.0",
+    "tldextract>=5.1.0",
     "uvicorn>=0.34.0",
     "uvloop>=0.21.0; sys_platform != 'win32'",
     "websockets>=12.0",
@@ -83,6 +88,7 @@
   ]
 
 [tool.uv.sources]
+  en-core-web-sm={url="https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"}
   mlx-audio={git="https://github.com/Blaizzy/mlx-audio.git", branch="main"}
 
 [tool.setuptools.packages.find]
@@ -322,4 +328,19 @@
   max_supported_python="3.14"
 
 [tool.uv]
-  override-dependencies=["attrs<26", "confection<1", "starlette<1", "tzdata<2026", "weasel<1"]
+  override-dependencies=[
+    "attrs<26",
+    "confection<1; python_full_version < '3.14'",
+    "confection>=1; python_full_version >= '3.14'",
+    "starlette<1",
+    "tzdata<2026",
+    "weasel<1; python_full_version < '3.14'",
+    "weasel>=1; python_full_version >= '3.14'",
+  ]
+  # spaCy 3.8.11 with thinc 8.3.10 needs the confection and weasel majors held above; those releases cannot
+  # import on Python 3.14, where the newer spaCy line (which needs confection 1 and weasel 1) takes over.
+  constraint-dependencies=[
+    "spacy<3.8.12; python_full_version < '3.14'",
+    "srsly<2.5.3; python_full_version < '3.14'",
+    "thinc<8.3.11; python_full_version < '3.14'",
+  ]

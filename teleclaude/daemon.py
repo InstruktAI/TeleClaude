@@ -238,6 +238,7 @@ from teleclaude.core.task_registry import TASK_REGISTRY_SHUTDOWN_TIMEOUT_S, Supe
 _record_import_timing("teleclaude.core.task_registry", _t)
 
 _t = time.perf_counter()
+from teleclaude.core.workflow_store.github_conversation_runtime import ConversationRuntime
 from teleclaude.core.workflow_store.store import WorkflowStore, set_workflow_store_mutation_hook
 
 _record_import_timing("teleclaude.core.todos_db", _t)
@@ -505,12 +506,14 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         # Inject the same persisted-attempt owner before lifecycle startup starts
         # inbound queue workers or the later poller and idle-cycle loops.
+        self.conversation = ConversationRuntime()
         self.maintenance_service = MaintenanceService(
             client=self.client,
             output_poller=self.output_poller,
             poller_watch_interval_s=5.0,
             task_registry=self.task_registry,
             compaction_owner=session_compaction_owner,
+            conversation_pass=self.conversation.publisher.run_full_pass,
         )
 
         # Initialize AgentCoordinator for agent events and cross-computer orchestration
@@ -991,6 +994,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         logger.info("[STARTUP] Bootstrapping daemon runtime (usually 10-25s)")
         try:
             await self.lifecycle.startup()
+            self.conversation.start(self._loop)
             # Report every live declaration this computer cannot run on; a refusal never blocks startup.
             await self._judge_declaration_readiness(live_tier_declarations())
 
@@ -1130,6 +1134,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         # Stop sandbox container (before other tasks to release socket)
         await self._stop_sandbox_manager()
+        self.conversation.stop()
 
         for attr_name, log_message in (
             ("cleanup_task", "Periodic cleanup task stopped"),

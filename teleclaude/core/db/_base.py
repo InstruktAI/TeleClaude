@@ -331,6 +331,10 @@ class DbBase:
             raise RuntimeError(DB_NOT_INITIALIZED_ERROR)
         return self._sessionmaker()  # type: ignore[call-arg]
 
+    def open_session(self) -> SqlAsyncSession:
+        """Open an async ORM session for a store that persists beside the database owner."""
+        return self._session()
+
     def _outbox_session(self) -> SqlAsyncSession:
         """Create an async ORM session bound to the dedicated outbox database."""
         if self._outbox_sessionmaker is None:

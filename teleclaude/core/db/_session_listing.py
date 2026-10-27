@@ -60,6 +60,17 @@ class DbSessionListingMixin(DbBase):
             rows = (await db_session.exec(statement)).all()
         return [self._to_core_session(row) for row in rows]
 
+    async def list_sessions_working_items(self, roles: Collection[str]) -> list[Session]:
+        """Every undeleted session of the given roles that works a named item, open or closed, of any age."""
+        statement = select(db_models.Session).where(
+            db_models.Session.deleted_at.is_(None),
+            db_models.Session.working_slug.is_not(None),
+            db_models.Session.role.in_(tuple(roles)),
+        )
+        async with self._session() as db_session:
+            rows = (await db_session.exec(statement)).all()
+        return [self._to_core_session(row) for row in rows]
+
     async def select_sessions_for_listing(
         self,
         reach: Reach,

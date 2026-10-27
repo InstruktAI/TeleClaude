@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from functools import partial
@@ -90,6 +90,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 _GITHUB_STORE_REFRESH_COMPLETED = "github_store_refresh_completed"
 _GITHUB_STORE_REFRESH_FAILED = "github_store_refresh_failed"
+_GITHUB_CONVERSATION_PASS_FAILED = "github_conversation_pass_failed"
 _INVALID_WORKFLOW_STORE_SWEEP = "Removed-todo retention sweep skipped invalid workflow store"
 
 _SOFT_DELETING_EXPIRED_EVENT = "maintenance.expired_session.soft_deleting"
@@ -488,7 +489,9 @@ class MaintenanceService:
         poller_watch_interval_s: float,
         task_registry: TaskRegistry,
         compaction_owner: SessionCompactionOwner | None = None,
+        conversation_pass: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
+        self._conversation_pass = conversation_pass
         self._client = client
         self._output_poller = output_poller
         self._poller_watch_interval_s = poller_watch_interval_s
@@ -508,6 +511,7 @@ class MaintenanceService:
                 await self._cleanup_worktree_trash()
                 await self._cleanup_inactive_sessions()
                 await self._refresh_github_workflow_stores()
+                await self._run_conversation_pass()
                 await self._cleanup_removed_todos()
                 await session_cleanup.retry_recently_closed_session_cleanup(self._client)
                 await session_cleanup.cleanup_orphan_tmux_sessions()
@@ -731,6 +735,15 @@ class MaintenanceService:
                     reason=type(error).__name__,
                     exc_info=True,
                 )
+
+    async def _run_conversation_pass(self) -> None:
+        """Capture and hand over the conversation of the sessions this computer hosts, as a periodic recovery."""
+        if self._conversation_pass is None:
+            return
+        try:
+            await self._conversation_pass()
+        except Exception as error:
+            logger.warning(_GITHUB_CONVERSATION_PASS_FAILED, reason=type(error).__name__, exc_info=True)
 
     async def _cleanup_adapter_resources(self) -> None:
         """Run cleanup on each registered UI adapter."""

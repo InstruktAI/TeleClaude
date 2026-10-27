@@ -9,12 +9,16 @@ completion clears that row.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
+from teleclaude.core.dates import parse_iso_datetime
 
 from ._write_admission import WRITE_ADMISSION_BUDGET_S, connect_admitted
 
@@ -27,6 +31,16 @@ _REVIEW_TABLE_DDL = (
     "commit_id TEXT NOT NULL, PRIMARY KEY(item_id, round))"
 )
 _OWED_TABLE_DDL = "CREATE TABLE IF NOT EXISTS github_owed_pull_request (item_id TEXT PRIMARY KEY)"
+_INTERVAL_TABLE_DDL = (
+    "CREATE TABLE IF NOT EXISTS github_pull_request_interval (item_id TEXT NOT NULL, number INTEGER NOT NULL, "
+    "opened_at TEXT NOT NULL, closed_at TEXT, PRIMARY KEY(item_id, number))"
+)
+_SELECT_INTERVALS_SQL = "SELECT number, opened_at, closed_at FROM github_pull_request_interval WHERE item_id = :item_id"
+_SAVE_INTERVAL_SQL = (
+    "INSERT INTO github_pull_request_interval(item_id, number, opened_at, closed_at) "
+    "VALUES (:item_id, :number, :opened_at, :closed_at) "
+    "ON CONFLICT(item_id, number) DO UPDATE SET opened_at = excluded.opened_at, closed_at = excluded.closed_at"
+)
 _SELECT_PULL_REQUEST_SQL = "SELECT number, digest, delivered_noted FROM github_pull_request WHERE item_id = :item_id"
 _SELECT_REVIEWS_SQL = "SELECT round, commit_id FROM github_pull_request_review WHERE item_id = :item_id"
 _SAVE_PULL_REQUEST_SQL = (
@@ -62,16 +76,31 @@ class PullRequestField(StrEnum):
     DELIVERED_NOTED = "delivered_noted"
     ROUND = "round"
     COMMIT_ID = "commit_id"
+    OPENED_AT = "opened_at"
+    CLOSED_AT = "closed_at"
+
+
+@dataclass(frozen=True)
+class PullRequestInterval:
+    """When one of an item's pull requests was open: from its opening, until its closing if it has closed."""
+
+    opened_at: datetime
+    closed_at: datetime | None
 
 
 @dataclass
 class PullRequestBookkeeping:
-    """What is known to be on GitHub for one item: its pull request, last written digest and posted reviews."""
+    """What is known to be on GitHub for one item: its pull request, last written digest and posted reviews.
+
+    ``intervals`` holds every pull request the item has had, by number, because an item that is reopened gets a
+    second one and the current number alone cannot say where an earlier moment belongs.
+    """
 
     number: int | None = None
     digest: str | None = None
     delivered_noted: bool = False
     reviews: dict[int, str] = field(default_factory=dict)
+    intervals: dict[int, PullRequestInterval] = field(default_factory=dict)
 
 
 def initialize_pull_request_bookkeeping(connection: sqlite3.Connection) -> None:
@@ -79,6 +108,7 @@ def initialize_pull_request_bookkeeping(connection: sqlite3.Connection) -> None:
     connection.execute(_PULL_REQUEST_TABLE_DDL)
     connection.execute(_REVIEW_TABLE_DDL)
     connection.execute(_OWED_TABLE_DDL)
+    connection.execute(_INTERVAL_TABLE_DDL)
 
 
 def pull_request_bookkeeping(session: Session, item_id: str) -> PullRequestBookkeeping:
@@ -89,8 +119,9 @@ def pull_request_bookkeeping(session: Session, item_id: str) -> PullRequestBookk
         int(review[PullRequestField.ROUND]): str(review[PullRequestField.COMMIT_ID])
         for review in session.execute(text(_SELECT_REVIEWS_SQL), parameters).mappings().all()
     }
+    intervals = pull_request_intervals(session, item_id)
     if row is None:
-        return PullRequestBookkeeping(reviews=reviews)
+        return PullRequestBookkeeping(reviews=reviews, intervals=intervals)
     number = row[PullRequestField.NUMBER]
     digest = row[PullRequestField.DIGEST]
     return PullRequestBookkeeping(
@@ -98,7 +129,30 @@ def pull_request_bookkeeping(session: Session, item_id: str) -> PullRequestBookk
         digest=str(digest) if isinstance(digest, str) else None,
         delivered_noted=bool(row[PullRequestField.DELIVERED_NOTED]),
         reviews=reviews,
+        intervals=intervals,
     )
+
+
+def pull_request_intervals(session: Session, item_id: str) -> dict[int, PullRequestInterval]:
+    """Read every pull request interval the working copy holds for one item, by pull request number."""
+    found: dict[int, PullRequestInterval] = {}
+    rows = session.execute(text(_SELECT_INTERVALS_SQL), {PullRequestField.ITEM_ID.value: item_id}).mappings().all()
+    for row in rows:
+        opened_at = parse_iso_datetime(row[PullRequestField.OPENED_AT])
+        if opened_at is None:
+            continue
+        found[int(row[PullRequestField.NUMBER])] = PullRequestInterval(
+            opened_at=opened_at, closed_at=parse_iso_datetime(row[PullRequestField.CLOSED_AT])
+        )
+    return found
+
+
+def pull_request_open_at(intervals: Iterable[tuple[int, PullRequestInterval]], moment: datetime) -> int | None:
+    """The number of the pull request that was open at ``moment``: opened at or before it and not yet closed."""
+    for number, interval in sorted(intervals, key=lambda entry: entry[1].opened_at):
+        if interval.opened_at <= moment and (interval.closed_at is None or moment < interval.closed_at):
+            return number
+    return None
 
 
 def save_pull_request_bookkeeping(session: Session, item_id: str, known: PullRequestBookkeeping) -> None:
@@ -159,6 +213,18 @@ def _write_statements(item_id: str, known: PullRequestBookkeeping) -> list[tuple
             },
         )
     ]
+    statements.extend(
+        (
+            _SAVE_INTERVAL_SQL,
+            {
+                PullRequestField.ITEM_ID.value: item_id,
+                PullRequestField.NUMBER.value: number,
+                PullRequestField.OPENED_AT.value: interval.opened_at.isoformat(),
+                PullRequestField.CLOSED_AT.value: interval.closed_at.isoformat() if interval.closed_at else None,
+            },
+        )
+        for number, interval in known.intervals.items()
+    )
     statements.extend(
         (
             _SAVE_REVIEW_SQL,
