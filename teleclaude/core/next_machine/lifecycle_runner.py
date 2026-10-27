@@ -18,7 +18,7 @@ from teleclaude.constants import TodoStatus
 from teleclaude.context_selector import resolve_snippet_meta
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
-from teleclaude.core.next_machine.driver_admission import reconcile_ended_claims
+from teleclaude.core.next_machine.driver_admission import reconcile_ended_claims, schedule_claim_release
 from teleclaude.core.next_machine.driver_claim import set_active_runner
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
@@ -51,6 +51,7 @@ from teleclaude.core.next_machine.runtime.sessions import (
     claim_is_driven_here,
     claim_is_held,
     find_accepted_lifecycle_start,
+    is_github_backed,
     live_orchestrator_owned_slugs,
     recheck_slug_holder,
 )
@@ -398,7 +399,16 @@ def _approval_from_state(state: Mapping[str, StateValue], approval_key: str) -> 
     return approval.get("approved") is True, approved_digest if isinstance(approved_digest, str) else ""
 
 
-async def _clear_active_runner(todos_db: WorkflowStore, row: TodoRow) -> None:
+async def _clear_ended_claim(todos_db: WorkflowStore, row: TodoRow, session_id: str) -> None:
+    """Clear a claim whose session this computer shows ended: written here, or requested of the master.
+
+    A claim on a GitHub-backed project is written only on the master, so its release is requested of the
+    master without waiting for the answer; the pass treats the todo as free meanwhile, and the start the
+    runner then makes is admitted by the master, which judges the same claim ended.
+    """
+    if is_github_backed(todos_db.project_root):
+        schedule_claim_release(todos_db.project_root, row["slug"], session_id)
+        return
     state = await todos_db.read_state_by_id(row["id"])
     if state is None:
         return
@@ -506,7 +516,7 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                     dependency_drift_pending_on=tuple(sorted(moved_dependencies)),
                 )
         if todo.active_runner and not await claim_is_held(db, todos_db.project_root, todo.slug, todo.active_runner):
-            await _clear_active_runner(todos_db, row)
+            await _clear_ended_claim(todos_db, row, todo.active_runner)
             reconciled.append(todo.slug)
             todo = RunnerTodo(
                 slug=todo.slug,
