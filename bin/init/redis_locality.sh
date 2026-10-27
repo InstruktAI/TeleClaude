@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# REDIS_URL locality classification, shared by install.sh and its tests.
+# Cluster Redis URL locality classification, shared by install.sh and its tests.
 #
 # redis_url_host <url-value>            -> prints the lowercased host (scheme,
 #                                         credentials, port, path, and IPv6 brackets
@@ -42,4 +42,18 @@ redis_url_skips_local_install() {
     local host
     host="$(redis_url_host "$1")"
     [ -n "$host" ] && ! redis_host_is_loopback "$host"
+}
+
+# machine_cluster_redis_url <env file>    -> prints the cluster Redis URL the machine environment names:
+#                                            REDIS_CLUSTER_URL, else the earlier REDIS_URL; nothing when unset.
+machine_cluster_redis_url() {
+    local env_file="$1" name line
+    [ -f "$env_file" ] || return 0
+    for name in REDIS_CLUSTER_URL REDIS_URL; do
+        line="$(grep -E "^${name}=.+" "$env_file" | head -1)"
+        if [ -n "$line" ]; then
+            printf '%s\n' "${line#"${name}"=}"
+            return 0
+        fi
+    done
 }
