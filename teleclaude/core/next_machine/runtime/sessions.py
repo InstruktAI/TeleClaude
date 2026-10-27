@@ -8,6 +8,7 @@ from pathlib import Path
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.agent_status_projection import read_session_agent_status
 from teleclaude.core.db import Db
+from teleclaude.core.models import Session
 from teleclaude.core.next_machine.lanes import DRIVER_ROLES, LifecycleProcedure
 from teleclaude.core.session_status import AgentStatusValue, SessionLifecycleStatus
 
@@ -313,19 +314,30 @@ async def find_live_commit_reviewer_for_terminal_human(
     return None
 
 
-async def live_orchestrator_owner(db: Db, project_path: str | Path, slug: str) -> str | None:
-    """Return the id of a live orchestrator bound to ``slug`` in this project.
+async def _open_non_closing_sessions(db: Db) -> list[Session]:
+    """Return every open session that is not closing, whatever its bootstrap state.
 
-    Authoritative orchestrator dedup signal: a session is the owner when it is a
-    live driver (a role of the workflow's driver set), its ``working_slug``
-    matches ``slug`` exactly, and it runs in the same canonical project root. Exact
-    slug equality (not a title/worktree heuristic) and project scoping mean one
-    project's slug never blocks another's same-named slug. Returns ``None`` when no
-    such session exists.
+    One selection for "accepted start" and "holder": a session a create door just
+    wrote is ``initializing`` and carries no ``active_runner`` yet, so a holder
+    query limited to ``active`` sessions would not see it.
+    """
+    sessions = await db.list_sessions(all_open=True)
+    return [session for session in sessions if session.lifecycle_status != SessionLifecycleStatus.CLOSING]
+
+
+async def live_orchestrator_owner(db: Db, project_path: str | Path, slug: str) -> str | None:
+    """Return the id of an open orchestrator bound to ``slug`` in this project.
+
+    Authoritative orchestrator dedup signal: a session is the owner when it is an
+    open, non-closing driver (a role of the workflow's driver set) from its
+    creation on, still initializing included, its ``working_slug`` matches ``slug``
+    exactly, and it runs in the same canonical project root. Exact slug equality
+    (not a title/worktree heuristic) and project scoping mean one project's slug
+    never blocks another's same-named slug. Returns ``None`` when no such session
+    exists.
     """
     project_root = Path(project_path).resolve()
-    sessions = await db.list_sessions(include_closed=False)
-    for session in sessions:
+    for session in await _open_non_closing_sessions(db):
         if session.role not in DRIVER_ROLES:
             continue
         if session.working_slug != slug:
@@ -345,12 +357,10 @@ async def find_accepted_lifecycle_start(db: Db, project_path: str | Path, slug: 
     session's own registry row and writes nothing. Returns ``None`` when no such session exists.
     """
     project_root = Path(project_path).resolve()
-    sessions = await db.list_sessions(all_open=True)
     matches = [
         session
-        for session in sessions
-        if session.lifecycle_status != SessionLifecycleStatus.CLOSING
-        and session.role == role
+        for session in await _open_non_closing_sessions(db)
+        if session.role == role
         and session.working_slug == slug
         and _same_project_root(session.project_path, project_root)
     ]
@@ -393,18 +403,18 @@ async def resolve_slug_holders(
 
 
 async def live_orchestrator_owned_slugs(db: Db, project_path: str | Path) -> set[str]:
-    """Return the slugs owned by a live orchestrator in this project, in one pass.
+    """Return the slugs owned by an open orchestrator in this project, in one pass.
 
     The set-returning sibling of :func:`live_orchestrator_owner` lets the pure
     ``decide_dispatches`` stay synchronous — the single async registry read happens
     once in the runner caller, and the precomputed set is the orchestrator-dedup
-    signal for the project-scoped full-set evaluation.
+    signal for the project-scoped full-set evaluation. An orchestrator still
+    initializing owns its slug.
     """
     project_root = Path(project_path).resolve()
-    sessions = await db.list_sessions(include_closed=False)
     return {
         session.working_slug
-        for session in sessions
+        for session in await _open_non_closing_sessions(db)
         if session.role in DRIVER_ROLES
         and session.working_slug
         and _same_project_root(session.project_path, project_root)
