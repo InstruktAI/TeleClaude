@@ -156,7 +156,8 @@ refuses it without running it.
 - **Stream Accumulation**: If consumer lags, streams grow beyond MAXLEN. Oldest messages trimmed. Commands may be lost if not processed in time.
 - **Response Stream Collision**: Extremely rare. Two messages with same ID overwrite response stream. Mitigated by UUID message IDs.
 - **Digest Not Recomputed**: The digest is a SHA-256 of the exact projects-with-todos answer, so an unchanged digest means an unchanged answer. When this computer cannot read its own projects, it keeps advertising the last digest, and peers keep their copy until a later pass succeeds.
-- **Peer Without a Digest**: A computer whose build advertises no digest is refreshed when a read finds its cached copy older than the cache TTL, at most one pull per peer at a time.
+- **Peer Without a Digest**: A computer whose heartbeat advertises no digest, including one whose heartbeat stops advertising it, is refreshed when a read finds its cached copy older than the cache TTL, at most one pull per peer at a time.
+- **Invalidated Peer Copy**: When a workflow change drops a peer's cached projects or todos, the digest recorded at its last pull is forgotten, so the next heartbeat pulls that peer once and refills them.
 - **Heartbeat Storm**: Many computers restart simultaneously and publish heartbeats. Redis handles gracefully; cache refresh tasks may queue.
 - **Reconnect Storm Prevention**: Redis reconnects are serialized; tasks wait on readiness to avoid connection floods.
 - **Stale Registry**: Computer dies without sending offline heartbeat. Registry shows online until TTL expires (max 60s stale window).

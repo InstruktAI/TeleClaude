@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
+from teleclaude.constants import CacheEvent
 from teleclaude.core import command_handlers
 from teleclaude.transport.peer_heartbeat import (
     CONVERSATION_ADAPTERS_FIELD,
@@ -24,6 +25,8 @@ logger = get_logger(__name__)
 _HEARTBEAT_RECOVERABLE_ERRORS = (RedisError, OSError, RuntimeError, TypeError, ValueError)
 _HEARTBEAT_SAMPLE_FAILED_EVENT = "heartbeat_sample_failed"
 _PROJECTS_DIGEST_FAILED_EVENT = "projects_digest_failed"
+_COMPUTER_FIELD = "computer"
+_PEER_INVALIDATION_EVENTS = frozenset({CacheEvent.TODOS_UPDATED.value, CacheEvent.PROJECTS_UPDATED.value})
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -41,6 +44,7 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         heartbeat_ttl: int
         _running: bool
         _local_projects_digest: str | None
+        _pulled_projects_digest: dict[str, str]
 
         @property
         def cache(self) -> DaemonCache | None:
@@ -131,12 +135,14 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         )
         logger.trace("Sent heartbeat for %s", self.computer_name)
 
-    # === Event Push (Phase 5) - DISABLED ===
-
     def _on_cache_change(self, event: str, data: object) -> None:
-        """Handle cache change notifications.
+        """Forget the pulled digest of a peer whose cached projects or todos were invalidated.
 
-        Note: Push-based synchronization is DISABLED to enforce Request/Response architecture.
-        This handler is now a no-op for network traffic.
+        The next heartbeat then finds the peer's digest unequal to none recorded and pulls once, which refills
+        what the invalidation dropped. Nothing is sent from here.
         """
-        _ = (event, data)
+        if event not in _PEER_INVALIDATION_EVENTS or not isinstance(data, dict):
+            return
+        computer = data.get(_COMPUTER_FIELD)
+        if isinstance(computer, str) and computer != self.computer_name:
+            self._pulled_projects_digest.pop(computer, None)

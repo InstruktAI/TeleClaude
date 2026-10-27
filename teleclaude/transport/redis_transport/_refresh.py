@@ -28,10 +28,11 @@ logger = get_logger(__name__)
 _REFRESH_EXCEPTIONS = (RedisError, TimeoutError, OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError)
 _PEER_RECORD_FAILED_EVENT = "heartbeat_peer_record_failed"
 # One pull answers every one of these, so they share one refresh per peer.
-_PROJECTS_DATA_TYPES = frozenset({"projects", "todos", "preparation"})
+_PROJECTS_DATA_TYPE = "projects"
+_PROJECTS_DATA_TYPES = frozenset({_PROJECTS_DATA_TYPE, "todos", "preparation"})
 _PROJECTS_REFRESH_KEY_TEMPLATE = "{computer}:projects"
 _TTL_REASON = "ttl"
-_DIGEST_CHANGED_REASON = "digest_changed"
+DIGEST_CHANGED_REASON = "digest_changed"
 
 
 if TYPE_CHECKING:
@@ -65,6 +66,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         _refresh_tasks: dict[str, asyncio.Task[object]]
         _bootstrapped: set[tuple[str, str]]
         _pulled_projects_digest: dict[str, str]
+        _digest_advertisers: set[str]
         _refresh_cooldown_seconds: float
         _ALLOWED_REFRESH_REASONS: set[str]
 
@@ -163,7 +165,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         if (
             request.reason == _TTL_REASON
             and request.data_type in _PROJECTS_DATA_TYPES
-            and request.computer in self._pulled_projects_digest
+            and request.computer in self._digest_advertisers
         ):
             # A peer that advertises a digest is pulled when its digest changes, never because a copy aged.
             return False
@@ -204,6 +206,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
     def _projects_pulled(self, computer: str, digest: str) -> None:
         """Record the digest a peer advertised when its projects were pulled, so an unchanged digest pulls nothing."""
         self._pulled_projects_digest[computer] = digest
+        self._bootstrapped.add((computer, _PROJECTS_DATA_TYPE))
 
     def _refresh_key(self, computer: str, data_type: str, project_path: str | None) -> str:
         if data_type in _PROJECTS_DATA_TYPES:
@@ -302,16 +305,21 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                 self.cache.update_computer(computer_info)
 
                 advertised_digest = info.get(PROJECTS_DIGEST_FIELD)
+                advertises_digest = isinstance(advertised_digest, str) and bool(advertised_digest)
                 if isinstance(advertised_digest, str) and advertised_digest:
-                    self._bootstrapped.add((computer_name, "projects"))
+                    self._digest_advertisers.add(computer_name)
                     if self._pulled_projects_digest.get(computer_name) != advertised_digest:
                         self._schedule_refresh(
-                            _RefreshRequest(computer_name, "projects", _DIGEST_CHANGED_REASON, force=True),
+                            _RefreshRequest(computer_name, _PROJECTS_DATA_TYPE, DIGEST_CHANGED_REASON, force=True),
                             on_success=lambda p=computer_name, d=advertised_digest: self._projects_pulled(p, d),
                         )
+                else:
+                    self._digest_advertisers.discard(computer_name)
 
-                for data_type in ("projects", "sessions"):
+                for data_type in (_PROJECTS_DATA_TYPE, "sessions"):
                     if (computer_name, data_type) in self._bootstrapped:
+                        continue
+                    if data_type == _PROJECTS_DATA_TYPE and advertises_digest:
                         continue
                     self._schedule_refresh(
                         _RefreshRequest(computer_name, data_type, "first_heartbeat", force=True),
