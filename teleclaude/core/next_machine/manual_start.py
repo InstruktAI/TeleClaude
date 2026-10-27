@@ -9,8 +9,6 @@ helpers; ``lifecycle_runner`` never imports this module.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +18,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import DriverLaunchClass
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
+from teleclaude.core.next_machine.driver_claim import set_active_runner
 from teleclaude.core.next_machine.git_ops import get_ref_commit
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES, WORK_LANE_ROLES
@@ -31,10 +30,8 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     load_runner_todos,
     make_intent,
     plan_review_current_from_state,
-    recheck_slug_holder,
     resolve_kinded_dispatch,
     role_for_lane,
-    set_active_runner,
 )
 from teleclaude.core.next_machine.runner_types import (
     DispatchIntent,
@@ -44,12 +41,13 @@ from teleclaude.core.next_machine.runner_types import (
     RunnerSkipReason,
     RunnerTodo,
 )
-from teleclaude.core.next_machine.runtime.driver_starts import STARTS_IN_FLIGHT, start_key
+from teleclaude.core.next_machine.runtime.driver_starts import driver_start_section
 from teleclaude.core.next_machine.runtime.sessions import (
     PREPARE_LIFECYCLE_COMMANDS,
     find_live_commit_reviewer_for_initiator,
     find_live_commit_reviewer_for_terminal_human,
     find_live_reviewer_for_slug,
+    recheck_slug_holder,
     resolve_slug_holders,
 )
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
@@ -63,7 +61,6 @@ from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.todos_db._exceptions import (
     ClaimConflict,
-    DriverStartBusy,
     LaneCrossingRefused,
     ReviewerConflict,
     ReviewerIdentityUnresolved,
@@ -84,9 +81,7 @@ __all__ = [
     "DriverStartGuardResult",
     "adopt_headless_session",
     "adopt_manual_lifecycle_session",
-    "driver_start_section",
     "guard_driver_start",
-    "recheck_slug_holder",
     "resolve_manual_dispatch_intent",
     "work_feedback_for_manual_skip",
 ]
@@ -132,46 +127,6 @@ def work_feedback_for_manual_skip(reason: RunnerSkipReason | str | None) -> str 
     if isinstance(reason, RunnerSkipReason):
         return _MANUAL_SKIP_FEEDBACK.get(reason)
     return None
-
-
-_START_REFUSED_BUSY_EVENT = "driver start refused while another start is in progress"
-
-
-@asynccontextmanager
-async def driver_start_section(
-    project_path: str | Path,
-    slug: str,
-    *,
-    starting_session_id: str,
-) -> AsyncIterator[None]:
-    """Hold the one-start-at-a-time section for a todo while a start creates or claims its orchestrator.
-
-    Keyed by the canonical project root and slug, whatever lane is asked for: the
-    holder check admits one driver per todo. Entering never waits. A free key records
-    ``starting_session_id`` and enters; a key held by another start raises
-    :class:`DriverStartBusy` naming the session that start is creating or claiming.
-    Leaving drops the record on success and on exception, so a failed start leaves
-    nothing behind. The record lives in this process only; the registry check-and-set
-    has no await in it, so on the daemon's event loop it is atomic. The caller
-    re-checks the slug's holder inside the section and creates or claims before leaving.
-    """
-    key = start_key(project_path, slug)
-    in_flight = STARTS_IN_FLIGHT.get(key)
-    if in_flight is not None:
-        busy = DriverStartBusy(slug=slug, in_flight=in_flight)
-        logger.warning(
-            _START_REFUSED_BUSY_EVENT,
-            project=str(key[0]),
-            slug=slug,
-            in_flight=in_flight,
-            starting_session_id=starting_session_id,
-        )
-        raise busy
-    STARTS_IN_FLIGHT[key] = starting_session_id
-    try:
-        yield
-    finally:
-        del STARTS_IN_FLIGHT[key]
 
 
 @dataclass(frozen=True)

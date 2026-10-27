@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from teleclaude.config.project_models import TodoStoreBackend
 from teleclaude.constants import WORKTREE_DIR
@@ -16,6 +17,10 @@ from teleclaude.core.next_machine.runtime.driver_starts import is_starting
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.core.session_status import AgentStatusValue, SessionLifecycleStatus
 from teleclaude.core.workflow_store.selection import selected_workflow_store_backend
+from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY
+
+if TYPE_CHECKING:
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 CommandValues = str | tuple[str, ...]
 PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (
@@ -491,6 +496,31 @@ async def resolve_slug_holders(
         live_runner=active_runner if answer is OwnSessionAnswer.HELD else None,
         foreign_claim=active_runner if answer is OwnSessionAnswer.NOT_OWN else None,
     )
+
+
+async def recheck_slug_holder(
+    runtime_db: Db,
+    todos_db: WorkflowStore,
+    project_path: str | Path,
+    slug: str,
+    *,
+    exempt_session_id: str | None,
+) -> str | None:
+    """Return the session holding ``slug`` as a driver on this computer, or ``None`` when no other session does.
+
+    The narrow holder re-check taken inside :func:`driver_start_section`: the slug's own
+    ``active_runner`` and the registry owner through :func:`resolve_slug_holders`, with no
+    project-wide load and no writes. ``exempt_session_id`` is treated as no holder. A claim for a
+    session this computer never ran is not a holder here; the master judges it.
+    """
+    state = await todos_db.read_state(slug)
+    raw_runner = state.get(ACTIVE_RUNNER_STATE_KEY) if state is not None else None
+    active_runner = raw_runner if isinstance(raw_runner, str) else None
+    holders = await resolve_slug_holders(runtime_db, project_path, slug, active_runner)
+    for holder in (holders.orchestrator_owner, holders.live_runner):
+        if holder is not None and holder != exempt_session_id:
+            return holder
+    return None
 
 
 async def live_orchestrator_owned_slugs(db: Db, project_path: str | Path) -> set[str]:

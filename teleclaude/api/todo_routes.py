@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -44,6 +45,7 @@ from teleclaude.constants import (
     ARTIFACT_INPUT,
     ARTIFACT_TASK_PLAN,
     SLUG_NOT_FOUND_DETAIL,
+    SYSTEM_DAEMON_PRINCIPAL,
 )
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.human_involvement import (
@@ -51,11 +53,18 @@ from teleclaude.core.human_involvement import (
     HumanInvolvementSurface,
     resolve_human_involvement,
 )
+from teleclaude.core.next_machine.driver_admission import (
+    AdmissionCaller,
+    StartRequest,
+    admit_relayed_start,
+    release_relayed_claim,
+)
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
     KindMigrationResult,
     migrate_todo_kind,
 )
+from teleclaude.core.next_machine.runner_types import RunnerLane
 from teleclaude.core.next_machine.runtime.sessions import OwnSessionAnswer, own_session_answer
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
@@ -66,6 +75,12 @@ from teleclaude.core.next_machine.todo_creation import (
 from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.operations.todo_filing import FilingSeed, TodoFiling
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
+from teleclaude.core.todos_db._exceptions import (
+    AdmissionUnavailable,
+    ClaimConflict,
+    DriverStartBusy,
+    OperationFailure,
+)
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.slug import validate_slug
@@ -657,6 +672,99 @@ async def todo_switch_to_github(
         caller_session_id=identity.session_id,
         client_request_id=client_request_id,
     )
+
+
+class _DriverAdmissionRequest(BaseModel):
+    """A start of a GitHub-backed todo's driver another computer asks the master to admit."""
+
+    model_config = ConfigDict(frozen=True)
+    project_path: str
+    slug: str
+    session_id: str
+    lane: RunnerLane
+    manually_started: bool
+    release_hold: bool
+
+
+class _DriverReleaseRequest(BaseModel):
+    """A claim another computer asks the master to release."""
+
+    model_config = ConfigDict(frozen=True)
+    project_path: str
+    slug: str
+    session_id: str
+
+
+class _DriverClaimResponse(BaseModel):
+    """The master's answer to an admission or a release."""
+
+    model_config = ConfigDict(frozen=True)
+    admitted: bool = False
+    cleared: bool = False
+
+
+def _admission_caller(identity: CallerIdentity) -> AdmissionCaller:
+    """The principal a start's relayed requests are cleared as: its own, else the daemon's."""
+    return AdmissionCaller(
+        principal=identity.principal or SYSTEM_DAEMON_PRINCIPAL,
+        cleared_command=identity.command,
+        session_id=identity.session_id or None,
+    )
+
+
+def _driver_refusal(failure: OperationFailure, status_code: int) -> DeclaredWorkRefusal:
+    """The refusal a master answers a relayed admission or release with: the failure's own payload as the detail."""
+    return DeclaredWorkRefusal(
+        status_code=status_code,
+        detail=dict(failure.to_error_payload()),
+        work_feedback=failure.work_feedback or failure.summary(),
+    )
+
+
+@router.post("/driver-admission")
+async def todo_driver_admission(
+    body: _DriverAdmissionRequest,
+    identity: CallerIdentity = Depends(carried_caller),
+) -> _DriverClaimResponse:
+    """Admit a start of a GitHub-backed todo's driver on the master, recording its claim before its session exists.
+
+    Answers 200 when admitted, 409 naming the holder and its computer (or the computers that did not
+    answer for it) when the todo is held, 423 when another start of the todo is in progress, and 503 when
+    this computer is not the unique live master or the start was not decided within its budget.
+    """
+    request = StartRequest(
+        project_root=resolve_project_root(body.project_path),
+        slug=body.slug,
+        session_id=body.session_id,
+        lane=body.lane,
+        manually_started=body.manually_started,
+        release_hold=body.release_hold,
+        caller=_admission_caller(identity),
+    )
+    try:
+        await admit_relayed_start(request)
+    except ClaimConflict as conflict:
+        raise _driver_refusal(conflict, HTTPStatus.CONFLICT) from conflict
+    except DriverStartBusy as busy:
+        raise _driver_refusal(busy, HTTPStatus.LOCKED) from busy
+    except AdmissionUnavailable as unavailable:
+        raise _driver_refusal(unavailable, HTTPStatus.SERVICE_UNAVAILABLE) from unavailable
+    return _DriverClaimResponse(admitted=True)
+
+
+@router.post("/driver-release")
+async def todo_driver_release(
+    body: _DriverReleaseRequest,
+    _identity: CallerIdentity = Depends(carried_caller),
+) -> _DriverClaimResponse:
+    """Release a GitHub-backed todo's claim on the master, in the todo's section, while it still names the session."""
+    try:
+        cleared = await release_relayed_claim(resolve_project_root(body.project_path), body.slug, body.session_id)
+    except DriverStartBusy as busy:
+        raise _driver_refusal(busy, HTTPStatus.LOCKED) from busy
+    except AdmissionUnavailable as unavailable:
+        raise _driver_refusal(unavailable, HTTPStatus.SERVICE_UNAVAILABLE) from unavailable
+    return _DriverClaimResponse(cleared=cleared)
 
 
 class _SessionAnswerResponse(BaseModel):

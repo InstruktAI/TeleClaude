@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from typing_extensions import TypedDict
 
 _REMOVE_LIVE_WORK_FEEDBACK = (
@@ -15,6 +17,23 @@ _CLAIM_CONFLICT_WORK_FEEDBACK_WITH_HOLDER = (
     "Another session is already working on {slug}; contact it with `telec sessions send {holder} <message>`."
 )
 _CLAIM_CONFLICT_WORK_FEEDBACK = "Another lifecycle run is already working on {slug}; try again after it finishes."
+_CLAIM_CONFLICT_WORK_FEEDBACK_ON_COMPUTER = (
+    "Session {holder} on {computer} is already working on {slug}; contact it with "
+    "`telec sessions send {holder} <message>`."
+)
+_CLAIM_CONFLICT_WORK_FEEDBACK_UNANSWERED = (
+    "Session {holder} holds {slug}, and {unanswered} did not answer for it, so it is still held; "
+    "end that session or bring those computers back."
+)
+_CLAIM_CONFLICT_SUMMARY_ON_COMPUTER = "ClaimConflict: {slug} is already driven by session {holder} on {computer}"
+_CLAIM_CONFLICT_SUMMARY_UNANSWERED = (
+    "ClaimConflict: {slug} is held by session {holder}; no computer answered for it ({unanswered})"
+)
+_COMPUTER_SEPARATOR = ", "
+_ADMISSION_UNAVAILABLE_WORK_FEEDBACK = (
+    "The start of {slug} was not admitted: {reason}. Nothing was created; try again once the fleet is reachable."
+)
+_ADMISSION_UNAVAILABLE_SUMMARY = "AdmissionUnavailable: the start of {slug} was not admitted: {reason}"
 _DRIVER_START_BUSY_WORK_FEEDBACK_WITH_START = (
     "Another start of {slug} is in progress as session {in_flight}; contact it with "
     "`telec sessions send {in_flight} <message>`."
@@ -49,6 +68,8 @@ class ClaimConflictErrorPayload(OperationErrorPayload):
 
     slug: str
     holder: str | None
+    computer: str | None
+    unanswered: list[str]
 
 
 class DriverStartBusyErrorPayload(OperationErrorPayload):
@@ -209,23 +230,100 @@ class ClaimConflict(OperationFailure):
 
     error_kind = "driver_start_conflict"
 
-    def __init__(self, *, slug: str, holder: str | None) -> None:
+    def __init__(
+        self,
+        *,
+        slug: str,
+        holder: str | None,
+        computer: str | None = None,
+        unanswered: tuple[str, ...] = (),
+    ) -> None:
         self.slug = slug
         self.holder = holder
-        self.work_feedback = (
-            _CLAIM_CONFLICT_WORK_FEEDBACK_WITH_HOLDER.format(slug=slug, holder=holder)
-            if holder
-            else _CLAIM_CONFLICT_WORK_FEEDBACK.format(slug=slug)
-        )
+        self.computer = computer
+        self.unanswered = unanswered
+        if holder and unanswered:
+            self.work_feedback = _CLAIM_CONFLICT_WORK_FEEDBACK_UNANSWERED.format(
+                slug=slug, holder=holder, unanswered=_COMPUTER_SEPARATOR.join(unanswered)
+            )
+        elif holder and computer:
+            self.work_feedback = _CLAIM_CONFLICT_WORK_FEEDBACK_ON_COMPUTER.format(
+                slug=slug, holder=holder, computer=computer
+            )
+        elif holder:
+            self.work_feedback = _CLAIM_CONFLICT_WORK_FEEDBACK_WITH_HOLDER.format(slug=slug, holder=holder)
+        else:
+            self.work_feedback = _CLAIM_CONFLICT_WORK_FEEDBACK.format(slug=slug)
         super().__init__(slug)
 
     def to_error_payload(self) -> ClaimConflictErrorPayload:
-        return {"kind": self.error_kind, "slug": self.slug, "holder": self.holder}
+        return {
+            "kind": self.error_kind,
+            "slug": self.slug,
+            "holder": self.holder,
+            "computer": self.computer,
+            "unanswered": list(self.unanswered),
+        }
 
     def summary(self) -> str:
+        if self.holder and self.unanswered:
+            return _CLAIM_CONFLICT_SUMMARY_UNANSWERED.format(
+                slug=self.slug, holder=self.holder, unanswered=_COMPUTER_SEPARATOR.join(self.unanswered)
+            )
+        if self.holder and self.computer:
+            return _CLAIM_CONFLICT_SUMMARY_ON_COMPUTER.format(
+                slug=self.slug, holder=self.holder, computer=self.computer
+            )
         if self.holder:
             return f"ClaimConflict: {self.slug} is already driven by session {self.holder}"
         return f"ClaimConflict: {self.slug} is already driven"
+
+
+class AdmissionUnavailableReason(StrEnum):
+    """Why a GitHub-backed start could not be decided, so nothing was created."""
+
+    NO_LIVE_MASTER = "no live master computer admits starts"
+    CONFLICTING_MASTERS = "more than one computer claims to be the master"
+    FLEET_NOT_OBSERVABLE = "the fleet cannot be observed"
+    MASTER_CANNOT_CARRY = "the master cannot carry the admission request"
+    MASTER_DID_NOT_ANSWER = "the master did not answer"
+    UNDECIDED_WITHIN_BUDGET = "the start was not decided within its budget"
+    NOT_THE_MASTER = "this computer is not the master"
+
+
+class AdmissionUnavailableErrorPayload(OperationErrorPayload):
+    """Structured payload for a start that could not be decided."""
+
+    slug: str
+    reason: str
+    detail: str | None
+
+
+class AdmissionUnavailable(OperationFailure):
+    """A GitHub-backed driver start could not be decided, so it was refused and created nothing.
+
+    The fleet's master admits every start of a GitHub-backed todo. When no unique live master can be
+    reached, or it does not answer within the start's budget, the start is refused rather than decided
+    by a rule that could admit a second driver. ``reason`` names which; ``detail`` carries the transport
+    or fleet text when there is one.
+    """
+
+    error_kind = "driver_admission_unavailable"
+
+    def __init__(self, *, slug: str, reason: AdmissionUnavailableReason, detail: str | None = None) -> None:
+        self.slug = slug
+        self.reason = reason
+        self.detail = detail
+        reason_text = f"{reason.value} ({detail})" if detail else reason.value
+        self.work_feedback = _ADMISSION_UNAVAILABLE_WORK_FEEDBACK.format(slug=slug, reason=reason_text)
+        super().__init__(slug)
+
+    def to_error_payload(self) -> AdmissionUnavailableErrorPayload:
+        return {"kind": self.error_kind, "slug": self.slug, "reason": self.reason.name, "detail": self.detail}
+
+    def summary(self) -> str:
+        reason_text = f"{self.reason.value} ({self.detail})" if self.detail else self.reason.value
+        return _ADMISSION_UNAVAILABLE_SUMMARY.format(slug=self.slug, reason=reason_text)
 
 
 class DriverStartBusy(OperationFailure):

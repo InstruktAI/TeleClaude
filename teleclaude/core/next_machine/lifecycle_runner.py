@@ -18,6 +18,8 @@ from teleclaude.constants import TodoStatus
 from teleclaude.context_selector import resolve_snippet_meta
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
+from teleclaude.core.next_machine.driver_admission import reconcile_ended_claims
+from teleclaude.core.next_machine.driver_claim import set_active_runner
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
     build_dependency_artifact_snapshot,
@@ -50,7 +52,7 @@ from teleclaude.core.next_machine.runtime.sessions import (
     claim_is_held,
     find_accepted_lifecycle_start,
     live_orchestrator_owned_slugs,
-    resolve_slug_holders,
+    recheck_slug_holder,
 )
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
 from teleclaude.core.next_machine.slug_resolution import (
@@ -67,7 +69,7 @@ from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatus
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TodoKind
-from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, HoldAuditState, TodoState
+from teleclaude.types.todos import TodoState
 
 logger = get_logger(__name__)
 
@@ -406,36 +408,6 @@ async def _clear_active_runner(todos_db: WorkflowStore, row: TodoRow) -> None:
     await writer.commit_by_id(todos_db, row["id"])
 
 
-async def _set_active_runner(
-    todos_db: WorkflowStore,
-    slug: str,
-    session_id: str,
-    *,
-    lane: RunnerLane,
-    manually_started: bool,
-    release_hold: bool,
-) -> None:
-    """Write the driver link and its manual marker as one guarded mutation.
-
-    ``active_runner`` and ``manually_started`` are always written together so a
-    todo never carries a driver link without its origin marker. ``release_hold``
-    is the caller-owned intent to clear a stored hold: true only for a fresh
-    claim/start of a held unclaimed todo, false for a live owner's continuation.
-    """
-    state = await todos_db.read_state(slug)
-    if state is None:
-        return
-    writer = StateWriter(state)
-    writer.state.active_runner = session_id
-    writer.state.manually_started = manually_started
-    if release_hold:
-        writer.state.hold = False
-        writer.state.hold_audit = HoldAuditState()
-    if lane is RunnerLane.TASK_RUN:
-        writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING
-    await writer.commit(todos_db, slug)
-
-
 async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, RunnerTodo], list[str]]:
     rows = sorted(
         await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True),
@@ -583,30 +555,6 @@ async def _live_active_runners(
     return live, auto_count
 
 
-async def recheck_slug_holder(
-    runtime_db: Db,
-    todos_db: WorkflowStore,
-    project_path: str | Path,
-    slug: str,
-    *,
-    exempt_session_id: str | None,
-) -> str | None:
-    """Return the session holding ``slug`` as a driver, or ``None`` when no other session does.
-
-    The narrow holder re-check taken inside :func:`driver_start_section`: the slug's own
-    ``active_runner`` and the registry owner through :func:`resolve_slug_holders`, with no
-    project-wide load and no writes. ``exempt_session_id`` is treated as no holder.
-    """
-    state = await todos_db.read_state(slug)
-    raw_runner = state.get(ACTIVE_RUNNER_STATE_KEY) if state is not None else None
-    active_runner = raw_runner if isinstance(raw_runner, str) else None
-    holders = await resolve_slug_holders(runtime_db, project_path, slug, active_runner)
-    for holder in (holders.orchestrator_owner, holders.live_runner):
-        if holder is not None and holder != exempt_session_id:
-            return holder
-    return None
-
-
 _HTTP_LOCKED = 423
 _LOST_START_EVENT = "lifecycle start lost to a start in progress"
 _HTTP_CONFLICT = 409
@@ -673,7 +621,7 @@ async def dispatch_lifecycle_session(
             await _raise_lost_start(runtime_db, todos_db, project_path, intent.slug, error)
             raise
         session_id = response.session_id
-    await _set_active_runner(
+    await set_active_runner(
         todos_db,
         intent.slug,
         session_id,
@@ -706,6 +654,12 @@ async def run_lifecycle_runner(
     runtime_db = db or await get_db()
     todos_db = await get_workflow_store(project_root)
     todos, reconciled = await _load_todos(todos_db, runtime_db)
+    cleared_by_master = await reconcile_ended_claims(runtime_db, project_root, todos)
+    reconciled = [
+        *reconciled,
+        *(slug for slug, todo in todos.items() if todo.active_runner and not cleared_by_master[slug].active_runner),
+    ]
+    todos = cleared_by_master
     prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
     delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
     workflow = config.workflow
@@ -799,7 +753,6 @@ role_for_lane = _role_for_lane
 make_intent = _intent
 load_runner_todos = _load_todos
 resolve_kinded_dispatch = _resolve_kinded_dispatch
-set_active_runner = _set_active_runner
 
 
 __all__ = [
@@ -822,9 +775,7 @@ __all__ = [
     "make_intent",
     "plan_review_current_from_state",
     "project_path_from_event_payload",
-    "recheck_slug_holder",
     "resolve_kinded_dispatch",
     "role_for_lane",
     "run_lifecycle_runner",
-    "set_active_runner",
 ]

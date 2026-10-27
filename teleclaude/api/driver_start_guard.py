@@ -12,12 +12,9 @@ from teleclaude.constants import DriverLaunchClass
 from teleclaude.core.agent_dispatch import AgentDispatchReason
 from teleclaude.core.db import get_db
 from teleclaude.core.next_machine.lanes import classify_driver_launch
-from teleclaude.core.next_machine.manual_start import (
-    DriverStartGuardResult,
-    driver_start_section,
-    guard_driver_start,
-    recheck_slug_holder,
-)
+from teleclaude.core.next_machine.manual_start import DriverStartGuardResult, guard_driver_start
+from teleclaude.core.next_machine.runtime.driver_starts import driver_start_section
+from teleclaude.core.next_machine.runtime.sessions import recheck_slug_holder
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.core.todos_db._exceptions import (
     ClaimConflict,
