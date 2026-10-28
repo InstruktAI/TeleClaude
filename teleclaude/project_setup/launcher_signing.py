@@ -19,6 +19,7 @@ from pathlib import Path
 
 from teleclaude.agent_registry import AgentName
 from teleclaude.paths import LAUNCHER_SIGNING_DIR
+from teleclaude.runtime.binaries import TMUX_LAUNCHER_CANDIDATES, TMUX_LAUNCHER_OVERRIDE_KEYS
 
 _SECURITY = "/usr/bin/security"
 _SECURITY_INTERACTIVE_FLAG = "-i"
@@ -63,12 +64,12 @@ _CODEX_EXECUTABLE = "codex"
 _GEMINI_EXECUTABLE = "agy"
 _GEMINI_LAUNCHER_EXECUTABLE = "gemini-launcher"
 _DEEPSEEK_EXECUTABLE = "dsh"
-_TMUX_OVERRIDE_KEYS = '"TMUX_LAUNCHER_TARGET", "TMUX_BINARY"'
+_TMUX_OVERRIDE_KEYS = ", ".join(f'"{key}"' for key in TMUX_LAUNCHER_OVERRIDE_KEYS)
 _CLAUDE_OVERRIDE_KEYS = '"CLAUDE_PATH"'
 _CODEX_OVERRIDE_KEYS = '"CODEX_PATH"'
 _GEMINI_OVERRIDE_KEYS = '"GEMINI_PATH"'
 _DEEPSEEK_OVERRIDE_KEYS = '"DSH_PATH"'
-_TMUX_CANDIDATES = '"/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"'
+_TMUX_CANDIDATES = ", ".join(f'"{path}"' for path in TMUX_LAUNCHER_CANDIDATES)
 _DEEPSEEK_CANDIDATES = '"/opt/homebrew/bin/dsh", "/usr/local/bin/dsh"'
 _TMUX_POLICY = ".tmuxServer"
 _PASSTHROUGH_POLICY = ".passthrough"

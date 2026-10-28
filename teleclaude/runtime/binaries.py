@@ -5,16 +5,21 @@ These paths are internal platform policy, not user-configurable settings.
 
 from __future__ import annotations
 
+import os
 import sys
 from functools import cache
 from pathlib import Path
+from typing import Final
 
 from teleclaude.agent_registry import AGENT_REGISTRY, AgentName
 
 _MACOS_TMUX_BINARY = Path.home() / "Applications" / "TmuxLauncher.app" / "Contents" / "MacOS" / "tmux-launcher"
 _UNIX_TMUX_BINARY = "tmux"
-# The multiplexer clients the macOS launcher itself runs, in the order it looks for them.
-_MACOS_TMUX_CLIENTS = (Path("/opt/homebrew/bin/tmux"), Path("/usr/local/bin/tmux"))
+# How the macOS tmux launcher selects the tmux it runs, in its order: an override, the fixed candidates, then PATH.
+# The launcher is generated from these values (project_setup.launcher_signing), so both select alike.
+TMUX_LAUNCHER_OVERRIDE_KEYS: Final = ("TMUX_LAUNCHER_TARGET", "TMUX_BINARY")
+TMUX_LAUNCHER_CANDIDATES: Final = ("/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux")
+_PATH_VARIABLE: Final = "PATH"
 
 
 def _is_macos() -> bool:
@@ -32,14 +37,23 @@ def resolve_tmux_binary() -> str:
 def resolve_tmux_query_binary(configured: str) -> str:
     """The binary for a read that only queries the running tmux server.
 
-    The server performs such a read with its own identity, so it needs no launcher: the macOS
-    launcher resolves to the client it runs, and any other configured binary is used as it is.
+    The macOS launcher resolves to the tmux it runs, selected as the launcher selects it; any other
+    configured binary, or a launcher whose target cannot be found, is used as it is.
     """
     if configured != str(_MACOS_TMUX_BINARY):
         return configured
-    for client in _MACOS_TMUX_CLIENTS:
-        if client.is_file():
-            return str(client)
+    environment = os.environ  # guard: direct-env-read - allowed: ambient host or terminal state
+    for key in TMUX_LAUNCHER_OVERRIDE_KEYS:
+        override = environment.get(key)
+        if override and os.access(override, os.X_OK):
+            return override
+    for candidate in TMUX_LAUNCHER_CANDIDATES:
+        if os.access(candidate, os.X_OK):
+            return candidate
+    for directory in environment.get(_PATH_VARIABLE, "").split(os.pathsep):
+        candidate = os.path.join(directory, _UNIX_TMUX_BINARY)
+        if directory and os.access(candidate, os.X_OK):
+            return candidate
     return configured
 
 
