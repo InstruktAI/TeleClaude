@@ -1,5 +1,5 @@
 ---
-description: Executable logic lives in script or module files and nowhere else. Any other file carries only declaration and wiring, whatever its format; projects adopt the mandate in project scope.
+description: Executable logic lives in script or module files and nowhere else. Any other file carries only declaration and wiring, whatever its format.
 visibility: internal
 ---
 
@@ -62,15 +62,14 @@ makes the accretion visible while it is still cheap to move.
 
 ## Scope
 
-- Repositories whose project policy adopts this convention, for every file that
-  can carry an executable body.
-- The global policy defines the reusable contract; each project owns whether it
-  adopts that contract.
+- Every repository, for every file that can carry an executable body.
 
 ## Enforcement
 
-- Reviewers in an adopting repository reject any carrier body that is not a
-  single delegation line, regardless of the file's format or extension.
+- The code review lane applies this policy to every changed carrier
+  (`sdlc/policy/definition-of-done-lanes`). Reviewers reject any carrier body
+  that is not a single delegation line, regardless of the file's format or
+  extension.
 - Reviewers reject a body that clears the line threshold but branches, loops,
   computes, or parses. Length is not the discriminator; behavior is.
 - "It is only a few lines" and "this format is not covered" are both rejected —
@@ -80,9 +79,8 @@ makes the accretion visible while it is still cheap to move.
 
 ## Exceptions
 
-- A repository that has not adopted this policy is outside its mandate.
-- Within an adopting repository there is no exception — not for direct-binary
-  invocations, status output, or an unnamed carrier format.
+- None — not for direct-binary invocations, status output, or an unnamed
+  carrier format.
 
 ## See Also
 

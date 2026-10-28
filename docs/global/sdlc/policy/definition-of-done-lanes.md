@@ -174,6 +174,7 @@ For each changed file, evaluate:
 5. **Unnecessary complexity** — Premature abstraction, over-engineering, dead code, unreachable branches, abstractions with a single consumer.
 6. **Language-policy ownership** — For every changed code file, load the applicable language policy and apply its rules for string ownership, closed vocabularies, typing, and tooling. Findings cite that language owner. A generic review rule never substitutes its own language construct or command.
 7. **Shared-resource cost** — Where the change makes a path wait on a lock, transaction or other resource that unrelated work also holds, name those other holders and what they do while holding it, whether the wait is bounded, and whether the outcome reaches each caller within that caller's deadline. Judge it from the change, the resource's other holders in the code, and the callers the path serves.
+8. **Executable logic in carriers** — Every changed file whose purpose is configuration, declaration, orchestration or convention, whatever its format, carries only a single delegation line to a script or module; a body that branches, loops, computes or parses is code in the wrong place (`sdlc/policy/no-inline-logic`).
 
 Only report findings with high confidence — quality over quantity. Each finding must name the file, line range, the specific violation, and a concrete fix.
 
@@ -183,6 +184,7 @@ Severity guidance:
 - Contract violations at boundaries → **Critical**.
 - A wait on a shared resource that can outlast its caller's deadline → **Critical**.
 - Pattern violations that increase maintenance cost → **Important**.
+- Executable logic in a carrier file → **Important**.
 - Unnecessary complexity or duplication → **Important**.
 - Minor style inconsistencies that do not violate a cited policy → **drop the observation; it is not a finding**.
 
