@@ -172,20 +172,16 @@ stop is the turn's completion.
 
 <!-- planned:antigravity-native-subagents-allowed -->
 
-A provider-native subagent runs inside the same Antigravity process as the
-conversation that invoked it and reports its hooks under its own conversation
-id. Its execution is recognized from the record Antigravity keeps for the
-subagent's conversation naming the subagent invocation as its origin, and
-every one of its hooks is dropped before session resolution, so none of them
-becomes the identity, status or transcript of any session
-(`local/projects/teleclaude/spec/session-identity-truth`). `fullyIdle` reports
-the whole process, though, and the conversation that invoked a subagent does
-not stop again when that subagent finishes after it. An idle `Stop` from a
-subagent is therefore the turn completion of its root conversation, the one at
-the top of its invocation chain: it is forwarded as that conversation's
-`agent_stop`, carrying its identity and none of the subagent's. It never
-reports a failure, because a subagent's error is not its root conversation's
-turn failure.
+Hooks from a provider-native subagent's execution, recognized as
+`local/projects/teleclaude/spec/feature/integration/agent-cli-hook-reception`
+states, are dropped before session resolution, so none of them becomes the
+identity, status or transcript of any session
+(`local/projects/teleclaude/spec/session-identity-truth`). The one exception is
+a subagent's `Stop` with `fullyIdle == true`: it is forwarded as the
+`agent_stop` of the subagent's root conversation, the one at the top of its
+invocation chain, carrying that conversation's identity and none of the
+subagent's, and it never reports a failure. The observed provider behavior
+this rests on is recorded in `docs/third-party/antigravity-cli/sub-agents.md`.
 
 <!-- /planned:antigravity-native-subagents-allowed -->
 

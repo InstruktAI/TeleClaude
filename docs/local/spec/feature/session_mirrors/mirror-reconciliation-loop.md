@@ -54,6 +54,28 @@ Confirmed coverage reports readiness even when no text rewrite was needed.
 Later successful reconciliation can satisfy pending closure work. A failed or
 partial read preserves stored conversation and reports its incomplete coverage.
 
+<!-- planned:antigravity-native-subagents-allowed -->
+
+### Subagent exclusion
+
+A transcript the per-runtime subagent rule recognizes is never a candidate. It
+is dropped before its identity, project or content is read, and the discovered
+counter excludes it. The rule per runtime:
+
+- Claude: a transcript filename beginning with `agent-`, or a `subagents` path
+  segment.
+- Codex: a session header whose spawn source names a parent thread.
+- DeepSeek: a session entry carrying `parentSession`.
+- Antigravity: a conversation recognized as a provider-native subagent's
+  execution, as
+  `local/projects/teleclaude/spec/feature/integration/agent-cli-hook-reception`
+  states.
+
+A subagent transcript mirrored under an earlier rule is removed by store
+convergence and never refreshed by a pass.
+
+<!-- /planned:antigravity-native-subagents-allowed -->
+
 ### Use cases
 
 #### Periodic tick
@@ -187,18 +209,6 @@ And a subagent transcript mirrored under an earlier rule is removed by store con
 <!-- change:antigravity-native-subagents-allowed -->
 
 #### UC-MRL-12: Subagent transcripts are never candidates
-
-```
-Given the per-agent session roots hold transcripts written by subagents a session spawned
-When a reconciliation pass enumerates candidates
-Then a transcript the per-runtime subagent rule recognizes is dropped before identity, project, or content is read from it
-And for claude the rule matches a transcript filename beginning with agent- or a subagents path segment
-And for codex the rule matches a session header whose spawn source names a parent thread
-And for deepseek the rule matches a session entry carrying parentSession
-And for antigravity the rule matches a conversation whose own store holds a message record originating from an invoke_subagent call
-And the discovered counter excludes dropped transcripts
-And a subagent transcript mirrored under an earlier rule is removed by store convergence, never refreshed by a pass
-```
 
 <!-- /planned-change:antigravity-native-subagents-allowed -->
 
