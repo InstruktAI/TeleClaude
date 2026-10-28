@@ -36,13 +36,13 @@ from teleclaude.core.session_listeners import (
     notify_distress_human_fallback,
     notify_stop,
 )
-from teleclaude.core.session_output import StopOutputKind, StopOutputResult, classify_stop_output
+from teleclaude.core.session_output import StopOutputKind, StopOutputResult
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.core.session_status import TurnNotificationRecord
 from teleclaude.core.summarizer import summarize_agent_output
 from teleclaude.core.supervisory_silence import SilenceObservation
 from teleclaude.tts.manager import TTSManager
-from teleclaude.utils.transcript import extract_stop_agent_message
+from teleclaude.utils.transcript._extraction import extract_stop_agent_output
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -167,7 +167,9 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         except Exception as exc:
             logger.warning("TTS session_start failed: %s", exc)
 
-    async def _extract_agent_output(self, session_id: str, payload: "AgentStopPayload") -> StopOutputResult:
+    async def _extract_agent_output(
+        self, session_id: str, payload: "AgentStopPayload", *, response_entry_id: str | None = None
+    ) -> StopOutputResult:
         """Extract the corresponding stop response without falling back to history."""
         session = await db.get_session(session_id)
         transcript_path = payload.transcript_path or (session.native_log_file if session else None)
@@ -189,11 +191,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             logger.warning("Extract skipped (unknown agent '%s')", agent_name_value)
             return StopOutputResult(StopOutputKind.UNAVAILABLE)
 
-        message = extract_stop_agent_message(transcript_path, agent_name)
-        if message is None:
-            logger.debug("Extract unavailable (no corresponding agent response)", session=session_id)
-            return StopOutputResult(StopOutputKind.UNAVAILABLE)
-        return classify_stop_output(message)
+        return extract_stop_agent_output(transcript_path, agent_name, response_entry_id=response_entry_id)
 
     async def _summarize_output(self, session_id: str, raw_output: str) -> str | None:
         """Summarize raw agent output via LLM.

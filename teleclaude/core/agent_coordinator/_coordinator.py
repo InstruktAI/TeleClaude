@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -81,7 +82,6 @@ _AGENT_STOP_OUTPUT_SUPPRESSED_EVENT = "agent_stop_output_suppressed"
 _SESSION_OBSERVED_STOP_SENT_EVENT = "session_observed_stop_sent"
 _AGENT_STOP_OUTPUT_SUPPRESSED_OUTCOME = "suppressed"
 _AGENT_STOP_OUTPUT_BARE_NOOP_REASON = "bare_noop"
-_HOOK_MESSAGE_KEY = "message"
 _AGENT_SESSION_START_OBSERVED_EVENT = "agent_session_start_observed"
 _AGENT_SESSION_START_OBSERVED_OUTCOME = "accepted"
 _AGENT_SESSION_START_NORMALIZED_HOOK_REASON = "normalized_hook"
@@ -707,23 +707,19 @@ class AgentCoordinator(
                 runner=lambda: self._run_agent_stop_slow_work(session_id, payload, stop_at, output_result),
             )
 
-    async def _prepare_agent_stop_output(self, session_id: str, payload: AgentStopPayload) -> StopOutputResult:
+    async def _prepare_agent_stop_output(
+        self, session_id: str, payload: AgentStopPayload, *, response_entry_id: str | None = None
+    ) -> StopOutputResult:
         """Fast extraction step shared by handler and slow runner.
 
         Reads the transcript, applies ANSI stripping, and returns the typed
         output result. No LLM, no TTS, no DB writes.
         """
-        payload_output_raw = payload.raw.get(_HOOK_MESSAGE_KEY)
-        if isinstance(payload_output_raw, str):
-            payload_output = strip_ansi_codes(payload_output_raw) if config.terminal.strip_ansi else payload_output_raw
-            result = classify_stop_output(payload_output)
-            if result.is_suppressed:
-                self._log_bare_noop_suppression(session_id)
-                return result
-
-        result = await self._extract_agent_output(session_id, payload)
+        result = await self._extract_agent_output(session_id, payload, response_entry_id=response_entry_id)
         if result.raw_output is not None and config.terminal.strip_ansi:
-            result = classify_stop_output(strip_ansi_codes(result.raw_output))
+            result = replace(
+                classify_stop_output(strip_ansi_codes(result.raw_output)), response_entry_id=result.response_entry_id
+            )
         if result.is_suppressed:
             self._log_bare_noop_suppression(session_id)
         return result
@@ -770,12 +766,18 @@ class AgentCoordinator(
                     session,
                     content_predicate=(
                         lambda entries: (
-                            transcript_has_stop_response(entries, active_agent) if active_agent is not None else False
+                            transcript_has_stop_response(
+                                entries, active_agent, response_entry_id=output_result.response_entry_id
+                            )
+                            if active_agent is not None
+                            else False
                         )
                     ),
                 )
                 if ready:
-                    output_result = await self._prepare_agent_stop_output(session_id, payload)
+                    output_result = await self._prepare_agent_stop_output(
+                        session_id, payload, response_entry_id=output_result.response_entry_id
+                    )
                     if output_result.kind is not StopOutputKind.UNAVAILABLE:
                         # Stage the recovered payload against the stop version
                         # already persisted, then re-signal projection. The fast

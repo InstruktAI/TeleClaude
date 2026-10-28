@@ -241,7 +241,11 @@ _WAKE_OPENING_RE = re.compile(r"\[TeleClaude Wake(?: (?P<occurrence_key>[^\]\n]+
 _RESTART_CONTINUATION_OPENING_RE = re.compile(re.escape(_RESTART_CONTINUATION_BRACKET_OPENING))
 _HANDOFF_OPENING_RE = re.compile(re.escape(_HANDOFF_BRACKET_OPENING))
 _PEER_OPENING_RE = re.compile(r"\[Peer \([^\]\n]+ · [^\]\n]+ · [^\]\n]+\)\]")
-_CALLER_IDENTITY_OPENING_RE = re.compile(r"\[[^\[\]\n()]+ \([^\]\n]+\) on [^\]\n]+(?: · [^\]\n]+)?\]")
+_CALLER_IDENTITY_LABEL_GROUP = "label"
+_CALLER_IDENTITY_SESSION_GROUP = "session_id"
+_CALLER_IDENTITY_OPENING_RE = re.compile(
+    r"\[(?P<label>[^\[\]\n()]+) \((?P<session_id>[^\]\n]+)\) on [^\]\n]+(?: · [^\]\n]+)?\]"
+)
 _CALLER_OCCURRENCE_KEY_RE = re.compile(r" · (?P<occurrence_key>[0-9a-f]{32})\]$")
 _REMINDER_OPENING_RE = re.compile(r"\[Reminder [^\]\n]+\]")
 _IDENTITY_FIELDS = frozenset(
@@ -581,6 +585,14 @@ def caller_occurrence_key(opening: str) -> str | None:
         return None
     match = _CALLER_OCCURRENCE_KEY_RE.search(opening)
     return match.group("occurrence_key") if match is not None else None
+
+
+def caller_header_identity(opening: str) -> tuple[str, str] | None:
+    """Read the source session and display label from a recognized caller opening."""
+    match = _CALLER_IDENTITY_OPENING_RE.fullmatch(opening)
+    if match is None:
+        return None
+    return match.group(_CALLER_IDENTITY_SESSION_GROUP), match.group(_CALLER_IDENTITY_LABEL_GROUP)
 
 
 def reminder_envelope(opening: str, body: str) -> InjectedTextEnvelope:

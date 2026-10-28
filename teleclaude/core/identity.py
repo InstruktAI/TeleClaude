@@ -54,6 +54,7 @@ from teleclaude.constants import (
     HUMAN_ROLES,
 )
 from teleclaude.core.db import db
+from teleclaude.core.injected_text import MachineRoleLabel, caller_header_identity
 from teleclaude.core.models import MessageAuthor, MessageAuthorKind, Session, SessionEntryPoint
 from teleclaude.identity_reach import Reach, resolve_reach, visitor_reach
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
@@ -63,6 +64,8 @@ logger = get_logger(__name__)
 _DISCORD_AVATAR_BINDING_EVENT = "discord_avatar_binding_lifecycle"
 _UNREGISTERED_LINEAGE_PERSON_EVENT = "session_lineage_person_unregistered"
 _PERSON_CONTEXT_BINDING_REGISTRY_UNAVAILABLE = "Person registry is unavailable for context binding"
+_CALLER_CATEGORY_SEPARATOR = " - "
+_CALLER_JOB_ROLE_SEPARATOR = " · "
 
 
 class DiscordAvatarBindingOutcome(StrEnum):
@@ -822,6 +825,31 @@ def local_human_author(session: Session) -> MessageAuthor:
         if person is not None:
             return MessageAuthor.for_human(session_id=session.session_id, display_name=person.display_name)
     return MessageAuthor.for_human_without_lineage(session_id=session.session_id)
+
+
+def resolve_discord_caller_header_alias(opening: str, *, owning_session_id: str) -> tuple[str, str | None]:
+    """Present carried caller-header identity, retaining labels without a known runtime."""
+    header = caller_header_identity(opening)
+    assert header is not None
+    session_id, label = header
+    role_label, category_separator, category = label.partition(_CALLER_CATEGORY_SEPARATOR)
+    avatar: str | None = None
+    job_role: str | None = None
+    if role_label == MachineRoleLabel.AGENT and category_separator:
+        runtime_label, role_separator, carried_role = category.partition(_CALLER_JOB_ROLE_SEPARATOR)
+        try:
+            presentation = AgentName.from_str(runtime_label).discord_presentation
+        except ValueError:
+            # Unknown carried runtimes retain their header label so their output remains visible.
+            return resolve_discord_author_alias(
+                MessageAuthor.for_machine(session_id=session_id, role_label=label), owning_session_id=owning_session_id
+            )
+        else:
+            label, avatar = presentation.alias, presentation.avatar_url
+            job_role = carried_role if role_separator else None
+    author = MessageAuthor.for_machine(session_id=session_id, role_label=label)
+    alias, _ = resolve_discord_author_alias(author, owning_session_id=owning_session_id, job_role=job_role)
+    return alias, avatar
 
 
 def resolve_discord_author_alias(

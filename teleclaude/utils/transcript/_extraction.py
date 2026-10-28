@@ -12,7 +12,15 @@ from typing import cast
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
+from teleclaude.core.session_output import (
+    NOOP_SENTINEL,
+    StopOutputKind,
+    StopOutputResult,
+    classify_stop_output,
+    is_bare_noop_output,
+)
 
+from ._identity import native_entry_id
 from ._iterators import (
     TRANSCRIPT_READERS,
     _get_entries_for_agent,
@@ -26,6 +34,7 @@ from ._user_turns import (
     extract_text_from_message_content,
     find_last_turn_start,
     find_turn_start_idx,
+    is_response_start_entry,
 )
 from ._utils import (
     _escape_triple_backticks,
@@ -36,6 +45,7 @@ _MESSAGE_ROLE_FIELD = "role"
 _MESSAGE_CONTENT_FIELD = "content"
 _ENTRY_TIMESTAMP_FIELD = "timestamp"
 _ASSISTANT_ROLE = "assistant"
+_STOP_TEXT_SEPARATOR = "\n\n"
 
 
 def _assistant_messages(entries: Sequence[JsonDict]) -> list[JsonDict]:
@@ -222,47 +232,74 @@ def _observed_assistant_text(message: Mapping[str, object]) -> tuple[bool, str |
     return observed, "\n\n".join(chunks) if observed else None
 
 
-def _current_turn_assistant_messages(entries: list[JsonDict], agent_name: AgentName) -> list[JsonDict] | None:
-    """Return normalized assistant messages answering the entry that opened the current turn."""
-    turn = find_last_turn_start(entries, agent_name)
-    if turn is None:
-        return None
-    return _assistant_messages(entries[turn.next_index :])
+def _response_assistant_messages(
+    entries: list[JsonDict], agent_name: AgentName, response_entry_id: str | None = None
+) -> tuple[str | None, list[JsonDict]] | None:
+    """Read one native response, bounded by submitted inputs rather than conversation generations."""
+    for index in range(len(entries) - 1, -1, -1):
+        entry = entries[index]
+        if not is_response_start_entry(entry, agent_name):
+            continue
+        entry_id = native_entry_id(entry, agent_name)
+        if response_entry_id is not None and entry_id != response_entry_id:
+            continue
+        end = index + 1
+        while end < len(entries) and not is_response_start_entry(entries[end], agent_name):
+            end += 1
+        return entry_id, _assistant_messages(entries[index + 1 : end])
+    return None
 
 
 def _extract_observed_stop_text(messages: Iterable[Mapping[str, object]]) -> tuple[bool, str | None]:
     """Return whether the response carries text, retaining an observed empty value."""
-    observed_text: str | None = None
+    chunks: list[str] = []
     response_observed = False
+    sentinel_seen = False
     for message in messages:
         observed, text = _observed_assistant_text(message)
         if observed:
             response_observed = True
-            observed_text = text
-    return response_observed, observed_text
+            if text is not None:
+                if is_bare_noop_output(text):
+                    sentinel_seen = True
+                elif text.strip():
+                    chunks.append(text)
+    if not response_observed:
+        return False, None
+    if chunks:
+        return True, _STOP_TEXT_SEPARATOR.join(chunks)
+    return True, NOOP_SENTINEL if sentinel_seen else ""
 
 
-def extract_stop_agent_message(transcript_path: str, agent_name: AgentName) -> str | None:
-    """Extract this stop's corresponding response without replacing empty with history."""
+def extract_stop_agent_output(
+    transcript_path: str, agent_name: AgentName, *, response_entry_id: str | None = None
+) -> StopOutputResult:
+    """Collect authored response text and retain the native identity for delayed reads."""
     try:
         entries = _get_entries_for_agent(transcript_path, agent_name)
     except OSError:
-        return None
+        return StopOutputResult(StopOutputKind.UNAVAILABLE, response_entry_id=response_entry_id)
     if not entries:
-        return None
-    messages = _current_turn_assistant_messages(entries, agent_name)
-    if messages is None:
-        return None
+        return StopOutputResult(StopOutputKind.UNAVAILABLE, response_entry_id=response_entry_id)
+    response = _response_assistant_messages(entries, agent_name, response_entry_id)
+    if response is None:
+        return StopOutputResult(StopOutputKind.UNAVAILABLE, response_entry_id=response_entry_id)
+    entry_id, messages = response
     observed, text = _extract_observed_stop_text(messages)
-    return text if observed else None
+    if not observed or text is None:
+        return StopOutputResult(StopOutputKind.UNAVAILABLE, response_entry_id=entry_id)
+    classified = classify_stop_output(text)
+    return StopOutputResult(classified.kind, classified.raw_output, entry_id)
 
 
-def transcript_has_stop_response(entries: list[JsonDict], agent_name: AgentName) -> bool:
+def transcript_has_stop_response(
+    entries: list[JsonDict], agent_name: AgentName, *, response_entry_id: str | None = None
+) -> bool:
     """Return whether the current turn has an explicitly observed text response."""
-    messages = _current_turn_assistant_messages(entries, agent_name)
-    if messages is None:
+    response = _response_assistant_messages(entries, agent_name, response_entry_id)
+    if response is None:
         return False
-    observed, _text = _extract_observed_stop_text(messages)
+    observed, _text = _extract_observed_stop_text(response[1])
     return observed
 
 

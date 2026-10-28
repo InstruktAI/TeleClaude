@@ -34,6 +34,7 @@ class StopOutputResult:
 
     kind: StopOutputKind
     raw_output: str | None = None
+    response_entry_id: str | None = None
 
     @property
     def disposition(self) -> StopOutputDisposition:

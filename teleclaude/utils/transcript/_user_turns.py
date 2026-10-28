@@ -730,6 +730,19 @@ def is_turn_start_entry(entry: Mapping[str, object], agent_name: AgentName | str
     return any(position.origin in _TURN_OPENING_ORIGINS for position in _textual_positions(entry, agent_name))
 
 
+def is_response_start_entry(entry: Mapping[str, object], agent_name: AgentName | str | None = None) -> bool:
+    """Recognize submitted input, including control wakes, while retaining runtime context."""
+    if is_turn_start_entry(entry, agent_name):
+        return True
+    agent = _runtime_agent(agent_name)
+    if agent is not None and RUNTIME_USER_VOCABULARY[agent].entry_is_runtime(entry):
+        return False
+    return any(
+        position.text is not None and _is_platform_control_text(position.text)
+        for position in _textual_positions(entry, agent_name)
+    )
+
+
 def extract_authored_user_text(entry: Mapping[str, object], agent_name: AgentName | str | None = None) -> str | None:
     """Return the text an author sent in one user entry, in native order, or ``None``."""
     texts = [
