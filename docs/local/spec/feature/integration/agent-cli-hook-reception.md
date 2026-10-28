@@ -163,9 +163,24 @@ And the session is not reported complete while provider work remains active
 
 <!-- change:antigravity-native-subagents-allowed -->
 
-- Antigravity hooks from provider-native subagent executions are discarded
-  before session mapping; a subagent's events never take over its managed
-  parent's session, and the subagent invocation runs unhindered.
+- Antigravity hooks from a provider-native subagent's execution are discarded
+  before session mapping on every hook source, and the subagent invocation
+  itself runs unhindered. A subagent's events never take over the session of
+  the conversation that invoked it, and a subagent never becomes a session of
+  its own. The subagent is recognized from the record Antigravity keeps in the
+  subagent's own conversation store naming the `invoke_subagent` call as its
+  origin; no hook payload field carries that ancestry. An absent or unreadable
+  record leaves the hook a primary conversation's. Each discarded hook still
+  receives the provider's success response. An idle `Stop` from a subagent is
+  forwarded as its root conversation's turn completion
+  (`local/projects/teleclaude/spec/hook-normalized-events`); the response to
+  that `Stop` is the plain success response and never a checkpoint
+  continuation, which would re-enter the subagent rather than its root.
+- Recognizing a subagent depends on Antigravity writing its origin record
+  before the subagent's first hook. The observed lead ranges from about 0.3 s
+  to 6 s on CLI 1.2.13 and 1.4.7, and Antigravity documents neither the record
+  nor its timing. A subagent hook that arrives before its record is handled as
+  a primary conversation's.
 
 <!-- /planned-change:antigravity-native-subagents-allowed -->
 
