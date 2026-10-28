@@ -12,9 +12,10 @@ import asyncio
 import base64
 import binascii
 import json
+import time
 from datetime import datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
@@ -22,7 +23,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.caller_identity import NoIdentityCliCaller, caller_from_principal
 from teleclaude.core import command_handlers
-from teleclaude.core.command_dispatch import shutdown_refusal_envelope
+from teleclaude.core.command_dispatch import RELAY_REQUEST_TIMEOUT_S, shutdown_refusal_envelope
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.events import (
@@ -322,6 +323,17 @@ def _startup_delivery_uncertain_evidence_from_metadata(
     return StartupDeliveryUncertainEvidence()
 
 
+# Twice the longest wait a sender uses for a request, so a request a sender may still await is never dropped.
+_REQUEST_EXPIRY_S: Final = 2 * RELAY_REQUEST_TIMEOUT_S
+_REQUEST_EXPIRED_EVENT: Final = "relay_request_expired_unanswered"
+
+
+def _request_age_s(message_id: str) -> float:
+    """Seconds since the stream entry was added, read from its id: the cluster Redis server's clock at the add."""
+    added_ms = int(message_id.split("-", 1)[0])
+    return time.time() - added_ms / 1000
+
+
 class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: Redis stream polling, message parsing, command dispatch."""
 
@@ -476,6 +488,14 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
 
             if parsed.msg_type == "system":
                 return await self._handle_system_message(data)
+
+            age_s = _request_age_s(message_id)
+            if age_s > _REQUEST_EXPIRY_S:
+                # Its sender has stopped waiting and reported the outcome as unknown; nobody awaits an answer.
+                logger.info(
+                    _REQUEST_EXPIRED_EVENT, message_id=message_id, age_s=round(age_s), initiator=parsed.initiator
+                )
+                return
 
             if parsed.command_payload is not None:
                 result = await dispatch_relayed_command(
