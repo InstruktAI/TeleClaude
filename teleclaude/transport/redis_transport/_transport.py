@@ -129,6 +129,9 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._local_projects_digest: str | None = None
         # The projects-with-todos answer the digest was computed from; a peer's pull is answered with it.
         self._local_projects_payload: list[JsonDict] | None = None
+        # Reads dropped for their age since the last summary, and when that run began.
+        self._expired_reads = 0
+        self._expired_reads_since: float | None = None
         self._pulled_projects_digest: dict[str, str] = {}
 
         # Remote refresh coalescing per peer and data type; projects, todos and preparation share one key.

@@ -323,9 +323,18 @@ def _startup_delivery_uncertain_evidence_from_metadata(
     return StartupDeliveryUncertainEvidence()
 
 
-# Twice the longest wait a sender uses for a request, so a request a sender may still await is never dropped.
-_REQUEST_EXPIRY_S: Final = 2 * RELAY_REQUEST_TIMEOUT_S
-_REQUEST_EXPIRED_EVENT: Final = "relay_request_expired_unanswered"
+# Reads whose only effect is their answer. Notifications, which no sender awaits, and relayed commands, whose owner
+# enforces their own deadline, are never dropped for their age.
+_EXPIRING_READ_COMMANDS: Final = _RELAYED_READ_COMMANDS | {
+    _LIST_PROJECTS_COMMAND,
+    _LIST_PROJECTS_WITH_TODOS_COMMAND,
+    _GET_SESSION_FINAL_OUTPUT_COMMAND,
+}
+# Twice the longest wait a sender uses for a request, so a read a sender may still await is never dropped.
+_READ_EXPIRY_S: Final = 2 * RELAY_REQUEST_TIMEOUT_S
+# Dropped reads are logged as one summary per run of drops, and at least this often during a long run.
+_EXPIRED_READS_LOG_INTERVAL_S: Final = 60.0
+_EXPIRED_READS_EVENT: Final = "relay_reads_expired_unanswered"
 
 
 def _request_age_s(message_id: str) -> float:
@@ -343,6 +352,8 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
         message_stream_maxlen: int
         _running: bool
         _local_projects_payload: list[JsonDict] | None
+        _expired_reads: int
+        _expired_reads_since: float | None
 
         def _reset_idle_poll_log_throttle(self) -> None:
             """Reset idle-poll logging state."""
@@ -476,6 +487,20 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 )
                 await self._handle_redis_error("Message polling error", e)
 
+    def _note_expired_read(self) -> None:
+        self._expired_reads += 1
+        now = time.monotonic()
+        if self._expired_reads_since is None:
+            self._expired_reads_since = now
+        elif now - self._expired_reads_since >= _EXPIRED_READS_LOG_INTERVAL_S:
+            self._flush_expired_reads()
+
+    def _flush_expired_reads(self) -> None:
+        if self._expired_reads:
+            logger.info(_EXPIRED_READS_EVENT, dropped=self._expired_reads)
+        self._expired_reads = 0
+        self._expired_reads_since = None
+
     async def _handle_incoming_message(self, message_id: str, data: dict[bytes, bytes]) -> Any:
         """Handle incoming message from Redis stream.
 
@@ -488,14 +513,6 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
 
             if parsed.msg_type == "system":
                 return await self._handle_system_message(data)
-
-            age_s = _request_age_s(message_id)
-            if age_s > _REQUEST_EXPIRY_S:
-                # Its sender has stopped waiting and reported the outcome as unknown; nobody awaits an answer.
-                logger.info(
-                    _REQUEST_EXPIRED_EVENT, message_id=message_id, age_s=round(age_s), initiator=parsed.initiator
-                )
-                return
 
             if parsed.command_payload is not None:
                 result = await dispatch_relayed_command(
@@ -519,6 +536,12 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 return
 
             cmd_name, cmd_args = parse_command_string(parsed.command)
+            if cmd_name in _EXPIRING_READ_COMMANDS:
+                if _request_age_s(message_id) > _READ_EXPIRY_S:
+                    # A read whose only effect is its answer, and whose sender has stopped waiting for it.
+                    self._note_expired_read()
+                    return
+                self._flush_expired_reads()
             if cmd_name in {"stop_notification", "distress_notification", "operation_outcome"}:
                 result = await self._handle_agent_notification_command(cmd_name, cmd_args, parsed.origin_metadata)
                 response_json = json.dumps(result)
