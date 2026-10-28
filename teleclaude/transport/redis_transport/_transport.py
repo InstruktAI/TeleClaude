@@ -16,6 +16,7 @@ from redis.asyncio import Redis
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config.machine import config
 from teleclaude.constants import REDIS_REFRESH_COOLDOWN_SECONDS
+from teleclaude.core.models import JsonDict
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 from ._adapter_noop import _AdapterNoopMixin
@@ -126,6 +127,8 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
         # Digest-driven projects refresh: this computer's advertised digest, and per peer the digest it
         # advertised when its projects were last pulled.
         self._local_projects_digest: str | None = None
+        # The projects-with-todos answer the digest was computed from; a peer's pull is answered with it.
+        self._local_projects_payload: list[JsonDict] | None = None
         self._pulled_projects_digest: dict[str, str] = {}
 
         # Remote refresh coalescing per peer and data type; projects, todos and preparation share one key.

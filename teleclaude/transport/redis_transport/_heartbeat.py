@@ -12,6 +12,7 @@ from redis.exceptions import RedisError
 
 from teleclaude.constants import CACHE_INVALIDATION_FIELD, CacheEvent
 from teleclaude.core import command_handlers
+from teleclaude.core.models import JsonDict
 from teleclaude.transport.peer_heartbeat import (
     CONVERSATION_ADAPTERS_FIELD,
     PROJECTS_DATA_TYPE,
@@ -45,6 +46,7 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         heartbeat_ttl: int
         _running: bool
         _local_projects_digest: str | None
+        _local_projects_payload: list[JsonDict] | None
         _pulled_projects_digest: dict[str, str]
         _bootstrapped: set[tuple[str, str]]
 
@@ -80,14 +82,17 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
                 await self._handle_redis_error("Heartbeat failed", e)
 
     async def _projects_digest_loop(self) -> None:
-        """Background task: keep the digest of the projects-with-todos answer that peers would pull current.
+        """Background task: keep the projects-with-todos answer that peers pull, and its digest, current.
 
         It runs apart from the heartbeat because building the answer can take longer than a heartbeat may wait.
+        A peer's pull is answered with the answer kept here, so it matches the digest the peer saw and is
+        answered at once instead of being built again for each request.
         """
         while self._running:
             try:
                 payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
                 self._local_projects_digest = projects_digest(payload)
+                self._local_projects_payload = payload
             except asyncio.CancelledError:
                 break
             except Exception:

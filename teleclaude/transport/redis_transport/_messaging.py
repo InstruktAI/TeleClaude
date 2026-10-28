@@ -330,6 +330,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
         computer_name: str
         message_stream_maxlen: int
         _running: bool
+        _local_projects_payload: list[JsonDict] | None
 
         def _reset_idle_poll_log_throttle(self) -> None:
             """Reset idle-poll logging state."""
@@ -543,6 +544,9 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                             else None
                         ),
                     }
+                elif self._local_projects_payload is not None:
+                    # The answer the advertised digest was computed from: consistent with it, and ready at once.
+                    payload = self._local_projects_payload
                 else:
                     payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
 
