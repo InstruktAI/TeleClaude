@@ -16,6 +16,11 @@ visibility: 'public'
   bundle in its `## Required reads`. It is a generated artifact with no snippet
   id, so `telec docs get` does not serve it; its generation already leaves
   undelivered content out.
+- **A review-lane subagent works from its brief.** A native subagent running one
+  review lane from its parent reviewer's brief loads no domain bundle and expands
+  no Required reads: the brief is its mandate, and the parent holds the bundle and
+  cuts the brief from it (`sdlc/procedure/lifecycle/review`). It still reads any
+  source its question requires and reports what it could not establish.
 - **`telec docs` is the entry point for discovery, and always filtered.** Use
   `--areas`, `--domains`, and/or `--baseline-only`; an unfiltered index floods the
   context. Retrieve before any task where missing context could alter decisions.
@@ -32,8 +37,11 @@ visibility: 'public'
 ## Rationale
 
 Immediate context prevents drift from established policy, architecture, and
-procedure. Consolidated third-party docs are curated and project-aware; live web
-results are noisy and bypass shared knowledge.
+procedure. A review-lane subagent already receives that context, cut for its
+question, from a parent that read it; loading the whole bundle again per lane
+multiplies its cost and adds no judgment. Consolidated third-party docs are
+curated and project-aware; live web results are noisy and bypass shared
+knowledge.
 
 ## Scope
 

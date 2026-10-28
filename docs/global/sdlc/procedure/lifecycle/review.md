@@ -85,12 +85,15 @@ qualifications, and verbatim excerpts of the owner rules the lane needs; the
 finding rules of step 4; and the result it returns: findings in the step 4
 format, or clean-pass evidence, plus any gap it could not close. On a disputed
 point the brief gives the evidence and the question, never the finding to reach
-or avoid, and it states no preferred verdict. The subagent reads beyond its
-brief wherever its lane requires and reports missing context as a gap. It
-investigates and returns evidence, and runs no command that acts as the session
-— reminders, stamps, sends, writes — because it carries your platform identity;
-every session act stays yours. Where the harness offers no native subagents, run
-the lanes as separate passes yourself.
+or avoid, and it states no preferred verdict. You read the domain bundle and cut
+each brief from it; the brief is the lane subagent's complete mandate, so it
+loads no domain bundle and expands no Required reads
+(`general/policy/context-retrieval`). It reads beyond its brief wherever its
+question requires and reports missing context as a gap. It investigates and
+returns evidence, and runs no command that acts as the session — reminders,
+stamps, sends, writes — because it carries your platform identity; every session
+act stays yours. Where the harness offers no native subagents, run the lanes as
+separate passes yourself.
 
 For the tests lane, independently re-prove every triggered `TQ-*` predicate.
 Record evidence for each triggered predicate or a reasoned `N/A`. Evidence
