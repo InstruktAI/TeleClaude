@@ -256,7 +256,7 @@ is Important. Bypassing the data layer is Critical. A backward-compatibility bra
 
 **Authority:** the documented design principles (`principle-violation-hunt`).
 
-Systematic check of changed code against documented design principles, with fallback detection as the most prominent target. It requires full context: its brief carries the complete target and the intent basis, and the hunt reads beyond them wherever a principle leads.
+Systematic check of changed code against documented design principles, with fallback detection as the most prominent target. Its brief carries the complete target and the intent basis, and the hunt reads beyond them wherever a principle leads.
 
 Use the `principle-violation-hunt` procedure for detailed hunt criteria.
 
