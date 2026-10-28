@@ -8,7 +8,9 @@ completed handoff governs the next admission decision on every computer.
 
 from __future__ import annotations
 
+import asyncio
 from enum import StrEnum
+from functools import partial
 from pathlib import Path
 from typing import Any, Final, cast
 
@@ -16,6 +18,7 @@ from githubkit_schemas.v2026_03_10.types import AppPermissionsType
 
 from teleclaude.core.workflow_store.github_io_models import GitHubRepositoryScope
 from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused, GitHubTransport
+from teleclaude.core.workflow_store.github_io_unit import submit_serialized_unit
 from teleclaude.core.workflow_store.github_store import resolve_github_store_selection
 from teleclaude.types.github_binding import GitHubActorAssignment
 
@@ -51,14 +54,34 @@ _NAME_FIELD: Final = "name"
 _VALUE_FIELD: Final = "value"
 
 
+# One transport per repository, so its installation token is reused rather than issued for every read.
+_transports: dict[GitHubRepositoryScope, GitHubTransport] = {}
+
+
 def _scope(project_root: Path) -> tuple[GitHubTransport, str, GitHubActorAssignment]:
     _root, identity, assignment = resolve_github_store_selection(project_root)
-    transport = GitHubTransport(GitHubRepositoryScope(identity.repository_id, identity.repository))
+    scope = GitHubRepositoryScope(identity.repository_id, identity.repository)
+    transport = _transports.setdefault(scope, GitHubTransport(scope))
     return transport, identity.repository, assignment
 
 
 async def read_active_computer(project_root: Path) -> str | None:
-    """The computer the project names as active, or ``None`` when it names none. Raises ``GitHubIORefused``."""
+    """The computer the project names as active, or ``None`` when it names none. Raises ``GitHubIORefused``.
+
+    It runs as a unit on the shared GitHub I/O loop, which owns the process-wide request gate.
+    """
+    return await asyncio.wrap_future(submit_serialized_unit(partial(_read, project_root)))
+
+
+async def write_active_computer(project_root: Path, computer: str) -> None:
+    """Name ``computer`` as the project's active computer. Raises ``GitHubIORefused``.
+
+    It runs as a unit on the shared GitHub I/O loop, which owns the process-wide request gate.
+    """
+    await asyncio.wrap_future(submit_serialized_unit(partial(_write, project_root, computer)))
+
+
+async def _read(project_root: Path) -> str | None:
     transport, repository, assignment = _scope(project_root)
     path = _VARIABLE_PATH.format(repository=repository, name=ACTIVE_COMPUTER_VARIABLE)
 
@@ -75,8 +98,7 @@ async def read_active_computer(project_root: Path) -> str | None:
         return None
 
 
-async def write_active_computer(project_root: Path, computer: str) -> None:
-    """Name ``computer`` as the project's active computer. Raises ``GitHubIORefused``."""
+async def _write(project_root: Path, computer: str) -> None:
     transport, repository, assignment = _scope(project_root)
     body = {_NAME_FIELD: ACTIVE_COMPUTER_VARIABLE, _VALUE_FIELD: computer}
     variable = _VARIABLE_PATH.format(repository=repository, name=ACTIVE_COMPUTER_VARIABLE)
