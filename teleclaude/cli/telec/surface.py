@@ -1663,6 +1663,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_COMPUTER_MANY,
                     F.FLAG_HISTORY_LIMIT,
                     F.FLAG_HISTORY_INCLUDE_FOCUSED,
+                    F.FLAG_HISTORY_INCLUDE_WORKERS_ALIAS,
                     F.FLAG_HISTORY_IDENTITY,
                     F.FLAG_PROJECT_FILTER,
                     F.FLAG_HISTORY_JSON,

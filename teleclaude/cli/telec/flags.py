@@ -534,6 +534,9 @@ FLAG_HISTORY_LIMIT = Flag("--limit", "-l", "Max results to show (default: 20)", 
 FLAG_HISTORY_INCLUDE_FOCUSED = Flag(
     "--include-focused", desc="Also search focused-role sessions (reviewers, builders)", arity=SWITCH
 )
+FLAG_HISTORY_INCLUDE_WORKERS_ALIAS = Flag(
+    "--include-workers", desc="Legacy alias for --include-focused", hidden=True, arity=SWITCH
+)
 FLAG_HISTORY_IDENTITY = Flag("--identity", desc="Filter by human identity or transcript source identity", arity=VALUE)
 FLAG_HISTORY_JSON = Flag("--json", desc="Emit machine-readable JSON", arity=SWITCH)
 FLAG_HISTORY_RAW = Flag("--raw", desc="Show raw transcript instead of mirror text", arity=SWITCH)
