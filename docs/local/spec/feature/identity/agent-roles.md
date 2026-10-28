@@ -66,7 +66,7 @@ own identity and is never a session role.
 | `maintenance-recovery` | Inspecting and recovering canonical-main maintenance.                                                                    |
 | `memory-curation`      | Curating memories and prospects from conversation extractions.                                                           |
 | `session-observe`      | Listing and showing sessions, searching history, and reading the fleet's computers, projects and agents.                 |
-| `transcript-read`      | Showing the transcript of a named session.                                                                               |
+| `transcript-read`      | Showing or tailing the transcript of a named session.                                                                    |
 | `operation-read`       | Reading the outcome of an operation one's session started or one's reach admits.                                         |
 | `session-act`          | Starting, running, reviving, restarting, ending and messaging sessions other than one's own.                             |
 | `self-acts`            | Results, files, unsubscribing, ending and restarting for one's own session.                                              |
@@ -81,7 +81,7 @@ own identity and is never a session role.
 | `code-check`           | Inspecting code: blast radius, lint and tests.                                                                           |
 | `code`                 | Formatting, file declarations and commits.                                                                               |
 | `mcp`                  | Listing and calling MCP tools.                                                                                           |
-| `peer-talk`            | Sending to and tailing another session. No `worker`-class role holds it.                                                 |
+| `peer-talk`            | Sending to another session. No `worker`-class role holds it.                                                             |
 | `memories-read`        | Listing, searching, deleting and tracing a person's own memories outside an extraction.                                  |
 | `memories-save`        | Saving a memory observation when the human the session works for asks it to. Every role reaches it; no role composes it. |
 | `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                                      |

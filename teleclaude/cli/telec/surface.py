@@ -274,7 +274,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_COMPUTER,
                 ],
                 auth=CommandAuth(
-                    capability=Capability.PEER_TALK,
+                    capability=Capability.TRANSCRIPT_READ,
                     human=_HR_MEMBER,
                     scope=CommandScope.TARGET_SESSION,
                 ),
