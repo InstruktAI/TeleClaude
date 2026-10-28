@@ -175,9 +175,7 @@ And the session is not reported complete while provider work remains active
   forwarded as its root conversation's turn completion
   (`local/projects/teleclaude/spec/hook-normalized-events`); the response to
   that `Stop` is the plain success response and never a checkpoint
-  continuation; the turn's checkpoint boundary is the invoking conversation's
-  own `Stop`
-  (`local/projects/teleclaude/spec/feature/integration/agent-stop-checkpoint-blocking`).
+  continuation.
 - Recognizing a subagent depends on Antigravity writing its origin record
   before the subagent's first hook, and Antigravity documents neither the record
   nor its timing. A subagent hook that arrives before its record is handled as
