@@ -51,6 +51,7 @@ flowchart LR
 - **One-Shot Responses**: Response streams are created per-message and auto-expire after TTL.
 - **Heartbeat TTL**: Computer registry entries expire after 60s without heartbeat; marks computer offline.
 - **Digest-Driven Refresh**: A peer's projects and todos are pulled at its first heartbeat, when the digest its heartbeat advertises differs from the one advertised at the last pull, and once after a workflow change invalidates the cached copy. Nothing is pulled because a cached copy aged, and one pull per peer answers projects, todos and preparation views alike.
+- **Answer Kept With Its Digest**: A computer keeps the projects-with-todos answer it computed its advertised digest from, refreshed on the same pass, and answers a peer's pull with it, so the answer matches the digest the peer saw and is ready at once instead of being built for each request.
 - **Single Connection Lifecycle**: Redis connection is managed by one reconnect loop; all tasks wait on readiness.
 
 - **Bounded Backpressure**: The shared Redis client draws connections from a single bounded pool that blocks a caller for a bounded time when every connection is in use, rather than failing immediately. A momentary saturation waits for a connection to be released instead of surfacing a connection error to every subsystem at once; only a saturation that outlasts the bound raises.
