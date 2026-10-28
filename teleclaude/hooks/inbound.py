@@ -58,6 +58,12 @@ INBOUND_PATH_PREFIX: Final = "/hooks/inbound"
 _INBOUND_WEBHOOK_EVENT_ACCEPTED = "inbound_webhook_event_accepted"
 _INBOUND_WEBHOOK_REFUSED = "inbound_webhook_refused"
 _INBOUND_WEBHOOK_RELAY_FAILED = "inbound_webhook_relay_failed"
+_INBOUND_WEBHOOK_DUPLICATE = "inbound_webhook_duplicate_dropped"
+# The provider's own delivery identifier; a digest of the verified request stands in where none is sent.
+_DELIVERY_ID_HEADER: Final = "x-github-delivery"
+_CLAIM_TEMPLATE: Final = "{delivery}:{index}"
+# Longer than a provider's redelivery window, so a redelivered request is still recognised (ADR-0148).
+_CLAIM_TTL_S: Final = 3 * 24 * 3600
 _INBOUND_DECLARATION_UNREADABLE = "inbound_declaration_unreadable"
 _SECRET_FIELD = "secret"
 _VERIFY_TOKEN_FIELD = "verify_token"
@@ -358,6 +364,14 @@ async def _resolve_whatsapp() -> _Endpoint:
     )
 
 
+def _delivery_identity(headers: Mapping[str, str], body: bytes) -> str:
+    """The identity a delivery is claimed under: the provider's delivery id, else a digest of the verified body."""
+    delivery_id = headers.get(_DELIVERY_ID_HEADER)
+    if delivery_id:
+        return delivery_id
+    return hashlib.sha256(body).hexdigest()
+
+
 class InboundRelay:
     """Verify, translate and relay inbound requests for one ingress computer."""
 
@@ -374,11 +388,12 @@ class InboundRelay:
             relayed = _TRANSLATORS[endpoint.protocol](document, headers)
         except (json.JSONDecodeError, _InvalidBody) as error:
             raise _refuse(_Refusal.INVALID_BODY, endpoint.protocol, endpoint.home) from error
-        for event in relayed:
-            await self._emit(endpoint, event)
+        delivery = _delivery_identity(headers, body)
+        for index, event in enumerate(relayed):
+            await self._emit(endpoint, event, claim=_CLAIM_TEMPLATE.format(delivery=delivery, index=index))
         return dict(_ACCEPTED_BODY)
 
-    async def _emit(self, endpoint: _Endpoint, event: _RelayedEvent) -> None:
+    async def _emit(self, endpoint: _Endpoint, event: _RelayedEvent, *, claim: str) -> None:
         relayed = RelayedEvent(
             type=event.name,
             subject=InboundSourceRef(
@@ -399,7 +414,7 @@ class InboundRelay:
         )
         hook_event = relayed_hook_event(self._producer.stage(relayed, legacy))
         try:
-            await self._producer.emit(relayed, legacy)
+            entry_id = await self._producer.emit_once(relayed, legacy, claim=claim, ttl_s=_CLAIM_TTL_S)
         except Exception as error:
             logger.error(
                 _INBOUND_WEBHOOK_RELAY_FAILED,
@@ -410,6 +425,10 @@ class InboundRelay:
             )
             # A transient failure so the sender retries the delivery.
             raise HTTPException(status_code=_STATUS_BAD_GATEWAY, detail=_DETAIL_RELAY_ERROR) from error
+        if entry_id is None:
+            # Another receipt of this delivery relayed it; this one is accepted and relays nothing.
+            logger.info(_INBOUND_WEBHOOK_DUPLICATE, event=event.name, protocol=endpoint.protocol.value, claim=claim)
+            return
         logger.info(
             _INBOUND_WEBHOOK_EVENT_ACCEPTED,
             source=hook_event.source,
