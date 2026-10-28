@@ -462,7 +462,9 @@ def cli_clearance(
 
     An anonymous help-desk visitor is admitted only to commands the surface
     declares safe for a desk (``desk_command``), caller-independent ones
-    included; every other caller is decided as before.
+    included; every other caller is decided as before. A caller outside any session is admitted to a
+    command the machine's own account operates (``machine_account``) on this computer, logged in or
+    not; a session, valid or invalid, never takes that path.
     """
     if auth is None:
         return CliClearance(identity=identity, refusal=_CALLER_INDEPENDENT_COMMAND_REFUSAL)
@@ -476,6 +478,8 @@ def cli_clearance(
         return CliClearance(identity=None, refusal=None)
     if identity is None:
         identity = _no_identity(False)
+    if auth.machine_account and not identity.in_session and not remote_target:
+        return CliClearance(identity=identity, refusal=None)
     if isinstance(identity.caller, NoIdentityCliCaller) or (relayed_request and not identity.principal):
         return CliClearance(identity=identity, refusal=no_identity_refusal(identity))
 
