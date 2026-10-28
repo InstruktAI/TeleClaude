@@ -142,6 +142,8 @@ without listing people; it is absent for any other caller.
 
 ### 5) Multi-user enforcement
 
+<!-- planned-change:telec-app-refuses-terminal-without-login -->
+
 - If `people` contains more than one registered person:
   - a terminal that carries no login document of its own presents no terminal-email
     signal, so a person opening a fresh terminal authenticates on it before any
@@ -156,10 +158,37 @@ without listing people; it is absent for any other caller.
   answering for that terminal. One person authenticating never unbinds another
   person's open terminals; only the terminal's own disappearance does.
 
+<!-- change:telec-app-refuses-terminal-without-login -->
+
+- If `people` contains more than one registered person:
+  - a terminal that carries no login document of its own presents no terminal-email
+    signal, so a person opening a fresh terminal authenticates on it before any
+    identity-bearing command succeeds,
+  - TUI launch requires prior `telec auth login`,
+  - a client refuses a caller that has neither a session identity nor a terminal
+    login naming a registered person, before it sends any request, except for a
+    command declared for the machine's own account.
+- If `people` has zero/one person, the legacy fallback role is still allowed for
+  tmux callers without session identity, and with exactly one person that person
+  answers a terminal that has no document of its own.
+- Whichever mode is in force, a login already bound to a live terminal keeps
+  answering for that terminal. One person authenticating never unbinds another
+  person's open terminals; only the terminal's own disappearance does.
+- Whichever mode is in force, a caller outside any session needs no login for a
+  command declared for the machine's own account — the installation verbs
+  (`local/projects/teleclaude/design/cli-authorization-matrix`). That caller is
+  the operating-system account the installation belongs to, which already holds
+  the installation's lifecycle; a login there would be an identity claim, not
+  authentication (`general/principle/trust-and-guardrails`).
+
+<!-- /planned-change:telec-app-refuses-terminal-without-login -->
+
 ### 6) Authorization
 
 Authorization happens once, in the client process that serves the caller, before
 the client sends any request:
+
+<!-- planned-change:telec-app-refuses-terminal-without-login -->
 
 - the caller resolves from the identity it carries, never from a claim it
   supplies: a caller inside a session resolves from its session record, reached
@@ -202,6 +231,53 @@ the client sends any request:
   file, and escalation act for that session, a claimed todo is written only by its
   claiming group, a person-bound service acts only for its person — against the
   identity the request carries.
+
+<!-- change:telec-app-refuses-terminal-without-login -->
+
+- the caller resolves from the identity it carries, never from a claim it
+  supplies: a caller inside a session resolves from its session record, reached
+  through the session id its identity document names, and a principal copied into
+  that document is never trusted; an agent running outside the platform resolves
+  from the headless session the platform keeps for it, found by the native
+  session id its runtime exports to the agent's tool processes
+  (`local/projects/teleclaude/spec/session-identity-truth`), and is cleared as
+  that session; any other caller outside a session resolves from its terminal
+  login, and the TUI from the identity it was launched with,
+
+- a session's principal resolves through the principal-resolution capability; its
+  person role for a command is that person's effective role at the command's scope
+  (`local/projects/teleclaude/design/architecture/scoped-roles`), read from the people registry and
+  company rosters when the command runs, so a changed role applies from the
+  session's next command, and a gate grants a session no role its principal does
+  not resolve to; a session acting for a person is also bounded by that role,
+
+- a `telec` command executing locally is cleared against its verb band
+  (`local/projects/teleclaude/design/cli-authorization-matrix`) once, before the
+  first request leaves its process; a command addressed to another computer
+  authenticates its caller at the edge and is relayed without sender-side
+  authorization, apart from a worker's session-to-session acts, which its own
+  computer refuses
+  (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`).
+  The owning computer authorizes the relayed principal.
+  The TUI follows the same boundary for each action
+  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
+
+- a caller that resolves to no person and no system principal is refused before
+  any request is sent, unless it is outside any session and the command is
+  declared for the machine's own account (§5); a role outside the band is refused
+  with the not-permitted failure naming the role and the verb,
+- the client carries the identity it resolved on every request (§2); the daemon
+  verifies no caller and applies no verb band of its own to a request from its
+  own clients; a daemon deciding an act another computer relays to it resolves
+  the relayed principal against its own registries and applies that act's person
+  band (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
+- the daemon applies the rules that scope an act to its objects — a session acts
+  on no orchestrator that dispatched it, a reminder belongs to its session, a session's result,
+  file, and escalation act for that session, a claimed todo is written only by its
+  claiming group, a person-bound service acts only for its person — against the
+  identity the request carries.
+
+<!-- /planned-change:telec-app-refuses-terminal-without-login -->
 
 ### 7) Session lineage invariant (child sessions)
 

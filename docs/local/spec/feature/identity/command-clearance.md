@@ -188,6 +188,12 @@ And the requested mutation is applied to the todo state
 
 Each command's declaration names the command capability that admits agent callers, so a capability's reach reads in one place (`local/projects/teleclaude/design/cli-authorization-matrix`), and an agent caller is admitted when the agent role catalog composes its role with that capability or marks the role full-reach (`local/projects/teleclaude/spec/feature/identity/agent-roles`); person roles keep a band per command. A role that is not full-reach is admitted to a capability-gated command only when its explicit set composes that command's capability or the catalog gives that capability to every role, and its class adds none; a caller-independent command admits it as it admits every caller. No focused role's set lists sessions, searches history or reads the fleet's computers, projects or agents, and a focused session starts, revives, restarts or ends no session but its own through the self-acts above. A recorded role the catalog does not name is refused every command that depends on its caller and reported as a platform defect; it is never admitted as a caller without a role, and caller-independent commands pass without resolving it. The daemon's own `system` credential grants no role-based command reach; caller-independent commands pass without resolving that credential. A command that does not depend on its caller — `version`, `auth login|whoami|logout`, `events list`, `signals status`, `mcp list`, the local repository commands `repo lint|test|format|add|blueprint affected`, and the git-hook commands — admits a caller with no identity and passes the gate with no caller resolution. `todo update` is governed by the claim-scoped rule instead of a role.
 
+<!-- planned:telec-app-refuses-terminal-without-login -->
+
+The installation verbs are declared for the machine's own account (`local/projects/teleclaude/design/cli-authorization-matrix`): a caller outside any session is admitted to them with or without a terminal login, and a session is admitted only through its role's installation capability and, when it acts for a person, that person's band.
+
+<!-- /planned:telec-app-refuses-terminal-without-login -->
+
 #### UC-CCB1: A full-reach role starts a session
 
 #### UC-CCB2: A full-reach role revives a session

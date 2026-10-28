@@ -189,6 +189,15 @@ health, whether an assessment is owed and since when, and when the most recent
 assessment was recorded. The lifecycle verbs keep the guarantees of
 `local/projects/teleclaude/policy/daemon-availability`.
 
+<!-- planned:telec-app-refuses-terminal-without-login -->
+
+Called outside any session, every verb runs for the machine's own account and
+asks for no `telec auth login`, however many people the platform registers
+(`local/projects/teleclaude/spec/identity-and-auth` §5). An agent session runs a
+verb only as its role and the person it acts for allow.
+
+<!-- /planned:telec-app-refuses-terminal-without-login -->
+
 ### Use cases
 
 #### UC-IR1: An operator installs the platform on a new machine
@@ -273,6 +282,28 @@ When an agent installs a newer revision, and later another one
 Then the terminal interface runs the most recently installed revision without the operator restarting it
 And no release a running terminal interface runs from is removed
 ```
+
+<!-- planned:telec-app-refuses-terminal-without-login -->
+
+#### UC-IR7: An operator starts the platform from a fresh terminal on a shared machine
+
+```gherkin
+Scenario: The machine's own account starts the platform
+  Given a machine whose installation is configured and whose daemon is not running
+  And the platform registers more than one person
+  And the operator opened a terminal on that machine without logging in
+  When they start the platform
+  Then the daemon runs from the active release
+  And no login was asked for
+
+Scenario: An agent whose role does not operate the installation
+  Given an agent session whose role carries no installation capability
+  When it starts or restarts the platform
+  Then it is refused, naming its role
+  And the daemon is left as it was
+```
+
+<!-- /planned:telec-app-refuses-terminal-without-login -->
 
 ## Known caveats
 

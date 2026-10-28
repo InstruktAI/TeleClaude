@@ -24,6 +24,12 @@ Who may run which `telec` command. Every command declares, in the CLI surface sc
 6. Customers reach only the desk commands: `version`, `docs index`, `docs get`, `auth whoami` and `sessions escalate`. `sessions escalate` is admitted to every person band below admin, and it succeeds only from a session running in a help desk (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`). Everyone in the desk's scope is the escalation's target, the admins among them, and admins do not escalate.
 7. Who may change machine, global, company or another person's configuration is decided by configuration target clearance (`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`), by object and principal, never by a command's band.
 
+<!-- planned:telec-app-refuses-terminal-without-login -->
+
+8. A command declared for the machine's own account admits every caller outside a session, whether or not a terminal login names a person, and judges a session caller by its capability and person band as it judges any other command.
+
+<!-- /planned:telec-app-refuses-terminal-without-login -->
+
 Capabilities keep an agent inside its brief; they are focus, not integrity (`general/principle/trust-and-guardrails`). Whether a caller may act on a particular object stays with the object's owner: a todo's claim, the driver-start dedup, the integrator's lease, an extraction's scope.
 
 ## Primary flows
@@ -61,6 +67,8 @@ Capabilities keep an agent inside its brief; they are focus, not integrity (`gen
 | `mcp`                  | `mcp list-tools`, `mcp call`                                                                                                                                                                            |
 | `memories-read`        | `memories list`, `memories search`, `memories timeline`, `memories delete`                                                                                                                              |
 | `memories-save`        | `memories save`                                                                                                                                                                                         |
+| `installation`         | `app start`, `app stop`, `app restart`, `app install`, `app rollback`, `app assessed`                                                                                                                   |
+| `installation-read`    | `app status`                                                                                                                                                                                            |
 
 The schema's declaration is the authority for every command's exact capability; this table is its grouped reading and is corrected to the schema, never the reverse.
 
@@ -78,7 +86,17 @@ Each command keeps a person band of its own in the CLI surface schema, evaluated
 
 `version`, `auth login`, `auth whoami`, `auth logout`, `events list`, `events schema`, `signals status`, `mcp list`, the local repository commands `repo lint`, `repo test`, `repo format`, `repo add` and `repo blueprint affected`, the hidden git-hook commands `repo pre-commit`, `repo post-commit` and `repo post-merge`, and the hidden todo-state-transfer helper `todo sync-replica` admit a caller with no identity. Each either reads nothing that belongs to a caller or acts on an object already guarded by its own state (`general/principle/trust-and-guardrails`) — the repository commands change only the invoking checkout and, when a session invokes them, that session's own path declarations, and those that narrow their scope to a session read the session marker, never the caller, and hook maintenance acts only on a canonical-main range and runs only main-only actions. The transfer helper runs on a receiving computer inside a non-interactive SSH session, which carries no login or session identity; it only reports where that computer keeps a project's todo state and whether that state is intact, facts any account able to run it can already read from disk, and it changes nothing.
 
+<!-- planned:telec-app-refuses-terminal-without-login -->
+
+### Commands the machine's own account operates
+
+The installation verbs `app status`, `app start`, `app stop`, `app restart`, `app install`, `app rollback` and `app assessed` are declared for the machine's own account (invariant 8). Outside a session their caller is the operating-system account the installation belongs to: the installation lives under that account's data directory, and the account can run the active release's lifecycle and its service manager directly. A terminal login would add only an identity claim anyone at that terminal can make, and refusing its absence would block only the sanctioned path to an act that is reversible (`general/principle/trust-and-guardrails`). A session reaches these verbs only through its role's `installation` or `installation-read` capability and, when it acts for a person, that person's band.
+
+<!-- /planned:telec-app-refuses-terminal-without-login -->
+
 ## Failure modes
+
+<!-- planned-change:telec-app-refuses-terminal-without-login -->
 
 | Scenario                                                                                   | Behavior                                                                                                                                               |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -88,3 +106,17 @@ Each command keeps a person band of its own in the CLI surface schema, evaluated
 | A recorded role the catalog does not name                                                  | Refused with the not-permitted failure naming the role; the refusal is logged as a platform defect.                                                    |
 | A person is removed from the registry or demoted                                           | The change takes effect on that person's next command.                                                                                                 |
 | A new agent role is introduced                                                             | It reaches exactly the commands its catalog entry composes plus those whose capability the catalog gives every role, and no command admits it by name. |
+
+<!-- change:telec-app-refuses-terminal-without-login -->
+
+| Scenario                                                                                   | Behavior                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A command carries no declaration                                                           | Refused for every caller: an undeclared command fails closed.                                                                                                                                                        |
+| The caller resolves to no identity                                                         | Refused before the handler runs, naming the missing login or session identity, unless the command does not depend on its caller, or is declared for the machine's own account and the caller is outside any session. |
+| A session's identity document names no usable session                                      | Refused as a session, never admitted as the machine's own account.                                                                                                                                                   |
+| A role's set lacks the command's capability and the catalog does not give it to every role | Refused with the not-permitted failure naming the role and the command; for a focused session, the work belongs to the session that dispatched it.                                                                   |
+| A recorded role the catalog does not name                                                  | Refused with the not-permitted failure naming the role; the refusal is logged as a platform defect.                                                                                                                  |
+| A person is removed from the registry or demoted                                           | The change takes effect on that person's next command.                                                                                                                                                               |
+| A new agent role is introduced                                                             | It reaches exactly the commands its catalog entry composes plus those whose capability the catalog gives every role, and no command admits it by name.                                                               |
+
+<!-- /planned-change:telec-app-refuses-terminal-without-login -->
