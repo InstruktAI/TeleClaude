@@ -52,9 +52,10 @@ decisions are retained.
 
 **Positive:**
 
-- Intake no longer stops for daemon restarts or installs; the receiver stops only
-  when its own code changes, so the window in which a delivery can be lost
-  shrinks from every restart to those rare ones.
+- Intake no longer stops for daemon restarts or for an install's stopped window;
+  the receiver restarts only to run a newly installed release, for seconds,
+  outside that window, so the time in which a delivery can be lost shrinks from
+  every restart and every migration to those brief restarts.
 - A single computer is as robust as a fleet's ingress; a fleet's extra receivers
   are a reverse proxy setting, not new code.
 - A provider retry or a duplicated delivery is relayed once.
