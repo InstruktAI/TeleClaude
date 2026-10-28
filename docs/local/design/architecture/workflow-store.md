@@ -273,7 +273,7 @@ working copy and the repository.
   row facts, dependencies, workflow state, a revision counter and, for each
   artifact, the number of its issue artifact and the digest of the version the
   record commits. Each artifact is one issue artifact the platform App created
-  on the item's issue (`third-party/github-api/issue-artifacts`), its plans as
+  on the item's issue, its plans as
   `plan` artifacts and every other artifact as a `generic` document, and each
   version is one saved version of it, never edited once saved. The version a
   record commits is the newest version the platform App saved whose content
@@ -612,11 +612,26 @@ master admits each conversation request before sending it:
   address. A consumer that carries the pair relies on either value naming the
   item the other names, without decoding the address.
 
+<!-- planned-change:github-native-artifacts -->
+
 - On a GitHub-backed project, no change to repository work reaches the
   working copy's commit without first reaching GitHub, so the repository
   holds every committed change to it and a lost working copy loses none of
   it. Every write channel of the working copy, including raw connections,
   commits through the push.
+
+<!-- change:github-native-artifacts -->
+
+- On a GitHub-backed project, no change to repository work reaches the
+  working copy's commit without first reaching GitHub, so the repository
+  holds every committed change to it. A lost working copy loses none of the
+  committed state, each item's record and the artifact versions it commits;
+  GitHub serves only the 30 newest versions of each artifact, so an older
+  version is recoverable only from the working copy that wrote it. Every
+  write channel of the working copy, including raw connections, commits
+  through the push.
+
+<!-- /planned-change:github-native-artifacts -->
 
 - Processes on one computer stay serialized by the working copy's
   transactions, exactly as on the local backend. A write that finds the
@@ -939,6 +954,7 @@ sequenceDiagram
 <!-- planned:github-native-artifacts -->
 
 - docs/local/adr/0146-github-store-keeps-artifact-versions-as-native-issue-artifacts.md
+- docs/third-party/github-api/issue-artifacts.md — the issue-artifacts API, its version window and the events it does not emit.
 
 <!-- /planned:github-native-artifacts -->
 

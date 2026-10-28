@@ -195,8 +195,7 @@ How the store maps onto the repository is owned by
   written, and is never rewritten; the artifact's history names who saved each
   version. Implementation and task plans are plan artifacts, every other
   artifact a document. Workflow state too large for the record is kept the
-  same way, as the item's `workflow-state` artifact. No artifact content
-  appears in a comment. A version someone else saves is replaced by the
+  same way, as the item's `workflow-state` artifact. The platform writes no artifact content into a comment and reads none from one; content comments left from before native artifacts are no part of the record. A version someone else saves is replaced by the
   platform's version when the store next reads the item's artifacts, and an
   artifact someone else adds is left as it is and is never part of the record.
 

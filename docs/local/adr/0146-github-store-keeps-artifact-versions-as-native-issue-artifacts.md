@@ -20,7 +20,7 @@ edit history of each comment.
 
 GitHub now offers issue artifacts: named Markdown, HTML or link documents
 attached to an issue, each saving a version per update, with the account that
-saved it recorded on the version (`third-party/github-api/issue-artifacts`).
+saved it recorded on the version.
 They are a private preview, enabled per organization, that GitHub may change
 without notice. The API serves only an artifact's 30 newest versions, takes no
 conditional writes, and emits no webhook event and no timeline entry for a
@@ -77,3 +77,7 @@ works a project, the working copy holds every version of every artifact
 - **Read both forms during a transition.** Rejected: a second reader of the
   record would stay in the store long after every item was converted, while
   the working copy already holds every version needed to republish an item.
+
+## See Also
+
+- docs/third-party/github-api/issue-artifacts.md — the API facts this decision rests on.
