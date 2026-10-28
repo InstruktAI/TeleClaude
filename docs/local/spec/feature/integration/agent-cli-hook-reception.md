@@ -115,7 +115,15 @@ And the session is not reported complete while provider work remains active
 
 #### UC-R11: Control context uses each native event's model-facing channel
 
+<!-- planned-change:antigravity-native-subagents-allowed -->
+
 #### UC-R12: Native subagent invocation is blocked in a managed Antigravity session
+
+<!-- change:antigravity-native-subagents-allowed -->
+
+#### UC-R12: A native subagent runs in a managed Antigravity session without taking over its session
+
+<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 ### Cross-context references
 
@@ -154,9 +162,21 @@ And the session is not reported complete while provider work remains active
 - Codex hooks from provider-native subagent transcripts are discarded before
   session mapping; a child native session id is never associated with its
   managed parent.
+
+<!-- planned-change:antigravity-native-subagents-allowed -->
+
 - Managed Antigravity sessions deny provider-native subagent invocations before
   child execution. Work requiring a child remains available through an
   explicitly dispatched TeleClaude worker.
+
+<!-- change:antigravity-native-subagents-allowed -->
+
+- Antigravity hooks from provider-native subagent executions are discarded
+  before session mapping; a subagent's events never take over its managed
+  parent's session, and the subagent invocation runs unhindered.
+
+<!-- /planned-change:antigravity-native-subagents-allowed -->
+
 - All four adapters support hook checkpoints. The continuation response
   differs per provider:
   - Claude → block decision with reason.

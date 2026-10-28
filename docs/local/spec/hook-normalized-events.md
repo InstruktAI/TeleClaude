@@ -34,6 +34,8 @@ This spec must always document:
 
 Current raw-to-normalized lifecycle mapping:
 
+<!-- planned-change:antigravity-native-subagents-allowed -->
+
 | Agent       | Raw event and condition                                                                                                                                            | Normalized event     | Forwarding |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ---------- |
 | Claude      | `SessionStart`                                                                                                                                                     | `session_start`      | forwarded  |
@@ -75,6 +77,52 @@ Current raw-to-normalized lifecycle mapping:
 | DeepSeek    | `PostToolBatch`                                                                                                                                                    | `post_tool_use`      | forwarded  |
 | DeepSeek    | `Stop`                                                                                                                                                             | `agent_stop`         | forwarded  |
 | DeepSeek    | `StopFailure`                                                                                                                                                      | `agent_turn_failed`  | forwarded  |
+
+<!-- change:antigravity-native-subagents-allowed -->
+
+| Agent       | Raw event and condition                                                                                                                                            | Normalized event     | Forwarding |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ---------- |
+| Claude      | `SessionStart`                                                                                                                                                     | `session_start`      | forwarded  |
+| Claude      | `UserPromptSubmit`                                                                                                                                                 | `user_prompt_submit` | forwarded  |
+| Claude      | `PreToolUse`                                                                                                                                                       | `pre_tool_use`       | forwarded  |
+| Claude      | `Notification` where `notification_type` is `permission_prompt`, `agent_needs_input`, `elicitation_dialog`, `elicitation_url_dialog`, or `quota_auto_resume_stale` | `agent_blocked`      | forwarded  |
+| Claude      | `Notification` where `notification_type` is `quota_auto_resume_disabled`                                                                                           | `agent_turn_failed`  | forwarded  |
+| Claude      | `Notification` with any other `notification_type`, recognized or not                                                                                               | (none)               | dropped    |
+| Claude      | `PostToolUse`                                                                                                                                                      | `post_tool_use`      | forwarded  |
+| Claude      | `PostToolUseFailure`                                                                                                                                               | `post_tool_use`      | forwarded  |
+| Claude      | `PostToolBatch`                                                                                                                                                    | `post_tool_use`      | forwarded  |
+| Claude      | `Stop`                                                                                                                                                             | `agent_stop`         | forwarded  |
+| Claude      | `StopFailure`                                                                                                                                                      | `agent_turn_failed`  | forwarded  |
+| Claude      | `PostCompact` where `trigger == manual`                                                                                                                            | `agent_idle`         | forwarded  |
+| Claude      | `PostCompact` where `trigger == auto`                                                                                                                              | (none)               | dropped    |
+| Antigravity | `PreInvocation` where `invocationNum == 0`                                                                                                                         | `session_start`      | forwarded  |
+| Antigravity | `PreInvocation` where `invocationNum > 0` and latest transcript role is `user`                                                                                     | `user_prompt_submit` | forwarded  |
+| Antigravity | `PreInvocation` where `invocationNum > 0` and no prompt boundary is present                                                                                        | (none)               | dropped    |
+| Antigravity | Hooks from a provider-native subagent's execution                                                                                                                  | (none)               | dropped    |
+| Antigravity | Other `PreToolUse` invocations                                                                                                                                     | `pre_tool_use`       | forwarded  |
+| Antigravity | `PostToolUse`                                                                                                                                                      | `post_tool_use`      | forwarded  |
+| Antigravity | `PostInvocation`                                                                                                                                                   | `post_tool_use`      | forwarded  |
+| Antigravity | `Stop` where `error` is a non-empty string                                                                                                                         | `agent_turn_failed`  | forwarded  |
+| Antigravity | `Stop` where `error` is empty and `fullyIdle == false`                                                                                                             | (none)               | dropped    |
+| Antigravity | `Stop` where `error` is empty and `fullyIdle == true`                                                                                                              | `agent_stop`         | forwarded  |
+| Codex       | `SessionStart`                                                                                                                                                     | `session_start`      | forwarded  |
+| Codex       | `UserPromptSubmit`                                                                                                                                                 | `user_prompt_submit` | forwarded  |
+| Codex       | `PreToolUse`                                                                                                                                                       | `pre_tool_use`       | forwarded  |
+| Codex       | `PermissionRequest`                                                                                                                                                | `agent_blocked`      | forwarded  |
+| Codex       | `PostToolUse`                                                                                                                                                      | `post_tool_use`      | forwarded  |
+| Codex       | `Stop`                                                                                                                                                             | `agent_stop`         | forwarded  |
+| Codex       | `PostCompact` where `trigger == manual`                                                                                                                            | `agent_idle`         | forwarded  |
+| Codex       | `PostCompact` where `trigger == auto`                                                                                                                              | (none)               | dropped    |
+| DeepSeek    | `SessionStart`                                                                                                                                                     | `session_start`      | forwarded  |
+| DeepSeek    | `UserPromptSubmit`                                                                                                                                                 | `user_prompt_submit` | forwarded  |
+| DeepSeek    | `PreToolUse`                                                                                                                                                       | `pre_tool_use`       | forwarded  |
+| DeepSeek    | `PostToolUse`                                                                                                                                                      | `post_tool_use`      | forwarded  |
+| DeepSeek    | `PostToolUseFailure`                                                                                                                                               | `post_tool_use`      | forwarded  |
+| DeepSeek    | `PostToolBatch`                                                                                                                                                    | `post_tool_use`      | forwarded  |
+| DeepSeek    | `Stop`                                                                                                                                                             | `agent_stop`         | forwarded  |
+| DeepSeek    | `StopFailure`                                                                                                                                                      | `agent_turn_failed`  | forwarded  |
+
+<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 Tool-call closure. Every tool event carries the provider's own identifier for
 the call — `tool_use_id` for Claude, Codex, and DeepSeek, `stepIdx` for
