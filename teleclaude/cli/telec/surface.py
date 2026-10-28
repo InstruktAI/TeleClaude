@@ -487,28 +487,33 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "active-computer": CommandDef(
                 desc="The one computer a GitHub-backed project's lifecycle runs on",
                 notes=[
-                    "The project in the current directory names it in a repository variable; only that computer starts its orchestrators and writes its claims.",
+                    "The project in the current directory, or the one --project-root names, names it in a repository variable; only that computer starts its orchestrators and writes its claims.",
                     "Other computers refuse a start, naming the active computer. Working elsewhere means setting it there first.",
                 ],
                 subcommands={
                     "show": CommandDef(
                         desc="Show the project's active computer",
-                        flags=[F.FLAG_HELP],
-                        examples=["telec projects active-computer show"],
+                        args="[--project-root <path>]",
+                        flags=[F.FLAG_HELP, F.FLAG_TODO_PROJECT_ROOT],
+                        examples=[
+                            "telec projects active-computer show",
+                            "telec projects active-computer show --project-root <path>",
+                        ],
                         auth=CommandAuth(
                             capability=Capability.TODO_READ, human=_HR_MEMBER, scope=CommandScope.PLATFORM
                         ),
                     ),
                     "set": CommandDef(
                         desc="Make this computer, or the named one, the project's active computer",
-                        args="[--computer <host>]",
-                        flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
+                        args="[--computer <host>] [--project-root <path>]",
+                        flags=[F.FLAG_HELP, F.FLAG_COMPUTER, F.FLAG_TODO_PROJECT_ROOT],
                         notes=[
                             "A deliberate act: a running orchestrator stays with its session's computer until it ends."
                         ],
                         examples=[
                             "telec projects active-computer set",
                             "telec projects active-computer set --computer <computer>",
+                            "telec projects active-computer set --computer <computer> --project-root <path>",
                         ],
                         auth=CommandAuth(human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
