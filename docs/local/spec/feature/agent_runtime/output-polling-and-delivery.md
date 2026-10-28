@@ -23,10 +23,12 @@ Distinct from this lane: the on-demand transcript retrieval surface (which proje
 
 ### Completed response output
 
-The stop summary and retained final output contain every assistant-authored
-text block in the completed native response, in source order. Standalone
-`NOOP` entries are omitted; other text keeps its contents unchanged. A response
-containing commentary followed by `NOOP` therefore retains the commentary.
+The summarizer receives every assistant-authored text block in the completed
+native response, in source order. Retained final output contains that same
+complete text; the generated stop summary condenses that input. Standalone
+`NOOP` entries are omitted from retained text and summarizer input. Other text
+keeps its contents unchanged. A response containing commentary followed by
+`NOOP` therefore retains the commentary.
 Thinking and tool activity keep their separate projection categories under
 `local/projects/teleclaude/spec/session-projection`.
 
