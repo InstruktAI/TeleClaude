@@ -78,8 +78,8 @@ the work.
   again, is no act: the item is unchanged and nothing is put back.
 - **Which computer acts.** A change to an item a session holds is handled on
   that session's computer; a change to any other item is handled on the
-  project's active computer
-  (`local/projects/teleclaude/spec/feature/workflow/github-work-record`). Every
+  project's active computer, the one computer the project names for its work
+  (`local/projects/teleclaude/spec/feature/workflow/driver-admission`). Every
   other computer ignores it.
 
 ### Use cases
