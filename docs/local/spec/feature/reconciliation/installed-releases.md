@@ -145,21 +145,20 @@ serves.
   preparing, or with its stop withheld — owes none. An install whose obligation
   cannot be recorded fails inside its stopped window.
 - **Superseded by the next owed install.** Recording an install as owed
-  discharges every earlier owed one, so at most one install is owed at a time:
-  a release that no longer runs owes no assessment, and whatever an earlier
-  install left behind shows in the runtime the newer install's window covers.
+  discharges every earlier owed one, so at most one install is owed at a time.
 - **Announced while owed.** Each time the daemon starts while an install is
   owed, and again at a fixed interval for as long as one stays owed, it
-  announces the owed assessment, so an announcement that found no recipient is
-  repeated. The announcement activates the installation inspector on the
+  announces the owed assessment, naming the install's number, its revision and
+  when it became owed, so an announcement that found no recipient is repeated. The announcement activates the installation inspector on the
   installation's own computer
   (`sdlc/procedure/maintenance/installation/overview`), answered by one
   standing agent for the installation
   (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-standing-agent`).
 - **Recorded by the inspector.** `telec app assessed <install>` records that
-  the install `telec app status` shows under that number has been assessed, and
-  discharges it. It refuses, naming what is owed, when the owed install carries
-  another number, and while the daemon is not serving the active release.
+  the install its announcement named has been assessed, and discharges it. It
+  refuses, naming what is owed, when the owed install carries another number,
+  and while the daemon is not serving the active release. `telec app status`
+  says only whether an assessment is owed and since when.
 - **Never fabricated.** A queued install, an accepted restart or a completed
   install is not an assessment. An install whose daemon does not return stays
   owed beside the failure `telec app status` reports, until a start serves
