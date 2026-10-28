@@ -144,6 +144,10 @@ serves.
   that ends before its stopped window — refused, unchanged, failed while
   preparing, or with its stop withheld — owes none. An install whose obligation
   cannot be recorded fails inside its stopped window.
+- **Superseded by the next owed install.** Recording an install as owed
+  discharges every earlier owed one, so at most one install is owed at a time:
+  a release that no longer runs owes no assessment, and whatever an earlier
+  install left behind shows in the runtime the newer install's window covers.
 - **Announced while owed.** Each time the daemon starts while an install is
   owed, and again at a fixed interval for as long as one stays owed, it
   announces the owed assessment, so an announcement that found no recipient is
@@ -153,11 +157,9 @@ serves.
   standing agent for the installation
   (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-standing-agent`).
 - **Recorded by the inspector.** `telec app assessed <install>` records that
-  the install `telec app status` shows under that number has been assessed. It
-  discharges that install and every earlier owed one; an install numbered after
-  it stays owed, a later attempt at the same revision included. It refuses,
-  naming what is owed, when no owed install carries that number, and while the
-  daemon is not serving the active release.
+  the install `telec app status` shows under that number has been assessed, and
+  discharges it. It refuses, naming what is owed, when the owed install carries
+  another number, and while the daemon is not serving the active release.
 - **Never fabricated.** A queued install, an accepted restart or a completed
   install is not an assessment. An install whose daemon does not return stays
   owed beside the failure `telec app status` reports, until a start serves
@@ -184,7 +186,7 @@ with all its todos, worktrees and claims.
 `stop`, `restart`, `install [<revision>]`, `rollback` and
 `assessed <install>`. Every verb acts on the installation, whatever checkout
 the caller stands in. `status` names the active release alongside the daemon's
-health, the installs whose assessment is owed by number and revision, and
+health, the install whose assessment is owed by number and revision, and
 the most recent recorded assessment. The lifecycle verbs keep the guarantees of
 `local/projects/teleclaude/policy/daemon-availability`.
 
