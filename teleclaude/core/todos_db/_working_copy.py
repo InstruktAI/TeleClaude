@@ -65,6 +65,7 @@ class WorkingCopySql(StrEnum):
     """Named SQL statements used by working-copy capture and restoration."""
 
     PENDING_ITEMS = "SELECT item_id FROM working_copy_pending_item ORDER BY item_id"
+    DEFER_FOREIGN_KEYS = "PRAGMA defer_foreign_keys = ON"
     PENDING_PROJECTS = "SELECT table_name, row_id FROM working_copy_pending_project ORDER BY table_name, row_id"
     MOVE_SET = (
         "WITH RECURSIVE move_rows(id, group_id, status, depth) AS ("
@@ -481,6 +482,15 @@ def capture_suppressed(session: Session) -> Iterator[None]:
         yield
     finally:
         session.execute(text(WorkingCopySql.RELEASE_CAPTURE))
+
+
+def defer_foreign_keys(session: Session) -> None:
+    """Check foreign keys at commit for the rest of this transaction; SQLite resets it when the transaction ends.
+
+    A rebuild restores every item in one transaction, in the order GitHub lists them, so a grouped todo can arrive
+    before the group it belongs to. A group that never arrives still fails the transaction at commit.
+    """
+    session.execute(text(WorkingCopySql.DEFER_FOREIGN_KEYS))
 
 
 def restore_item_snapshot(

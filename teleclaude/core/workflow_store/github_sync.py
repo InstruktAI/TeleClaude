@@ -22,6 +22,7 @@ from teleclaude.core.todos_db._working_copy import (
     clear_pending_changes,
     clear_reflection_owed,
     complete_projection_repair,
+    defer_foreign_keys,
     issue_relations,
     item_bookkeeping,
     item_snapshot,
@@ -169,6 +170,7 @@ class GitHubWorkflowSync:
         issue_watermark = latest_issue_timestamp(issues)
 
         def restore(session: Session) -> None:
+            defer_foreign_keys(session)
             for issue, record_comment, snapshot, revision in resolved:
                 restore_item_snapshot(session, snapshot)
                 save_item_bookkeeping(
@@ -227,6 +229,7 @@ class GitHubWorkflowSync:
         issue_watermark = latest_issue_timestamp(issues)
         with self.store._sync_session() as session:
             with session.begin():
+                defer_foreign_keys(session)
                 for issue, record_comment, snapshot, revision in resolved:
                     restore_item_snapshot(session, snapshot)
                     save_item_bookkeeping(
