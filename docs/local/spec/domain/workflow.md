@@ -100,13 +100,15 @@ feature specs remain the current contract.
   firing started, read from the system clock and rendered as 24-hour time and
   day/month in the computer's configured timezone (`computer.timezone`,
   `local/projects/teleclaude/spec/teleclaude-config`). A firing starts when the
-  task-run lane accepts a fresh run session for the task — from a lifecycle
-  runner dispatch or a manual start — or continues a firing in place in the
-  session already driving it. The line is appended as soon as that start is
-  accepted, before the driver claim is recorded. A dispatch that starts no
-  session, or that records a session an earlier dispatch already started,
-  appends nothing. A failure to append the line is logged and leaves the firing
-  running. The run session keeps every firing line verbatim
+  task-run lane accepts a fresh run session for the task, from a lifecycle
+  runner dispatch or a manual start, or when a manual start by a session that
+  holds no claim on the task takes the task up to run the firing in place. The
+  line is appended as soon as that start is accepted: for a fresh run session
+  before its driver claim is recorded, and for an in-place start before the
+  start's outcome returns to the calling session. A dispatch that starts no
+  session, one that records a session an earlier dispatch already started, and
+  a manual start by the session already driving the task each append nothing. A
+  failure to append the line is logged and leaves the firing running. The run session keeps every firing line verbatim
   (`sdlc/procedure/lifecycle/task/run-task`); the platform never writes any
   other part of the `log`.
 
