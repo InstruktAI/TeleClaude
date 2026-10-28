@@ -54,10 +54,6 @@ visibility: 'public'
 
 ## Enforcement
 
-- Use `telec app restart` only after changes that require it.
-- Review recent logs with `instrukt-ai-logs teleclaude --since 2m` if stability is in doubt.
-- If the daemon restarts unexpectedly, review the process-reaped event stream (`telec events`) and structured shutdown logs before taking action.
-
 - A `telec app stop` that leaves a prepared daemon or a managed launchd unit alive past 30 seconds after preparation completed, that forcibly terminates a daemon whose preparation has not completed, or that signals a session, tmux, or spawn-registry lease-holder pid, is a defect.
 
 - A daemon alive with admission closed after its accepted work has settled and its termination grace has passed is a defect.
