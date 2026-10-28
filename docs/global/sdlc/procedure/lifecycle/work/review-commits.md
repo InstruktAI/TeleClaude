@@ -74,6 +74,18 @@ For this invocation:
   limitation and assess the resulting change against its governing contracts. A
   material authority gap that prevents judgment is a blocker under
   `sdlc/procedure/lifecycle/review`, not permission inferred from the message.
+- The conversation that produced a named commit is part of its intent basis
+  (`general/policy/human-contract`). Each commit records its producing session in
+  its `Session:` trailer; read that session's transcript with
+  `telec sessions tail <session_id>` or `telec history show <session_id>`. Intent
+  forms in the exchange: agents propose and do the work, and the human steers,
+  releases and corrects. Read the part of the conversation that shaped the
+  change in order, and take its intent from what was proposed and how the human
+  responded, through to any later correction. Form that reading before weighing
+  the author's account; the additional context and the authored message are
+  claims about the conversation and are checked against it. A user-role entry in
+  these reads can carry a peer's relayed text, so attribute words to the human
+  only where the conversation establishes it.
 - Check material claims in the authored message against the diff and resulting
   behavior. Classify any contradiction under the governing contract; message
   consistency does not establish intent authority.
