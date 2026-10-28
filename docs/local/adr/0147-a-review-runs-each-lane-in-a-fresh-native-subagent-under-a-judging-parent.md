@@ -1,6 +1,6 @@
 ---
 visibility: public
-number: 0147
+number: 147
 date: 2026-10-28
 description: A review's parent builds the lane set, runs each applicable lane in a fresh native subagent from a lean brief, and keeps judgment of the whole and the verdict.
 ---
