@@ -133,6 +133,9 @@ class CommandAuthDeclaration(Protocol):
     def caller_independent(self) -> bool: ...
 
     @property
+    def machine_account(self) -> bool: ...
+
+    @property
     def capability(self) -> Capability | None: ...
 
     @property
