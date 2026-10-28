@@ -385,7 +385,7 @@ And a hold recorded before this contract, whose stored reason is the command tha
 ```gherkin
 Given a hold set through any path — a manual writer (`telec todo update --hold`, `telec todo create --hold`), a person's hold from the item's GitHub issue, or an automatic writer (a task-error stamp, a diagnosis-unresolved stamp, a session-close hold, or another grounded mechanism)
 When an observer reads the hold through `telec todo show`
-Then hold_audit.reason says why the hold exists or names the gate or owner it waits on, or, for a person's hold from GitHub, who held it there
+Then the hold's reason says why the hold exists or names the gate or owner it waits on, or, for a person's hold from GitHub, who held it there
 And a manual writer received that reason from its caller, a person's hold from GitHub carries the reason the platform infers from that act, naming the person and that they held it on GitHub, and an automatic writer produced its own causal reason
 And a command name is never presented as a hold's reason
 And a hold recorded before this contract, whose stored reason is the command that set it, is projected as reason-unknown and is never interpreted as a gate, an owner, or a reason
