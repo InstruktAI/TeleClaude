@@ -75,14 +75,15 @@ disposition: applicable, or `N/A` with its reason.
 **Run each applicable lane in its own native subagent.** Dispatch the lanes to
 the harness's own subagents, in parallel (`general/principle/parallel-work`).
 Each starts fresh, with the brief as its only context from you: use the
-harness's fresh-subagent form, never a fork of your own conversation. A lane's
-brief carries the lane and the address of its catalog section; the exact target
-and how to read it; the intent basis this review established, with its source
-addresses; the project focus points that bear on the lane, with theirs; the
-finding rules of step 4; and the result it returns: findings in the step 4
-format, or clean-pass evidence, plus any gap it could not close. The brief
-states no preferred verdict. The subagent reads beyond its brief wherever its
-lane requires and reports missing context as a gap. Where the harness offers no
+harness's fresh-subagent form, never a fork of your own conversation, so your
+reasoning and conclusions do not frame its investigation. A lane's brief carries
+the lane and the address of its catalog section; the exact target and how to
+read it; the intent basis this review established, with its source addresses;
+the project focus points that bear on the lane, with theirs; the finding rules
+of step 4; and the result it returns: findings in the step 4 format, or
+clean-pass evidence, plus any gap it could not close. The brief states no
+preferred verdict. The subagent reads beyond its brief wherever its lane
+requires and reports missing context as a gap. Where the harness offers no
 native subagents, run the lanes as separate passes yourself.
 
 For the tests lane, independently re-prove every triggered `TQ-*` predicate.
