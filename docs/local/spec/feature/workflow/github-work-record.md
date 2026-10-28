@@ -171,9 +171,6 @@ How the store maps onto the repository is owned by
   - A change put back: `[action:put-back field:<field> change:<id>]`, where
     `<id>` names the change in the issue's history, followed by the change it
     puts back and why it did not count.
-  - Which computer handles people's changes on GitHub, on the ledger issue:
-    `[action:work-control-claim computer:<name>]` and
-    `[action:work-control-release computer:<name>]`.
 
 <!-- /planned-change:github-item-acts -->
 

@@ -207,12 +207,6 @@ remain authoritative.
 
 <!-- /planned:github-turn-mirror -->
 
-<!-- planned:github-item-acts -->
-
-- `local/projects/teleclaude/design/architecture/github-work-control` — a person's change on a work item's issue reaching the workflow as its act, or put back
-
-<!-- /planned:github-item-acts -->
-
 ### Presentation designs and decisions
 
 - `local/projects/teleclaude/design/architecture/tui-state-layout` — the TUI's state-driven layout

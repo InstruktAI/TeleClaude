@@ -235,15 +235,14 @@ implementation remain the current appliance contract.
   person with write access to the repository — and when a change is put back
   and with which reason
   (`local/projects/teleclaude/spec/feature/integration/github-work-control`).
-  The handler runs on the one computer holding the project's work-control
-  claim, disposes of each change in the issue's history order, and hands each
-  accepted change to
-  `workflow`'s update facade as that person; the composition is
-  `local/projects/teleclaude/design/architecture/github-work-control`.
+  The handler runs where the item's work runs, on the computer of the session
+  holding the item's claim and otherwise on the project's active computer,
+  takes each change in the issue's order, and hands each accepted change to
+  `workflow`'s update facade as that person.
 - **Does not own (GitHub work control):** whether an act is valid or what it
   does (`workflow`); what an issue's fields should hold, how they and their
-  history are read, restored and commented, and how each change's disposition
-  commits once (`workflow`'s GitHub adapter module); which person a login is
+  history are read, restored and commented (`workflow`'s GitHub adapter
+  module); which person a login is
   (`identity`).
 
 <!-- /planned:github-item-acts -->
