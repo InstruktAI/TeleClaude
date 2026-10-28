@@ -268,6 +268,7 @@ implementation remain the current appliance contract.
 - `local/projects/teleclaude/adr/0063-core-resolves-admin-reflection-adapter-via-contract` — reaching the admin-reflection adapter through a capability contract
 - `local/projects/teleclaude/adr/0084-discord-voice-receive-runs-in-a-node-sidecar` — Discord voice reception in a Node sidecar
 - `local/projects/teleclaude/adr/0111-external-events-enter-as-ordinary-platform-events` — external requests entering as platform events
+- `local/projects/teleclaude/adr/0148-the-webhook-receiver-runs-beside-the-daemon-and-claims-each-delivery-before-relaying-it` — the webhook receiver as its own service, relaying each delivery once through a claim
 - `local/projects/teleclaude/adr/0120-discord-is-never-a-customer-surface` — Discord as a members-only surface
 
 ## See Also

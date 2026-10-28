@@ -38,6 +38,9 @@ producers for every procedure and agent.
 
 - **Single public node.** One computer is the ingress; it need not be the
   cluster master. No other computer serves the inbound endpoints.
+- **Intake outlives the daemon.** The ingress's receiver is a process of its
+  own, under its own service unit, separate from the daemon; it keeps receiving
+  while the daemon restarts or an install replaces it.
 - **Narrow reachability.** The ingress serves plain HTTP on loopback only. A
   reverse proxy on the same computer is the public surface: it terminates TLS,
   restricts source and forwards only the inbound path prefix to the ingress.
@@ -53,6 +56,12 @@ producers for every procedure and agent.
 - **Unconditional relay.** The ingress relays every verified request regardless
   of its own configuration or whether it would itself act. The ingress decides
   nothing about the reaction.
+- **Each delivery is relayed once.** A verified request is published through one
+  atomic step on the cluster Redis that claims its delivery identity and
+  publishes only when the claim is new. The identity is the provider's own
+  delivery identifier where the provider supplies one, and a digest of the
+  verified request otherwise. A repeated delivery, received by this receiver or
+  another, publishes nothing while its claim is retained.
 - **Ordinary platform events.** A relayed event is published on the platform
   event stream under the event envelope contract
   (`@docs/local/spec/feature/event-catalog/event-envelope.md`):
@@ -131,9 +140,14 @@ Then each computer's WhatsApp conversation handler receives the message once
 
 ## Known caveats
 
-- **The ingress is a single point of external-event intake.** While it is down,
-  the cluster processes no external events but is not otherwise broken; the
-  relay is stateless, so a second ingress can be added without redesign.
+- **The ingress is a single point of external-event intake.** While its receiver
+  is down, the cluster processes no external events but is not otherwise broken;
+  a daemon restart does not take the receiver down. A second receiver can be
+  added without redesign, since the claim relays each delivery once.
+- **A claim is retained for a bounded time.** A delivery repeated after its claim
+  has expired is relayed again.
+- **Relaying needs the cluster Redis.** While it is unreachable, the receiver
+  cannot claim or publish, and a delivery fails.
 - **A computer that is not running misses relayed events.** The stream is
   shared and bounded; a computer that comes back after its retained window has
   moved on does not replay the events it missed.
