@@ -66,32 +66,36 @@ For a project on the GitHub workflow store, every computer holding a checkout
 sees the same todos, and one todo has at most one live orchestrator across all
 of them.
 
-- A start on any computer is also admitted by the fleet's master before its
-  session is created or its caller claimed. The starting computer keeps its own
-  decision for the todo while it asks, and its caller waits for the answer only
-  within a bounded budget.
-- The master decides one start of a todo at a time. The todo is held when the
-  master's own sessions hold it or the todo's `active_runner` claim holds it.
+- The project names one active computer in a variable on its GitHub
+  repository. `telec projects active-computer set`, run deliberately, names it;
+  nothing names it automatically.
+- Only the active computer admits a start of the project's todos and writes
+  their claims. A start on another computer is refused naming the active
+  computer, and creates or claims nothing; working on another computer means
+  making it active first.
+- The active computer decides one start of a todo at a time. The todo is held
+  when its own sessions hold it or the todo's `active_runner` claim holds it.
 - A claimed session holds the todo while it is open, not closing, and drives
   that todo, or while a start of it for that todo is being decided on its
-  computer. Each computer answers this for the sessions it ran. The master asks
-  every computer the platform knows, configured or discovered: the computer
-  that ran the session decides; a session no computer ran does not hold the
-  todo; a computer that does not answer leaves the claim held.
+  computer. Each computer answers this for the sessions it ran. The active
+  computer asks every computer the platform knows, configured or discovered:
+  the computer that ran the session decides; a session no computer ran does not
+  hold the todo; a computer that does not answer leaves the claim held.
 - A computer treats a claim for a session it never ran as held, and never
   clears it.
-- Only the master writes the claim while a start can be admitted for the todo.
-  Another computer asks it to release a claim for a session that computer ran,
-  and the master clears claims it judges ended in its lifecycle runner passes.
-  Reactivating a removed todo restores the claim its removal set aside.
+- Another computer asks the active computer to release a claim for a session it
+  ran, and the active computer clears claims it judges ended in its lifecycle
+  runner passes. Making a different computer active does not move a running
+  orchestrator: its claim stays with its session's computer until that session
+  ends. Reactivating a removed todo restores the claim its removal set aside.
 - A start that finds the todo held is refused with the driver-start conflict
   naming the holding session and the computer running it, or the computers that
   did not answer, and creates or claims nothing.
-- A start the master cannot decide — no unique live master holding the
-  project, no answer from it, or no decision within the budget — is refused
-  naming why, and creates or claims nothing. A lifecycle runner pass counts
-  that todo as skipped and continues; a lifecycle operation fails with that
-  refusal.
+- A start that cannot be decided — the project names no active computer, the
+  variable cannot be read from GitHub, or no decision within the budget — is
+  refused naming why, and creates or claims nothing. A lifecycle runner pass
+  counts that todo as skipped and continues; a lifecycle operation fails with
+  that refusal.
 
 ## Known caveats
 
@@ -100,10 +104,13 @@ of them.
   published for a person to act on.
 
 - Across computers, a claim stays held while the computer running its session
-  does not answer the master, and every start of a GitHub-backed todo is
-  refused while the master is unreachable.
-- A computer on a release without cross-computer admission still decides its
-  own starts by its own registry until it is updated.
+  does not answer the active computer.
+- Reading the active computer needs the repository "Variables" permission on
+  the project's GitHub App, and setting it needs write access; without them
+  every start of a GitHub-backed todo is refused as unreadable.
+- A computer on a release that still asks the fleet's master to admit its
+  starts is refused by every computer that is not the active one until it is
+  updated.
 
 ## See Also
 
@@ -111,6 +118,4 @@ of them.
 - docs/local/adr/0134-a-colliding-driver-start-is-refused-without-waiting.md
 - docs/local/adr/0052-orchestrator-dedup-registry-authoritative.md
 
-- docs/local/adr/0135-github-backed-driver-starts-are-admitted-by-the-mesh-master.md
-- docs/local/adr/0136-only-the-master-writes-a-github-backed-claim.md
-- docs/local/adr/0137-a-github-backed-claim-is-settled-per-todo.md
+- docs/local/adr/0142-one-active-computer-per-github-backed-project.md — why one active computer, not the master, admits starts and writes claims.

@@ -396,9 +396,10 @@ Neither creates a session.
 
 For a todo in a project on the GitHub workflow store, the driver-start conflict
 also names the computer running the holding session, or the computers that did
-not answer. A request whose admission cannot be decided — no unique live master
-holding the project, no answer from it, or no decision within the start budget
-— returns HTTP 503 with a detail naming why, and creates no session.
+not answer. A request whose admission cannot be decided — made on a computer
+that is not the project's active computer, a project naming no active computer
+or one whose active computer cannot be read, or no decision within the start
+budget — returns HTTP 503 with a detail naming why, and creates no session.
 
 #### UC-DSD3: A second commit reviewer for the same driver, project, and mode is refused
 
