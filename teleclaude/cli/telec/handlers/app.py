@@ -108,7 +108,7 @@ _STATUS_NO_DECISION = "Last decision:    no convergence decision has been made y
 _STATUS_DECISION = "Last decision:    {outcome} at {at}"
 _STATUS_HELD = "Held release:     {tag} of {source}, beyond the active release's compatibility series, held since {at}"
 _STATUS_CONVERGENCE_UNREADABLE = "Last decision:    the convergence record could not be read: {error}"
-_ASSESSED_OPERAND = "telec app assessed takes the number of one install, as `telec app status` lists it."
+_ASSESSED_OPERAND = "telec app assessed takes the number of one install, as its owed-assessment announcement names it."
 _ASSESSED_NOT_SERVING = (
     "The daemon does not serve the active release: {reason}. Restore service with `telec app start`, or repair "
     "forward when `telec app status` reports the daemon left stopped, then assess."

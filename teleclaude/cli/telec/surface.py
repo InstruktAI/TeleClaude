@@ -2138,9 +2138,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<install>",
                 flags=[F.FLAG_HELP],
                 notes=[
-                    "`<install>` is the number `telec app status` lists for an owed install. It discharges that install and every earlier owed one.",
-                    "A later install stays owed, a later attempt at the same revision included.",
-                    "Refuses, naming the owed installs, when none carries that number, and while the daemon does not serve the active release.",
+                    "`<install>` is the number the owed-assessment announcement names. It discharges that install.",
+                    "At most one install is owed: a newer install supersedes it, and assessing the superseded one is refused.",
+                    "Refuses, naming the owed install, when it carries another number, and while the daemon does not serve the active release.",
                 ],
                 examples=["telec app assessed 3"],
                 auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
