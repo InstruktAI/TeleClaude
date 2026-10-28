@@ -69,11 +69,12 @@ RELEASE_PATH = "/todos/driver-release"
 # budget, which leaves room inside the request timeout of ``TelecAPIClient.run_session`` for the guard before it
 # and the session creation after it. Every wait is on a task that keeps running when its waiter gives up, so no
 # GitHub write is cancelled midway; what such a task leaves behind is released by its start or reconciled by the
-# active computer.
+# active computer. The admission budget covers the claim's item-record write to GitHub, several requests that each
+# wait at the process-wide request gate, so it is sized to that write's cost under load rather than to a round trip.
 QUESTION_DEADLINE_S = 4.0
-ADMISSION_BUDGET_S = 7.0
-RELEASE_RELAY_DEADLINE_S = 9.0
-START_BUDGET_S = 12.0
+ADMISSION_BUDGET_S = 45.0
+RELEASE_RELAY_DEADLINE_S = 50.0
+START_BUDGET_S = 60.0
 
 _JSON_CONTENT_TYPE = "application/json"
 _PROJECT_PATH_FIELD = "project_path"
