@@ -508,7 +508,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         ],
                         examples=[
                             "telec projects active-computer set",
-                            "telec projects active-computer set --computer MozMini",
+                            "telec projects active-computer set --computer <computer>",
                         ],
                         auth=CommandAuth(human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),

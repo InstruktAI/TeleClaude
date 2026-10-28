@@ -7,6 +7,7 @@ Errors go to stderr with exit code 1 (handled by tool_api_call).
 from __future__ import annotations
 
 import sys
+from enum import StrEnum
 
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
@@ -22,13 +23,17 @@ from teleclaude.project_root import resolve_invocation_cwd
 
 _PROJECTS_COMMAND = "projects"
 _ACTIVE_COMPUTER_COMMAND = "active-computer"
-_SHOW = "show"
-_SET = "set"
 _ACTIVE_COMPUTER_ROUTE = "/projects/active-computer"
 _CWD_FIELD = "cwd"
 _COMPUTER_FIELD = "computer"
 _GET = "GET"
 _POST = "POST"
+
+
+class _ActiveComputerVerb(StrEnum):
+    SHOW = "show"
+    SET = "set"
+
 
 __all__ = [
     "handle_agents",
@@ -93,11 +98,11 @@ def handle_projects(args: list[str]) -> None:
 
 def handle_projects_active_computer(args: list[str]) -> None:
     """Show or set the GitHub-backed project's active computer, for the project in the current directory."""
-    if not args or args[0] not in (_SHOW, _SET):
+    if not args or args[0] not in _ActiveComputerVerb:
         print(_usage(_PROJECTS_COMMAND, _ACTIVE_COMPUTER_COMMAND))
         raise SystemExit(0 if not args else 1)
     cwd = str(resolve_invocation_cwd())
-    if args[0] == _SHOW:
+    if args[0] == _ActiveComputerVerb.SHOW:
         parse_command_args(PROJECTS_ACTIVE_COMPUTER_SHOW, args[1:])
         print_json(tool_api_call(_GET, _ACTIVE_COMPUTER_ROUTE, params={_CWD_FIELD: cwd}))
         return

@@ -33,8 +33,6 @@ _ISSUED_LOG = "github_credential_issued app_id=%s installation_id=%s repository_
 _OPERATION_TIMEOUT_SECONDS = 60.0
 _MINIMUM_LIFETIME = timedelta(minutes=1)
 _METADATA_PERMISSION = "metadata"
-_READ_PERMISSION = "read"
-_ACCESS_LEVELS = frozenset({_READ_PERMISSION, "write", "admin"})
 _PERMISSIONS_FIELD = "permissions"
 _POST = "POST"
 _ACCESS_TOKENS_PATH = "/app/installations/{installation_id}/access_tokens"
@@ -97,6 +95,14 @@ class GitHubInstallationCredential:
     target: _GitHubRepositoryScope
 
 
+class _AccessLevel(StrEnum):
+    """The access levels a GitHub App permission carries."""
+
+    READ = "read"
+    WRITE = "write"
+    ADMIN = "admin"
+
+
 class _AccessTokenRequest(TypedDict, total=False):
     """The installation access token request body."""
 
@@ -115,7 +121,7 @@ def _permission_values(permissions: object) -> dict[str, str]:
         raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
     values: dict[str, str] = {}
     for name, value in permissions.items():
-        if not isinstance(name, str) or value not in _ACCESS_LEVELS:
+        if not isinstance(name, str) or value not in _AccessLevel:
             raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
         values[name] = value
     return values
@@ -140,7 +146,7 @@ def _verify_issued_scope(
     ) or repository.full_name.casefold() != target.repository.casefold():
         raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
     granted_permissions = _permission_values(issued_permissions)
-    permitted = {**requested_permissions, _METADATA_PERMISSION: _READ_PERMISSION}
+    permitted = {**requested_permissions, _METADATA_PERMISSION: _AccessLevel.READ}
     if any(granted_permissions.get(name) != level for name, level in requested_permissions.items()):
         raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
     if any(permitted.get(name) != level for name, level in granted_permissions.items()):
