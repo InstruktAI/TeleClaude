@@ -45,7 +45,6 @@ _MESSAGE_ROLE_FIELD = "role"
 _MESSAGE_CONTENT_FIELD = "content"
 _ENTRY_TIMESTAMP_FIELD = "timestamp"
 _ASSISTANT_ROLE = "assistant"
-_STOP_TEXT_SEPARATOR = "\n\n"
 
 
 def _assistant_messages(entries: Sequence[JsonDict]) -> list[JsonDict]:
@@ -267,7 +266,7 @@ def _extract_observed_stop_text(messages: Iterable[Mapping[str, object]]) -> tup
     if not response_observed:
         return False, None
     if chunks:
-        return True, _STOP_TEXT_SEPARATOR.join(chunks)
+        return True, "\n\n".join(chunks)
     return True, NOOP_SENTINEL if sentinel_seen else ""
 
 
