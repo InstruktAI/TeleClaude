@@ -74,7 +74,10 @@ disposition: applicable, or `N/A` with its reason.
 
 **Run each applicable lane in its own native subagent.** Dispatch the lanes to
 the harness's own subagents, in parallel (`general/principle/parallel-work`),
-so each investigates one lane with its full attention. A lane's brief carries
+so each investigates one lane with its full attention. Each starts fresh, with
+the brief as its only context from you: use the harness's fresh-subagent form,
+never a fork of your own conversation, so your reasoning and conclusions do not
+frame its investigation. A lane's brief carries
 the lane and the address of its catalog section; the exact target and how to
 read it; the intent basis this review established, with its source addresses;
 the project focus points that bear on the lane, with theirs; the finding rules
