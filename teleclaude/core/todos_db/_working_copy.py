@@ -184,6 +184,7 @@ class WorkingCopySql(StrEnum):
         "SELECT row_id FROM github_project_record WHERE table_name = :table_name AND remote_record_id = :remote_id"
     )
     RESTORE_PROJECT_ROW = "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(id) DO UPDATE SET {}"
+    PROJECT_ROW_BY_NATURAL_KEY = "SELECT id FROM {} WHERE {} = :value"
     SET_REFRESH_WATERMARKS = (
         "UPDATE github_repository SET issue_watermark = :issue_watermark, ledger_watermark = :ledger_watermark "
         "WHERE singleton = 1"
@@ -273,6 +274,8 @@ _UPSERT_TABLE_COLUMNS: dict[WorkingCopyTable, tuple[str, ...]] = {
         "created_at",
     ),
 }
+# A project record's own identity beside its row id: two ledger records carrying the same value are one record.
+_PROJECT_NATURAL_KEYS: dict[WorkingCopyTable, str] = {WorkingCopyTable.COMMIT_REVIEW: "migration_source"}
 _PROJECT_UPSERT_COLUMNS: dict[WorkingCopyTable, tuple[str, ...]] = {
     WorkingCopyTable.COMMIT_REVIEW: (
         "id",
@@ -765,6 +768,17 @@ def mark_project_record_pushed(
     )
 
 
+def _row_id_by_natural_key(session: Session, table: WorkingCopyTable, row: Mapping[str, object]) -> int | None:
+    """The local row already holding this record under its natural key, when the table declares one."""
+    key = _PROJECT_NATURAL_KEYS.get(table)
+    value = row.get(key) if key is not None else None
+    if key is None or value is None:
+        return None
+    found = _one(session, WorkingCopySql.PROJECT_ROW_BY_NATURAL_KEY.value.format(table, key), {"value": value})
+    row_id = found.get(WorkingCopyField.ID) if found is not None else None
+    return row_id if isinstance(row_id, int) else None
+
+
 def restore_project_record(
     session: Session,
     table: str,
@@ -788,6 +802,8 @@ def restore_project_record(
     )
     mapped_id = mapping.get(WorkingCopyField.ROW_ID) if mapping is not None else None
     local_row_id = mapped_id if isinstance(mapped_id, int) else None
+    if local_row_id is None:
+        local_row_id = _row_id_by_natural_key(session, table_key, row)
     values = {column: row.get(column) for column in columns}
     values[WorkingCopyField.ID] = local_row_id
     capture = nullcontext() if capture_changes else capture_suppressed(session)
