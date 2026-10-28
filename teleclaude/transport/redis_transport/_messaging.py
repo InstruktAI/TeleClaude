@@ -545,7 +545,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                         ),
                     }
                 elif self._local_projects_payload is not None:
-                    # The answer the advertised digest was computed from: consistent with it, and ready at once.
+                    # The answer the current digest was computed from, ready at once.
                     payload = self._local_projects_payload
                 else:
                     payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]

@@ -16,7 +16,7 @@ from redis.asyncio import Redis
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config.machine import config
 from teleclaude.constants import REDIS_REFRESH_COOLDOWN_SECONDS
-from teleclaude.core.models import JsonDict
+from teleclaude.core.models._types import JsonDict
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 from ._adapter_noop import _AdapterNoopMixin

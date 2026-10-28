@@ -12,7 +12,7 @@ from redis.exceptions import RedisError
 
 from teleclaude.constants import CACHE_INVALIDATION_FIELD, CacheEvent
 from teleclaude.core import command_handlers
-from teleclaude.core.models import JsonDict
+from teleclaude.core.models._types import JsonDict
 from teleclaude.transport.peer_heartbeat import (
     CONVERSATION_ADAPTERS_FIELD,
     PROJECTS_DATA_TYPE,
@@ -85,8 +85,9 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         """Background task: keep the projects-with-todos answer that peers pull, and its digest, current.
 
         It runs apart from the heartbeat because building the answer can take longer than a heartbeat may wait.
-        A peer's pull is answered with the answer kept here, so it matches the digest the peer saw and is
-        answered at once instead of being built again for each request.
+        A peer's pull is answered at once with the answer kept here, which is the one the current digest was
+        computed from. When this pass replaced it after the peer's heartbeat, the peer receives the newer answer
+        and pulls once more at its next heartbeat, as for any digest change.
         """
         while self._running:
             try:
