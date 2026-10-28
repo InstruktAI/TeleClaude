@@ -35,7 +35,7 @@ approved intent enlarges the horizon and is invalid
 reallocate ownership); a genuine intent gap is reported as an investigation
 lead, never encoded as a blocking demand.
 
-Run lanes in parallel where possible. Each lane produces findings with severity levels.
+Lanes run in parallel, each in its own native subagent, under `sdlc/procedure/lifecycle/review`. Each lane produces findings with severity levels.
 
 A project-scope testing ruling (for example a test moratorium) supersedes the
 tests lane and every per-criterion named-test demand in Scope verification for
@@ -256,7 +256,7 @@ is Important. Bypassing the data layer is Critical. A backward-compatibility bra
 
 **Authority:** the documented design principles (`principle-violation-hunt`).
 
-Systematic check of changed code against documented design principles, with fallback detection as the most prominent target. The reviewer performs this directly (not delegated) because it requires full context.
+Systematic check of changed code against documented design principles, with fallback detection as the most prominent target. It requires full context: its brief carries the complete target and the intent basis, and the hunt reads beyond them wherever a principle leads.
 
 Use the `principle-violation-hunt` procedure for detailed hunt criteria.
 
