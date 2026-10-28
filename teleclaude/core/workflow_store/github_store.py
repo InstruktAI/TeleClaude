@@ -99,6 +99,10 @@ _guard = threading.Lock()
 _new_instance_hook: Callable[[WorkflowStore, str], None] | None = None
 
 
+class GitHubStoreSelectionRefused(ValueError):
+    """The project's ``todos.app`` is missing or names no configured platform App, so no store is selected."""
+
+
 class GitHubWorkflowStore(TodosDb):
     """Workflow port implementation over the local SQL model and GitHub system of record."""
 
@@ -530,10 +534,10 @@ def resolve_github_store_selection(
     identity = resolve_github_repository_identity(project_root_or_cwd)
     selection: TodoStoreConfig = selected_workflow_store_config(identity.project_path)
     if selection.app is None:
-        raise ValueError(_MISSING_APP)
+        raise GitHubStoreSelectionRefused(_MISSING_APP)
     assignment = github_actor_for_app_id(selection.app)
     if assignment is None:
-        raise ValueError(_UNKNOWN_APP)
+        raise GitHubStoreSelectionRefused(_UNKNOWN_APP)
     return identity.project_path, identity, assignment
 
 
