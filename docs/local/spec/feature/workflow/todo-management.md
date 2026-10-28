@@ -35,7 +35,7 @@ Lifecycle and artifact-changing actions are addressable by slug or by a todo's d
 
 <!-- planned:todo-show-claim-holder -->
 
-`telec todo show` reports who holds an active todo's lifecycle claim in a `claim` block. The block names the holding session, the computer running it and that session's role, or states that no session holds the todo. The holder it names is the one a driver start of the todo from the same computer would be refused naming at that moment, decided by the holder rule of `local/projects/teleclaude/spec/feature/workflow/driver-admission`, and the block names whatever else that refusal would name; when no session holds it, such a start is not refused for a holder. When that decision cannot be made, because the daemon or the fleet's master cannot be reached, the block says the holder is undetermined and why, and never reports the todo as free. The state block's `active_runner` keeps its own meaning as the recorded driver link, and can differ from the holder: it can name a session that no longer holds the todo, or be empty while a session holds it. Iceboxed, delivered and removed todos and the structural projection of a holder carry no `claim` block.
+`telec todo show` reports who holds an active todo's lifecycle claim in a `claim` block. The block names the holding session, the computer running it and that session's role, or states that no session holds the todo. The holder it names is the one the holder rule of `local/projects/teleclaude/spec/feature/workflow/driver-admission` finds at that moment, judged where that rule judges it: by the computer asked, for its own sessions, and for a project on the GitHub workflow store by the project's active computer. It is the session a start decided there would be refused naming as the holder, and the block names whatever else that refusal would name; when no session holds the todo, no start is refused for a holder. On a computer that is not the project's active one, a start is refused as driver admission states for such a computer, and the block there still names the holder the active computer finds. When the holder cannot be decided — the daemon or the project's active computer cannot be reached, the project names no active computer, or no decision arrives within the read's wait — the block says the holder is undetermined and why, and never reports the todo as free. The state block's `active_runner` keeps its own meaning as the recorded driver link, and can differ from the holder: it can name a session that no longer holds the todo, or be empty while a session holds it. Iceboxed, delivered and removed todos and the structural projection of a holder carry no `claim` block.
 
 <!-- /planned:todo-show-claim-holder -->
 
@@ -501,6 +501,6 @@ And its active children remain in the active section
 
 <!-- planned:todo-show-claim-holder -->
 
-- A `claim` block names the holding session's role only when the session's record can be read from the computer running it; otherwise it names the session and its computer without a role.
+- A `claim` block names the holding session's role only when the computer running the session lets the caller read that session's record; otherwise it names the session and its computer without a role.
 
 <!-- /planned:todo-show-claim-holder -->

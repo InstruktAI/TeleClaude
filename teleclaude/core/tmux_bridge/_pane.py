@@ -409,6 +409,9 @@ _SNAPSHOT_BATCH_WINDOW_S = 0.05
 # Each batch marks its sessions with a fresh random marker, so no pane's output can contain it.
 _BATCH_MARKER_TEMPLATE = "__TELECLAUDE_PANE_BATCH_{nonce}__"
 _BATCH_NONCE_BYTES = 12
+# tmux refuses a client command beyond its message size (about 16 KiB, "command too long"), so a
+# batch runs as several chains, each kept well under that limit.
+_CHAIN_ARGV_BYTES_MAX = 8192
 
 
 class _SnapshotBatcher:
@@ -435,7 +438,11 @@ class _SnapshotBatcher:
             self._loop.create_task(self._flush(batch))
 
     async def _flush(self, batch: dict[tuple[str, int], list[asyncio.Future[PaneSnapshot]]]) -> None:
-        remaining = list(batch)
+        await asyncio.gather(*(self._flush_chain(batch, chain) for chain in _chains(list(batch))))
+
+    async def _flush_chain(
+        self, batch: dict[tuple[str, int], list[asyncio.Future[PaneSnapshot]]], remaining: list[tuple[str, int]]
+    ) -> None:
         try:
             while remaining:
                 results, failed = await _run_snapshot_chain(remaining)
@@ -445,7 +452,7 @@ class _SnapshotBatcher:
                     break
                 _resolve(batch[failed], _MISSING_SNAPSHOT)
                 remaining = remaining[remaining.index(failed) + 1 :]
-        except BaseException as error:  # every waiter of the batch learns the failure that ended it
+        except BaseException as error:  # every waiter of the chain learns the failure that ended it
             for target in remaining:
                 for waiter in batch[target]:
                     if not waiter.done():
@@ -475,6 +482,36 @@ def _resolve(waiters: list[asyncio.Future[PaneSnapshot]], snapshot: PaneSnapshot
 _MISSING_SNAPSHOT = PaneSnapshot(session_exists=False, pane_dead=False, output_raw="", output_normalized="")
 
 
+def _target_command(marker: str, index: int, session_name: str, window_lines: int) -> list[str]:
+    """The chained tmux commands that snapshot one target, led by its position marker."""
+    return [
+        "display-message", "-p", f"{marker}{index}", ";",
+        "capture-pane", "-t", session_name, "-p", "-J", "-e", "-S", f"-{window_lines}", ";",
+        "display-message", "-p", _SNAPSHOT_MARKER, ";",
+        "list-panes", "-t", session_name, "-F", "#{pane_dead}",
+    ]  # fmt: skip
+
+
+def _chains(targets: list[tuple[str, int]]) -> list[list[tuple[str, int]]]:
+    """Split a batch into chains whose tmux command stays within ``_CHAIN_ARGV_BYTES_MAX``."""
+    # A marker of the real length stands in for the nonce each chain draws.
+    sample_marker = _BATCH_MARKER_TEMPLATE.format(nonce="0" * 2 * _BATCH_NONCE_BYTES)
+    chains: list[list[tuple[str, int]]] = []
+    current: list[tuple[str, int]] = []
+    size = 0
+    for target in targets:
+        # The index grows the marker by a few digits; the separator ";" and NUL bytes are counted per argument.
+        cost = sum(len(arg) + 1 for arg in _target_command(sample_marker, len(current), *target)) + 2
+        if current and size + cost > _CHAIN_ARGV_BYTES_MAX:
+            chains.append(current)
+            current, size = [], 0
+        current.append(target)
+        size += cost
+    if current:
+        chains.append(current)
+    return chains
+
+
 async def _run_snapshot_chain(
     targets: list[tuple[str, int]],
 ) -> tuple[dict[tuple[str, int], PaneSnapshot], tuple[str, int] | None]:
@@ -489,12 +526,7 @@ async def _run_snapshot_chain(
     for index, (session_name, window_lines) in enumerate(targets):
         if index:
             cmd.append(";")
-        cmd += [
-            "display-message", "-p", f"{marker}{index}", ";",
-            "capture-pane", "-t", session_name, "-p", "-J", "-e", "-S", f"-{window_lines}", ";",
-            "display-message", "-p", _SNAPSHOT_MARKER, ";",
-            "list-panes", "-t", session_name, "-F", "#{pane_dead}",
-        ]  # fmt: skip
+        cmd += _target_command(marker, index, session_name, window_lines)
     first = targets[0][0]
     # The slot encloses spawn and communicate so the timeout budget starts at
     # spawn, never while a requester waits for a free slot.
