@@ -12,6 +12,7 @@ import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.machine import config
+from teleclaude.runtime.binaries import resolve_tmux_query_binary
 from teleclaude.utils import strip_ansi_codes
 
 from ._subprocess import (
@@ -121,6 +122,11 @@ class PaneProcessIdentity:
     tty: str
 
 
+def _query_binary() -> str:
+    """The tmux binary for a read that only queries the running server (tmux-pane-orchestration)."""
+    return resolve_tmux_query_binary(config.computer.tmux_binary)
+
+
 async def get_server_pane_processes(socket_path: Path) -> tuple[PaneProcessIdentity, ...] | None:
     """Read all pane roots from one explicitly selected platform server."""
     command = (
@@ -173,7 +179,7 @@ def pane_evidence_tail(surface_text: str) -> str:
 async def get_pane_tty(session_name: str) -> str | None:
     """Get tty path for the tmux pane backing a session."""
     try:
-        cmd = [config.computer.tmux_binary, "display-message", "-p", "-t", session_name, "#{pane_tty}"]
+        cmd = [_query_binary(), "display-message", "-p", "-t", session_name, "#{pane_tty}"]
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
@@ -280,7 +286,7 @@ async def capture_pane(
         # -e = include escape sequences (ANSI codes for styling detection)
         window_lines = capture_lines if isinstance(capture_lines, int) and capture_lines > 0 else DEFAULT_CAPTURE_LINES
         cmd = [
-            config.computer.tmux_binary,
+            _query_binary(),
             "capture-pane",
             "-t",
             session_name,
@@ -395,7 +401,7 @@ async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None 
 
     window_lines = capture_lines if isinstance(capture_lines, int) and capture_lines > 0 else DEFAULT_CAPTURE_LINES
     cmd = [
-        config.computer.tmux_binary,
+        _query_binary(),
         "capture-pane",
         "-t",
         session_name,
@@ -485,7 +491,7 @@ async def list_tmux_sessions() -> list[str]:
         List of session names
     """
     try:
-        cmd = [config.computer.tmux_binary, "list-sessions", "-F", "#{session_name}"]
+        cmd = [_query_binary(), "list-sessions", "-F", "#{session_name}"]
 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -514,7 +520,7 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
         True if session exists, False otherwise
     """
     try:
-        cmd = [config.computer.tmux_binary, "has-session", "-t", session_name]
+        cmd = [_query_binary(), "has-session", "-t", session_name]
 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
