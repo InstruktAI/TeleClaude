@@ -40,9 +40,10 @@ reporting needs no act — a completed turn already wakes the session above.
 
 A worker — a session whose role is of class `worker`
 (`local/projects/teleclaude/spec/feature/identity/agent-roles`) — acts on no
-other session, on its own computer or another: it neither messages, links to
-nor tails one, and its own computer refuses its requests to do so with a refusal that names its own output and artifacts as its
-reporting path. It reports through its own completed turn and its artifacts,
+other session, on its own computer or another: it neither messages nor links
+to one, and its own computer refuses its requests to do so with a refusal that names its own output and artifacts as its
+reporting path. Reading a named session's transcript, which a worker role may
+add for its assignment, acts on no session. It reports through its own completed turn and its artifacts,
 and the session that dispatched it reads them and routes whatever must reach
 anyone else, so two workers never form a conversation of their own.
 Orchestrating and standing sessions keep acting downward and sideways, and so

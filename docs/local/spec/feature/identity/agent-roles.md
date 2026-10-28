@@ -111,8 +111,10 @@ The label is the role's name in a caller-origin identity header, drawn from
 Every role of class `worker` composes the worker baseline the catalog declares
 and adds to it what its own assignment needs. The baseline gives each worker
 the reach to record its task's outcome, return its result, and commit assigned
-work. It holds no capability that observes the fleet, sends to or tails another
+work. It holds no capability that observes the fleet, sends to or reads another
 session, or starts, revives, restarts or ends one, directly or by running a job.
+A worker role whose assignment reads a named session's transcript adds
+`transcript-read`, which only reads.
 A worker's result reaches other sessions only through its own completed turn
 and artifacts, which the session that dispatched it reads and routes
 (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`). No
