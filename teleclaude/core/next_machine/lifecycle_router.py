@@ -8,12 +8,11 @@ wakes the runner only when the session worked in a project checkout.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.config.machine import config
 from teleclaude.core.next_machine.lifecycle_runner import (
     default_session_runner,
     project_path_from_event_payload,
@@ -35,6 +34,7 @@ from teleclaude.events.schemas.sdlc import (
 from teleclaude.events.schemas.system import SESSION_ENDED_PREFIX, EffectiveConfigUpdated
 from teleclaude.events.type_pattern import TypePattern
 from teleclaude.project_root import is_project_checkout
+from teleclaude.services.project_catalog.service import get_project_catalog_service
 
 logger = get_logger(__name__)
 
@@ -61,20 +61,23 @@ _ENDED_OUTSIDE_CHECKOUT_EVENT = "Session-ended wake-up skipped: the session did 
 
 
 async def _wake_every_local_checkout(trigger: str) -> None:
-    """Wake the lifecycle runner for each project checkout on this computer."""
-    client = TelecAPIClient(daemon_credential=True)
-    await client.connect()
-    try:
-        projects = await client.list_projects()
-    finally:
-        await client.close()
-    for project in projects:
-        if project.computer and project.computer != config.computer.name:
+    """Wake the lifecycle runner for each project checkout on this computer.
+
+    The registered projects are read in-process from the project catalog, never through this daemon's own
+    API, so a tick handled while the API is still starting does not wait on it.
+    """
+    for project_path in await asyncio.to_thread(_registered_project_paths):
+        if not is_project_checkout(project_path):
+            logger.debug(_NOT_A_CHECKOUT_EVENT, project_path=project_path)
             continue
-        if not is_project_checkout(project.path):
-            logger.debug(_NOT_A_CHECKOUT_EVENT, project_path=project.path)
-            continue
-        await run_lifecycle_runner(project.path, trigger=trigger, client_factory=default_session_runner)
+        await run_lifecycle_runner(project_path, trigger=trigger, client_factory=default_session_runner)
+
+
+def _registered_project_paths() -> list[str]:
+    """This computer's registered project roots, in registry order, from a refreshed catalog."""
+    catalog = get_project_catalog_service()
+    catalog.refresh()
+    return [str(entry.root) for entry in catalog.list_entries()]
 
 
 def _checkout_of_ended_session(project_path: str | None) -> str | None:
