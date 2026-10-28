@@ -121,7 +121,14 @@ And the session is not reported complete while provider work remains active
 
 <!-- change:antigravity-native-subagents-allowed -->
 
-#### UC-R12: A native subagent runs in a managed Antigravity session without taking over its session
+#### UC-R12: A person's Antigravity session uses its native subagents and keeps its identity
+
+```gherkin
+Given a person works in a TeleClaude-managed Antigravity session
+When the agent hands part of its work to its own native subagents
+Then the subagents run and return their results to the agent
+And the person's session keeps its identity and status throughout
+```
 
 <!-- /planned-change:antigravity-native-subagents-allowed -->
 
