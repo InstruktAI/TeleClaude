@@ -185,8 +185,8 @@ with all its todos, worktrees and claims.
 `stop`, `restart`, `install [<revision>]`, `rollback` and
 `assessed <install>`. Every verb acts on the installation, whatever checkout
 the caller stands in. `status` names the active release alongside the daemon's
-health, the install whose assessment is owed by number and revision, and
-the most recent recorded assessment. The lifecycle verbs keep the guarantees of
+health, whether an assessment is owed and since when, and when the most recent
+assessment was recorded. The lifecycle verbs keep the guarantees of
 `local/projects/teleclaude/policy/daemon-availability`.
 
 ### Use cases
