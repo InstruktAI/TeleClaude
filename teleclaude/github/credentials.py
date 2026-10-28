@@ -11,6 +11,7 @@ from enum import StrEnum
 from typing import Protocol, TypedDict
 from urllib.parse import quote
 
+import httpx
 from githubkit.auth.app import AppAuthStrategy
 from githubkit.auth.token import TokenAuthStrategy
 from githubkit.cache.mem_cache import MemCacheStrategy
@@ -166,10 +167,12 @@ async def issue_github_installation_credential(
     permissions: AppPermissionsType,
     *,
     request_gate: RequestGate | None = None,
+    connection_pool: httpx.AsyncHTTPTransport | None = None,
 ) -> GitHubInstallationCredential:
     """Consume owner-selected facts and the config-owned key before verified token export.
 
-    A caller that schedules provider traffic passes `request_gate`; each request of the issuance runs inside it.
+    A caller that schedules provider traffic passes `request_gate`; each request of the issuance runs inside it,
+    over the caller's `connection_pool` when it shares one.
 
     The trusted composition calls this only after invocation/operation admission.
     No argument is an actor selector at a native command boundary. This component
@@ -188,6 +191,7 @@ async def issue_github_installation_credential(
                 AppAuthStrategy(app_id=assignment.app_id, private_key=private_key.get_secret_value()),
                 cache,
                 request_gate=request_gate,
+                connection_pool=connection_pool,
             ) as app_client,
         ):
             app_response = await app_client.rest.apps.async_get_authenticated()
@@ -229,7 +233,7 @@ async def issue_github_installation_credential(
             expiry = _verify_issued_scope(issued, issued_permissions, target, requested_permissions)
             # Account metadata needs an installation token; /user is not App identity.
             async with create_github_client(
-                TokenAuthStrategy(issued.token), cache, request_gate=request_gate
+                TokenAuthStrategy(issued.token), cache, request_gate=request_gate, connection_pool=connection_pool
             ) as token_client:
                 account = await GitHubAccountDirectory(token_client).read(github_app_bot_login(app.slug))
                 if not account.same_account(assignment.actor):

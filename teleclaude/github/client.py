@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from time import monotonic
-from weakref import WeakKeyDictionary
 
 import httpx
 from githubkit.auth.base import BaseAuthStrategy
@@ -28,39 +26,37 @@ logger = get_logger(__name__)
 
 RequestGate = Callable[[], AbstractAsyncContextManager[object]]
 
-# One connection pool per event loop, shared by every gated client on it; dropped with its loop.
-_loop_wires: WeakKeyDictionary[asyncio.AbstractEventLoop, httpx.AsyncHTTPTransport] = WeakKeyDictionary()
 
+def create_connection_pool() -> httpx.AsyncHTTPTransport:
+    """Create a connection pool with the platform's transport posture, for an owner to share and close.
 
-def _loop_wire() -> httpx.AsyncHTTPTransport:
-    """Return the running loop's pooled transport, creating it on first use."""
-    loop = asyncio.get_running_loop()
-    wire = _loop_wires.get(loop)
-    if wire is None:
-        wire = httpx.AsyncHTTPTransport(
-            trust_env=_TRUST_ENV, limits=httpx.Limits(keepalive_expiry=_KEEPALIVE_EXPIRY_SECONDS)
-        )
-        _loop_wires[loop] = wire
-    return wire
+    The pool belongs to the event loop it is first used on; its owner keeps it on that loop.
+    """
+    return httpx.AsyncHTTPTransport(
+        trust_env=_TRUST_ENV, limits=httpx.Limits(keepalive_expiry=_KEEPALIVE_EXPIRY_SECONDS)
+    )
 
 
 class _GatedTransport(httpx.AsyncBaseTransport):
     """Send each wire request inside the caller's gate, leaving it once the response is read.
 
     The transport keeps the posture the client would have built for itself (environment trust disabled).
-    Requests share the running loop's connection pool, so consecutive clients reuse open connections
-    instead of each paying a new TCP and TLS handshake. Each request logs how long it waited for the gate
+    With a caller's shared pool, consecutive clients reuse its open connections instead of each paying a new
+    TCP and TLS handshake, and closing the client leaves the pool to its owner; without one, the transport
+    owns a pool of its own and closes it with the client. Each request logs how long it waited for the gate
     and how long it spent on the wire.
     """
 
-    def __init__(self, gate: RequestGate) -> None:
+    def __init__(self, gate: RequestGate, pool: httpx.AsyncHTTPTransport | None) -> None:
         self._gate = gate
+        self._shared = pool is not None
+        self._wire = pool if pool is not None else create_connection_pool()
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         queued = monotonic()
         async with self._gate():
             sent = monotonic()
-            response = await _loop_wire().handle_async_request(request)
+            response = await self._wire.handle_async_request(request)
             await response.aread()
         done = monotonic()
         logger.debug(
@@ -74,15 +70,21 @@ class _GatedTransport(httpx.AsyncBaseTransport):
         return response
 
     async def aclose(self) -> None:
-        """Leave the loop's shared pool open for the next client."""
+        if not self._shared:
+            await self._wire.aclose()
 
 
 def create_github_client[AuthStrategyT: BaseAuthStrategy](
-    auth: AuthStrategyT, cache: BaseCacheStrategy, *, request_gate: RequestGate | None = None
+    auth: AuthStrategyT,
+    cache: BaseCacheStrategy,
+    *,
+    request_gate: RequestGate | None = None,
+    connection_pool: httpx.AsyncHTTPTransport | None = None,
 ) -> GitHub[AuthStrategyT]:
     """Create one client with retries, caching, redirects, and env trust disabled.
 
-    A caller that must schedule every wire request passes the gate each request runs inside.
+    A caller that must schedule every wire request passes the gate each request runs inside, and may pass
+    the connection pool it owns so its clients share connections.
     """
     return GitHub(
         auth,
@@ -92,5 +94,5 @@ def create_github_client[AuthStrategyT: BaseAuthStrategy](
         follow_redirects=_FOLLOW_REDIRECTS,
         trust_env=_TRUST_ENV,
         timeout=_TIMEOUT_SECONDS,
-        async_transport=None if request_gate is None else _GatedTransport(request_gate),
+        async_transport=None if request_gate is None else _GatedTransport(request_gate, connection_pool),
     )

@@ -9,6 +9,7 @@ from enum import StrEnum
 from typing import Any, TypeVar
 from urllib.parse import quote
 
+import httpx
 from githubkit.auth.token import TokenAuthStrategy
 from githubkit.cache.mem_cache import MemCacheStrategy
 from githubkit.exception import GitHubException, RateLimitExceeded, RequestFailed
@@ -57,6 +58,14 @@ async def _request_gate() -> AsyncIterator[None]:
         yield
 
 
+def _connection_pool() -> httpx.AsyncHTTPTransport:
+    """The I/O loop's pool, shared by every gated request so each reuses an open connection."""
+    pool = shared_github_io_loop().connection_pool
+    if pool is None:
+        raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
+    return pool
+
+
 class GitHubIORefused(RuntimeError):
     """A bounded reason why one store operation could not reach GitHub."""
 
@@ -97,7 +106,10 @@ class GitHubTransport:
         try:
             token = await self._credential_token(assignment, permissions)
             async with create_github_client(
-                TokenAuthStrategy(token.get_secret_value()), MemCacheStrategy(), request_gate=_request_gate
+                TokenAuthStrategy(token.get_secret_value()),
+                MemCacheStrategy(),
+                request_gate=_request_gate,
+                connection_pool=_connection_pool(),
             ) as client:
                 return await request(client)
         except GitHubIORefused:
@@ -124,7 +136,7 @@ class GitHubTransport:
             return cached[0]
         try:
             credential = await issue_github_installation_credential(
-                assignment, self.scope, permissions, request_gate=_request_gate
+                assignment, self.scope, permissions, request_gate=_request_gate, connection_pool=_connection_pool()
             )
         except GitHubCredentialRefused:
             raise GitHubIORefused(GitHubIOFailure.CREDENTIAL_REFUSED) from None
