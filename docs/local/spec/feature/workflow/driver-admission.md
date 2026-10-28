@@ -68,7 +68,8 @@ of them.
 
 - The project names one active computer in a variable on its GitHub
   repository. `telec projects active-computer set`, run deliberately, names it;
-  nothing names it automatically.
+  nothing names it automatically. It acts on the project of the directory it
+  runs in, or on the one `--project-root` names, so it can be run from anywhere.
 - Only the active computer admits a start of the project's todos and writes
   their claims. A start on another computer is refused naming the active
   computer, and creates or claims nothing; working on another computer means
