@@ -42,6 +42,14 @@ def _next_malformed_streak(exc: Exception, streak: int) -> int:
     return streak
 
 
+def _until_next_beat(poll_interval: float) -> float:
+    """Seconds until the next whole multiple of the cadence, so every poller ticks on the same beat.
+
+    Ticking together lets the snapshots of a tick share one tmux call (output-polling).
+    """
+    return poll_interval - (time.monotonic() % poll_interval)
+
+
 @dataclass
 class OutputEvent:
     """Base class for output events."""
@@ -469,7 +477,7 @@ class OutputPoller:
                         suppressed_idle_ticks += 1
                         maybe_log_idle_summary()
 
-                await asyncio.sleep(poll_interval)
+                await asyncio.sleep(_until_next_beat(poll_interval))
 
         finally:
             logger.debug("Polling ended for session %s", session_id)
