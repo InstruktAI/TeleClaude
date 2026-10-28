@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 from asyncio import timeout, to_thread
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Protocol
+from typing import Protocol, TypedDict
 from urllib.parse import quote
 
 from githubkit.auth.app import AppAuthStrategy
 from githubkit.auth.token import TokenAuthStrategy
 from githubkit.cache.mem_cache import MemCacheStrategy
 from githubkit.exception import GitHubException, RateLimitExceeded
-from githubkit_schemas.v2026_03_10.models import AppPermissions, InstallationToken
+from githubkit_schemas.v2026_03_10.models import InstallationToken
 from githubkit_schemas.v2026_03_10.types import AppPermissionsType
 from instrukt_ai_logging import get_logger
 from jwt.exceptions import PyJWTError
@@ -33,6 +34,10 @@ _OPERATION_TIMEOUT_SECONDS = 60.0
 _MINIMUM_LIFETIME = timedelta(minutes=1)
 _METADATA_PERMISSION = "metadata"
 _READ_PERMISSION = "read"
+_ACCESS_LEVELS = frozenset({_READ_PERMISSION, "write", "admin"})
+_PERMISSIONS_FIELD = "permissions"
+_POST = "POST"
+_ACCESS_TOKENS_PATH = "/app/installations/{installation_id}/access_tokens"
 _REPOSITORY_SEPARATOR = "/"
 _SELECTED_REPOSITORIES = "selected"
 _EMPTY = ""
@@ -92,12 +97,25 @@ class GitHubInstallationCredential:
     target: _GitHubRepositoryScope
 
 
-def _permission_values(permissions: AppPermissions) -> dict[str, str]:
-    if permissions.model_extra:
+class _AccessTokenRequest(TypedDict, total=False):
+    """The installation access token request body."""
+
+    permissions: AppPermissionsType
+    repository_ids: list[int]
+    repositories: list[str]
+
+
+def _permission_values(permissions: object) -> dict[str, str]:
+    """Each permission name with its access level, as sent or received.
+
+    The raw mapping is read rather than the typed model, which drops a permission newer than its schema; every
+    level must still be a plain access level.
+    """
+    if not isinstance(permissions, Mapping):
         raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
     values: dict[str, str] = {}
-    for name, value in permissions.model_dump(exclude_unset=True).items():
-        if not isinstance(value, str):
+    for name, value in permissions.items():
+        if not isinstance(name, str) or value not in _ACCESS_LEVELS:
             raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
         values[name] = value
     return values
@@ -105,6 +123,7 @@ def _permission_values(permissions: AppPermissions) -> dict[str, str]:
 
 def _verify_issued_scope(
     issued: InstallationToken,
+    issued_permissions: object,
     target: _GitHubRepositoryScope,
     requested_permissions: dict[str, str],
 ) -> datetime:
@@ -120,9 +139,7 @@ def _verify_issued_scope(
         target.repository_id is not None and repository.id != target.repository_id
     ) or repository.full_name.casefold() != target.repository.casefold():
         raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
-    if not isinstance(issued.permissions, AppPermissions):
-        raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
-    granted_permissions = _permission_values(issued.permissions)
+    granted_permissions = _permission_values(issued_permissions)
     permitted = {**requested_permissions, _METADATA_PERMISSION: _READ_PERMISSION}
     if any(granted_permissions.get(name) != level for name, level in requested_permissions.items()):
         raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
@@ -155,7 +172,7 @@ async def issue_github_installation_credential(
     cache = MemCacheStrategy()
     try:
         requested = deepcopy(permissions)
-        requested_permissions = _permission_values(AppPermissions.model_validate(requested))
+        requested_permissions = _permission_values(requested)
         if not requested_permissions:
             raise GitHubCredentialRefused(GitHubCredentialFailure.SCOPE_UNVERIFIED)
         private_key = await to_thread(resolve_github_app_private_key, assignment)
@@ -186,22 +203,24 @@ async def issue_github_installation_credential(
                 or installation.suspended_by is not None
             ):
                 raise GitHubCredentialRefused(GitHubCredentialFailure.INSTALLATION_UNAVAILABLE)
+            # Sent as plain JSON: the typed request drops a permission newer than its schema, and GitHub would
+            # then issue the installation's full scope instead of the one requested.
+            body = _AccessTokenRequest(permissions=requested)
             if target.repository_id is not None:
-                response = await app_client.rest.apps.async_create_installation_access_token(
-                    installation.id,
-                    repository_ids=[target.repository_id],
-                    permissions=requested,
-                )
+                body["repository_ids"] = [target.repository_id]
             else:
-                response = await app_client.rest.apps.async_create_installation_access_token(
-                    installation.id,
-                    repositories=[repository],
-                    permissions=requested,
-                )
+                body["repositories"] = [repository]
+            response = await app_client.arequest(
+                _POST,
+                _ACCESS_TOKENS_PATH.format(installation_id=installation.id),
+                json=body,
+                response_model=InstallationToken,
+            )
             if response.status_code != 201:
                 raise GitHubCredentialRefused(GitHubCredentialFailure.PROVIDER_UNAVAILABLE)
             issued = response.parsed_data
-            expiry = _verify_issued_scope(issued, target, requested_permissions)
+            issued_permissions = response.json().get(_PERMISSIONS_FIELD)
+            expiry = _verify_issued_scope(issued, issued_permissions, target, requested_permissions)
             # Account metadata needs an installation token; /user is not App identity.
             async with create_github_client(
                 TokenAuthStrategy(issued.token), cache, request_gate=request_gate
