@@ -103,9 +103,8 @@ feature specs remain the current contract.
   task-run lane accepts a fresh run session for the task, from a lifecycle
   runner dispatch or a manual start, or when a manual start by a session that
   holds no claim on the task takes the task up to run the firing in place. The
-  line is appended as soon as that start is accepted: for a fresh run session
-  before its driver claim is recorded, and for an in-place start before the
-  start's outcome returns to the calling session. A dispatch that starts no
+  line is appended as soon as that start is accepted, before the start's outcome
+  returns to its caller. A dispatch that starts no
   session, one that records a session an earlier dispatch already started, and
   a manual start by the session already driving the task each append nothing. A
   failure to append the line is logged and leaves the firing running. The run session keeps every firing line verbatim
