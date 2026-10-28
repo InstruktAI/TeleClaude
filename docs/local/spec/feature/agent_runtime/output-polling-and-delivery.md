@@ -185,6 +185,9 @@ And the silent turn neither replaces it with empty content nor delivers it again
 
 ## Known caveats
 
+- **Response pinning needs a readable native reference.** If initial stop
+  extraction finds no readable response-start entry or no usable native identity,
+  delayed extraction selects the latest readable response.
 - **Derived reading state retains history.** Initial reads and eviction recovery
   still parse the source needed by existing ancestry and receipt contracts.
   The source-byte budget scales with host memory up to its cap; source count is
