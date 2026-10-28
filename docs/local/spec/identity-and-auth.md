@@ -176,10 +176,9 @@ without listing people; it is absent for any other caller.
   person's open terminals; only the terminal's own disappearance does.
 - Whichever mode is in force, a caller outside any session needs no login for a
   command declared for the machine's own account — the installation verbs
-  (`local/projects/teleclaude/design/cli-authorization-matrix`). That caller is
-  the operating-system account the installation belongs to, which already holds
-  the installation's lifecycle; a login there would be an identity claim, not
-  authentication (`general/principle/trust-and-guardrails`).
+  (`local/projects/teleclaude/design/cli-authorization-matrix`), whose caller
+  there is the operating-system account the installation belongs to
+  (`general/principle/trust-and-guardrails`).
 
 <!-- /planned-change:telec-app-refuses-terminal-without-login -->
 

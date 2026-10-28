@@ -90,7 +90,7 @@ Each command keeps a person band of its own in the CLI surface schema, evaluated
 
 ### Commands the machine's own account operates
 
-The installation verbs `app status`, `app start`, `app stop`, `app restart`, `app install`, `app rollback` and `app assessed` are declared for the machine's own account (invariant 8). Outside a session their caller is the operating-system account the installation belongs to: the installation lives under that account's data directory, and the account can run the active release's lifecycle and its service manager directly. A terminal login would add only an identity claim anyone at that terminal can make, and refusing its absence would block only the sanctioned path to an act that is reversible (`general/principle/trust-and-guardrails`). A session reaches these verbs only through its role's `installation` or `installation-read` capability and, when it acts for a person, that person's band.
+The installation verbs `app status`, `app start`, `app stop`, `app restart`, `app install`, `app rollback` and `app assessed` are declared for the machine's own account (invariant 8). Outside a session their caller is the operating-system account the installation belongs to, and is admitted with or without a terminal login (`general/principle/trust-and-guardrails`). A session reaches these verbs only through its role's `installation` or `installation-read` capability and, when it acts for a person, that person's band.
 
 <!-- /planned:telec-app-refuses-terminal-without-login -->
 
