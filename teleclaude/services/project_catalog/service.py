@@ -123,6 +123,13 @@ class ProjectCatalogService:
 _INSTANCE_SLOT: dict[str, ProjectCatalogService] = {}
 
 
+def registered_project_paths() -> list[str]:
+    """This computer's registered project roots, in registry order, from a refreshed catalog."""
+    catalog = get_project_catalog_service()
+    catalog.refresh()
+    return [str(entry.root) for entry in catalog.list_entries()]
+
+
 def get_project_catalog_service() -> ProjectCatalogService:
     """Return the process-wide :class:`ProjectCatalogService` singleton."""
     service = _INSTANCE_SLOT.get("default")

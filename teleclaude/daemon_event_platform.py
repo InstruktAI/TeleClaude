@@ -76,6 +76,7 @@ from teleclaude.memory.closure import build_memory_closure_consumer
 from teleclaude.memory.transition import run_transition, run_transition_until_complete
 from teleclaude.mirrors.closure import build_mirror_closure_consumer
 from teleclaude.services.project_catalog.ownership import load_project_ownership_index
+from teleclaude.services.project_catalog.service import registered_project_paths
 from teleclaude.transport.internal_event_compat import (
     InternalEventCompatIngressData,
     SessionLifecycleContext,
@@ -249,7 +250,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         assert self._event_producer is not None  # configured by _start_event_platform_prepare
         assert self._event_catalog is not None  # built by _start_event_platform_prepare
         return [
-            build_lifecycle_router_consumer(),
+            build_lifecycle_router_consumer(registered_project_paths),
             build_mirror_closure_consumer(),
             build_memory_closure_consumer(),
             build_procedure_activation_consumer(),
