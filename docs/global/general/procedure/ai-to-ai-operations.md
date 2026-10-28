@@ -109,10 +109,10 @@ or lifecycle contract.
    follows the human-contract and message-identity-headers policies, including
    their marked-decision authority and cleanup obligations.
 
-A dispatched worker messages and links to no other session. Its result
+A session in a focused role messages and links to no other session. Its result
 belongs in its own output and artifacts, where the session that dispatched it
 reads it, and that session points any other session it involves at those sources
-instead of retelling them. A worker reads a named session's transcript only when
+instead of retelling them. It reads a named session's transcript only when
 its role grants transcript reading for its assignment, as a reviewer recovering
 the intent behind the work it judges does.
 

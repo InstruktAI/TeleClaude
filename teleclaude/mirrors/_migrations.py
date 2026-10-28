@@ -17,7 +17,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.migration_signal import MigrationStore, signal_migration_started
-from teleclaude.core.roles import is_worker_role
+from teleclaude.core.roles import is_focused_role
 from teleclaude.mirrors._session_convergence import converge_session_owned_conversations
 from teleclaude.mirrors._source_observation_migration import (
     create_session_id_guards,
@@ -498,7 +498,7 @@ def reconcile_mirror_records(conn: sqlite3.Connection) -> None:
         transcript_path = metadata.get(_TRANSCRIPT_PATH_FIELD) if isinstance(metadata, dict) else None
         if not isinstance(transcript_path, str) or not transcript_path:
             continue
-        if is_worker_role(role_by_path.get(transcript_path)) and not int(current_is_worker):
+        if is_focused_role(role_by_path.get(transcript_path)) and not int(current_is_worker):
             worker_updates.append((1, row_id))
     if worker_updates:
         conn.executemany(_UPDATE_IS_WORKER_SQL, worker_updates)

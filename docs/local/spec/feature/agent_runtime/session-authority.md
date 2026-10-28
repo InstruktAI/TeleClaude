@@ -38,14 +38,14 @@ started it, and on every session further up the chain, as on any other session
 within its reach. Upward
 reporting needs no act — a completed turn already wakes the session above.
 
-A worker — a session whose role is of class `worker`
+A focused session — one whose role is of class `focused`
 (`local/projects/teleclaude/spec/feature/identity/agent-roles`) — acts on no
 other session, on its own computer or another: it neither messages nor links
 to one, and its own computer refuses its requests to do so with a refusal that names its own output and artifacts as its
-reporting path. Reading a named session's transcript, which a worker role may
+reporting path. Reading a named session's transcript, which a focused role may
 add for its assignment, acts on no session. It reports through its own completed turn and its artifacts,
 and the session that dispatched it reads them and routes whatever must reach
-anyone else, so two workers never form a conversation of their own.
+anyone else, so two focused sessions never form a conversation of their own.
 Orchestrating and standing sessions keep acting downward and sideways, and so
 does a session with nothing above it, reaching anywhere in the fleet.
 

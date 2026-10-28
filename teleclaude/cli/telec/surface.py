@@ -1656,13 +1656,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "search": CommandDef(
                 desc="Search agent session transcripts",
-                args="[terms...] [--agent <name>] [--computer <host>] [--identity <value>] [--project <path>] [--limit <n>] [--include-workers] [--json]",
+                args="[terms...] [--agent <name>] [--computer <host>] [--identity <value>] [--project <path>] [--limit <n>] [--include-focused] [--json]",
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_HISTORY_AGENT,
                     F.FLAG_COMPUTER_MANY,
                     F.FLAG_HISTORY_LIMIT,
-                    F.FLAG_HISTORY_INCLUDE_WORKERS,
+                    F.FLAG_HISTORY_INCLUDE_FOCUSED,
                     F.FLAG_HISTORY_IDENTITY,
                     F.FLAG_PROJECT_FILTER,
                     F.FLAG_HISTORY_JSON,
@@ -1670,7 +1670,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 examples=[
                     "telec history search config wizard",
                     "telec history search --agent claude,codex bug fix",
-                    "telec history search --include-workers tui",
+                    "telec history search --include-focused tui",
                 ],
                 literal_dash_tokens=True,
                 auth=CommandAuth(capability=Capability.SESSION_OBSERVE, human=_HR_MEMBER),

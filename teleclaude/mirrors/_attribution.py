@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude import paths as tc_paths
 from teleclaude.core.db._sync import get_session_mirror_facts_by_transcript_sync
-from teleclaude.core.roles import is_worker_role
+from teleclaude.core.roles import is_focused_role
 
 from ._types import JsonValue
 from .session_context import session_contexts_from_selected_facts
@@ -178,7 +178,7 @@ def backfill_session_attributions(conn: sqlite3.Connection, _store_path: str, sn
             "command": context.command,
             "todo": context.todo,
             "title": context.title,
-            "is_worker": int(is_worker_role(context.role) or bool(is_worker)),
+            "is_worker": int(is_focused_role(context.role) or bool(is_worker)),
             "metadata": json.dumps(metadata, sort_keys=True),
             "mirror_id": mirror_id,
         }

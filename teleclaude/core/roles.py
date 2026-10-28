@@ -53,13 +53,13 @@ class Capability(StrEnum):
     PEER_TALK = "peer-talk"
     MEMORIES_READ = "memories-read"
     MEMORIES_SAVE = "memories-save"
-    DISPATCH_WORKER = "dispatch-worker"
+    DISPATCH_FOCUSED = "dispatch-focused"
 
 
 class RoleClass(StrEnum):
     """What kind of session carries a role, independently of its reach."""
 
-    WORKER = "worker"
+    FOCUSED = "focused"
     STANDING = "standing"
     AGENT = "agent"
 
@@ -129,10 +129,10 @@ class Role:
     def legacy_projection(self) -> str:
         """The older ``system_role`` value this role projects as, derived from its class and reach.
 
-        A worker-class role projects as ``worker``; the integrator and coordinator as themselves;
+        A focused-class role projects as ``worker``; the integrator and coordinator as themselves;
         any other full-reach role as ``orchestrator``; any other contained role as its own name.
         """
-        if self.role_class is RoleClass.WORKER:
+        if self.role_class is RoleClass.FOCUSED:
             return LegacyRole.WORKER
         if self.name is RoleName.INTEGRATOR:
             return LegacyRole.INTEGRATOR
@@ -163,10 +163,10 @@ def _entry(
     return name, Role(name, role_class, full_reach, capabilities | _AGENT_BASELINE)
 
 
-# The set every worker-class role starts from. It holds no capability that observes the fleet or starts,
-# revives, restarts or ends another session, and sends to and tails no other session: a worker reports through
+# The set every focused-class role starts from. It holds no capability that observes the fleet or starts,
+# revives, restarts or ends another session, and sends to no other session: a focused session reports through
 # its own output and artifacts (``local/projects/teleclaude/spec/feature/identity/agent-roles``).
-_WORKER_BASELINE: frozenset[Capability] = frozenset(
+_FOCUSED_BASELINE: frozenset[Capability] = frozenset(
     {
         Capability.DOCS_READ,
         Capability.REMINDERS,
@@ -187,51 +187,51 @@ _CATALOG: dict[RoleName, Role] = dict(
     [
         _entry(
             RoleName.BUILDER,
-            RoleClass.WORKER,
+            RoleClass.FOCUSED,
             False,
-            _WORKER_BASELINE,
+            _FOCUSED_BASELINE,
         ),
         _entry(
             RoleName.REVIEWER,
-            RoleClass.WORKER,
+            RoleClass.FOCUSED,
             False,
-            _WORKER_BASELINE | {Capability.TRANSCRIPT_READ},
+            _FOCUSED_BASELINE | {Capability.TRANSCRIPT_READ},
         ),
         _entry(
             RoleName.FINALIZER,
-            RoleClass.WORKER,
+            RoleClass.FOCUSED,
             False,
-            _WORKER_BASELINE,
+            _FOCUSED_BASELINE,
         ),
         _entry(
             RoleName.DIAGNOSER,
-            RoleClass.WORKER,
+            RoleClass.FOCUSED,
             False,
-            _WORKER_BASELINE | {Capability.TRANSCRIPT_READ},
+            _FOCUSED_BASELINE | {Capability.TRANSCRIPT_READ},
         ),
         _entry(
             RoleName.DRIFT_ANALYZER,
-            RoleClass.WORKER,
+            RoleClass.FOCUSED,
             False,
-            _WORKER_BASELINE,
+            _FOCUSED_BASELINE,
         ),
         _entry(
             RoleName.ARTIST,
-            RoleClass.WORKER,
+            RoleClass.FOCUSED,
             False,
-            _WORKER_BASELINE,
+            _FOCUSED_BASELINE,
         ),
         _entry(
             RoleName.FRONTENDER,
-            RoleClass.WORKER,
+            RoleClass.FOCUSED,
             False,
-            _WORKER_BASELINE,
+            _FOCUSED_BASELINE,
         ),
         _entry(
             RoleName.DEFERRER,
-            RoleClass.WORKER,
+            RoleClass.FOCUSED,
             False,
-            _WORKER_BASELINE,
+            _FOCUSED_BASELINE,
         ),
         _entry(
             RoleName.PREPARE_ORCHESTRATOR,
@@ -247,7 +247,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.ARTIFACT_READ,
                     Capability.ARTIFACT_WRITE,
                     Capability.STAMP,
-                    Capability.DISPATCH_WORKER,
+                    Capability.DISPATCH_FOCUSED,
                     Capability.SESSION_OBSERVE,
                     Capability.SESSION_ACT,
                     Capability.SELF_ACTS,
@@ -272,7 +272,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.ARTIFACT_READ,
                     Capability.ARTIFACT_WRITE,
                     Capability.STAMP,
-                    Capability.DISPATCH_WORKER,
+                    Capability.DISPATCH_FOCUSED,
                     Capability.SESSION_OBSERVE,
                     Capability.SESSION_ACT,
                     Capability.SELF_ACTS,
@@ -293,7 +293,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.TODO_READ,
                     Capability.ARTIFACT_READ,
                     Capability.STAMP,
-                    Capability.DISPATCH_WORKER,
+                    Capability.DISPATCH_FOCUSED,
                     Capability.SESSION_OBSERVE,
                     Capability.SESSION_ACT,
                     Capability.SELF_ACTS,
@@ -374,7 +374,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.INTEGRATION,
                     Capability.MAINTENANCE_RECOVERY,
                     Capability.INSTALLATION,
-                    Capability.DISPATCH_WORKER,
+                    Capability.DISPATCH_FOCUSED,
                     Capability.CODE,
                     Capability.CODE_CHECK,
                     Capability.SESSION_OBSERVE,
@@ -633,10 +633,10 @@ def is_standing_session(recorded: str | None, *, scheduled: bool) -> bool:
     return scheduled or (isinstance(resolved, Role) and resolved.role_class is RoleClass.STANDING)
 
 
-def is_worker_role(recorded: str | None) -> bool:
-    """Whether a recorded role is of the worker class in the catalog; no role and an unnamed role are not."""
+def is_focused_role(recorded: str | None) -> bool:
+    """Whether a recorded role is of the focused class in the catalog; no role and an unnamed role are not."""
     resolved = resolve_role(recorded)
-    return isinstance(resolved, Role) and resolved.role_class is RoleClass.WORKER
+    return isinstance(resolved, Role) and resolved.role_class is RoleClass.FOCUSED
 
 
 def is_orchestrator_role(recorded: str | None) -> bool:
@@ -667,8 +667,8 @@ def may_dispatch(caller: Role | None, target: Role) -> bool:
     """Whether ``caller`` may start a session carrying ``target``.
 
     A roleless caller (a human session) and a full-reach caller may start any role; a caller holding
-    ``dispatch-worker`` may start a role of class ``worker``.
+    ``dispatch-focused`` may start a role of class ``focused``.
     """
     if caller is None or caller.full_reach:
         return True
-    return allows(caller, Capability.DISPATCH_WORKER) and target.role_class is RoleClass.WORKER
+    return allows(caller, Capability.DISPATCH_FOCUSED) and target.role_class is RoleClass.FOCUSED

@@ -47,7 +47,7 @@ def _print_results(
     print(f"\nSearch results for '{search_term}' ({len(results)} found):\n")
 
     if excluded_workers:
-        print(f"Excluded worker matches: {excluded_workers}\n")
+        print(f"Excluded focused-role matches: {excluded_workers}\n")
 
     for entry in results:
         tc_id = entry["tc_id"]

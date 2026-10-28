@@ -34,7 +34,7 @@ request is relayed to the owning computer, which authorizes it. The sending
 computer applies no command-role, dispatch-privilege, or dispatch-chain
 authorization to a relayed request
 (`local/projects/teleclaude/spec/identity-and-auth`), with one exception: it
-refuses a worker's request to message or link to a session before relaying
+refuses a focused session's request to message or link to a session before relaying
 it (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`).
 
 A session listing or a history read sent to another computer reaches objects whose

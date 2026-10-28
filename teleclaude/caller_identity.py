@@ -646,8 +646,8 @@ def session_act_exception(
     """Apply self-end, self-restart, and self-show exceptions before the declared band."""
     if caller_session_id is None or target_session_id != caller_session_id:
         resolved_caller_role = resolve_role(caller_role)
-        is_worker = isinstance(resolved_caller_role, Role) and resolved_caller_role.role_class is RoleClass.WORKER
-        if act is SessionAct.RESTART and is_worker:
+        is_focused = isinstance(resolved_caller_role, Role) and resolved_caller_role.role_class is RoleClass.FOCUSED
+        if act is SessionAct.RESTART and is_focused:
             return False
         return None
     if act is SessionAct.END and caller_initiator_session_id is not None:

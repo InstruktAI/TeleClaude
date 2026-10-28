@@ -16,7 +16,7 @@ from typing import Final
 import aiosqlite
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.roles import is_worker_role
+from teleclaude.core.roles import is_focused_role
 
 logger = get_logger(__name__)
 
@@ -40,7 +40,7 @@ async def up(db: aiosqlite.Connection) -> None:
     rows = await cursor.fetchall()
     worker_members: defaultdict[str, int] = defaultdict(int)
     for link_id, role in rows:
-        if is_worker_role(role):
+        if is_focused_role(role):
             worker_members[link_id] += 1
     joined_workers = [link_id for link_id, count in worker_members.items() if count >= _MIN_WORKER_MEMBERS]
     now = datetime.now(UTC).isoformat()
