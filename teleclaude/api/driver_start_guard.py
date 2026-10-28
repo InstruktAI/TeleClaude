@@ -54,7 +54,7 @@ def terminal_driver_email(identity: CallerIdentity) -> str | None:
 
 
 def admission_caller_for(identity: CallerIdentity) -> AdmissionCaller:
-    """The principal a start's relayed requests are cleared as on the master: the caller's own, else the daemon's."""
+    """The principal a start's relayed requests are cleared as on the active computer: the caller's own, else the daemon's."""
     return AdmissionCaller(
         principal=identity.principal or SYSTEM_DAEMON_PRINCIPAL,
         cleared_command=identity.command,
@@ -79,7 +79,7 @@ async def _admit_driver_start(
 ) -> DriverStartGuardResult:
     """Run the dedup guard and, for a local orchestrator start, enter the todo's section on ``held``.
 
-    A todo on the GitHub store is admitted by the fleet's master first, and the section is held across
+    A todo on the GitHub store is admitted by the project's active computer first, and the section is held across
     that admission (:func:`admitted_start`); any other todo holds the section around this computer's own
     holder re-check.
     """
@@ -159,10 +159,10 @@ async def enforce_driver_start_guard(
     that finds the section held is refused at once with HTTP 423 naming the session
     the holding start is creating. Every other launch class holds nothing.
 
-    For a todo on the GitHub store the master admits the start first and records its claim before the
+    For a todo on the GitHub store the active computer admits the start first and records its claim before the
     session exists. A todo held by a session on another computer is refused with HTTP 409 whose detail
     declares its own kind and names the holding session and its computer (or the computers that did not
-    answer for it); a master that cannot decide the start is refused with HTTP 503 and nothing is created.
+    answer for it); a start the active computer cannot decide, or one made on another computer, the start is refused with HTTP 503 and nothing is created.
     ``admission_caller`` is the principal the start's relayed requests are cleared as, and
     ``manually_started`` marks a start a person asked for.
     """

@@ -484,6 +484,36 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     scope=CommandScope.PLATFORM,
                 ),
             ),
+            "active-computer": CommandDef(
+                desc="The one computer a GitHub-backed project's lifecycle runs on",
+                notes=[
+                    "The project in the current directory names it in a repository variable; only that computer starts its orchestrators and writes its claims.",
+                    "Other computers refuse a start, naming the active computer. Working elsewhere means setting it there first.",
+                ],
+                subcommands={
+                    "show": CommandDef(
+                        desc="Show the project's active computer",
+                        flags=[F.FLAG_HELP],
+                        examples=["telec projects active-computer show"],
+                        auth=CommandAuth(
+                            capability=Capability.TODO_READ, human=_HR_MEMBER, scope=CommandScope.PLATFORM
+                        ),
+                    ),
+                    "set": CommandDef(
+                        desc="Make this computer, or the named one, the project's active computer",
+                        args="[--computer <host>]",
+                        flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
+                        notes=[
+                            "A deliberate act: a running orchestrator stays with its session's computer until it ends."
+                        ],
+                        examples=[
+                            "telec projects active-computer set",
+                            "telec projects active-computer set --computer MozMini",
+                        ],
+                        auth=CommandAuth(human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                    ),
+                },
+            ),
         },
     ),
     "agents": CommandDef(
@@ -2177,6 +2207,8 @@ SESSIONS_FILE = CLI_SURFACE["sessions"].subcommands["file"]
 SESSIONS_ESCALATE = CLI_SURFACE["sessions"].subcommands["escalate"]
 
 PROJECTS_LIST = CLI_SURFACE["projects"].subcommands["list"]
+PROJECTS_ACTIVE_COMPUTER_SHOW = CLI_SURFACE["projects"].subcommands["active-computer"].subcommands["show"]
+PROJECTS_ACTIVE_COMPUTER_SET = CLI_SURFACE["projects"].subcommands["active-computer"].subcommands["set"]
 AGENTS_STATUS = CLI_SURFACE["agents"].subcommands["status"]
 
 JOBS_REPORT = CLI_SURFACE["jobs"].subcommands[JobsSubcommand.REPORT.value]

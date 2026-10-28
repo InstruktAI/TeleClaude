@@ -194,10 +194,10 @@ async def _release_active_runner(
     raw_state: dict[str, StateValue],
     claimed_session_id: str | None,
 ) -> None:
-    """Release the caller's own claim: written here for a local store, requested of the master for a GitHub one.
+    """Release the caller's own claim: written here for a local store, requested of the active computer for a GitHub one.
 
-    A GitHub-backed claim is written only on the master, so the release is requested of it without the
-    caller waiting; a release that does not reach the master is cleared by the master's reconciliation.
+    A GitHub-backed claim is written only on the active computer, so the release is requested of it without the
+    caller waiting; a release that does not reach the active computer is cleared by the active computer's reconciliation.
     """
     if claimed_session_id is not None and is_github_backed(project_root):
         schedule_claim_release(project_root, slug, claimed_session_id)

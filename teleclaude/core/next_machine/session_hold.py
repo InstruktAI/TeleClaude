@@ -197,8 +197,8 @@ async def reconcile_driver_ownership_for_session(
 ) -> DriverOwnershipReconciliation:
     """Clear every active driver link for a terminal session.
 
-    A claim on a GitHub-backed project is written only on the master, so each todo the session still
-    claims gets a release request instead, one per todo, issued without waiting for the master's answer;
+    A claim on a GitHub-backed project is written only on the active computer, so each todo the session still
+    claims gets a release request instead, one per todo, issued without waiting for the active computer's answer;
     its ``cleared_slugs`` names the todos a release was requested for.
     """
     rows = await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True)
@@ -227,7 +227,7 @@ async def _release_ended_github_claims(runtime_db: Db, project_root: Path, claim
     """Request the release of each GitHub-backed claim whose session this computer shows ended.
 
     A claim for a session this computer never ran is left alone: its absence here says nothing about the
-    computer that runs it, and the master judges it.
+    computer that runs it, and the active computer judges it.
     """
     for slug, session_id in sorted(claims.items()):
         if await own_session_answer(runtime_db, project_root, slug, session_id) is not OwnSessionAnswer.ENDED:
@@ -241,7 +241,7 @@ async def reconcile_terminal_driver_ownership(runtime_db: Db, project_path: str)
     """Recover terminal driver links from workflow references without dispatching work.
 
     On a GitHub-backed project only claims whose session this computer reports ended are released, and
-    each release is requested of the master rather than written here.
+    each release is requested of the active computer rather than written here.
     """
     todos_db = await get_workflow_store(project_path)
     rows = await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True)
