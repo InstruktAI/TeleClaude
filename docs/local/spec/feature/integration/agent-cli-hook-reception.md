@@ -115,13 +115,7 @@ And the session is not reported complete while provider work remains active
 
 #### UC-R11: Control context uses each native event's model-facing channel
 
-<!-- planned-change:antigravity-native-subagents-allowed -->
-
 #### UC-R12: Native subagent invocation is blocked in a managed Antigravity session
-
-<!-- change:antigravity-native-subagents-allowed -->
-
-<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 ### Cross-context references
 
