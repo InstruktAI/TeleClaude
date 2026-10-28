@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -222,6 +222,11 @@ _HANDOFF_BRACKET_CLOSING = "[/TeleClaude Handoff]"
 _PEER_BRACKET_CLOSING = "[/TeleClaude - Peer]"
 _CALLER_IDENTITY_BRACKET_CLOSING = "[/{role}{category} ({session_id}) on {computer} · {occurred_at}]"
 _REMINDER_BRACKET_CLOSING = "[/Reminder {slug} {occurrence_key}]"
+_REMINDER_OPENING_PREFIX = "[Reminder "
+_BRACKET_START = "["
+_BRACKET_END = "]"
+_REMINDER_FIELD_SEPARATOR = " "
+_MIRRORED_CLOSING_TEMPLATE = "[/{rest}"
 _CHECKPOINT_XML_TAG = "teleclaude-checkpoint"
 _NOTIFICATION_XML_TAG = "teleclaude-notification"
 _WAKE_XML_TAG = "teleclaude-wake"
@@ -613,7 +618,7 @@ def scan_injected_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
             )
             occupied_until = opening_match.end()
             continue
-        closing = _closing_for_opening(opening)
+        closing = _closing_for_opening(opening, definition)
         if closing is None:
             continue
         body_start = opening_match.end()
@@ -803,16 +808,36 @@ def _envelope_openings(text: str) -> list[tuple[re.Match[str], EnvelopeDefinitio
     )
 
 
-def _closing_for_opening(opening: str) -> str | None:
-    """Derive the canonical close, if the opening carries its required fields."""
-    if opening.startswith("[Peer "):
-        return "[/TeleClaude - Peer]"
-    if opening.startswith("[Reminder "):
-        header_parts = opening.removeprefix("[Reminder ").removesuffix("]").split(" ", maxsplit=2)
-        if len(header_parts) < 2:
-            return None
-        return f"[/Reminder {header_parts[0]} {header_parts[1]}]"
-    return f"[/{opening.removeprefix('[')}"
+def _peer_closing(_opening: str) -> str | None:
+    return _PEER_BRACKET_CLOSING
+
+
+def _reminder_closing(opening: str) -> str | None:
+    header_parts = (
+        opening.removeprefix(_REMINDER_OPENING_PREFIX)
+        .removesuffix(_BRACKET_END)
+        .split(_REMINDER_FIELD_SEPARATOR, maxsplit=2)
+    )
+    if len(header_parts) < 2:
+        return None
+    return _REMINDER_BRACKET_CLOSING.format(slug=header_parts[0], occurrence_key=header_parts[1])
+
+
+def _mirrored_closing(opening: str) -> str | None:
+    return _MIRRORED_CLOSING_TEMPLATE.format(rest=opening.removeprefix(_BRACKET_START))
+
+
+_CLOSING_BY_ENVELOPE: Mapping[EnvelopeName, Callable[[str], str | None]] = MappingProxyType(
+    {
+        EnvelopeName.PEER: _peer_closing,
+        EnvelopeName.REMINDER: _reminder_closing,
+    }
+)
+
+
+def _closing_for_opening(opening: str, definition: EnvelopeDefinition) -> str | None:
+    """Derive the canonical close from the envelope whose shape matched, never from the label's text."""
+    return _CLOSING_BY_ENVELOPE.get(definition.name, _mirrored_closing)(opening)
 
 
 def is_peer_opening(text: str) -> bool:
