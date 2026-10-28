@@ -618,7 +618,13 @@ async def _run_start(
                 _refuse_waiter(decided, state, unavailable)
                 return
             except Exception as error:  # supervision boundary of the start task: contain the failure, then withdraw
-                logger.exception(_START_FAILED_EVENT, slug=request.slug, session_id=request.session_id)
+                logger.exception(
+                    _START_FAILED_EVENT,
+                    slug=request.slug,
+                    session_id=request.session_id,
+                    error_type=type(error).__name__,
+                    error=str(error),
+                )
                 await _release_within_section(request.project_root, request.slug, request.session_id, request.caller)
                 failure = AdmissionUnavailable(
                     slug=request.slug, reason=AdmissionUnavailableReason.ADMISSION_FAILED, detail=str(error)
