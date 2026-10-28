@@ -32,12 +32,28 @@ How the store maps onto the repository is owned by
 
 ## Canonical fields
 
+<!-- planned-change:github-native-artifacts -->
+
 - **Selection:** a project selects the store, names its repository and names
   the platform App that writes the record in its declaration
   (`local/projects/teleclaude/spec/teleclaude-config`). The App must be
   installed on the repository with issue write access; until it is, every
   workflow operation on the project refuses with that cause and nothing falls
   back to a local store.
+
+<!-- change:github-native-artifacts -->
+
+- **Selection:** a project selects the store, names its repository and names
+  the platform App that writes the record in its declaration
+  (`local/projects/teleclaude/spec/teleclaude-config`). The App must be
+  installed on the repository with issue write access, and the repository must
+  serve GitHub's issue artifacts, which GitHub offers as a preview to the
+  organizations it enrolls; until both hold, every workflow operation on the
+  project refuses with that cause and nothing falls back to a local store or to
+  comments.
+
+<!-- /planned-change:github-native-artifacts -->
+
 - **Repository work only:** features, changes and bugs, and the group holders
   above them, are repository work. A task, and an item on the creative track,
   is not: it stays on the computer as it would on the local backend, never
@@ -136,11 +152,6 @@ How the store maps onto the repository is owned by
     `session:<id>` while a session holds the item's claim, `hold` while it
     is held, and `commit:<sha>` once it is delivered, with the hold reason as
     one sentence under the envelope.
-  - An artifact version: `[action:artifact name:<artifact> version:<n>]`,
-    where `<n>` counts that artifact's versions on the item, followed by its
-    content. Every version of every artifact (input, plan, findings, review
-    reports, log and the rest) is appended in order and its content is never
-    rewritten. A version too large for one comment continues in the next.
   - A question to a person: `[session:<id> role:<role> action:question]`,
     followed by the message and the link to the session.
   - A project ledger entry: `[action:ledger tx:<transaction>]`.
@@ -154,11 +165,6 @@ How the store maps onto the repository is owned by
     `session:<id>` while a session holds the item's claim, `hold` while it
     is held, and `commit:<sha>` once it is delivered, with the hold reason as
     one sentence under the envelope.
-  - An artifact version: `[action:artifact name:<artifact> version:<n>]`,
-    where `<n>` counts that artifact's versions on the item, followed by its
-    content. Every version of every artifact (input, plan, findings, review
-    reports, log and the rest) is appended in order and its content is never
-    rewritten. A version too large for one comment continues in the next.
   - A question to a person: `[session:<id> role:<role> action:question]`,
     followed by the message and the link to the session.
   - A project ledger entry: `[action:ledger tx:<transaction>]`.
@@ -170,6 +176,31 @@ How the store maps onto the repository is owned by
     `[action:work-control-release computer:<name>]`.
 
 <!-- /planned-change:github-item-acts -->
+
+<!-- planned-change:github-native-artifacts -->
+
+- **Artifact versions:** every version of every artifact (input, plan,
+  findings, review reports, log and the rest) is a platform comment opening
+  with `[action:artifact name:<artifact> version:<n>]`, where `<n>` counts that
+  artifact's versions on the item, followed by its content. Versions are
+  appended in order and their content is never rewritten. A version too large
+  for one comment continues in the next.
+
+<!-- change:github-native-artifacts -->
+
+- **Artifacts:** each artifact of an item (input, plan, findings, review
+  reports, log and the rest) is one GitHub issue artifact on the item's issue,
+  under the artifact's name, created by the platform App. Every version the
+  workflow writes is a saved version of that artifact, in the order it was
+  written, and is never rewritten; the artifact's history names who saved each
+  version. Implementation and task plans are plan artifacts, every other
+  artifact a document. Workflow state too large for the record is kept the
+  same way, as the item's `workflow-state` artifact. No artifact content
+  appears in a comment. A version someone else saves is replaced by the
+  platform's version when the store next reads the item's artifacts, and an
+  artifact someone else adds is left as it is and is never part of the record.
+
+<!-- /planned-change:github-native-artifacts -->
 
 - **Project records:** commit reviews and documentation transfers, which
   belong to the project rather than one item, are appended to one
@@ -360,6 +391,22 @@ Scenario: A turn that cannot be cleaned is withheld
 - Labels, types, relations, assignments, the pull request and its reviews
   follow a change within the store's next refresh when the write that reflects
   them fails.
+
+<!-- planned:github-native-artifacts -->
+
+- The record depends on GitHub's issue-artifacts preview. If GitHub changes or
+  withdraws it, workflow writes on the project refuse, and the artifacts on
+  GitHub may stop being readable.
+- GitHub serves only the newest 30 versions of an artifact to the platform. A
+  computer that rebuilds the work from GitHub restores at most those; older
+  versions stay on the computer that wrote them.
+- GitHub announces no change to an artifact, so a version someone else saves
+  stays the artifact's current version until the store next refreshes the
+  item.
+- A version larger than GitHub accepts for one artifact is refused, and the
+  workflow command that wrote it fails with that cause.
+
+<!-- /planned:github-native-artifacts -->
 
 <!-- planned:github-turn-mirror -->
 
