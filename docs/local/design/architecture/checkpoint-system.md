@@ -27,7 +27,7 @@ One delivery path exists:
 Two delivery paths exist:
 
 - **Claude/Gemini/Codex**: Hook-based invisible checkpoint. The hook receiver (`receiver.py`) evaluates the checkpoint condition at the `agent_stop` boundary and returns blocking hook output to stdout. The agent keeps running without the checkpoint text appearing in the tmux pane.
-- **Antigravity turn completed on a subagent's hook**: the turn completion of an Antigravity conversation can arrive on its provider-native subagent's idle `Stop` (`local/projects/teleclaude/spec/hook-normalized-events`), whose continuation would reach the subagent rather than the conversation. The receiver evaluates the checkpoint for the conversation's session exactly as at any `agent_stop`, answers the subagent's hook with the plain success response, and relays a required checkpoint through the hook outbox to control delivery (`local/projects/teleclaude/spec/feature/agent_runtime/control-delivery`). Control delivery hands it to the conversation at its next delivery boundary, waking a session bound to a host pane so that boundary exists.
+- **Antigravity turn completed on a subagent's hook**: the turn completion of an Antigravity conversation can arrive on its provider-native subagent's idle `Stop` (`local/projects/teleclaude/spec/hook-normalized-events`). The receiver evaluates the checkpoint for the conversation's session exactly as at any `agent_stop`, answers the subagent's hook with the plain success response, and relays a required checkpoint through the hook outbox to control delivery (`local/projects/teleclaude/spec/feature/agent_runtime/control-delivery`). Control delivery hands it to the conversation at its next delivery boundary, waking a session bound to a host pane so that boundary exists.
 
 <!-- /planned-change:antigravity-native-subagents-allowed -->
 
@@ -82,7 +82,7 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 10. **Hook stop suppression**: When `_maybe_checkpoint_output` fires for Claude/Gemini/Codex, the receiver prints blocking JSON and exits without enqueuing the `agent_stop` event. The daemon never sees the blocked stop, so no output extraction, TTS, or listener notifications fire for checkpoint turns.
 
-    A relayed checkpoint suppresses the `agent_stop` of a session bound to a host pane the same way: the wake that delivers it starts the checkpoint turn. A session without a host pane cannot be woken, so its `agent_stop` is enqueued and the relayed checkpoint waits for that session's next delivery boundary.
+    A relayed checkpoint suppresses the forwarded `agent_stop` the same way, for every session. A session bound to a host pane is woken, and the checkpoint starts its checkpoint turn at once. A session without a host pane cannot be woken; the checkpoint reaches it at its next delivery boundary, and its turn completion is published only when that checkpoint turn ends.
 
 <!-- /planned-change:antigravity-native-subagents-allowed -->
 

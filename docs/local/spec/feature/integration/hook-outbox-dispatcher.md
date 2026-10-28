@@ -58,7 +58,10 @@ through one of four mutually-exclusive paths:
 4. **Checkpoint relay** → handed to control delivery as a checkpoint payload
    for the entry's session
    (`local/projects/teleclaude/design/architecture/checkpoint-system`). No
-   event-bus emit.
+   event-bus emit. A checkpoint-relay entry is a lifecycle entry of the
+   critical class: it is never evicted for staleness, throttled or coalesced,
+   and it settles only once control delivery has accepted the handoff; a
+   refused handoff is retryable.
 
 <!-- /planned-change:antigravity-native-subagents-allowed -->
 
