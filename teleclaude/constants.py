@@ -682,6 +682,10 @@ MARKDOWN_INLINE_CODE = "`"
 
 
 # Cache/event names
+# Marks a cache notification that drops cached data as stale, as opposed to one that reports data just stored.
+CACHE_INVALIDATION_FIELD = "invalidated"
+
+
 class CacheEvent(str, Enum):
     SESSION_STARTED = "session_started"
     SESSION_UPDATED = "session_updated"

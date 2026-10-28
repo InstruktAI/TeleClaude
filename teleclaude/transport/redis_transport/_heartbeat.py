@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
-from teleclaude.constants import CacheEvent
+from teleclaude.constants import CACHE_INVALIDATION_FIELD, CacheEvent
 from teleclaude.core import command_handlers
 from teleclaude.transport.peer_heartbeat import (
     CONVERSATION_ADAPTERS_FIELD,
@@ -141,9 +141,13 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         """Forget the pulled digest of a peer whose cached projects or todos were invalidated.
 
         The next heartbeat then pulls the peer once, through its digest or, for a peer that advertises none, its
-        bootstrap, which refills what the invalidation dropped. Nothing is sent from here.
+        bootstrap, which refills what the invalidation dropped. Only a notification marked as an invalidation
+        counts: the refill itself reports the same events, and reacting to it would pull the peer again on every
+        heartbeat. Nothing is sent from here.
         """
         if event not in _PEER_INVALIDATION_EVENTS or not isinstance(data, dict):
+            return
+        if data.get(CACHE_INVALIDATION_FIELD) is not True:
             return
         computer = data.get(_COMPUTER_FIELD)
         if isinstance(computer, str) and computer != self.computer_name:

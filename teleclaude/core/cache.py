@@ -15,7 +15,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.config.machine import config
-from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER, CacheEvent, TodoStatus
+from teleclaude.constants import CACHE_INVALIDATION_FIELD, CACHE_KEY_SEPARATOR, LOCAL_COMPUTER, CacheEvent, TodoStatus
 from teleclaude.core import command_handlers
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot
 from teleclaude.core.reconciliation import FleetCapabilityEntry
@@ -250,12 +250,13 @@ class DaemonCache:
                     _PROJECT_PATH_FIELD: project_path,
                     _SUBJECT_FIELD: subject,
                     _OWNER_FIELD: owner,
+                    CACHE_INVALIDATION_FIELD: True,
                 },
             )
             return
         if scope == "roadmap":
             self._projects_digest.pop(computer, None)
-            self._notify("projects_updated", {"computer": computer})
+            self._notify(CacheEvent.PROJECTS_UPDATED.value, {_COMPUTER_FIELD: computer, CACHE_INVALIDATION_FIELD: True})
             return
         logger.warning("publish_workflow_change: unknown scope=%s", scope)
 
