@@ -50,7 +50,7 @@ _READ_PERMISSIONS: Final = cast(AppPermissionsType, {_VARIABLES_PERMISSION: _Acc
 _WRITE_PERMISSIONS: Final = cast(AppPermissionsType, {_VARIABLES_PERMISSION: _Access.WRITE})
 _VARIABLE_PATH: Final = "/repos/{repository}/actions/variables/{name}"
 _VARIABLES_PATH: Final = "/repos/{repository}/actions/variables"
-# Below the CLI's 30-second request timeout, so its caller always receives the outcome.
+# Below the CLI request timeout (``tool_api_request``), so a CLI caller receives the outcome.
 _BOUND_SECONDS: Final = 20.0
 _BOUND_DETAIL: Final = "the active computer was not read or written within its bound"
 _NAME_FIELD: Final = "name"
@@ -85,11 +85,11 @@ async def write_active_computer(project_root: Path, computer: str) -> None:
 
 
 async def _on_io_loop[Result](work: Coroutine[object, object, Result]) -> Result:
-    """Run ``work`` on the shared GitHub I/O loop within a bound shorter than any caller's deadline.
+    """Run ``work`` on the shared GitHub I/O loop, cancelled there and refused past ``_BOUND_SECONDS``.
 
     It takes the request gate per wire request, not the unit lock, so it never waits behind a whole
-    background unit. Past the bound the work is cancelled there and the caller is refused, so nothing
-    runs after the caller has been answered, beyond a request already on the wire.
+    background unit. A caller whose own deadline is shorter, such as driver admission's start budget,
+    is answered by that deadline while the work continues on the I/O loop until this bound.
     """
     return await asyncio.wrap_future(shared_github_io_loop().submit(_bounded(work)))
 
