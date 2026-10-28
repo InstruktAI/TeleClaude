@@ -1,4 +1,4 @@
-"""Agent role catalog: the one place a role's reach, class and header label are composed.
+"""Agent role catalog: the one place a role's reach and class are composed.
 
 A capability is one named unit of reach — one family of ``telec`` commands, or one grant to start
 sessions of one class. A role declares an explicit capability set; a role marked ``full_reach``
@@ -64,17 +64,6 @@ class RoleClass(StrEnum):
     AGENT = "agent"
 
 
-class RoleLabel(StrEnum):
-    """The role's name in a caller-origin identity header (the closed label vocabulary)."""
-
-    ORCHESTRATOR = "Orchestrator"
-    INTEGRATOR = "Integrator"
-    WORKER = "Worker"
-    TASKER = "Tasker"
-    JOB_RUNNER = "Job Runner"
-    AGENT = "Agent"
-
-
 class RoleName(StrEnum):
     """Closed vocabulary of the roles a session may carry."""
 
@@ -129,13 +118,12 @@ class LegacyRole(StrEnum):
 
 @dataclass(frozen=True)
 class Role:
-    """One catalog entry: a role's class, reach and header label."""
+    """One catalog entry: a role's class and reach."""
 
     name: RoleName
     role_class: RoleClass
     full_reach: bool
     capabilities: frozenset[Capability]
-    label: RoleLabel
 
     @property
     def legacy_projection(self) -> str:
@@ -171,9 +159,8 @@ def _entry(
     role_class: RoleClass,
     full_reach: bool,
     capabilities: frozenset[Capability],
-    label: RoleLabel,
 ) -> tuple[RoleName, Role]:
-    return name, Role(name, role_class, full_reach, capabilities | _AGENT_BASELINE, label)
+    return name, Role(name, role_class, full_reach, capabilities | _AGENT_BASELINE)
 
 
 # The set every worker-class role starts from. It holds no capability that observes the fleet or starts,
@@ -203,56 +190,48 @@ _CATALOG: dict[RoleName, Role] = dict(
             RoleClass.WORKER,
             False,
             _WORKER_BASELINE,
-            RoleLabel.WORKER,
         ),
         _entry(
             RoleName.REVIEWER,
             RoleClass.WORKER,
             False,
             _WORKER_BASELINE | {Capability.TRANSCRIPT_READ},
-            RoleLabel.WORKER,
         ),
         _entry(
             RoleName.FINALIZER,
             RoleClass.WORKER,
             False,
             _WORKER_BASELINE,
-            RoleLabel.WORKER,
         ),
         _entry(
             RoleName.DIAGNOSER,
             RoleClass.WORKER,
             False,
             _WORKER_BASELINE | {Capability.TRANSCRIPT_READ},
-            RoleLabel.WORKER,
         ),
         _entry(
             RoleName.DRIFT_ANALYZER,
             RoleClass.WORKER,
             False,
             _WORKER_BASELINE,
-            RoleLabel.WORKER,
         ),
         _entry(
             RoleName.ARTIST,
             RoleClass.WORKER,
             False,
             _WORKER_BASELINE,
-            RoleLabel.WORKER,
         ),
         _entry(
             RoleName.FRONTENDER,
             RoleClass.WORKER,
             False,
             _WORKER_BASELINE,
-            RoleLabel.WORKER,
         ),
         _entry(
             RoleName.DEFERRER,
             RoleClass.WORKER,
             False,
             _WORKER_BASELINE,
-            RoleLabel.WORKER,
         ),
         _entry(
             RoleName.PREPARE_ORCHESTRATOR,
@@ -279,7 +258,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.CODE_CHECK,
                 }
             ),
-            RoleLabel.ORCHESTRATOR,
         ),
         _entry(
             RoleName.WORK_ORCHESTRATOR,
@@ -302,7 +280,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.OPERATION_READ,
                 }
             ),
-            RoleLabel.ORCHESTRATOR,
         ),
         _entry(
             RoleName.CREATE_ORCHESTRATOR,
@@ -324,7 +301,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.OPERATION_READ,
                 }
             ),
-            RoleLabel.ORCHESTRATOR,
         ),
         _entry(
             RoleName.INTAKER,
@@ -346,7 +322,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.CODE,
                 }
             ),
-            RoleLabel.ORCHESTRATOR,
         ),
         _entry(
             RoleName.ARCHITECT,
@@ -366,7 +341,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.CODE_CHECK,
                 }
             ),
-            RoleLabel.ORCHESTRATOR,
         ),
         _entry(
             RoleName.PLANNER,
@@ -388,7 +362,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.CODE_CHECK,
                 }
             ),
-            RoleLabel.ORCHESTRATOR,
         ),
         _entry(
             RoleName.INTEGRATOR,
@@ -416,7 +389,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.STAMP,
                 }
             ),
-            RoleLabel.INTEGRATOR,
         ),
         _entry(
             RoleName.COORDINATOR,
@@ -435,7 +407,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.TODO_WRITE,
                 }
             ),
-            RoleLabel.ORCHESTRATOR,
         ),
         _entry(
             RoleName.TASK_PREPARER,
@@ -452,7 +423,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.OPERATION_READ,
                 }
             ),
-            RoleLabel.TASKER,
         ),
         _entry(
             RoleName.TASK_RUNNER,
@@ -469,7 +439,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.MESSAGING,
                 }
             ),
-            RoleLabel.TASKER,
         ),
         _entry(
             RoleName.BUG_HUNTER,
@@ -486,7 +455,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.OPERATION_READ,
                 }
             ),
-            RoleLabel.JOB_RUNNER,
         ),
         _entry(
             RoleName.INSTALLATION_INSPECTOR,
@@ -503,7 +471,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.OPERATION_READ,
                 }
             ),
-            RoleLabel.INTEGRATOR,
         ),
         _entry(
             RoleName.MEMORY_CURATOR,
@@ -517,7 +484,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.SELF_ACTS,
                 }
             ),
-            RoleLabel.TASKER,
         ),
         _entry(
             RoleName.DESK_MEMORY_CURATOR,
@@ -531,7 +497,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.SELF_ACTS,
                 }
             ),
-            RoleLabel.TASKER,
         ),
         _entry(
             RoleName.HELPER,
@@ -550,7 +515,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.MCP,
                 }
             ),
-            RoleLabel.AGENT,
         ),
         _entry(
             RoleName.ONBOARDER,
@@ -571,7 +535,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.STAMP,
                 }
             ),
-            RoleLabel.AGENT,
         ),
         _entry(
             RoleName.MAIL_TRIAGER,
@@ -590,7 +553,6 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.PEER_TALK,
                 }
             ),
-            RoleLabel.AGENT,
         ),
     ]
 )
@@ -616,7 +578,7 @@ _COMPOSED_ROLES: dict[RoleName, tuple[RoleName, ...]] = {
     RoleName.DESK_MEMORY_CURATOR: (RoleName.COMPANY_DESK_CURATOR, RoleName.PROJECT_DESK_CURATOR),
 }
 _CATALOG.update(
-    _entry(member, base.role_class, base.full_reach, base.capabilities, base.label)
+    _entry(member, base.role_class, base.full_reach, base.capabilities)
     for composite, members in _COMPOSED_ROLES.items()
     for base in (_CATALOG[composite],)
     for member in members

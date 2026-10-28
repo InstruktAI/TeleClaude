@@ -5,13 +5,12 @@ Every machine-originated injection into a session uses the canonical bracket:
     [Role - Category (session_id) on computer · utc-minute]
     [Role (session_id) on computer · utc-minute]   # category omitted
 
-``Role`` is a stable taxonomy: ``MachineRoleLabel`` values for machine-role API
-callers and resolved session-originated callers with no machine role,
-identified by their active agent at the send-message boundary.
-``Category`` is a role-specific stable label used by receivers that dispatch
-on header alone (checkpoint receiver, render paths). ``session_id`` is the
-originator session, full UUID per identity invariant. ``computer`` is the
-originator host.
+``Role`` names who is speaking: the caller's role name, or a ``MachineRoleLabel``
+(``Agent``, ``System``) for a caller carrying no role; an agent caller carries
+``Agent`` with its agent and role in ``Category``. Receivers recognize the
+envelope by its shape and read neither field; they are there for the reading
+agent. ``session_id`` is the originator session, full UUID per identity
+invariant. ``computer`` is the originator host.
 
 The bracket is the marker. Receivers distinguish machine content from human
 content by complete registered envelope shape — there is no separate stripping
@@ -94,10 +93,10 @@ class ParsedPeerSegment:
     author_job_role: str | None = None
 
 
-def machine_role_label(role: str | None) -> MachineRoleLabel:
-    """The identity-header label a recorded role carries, the generic agent label when the catalog names none."""
+def machine_role_label(role: str | None) -> str:
+    """The identity-header label for a session running no agent: its role's name, the agent label when it has none."""
     resolved = resolve_role(role)
-    return MachineRoleLabel(resolved.label.value) if isinstance(resolved, Role) else MachineRoleLabel.AGENT
+    return resolved.name.value if isinstance(resolved, Role) else MachineRoleLabel.AGENT.value
 
 
 def resolve_session_event_author(
@@ -120,7 +119,7 @@ def resolve_session_event_author(
             active_agent=active_agent,
             thinking_mode=thinking_mode,
         )
-    return MessageAuthor.for_machine(session_id=session_id, role_label=machine_role_label(role).value)
+    return MessageAuthor.for_machine(session_id=session_id, role_label=machine_role_label(role))
 
 
 def format_identity_header(

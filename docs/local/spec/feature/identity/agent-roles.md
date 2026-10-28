@@ -1,6 +1,6 @@
 ---
 description: The closed catalog of agent session roles — each an explicit set of capabilities
-  with an opt-in full reach, a class, and a header label — consulted by every decision
+  with an opt-in full reach and a class — consulted by every decision
   that reads what a session may do or what kind of session it is.
 ---
 
@@ -33,7 +33,7 @@ dispatch privilege
 procedure's role declaration (`general/spec/snippet-authoring-schema`),
 standing classification
 (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`),
-worker history exclusion, launch ownership and identity-header labelling. Which
+worker history exclusion and launch ownership. Which
 commands declare which command capability is the CLI surface schema's, grouped
 as `local/projects/teleclaude/design/cli-authorization-matrix` describes.
 
@@ -92,7 +92,7 @@ which family is the CLI surface schema's.
 ### Roles
 
 The role catalog is the authority for each role's name, class, explicit
-capabilities, full-reach opt-in and identity label. Each entry states its own
+capabilities and full-reach opt-in. Each entry states its own
 composition; a role class describes session behavior and supplies no implicit
 command membership.
 
@@ -103,8 +103,8 @@ restricted. An operator redirecting an internal agent's assignment does not
 change the role's reach. Treatment of indirectly supplied content belongs to
 its own input-handling contract, not an inferred widening or narrowing here.
 
-The label is the role's name in a caller-origin identity header, drawn from
-`local/projects/teleclaude/spec/message-headers`.
+A role's identity in a caller-origin identity header is its own name, never
+its class (`local/projects/teleclaude/spec/message-headers`).
 
 ### Assignment-specific command focus
 
@@ -129,7 +129,7 @@ appear under one name. A sub-procedure its agent loads on a route declares no
 role and runs under the role of the procedure that loaded it.
 Procedures whose assignments need the same reach take it from a **composite
 role** the catalog declares: each procedure's role carries the composite's
-class, reach, capabilities and label, and adds nothing until the catalog gives
+class, reach and capabilities, and adds nothing until the catalog gives
 it a set of its own. The composites are `reviewer` (the PRD, architecture,
 plan, build and commit reviewers), `helper` (the company analyst, knowledge
 author, project analyst and third-party researcher), `onboarder` (the config
@@ -137,8 +137,7 @@ assessor and project onboarder) and `desk-memory-curator` (the company and
 project desk curators). A consumer that keys on the kind of session — the
 reviewer launch class, the GitHub App a role posts as — reads the composite;
 everything else reads the procedure's own role.
-Outside the worker class, sharing a role class grants no shared command set;
-a shared label alone supplies no command membership. The catalog owns the sets,
+Outside the worker class, sharing a role class grants no shared command set. The catalog owns the sets,
 and command declarations own capability membership, under
 `local/projects/teleclaude/design/cli-authorization-matrix`.
 

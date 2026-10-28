@@ -160,14 +160,9 @@ class EnvelopeField(StrEnum):
 
 
 class MachineRoleLabel(StrEnum):
-    """Closed caller-role vocabulary rendered by the identity envelope."""
+    """Identity-envelope labels for callers that carry no role; a role-carrying caller is labelled by its role name."""
 
-    ORCHESTRATOR = "Orchestrator"
-    INTEGRATOR = "Integrator"
     SYSTEM = "System"
-    WORKER = "Worker"
-    TASKER = "Tasker"
-    JOB_RUNNER = "Job Runner"
     AGENT = "Agent"
 
 
@@ -241,9 +236,7 @@ _WAKE_OPENING_RE = re.compile(r"\[TeleClaude Wake(?: (?P<occurrence_key>[^\]\n]+
 _RESTART_CONTINUATION_OPENING_RE = re.compile(re.escape(_RESTART_CONTINUATION_BRACKET_OPENING))
 _HANDOFF_OPENING_RE = re.compile(re.escape(_HANDOFF_BRACKET_OPENING))
 _PEER_OPENING_RE = re.compile(r"\[Peer \([^\]\n]+ · [^\]\n]+ · [^\]\n]+\)\]")
-_CALLER_IDENTITY_OPENING_RE = re.compile(
-    r"\[(?:Orchestrator|Integrator|System|Worker|Tasker|Job Runner|Agent)(?: - [^\]\n]+)? \([^\]\n]+\) on [^\]\n]+(?: · [^\]\n]+)?\]"
-)
+_CALLER_IDENTITY_OPENING_RE = re.compile(r"\[[^\[\]\n()]+ \([^\]\n]+\) on [^\]\n]+(?: · [^\]\n]+)?\]")
 _CALLER_OCCURRENCE_KEY_RE = re.compile(r" · (?P<occurrence_key>[0-9a-f]{32})\]$")
 _REMINDER_OPENING_RE = re.compile(r"\[Reminder [^\]\n]+\]")
 _IDENTITY_FIELDS = frozenset(
