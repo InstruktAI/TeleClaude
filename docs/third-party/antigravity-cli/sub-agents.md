@@ -64,6 +64,31 @@ single host and is not a published vendor guarantee.
   by another mechanism, if any exists, was not observed. Record timing is established
   for one sub-agent, not guaranteed.
 
+## Hook timing and idle reporting (observed, CLI 1.4.7)
+
+Observed on 2026-10-28 on one host, from one print-mode run and one interactive
+run, each spawning one `research` sub-agent through `invoke_subagent`. Hooks
+were recorded by a workspace-scoped probe hook; this is not a vendor guarantee.
+
+- The local store layout above is unchanged: the parent's
+  `.system_generated/subagents/<childConversationId>.json` (with `conversationId`,
+  `subagentDescriptor`, `state`, `spawnStepIndex`, `workspaceUris`) and the
+  child's `invoke_subagent` message record, whose `sourceMetadata.tool.conversationId`
+  is the parent's. All 16 parent-indexed sub-agents on the host carried that
+  record and no other conversation did.
+- The child's `invoke_subagent` record existed at every one of the child's hooks
+  and at none of the parent's. It preceded the child's first hook by about 6.1 s
+  in print mode and 0.29 s in interactive mode.
+- Parent and child hooks carry the same top-level keys and are all spawned by
+  the same `agy` process, so neither the payload nor the hook-process ancestry
+  tells them apart.
+- `fullyIdle` reflects the whole process. In both runs the parent's last `Stop`
+  arrived while the sub-agent still ran and reported `fullyIdle: false`; the
+  parent did not stop again when the sub-agent finished. The only
+  `fullyIdle: true` `Stop` of the turn came from the sub-agent.
+- A sub-agent's later message to its parent (`send_message`) wakes the parent:
+  its next `PreInvocation` follows immediately.
+
 ## Sources
 
 - https://antigravity.google/docs/sub-agents

@@ -220,7 +220,7 @@ And the error is NOT re-raised
 
 ## Known caveats
 
-- Rows converged before sessions carried one catalog role keep the `is_worker` they were given; a later convergence sets `is_worker` for rows whose session record carries a worker-class role in the agent role catalog and never rewrites an earlier value from a migrated session. A mirror's session attribution `job` is migrated explicitly, because the attribution upsert coalesces and a cleared job would otherwise leave the stale label standing (`local/projects/teleclaude/spec/feature/agent_runtime/session-role-migration`).
+- Rows converged before sessions carried one catalog role keep the `is_worker` they were given; a later convergence sets `is_worker` for rows whose session record carries a focused-class role in the agent role catalog and never rewrites an earlier value from a migrated session. A mirror's session attribution `job` is migrated explicitly, because the attribution upsert coalesces and a cleared job would otherwise leave the stale label standing (`local/projects/teleclaude/spec/feature/agent_runtime/session-role-migration`).
 
 - Engine and bootstrap caches are process-wide. They live for the
   process lifetime; tests that need a fresh state must monkeypatch the

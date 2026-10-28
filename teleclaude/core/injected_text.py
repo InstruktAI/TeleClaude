@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -160,14 +160,9 @@ class EnvelopeField(StrEnum):
 
 
 class MachineRoleLabel(StrEnum):
-    """Closed caller-role vocabulary rendered by the identity envelope."""
+    """Identity-envelope labels for callers that carry no role; a role-carrying caller is labelled by its role name."""
 
-    ORCHESTRATOR = "Orchestrator"
-    INTEGRATOR = "Integrator"
     SYSTEM = "System"
-    WORKER = "Worker"
-    TASKER = "Tasker"
-    JOB_RUNNER = "Job Runner"
     AGENT = "Agent"
 
 
@@ -208,6 +203,8 @@ _RESTART_CONTINUATION_ENVELOPE = EnvelopeName.RESTART_CONTINUATION
 _HANDOFF_ENVELOPE = EnvelopeName.HANDOFF
 _PEER_ENVELOPE = EnvelopeName.PEER
 _CALLER_IDENTITY_ENVELOPE = EnvelopeName.CALLER_IDENTITY
+CALLER_CATEGORY_SEPARATOR = " - "
+CALLER_CATEGORY_PART_SEPARATOR = " · "
 _REMINDER_ENVELOPE = EnvelopeName.REMINDER
 _EMPTY_BRACKET_CLOSING = ""
 _CHECKPOINT_BRACKET_OPENING = "[TeleClaude Checkpoint]"
@@ -227,6 +224,11 @@ _HANDOFF_BRACKET_CLOSING = "[/TeleClaude Handoff]"
 _PEER_BRACKET_CLOSING = "[/TeleClaude - Peer]"
 _CALLER_IDENTITY_BRACKET_CLOSING = "[/{role}{category} ({session_id}) on {computer} · {occurred_at}]"
 _REMINDER_BRACKET_CLOSING = "[/Reminder {slug} {occurrence_key}]"
+_REMINDER_OPENING_PREFIX = "[Reminder "
+_BRACKET_START = "["
+_BRACKET_END = "]"
+_REMINDER_FIELD_SEPARATOR = " "
+_MIRRORED_CLOSING_TEMPLATE = "[/{rest}"
 _CHECKPOINT_XML_TAG = "teleclaude-checkpoint"
 _NOTIFICATION_XML_TAG = "teleclaude-notification"
 _WAKE_XML_TAG = "teleclaude-wake"
@@ -241,8 +243,10 @@ _WAKE_OPENING_RE = re.compile(r"\[TeleClaude Wake(?: (?P<occurrence_key>[^\]\n]+
 _RESTART_CONTINUATION_OPENING_RE = re.compile(re.escape(_RESTART_CONTINUATION_BRACKET_OPENING))
 _HANDOFF_OPENING_RE = re.compile(re.escape(_HANDOFF_BRACKET_OPENING))
 _PEER_OPENING_RE = re.compile(r"\[Peer \([^\]\n]+ · [^\]\n]+ · [^\]\n]+\)\]")
+_CALLER_IDENTITY_LABEL_GROUP = "label"
+_CALLER_IDENTITY_SESSION_GROUP = "session_id"
 _CALLER_IDENTITY_OPENING_RE = re.compile(
-    r"\[(?:Orchestrator|Integrator|System|Worker|Tasker|Job Runner|Agent)(?: - [^\]\n]+)? \([^\]\n]+\) on [^\]\n]+(?: · [^\]\n]+)?\]"
+    r"\[(?P<label>[^\[\]\n()]+) \((?P<session_id>[^\]\n]+)\) on [^\]\n]+(?: · [^\]\n]+)?\]"
 )
 _CALLER_OCCURRENCE_KEY_RE = re.compile(r" · (?P<occurrence_key>[0-9a-f]{32})\]$")
 _REMINDER_OPENING_RE = re.compile(r"\[Reminder [^\]\n]+\]")
@@ -585,6 +589,14 @@ def caller_occurrence_key(opening: str) -> str | None:
     return match.group("occurrence_key") if match is not None else None
 
 
+def caller_header_identity(opening: str) -> tuple[str, str] | None:
+    """Read the source session and display label from a recognized caller opening."""
+    match = _CALLER_IDENTITY_OPENING_RE.fullmatch(opening)
+    if match is None:
+        return None
+    return match.group(_CALLER_IDENTITY_SESSION_GROUP), match.group(_CALLER_IDENTITY_LABEL_GROUP)
+
+
 def reminder_envelope(opening: str, body: str) -> InjectedTextEnvelope:
     """Compose one reminder record from its durable opening facts."""
     if not _REMINDER_OPENING_RE.fullmatch(opening):
@@ -620,7 +632,7 @@ def scan_injected_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
             )
             occupied_until = opening_match.end()
             continue
-        closing = _closing_for_opening(opening)
+        closing = _closing_for_opening(opening, definition)
         if closing is None:
             continue
         body_start = opening_match.end()
@@ -810,16 +822,36 @@ def _envelope_openings(text: str) -> list[tuple[re.Match[str], EnvelopeDefinitio
     )
 
 
-def _closing_for_opening(opening: str) -> str | None:
-    """Derive the canonical close, if the opening carries its required fields."""
-    if opening.startswith("[Peer "):
-        return "[/TeleClaude - Peer]"
-    if opening.startswith("[Reminder "):
-        header_parts = opening.removeprefix("[Reminder ").removesuffix("]").split(" ", maxsplit=2)
-        if len(header_parts) < 2:
-            return None
-        return f"[/Reminder {header_parts[0]} {header_parts[1]}]"
-    return f"[/{opening.removeprefix('[')}"
+def _peer_closing(_opening: str) -> str | None:
+    return _PEER_BRACKET_CLOSING
+
+
+def _reminder_closing(opening: str) -> str | None:
+    header_parts = (
+        opening.removeprefix(_REMINDER_OPENING_PREFIX)
+        .removesuffix(_BRACKET_END)
+        .split(_REMINDER_FIELD_SEPARATOR, maxsplit=2)
+    )
+    if len(header_parts) < 2:
+        return None
+    return _REMINDER_BRACKET_CLOSING.format(slug=header_parts[0], occurrence_key=header_parts[1])
+
+
+def _mirrored_closing(opening: str) -> str | None:
+    return _MIRRORED_CLOSING_TEMPLATE.format(rest=opening.removeprefix(_BRACKET_START))
+
+
+_CLOSING_BY_ENVELOPE: Mapping[EnvelopeName, Callable[[str], str | None]] = MappingProxyType(
+    {
+        EnvelopeName.PEER: _peer_closing,
+        EnvelopeName.REMINDER: _reminder_closing,
+    }
+)
+
+
+def _closing_for_opening(opening: str, definition: EnvelopeDefinition) -> str | None:
+    """Derive the canonical close from the envelope whose shape matched, never from the label's text."""
+    return _CLOSING_BY_ENVELOPE.get(definition.name, _mirrored_closing)(opening)
 
 
 def is_peer_opening(text: str) -> bool:
@@ -888,6 +920,8 @@ def classify_transcript_text(
 
 
 __all__ = [
+    "CALLER_CATEGORY_PART_SEPARATOR",
+    "CALLER_CATEGORY_SEPARATOR",
     "FIELD_LAST_INPUT",
     "FIELD_LAST_INPUT_WRITTEN_AT",
     "INPUT_PREVIEW_LIMIT",

@@ -21,13 +21,13 @@ transcript lineage through the same chain reader and projector as session
 tailing. It updates the session's one conversational mirror. Native ids,
 producing runtimes, paths and entry positions remain source provenance.
 
-Launch command, worker classification, title and identity facts come from the
+Launch command, focused-role classification, title and identity facts come from the
 owning session under
 `local/projects/teleclaude/spec/feature/session_mirrors/mirror-identity-enrichment`.
 Conversation text never supplies launch authority. With no owning context, an
 existing mirror keeps its recorded launch facts and title. A newly discovered
 unattributed source can derive a display title from its first human message,
-without inferring a launch command, worker role or human identity.
+without inferring a launch command, focused role or human identity.
 
 The projection removes structurally identified runtime content and trims the
 remaining conversational messages. Empty messages are omitted. An empty or

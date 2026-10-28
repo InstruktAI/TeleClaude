@@ -323,13 +323,12 @@ class ClaimConflict(OperationFailure):
 class AdmissionUnavailableReason(StrEnum):
     """Why a GitHub-backed start could not be decided, so nothing was created."""
 
-    NO_LIVE_MASTER = "no live master computer admits starts"
-    CONFLICTING_MASTERS = "more than one computer claims to be the master"
-    FLEET_NOT_OBSERVABLE = "the fleet cannot be observed"
-    MASTER_CANNOT_CARRY = "the master cannot carry the admission request"
-    MASTER_DID_NOT_ANSWER = "the master did not answer"
+    NO_ACTIVE_COMPUTER = "the project names no active computer"
+    ACTIVE_COMPUTER_UNREADABLE = "the project's active computer cannot be read from GitHub"
+    NOT_THE_ACTIVE_COMPUTER = "this computer is not the project's active computer"
+    ACTIVE_COMPUTER_CANNOT_CARRY = "the active computer cannot carry the request"
+    ACTIVE_COMPUTER_DID_NOT_ANSWER = "the active computer did not answer"
     UNDECIDED_WITHIN_BUDGET = "the start was not decided within its budget"
-    NOT_THE_MASTER = "this computer is not the master"
     REFUSED_AT_CREATE_DOOR = "the create door refused the start as undecided"
     ADMISSION_FAILED = "the admission failed before it was decided"
     NO_LIVE_TODO = "the todo has no live state to record a claim on"

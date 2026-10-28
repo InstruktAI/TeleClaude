@@ -584,12 +584,7 @@ async def _project_user_reflection(
                 adapter_client,
                 user_text=user_text,
                 source=source,
-                binding_id=binding_id,
-                requires_binding=requires_binding,
             )
-        if result.unbound:
-            observe(UserReflectionProjectionOutcome.DEFERRED, UserReflectionProjectionReason.ACCEPTED_RECEIPT_UNBOUND)
-            return session, False, False
         outcome, reason = _user_reflection_delivery_disposition(
             adapter_client,
             source=source,

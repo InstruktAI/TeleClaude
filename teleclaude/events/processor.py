@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
+from redis.exceptions import ResponseError
 
 from teleclaude.config.machine import config
 from teleclaude.core.models import HumanActionIntent
@@ -19,6 +20,7 @@ from teleclaude.events.pipeline import failing_stage_from_exception
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import StreamEntryRef
 from teleclaude.events.schemas.system import DeadLetteredData, EventDeadLettered
+from teleclaude.events.stream_wait import STREAM_BLOCK_MS, read_until_shutdown
 from teleclaude.events.wire import EntryCodec, LegacyFacts, StreamEntry
 
 logger = get_logger(__name__)
@@ -34,6 +36,12 @@ _RECOVERY_SWEEP_ENDED = "The stale-pending recovery sweep ended while the proces
 _PENDING_PAGE_SIZE = 100
 _PENDING_READ_BATCH_SIZE = 50
 _JSON_SERIALIZATION_MODE = "json"
+_NEW_ENTRIES = ">"
+_DRAIN_BATCH_SIZE = 50
+# An entry still pending after a failed attempt waits this long before the drain tries it again.
+_DRAIN_RETRY_PAUSE_S = 1.0
+_GROUP_NAME_FIELD = "name"
+_GROUP_RETIRED_EVENT = "event_processor_group_drained_and_retired"
 
 
 class RecoverySweepEnded(Exception):
@@ -158,16 +166,50 @@ class EventProcessor[DecodedT: BaseModel]:
 
         logger.info("EventProcessor stopped")
 
+    async def drain_and_retire(self, shutdown_event: asyncio.Event) -> bool:
+        """Handle every entry this group still owes on its stream, then destroy the group.
+
+        A consumer that no longer reads this Redis hands its remaining entries over this way before it reads
+        elsewhere, so none it was owed is skipped. False when the group does not exist or shutdown came first.
+        """
+        if not await self._group_exists():
+            return False
+        self._shutdown_event = shutdown_event
+        while not shutdown_event.is_set():
+            await self._recover_pending(include_current_consumer=True)
+            entries = await self._redis.xreadgroup(
+                self._group, self._consumer, {self._stream: _NEW_ENTRIES}, count=_DRAIN_BATCH_SIZE
+            )
+            if entries:
+                await self._process_entries(entries)
+                continue
+            if not await self._read_pending_info():
+                await self._redis.xgroup_destroy(self._stream, self._group)
+                logger.info(_GROUP_RETIRED_EVENT, stream=self._stream, group=self._group, name=self._declared_name)
+                return True
+            await asyncio.sleep(_DRAIN_RETRY_PAUSE_S)
+        return False
+
+    async def _group_exists(self) -> bool:
+        try:
+            groups = await self._redis.xinfo_groups(self._stream)
+        except ResponseError:
+            return False
+        return any(self._decode(group.get(_GROUP_NAME_FIELD)) == self._group for group in groups)
+
     async def _read_until_shutdown(self, shutdown_event: asyncio.Event) -> None:
         """Read and process stream entries until shutdown is requested."""
         while not shutdown_event.is_set():
             try:
-                entries = await self._redis.xreadgroup(
-                    self._group,
-                    self._consumer,
-                    {self._stream: ">"},
-                    count=10,
-                    block=1000,
+                entries = await read_until_shutdown(
+                    self._redis.xreadgroup(
+                        self._group,
+                        self._consumer,
+                        {self._stream: ">"},
+                        count=10,
+                        block=STREAM_BLOCK_MS,
+                    ),
+                    shutdown_event,
                 )
                 if not entries:
                     await asyncio.sleep(0)

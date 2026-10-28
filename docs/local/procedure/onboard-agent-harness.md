@@ -111,6 +111,8 @@ defect discovered live.
 
 **Hooks**
 
+<!-- planned-change:antigravity-native-subagents-allowed -->
+
 17. Does a hook system exist at all; its event names, payload shape, and stdout
     protocol. Per event, two independent capabilities, since an event may have
     either, both, or neither: whether its response reaches the model in the
@@ -121,11 +123,50 @@ defect discovered live.
     counter, an idle flag — where the same native event fires at more than one
     point in a turn. Such an event maps internally as the pair of event name and
     payload predicate, never the name alone.
+    17b. Whether the harness's own native subagents emit hooks into the same
+    receiver, and the payload field that tells a subagent's events from the
+    primary session's, observed from a real subagent run. The harness keeps its
+    native subagents in managed sessions, as the parallelism tool
+    `general/principle/parallel-work` prescribes. Their events are recognized by
+    that field and dropped before session resolution, as Codex subagent events
+    are; the subagent invocation itself is never denied.
 18. Whether hook commands run sandboxed by default and how to opt out.
 19. How a hook handler is packaged and where it lives — and whether it belongs
     in this repository at all. It usually does not: a vendor plugin authored at
     the harness's own plugin location is installed from there, so the repository
     carries only the installer wiring, never a vendored copy.
+
+<!-- change:antigravity-native-subagents-allowed -->
+
+17. Does a hook system exist at all; its event names, payload shape, and stdout
+    protocol. Per event, two independent capabilities, since an event may have
+    either, both, or neither: whether its response reaches the model in the
+    running turn and by which exact field, and whether it reports that the agent
+    produced output or changed state. Note the invocation frequency of any event
+    that fires repeatedly within one assistant message.
+    17a. Payload fields that discriminate one lifecycle position from another — a
+    counter, an idle flag — where the same native event fires at more than one
+    point in a turn. Such an event maps internally as the pair of event name and
+    payload predicate, never the name alone.
+    17b. Whether the harness's own native subagents emit hooks into the same
+    receiver, and the evidence that tells a subagent's events from the primary
+    session's, observed from a real subagent run: a payload field where the
+    harness provides one, otherwise a record the harness itself keeps for the
+    subagent's conversation. Observe too which execution reports the turn's
+    completion when a subagent outlives the conversation that invoked it. The
+    harness keeps its native subagents in managed sessions, as the parallelism
+    tool `general/principle/parallel-work` prescribes. Their events are
+    recognized by that evidence and dropped before session resolution, as Codex
+    subagent events are, and a turn completion the harness reports only on a
+    subagent's hook reaches the invoking conversation's session as its own; the
+    subagent invocation itself is never denied.
+18. Whether hook commands run sandboxed by default and how to opt out.
+19. How a hook handler is packaged and where it lives — and whether it belongs
+    in this repository at all. It usually does not: a vendor plugin authored at
+    the harness's own plugin location is installed from there, so the repository
+    carries only the installer wiring, never a vendored copy.
+
+<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 Also establish compaction: the command that compacts the agent's context when
 typed into its composer, and the native hook event, with its discriminating

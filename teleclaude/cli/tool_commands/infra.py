@@ -7,11 +7,34 @@ Errors go to stderr with exit code 1 (handled by tool_api_call).
 from __future__ import annotations
 
 import sys
+from enum import StrEnum
+from pathlib import Path
 
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
-from teleclaude.cli.telec.surface import AGENTS_STATUS, PROJECTS_LIST
+from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import (
+    AGENTS_STATUS,
+    PROJECTS_ACTIVE_COMPUTER_SET,
+    PROJECTS_ACTIVE_COMPUTER_SHOW,
+    PROJECTS_LIST,
+)
 from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.project_root import resolve_invocation_cwd
+
+_PROJECTS_COMMAND = "projects"
+_ACTIVE_COMPUTER_COMMAND = "active-computer"
+_ACTIVE_COMPUTER_ROUTE = "/projects/active-computer"
+_CWD_FIELD = "cwd"
+_COMPUTER_FIELD = "computer"
+_GET = "GET"
+_POST = "POST"
+
+
+class _ActiveComputerVerb(StrEnum):
+    SHOW = "show"
+    SET = "set"
+
 
 __all__ = [
     "handle_agents",
@@ -19,6 +42,7 @@ __all__ = [
     "handle_agents_status",
     "handle_computers",
     "handle_projects",
+    "handle_projects_active_computer",
 ]
 
 
@@ -71,6 +95,32 @@ def handle_projects(args: list[str]) -> None:
 
     data = tool_api_call("GET", "/projects", params=params)
     print_json(data)
+
+
+def handle_projects_active_computer(args: list[str]) -> None:
+    """Show or set a GitHub-backed project's active computer: the current directory's, or the one --project-root names."""
+    if not args or args[0] not in _ActiveComputerVerb:
+        print(_usage(_PROJECTS_COMMAND, _ACTIVE_COMPUTER_COMMAND))
+        raise SystemExit(0 if not args else 1)
+    if args[0] == _ActiveComputerVerb.SHOW:
+        shown = parse_command_args(PROJECTS_ACTIVE_COMPUTER_SHOW, args[1:])
+        cwd = _project_location(shown.value(F.FLAG_TODO_PROJECT_ROOT))
+        print_json(tool_api_call(_GET, _ACTIVE_COMPUTER_ROUTE, params={_CWD_FIELD: cwd}))
+        return
+    parsed = parse_command_args(PROJECTS_ACTIVE_COMPUTER_SET, args[1:])
+    body: dict[str, str] = {_CWD_FIELD: _project_location(parsed.value(F.FLAG_TODO_PROJECT_ROOT))}
+    computer = parsed.value(F.FLAG_COMPUTER)
+    if computer is not None:
+        body[_COMPUTER_FIELD] = computer
+    print_json(tool_api_call(_POST, _ACTIVE_COMPUTER_ROUTE, json_body=body))
+
+
+def _project_location(project_root: str | None) -> str:
+    """The named project root, relative to the invocation directory when not absolute; else that directory."""
+    invocation = resolve_invocation_cwd()
+    if project_root is None:
+        return str(invocation)
+    return str(invocation / Path(project_root).expanduser())
 
 
 # =============================================================================

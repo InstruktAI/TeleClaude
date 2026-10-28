@@ -64,7 +64,7 @@ def _handle_history_search(args: list[str]) -> None:
         search_term=" ".join(terms),
         limit=limit,
         computers=list(parsed.values(F.FLAG_COMPUTER_MANY)) or None,
-        include_workers=parsed.has(F.FLAG_HISTORY_INCLUDE_WORKERS),
+        include_workers=parsed.has(F.FLAG_HISTORY_INCLUDE_FOCUSED) or parsed.has(F.FLAG_HISTORY_INCLUDE_WORKERS_ALIAS),
         identity=identity,
         project=project,
         json_output=parsed.has(F.FLAG_HISTORY_JSON),

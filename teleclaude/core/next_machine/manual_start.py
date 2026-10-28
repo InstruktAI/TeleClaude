@@ -538,11 +538,11 @@ async def adopt_manual_lifecycle_session(
     since the guard returns ``ALREADY_DRIVEN`` naming it, and a start already in progress
     raises :class:`DriverStartBusy`. Task lanes take no section.
 
-    On a project on the GitHub store the section is held across the master's admission
+    On a project on the GitHub store the section is held across the active computer's admission
     (:func:`admitted_start`), which records the claim before the reflection onto the caller and
     is the only writer of ``active_runner``: the adoption writes none of its own. A todo held
     by a session on another computer raises :class:`ClaimConflict` naming the holder and its
-    computer (or the computers that did not answer for it); a master that cannot decide the
+    computer (or the computers that did not answer for it); a start the active computer cannot decide, or one made on another computer, the
     start raises :class:`AdmissionUnavailable`. Neither returns a result.
 
     Raises :class:`LaneCrossingRefused` before any claim write or role reflection
@@ -634,7 +634,7 @@ async def adopt_manual_lifecycle_session(
             work_feedback=_CONFLICTING_SESSION_BINDING_FEEDBACK,
         )
     if lane in _SECTIONED_LANES and is_github_backed(project_root):
-        # The master admits and records the claim; this computer's section is held across the admission
+        # The active computer admits and records the claim; this computer's section is held across the admission
         # and the reflection onto the caller, and the adoption writes no ``active_runner`` of its own.
         principal, _ = resolve_session_principal(session)
         start = StartRequest(

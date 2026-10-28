@@ -275,6 +275,7 @@ from teleclaude.events.schemas.sdlc import (
     TodoPhaseAdvancedData,
 )
 from teleclaude.events.schemas.system import EffectiveConfigUpdated, EffectiveConfigUpdatedData
+from teleclaude.events.scope import ScopedClients
 from teleclaude.events.wire import LegacyFacts
 
 _record_import_timing("teleclaude.events", _t)
@@ -461,12 +462,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         )
 
         # Initialize cache for remote data
-        self.cache = DaemonCache(
-            on_stale_read=TeleClaudeDaemon._make_stale_read_callback(
-                local_computer_name=config.computer.name,
-                get_adapter=lambda: self.client.transport,
-            )
-        )
+        self.cache = DaemonCache()
         self.client.cache = self.cache
         logger.info("DaemonCache initialized")
 
@@ -559,7 +555,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.hook_outbox_task: SupervisedTask | None = None
         self.agent_status_watchdog_task: SupervisedTask | None = None
         self._event_db: EventDB | None = None
-        self._event_redis_client: object | None = None
+        self._event_redis_client: ScopedClients[Any] | None = None
         self._fleet_capability_map_provider: Callable[[], FleetCapabilityMap] | None = None
         self.mirror_worker_task: SupervisedTask | None = None
         self._event_consumer_tasks: tuple[SupervisedTask, ...] = ()

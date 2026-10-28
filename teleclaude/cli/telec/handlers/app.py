@@ -99,8 +99,8 @@ _PUBLICATION_OWED = (
 _STATUS_PUBLICATION = "Publication owed:  {revision}{failure}"
 _STATUS_LAST_ACT = "Last act:          {act} {outcome} {revision} at {at}"
 _STATUS_REASON = "  reason: {reason}"
-_STATUS_OWED = "Assessment owed:  install {number}, release {revision}, since {since}"
-_STATUS_LAST_ASSESSMENT = "Last assessment:  install {number}, release {revision}, at {at}"
+_STATUS_OWED = "Assessment owed:  since {since}"
+_STATUS_LAST_ASSESSMENT = "Last assessment:  at {at}"
 _STATUS_CHANNEL = "Channel:          {channel}"
 _STATUS_SOURCE = "Source:           {source}"
 _STATUS_NO_SOURCE = "none (the installation follows no GitHub repository)"
@@ -108,7 +108,7 @@ _STATUS_NO_DECISION = "Last decision:    no convergence decision has been made y
 _STATUS_DECISION = "Last decision:    {outcome} at {at}"
 _STATUS_HELD = "Held release:     {tag} of {source}, beyond the active release's compatibility series, held since {at}"
 _STATUS_CONVERGENCE_UNREADABLE = "Last decision:    the convergence record could not be read: {error}"
-_ASSESSED_OPERAND = "telec app assessed takes the number of one install, as `telec app status` lists it."
+_ASSESSED_OPERAND = "telec app assessed takes the number of one install, as its owed-assessment announcement names it."
 _ASSESSED_NOT_SERVING = (
     "The daemon does not serve the active release: {reason}. Restore service with `telec app start`, or repair "
     "forward when `telec app status` reports the daemon left stopped, then assess."
@@ -215,13 +215,11 @@ def _record_lines(record: InstallRecord, layout: InstallationLayout) -> list[str
 
 
 def _assessment_lines(assessment: AssessmentRecord) -> list[str]:
-    lines = [
-        _STATUS_OWED.format(number=install.number, revision=install.revision, since=install.owed_since)
-        for install in assessment.owed
-    ]
+    # Whether work is owed, not which install: the inspector takes the install from its activation event.
+    newest = assessment.newest_owed
+    lines = [] if newest is None else [_STATUS_OWED.format(since=newest.owed_since)]
     if assessment.last is not None:
-        last = assessment.last
-        lines.append(_STATUS_LAST_ASSESSMENT.format(number=last.number, revision=last.revision, at=last.at))
+        lines.append(_STATUS_LAST_ASSESSMENT.format(at=assessment.last.at))
     return lines
 
 

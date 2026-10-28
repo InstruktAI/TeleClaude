@@ -58,6 +58,9 @@ or start an execution. There is no documented per-event async allowance.
 
 The installed runtime contract also includes `modelName` in every payload.
 
+Observed on CLI 1.4.7, every payload also carries `lastUserInput`; no vendor
+document describes it.
+
 Hook commands receive camel-case JSON on standard input. Every event includes `conversationId`, `workspacePaths`, `transcriptPath`, and `artifactDirectoryPath`.
 
 ## PreInvocation

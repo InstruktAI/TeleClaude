@@ -154,10 +154,19 @@ sequenceDiagram
 ```
 
 - **Prepare while serving.** Fetching, adding the release worktree and building
-  its environment happen while the daemon keeps serving on the active release.
+  its environment happen while the daemon keeps serving on the active release,
+  and the built release then prepares this computer's local Redis by installing
+  its server binary when missing; that step never fails the install.
 - **Migrate inside a stopped window, and let the owners say what ran.** The
   daemon is stopped through the lifecycle contract's preparation before any
-  migration runs. The new release then runs its ledger-recorded migrations —
+  migration runs. Before its first migration the new release prepares the
+  machine for itself: it carries machine environment values whose names the
+  configuration schema renamed to their current names, and sets up this
+  computer's local Redis (`local/projects/teleclaude/design/architecture/event-delivery`).
+  Setting it up writes its configuration and its unit, which the installation
+  owns and which stopping the daemon leaves running; it never fails the install,
+  and a refusal leaves local events on the cluster Redis. The new release
+  then runs its ledger-recorded migrations —
   installation migrations, configuration-document migrations
   (`local/projects/teleclaude/spec/feature/config/document-migration`) and the
   core database runner — and afterwards opens, through each store's own

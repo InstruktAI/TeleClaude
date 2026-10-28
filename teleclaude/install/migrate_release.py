@@ -23,6 +23,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 from pydantic import ValidationError
 
+from teleclaude.config.environment_renames import carry_renamed_environment
 from teleclaude.config.migrations._chain import MigrationTrigger
 from teleclaude.config.migrations._run import ExitStatus, run_trigger
 from teleclaude.core.db import db
@@ -33,6 +34,7 @@ from teleclaude.core.store_opening import open_stores
 from teleclaude.core.todos_db._adapter import close_todos_db_instances
 from teleclaude.deployment.migration_runner import migrate_committed_range
 from teleclaude.events.db import get_event_db
+from teleclaude.install.local_redis import apply_or_fall_back
 from teleclaude.logging_config import setup_logging
 
 logger = get_logger(__name__)
@@ -84,7 +86,13 @@ def _record_owed_assessment(layout: InstallationLayout, target: str) -> str | No
 
 
 def _migrate(repository: Path, previous: str | None, target: str) -> str | None:
-    """Run the release's migrations and open its stores; the failure reason, or ``None``."""
+    """Prepare the machine for the release, run its migrations and open its stores; the failure reason, or ``None``.
+
+    The renamed environment names are carried and the local Redis applied before any migration starts. A local
+    Redis that cannot be applied is logged and leaves local events on the cluster Redis; it never fails the install.
+    """
+    carry_renamed_environment()
+    apply_or_fall_back()
     if migrate_committed_range(repository, previous, target) != 0:
         return _MIGRATIONS_FAILED.format(target=target)
     if previous is not None and (status := run_trigger(MigrationTrigger.INSTALL)) is not ExitStatus.SUCCESS:

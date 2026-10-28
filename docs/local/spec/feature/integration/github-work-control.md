@@ -73,18 +73,14 @@ the work.
   milestones and an issue that belongs to no item are left as they are. The
   issue's body and the item's pull request stay under the work record's
   authority.
-- **Once and in order.** A change GitHub delivers more than once, or that
-  several computers receive, is taken or put back once. Changes to one issue
-  are taken in the order they were made.
-- **Which computer acts.** One computer serving the project handles its
-  changes: the first to claim it, until it releases the claim. While that
-  computer is not running, changes wait for it. An operator moves the claim off
-  a computer that no longer serves the project with
-  `telec todo work-control release <computer>`, which refuses while that
-  computer is online.
-- **Missed deliveries.** A change made while no computer received GitHub's
-  deliveries is taken or put back when the platform next brings the project
-  up to date from GitHub, under the same rules.
+- **In order.** Changes to one issue are taken in the order they were made. A
+  change the item already holds, such as GitHub delivering the same change
+  again, is no act: the item is unchanged and nothing is put back.
+- **Which computer acts.** A change to an item a session holds is handled on
+  that session's computer; a change to any other item is handled on the
+  project's active computer, the one computer the project names for its work
+  (`local/projects/teleclaude/spec/feature/workflow/driver-admission`). Every
+  other computer ignores it.
 
 ### Use cases
 
@@ -144,6 +140,9 @@ Scenario: A change that stands for no workflow act is put back
 
 - Changes reach the work only from repositories whose webhook delivers issue,
   sub-issue and issue-dependency events.
-- Between a change and its handling the issue shows the person's change, and
-  a missed delivery waits until the platform next brings the project up to
-  date from GitHub.
+- Between a change and its handling the issue shows the person's change.
+- A change GitHub does not deliver, or that arrives while the computer that
+  should handle it is not running, is neither taken nor put back: the issue
+  shows it although the work does not hold it, until the platform next writes
+  that field from the work. Nothing reads the issue's history to catch up on
+  missed changes.

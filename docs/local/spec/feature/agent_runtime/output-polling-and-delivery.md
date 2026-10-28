@@ -21,6 +21,25 @@ Distinct from this lane: the on-demand transcript retrieval surface (which proje
 
 ## Canonical fields
 
+### Completed response output
+
+The summarizer receives every assistant-authored text block in the completed
+native response, in source order. Retained final output contains that same
+complete text; the generated stop summary condenses that input. Standalone
+`NOOP` entries are omitted from retained text and summarizer input. Other text
+keeps its contents unchanged. A response containing commentary followed by
+`NOOP` therefore retains the commentary.
+Thinking and tool activity keep their separate projection categories under
+`local/projects/teleclaude/spec/session-projection`.
+
+A submitted platform wake starts a response even when it opens no authored
+conversation generation. Runtime context and tool results remain within the
+response they accompany. Delayed extraction stays bound to the response selected
+for that stop, following `sdlc/policy/code-quality-practices`' explicit state
+ownership. Silent, unavailable and empty responses retain their distinct
+persistence semantics under
+`local/projects/teleclaude/spec/session-output-routing`.
+
 ### Native source reading
 
 Transcript consumers share a format-aware source view under
@@ -168,6 +187,9 @@ And the silent turn neither replaces it with empty content nor delivers it again
 
 ## Known caveats
 
+- **Response pinning needs a readable native reference.** If initial stop
+  extraction finds no readable response-start entry or no usable native identity,
+  delayed extraction selects the latest readable response.
 - **Derived reading state retains history.** Initial reads and eviction recovery
   still parse the source needed by existing ancestry and receipt contracts.
   The source-byte budget scales with host memory up to its cap; source count is

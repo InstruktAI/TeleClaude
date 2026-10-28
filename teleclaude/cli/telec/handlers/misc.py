@@ -187,6 +187,10 @@ def _handle_computers(args: list[str]) -> None:
     raise SystemExit(1)
 
 
+_ACTIVE_COMPUTER_SUBCOMMAND = "active-computer"
+_ACTIVE_COMPUTER_HANDLER = "handle_projects_active_computer"
+
+
 def _handle_projects(args: list[str]) -> None:
     """Handle telec projects commands."""
     if not args:
@@ -199,6 +203,9 @@ def _handle_projects(args: list[str]) -> None:
     subcommand = args[0]
     if subcommand == "list":
         _handle_tool_command("handle_projects", args[1:])
+        return
+    if subcommand == _ACTIVE_COMPUTER_SUBCOMMAND:
+        _handle_tool_command(_ACTIVE_COMPUTER_HANDLER, args[1:])
         return
     print(f"Unknown projects subcommand: {subcommand}")
     print(_usage("projects"))

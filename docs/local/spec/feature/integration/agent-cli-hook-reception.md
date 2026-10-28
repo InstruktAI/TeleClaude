@@ -76,6 +76,13 @@ control context into the existing single provider response. It neither edits
 the submitted prompt nor prevents its ordinary outbox processing. It creates
 no stored control payload, extra model turn, approval gate, or transcript read.
 
+### Command shell context
+
+At session start, when the host shell resolved by the platform's runtime
+environment is zsh, the transient provider context for every agent also
+carries guidance for writing commands in zsh. Any other host shell adds
+nothing. The guidance is owned by `teleclaude/hooks/receiver/_command_shell.py`.
+
 ### Use cases
 
 #### UC-R1: Claude session_start with additional context injection
@@ -147,9 +154,37 @@ And the session is not reported complete while provider work remains active
 - Codex hooks from provider-native subagent transcripts are discarded before
   session mapping; a child native session id is never associated with its
   managed parent.
+
+<!-- planned-change:antigravity-native-subagents-allowed -->
+
 - Managed Antigravity sessions deny provider-native subagent invocations before
   child execution. Work requiring a child remains available through an
   explicitly dispatched TeleClaude worker.
+
+<!-- change:antigravity-native-subagents-allowed -->
+
+- Antigravity hooks from a provider-native subagent's execution are discarded
+  before session mapping on every hook source, and the subagent invocation
+  itself runs unhindered. A subagent's events never take over the session of
+  the conversation that invoked it, and a subagent never becomes a session of
+  its own. The subagent is recognized from the record Antigravity keeps in the
+  subagent's own conversation store naming the `invoke_subagent` call as its
+  origin; no hook payload field carries that ancestry. An absent or unreadable
+  record leaves the hook a primary conversation's. Each discarded hook still
+  receives the provider's success response. An idle `Stop` from a subagent is
+  forwarded as its root conversation's turn completion
+  (`local/projects/teleclaude/spec/hook-normalized-events`); the response to
+  that `Stop` is the plain success response and never a checkpoint
+  continuation; the turn's checkpoint boundary is the invoking conversation's
+  own `Stop`
+  (`local/projects/teleclaude/spec/feature/integration/agent-stop-checkpoint-blocking`).
+- Recognizing a subagent depends on Antigravity writing its origin record
+  before the subagent's first hook, and Antigravity documents neither the record
+  nor its timing. A subagent hook that arrives before its record is handled as
+  a primary conversation's.
+
+<!-- /planned-change:antigravity-native-subagents-allowed -->
+
 - All four adapters support hook checkpoints. The continuation response
   differs per provider:
   - Claude → block decision with reason.
@@ -175,3 +210,11 @@ And the session is not reported complete while provider work remains active
   exits with a failure status.
 - The receiver swallows persistence errors during native-metadata
   writes with a warning log; the hook event itself is still enqueued.
+
+<!-- planned:antigravity-native-subagents-allowed -->
+
+## See Also
+
+- docs/third-party/antigravity-cli/sub-agents.md — the Antigravity subagent origin record and its observed timing.
+
+<!-- /planned:antigravity-native-subagents-allowed -->

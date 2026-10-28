@@ -5,9 +5,8 @@ Every install that opens its stopped window owes one assessment of the release t
 made by the installation inspector.
 The record lives beside the install record, never inside it: the install record validates strictly, so a
 release from before this record, rolled back to, would fail to read one that carried new fields. Each owed
-install has its own number, so an assessment that observed an earlier attempt at a revision never discharges
-a later attempt at the same revision. The record states that installs were assessed, never what the
-assessment concluded.
+install has its own number, and owing one supersedes every earlier owed install: a release that no longer runs
+owes no assessment. The record states that installs were assessed, never what the assessment concluded.
 
 Writers go through ``update_assessment`` so the release being installed and ``telec app assessed``
 serialize on one lock. The daemon announces what is owed through ``AssessmentAnnouncer``: at its start and at
@@ -102,10 +101,11 @@ class AssessmentRecord(BaseModel):
     def owe(self, revision: str, at: datetime) -> AssessmentRecord:
         """This record once an install of ``revision`` owes an assessment, under the next number.
 
-        Each call takes a new number, so a retry of the same revision is a separate obligation.
+        Each call takes a new number, so a retry of the same revision is a separate obligation, and it
+        supersedes every earlier owed install: only the release that runs after it is left to assess.
         """
         install = OwedInstall(number=self.next_number, revision=revision, owed_since=at)
-        return AssessmentRecord(next_number=self.next_number + 1, owed=(*self.owed, install), last=self.last)
+        return AssessmentRecord(next_number=self.next_number + 1, owed=(install,), last=self.last)
 
     def assessed(self, number: int, at: datetime) -> AssessmentRecord:
         """This record once install ``number`` and every earlier owed install are assessed; later ones stay owed.

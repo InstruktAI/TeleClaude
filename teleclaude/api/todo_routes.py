@@ -679,7 +679,7 @@ async def todo_switch_to_github(
 
 
 class _DriverClaimResponse(BaseModel):
-    """The master's answer to an admission or a release."""
+    """The active computer's answer to an admission or a release."""
 
     model_config = ConfigDict(frozen=True)
     admitted: bool = False
@@ -687,7 +687,7 @@ class _DriverClaimResponse(BaseModel):
 
 
 def _driver_refusal(failure: OperationFailure, status_code: int) -> DeclaredWorkRefusal:
-    """The refusal a master answers a relayed admission or release with: the failure's own payload as the detail."""
+    """The refusal the active computer answers a relayed admission or release with: the failure's own payload as the detail."""
     return DeclaredWorkRefusal(
         status_code=status_code,
         detail=dict(failure.to_error_payload()),
@@ -700,11 +700,11 @@ async def todo_driver_admission(
     body: DriverAdmissionRequest,
     identity: CallerIdentity = Depends(carried_caller),
 ) -> _DriverClaimResponse:
-    """Admit a start of a GitHub-backed todo's driver on the master, recording its claim before its session exists.
+    """Admit a start of a GitHub-backed todo's driver on the active computer, recording its claim before its session exists.
 
     Answers 200 when admitted, 409 naming the holder and its computer (or the computers that did not
     answer for it) when the todo is held, 423 when another start of the todo is in progress, and 503 when
-    this computer is not the unique live master or the start was not decided within its budget.
+    this computer is not the project's active computer or the start was not decided within its budget.
     """
     request = StartRequest(
         project_root=resolve_project_root(body.project_path),
@@ -731,7 +731,7 @@ async def todo_driver_release(
     body: DriverReleaseRequest,
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> _DriverClaimResponse:
-    """Release a GitHub-backed todo's claim on the master, in the todo's section, while it still names the session."""
+    """Release a GitHub-backed todo's claim on the active computer, in the todo's section, while it still names the session."""
     try:
         cleared = await release_relayed_claim(resolve_project_root(body.project_path), body.slug, body.session_id)
     except DriverStartBusy as busy:
@@ -747,10 +747,10 @@ async def todo_claim_holder(
     slug: str,
     identity: CallerIdentity = Depends(carried_caller),
 ) -> ClaimHolderReport:
-    """Say, as the master, who holds a GitHub-backed todo's claim, by the rule a driver start is admitted by.
+    """Say, as the project's active computer, who holds a GitHub-backed todo's claim, by the rule a driver start is admitted by.
 
     Reads only: no start section is taken and no claim is written. Answers 503 when this computer is not
-    the unique live master; a read the master cannot decide within its budget answers ``undetermined``.
+    the project's active computer; a read it cannot decide within its budget answers ``undetermined``.
     """
     try:
         return await answer_relayed_claim_holder(
@@ -776,7 +776,7 @@ async def todo_session_answer(
 ) -> _SessionAnswerResponse:
     """Say whether a session this computer ran drives the todo, has ended, or was never run here.
 
-    The master asks every known computer this when it judges a claim it cannot verify itself.
+    The active computer asks every known computer this when it judges a claim it cannot verify itself.
     The answer discloses only held, ended or not-own for a session id the asker already holds.
     """
     project_root = resolve_project_root(project_path)

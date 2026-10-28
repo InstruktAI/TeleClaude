@@ -20,6 +20,7 @@ from teleclaude.core.next_machine.lifecycle import (
     pending_approval_gate,
     plan_review_current,
 )
+from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 from teleclaude.core.todos_db._working_copy import WorkingCopyItemSnapshot
 from teleclaude.core.workflow_store.github_record import WorkflowField
 from teleclaude.core.workflow_store.github_reflection import is_repository_work, stable_digest
@@ -82,6 +83,7 @@ def _reflection(lane: BoardLane, *, needs_you: bool) -> BoardItemReflection:
 
 
 def _state_document(snapshot: WorkingCopyItemSnapshot) -> Mapping[str, object]:
+    """The item's workflow state in the latest shape, upgraded as every store read upgrades a stored state."""
     value = snapshot.state.get(WorkflowField.STATE) if snapshot.state is not None else None
     parsed = json.loads(value) if isinstance(value, str) else {}
-    return cast(Mapping[str, object], parsed)
+    return cast(Mapping[str, object], upcycle_state_dict(parsed) if isinstance(parsed, dict) else {})

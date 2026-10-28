@@ -12,15 +12,15 @@ visibility: 'public'
 
 ## What it is
 
-The agent-restart action is the one place where v1 deliberately diverges from the verb-based clearance rule. Normally `telec sessions restart` is restricted (notably, worker-Role agent sessions are excluded), but a worker that has gone unresponsive must be able to recover itself. Command clearance for `telec sessions restart` therefore recognises a "self-restart" shape — a caller resolved to a session, restarting that same session — and admits it without consulting the verb allowlist at all. Every other shape (a cross-session restart, or a caller that is not a session) falls through to the standard rule, and a worker is refused a cross-session restart before the generic verb check runs. The decision is made in the client process before any request is sent (`feature/identity/command-clearance`); the daemon performs the restart it receives.
+The agent-restart action is the one place where v1 deliberately diverges from the verb-based clearance rule. Normally `telec sessions restart` is restricted (notably, focused-role agent sessions are excluded), but a focused session that has gone unresponsive must be able to recover itself. Command clearance for `telec sessions restart` therefore recognises a "self-restart" shape — a caller resolved to a session, restarting that same session — and admits it without consulting the verb allowlist at all. Every other shape (a cross-session restart, or a caller that is not a session) falls through to the standard rule, and a focused session is refused a cross-session restart before the generic verb check runs. The decision is made in the client process before any request is sent (`feature/identity/command-clearance`); the daemon performs the restart it receives.
 
 ## Canonical fields
 
 ### Use cases
 
-#### UC-SRAB1: A worker may restart its own session
+#### UC-SRAB1: A focused session may restart its own session
 
-#### UC-SRAB2: A worker may not use self-restart authority on another session
+#### UC-SRAB2: A focused session may not use self-restart authority on another session
 
 #### UC-SRAB3: An orchestrator may restart another session through ordinary clearance
 
@@ -41,4 +41,4 @@ The agent-restart action is the one place where v1 deliberately diverges from th
 ## Known caveats
 
 - The carve-out applies ONLY when the caller resolves to a session and the target is exactly that session. Terminal and TUI callers (no session) and callers acting on a different session go through the standard rule.
-- The worker short-circuit is intentional defence-in-depth. Even if a future change added `worker` to the system band for `telec sessions restart`, the explicit worker check still refuses a cross-session restart by a worker. The only path open to it is the self-restart carve-out.
+- The focused-role short-circuit is intentional defence-in-depth. Even if a future change added `focused` to the system band for `telec sessions restart`, the explicit focused-role check still refuses a cross-session restart by a focused session. The only path open to it is the self-restart carve-out.

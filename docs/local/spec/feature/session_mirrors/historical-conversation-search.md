@@ -22,16 +22,16 @@ cross-computer federation layer calls.
 
 The search composes free-text terms (AND-combined), an agent filter
 (`claude`, `codex`, `gemini`, `deepseek`, comma-separated, or `all`), an optional
-computer filter, and a default exclusion of dispatched-worker mirrors
+computer filter, and a default exclusion of focused-role mirrors
 
-(`is_worker = 0`) that a caller opts out of to search worker sessions
-too. Whether a mirror is a worker is whether the role its session record
-carries is of the worker class in the agent role catalog
+(`is_worker = 0`) that a caller opts out of to search focused-role sessions
+too. Whether a mirror is a focused-role mirror is whether the role its session record
+carries is of the focused class in the agent role catalog
 (`local/projects/teleclaude/spec/feature/identity/agent-roles`), so
 orchestrators, task-lane sessions and the integrator stay searchable — they
 drive the work and carry the reasoning a later search is looking for.
 Subagent transcripts are never mirrored, so they cannot appear.
-The default worker exclusion is the same on the terminal and service search
+The default focused-role exclusion is the same on the terminal and service search
 paths. The local CLI opt-in removes only that exclusion; the other search
 filters and role-scoped access remain in effect.
 
@@ -51,26 +51,26 @@ several source segments returns one conversation result. Existing agent and
 source selectors read source provenance without multiplying that result.
 Native references remain source aliases under
 `local/projects/teleclaude/spec/feature/session_mirrors/session-id-namespaces`.
-Existing history reach and worker/subagent selection rules remain applicable.
+Existing history reach and focused-role/subagent selection rules remain applicable.
 An empty text query without an identity or project selector returns no rows.
 
 ### Use cases
 
-#### UC-HCS-4: An operator can choose whether history search includes worker sessions
+#### UC-HCS-4: An operator can choose whether history search includes focused-role sessions
 
 ```gherkin
-Scenario: Include worker conversations in a history search
-  Given an operator searches history for a term present in a worker conversation
-  When the operator opts to include worker conversations on the local CLI
-  Then matching worker conversations appear alongside other matching conversations
+Scenario: Include focused-role conversations in a history search
+  Given an operator searches history for a term present in a focused-role conversation
+  When the operator opts to include focused-role conversations on the local CLI
+  Then matching focused-role conversations appear alongside other matching conversations
   And the other search filters continue to apply
 
-Scenario: Understand worker conversations excluded from results
-  Given an operator searches without worker inclusion
-  And matching conversations include worker and non-worker conversations
+Scenario: Understand focused-role conversations excluded from results
+  Given an operator searches without focused-role inclusion
+  And matching conversations include focused-role and other conversations
   When the search results are shown
-  Then the operator sees how many worker matches were excluded
-  And no excluded-worker count is shown when no worker matched
+  Then the operator sees how many focused-role matches were excluded
+  And no excluded focused-role count is shown when no focused-role conversation matched
 ```
 
 #### Recency ordering and missing-store tolerance
@@ -121,7 +121,7 @@ Scenario Outline: Find conversations within an identity or project
     | a project            | a project      | no terms    | recorded against the resolved repository, not a path fragment                      |
 ```
 
-#### UC-HCS-9: Excluded worker matches are reported, not silently dropped
+#### UC-HCS-9: Excluded focused-role matches are reported, not silently dropped
 
 #### UC-HCS-10: Machine output carries both ids explicitly
 

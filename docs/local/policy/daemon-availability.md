@@ -23,14 +23,14 @@ visibility: 'public'
 
 - If Redis is configured for the event platform, startup must expose Redis reachability and pending recovery progress through daemon state or structured logs before continuing degraded; a silent healthy-but-no-Streams state is forbidden.
 
-- `telec app stop` and `telec app restart` bring down the daemon and its managed launchd units only; they never signal an agent session, the tmux server, or a spawn-registry lease-holder. Sessions and leased detached workers (e.g. the chiptunes worker) outlive the daemon by design: sessions end only through the caller-driven path (see `general/principle/session-lifecycle`); leased workers are re-adopted via adopt-or-kill on the next start (see `local/projects/teleclaude/design/process-lifecycle`).
+- `telec app stop` and `telec app restart` bring down the daemon and its managed launchd units only; they never signal an agent session, the tmux server, the local Redis, or a spawn-registry lease-holder. Sessions and leased detached workers (e.g. the chiptunes worker) outlive the daemon by design: sessions end only through the caller-driven path (see `general/principle/session-lifecycle`); leased workers are re-adopted via adopt-or-kill on the next start (see `local/projects/teleclaude/design/process-lifecycle`).
 
 - `telec app stop` prepares the running daemon before stopping it. A preparation that does not complete within its observation window is reported and leaves the daemon running and draining; it is never forcibly terminated by that stop, and once its accepted work settles the daemon completes its own shutdown and the service manager relaunches it. Once the daemon is prepared, the stop is bounded and verified: SIGTERM the daemon, confirm exit within 30 seconds, then SIGKILL it if it has not exited. Termination targets the daemon and managed-unit pids only, never a process-group sweep.
 
 - `telec app stop` records its outcome where a caller names a location for it, so a caller never infers the daemon's state from an exit status: stopped, meaning no daemon process remains and its service manager will not relaunch it, whether or not this stop had to terminate it; stopped with a managed-unit cleanup failure; withheld while the daemon drains; or withheld, with its reason. The record states the daemon's state after the stop, so a caller acts on that state rather than on the command's exit status. Once preparation allows it, `telec app stop` issues its service manager's stop whatever state the daemon starts from.
 
 - A leaked daemon-bound process — one with no live session and no registry lease — is reaped by the in-daemon janitor on the next start, never left to accumulate (see `local/projects/teleclaude/design/process-lifecycle`).
-- Every TeleClaude-installed launchd unit is in the managed set; no monitoring or helper unit runs independently of the installation's lifecycle.
+- Every TeleClaude-installed launchd unit is in the managed set, except the units that outlive the daemon by design: the tmux server and the local Redis, whose unit the installation deploys and which commands and periodic jobs publish to while the daemon is down; no monitoring or helper unit runs independently of the installation's lifecycle.
 
 ## Rationale
 
@@ -54,10 +54,6 @@ visibility: 'public'
 
 ## Enforcement
 
-- Use `telec app restart` only after changes that require it.
-- Review recent logs with `instrukt-ai-logs teleclaude --since 2m` if stability is in doubt.
-- If the daemon restarts unexpectedly, review the process-reaped event stream (`telec events`) and structured shutdown logs before taking action.
-
 - A `telec app stop` that leaves a prepared daemon or a managed launchd unit alive past 30 seconds after preparation completed, that forcibly terminates a daemon whose preparation has not completed, or that signals a session, tmux, or spawn-registry lease-holder pid, is a defect.
 
 - A daemon alive with admission closed after its accepted work has settled and its termination grace has passed is a defect.
@@ -71,3 +67,4 @@ visibility: 'public'
 - docs/local/adr/0124-maintenance-replaces-the-daemon-inside-a-stopped-window.md — why the daemon is stopped instead of ordering steps around a live process.
 - docs/local/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start.md — why the steps that replace nothing the daemon runs on run after the verified start.
 - docs/local/design/architecture/installation.md — the install act this policy governs.
+- docs/local/adr/0143-teleclaude-runs-its-own-local-redis-on-every-computer.md — why the local Redis outlives the daemon.

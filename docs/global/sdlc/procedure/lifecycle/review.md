@@ -55,20 +55,48 @@ preferred classification or design alone does not reopen a decision.
 
 ### 1. Execute every applicable review lane
 
-Run every applicable lane defined in
-`sdlc/policy/definition-of-done-lanes`. The catalog owns each
-lane's focus, severity guidance, and the Definition of Done gate or requirement
-contract it answers to.
+**Build the lane set.** It has two sources, and every entry in it receives a
+disposition: applicable, or `N/A` with its reason.
 
-The invoking procedure determines whether the scope lane has a requirements
-contract to trace. All other lanes run according to the catalog's trigger
-conditions. The doc-hygiene lane runs whenever a doc snippet changes. The
-doc-first paradigm lane runs for an ad-hoc commit review with no prepare
-artifacts.
+- The general lanes of `sdlc/policy/definition-of-done-lanes`. The catalog owns
+  each lane's focus, severity guidance, trigger conditions, and the Definition
+  of Done gate or requirement contract it answers to. Scope and ownership
+  always apply. The invoking procedure determines whether the scope lane has a
+  requirements contract to trace. The doc-hygiene lane runs whenever a doc
+  snippet changes. The doc-first paradigm lane runs for an ad-hoc commit review
+  with no prepare artifacts.
+- The project's focus points: walk the project's fixed entry points to its
+  governing contracts (`sdlc/policy/preparation-artifact-quality`, Governing
+  contracts) and take every contract that bears on the target. Each is carried
+  in the brief of the general lane it sharpens, or runs as a lane of its own
+  when no general lane covers it. An entry point the project lacks is recorded
+  as a gap, never as nothing found.
+
+**Run each applicable lane in its own native subagent.** Dispatch the lanes to
+the harness's own subagents, in parallel (`general/principle/parallel-work`).
+Each starts fresh, with the brief as its only context from you: use the
+harness's fresh-subagent form, never a fork of your own conversation, so your
+reasoning and conclusions do not frame its investigation. A lane's brief carries
+the lane and the address of its catalog section; the exact target and how to
+read it; the intent basis this review established, with its source addresses;
+the project focus points that bear on the lane, with theirs; the finding rules
+of step 4; and the result it returns: findings in the step 4 format, or
+clean-pass evidence, plus any gap it could not close. The brief states no
+preferred verdict. The subagent reads beyond its brief wherever its lane
+requires and reports missing context as a gap. Where the harness offers no
+native subagents, run the lanes as separate passes yourself.
 
 For the tests lane, independently re-prove every triggered `TQ-*` predicate.
 Record evidence for each triggered predicate or a reasoned `N/A`. Evidence
 supplied by the author directs attention but never substitutes for review proof.
+
+**Reconcile, then assess the whole.** A lane's result is evidence you judge. A
+missing or unsupported lane result is re-run, not filled in by you. Route a
+contradiction or a dependency between lanes back to the lanes it concerns. Then
+make your own assessment of the whole target: coverage, that every changed file
+and every decision the target introduces appears in some lane's evidence; and
+fit, that the target as a whole serves the intent. A coverage hole goes back to
+a lane; a fit defect you can establish is your own finding under step 4.
 
 Each executed lane produces a findings section, even when it has no findings.
 A missing section means the review is incomplete: execute the missing lane

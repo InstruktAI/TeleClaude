@@ -259,12 +259,12 @@ healthy runtime when Redis has never connected — an unreachable Redis surfaces
 startup instead of being swallowed.
 
 ```
-Given a machine where REDIS_URL is configured but the Redis server is unreachable
+Given a machine where REDIS_CLUSTER_URL is configured but the Redis server is unreachable
 When a human runs `make start`
 Then `make start` does not report the runtime as started successfully
 And it exits non-zero within a bounded startup readiness window
 And it surfaces that Redis is unreachable and how to remediate it
-  (verify REDIS_URL and that the Redis server is reachable)
+  (verify REDIS_CLUSTER_URL and that the Redis server is reachable)
 And the daemon reports itself not ready while Redis has never connected
 When the configured Redis later becomes reachable
 Then the daemon reports itself ready without requiring a restart

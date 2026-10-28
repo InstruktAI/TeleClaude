@@ -45,7 +45,7 @@ from teleclaude.constants import (
     TUI_SESSION_ENV_KEY,
     MarkerState,
 )
-from teleclaude.core.roles import Capability, Role, UnknownRole, allows, is_worker_role, resolve_session_role
+from teleclaude.core.roles import Capability, Role, UnknownRole, allows, is_focused_role, resolve_session_role
 from teleclaude.core.session_identity_facts import (
     SessionIdentityFacts,
     read_live_session_id_by_native,
@@ -156,15 +156,13 @@ _SESSION_SHOW_PATH = "sessions show"
 _CALLER_INDEPENDENT_COMMAND_REFUSAL = "Unknown command path or missing command authorization."
 _DESK_COMMAND_REFUSAL_TEMPLATE = "permission denied — {command_path} is not available at a help desk"
 _PERMISSION_REFUSAL_TEMPLATE = "permission denied — role '{role}' is not permitted to call {command_path}"
-_WORKER_REPORTING_PATH_TEMPLATE = (
-    "{refusal}. A worker reports through its own output and artifacts, which the session that dispatched it routes."
-)
+_WORKER_REPORTING_PATH_TEMPLATE = "{refusal}. A focused session reports through its own output and artifacts, which the session that dispatched it routes."
 
 
 def _permission_refusal(identity: ResolvedCliIdentity, role: str, command_path: str) -> str:
-    """The not-permitted refusal; a worker's also names where its result belongs."""
+    """The not-permitted refusal; a focused session's also names where its result belongs."""
     refusal = _PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path)
-    if is_worker_role(identity.role):
+    if is_focused_role(identity.role):
         return _WORKER_REPORTING_PATH_TEMPLATE.format(refusal=refusal)
     return refusal
 
@@ -479,8 +477,8 @@ def cli_clearance(
         return CliClearance(identity=identity, refusal=no_identity_refusal(identity))
 
     if relayed_request:
-        # The holding computer never receives a role, so a worker's session acts are refused here, before relay.
-        if is_worker_role(identity.role) and auth.capability is Capability.PEER_TALK:
+        # The holding computer never receives a role, so a focused session's session acts are refused here, before relay.
+        if is_focused_role(identity.role) and auth.capability is Capability.PEER_TALK:
             role = identity.role or _UNAUTHORIZED_ROLE
             return CliClearance(identity=identity, refusal=_permission_refusal(identity, role, command_path))
         return CliClearance(identity=identity, refusal=None)

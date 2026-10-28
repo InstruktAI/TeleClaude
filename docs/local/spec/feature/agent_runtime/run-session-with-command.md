@@ -294,8 +294,8 @@ Then it is rejected with "role '<caller>' cannot dispatch <procedure> (requires 
 
 ```
 Given a caller carrying the integrator role
-When it dispatches a worker-class procedure (e.g. the review-commits procedure for the commits it merged)
-Then dispatch is permitted — the integrator holds `dispatch-worker` and is full-reach
+When it dispatches a focused-class procedure (e.g. the review-commits procedure for the commits it merged)
+Then dispatch is permitted — the integrator holds `dispatch-focused` and is full-reach
 And a full-reach caller is permitted every target class
 ```
 
@@ -304,15 +304,15 @@ And a full-reach caller is permitted every target class
 ```
 Given a caller carrying the orchestrator system role
 When it dispatches the integrator-role command (/integrate), for example to clear a blocked repo-root sync
-Then dispatch is permitted — the orchestrator's grant covers worker, orchestrator, and integrator roles
+Then dispatch is permitted — the orchestrator's grant covers focused, orchestrator, and integrator roles
 And the integrator's singleton lease still decides whether the new session drains or yields
 ```
 
 #### UC-DPE1: A contained role with a dispatch grant starts only its granted class
 
 ```
-Given a caller whose role is not full-reach and holds `dispatch-worker`
-When it dispatches a worker-class procedure
+Given a caller whose role is not full-reach and holds `dispatch-focused`
+When it dispatches a focused-class procedure
 Then dispatch is permitted
 And when it dispatches a procedure declaring a role of another class
 Then it is rejected naming the dispatch privilege it lacks
@@ -396,9 +396,10 @@ Neither creates a session.
 
 For a todo in a project on the GitHub workflow store, the driver-start conflict
 also names the computer running the holding session, or the computers that did
-not answer. A request whose admission cannot be decided — no unique live master
-holding the project, no answer from it, or no decision within the start budget
-— returns HTTP 503 with a detail naming why, and creates no session.
+not answer. A request whose admission cannot be decided — made on a computer
+that is not the project's active computer, a project naming no active computer
+or one whose active computer cannot be read, or no decision within the start
+budget — returns HTTP 503 with a detail naming why, and creates no session.
 
 #### UC-DSD3: A second commit reviewer for the same driver, project, and mode is refused
 

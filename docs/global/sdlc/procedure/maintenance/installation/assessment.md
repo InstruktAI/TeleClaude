@@ -1,8 +1,8 @@
 ---
 description: "Assess the release an install made live on the installation's own computer:
-  read its status, the log window from the earliest owed install through the verified
-  start, and its health; repair forward or roll back while that is still offered;
-  record the assessment."
+  read its status, the log window from the time the activating event names through the
+  verified start, and its health; repair forward or roll back while that is still offered;
+  record the assessment for the install the event names."
 visibility: public
 ---
 
@@ -17,8 +17,10 @@ owes this assessment, whatever reached it: channel convergence, an explicit
 
 ## Preconditions
 
-- The activating event announces that an install is owed an assessment.
-- `telec app status` lists every owed install by number and revision.
+- The activating event announces that an install is owed an assessment, and
+  names its number, revision and the time it became owed.
+- `telec app status` says whether an assessment is owed and since when. At most
+  one install is owed: a newer install supersedes it.
 - `telec app status`, `telec app rollback`, `telec app assessed` and
   `instrukt-ai-logs` are available.
 
@@ -26,7 +28,7 @@ owes this assessment, whatever reached it: channel convergence, an explicit
 
 1. **Confirm an assessment is owed.** Read `telec app status`. When no install
    is owed an assessment, the event is satisfied; end the activation.
-2. **Read the window.** Read the logs from the earliest owed install through
+2. **Read the window.** Read the logs from the time the event names through
    the verified start of the active release and onwards to now, and the
    platform's health as `telec app status` reports it. A queued install or an
    accepted restart is not a healthy result; judge the running release.
@@ -36,14 +38,14 @@ owes this assessment, whatever reached it: channel convergence, an explicit
    A defect in the source becomes a bug or todo in the project it belongs to;
    it is never fixed in the installed release.
 4. **Record the assessment.** Run `telec app assessed <install>` with the
-   number of the newest owed install the window covered, as `telec app status`
-   lists it. It discharges that install and every earlier one, and keeps a
-   later install owed.
+   number the event names. It discharges that install. When a newer install
+   has superseded it meanwhile, the command refuses, and the newer install's
+   own event activates its assessment.
 
 ## Outputs
 
-- Every owed install up to the assessed install is discharged, with recovery
-  performed or a bug or todo filed for what remains.
+- The owed install is discharged, with recovery performed or a bug or todo
+  filed for what remains.
 
 ## Recovery
 

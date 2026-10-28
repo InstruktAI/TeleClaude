@@ -34,7 +34,9 @@ from teleclaude.api.session_route_helpers import http_exception_for_relay_failur
 from teleclaude.api.work_feedback import declared_refusal_response
 from teleclaude.caller_identity import RelayedAct, cleared_command_path
 from teleclaude.config.machine import config
+from teleclaude.constants import SESSION_START_RELAY_DEADLINE_S
 from teleclaude.core.command_dispatch import (
+    RELAY_REQUEST_TIMEOUT_S,
     RelayFailure,
     RemoteDispatchError,
     RemoteDispatchReason,
@@ -53,6 +55,8 @@ logger = get_logger(__name__)
 type JsonObject = dict[str, object]  # guard: loose-dict - a request body is route-defined JSON
 
 _DETAIL_FIELD = "detail"
+# The routes that start a session; their carried request may take driver admission's whole start budget.
+_SESSION_START_PATHS: Final = frozenset({"/sessions", "/sessions/run"})
 _COMPUTER_PARAM = "computer"
 _CONTENT_TYPE_HEADER = "content-type"
 _DIRECT_FIELDS: Final = ("direct", "close_link")
@@ -183,6 +187,13 @@ def _relayed_response(result: object, computer: str) -> Response:
     return response
 
 
+def _relay_deadline_s(request: Request) -> float:
+    """A start's longer deadline for a request that starts a session; the carrier's default for every other one."""
+    if request.method == HTTPMethod.POST and request.url.path in _SESSION_START_PATHS:
+        return SESSION_START_RELAY_DEADLINE_S
+    return RELAY_REQUEST_TIMEOUT_S
+
+
 async def _carry(request: Request, target: str, identity: CallerIdentity, raw_body: bytes) -> Response:
     """Carry the request to the computer it names and return that computer's response."""
     if get_relayed_caller() is not None:
@@ -208,6 +219,7 @@ async def _carry(request: Request, target: str, identity: CallerIdentity, raw_bo
             principal=principal,
             caller_session_id=identity.session_id or None,
             cleared_command=cleared_command_path(cleared) if cleared else None,
+            deadline_s=_relay_deadline_s(request),
         )
     except RelayFailure as failure:
         return relay_failure_response(failure)

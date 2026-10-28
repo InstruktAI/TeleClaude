@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -11,6 +12,11 @@ _HEARTBEAT_KEY_PREFIX = "computer:"
 _HEARTBEAT_KEY_SUFFIX = ":heartbeat"
 _HEARTBEAT_KEY_ENCODING = "utf-8"
 CONVERSATION_ADAPTERS_FIELD = "conversation_adapters"
+PROJECTS_DIGEST_FIELD = "projects_digest"
+# The digest hashes one canonical text, so equal payloads give equal digests on every computer.
+_COMPACT_JSON_SEPARATORS = (",", ":")
+# The refresh data type one projects-with-todos pull answers; shared by the refresh and its invalidation.
+PROJECTS_DATA_TYPE = "projects"
 _COMPUTER_NAME_FIELD = "computer_name"
 _USER_FIELD = "user"
 _HOST_FIELD = "host"
@@ -46,6 +52,12 @@ def heartbeat_key(computer_name: str) -> str:
 def heartbeat_scan_pattern() -> bytes:
     """Return the Redis SCAN pattern matching every computer heartbeat."""
     return f"{_HEARTBEAT_KEY_PREFIX}*{_HEARTBEAT_KEY_SUFFIX}".encode(_HEARTBEAT_KEY_ENCODING)
+
+
+def projects_digest(payload: object) -> str:
+    """Fingerprint of a computer's projects-with-todos answer: equal digests mean equal answers."""
+    canonical = json.dumps(payload, sort_keys=True, separators=_COMPACT_JSON_SEPARATORS, default=str)
+    return hashlib.sha256(canonical.encode(_HEARTBEAT_KEY_ENCODING)).hexdigest()
 
 
 def decode_heartbeat_payload(payload: bytes) -> Mapping[str, object] | None:
@@ -85,9 +97,10 @@ async def lookup_peer_address(computer_name: str) -> PeerAddress | PeerNotOnline
         create_redis_client,
     )
 
-    redis_config = config.redis
+    redis_config = config.redis.cluster
     redis_client = create_redis_client(
-        redis_config.url,
+        redis_config.required_url(),
+        username=redis_config.username,
         password=redis_config.password,
         max_connections=redis_config.max_connections,
         socket_timeout=redis_config.socket_timeout,

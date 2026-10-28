@@ -16,6 +16,7 @@ from redis.asyncio import Redis
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config.machine import config
 from teleclaude.constants import REDIS_REFRESH_COOLDOWN_SECONDS
+from teleclaude.core.models._types import JsonDict
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 from ._adapter_noop import _AdapterNoopMixin
@@ -24,7 +25,13 @@ from ._heartbeat import _HeartbeatMixin
 from ._messaging import _MessagingMixin
 from ._peers import _PeersMixin
 from ._pull import _PullMixin
-from ._refresh import _RefreshMixin
+from ._refresh import (
+    DIGEST_CHANGED_REASON,
+    FIRST_HEARTBEAT_REASON,
+    OBSERVED_STOP_REASON,
+    STARTUP_REASON,
+    _RefreshMixin,
+)
 from ._request_response import _RequestResponseMixin
 
 if TYPE_CHECKING:
@@ -63,7 +70,7 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
     - Comp2 → XADD output:{computer}:{message_id} → Comp1 reads response for request/response
     """
 
-    _ALLOWED_REFRESH_REASONS = {"startup", "first_heartbeat", "ttl", "observed_stop"}
+    _ALLOWED_REFRESH_REASONS = {STARTUP_REASON, FIRST_HEARTBEAT_REASON, OBSERVED_STOP_REASON, DIGEST_CHANGED_REASON}
 
     def __init__(self, adapter_client: AdapterClient, task_registry: TaskRegistry):
         """Initialize Redis transport.
@@ -93,18 +100,19 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._redis_last_error: str | None = None
 
         # Extract Redis configuration from global config
-        self.redis_url = config.redis.url
-        self.redis_password = config.redis.password
+        self.redis_url = config.redis.cluster.required_url()
+        self.redis_username = config.redis.cluster.username
+        self.redis_password = config.redis.cluster.password
         self.computer_name = config.computer.name
 
         # Redis connection settings
-        self.max_connections = config.redis.max_connections
-        self.socket_timeout = config.redis.socket_timeout
+        self.max_connections = config.redis.cluster.max_connections
+        self.socket_timeout = config.redis.cluster.socket_timeout
 
         # Stream configuration
-        self.message_stream_maxlen = config.redis.message_stream_maxlen
-        self.output_stream_maxlen = config.redis.output_stream_maxlen
-        self.output_stream_ttl = config.redis.output_stream_ttl
+        self.message_stream_maxlen = config.redis.cluster.message_stream_maxlen
+        self.output_stream_maxlen = config.redis.cluster.output_stream_maxlen
+        self.output_stream_ttl = config.redis.cluster.output_stream_ttl
 
         # Heartbeat config
         self.heartbeat_interval = 30  # Send heartbeat every 30s
@@ -116,7 +124,17 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
         # Track successful first-heartbeat bootstraps per peer and data type.
         self._bootstrapped: set[tuple[str, str]] = set()
 
-        # Remote refresh coalescing (per peer + data type)
+        # Digest-driven projects refresh: this computer's advertised digest, and per peer the digest it
+        # advertised when its projects were last pulled.
+        self._local_projects_digest: str | None = None
+        # The projects-with-todos answer the digest was computed from; a peer's pull is answered with it.
+        self._local_projects_payload: list[JsonDict] | None = None
+        # Reads dropped for their age since the last summary, and when that run began.
+        self._expired_reads = 0
+        self._expired_reads_since: float | None = None
+        self._pulled_projects_digest: dict[str, str] = {}
+
+        # Remote refresh coalescing per peer and data type; projects, todos and preparation share one key.
         self._refresh_cooldown_seconds = REDIS_REFRESH_COOLDOWN_SECONDS
         self._refresh_last: dict[str, float] = {}
         self._refresh_tasks: dict[str, asyncio.Task[object]] = {}

@@ -93,21 +93,15 @@ occupies it, and that reservation is what makes control recognition sound: a
 control test can never match authored content, and content can never be mistaken
 for machine text.
 
-| Header                                                                  | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
-| ----------------------------------------------------------------------- | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
-| `[TeleClaude Notification]`                                             | legacy notification entries   | control  | paired      | no               | no                         |
-| `[TeleClaude Wake]`                                                     | control-delivery idle wake    | control  | auto-closed | no               | no                         |
-| `[TeleClaude Restart Continuation]`                                     | historical restart entries    | control  | paired      | no               | no                         |
-| `[TeleClaude Handoff]`                                                  | agent handoff continuation    | control  | paired      | no               | no                         |
-| `[TeleClaude Checkpoint]`                                               | checkpoint surface            | control  | paired      | no               | no                         |
-| `[Peer (session · author-token · utc-minute)]`                          | peer segment header           | identity | paired      | yes              | yes                        |
-| `[Orchestrator (session) on computer · utc-minute · occurrence-key]`    | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Integrator (session) on computer · utc-minute · occurrence-key]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[System (session) on computer · utc-minute · occurrence-key]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Worker (session) on computer · utc-minute · occurrence-key]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Tasker (session) on computer · utc-minute · occurrence-key]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Job Runner (session) on computer · utc-minute · occurrence-key]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Agent - <agent> (session) on computer · utc-minute · occurrence-key]` | caller-origin identity header | identity | paired      | yes              | yes                        |
+| Header                                                          | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
+| --------------------------------------------------------------- | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
+| `[TeleClaude Notification]`                                     | legacy notification entries   | control  | paired      | no               | no                         |
+| `[TeleClaude Wake]`                                             | control-delivery idle wake    | control  | auto-closed | no               | no                         |
+| `[TeleClaude Restart Continuation]`                             | historical restart entries    | control  | paired      | no               | no                         |
+| `[TeleClaude Handoff]`                                          | agent handoff continuation    | control  | paired      | no               | no                         |
+| `[TeleClaude Checkpoint]`                                       | checkpoint surface            | control  | paired      | no               | no                         |
+| `[Peer (session · author-token · utc-minute)]`                  | peer segment header           | identity | paired      | yes              | yes                        |
+| `[<label> (session) on computer · utc-minute · occurrence-key]` | caller-origin identity header | identity | paired      | yes              | yes                        |
 
 Restart continuation is a semantic control envelope at the runtime hook
 boundary. Its paired bracket form is recognized for historical transcript
@@ -129,6 +123,13 @@ the opaque durable key already owned by the accepted input row; it correlates th
 envelope to that occurrence and carries no author fields or attribution authority.
 Both values are rendered once into the opening and the paired close is derived
 from it, so the two never disagree.
+
+The label names who is speaking: `Agent` for a session running an agent, whose
+category carries the agent and the session's role; the session's own role name
+for a session that carries a role and runs no agent; `System` for the daemon.
+The label is a field of the shape, like the session and the computer: any label
+in this shape is a caller-origin header, and recognition never checks it against
+a list.
 
 During mixed-version operation, the caller opening recognizer accepts both the
 keyed and preceding keyless shape. An upgraded target canonicalizes a keyless
@@ -212,8 +213,8 @@ header prose.
 
 That resolution happens once per event, and every surface renders from the one
 result: the pane header an agent reads and the alias a human sees on Discord
-present the same identity — agent primary, job role as qualifier, a
-machine-role label only for a session running no agent. Two surfaces
+present the same identity — agent primary, job role as qualifier, the
+role name alone only for a session running no agent. Two surfaces
 disagreeing about who spoke is a defect in the rendering, never two truths.
 
 **Human-facing copy omits identity-header framing on every lane.** Identity

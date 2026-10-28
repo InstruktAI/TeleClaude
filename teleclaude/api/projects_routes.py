@@ -9,11 +9,13 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException
 from instrukt_ai_logging import get_logger
+from pydantic import BaseModel, ConfigDict, Field
 
 from teleclaude.api.auth import (
     CallerIdentity,
     caller_for_role_resolution,
     carried_caller,
+    require_clearance,
     require_clearance_at_caller_person,
 )
 from teleclaude.api.work_feedback import DeclaredWorkRefusal
@@ -29,8 +31,13 @@ from teleclaude.core.configuration_clearance import (
     standing_for_caller,
 )
 from teleclaude.core.events import ProjectRefreshTrigger
+from teleclaude.core.inbound.fleet import known_computer_names
 from teleclaude.core.models import ProjectInfo
+from teleclaude.core.next_machine.runtime.sessions import is_github_backed
+from teleclaude.core.workflow_store.github_active_computer import read_active_computer, write_active_computer
+from teleclaude.core.workflow_store.github_io_transport import GitHubIORefused
 from teleclaude.identity_reach import resolve_reach
+from teleclaude.project_root import resolve_project_root
 from teleclaude.project_setup.init_flow import ProjectIdentityConflict, ProjectInitializationTrigger
 from teleclaude.services.project_catalog import get_project_catalog_service
 
@@ -40,6 +47,14 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _PROJECT_ADOPT_COMMAND = "telec config project adopt"
+_ACTIVE_COMPUTER_SHOW_COMMAND = "telec projects active-computer show"
+_ACTIVE_COMPUTER_SET_COMMAND = "telec projects active-computer set"
+_NOT_GITHUB_BACKED = "{project} is not on the GitHub workflow store; only such a project names an active computer"
+_UNKNOWN_COMPUTER = "{computer} is not a computer this fleet knows: {known}"
+_COMPUTER_SEPARATOR = ", "
+_ACTIVE_COMPUTER_SET_EVENT = "project_active_computer_set"
+_HTTP_BAD_REQUEST = 400
+_HTTP_BAD_GATEWAY = 502
 _PROJECT_ADOPTION_REFUSED = "project adoption refused — required standing: {required_standing} ({reason})"
 _PROJECT_PATH_REQUIRED = "project path must be an absolute path"
 _PROJECT_PATH_FILE = "project path names a file"
@@ -58,6 +73,24 @@ ProjectRefresh = Callable[[ProjectRefreshTrigger], Awaitable[None]]
 _REFRESH: dict[str, ProjectRefresh | None] = {"value": None}
 
 router = APIRouter()
+
+
+class ActiveComputerRequest(BaseModel):
+    """Request to name a GitHub-backed project's active computer."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    cwd: str = Field(..., min_length=1)
+    computer: str | None = None
+
+
+class ActiveComputerDTO(BaseModel):
+    """A GitHub-backed project and the computer it names as active, if any."""
+
+    model_config = ConfigDict(frozen=True)
+
+    project: str
+    computer: str | None
 
 
 def configure(cache: DaemonCache | None, refresh_local_projects: ProjectRefresh | None = None) -> None:
@@ -154,6 +187,46 @@ def _remove_created_directories(directories: list[Path]) -> None:
             directory.rmdir()
         except OSError as exc:
             logger.info(_PROJECT_CREATE_LOG, path=str(directory), error=str(exc))
+
+
+def _github_project_root(cwd: str) -> Path:
+    root = resolve_project_root(cwd)
+    if not is_github_backed(root):
+        raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=_NOT_GITHUB_BACKED.format(project=root))
+    return root
+
+
+@router.get("/projects/active-computer", response_model=ActiveComputerDTO)
+async def get_active_computer(
+    cwd: str, _identity: CallerIdentity = Depends(require_clearance(_ACTIVE_COMPUTER_SHOW_COMMAND))
+) -> ActiveComputerDTO:
+    """The computer the GitHub-backed project at ``cwd`` names as active, read from its repository variable."""
+    root = _github_project_root(cwd)
+    try:
+        active = await read_active_computer(root)
+    except GitHubIORefused as refused:
+        raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(refused)) from refused
+    return ActiveComputerDTO(project=str(root), computer=active)
+
+
+@router.post("/projects/active-computer", response_model=ActiveComputerDTO)
+async def set_active_computer(
+    request: ActiveComputerRequest,
+    _identity: CallerIdentity = Depends(require_clearance(_ACTIVE_COMPUTER_SET_COMMAND)),
+) -> ActiveComputerDTO:
+    """Name this computer, or the requested one, as the GitHub-backed project's active computer."""
+    root = _github_project_root(request.cwd)
+    computer = request.computer or config.computer.name
+    known = known_computer_names()
+    if computer not in known:
+        detail = _UNKNOWN_COMPUTER.format(computer=computer, known=_COMPUTER_SEPARATOR.join(sorted(known)))
+        raise HTTPException(status_code=_HTTP_BAD_REQUEST, detail=detail)
+    try:
+        await write_active_computer(root, computer)
+    except GitHubIORefused as refused:
+        raise HTTPException(status_code=_HTTP_BAD_GATEWAY, detail=str(refused)) from refused
+    logger.info(_ACTIVE_COMPUTER_SET_EVENT, project=str(root), computer=computer)
+    return ActiveComputerDTO(project=str(root), computer=computer)
 
 
 @router.post("/projects", response_model=ProjectDTO)

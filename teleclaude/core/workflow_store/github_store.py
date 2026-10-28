@@ -333,7 +333,7 @@ def set_github_workflow_store_hook(hook: Callable[[WorkflowStore, str], None] | 
 
 async def get_github_workflow_store(project_root_or_cwd: str | Path) -> WorkflowStore:
     """Resolve one cached GitHub store and rebuild its first working copy."""
-    root, identity, assignment = _resolve_selection(project_root_or_cwd)
+    root, identity, assignment = resolve_github_store_selection(project_root_or_cwd)
     key = str(github_working_copy_path(root))
     lock = _lock_for(key)
     await asyncio.to_thread(lock.acquire)
@@ -358,7 +358,7 @@ async def get_github_workflow_store(project_root_or_cwd: str | Path) -> Workflow
 
 def get_github_workflow_store_sync(project_root_or_cwd: str | Path) -> WorkflowStore:
     """Synchronous resolver sharing the canonical-root cache with async callers."""
-    root, identity, assignment = _resolve_selection(project_root_or_cwd)
+    root, identity, assignment = resolve_github_store_selection(project_root_or_cwd)
     key = str(github_working_copy_path(root))
     lock = _lock_for(key)
     lock.acquire()
@@ -524,7 +524,7 @@ async def surface_github_question(
     await store.surface_question(slug, session_id, role, message, session_link, recipients)
 
 
-def _resolve_selection(
+def resolve_github_store_selection(
     project_root_or_cwd: str | Path,
 ) -> tuple[Path, GitHubRepositoryIdentity, GitHubActorAssignment]:
     identity = resolve_github_repository_identity(project_root_or_cwd)

@@ -274,7 +274,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_COMPUTER,
                 ],
                 auth=CommandAuth(
-                    capability=Capability.PEER_TALK,
+                    capability=Capability.TRANSCRIPT_READ,
                     human=_HR_MEMBER,
                     scope=CommandScope.TARGET_SESSION,
                 ),
@@ -483,6 +483,41 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     human=_HR_MEMBER,
                     scope=CommandScope.PLATFORM,
                 ),
+            ),
+            "active-computer": CommandDef(
+                desc="The one computer a GitHub-backed project's lifecycle runs on",
+                notes=[
+                    "The project in the current directory, or the one --project-root names, names it in a repository variable; only that computer starts its orchestrators and writes its claims.",
+                    "Other computers refuse a start, naming the active computer. Working elsewhere means setting it there first.",
+                ],
+                subcommands={
+                    "show": CommandDef(
+                        desc="Show the project's active computer",
+                        args="[--project-root <path>]",
+                        flags=[F.FLAG_HELP, F.FLAG_TODO_PROJECT_ROOT],
+                        examples=[
+                            "telec projects active-computer show",
+                            "telec projects active-computer show --project-root <path>",
+                        ],
+                        auth=CommandAuth(
+                            capability=Capability.TODO_READ, human=_HR_MEMBER, scope=CommandScope.PLATFORM
+                        ),
+                    ),
+                    "set": CommandDef(
+                        desc="Make this computer, or the named one, the project's active computer",
+                        args="[--computer <host>] [--project-root <path>]",
+                        flags=[F.FLAG_HELP, F.FLAG_COMPUTER, F.FLAG_TODO_PROJECT_ROOT],
+                        notes=[
+                            "A deliberate act: a running orchestrator stays with its session's computer until it ends."
+                        ],
+                        examples=[
+                            "telec projects active-computer set",
+                            "telec projects active-computer set --computer <computer>",
+                            "telec projects active-computer set --computer <computer> --project-root <path>",
+                        ],
+                        auth=CommandAuth(human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                    ),
+                },
             ),
         },
     ),
@@ -1621,13 +1656,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "search": CommandDef(
                 desc="Search agent session transcripts",
-                args="[terms...] [--agent <name>] [--computer <host>] [--identity <value>] [--project <path>] [--limit <n>] [--include-workers] [--json]",
+                args="[terms...] [--agent <name>] [--computer <host>] [--identity <value>] [--project <path>] [--limit <n>] [--include-focused] [--json]",
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_HISTORY_AGENT,
                     F.FLAG_COMPUTER_MANY,
                     F.FLAG_HISTORY_LIMIT,
-                    F.FLAG_HISTORY_INCLUDE_WORKERS,
+                    F.FLAG_HISTORY_INCLUDE_FOCUSED,
+                    F.FLAG_HISTORY_INCLUDE_WORKERS_ALIAS,
                     F.FLAG_HISTORY_IDENTITY,
                     F.FLAG_PROJECT_FILTER,
                     F.FLAG_HISTORY_JSON,
@@ -1635,7 +1671,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 examples=[
                     "telec history search config wizard",
                     "telec history search --agent claude,codex bug fix",
-                    "telec history search --include-workers tui",
+                    "telec history search --include-focused tui",
                 ],
                 literal_dash_tokens=True,
                 auth=CommandAuth(capability=Capability.SESSION_OBSERVE, human=_HR_MEMBER),
@@ -2103,9 +2139,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<install>",
                 flags=[F.FLAG_HELP],
                 notes=[
-                    "`<install>` is the number `telec app status` lists for an owed install. It discharges that install and every earlier owed one.",
-                    "A later install stays owed, a later attempt at the same revision included.",
-                    "Refuses, naming the owed installs, when none carries that number, and while the daemon does not serve the active release.",
+                    "`<install>` is the number the owed-assessment announcement names. It discharges that install.",
+                    "At most one install is owed: a newer install supersedes it, and assessing the superseded one is refused.",
+                    "Refuses, naming the owed install, when it carries another number, and while the daemon does not serve the active release.",
                 ],
                 examples=["telec app assessed 3"],
                 auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
@@ -2177,6 +2213,8 @@ SESSIONS_FILE = CLI_SURFACE["sessions"].subcommands["file"]
 SESSIONS_ESCALATE = CLI_SURFACE["sessions"].subcommands["escalate"]
 
 PROJECTS_LIST = CLI_SURFACE["projects"].subcommands["list"]
+PROJECTS_ACTIVE_COMPUTER_SHOW = CLI_SURFACE["projects"].subcommands["active-computer"].subcommands["show"]
+PROJECTS_ACTIVE_COMPUTER_SET = CLI_SURFACE["projects"].subcommands["active-computer"].subcommands["set"]
 AGENTS_STATUS = CLI_SURFACE["agents"].subcommands["status"]
 
 JOBS_REPORT = CLI_SURFACE["jobs"].subcommands[JobsSubcommand.REPORT.value]

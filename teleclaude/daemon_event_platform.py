@@ -60,6 +60,8 @@ from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
 from teleclaude.events.processor import STREAM_NAME as PLATFORM_STREAM_NAME
 from teleclaude.events.references import ComputerRef
 from teleclaude.events.schemas.system import DaemonRestarted, DaemonRestartedData, RuntimeSessionStatusData
+from teleclaude.events.scope import ScopedClients
+from teleclaude.events.scoped_redis import close_scoped_clients, local_redis_configured, scoped_redis_clients
 from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, LegacyFacts
 from teleclaude.hooks.dispatcher import HookDispatcher
 from teleclaude.hooks.github_handler import GitHubCommentEvent, handle_github_event
@@ -80,7 +82,6 @@ from teleclaude.transport.internal_event_compat import (
     decode_compat_ingress_context,
     internal_event_entry_codec,
 )
-from teleclaude.transport.redis_client import create_redis_client
 from teleclaude.types.commands import CloseSessionCommand
 
 if TYPE_CHECKING:
@@ -93,6 +94,23 @@ if TYPE_CHECKING:
 _GITHUB_COMMENT_HANDLER = "github_comment_routing"
 _GITHUB_COMMENT_CONTRACT = "builtin-github-comment-routing"
 logger = get_logger(__name__)
+
+_REDIS_UNCONFIGURED_ERROR = "Event platform startup failed: config.redis.cluster.url is empty"
+# A computer without its own local Redis carries its local events on the cluster Redis.
+_LOCAL_REDIS_UNCONFIGURED_EVENT = "local_redis_unconfigured_local_events_on_cluster"
+
+
+async def _ping_both(clients: ScopedClients[Any]) -> None:
+    """Confirm each scope's Redis answers before any reader or producer relies on it."""
+    for client in clients.distinct():
+        await client.ping()
+
+
+async def _close_both(clients: ScopedClients[Any]) -> None:
+    """Close each scope's client and its owned pool."""
+    await close_scoped_clients(clients)
+
+
 _EVENT_DB_REQUIRED_FOR_PIPELINE_CONTEXT = "_build_pipeline_context always runs after _init_event_db_storage"
 _RELAY_DELIVERY_PROCESSOR_NAME = "relay-delivery"
 _RELAY_DELIVERY_GROUP_PREFIX = "relay-delivery-"
@@ -141,7 +159,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _fleet_capability_map_provider: Callable[[], FleetCapabilityMap] | None
         _event_catalog: EventCatalog | None
         _event_producer: EventProducer | None
-        _event_redis_client: object | None
+        _event_redis_client: ScopedClients[Any] | None
         _event_platform_status: _EventPlatformStatus
         task_registry: TaskRegistry
         _event_consumer_tasks: tuple[SupervisedTask, ...]
@@ -168,57 +186,53 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._event_db = await get_event_db()
         logger.info("EventDB initialized")
 
-    async def _open_event_redis_client(self) -> object:
-        """Open the event platform's owned connection independently of adapter startup."""
-        redis_configured = bool(config.redis.url)
-        if not redis_configured:
-            raise RuntimeError("Event platform startup failed: config.redis.url is empty")
+    async def _open_event_redis_client(self) -> ScopedClients[Any]:
+        """Open the event platform's owned clients of both scopes' Redis independently of adapter startup."""
+        if not config.redis.cluster.url:
+            raise RuntimeError(_REDIS_UNCONFIGURED_ERROR)
+        if not local_redis_configured():
+            logger.warning(_LOCAL_REDIS_UNCONFIGURED_EVENT, computer=config.computer.name)
         if self._event_redis_client is not None:
-            redis_client = self._event_redis_client
+            clients = self._event_redis_client
             try:
-                await cast(Any, redis_client).ping()
+                await _ping_both(clients)
             except Exception:
-                await cast(Any, redis_client).aclose()
+                await _close_both(clients)
                 self._event_redis_client = None
                 raise
-            return redis_client
-        redis_client = create_redis_client(
-            config.redis.url,
-            password=config.redis.password,
-            max_connections=config.redis.max_connections,
-            socket_timeout=config.redis.socket_timeout,
-        )
+            return clients
+        clients = scoped_redis_clients()
         try:
-            await cast(Any, redis_client).ping()
+            await _ping_both(clients)
         except Exception:
-            await cast(Any, redis_client).aclose()
+            await _close_both(clients)
             raise
-        self._event_redis_client = redis_client
-        return redis_client
+        self._event_redis_client = clients
+        return clients
 
     async def _close_event_platform_redis(self) -> None:
-        """Close the event platform's owned Redis pool after every consumer has settled."""
-        redis_client = self._event_redis_client
+        """Close the event platform's owned Redis pools after every consumer has settled."""
+        clients = self._event_redis_client
         self._event_redis_client = None
-        if redis_client is not None:
-            await cast(Any, redis_client).aclose()
+        if clients is not None:
+            await _close_both(clients)
 
     def _live_capability_map(self) -> FleetCapabilityMap | None:
         """The daemon's current fleet capability map; none until the cluster bridge is attached."""
         provider = self._fleet_capability_map_provider
         return provider() if provider is not None else None
 
-    def _configure_event_producer(self, redis_client: object) -> EventProducer:
+    def _configure_event_producer(self, redis_clients: ScopedClients[Any]) -> EventProducer:
         """Build and register the event producer."""
 
         resolver = EnvelopeFactResolver(session_id=lambda: None, ownership_index=load_project_ownership_index)
         event_producer = EventProducer(
-            redis_client=redis_client,
+            redis_clients=redis_clients,
             fact_resolver=resolver,
             contraction_answer=contraction_answer_from_live_map(self._live_capability_map),
         )
         runtime_event_producer = EventProducer(
-            redis_client=redis_client,
+            redis_clients=redis_clients,
             fact_resolver=resolver,
             contraction_answer=contraction_answer_from_live_map(self._live_capability_map),
             stream=INTERNAL_EVENT_STREAM,
@@ -259,7 +273,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             return
         logger.info(_RETIRED_GROUP_DESTROYED_EVENT, group=group)
 
-    async def _prepare_event_consumer_runtimes(self, redis_client: object) -> None:
+    async def _prepare_event_consumer_runtimes(self, redis_clients: ScopedClients[Any]) -> None:
         """Build and prepare both source sets without allowing a handler to execute."""
         assert self._event_db is not None  # initialized by _start_event_platform_prepare
         platform_consumers = self._event_consumers()
@@ -277,7 +291,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         if len(names) != len(set(names)):
             raise ValueError(_DUPLICATE_RUNTIME_CONSUMER_NAMES_ERROR)
         await prepare_internal_event_handover(
-            redis_client,
+            redis_clients.cluster,
             stream=INTERNAL_RUNTIME_EVENT_STREAM,
             computer=config.computer.name,
             consumers=[consumer for consumer in runtime_consumers if consumer.delivery is ConsumerDelivery.RETAINED],
@@ -285,13 +299,13 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         )
         platform_runtime = ConsumerRuntime(
             platform_consumers,
-            redis_client=redis_client,
+            redis_clients=redis_clients,
             db=self._event_db,
             computer=config.computer.name,
         )
         runtime_runtime = ConsumerRuntime(
             runtime_consumers,
-            redis_client=redis_client,
+            redis_clients=redis_clients,
             db=self._event_db,
             computer=config.computer.name,
             stream=INTERNAL_RUNTIME_EVENT_STREAM,
@@ -365,9 +379,11 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     async def _prepare_relay_delivery_consumer(self, dispatcher: HookDispatcher) -> None:
         """Prepare the relay reader position before any ingress can publish to its stream."""
-        redis_client = self._event_redis_client
-        if redis_client is None:
+        clients = self._event_redis_client
+        if clients is None:
             raise RuntimeError("Relay delivery reader requires the event platform Redis connection")
+        # Relayed events are cluster events: they enter on the ingress computer for every computer's reader.
+        redis_client = clients.cluster
         computer_label = config.computer.name
         reliability = config.event_reliability
         processor = EventProcessor(
@@ -443,17 +459,17 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     async def _start_event_platform_prepare(self) -> None:
         """Prepare the owned producer, both reader positions, and ingress boundary before startup producers run."""
-        redis_configured = bool(config.redis.url)
+        redis_configured = bool(config.redis.cluster.url)
         self._event_platform_status = _EventPlatformStatus(redis_configured=redis_configured)
         await self._init_event_db_storage()
         event_catalog = build_default_catalog()
         self._event_platform_status.pending_recovery_progress = "reader_positions_preparing"
-        redis_client = await self._open_event_redis_client()
+        redis_clients = await self._open_event_redis_client()
         self._event_platform_status.redis_reachable = True
-        event_producer = self._configure_event_producer(redis_client)
+        event_producer = self._configure_event_producer(redis_clients)
         self._event_catalog = event_catalog
         self._event_producer = event_producer
-        await self._prepare_event_consumer_runtimes(redis_client)
+        await self._prepare_event_consumer_runtimes(redis_clients)
         try:
             await self._init_webhook_service()
         except Exception:
@@ -488,10 +504,12 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     async def _start_event_consumers(self) -> None:
         """Start the event platform's consumer tasks after the API socket is bound."""
-        redis_client = self._event_redis_client
+        clients = self._event_redis_client
         event_producer = self._event_producer
         assert event_producer is not None  # built by _start_event_platform_prepare
-        await self._destroy_retired_system_group(redis_client)
+        assert clients is not None  # opened by _start_event_platform_prepare
+        # The retired pipeline's group is on the cluster Redis.
+        await self._destroy_retired_system_group(clients.cluster)
         computer_label = config.computer.name
         await self._run_conversation_memory_transition()
         self._start_event_consumers_runtime()

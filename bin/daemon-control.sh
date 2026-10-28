@@ -46,7 +46,7 @@ API_SOCKET="/tmp/teleclaude-api.sock"
 # threshold and emits warnings instead of failing hard.
 STARTUP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STARTUP_WAIT_S:-15}"
 # Bounded window for the configured Redis to connect at least once. A reachable
-# Redis connects sub-second; exceeding this window means REDIS_URL is misconfigured
+# Redis connects sub-second; exceeding this window means REDIS_CLUSTER_URL is misconfigured
 # or the server is unreachable, and `make start` reports failure.
 REDIS_READY_WAIT_SECONDS="${TELECLAUDE_DAEMON_REDIS_READY_WAIT_S:-15}"
 STOP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STOP_WAIT_S:-25}"
@@ -344,6 +344,17 @@ is_managed_launchd_label() {
     return 1
 }
 
+is_outliving_launchd_label() {
+    local candidate="$1"
+    local label
+    while IFS= read -r label; do
+        if [ "$candidate" = "$label" ]; then
+            return 0
+        fi
+    done < <(outliving_launchd_labels)
+    return 1
+}
+
 installed_teleclaude_launchd_labels() {
     find \
         "$HOME/Library/LaunchAgents" \
@@ -364,7 +375,7 @@ check_managed_launchd_units_complete() {
 
     while IFS= read -r label; do
         [ -n "$label" ] || continue
-        if ! is_managed_launchd_label "$label"; then
+        if ! is_managed_launchd_label "$label" && ! is_outliving_launchd_label "$label"; then
             log_warn "Unmanaged TeleClaude launchd unit installed: $label"
             unknown=1
         fi
@@ -609,7 +620,7 @@ start_daemon() {
         if ! wait_for_redis_ready; then
             stop_startup_log_stream
             log_error "Redis is unreachable: the daemon started but never connected to Redis within ${REDIS_READY_WAIT_SECONDS}s"
-            log_error "Redis is a hard dependency. Verify REDIS_URL points to a reachable server, then re-run 'make start' (see 'telec config wizard')"
+            log_error "Redis is a hard dependency. Verify REDIS_CLUSTER_URL points to a reachable server, then re-run 'make start' (see 'telec config wizard')"
             return 1
         fi
         if [ "$PLATFORM" != "macos" ]; then

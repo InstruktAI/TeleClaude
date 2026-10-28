@@ -10,12 +10,11 @@ visibility: 'public'
 - TTL and scope matrix for cache refresh behavior.
 
 - Computers: global scope, TTL 60s.
-- Projects: per-computer scope, TTL 5m.
-- Todos: per-project scope, TTL 5m.
+- Projects and todos: per-computer scope, no TTL; refreshed by digest (`local/projects/teleclaude/design/architecture/redis-transport`).
 - Sessions: per-computer scope, TTL infinite (event-driven).
 - Agent availability: global scope, TTL 30s.
 
-- TTLs are defined in seconds/minutes as listed above.
+- TTLs are defined in seconds as listed above.
 
 - Sessions are event-driven and do not use TTL refresh.
 
@@ -33,5 +32,5 @@ visibility: 'public'
 
 ## Known caveats
 
-- TTLs are defaults; digest changes can trigger earlier refreshes.
+- Projects and todos are never refreshed because a cached copy aged; a peer is pulled at its first heartbeat and when its advertised digest changes.
 - Sessions ignore TTL and rely solely on events.

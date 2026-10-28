@@ -10,10 +10,15 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
+from teleclaude.constants import CACHE_INVALIDATION_FIELD, CacheEvent
 from teleclaude.core import command_handlers
+from teleclaude.core.models._types import JsonDict
 from teleclaude.transport.peer_heartbeat import (
     CONVERSATION_ADAPTERS_FIELD,
+    PROJECTS_DATA_TYPE,
+    PROJECTS_DIGEST_FIELD,
     heartbeat_key,
+    projects_digest,
 )
 
 logger = get_logger(__name__)
@@ -21,6 +26,9 @@ logger = get_logger(__name__)
 # Failure families the loop hands to ``_handle_redis_error`` (reconnect behavior).
 _HEARTBEAT_RECOVERABLE_ERRORS = (RedisError, OSError, RuntimeError, TypeError, ValueError)
 _HEARTBEAT_SAMPLE_FAILED_EVENT = "heartbeat_sample_failed"
+_PROJECTS_DIGEST_FAILED_EVENT = "projects_digest_failed"
+_COMPUTER_FIELD = "computer"
+_PEER_INVALIDATION_EVENTS = frozenset({CacheEvent.TODOS_UPDATED.value, CacheEvent.PROJECTS_UPDATED.value})
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -30,13 +38,17 @@ if TYPE_CHECKING:
 
 
 class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
-    """Mixin: periodic heartbeat emission and cache-change no-op handler."""
+    """Mixin: periodic heartbeat with the projects digest, and peer invalidation from cache changes."""
 
     if TYPE_CHECKING:
         computer_name: str
         heartbeat_interval: int
         heartbeat_ttl: int
         _running: bool
+        _local_projects_digest: str | None
+        _local_projects_payload: list[JsonDict] | None
+        _pulled_projects_digest: dict[str, str]
+        _bootstrapped: set[tuple[str, str]]
 
         @property
         def cache(self) -> DaemonCache | None:
@@ -69,6 +81,26 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
             except _HEARTBEAT_RECOVERABLE_ERRORS as e:
                 await self._handle_redis_error("Heartbeat failed", e)
 
+    async def _projects_digest_loop(self) -> None:
+        """Background task: keep the projects-with-todos answer that peers pull, and its digest, current.
+
+        It runs apart from the heartbeat because building the answer can take longer than a heartbeat may wait.
+        A peer's pull is answered at once with the answer kept here, which is the one the current digest was
+        computed from. When this pass replaced it after the peer's heartbeat, the peer receives the newer answer
+        and pulls once more at its next heartbeat, as for any digest change.
+        """
+        while self._running:
+            try:
+                payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
+                self._local_projects_digest = projects_digest(payload)
+                self._local_projects_payload = payload
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                # An unreadable local state leaves the last digest in place; the next pass tries again.
+                logger.exception(_PROJECTS_DIGEST_FAILED_EVENT, computer_name=self.computer_name)
+            await asyncio.sleep(self.heartbeat_interval)
+
     async def _send_heartbeat(self) -> None:
         """Publish cross-computer identity + presence timestamp to the heartbeat key.
 
@@ -93,6 +125,8 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
                 "is_master": info.is_master,
                 CONVERSATION_ADAPTERS_FIELD: info.conversation_adapters,
             }
+            if self._local_projects_digest is not None:
+                payload[PROJECTS_DIGEST_FIELD] = self._local_projects_digest
         except _HEARTBEAT_RECOVERABLE_ERRORS:
             raise
         except Exception:
@@ -109,12 +143,19 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         )
         logger.trace("Sent heartbeat for %s", self.computer_name)
 
-    # === Event Push (Phase 5) - DISABLED ===
-
     def _on_cache_change(self, event: str, data: object) -> None:
-        """Handle cache change notifications.
+        """Forget the pulled digest of a peer whose cached projects or todos were invalidated.
 
-        Note: Push-based synchronization is DISABLED to enforce Request/Response architecture.
-        This handler is now a no-op for network traffic.
+        The next heartbeat then pulls the peer once, through its digest or, for a peer that advertises none, its
+        bootstrap, which refills what the invalidation dropped. Only a notification marked as an invalidation
+        counts: the refill itself reports the same events, and reacting to it would pull the peer again on every
+        heartbeat. Nothing is sent from here.
         """
-        _ = (event, data)
+        if event not in _PEER_INVALIDATION_EVENTS or not isinstance(data, dict):
+            return
+        if data.get(CACHE_INVALIDATION_FIELD) is not True:
+            return
+        computer = data.get(_COMPUTER_FIELD)
+        if isinstance(computer, str) and computer != self.computer_name:
+            self._pulled_projects_digest.pop(computer, None)
+            self._bootstrapped.discard((computer, PROJECTS_DATA_TYPE))

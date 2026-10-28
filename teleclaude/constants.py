@@ -682,6 +682,10 @@ MARKDOWN_INLINE_CODE = "`"
 
 
 # Cache/event names
+# Marks a cache notification that drops cached data as stale, as opposed to one that reports data just stored.
+CACHE_INVALIDATION_FIELD = "invalidated"
+
+
 class CacheEvent(str, Enum):
     SESSION_STARTED = "session_started"
     SESSION_UPDATED = "session_updated"
@@ -731,6 +735,8 @@ class UiScope(str, Enum):
 # Redis internal settings
 REDIS_MAX_CONNECTIONS = 50
 REDIS_SOCKET_TIMEOUT = 60  # Increased to accommodate poor network conditions
+# How long an idle stream reader blocks on Redis before it asks again; a socket timeout must outlast it.
+REDIS_STREAM_BLOCK_S: Final = 10
 REDIS_POOL_TIMEOUT: float = 30.0  # Max seconds to wait for a pooled connection before erroring
 REDIS_MESSAGE_STREAM_MAXLEN = 10000  # Max messages to keep per computer
 REDIS_OUTPUT_STREAM_MAXLEN = 10000  # Max output messages per session
@@ -749,3 +755,10 @@ AgentProtocolDict = agent_registry.AgentProtocolDict
 AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
     name.value: definition.protocol for name, definition in agent_registry.AGENT_REGISTRY.items()
 }
+
+
+# A request that starts a session may spend driver admission's whole start budget before the session is created,
+# so every caller that starts one waits at least this long. A start carried to another computer gets a deadline
+# inside it, so its answer returns before the caller stops waiting.
+SESSION_START_TIMEOUT_S: Final = 90.0
+SESSION_START_RELAY_DEADLINE_S: Final = 80.0

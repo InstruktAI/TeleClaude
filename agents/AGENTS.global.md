@@ -72,6 +72,8 @@ Additionally, load the language-specific policy for the code you are touching:
 It is NOT allowed to read `docs/` with ANY other tool than `telec docs`! This is a hard rule.
 Why? The tool filters out undelivered content that should NOT be read when grounding in CURRENT TRUTH. To read planned documentation edits and additions delivered by a todo, you MUST use `telec docs index --target <todo_slug>`.
 
+The one exception is a domain bundle (`~/.teleclaude/docs/<domain>/bundle.md`): read it as a file. It is a generated artifact with no snippet id, and its generation already leaves undelivered content out.
+
 (This does NOT negate the need to list or INSPECT files under `docs/` for any other purpose than gaining knowledge as intended by its publication.)
 
 **Documentation snippets authoring**:

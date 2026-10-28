@@ -235,15 +235,14 @@ implementation remain the current appliance contract.
   person with write access to the repository — and when a change is put back
   and with which reason
   (`local/projects/teleclaude/spec/feature/integration/github-work-control`).
-  The handler runs on the one computer holding the project's work-control
-  claim, disposes of each change in the issue's history order, and hands each
-  accepted change to
-  `workflow`'s update facade as that person; the composition is
-  `local/projects/teleclaude/design/architecture/github-work-control`.
+  The handler runs where the item's work runs, on the computer of the session
+  holding the item's claim and otherwise on the project's active computer,
+  takes each change in the issue's order, and hands each accepted change to
+  `workflow`'s update facade as that person.
 - **Does not own (GitHub work control):** whether an act is valid or what it
   does (`workflow`); what an issue's fields should hold, how they and their
-  history are read, restored and commented, and how each change's disposition
-  commits once (`workflow`'s GitHub adapter module); which person a login is
+  history are read, restored and commented (`workflow`'s GitHub adapter
+  module); which person a login is
   (`identity`).
 
 <!-- /planned:github-item-acts -->
@@ -263,7 +262,8 @@ implementation remain the current appliance contract.
 - `local/projects/teleclaude/design/architecture/notification-delivery` — how people are told about events
 - `local/projects/teleclaude/adr/0012-master-only-shared-discord-channels` — provisioning shared Discord channels on the master only
 - `local/projects/teleclaude/adr/0028-single-lan-bound-ingress` — one ingress computer for external webhooks
-- `local/projects/teleclaude/adr/0032-cluster-bus-redis-serves-local-and-cluster` — one Redis serving local and cluster scopes
+- `local/projects/teleclaude/adr/0032-cluster-bus-redis-serves-local-and-cluster` — one Redis serving local and cluster scopes (superseded by ADR-0139)
+- `local/projects/teleclaude/adr/0139-each-event-scope-has-its-own-redis` — a local Redis per computer for local events, the shared Redis for cluster events only
 - `local/projects/teleclaude/adr/0055-proxy-fronted-ingress-reuse` — the webhook ingress behind a same-host reverse proxy
 - `local/projects/teleclaude/adr/0063-core-resolves-admin-reflection-adapter-via-contract` — reaching the admin-reflection adapter through a capability contract
 - `local/projects/teleclaude/adr/0084-discord-voice-receive-runs-in-a-node-sidecar` — Discord voice reception in a Node sidecar

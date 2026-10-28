@@ -47,6 +47,14 @@ coordination capability under
   separate effects unless the source owner's contract supplies a durable
   handover. Publication failure stays observable and does not manufacture a
   rollback or successful delivery.
+- **Each scope its own Redis:** every event type states its scope, local by
+  default and cluster when a consumer on another computer acts on it.
+  Publication appends an event to the Redis of its scope: the computer's own
+  local Redis, or the shared cluster Redis. A consumer reads from the Redis of
+  every scope its event types belong to, so on a computer with its local Redis
+  an event produced and consumed on that computer never crosses the network; a
+  computer whose local Redis is not set up carries its local events on the
+  cluster Redis.
 - **Compatibility at the boundary:** required earlier wire representations are
   translated at transport boundaries under
   `local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`.
@@ -111,6 +119,67 @@ voice focus completes through its command-owned voice continuation. Local
 project-cache changes use the existing cache-change capability. These operations
 retain their local payload reach and completion boundaries under
 `local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`.
+
+### Scopes and their Redis
+
+Every computer, the cluster host included, runs a local Redis of TeleClaude's
+own: a Redis server process with its configuration and data in the
+platform home, listening only on a Unix socket only the TeleClaude user can
+open, with its TCP port and default user off and one ACL user whose password
+lives in the machine environment. A unit the installation owns keeps it running,
+and stopping the daemon leaves it running. It never touches another Redis on
+the computer; the block an earlier installer added to the operating system's
+Redis configuration is removed. Setup has two steps: while the
+previous release serves, the new release installs the Redis server binary when
+it is missing, disabling the service the operating system's package added,
+whether it is running or only enabled, and checks what the stopped window needs; in the stopped window it
+writes the configuration and the unit, starts the instance and verifies it with
+its ACL user before it writes the variables that make the platform use it,
+never installing and never prompting. A local Redis the operator configured
+that answers is kept.
+
+When the local Redis cannot be set up, neither step fails the install: the
+install log names the reason and what resolves it, a managed local socket that
+no longer answers is withdrawn, and the computer keeps its local events on the
+cluster Redis. A computer whose local Redis is not configured carries its local
+events on the cluster Redis, and its event platform logs that at startup.
+
+The cluster Redis is shared by the computers of one cluster; it also carries
+the cross-computer transport of
+`local/projects/teleclaude/design/architecture/redis-transport`. A lone
+computer's cluster settings name its own local Redis, and when both
+scopes name the same Redis the event platform uses one client for both, so
+every stream is read once. Without a cluster Redis URL the platform refuses to
+start, naming the setting.
+
+Both Redis instances hold the platform stream and the stream owned by
+`INTERNAL_EVENT_STREAM`; an entry is on exactly one of them. The cluster types
+are those a consumer on another computer acts on: relayed ingress events, the
+revision and release facts installation reaction admits, the session status,
+agent activity and error notifications that views of another computer's
+sessions show, and the earlier internal compatibility ingress. Every other type
+is local. The set of cluster types has one owner in code, and a new
+cross-computer consumer changes it in the same change.
+
+A relayed event is always cluster. A type outside every namespace the platform
+declares is a relayed type, and a platform type the catalog no longer declares
+stays local. A consumer whose interest names only local types reads the local
+Redis; one naming only cluster types reads the cluster Redis; one taking any
+type reads both and keeps separate progress on each, while its reaction still
+handles one event at a time. A retained consumer that reads only local events
+but once read the cluster Redis first handles every entry its group there still
+owes, in order, and then retires that group, before it reads its local Redis;
+its local position is taken before producers run, so nothing published
+meanwhile is skipped. Own-computer filtering applies to what each Redis
+delivers. The live consumers of a stream on one Redis share one read of it, so a
+live entry crosses the network once per computer, not once per consumer. Each
+live consumer handles what that read hands it in its own task, from a bounded
+backlog: a consumer that falls behind it drops the batches it cannot hold and
+recovers its current source before its next one, and delays no other consumer.
+A socket timeout shorter than the idle read's block is refused at configuration
+load. A consumer that takes any type from every computer, such as
+event-bound maintenance, receives another computer's events only when they are
+cluster events.
 
 ### Earlier internal wire interoperability
 
@@ -192,5 +261,9 @@ ordering guarantee for these separate transports.
 ## See Also
 
 - docs/local/adr/0116-each-reaction-to-a-platform-event-is-an-independent-consumer.md
+- docs/local/adr/0139-each-event-scope-has-its-own-redis.md — why each event scope has its own Redis.
+- docs/local/adr/0141-a-local-redis-that-cannot-be-set-up-never-fails-the-install.md — why setup prepares while serving, applies in the stopped window, and never fails the install.
+- docs/local/adr/0143-teleclaude-runs-its-own-local-redis-on-every-computer.md — why the local Redis is TeleClaude's own instance on every computer, the cluster host included.
+- docs/local/adr/0144-a-fleets-cluster-redis-is-provided-or-provisioned-on-its-master.md — why a lone computer's cluster Redis is its local Redis.
 - docs/local/design/architecture/cache.md
 - docs/local/design/architecture/api-server.md

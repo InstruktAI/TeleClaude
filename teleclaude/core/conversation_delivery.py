@@ -44,6 +44,7 @@ from teleclaude.core.session_links import (
     get_active_links_for_session,
     get_peer_members,
 )
+from teleclaude.core.session_output import is_bare_noop_output
 from teleclaude.output_projection.conversation_projector import project_entries
 from teleclaude.output_projection.models import (
     FULL_POLICY,
@@ -87,11 +88,16 @@ async def _collect_visible_conversation_segments_since(
     since_timestamp: datetime,
     session_id: str,
     policy: VisibilityPolicy = FULL_POLICY,
+    *,
+    completed_through: datetime | None = None,
 ) -> list[CollectedSegment]:
     """Collect visible user and assistant text after the provided cursor.
 
     Each projected block carries its own source cut. Complete peer envelopes
     retain their carried source; every other block remains local content.
+    Blocks written after ``completed_through`` belong to a turn still in
+    flight and stay behind the cursor for a later delivery. A bare ``NOOP``
+    block is always its own segment, so adjacent text never absorbs it.
     """
 
     def _collect() -> list[CollectedSegment]:
@@ -134,6 +140,9 @@ async def _collect_visible_conversation_segments_since(
             raw_text = str(block.block.get("text", _EMPTY_BLOCK_TEXT))
             if not raw_text.strip():
                 continue
+            block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
+            if completed_through is not None and block_timestamp is not None and block_timestamp > completed_through:
+                break
             if block.role == TranscriptChannel.USER:
                 source_segment = block.source_segment
                 if (
@@ -146,7 +155,6 @@ async def _collect_visible_conversation_segments_since(
                     current_author = None
                     current_parts = []
                     current_timestamp = None
-                    block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
                     if block_timestamp is None:
                         continue
                     for peer_segment in peer_segments_from_entry(source_segment.text, occurred_at=block_timestamp):
@@ -160,7 +168,22 @@ async def _collect_visible_conversation_segments_since(
             normalized_text = raw_text.strip()
             if not normalized_text:
                 continue
-            block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
+            if block.role == TranscriptChannel.ASSISTANT and is_bare_noop_output(normalized_text):
+                _flush()
+                current_role = None
+                current_author = None
+                current_parts = []
+                current_timestamp = None
+                if block_timestamp is not None:
+                    segments.append(
+                        ProjectedSegment(
+                            role=block.role,
+                            text=normalized_text,
+                            timestamp=block_timestamp,
+                            author=block.author,
+                        )
+                    )
+                continue
             if current_role == block.role and current_author == block.author:
                 current_parts.append(normalized_text)
                 current_timestamp = block_timestamp or current_timestamp
@@ -330,6 +353,7 @@ async def _deliver_for_peer(
     source_computer: str | None,
     client: AdapterClient,
     command_service: CommandService,
+    completed_through: datetime | None,
 ) -> int:
     """Drive replay-then-fresh delivery for a single (link, peer) pair.
 
@@ -386,6 +410,7 @@ async def _deliver_for_peer(
         since_timestamp,
         source_session_id,
         recipient_policy,
+        completed_through=completed_through,
     )
     target_computer = _target_computer_name(peer_computer)
 
@@ -513,8 +538,13 @@ async def deliver_pending_conversation_updates(
     client: AdapterClient,
     command_service: CommandService | None = None,
     source_computer: str | None = None,
+    completed_through: datetime | None = None,
 ) -> int:
-    """Deliver any new transcript activity from this session to its linked peers."""
+    """Deliver any new transcript activity from this session to its linked peers.
+
+    ``completed_through`` bounds delivery to turns that ended by then; without
+    it every collected block is eligible.
+    """
     source_session = await db.get_session(source_session_id)
     if source_session is None:
         return 0
@@ -551,6 +581,7 @@ async def deliver_pending_conversation_updates(
                     source_computer=source_computer,
                     client=client,
                     command_service=service,
+                    completed_through=completed_through,
                 )
             except Exception as exc:
                 logger.warning(
@@ -601,6 +632,7 @@ def schedule_debounced_delivery(
     client: AdapterClient,
     command_service: CommandService | None = None,
     source_computer: str | None = None,
+    completed_through: datetime | None = None,
 ) -> None:
     """Coalesce N rapid agent_stops on this source into one delayed delivery.
 
@@ -608,7 +640,10 @@ def schedule_debounced_delivery(
     ``_DEBOUNCE_WINDOW_S`` timer. When the timer fires, runs
     ``deliver_pending_conversation_updates`` once. Synchronous (not a
     coroutine) because the caller doesn't want to await — it just signals
-    that delivery should run after the window quiets.
+    that delivery should run after the window quiets. ``completed_through`` is
+    the moment the scheduling stop fired; the newest stop's bound replaces
+    the one it cancels, so a turn begun inside the window waits for its own
+    stop.
     """
     pending = _pending_deliveries.pop(source_session_id, None)
     if pending is not None and not pending.done():
@@ -627,6 +662,7 @@ def schedule_debounced_delivery(
                 client=client,
                 command_service=command_service,
                 source_computer=source_computer,
+                completed_through=completed_through,
             )
         except Exception as exc:
             logger.warning(

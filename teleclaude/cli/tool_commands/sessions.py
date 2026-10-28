@@ -41,7 +41,7 @@ from teleclaude.cli.tool_client import (
     tool_api_request,
 )
 from teleclaude.cli.tool_commands._receipt import render_receipt
-from teleclaude.constants import SessionTarget
+from teleclaude.constants import SESSION_START_TIMEOUT_S, SessionTarget
 from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
@@ -281,7 +281,7 @@ def handle_sessions_start(args: list[str]) -> None:
     if not body.get("project_path"):
         body["project_path"] = project_reference()
 
-    data = tool_api_call("POST", "/sessions", json_body=body)
+    data = tool_api_call("POST", "/sessions", json_body=body, timeout=SESSION_START_TIMEOUT_S)
     print_json(data)
 
 
@@ -452,7 +452,7 @@ def handle_sessions_run(args: list[str]) -> None:
     if not body.get("project"):
         body["project"] = project_reference()
 
-    data = tool_api_call("POST", "/sessions/run", json_body=body)
+    data = tool_api_call("POST", "/sessions/run", json_body=body, timeout=SESSION_START_TIMEOUT_S)
     print_json(data)
 
 

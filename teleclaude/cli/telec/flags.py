@@ -531,8 +531,11 @@ FLAG_TTS_YES = Flag("--yes", desc="Confirm the destructive dependency removal", 
 FLAG_HISTORY_AGENT = Flag("--agent", "-a", "Agent name(s) or 'all' (default: all)", arity=VALUE)
 FLAG_HISTORY_SHOW_AGENT = Flag("--agent", "-a", "Agent name or 'all' (default: all)", arity=VALUE)
 FLAG_HISTORY_LIMIT = Flag("--limit", "-l", "Max results to show (default: 20)", arity=VALUE)
-FLAG_HISTORY_INCLUDE_WORKERS = Flag(
-    "--include-workers", desc="Also search dispatched-worker sessions (reviewers, builders)", arity=SWITCH
+FLAG_HISTORY_INCLUDE_FOCUSED = Flag(
+    "--include-focused", desc="Also search focused-role sessions (reviewers, builders)", arity=SWITCH
+)
+FLAG_HISTORY_INCLUDE_WORKERS_ALIAS = Flag(
+    "--include-workers", desc="Legacy alias for --include-focused", hidden=True, arity=SWITCH
 )
 FLAG_HISTORY_IDENTITY = Flag("--identity", desc="Filter by human identity or transcript source identity", arity=VALUE)
 FLAG_HISTORY_JSON = Flag("--json", desc="Emit machine-readable JSON", arity=SWITCH)

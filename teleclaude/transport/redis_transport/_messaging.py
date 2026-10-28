@@ -12,9 +12,10 @@ import asyncio
 import base64
 import binascii
 import json
+import time
 from datetime import datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
@@ -22,7 +23,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.caller_identity import NoIdentityCliCaller, caller_from_principal
 from teleclaude.core import command_handlers
-from teleclaude.core.command_dispatch import shutdown_refusal_envelope
+from teleclaude.core.command_dispatch import RELAY_REQUEST_TIMEOUT_S, shutdown_refusal_envelope
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.events import (
@@ -68,6 +69,7 @@ from teleclaude.core.supervisory_silence import (
     SilenceObservationKind,
     SilenceTimeoutOwner,
 )
+from teleclaude.events.stream_wait import STREAM_BLOCK_MS
 from teleclaude.history.service import HistoryRelayCommand
 
 if TYPE_CHECKING:
@@ -321,6 +323,26 @@ def _startup_delivery_uncertain_evidence_from_metadata(
     return StartupDeliveryUncertainEvidence()
 
 
+# Reads whose only effect is their answer. Notifications, which no sender awaits, and relayed commands, whose owner
+# enforces their own deadline, are never dropped for their age.
+_EXPIRING_READ_COMMANDS: Final = _RELAYED_READ_COMMANDS | {
+    _LIST_PROJECTS_COMMAND,
+    _LIST_PROJECTS_WITH_TODOS_COMMAND,
+    _GET_SESSION_FINAL_OUTPUT_COMMAND,
+}
+# Twice the longest wait a sender uses for a request, so a read a sender may still await is never dropped.
+_READ_EXPIRY_S: Final = 2 * RELAY_REQUEST_TIMEOUT_S
+# Dropped reads are logged as one summary per run of drops, and at least this often during a long run.
+_EXPIRED_READS_LOG_INTERVAL_S: Final = 60.0
+_EXPIRED_READS_EVENT: Final = "relay_reads_expired_unanswered"
+
+
+def _request_age_s(message_id: str) -> float:
+    """Seconds since the stream entry was added, read from its id: the cluster Redis server's clock at the add."""
+    added_ms = int(message_id.split("-", 1)[0])
+    return time.time() - added_ms / 1000
+
+
 class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: Redis stream polling, message parsing, command dispatch."""
 
@@ -329,6 +351,9 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
         computer_name: str
         message_stream_maxlen: int
         _running: bool
+        _local_projects_payload: list[JsonDict] | None
+        _expired_reads: int
+        _expired_reads_since: float | None
 
         def _reset_idle_poll_log_throttle(self) -> None:
             """Reset idle-poll logging state."""
@@ -406,7 +431,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 redis_client = await self._get_redis()
                 messages: list[tuple[bytes, list[tuple[bytes, dict[bytes, bytes]]]]] = await redis_client.xread(
                     {message_stream.encode("utf-8"): last_id},
-                    block=1000,  # Block for 1 second
+                    block=STREAM_BLOCK_MS,
                     count=5,
                 )
 
@@ -462,6 +487,20 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 )
                 await self._handle_redis_error("Message polling error", e)
 
+    def _note_expired_read(self) -> None:
+        self._expired_reads += 1
+        now = time.monotonic()
+        if self._expired_reads_since is None:
+            self._expired_reads_since = now
+        elif now - self._expired_reads_since >= _EXPIRED_READS_LOG_INTERVAL_S:
+            self._flush_expired_reads()
+
+    def _flush_expired_reads(self) -> None:
+        if self._expired_reads:
+            logger.info(_EXPIRED_READS_EVENT, dropped=self._expired_reads)
+        self._expired_reads = 0
+        self._expired_reads_since = None
+
     async def _handle_incoming_message(self, message_id: str, data: dict[bytes, bytes]) -> Any:
         """Handle incoming message from Redis stream.
 
@@ -497,6 +536,12 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 return
 
             cmd_name, cmd_args = parse_command_string(parsed.command)
+            if cmd_name in _EXPIRING_READ_COMMANDS:
+                if _request_age_s(message_id) > _READ_EXPIRY_S:
+                    # A read whose only effect is its answer, and whose sender has stopped waiting for it.
+                    self._note_expired_read()
+                    return
+                self._flush_expired_reads()
             if cmd_name in {"stop_notification", "distress_notification", "operation_outcome"}:
                 result = await self._handle_agent_notification_command(cmd_name, cmd_args, parsed.origin_metadata)
                 response_json = json.dumps(result)
@@ -542,6 +587,9 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                             else None
                         ),
                     }
+                elif self._local_projects_payload is not None:
+                    # The answer the current digest was computed from, ready at once.
+                    payload = self._local_projects_payload
                 else:
                     payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
 

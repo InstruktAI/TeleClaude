@@ -1,0 +1,15 @@
+[Unit]
+Description=TeleClaude local Redis
+After=network.target
+
+[Service]
+Type=simple
+User={{USER}}
+ExecStart={{REDIS_SERVER}} {{REDIS_CONF}}
+Restart=always
+RestartSec=5
+StandardOutput=append:{{LOG_PATH}}
+StandardError=append:{{LOG_PATH}}
+
+[Install]
+WantedBy=multi-user.target

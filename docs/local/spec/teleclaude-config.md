@@ -537,11 +537,16 @@ environment_variables:
   - SUMMARIZER_GOOGLE_API_KEY
   # Voice providers are operator-authored entries under an `ungoverned_body`;
   # their references are authored in the configuration, not derived here.
-  # Redis transport — essential infrastructure. Editable in the Infra subtab (Redis section)
+  # Redis — essential infrastructure. Editable in the Infra subtab (Redis section)
   # as ${VAR}-backed fields, and a mandatory guided-wizard step (the Infra step is not
-  # complete until REDIS_URL is set). Also listed in the config TUI's environment section.
-  - REDIS_URL
-  - REDIS_PASSWORD
+  # complete until REDIS_CLUSTER_URL is set). Also listed in the config TUI's environment section.
+  # Every install gives them the values of the earlier REDIS_URL and REDIS_PASSWORD before migrating.
+  - REDIS_CLUSTER_URL
+  - REDIS_CLUSTER_USERNAME
+  - REDIS_CLUSTER_PASSWORD
+  - REDIS_LOCAL_URL
+  - REDIS_LOCAL_USERNAME
+  - REDIS_LOCAL_PASSWORD
   # Current machine-config field with no runtime consumer.
   - DATABASE_URL
   # RuntimeConfig one-shot path control. RuntimeConfig reads this once at
@@ -692,6 +697,22 @@ agents:
       fast|med|slow: # ordered list of entries in fallback order; the first entry whose model has no active model-scoped unavailability launches
         - model: string # model identity, matched against model-scoped availability records
           flags: string # complete, opaque launch flags for this entry; the platform never derives flags from a template. Startup validation rejects unknown modes and malformed entries, referencing the concrete config.yml path.
+redis:
+  local: # TeleClaude's own local Redis for local events; never reachable from another computer
+    url: string | null # normally ${REDIS_LOCAL_URL}: a unix:// socket only the TeleClaude user can open, written by the install; any other scheme is refused. Unset, local events use the cluster Redis
+    username: string | null # normally ${REDIS_LOCAL_USERNAME}: the ACL user the local Redis requires
+    password: string | null # normally ${REDIS_LOCAL_PASSWORD}
+    max_connections: integer # connection pool size
+    socket_timeout: integer # seconds
+  cluster: # the shared Redis for cluster events and the cross-computer transport; a lone computer names its own local Redis
+    url: string # normally ${REDIS_CLUSTER_URL}; required to start. The install writes the local Redis's socket here when no cluster Redis is set
+    username: string | null # normally ${REDIS_CLUSTER_USERNAME}: the ACL user the cluster Redis requires, if any
+    password: string | null # normally ${REDIS_CLUSTER_PASSWORD}
+    max_connections: integer # connection pool size
+    socket_timeout: integer # seconds
+    message_stream_maxlen: integer # length cap of each computer's request stream
+    output_stream_maxlen: integer # length cap of each response stream
+    output_stream_ttl: integer # seconds a response stream lives
 event_reliability:
   idle_threshold_ms: integer # minimum idle time before stale pending entries can be reclaimed
   max_attempts: integer # cumulative retry ceiling before dead-letter transition

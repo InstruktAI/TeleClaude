@@ -1,6 +1,6 @@
 ---
 description: The closed catalog of agent session roles — each an explicit set of capabilities
-  with an opt-in full reach, a class, and a header label — consulted by every decision
+  with an opt-in full reach and a class — consulted by every decision
   that reads what a session may do or what kind of session it is.
 ---
 
@@ -33,7 +33,7 @@ dispatch privilege
 procedure's role declaration (`general/spec/snippet-authoring-schema`),
 standing classification
 (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`),
-worker history exclusion, launch ownership and identity-header labelling. Which
+focused-role history exclusion and launch ownership. Which
 commands declare which command capability is the CLI surface schema's, grouped
 as `local/projects/teleclaude/design/cli-authorization-matrix` describes.
 
@@ -66,7 +66,7 @@ own identity and is never a session role.
 | `maintenance-recovery` | Inspecting and recovering canonical-main maintenance.                                                                    |
 | `memory-curation`      | Curating memories and prospects from conversation extractions.                                                           |
 | `session-observe`      | Listing and showing sessions, searching history, and reading the fleet's computers, projects and agents.                 |
-| `transcript-read`      | Showing the transcript of a named session.                                                                               |
+| `transcript-read`      | Showing or tailing the transcript of a named session.                                                                    |
 | `operation-read`       | Reading the outcome of an operation one's session started or one's reach admits.                                         |
 | `session-act`          | Starting, running, reviving, restarting, ending and messaging sessions other than one's own.                             |
 | `self-acts`            | Results, files, unsubscribing, ending and restarting for one's own session.                                              |
@@ -81,10 +81,10 @@ own identity and is never a session role.
 | `code-check`           | Inspecting code: blast radius, lint and tests.                                                                           |
 | `code`                 | Formatting, file declarations and commits.                                                                               |
 | `mcp`                  | Listing and calling MCP tools.                                                                                           |
-| `peer-talk`            | Sending to and tailing another session. No `worker`-class role holds it.                                                 |
+| `peer-talk`            | Sending to another session. No focused role holds it.                                                                    |
 | `memories-read`        | Listing, searching, deleting and tracing a person's own memories outside an extraction.                                  |
 | `memories-save`        | Saving a memory observation when the human the session works for asks it to. Every role reaches it; no role composes it. |
-| `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                                      |
+| `dispatch-focused`     | Starting a session whose role is of class `focused`.                                                                     |
 
 The command families are the catalog's vocabulary; which command declares
 which family is the CLI surface schema's.
@@ -92,7 +92,7 @@ which family is the CLI surface schema's.
 ### Roles
 
 The role catalog is the authority for each role's name, class, explicit
-capabilities, full-reach opt-in and identity label. Each entry states its own
+capabilities and full-reach opt-in. Each entry states its own
 composition; a role class describes session behavior and supplies no implicit
 command membership.
 
@@ -103,21 +103,23 @@ restricted. An operator redirecting an internal agent's assignment does not
 change the role's reach. Treatment of indirectly supplied content belongs to
 its own input-handling contract, not an inferred widening or narrowing here.
 
-The label is the role's name in a caller-origin identity header, drawn from
-`local/projects/teleclaude/spec/message-headers`.
+A role's identity in a caller-origin identity header is its own name, never
+its class (`local/projects/teleclaude/spec/message-headers`).
 
 ### Assignment-specific command focus
 
-Every role of class `worker` composes the worker baseline the catalog declares
-and adds to it what its own assignment needs. The baseline gives each worker
+Every role of class `focused` composes the focused baseline the catalog declares
+and adds to it what its own assignment needs. The baseline gives each focused session
 the reach to record its task's outcome, return its result, and commit assigned
-work. It holds no capability that observes the fleet, sends to or tails another
+work. It holds no capability that observes the fleet, sends to or reads another
 session, or starts, revives, restarts or ends one, directly or by running a job.
-A worker's result reaches other sessions only through its own completed turn
+A focused role whose assignment reads a named session's transcript adds
+`transcript-read`, which only reads.
+A focused session's result reaches other sessions only through its own completed turn
 and artifacts, which the session that dispatched it reads and routes
 (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`). No
-worker lists sessions, searches history, reads the fleet's computers, projects
-or agents, or starts another session. A worker's reach is focus, not integrity
+focused session lists sessions, searches history, reads the fleet's computers, projects
+or agents, or starts another session. A focused role's reach is focus, not integrity
 (`general/principle/trust-and-guardrails`): the todo's claim and the object
 owners still decide what it may change.
 
@@ -127,7 +129,7 @@ appear under one name. A sub-procedure its agent loads on a route declares no
 role and runs under the role of the procedure that loaded it.
 Procedures whose assignments need the same reach take it from a **composite
 role** the catalog declares: each procedure's role carries the composite's
-class, reach, capabilities and label, and adds nothing until the catalog gives
+class, reach and capabilities, and adds nothing until the catalog gives
 it a set of its own. The composites are `reviewer` (the PRD, architecture,
 plan, build and commit reviewers), `helper` (the company analyst, knowledge
 author, project analyst and third-party researcher), `onboarder` (the config
@@ -135,25 +137,24 @@ assessor and project onboarder) and `desk-memory-curator` (the company and
 project desk curators). A consumer that keys on the kind of session — the
 reviewer launch class, the GitHub App a role posts as — reads the composite;
 everything else reads the procedure's own role.
-Outside the worker class, sharing a role class grants no shared command set;
-a shared label alone supplies no command membership. The catalog owns the sets,
+Outside the focused class, sharing a role class grants no shared command set. The catalog owns the sets,
 and command declarations own capability membership, under
 `local/projects/teleclaude/design/cli-authorization-matrix`.
 
 Capabilities distinguish commands whose assignment needs differ. Beyond the
-worker baseline, a role that needs inspection or verification does not acquire
+focused baseline, a role that needs inspection or verification does not acquire
 unrelated mutation commands merely because those commands share a broad
 namespace. Ordinary startup, documentation retrieval, reporting and
 completion remain available wherever the role's procedure requires them; peer
-communication remains available only outside the worker class.
+communication remains available only outside the focused class.
 
-The focused set remains explicit for a full-reach role. Full reach broadens
-permission independently of that focused set; it never expands the focused set
+The explicit set remains explicit for a full-reach role. Full reach broadens
+permission independently of that explicit set; it never expands the explicit set
 itself. Restricted roles remain bounded by their explicit sets, with object
 guardrails retaining their own authority
 (`general/principle/trust-and-guardrails`). The catalog names the capabilities
 every role reaches without composing them, currently `memories-save`; they
-appear in no focused set, so focused help never lists their commands.
+appear in no explicit set, so role help never lists their commands.
 
 ### Class
 
@@ -161,9 +162,11 @@ A role's class says what kind of session carries it, independently of its
 reach. Its consumers are the contracts that own the consequence, each reading
 the class and deciding nothing about reach:
 
-- `worker` — a focused session another session dispatched; the target class a
-  `dispatch-worker` grant may start, and the class the session-mirrors search
-  contract excludes by default.
+- `focused` — a session confined to one assignment, whoever started it; the
+  target class a `dispatch-focused` grant may start, and the class the
+  session-mirrors search contract excludes by default. A worker is something
+  else: an orchestrator's child that carries a role, a relationship between
+  sessions rather than a class.
 - `standing` — a session whose work arrives from a queue or the fleet; the
   session-authority contract's standing class. A scheduled job's session is
   standing whatever its role.
@@ -186,9 +189,9 @@ none is a human launch.
 
 #### UC-AR2: A full-reach role reaches every capability
 
-#### UC-AR3: A worker reaches nothing across the fleet
+#### UC-AR3: A focused role reaches nothing across the fleet
 
-#### UC-AR4: Only a dispatch grant or full reach starts a worker
+#### UC-AR4: Only a dispatch grant or full reach starts a focused role
 
 #### UC-AR5: A human session reaches everything within its person band
 
@@ -196,9 +199,9 @@ none is a human launch.
 
 #### UC-AR7: Role focus follows the assignment rather than its class
 
-#### UC-AR8: Full reach preserves a separate focused set
+#### UC-AR8: Full reach preserves a separate explicit set
 
-#### UC-AR9: Every worker composes the worker baseline
+#### UC-AR9: Every focused role composes the focused baseline
 
 ## Known caveats
 

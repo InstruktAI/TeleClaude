@@ -20,9 +20,10 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.events.db import EventDB
 from teleclaude.events.envelope import EventHomeKind, EventHomeRef, ReceivedEvent
-from teleclaude.events.live_reader import LiveEventReader, LiveStreamClient, SourceRecovery
+from teleclaude.events.live_reader import LiveEventReader, LiveStreamClient, SharedLiveFeed, SourceRecovery
 from teleclaude.events.processor import STREAM_NAME, EventProcessor
 from teleclaude.events.references import ReferenceKind
+from teleclaude.events.scope import EventScope, ScopedClients, scopes_of_interest
 from teleclaude.events.type_pattern import TypePattern
 from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, EntryCodec, StreamEvent
 
@@ -45,6 +46,8 @@ _NAME_SEPARATOR = ", "
 _CONSUMER_STARTED_EVENT = "Event consumer starting"
 _RECOVERY_REQUIRES_LIVE_ERROR = "Source recovery and coalescing belong to live consumers"
 _CONSUMER_TASK_TEMPLATE = "event-consumer-{name}"
+_SCOPED_NAME_TEMPLATE = "{name}@{scope}"
+_LIVE_FEED_NAME = "live-feed"
 
 
 class ConsumerDelivery(StrEnum):
@@ -122,9 +125,15 @@ class _ConsumerPipeline:
         self._consumer = consumer
         self._db = db
         self._computer = computer
+        # A consumer that reads two scopes' Redis has a reader on each; its reaction still handles one event at a time.
+        self._serial = asyncio.Lock()
 
     async def execute(self, event: StreamEvent, /) -> None:
         """Apply interest and delivery lifetime before invoking the owning reaction."""
+        async with self._serial:
+            await self._execute(event)
+
+    async def _execute(self, event: StreamEvent) -> None:
         consumer = self._consumer
         if not consumer.interest.selects(event, self._computer):
             return
@@ -137,14 +146,78 @@ class _ConsumerPipeline:
         await self._db.record_handled_event(consumer.name, event.id, datetime.now(UTC))
 
 
+def _live_view(
+    consumer: Consumer,
+    pipeline: _ConsumerPipeline,
+    redis_client: Any,
+    computer: str,
+    stream: str,
+    codec: EntryCodec[StreamEvent],
+) -> LiveEventReader:
+    """One live consumer's view of a stream, fed by the stream's shared live feed on that Redis."""
+    return LiveEventReader(
+        cast(LiveStreamClient, redis_client),
+        pipeline.execute,
+        stream=stream,
+        name=consumer.name,
+        retired_group=consumer_group_name(consumer.name, computer),
+        codec=codec,
+        recover=consumer.recover,
+        coalesce=consumer.coalesce,
+    )
+
+
+def _retained_reader(
+    consumer: Consumer,
+    pipeline: _ConsumerPipeline,
+    redis_client: Any,
+    computer: str,
+    stream: str,
+    codec: EntryCodec[StreamEvent],
+) -> EventProcessor[StreamEvent]:
+    """The consumer group reader that hands one Redis's entries of a stream to one retained consumer."""
+    return EventProcessor(
+        redis_client,
+        pipeline,
+        codec=codec,
+        declared_name=consumer.name,
+        ordered=True,
+        stream=stream,
+        group=consumer_group_name(consumer.name, computer),
+        consumer_name=consumer_reader_name(consumer.name, computer),
+    )
+
+
+class RetainedHandover:
+    """A retained consumer that no longer reads the cluster Redis: it finishes its old cluster group, then reads locally.
+
+    The local reader's position is taken before producers run, so entries that arrive while the old group drains wait
+    for it; the drain hands over every entry the consumer was owed there, in order, and retires the group.
+    """
+
+    def __init__(self, drain: EventProcessor[StreamEvent], local: EventProcessor[StreamEvent]) -> None:
+        self._drain = drain
+        self._local = local
+
+    async def prepare_group_position(self) -> None:
+        """Take the local position; the old group keeps its own."""
+        await self._local.prepare_group_position()
+
+    async def start(self, shutdown_event: asyncio.Event) -> None:
+        """Drain and retire the old cluster group when it exists, then read locally until shutdown."""
+        await self._drain.drain_and_retire(shutdown_event)
+        if not shutdown_event.is_set():
+            await self._local.start(shutdown_event)
+
+
 class ConsumerRuntime:
-    """Compose independent retained and live readers on one computer."""
+    """Compose independent retained and live readers on one computer, each on the Redis of a scope it reads."""
 
     def __init__(
         self,
         consumers: Sequence[Consumer],
         *,
-        redis_client: Any,
+        redis_clients: ScopedClients[Any],
         db: EventDB,
         computer: str,
         stream: str = STREAM_NAME,
@@ -154,33 +227,43 @@ class ConsumerRuntime:
         repeated = sorted({name for name in names if names.count(name) > 1})
         if repeated:
             raise ValueError(_DUPLICATE_NAMES_ERROR.format(names=_NAME_SEPARATOR.join(repeated)))
-        self._processors = [
-            (
-                consumer.name,
-                LiveEventReader(
-                    cast(LiveStreamClient, redis_client),
-                    _ConsumerPipeline(consumer, db, computer).execute,
-                    stream=stream,
-                    name=consumer.name,
-                    retired_group=consumer_group_name(consumer.name, computer),
-                    codec=codec,
-                    recover=consumer.recover,
-                    coalesce=consumer.coalesce,
+        self._processors: list[tuple[str, EventProcessor[StreamEvent] | SharedLiveFeed | RetainedHandover]] = []
+        live_views: dict[EventScope, list[LiveEventReader]] = {}
+        live_clients: dict[EventScope, Any] = {}
+        for consumer in consumers:
+            pipeline = _ConsumerPipeline(consumer, db, computer)
+            read_clients: list[object] = []
+            scopes = scopes_of_interest(consumer.interest.types)
+            # A consumer that reads only local events once read the cluster Redis, which may still hold entries for it.
+            hands_over = EventScope.CLUSTER not in scopes and redis_clients.local is not redis_clients.cluster
+            for scope in sorted(scopes):
+                client = redis_clients.for_scope(scope)
+                # Scopes that share one Redis are read once.
+                if any(client is read for read in read_clients):
+                    continue
+                read_clients.append(client)
+                if consumer.delivery is ConsumerDelivery.LIVE:
+                    feed_scope = next(
+                        (known for known, known_client in live_clients.items() if known_client is client), scope
+                    )
+                    live_clients[feed_scope] = client
+                    live_views.setdefault(feed_scope, []).append(
+                        _live_view(consumer, pipeline, client, computer, stream, codec)
+                    )
+                    continue
+                local_reader = _retained_reader(consumer, pipeline, client, computer, stream, codec)
+                reader: EventProcessor[StreamEvent] | RetainedHandover = local_reader
+                if hands_over:
+                    drain = _retained_reader(consumer, pipeline, redis_clients.cluster, computer, stream, codec)
+                    reader = RetainedHandover(drain, local_reader)
+                self._processors.append((_SCOPED_NAME_TEMPLATE.format(name=consumer.name, scope=scope.value), reader))
+        for scope, views in live_views.items():
+            self._processors.append(
+                (
+                    _SCOPED_NAME_TEMPLATE.format(name=_LIVE_FEED_NAME, scope=scope.value),
+                    SharedLiveFeed(cast(LiveStreamClient, live_clients[scope]), stream=stream, readers=views),
                 )
-                if consumer.delivery is ConsumerDelivery.LIVE
-                else EventProcessor(
-                    redis_client,
-                    _ConsumerPipeline(consumer, db, computer),
-                    codec=codec,
-                    declared_name=consumer.name,
-                    ordered=True,
-                    stream=stream,
-                    group=consumer_group_name(consumer.name, computer),
-                    consumer_name=consumer_reader_name(consumer.name, computer),
-                ),
             )
-            for consumer in consumers
-        ]
 
     async def prepare_group_positions(self) -> None:
         """Prepare retained positions and live boundaries before any handler executes."""
@@ -198,7 +281,10 @@ class ConsumerRuntime:
         )
 
     async def _run_one(
-        self, name: str, processor: EventProcessor[StreamEvent] | LiveEventReader, shutdown_event: asyncio.Event
+        self,
+        name: str,
+        processor: EventProcessor[StreamEvent] | SharedLiveFeed | RetainedHandover,
+        shutdown_event: asyncio.Event,
     ) -> None:
         logger.info(_CONSUMER_STARTED_EVENT, consumer=name)
         await processor.start(shutdown_event)

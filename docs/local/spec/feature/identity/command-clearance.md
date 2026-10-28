@@ -81,7 +81,7 @@ And a person holding the member role in that company is refused the same revive
 
 ### Claim-scoped todo update
 
-`telec todo update` replaces role privilege with object state. The verb admits every agent role whose set composes `todo-write`, worker roles included; a roleless agent session is admitted through the verb's human band. Every admitted caller other than a direct human identity — workers, dispatch-capable roles and roleless sessions included — is then checked against the todo's claim. No role holds unrestricted access to this verb.
+`telec todo update` replaces role privilege with object state. The verb admits every agent role whose set composes `todo-write`, focused roles included; a roleless agent session is admitted through the verb's human band. Every admitted caller other than a direct human identity — focused roles, dispatch-capable roles and roleless sessions included — is then checked against the todo's claim. No role holds unrestricted access to this verb.
 
 The claim gate is the claiming-group predicate governing artifact writes (`feature/workflow/artifact-versioning`, Write authority). A todo whose `active_runner` names a live session is claimed; its claiming group is the holding session plus every session it dispatched, transitively through `initiator_session_id`. The gate admits a caller inside the claiming group, and admits any caller on an unclaimed todo — no `active_runner`, or one naming a session that is no longer live. It refuses a caller outside a live claim's group with the claim-conflict shape naming the holding session: the caller's door is that session. The todo state is unchanged by a refused update.
 
@@ -129,7 +129,7 @@ Then the claim gate accepts (the todo is unclaimed)
 And the requested mutation is applied to the todo state
 ```
 
-#### UC-CSU5: A worker is claim-gated like every agent caller
+#### UC-CSU5: A focused role is claim-gated like every agent caller
 
 ```
 Given a builder session `w-1` dispatched by the live session `t-1` that holds the claim on a todo
@@ -178,7 +178,7 @@ And the requested mutation is applied to the todo state
 
 ```
 Given a live session `t-1` holding the claim on a todo
-And a non-worker agent session `c-1` whose initiator_session_id chain reaches `t-1`
+And an agent session `c-1` outside the focused class whose initiator_session_id chain reaches `t-1`
 When `c-1` calls `telec todo update` on that todo
 Then the claim gate accepts (the caller is inside the claiming group)
 And the requested mutation is applied to the todo state
@@ -186,7 +186,13 @@ And the requested mutation is applied to the todo state
 
 ### Role reach
 
-Each command's declaration names the command capability that admits agent callers, so a capability's reach reads in one place (`local/projects/teleclaude/design/cli-authorization-matrix`), and an agent caller is admitted when the agent role catalog composes its role with that capability or marks the role full-reach (`local/projects/teleclaude/spec/feature/identity/agent-roles`); person roles keep a band per command. A role that is not full-reach is admitted to a capability-gated command only when its explicit set composes that command's capability or the catalog gives that capability to every role, and its class adds none; a caller-independent command admits it as it admits every caller. No worker-class role's set lists sessions, searches history or reads the fleet's computers, projects or agents, and a worker starts, revives, restarts or ends no session but its own through the self-acts above. A recorded role the catalog does not name is refused every command that depends on its caller and reported as a platform defect; it is never admitted as a caller without a role, and caller-independent commands pass without resolving it. The daemon's own `system` credential grants no role-based command reach; caller-independent commands pass without resolving that credential. A command that does not depend on its caller — `version`, `auth login|whoami|logout`, `events list`, `signals status`, `mcp list`, the local repository commands `repo lint|test|format|add|blueprint affected`, and the git-hook commands — admits a caller with no identity and passes the gate with no caller resolution. `todo update` is governed by the claim-scoped rule instead of a role.
+Each command's declaration names the command capability that admits agent callers, so a capability's reach reads in one place (`local/projects/teleclaude/design/cli-authorization-matrix`), and an agent caller is admitted when the agent role catalog composes its role with that capability or marks the role full-reach (`local/projects/teleclaude/spec/feature/identity/agent-roles`); person roles keep a band per command. A role that is not full-reach is admitted to a capability-gated command only when its explicit set composes that command's capability or the catalog gives that capability to every role, and its class adds none; a caller-independent command admits it as it admits every caller. No focused role's set lists sessions, searches history or reads the fleet's computers, projects or agents, and a focused session starts, revives, restarts or ends no session but its own through the self-acts above. A recorded role the catalog does not name is refused every command that depends on its caller and reported as a platform defect; it is never admitted as a caller without a role, and caller-independent commands pass without resolving it. The daemon's own `system` credential grants no role-based command reach; caller-independent commands pass without resolving that credential. A command that does not depend on its caller — `version`, `auth login|whoami|logout`, `events list`, `signals status`, `mcp list`, the local repository commands `repo lint|test|format|add|blueprint affected`, and the git-hook commands — admits a caller with no identity and passes the gate with no caller resolution. `todo update` is governed by the claim-scoped rule instead of a role.
+
+<!-- planned:telec-app-refuses-terminal-without-login -->
+
+The installation verbs are declared for the machine's own account (`local/projects/teleclaude/design/cli-authorization-matrix`): a caller outside any session is admitted to them with or without a terminal login, and a session is admitted only through its role's installation capability and, when it acts for a person, that person's band.
+
+<!-- /planned:telec-app-refuses-terminal-without-login -->
 
 #### UC-CCB1: A full-reach role starts a session
 
@@ -194,11 +200,11 @@ Each command's declaration names the command capability that admits agent caller
 
 #### UC-CCB3: A full-reach role ends a session
 
-#### UC-CCB4: A worker-class role is refused the state-machine-driving verbs
+#### UC-CCB4: A focused role is refused the state-machine-driving verbs
 
 #### UC-CCR1: A command that does not depend on its caller runs without an identity
 
-#### UC-CCR2: A worker reads nothing across the fleet
+#### UC-CCR2: A focused role reads nothing across the fleet
 
 #### UC-CCR3: A job's session reaches an ordinary agent command
 
@@ -213,7 +219,7 @@ The read commands `telec todo list`, `telec todo show`, `telec todo artifacts li
 #### UC-CCL1: A project maintainer reads their todo list while the daemon is unavailable
 
 ```gherkin
-Given a project maintainer's worker agent is in a project checkout
+Given a project maintainer's agent is in a project checkout
 And the daemon's local service is unavailable
 When the agent requests the project's todo list
 Then the project's current todo list is displayed
@@ -236,7 +242,7 @@ The preceding pre-handler clearance rule has one named-target exception:
 clearance inside its handler (`local/projects/teleclaude/design/architecture/cli-invocation-boundary`
 invariant 5).
 
-`telec sessions end` and `telec sessions restart` each admit one act outside their band, decided in the same clearance from the caller's own session record and the command's target: a session may end itself when its record names no orchestrating parent (`feature/identity/self-end-authorization-bypass`), and a session may restart itself (`feature/identity/self-restart-authorization-bypass`). A worker is refused a restart of any session other than its own, whatever the band says.
+`telec sessions end` and `telec sessions restart` each admit one act outside their band, decided in the same clearance from the caller's own session record and the command's target: a session may end itself when its record names no orchestrating parent (`feature/identity/self-end-authorization-bypass`), and a session may restart itself (`feature/identity/self-restart-authorization-bypass`). A focused session is refused a restart of any session other than its own, whatever the band says.
 
 #### UC-CCA1: An out-of-band agent is refused before the daemon is asked
 

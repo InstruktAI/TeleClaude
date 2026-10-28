@@ -875,26 +875,6 @@ install_gog() {
 }
 
 # Install system dependencies
-# Brings a local Redis up without assuming it is down. Probing first keeps a
-# repeat install quiet instead of re-announcing a service that never stopped.
-ensure_local_redis_running() {
-    if redis-cli ping 2>/dev/null | grep -q PONG; then
-        print_info "Redis already running"
-        return 0
-    fi
-
-    print_info "Starting Redis service..."
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        brew services start redis >> "$LOG_FILE" 2>&1 || true
-    else
-        if ! _run_sudo "enable and start the Redis service" systemctl enable --now redis 2>&1 | tee -a "$LOG_FILE" > /dev/null; then
-            print_error "Could not enable and start Redis; ensure the unattended installer can use sudo and re-run make install"
-            exit 1
-        fi
-    fi
-    print_success "Redis service management delegated to OS"
-}
-
 install_system_deps() {
     print_header "Installing System Dependencies"
 
@@ -950,29 +930,6 @@ install_system_deps() {
 
         install_gog
         install_sqlite3_rsync
-
-        # Redis (conditional native install) — skip when a remote Redis is already
-        # configured in .env. A local server is only needed when no REDIS_URL is set
-        # or its host is loopback; a configured remote endpoint needs nothing here.
-        # Classification (loopback vs remote) lives in bin/init/redis_locality.sh.
-        local redis_url_value=""
-        local machine_env="${TELECLAUDE_HOME:-$HOME/.teleclaude}/.env"
-        [ -f "$machine_env" ] && redis_url_value="$(grep -E '^REDIS_URL=.+' "$machine_env" | head -1)"
-        redis_url_value="${redis_url_value#REDIS_URL=}"
-        # An installed server is the record of a previous yes, so asking again
-        # offers a choice whose answer cannot change anything. Every sibling
-        # dependency above checks for the binary before acting; Redis only
-        # differs in carrying a prompt when it is genuinely absent.
-        if redis_url_skips_local_install "$redis_url_value"; then
-            print_info "Remote Redis already configured (REDIS_URL host=$(redis_url_host "$redis_url_value")) — skipping local Redis install"
-        elif command -v redis-server &> /dev/null; then
-            print_info "Redis already installed"
-            ensure_local_redis_running
-        elif confirm "Do you want to install and start a local Redis server?" "y"; then
-            print_info "Installing Redis..."
-            install_package redis
-            ensure_local_redis_running
-        fi
 
         # macOS-only optional GUI casks (LM Studio: local summarizer; Handy: STT)
         install_macos_casks
@@ -1671,8 +1628,6 @@ run_environment_defaults() {
 }
 
 # Load modular install steps
-# shellcheck source=/dev/null
-source "$INSTALL_DIR/bin/init/redis_locality.sh"
 # shellcheck source=/dev/null
 source "$INSTALL_DIR/bin/init/setup_mcp_config.sh"
 # shellcheck source=/dev/null

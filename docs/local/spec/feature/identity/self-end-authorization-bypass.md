@@ -14,7 +14,7 @@ visibility: public
 
 ## What it is
 
-`telec sessions end` is normally restricted to the orchestrator/integrator system band — worker-role agent sessions are excluded. But a runner-dispatched driver session (an analyzer, a prepare/work orchestrator) is authorization-classified as a `worker`, holds the todo's `active_runner` lease, and must end itself to release that lease and wake the runner. Command clearance for `telec sessions end` therefore recognises a "self-end" shape — a caller resolved to a session, ending that same session, whose session record names no orchestrating parent (`initiator_session_id is None`) — and admits it without consulting the verb allowlist. Every other shape falls through to the standard rule: a sub-worker self-end (parent set) and a cross-session end are evaluated against the normal band, and a worker is refused there. The decision is made in the CLI process before any request is sent (`feature/identity/command-clearance`); the daemon performs the end it receives.
+`telec sessions end` is normally restricted to the orchestrator/integrator system band — focused-role agent sessions are excluded. But a runner-dispatched driver session (an analyzer, a prepare/work orchestrator) is authorization-classified as `focused`, holds the todo's `active_runner` lease, and must end itself to release that lease and wake the runner. Command clearance for `telec sessions end` therefore recognises a "self-end" shape — a caller resolved to a session, ending that same session, whose session record names no orchestrating parent (`initiator_session_id is None`) — and admits it without consulting the verb allowlist. Every other shape falls through to the standard rule: a sub-worker self-end (parent set) and a cross-session end are evaluated against the normal band, and a focused session is refused there. The decision is made in the CLI process before any request is sent (`feature/identity/command-clearance`); the daemon performs the end it receives.
 
 The driver-vs-sub-worker discriminator is `initiator_session_id`. It is daemon-set session state, populated when an orchestrator dispatches a child that takes its work from that dispatcher; runner-dispatched drivers, human-started sessions, and standing roles — the integrator, the project coordinator, a scheduled job runner — carry `None`, because their work arrives from a queue, a schedule, or the fleet rather than from whoever started them (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`). Clearance reads it from the caller's own session record, never from a value the caller supplies, so a sub-worker cannot claim a parentless row to widen its own authority. This mirrors the self-restart carve-out, which grants a worker the right to restart only itself.
 
@@ -26,7 +26,7 @@ The driver-vs-sub-worker discriminator is `initiator_session_id`. It is daemon-s
 
 #### UC-SE2: Sub-worker self-end is rejected
 
-#### UC-SE3: Worker ending another session is rejected
+#### UC-SE3: A focused session ending another session is rejected
 
 #### UC-SE4: Orchestrator/integrator ends another session
 
@@ -43,5 +43,5 @@ The driver-vs-sub-worker discriminator is `initiator_session_id`. It is daemon-s
 
 - The carve-out widens `telec sessions end` for the caller's OWN session only, and only when `initiator_session_id is None`. The deny path is preserved verbatim for cross-session end by any non-band role and for self-end by a parented sub-worker.
 - The carve-out applies ONLY when the caller resolves to a session and the target is exactly that session. Terminal callers (no session) and callers acting on a different session go through the standard rule.
-- `initiator_session_id` is daemon-set session state read from the caller's own record, so a worker cannot supply a parentless row to gain cross-session end authority. The only path the carve-out opens to a worker is ending its own parentless session.
+- `initiator_session_id` is daemon-set session state read from the caller's own record, so a focused session cannot supply a parentless row to gain cross-session end authority. The only path the carve-out opens to a focused session is ending its own parentless session.
 - The refusal names the caller's role (`"role '<role>' is not permitted to call telec sessions end"`), identical to the standard rule's message.
