@@ -755,3 +755,10 @@ AgentProtocolDict = agent_registry.AgentProtocolDict
 AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
     name.value: definition.protocol for name, definition in agent_registry.AGENT_REGISTRY.items()
 }
+
+
+# A request that starts a session may spend driver admission's whole start budget before the session is created,
+# so every caller that starts one waits at least this long. A start carried to another computer gets a deadline
+# inside it, so its answer returns before the caller stops waiting.
+SESSION_START_TIMEOUT_S: Final = 90.0
+SESSION_START_RELAY_DEADLINE_S: Final = 80.0

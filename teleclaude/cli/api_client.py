@@ -11,7 +11,7 @@ import time
 from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field, replace
 from http import HTTPMethod
-from typing import TYPE_CHECKING, Any, Final, Unpack
+from typing import TYPE_CHECKING, Any, Unpack
 from urllib.parse import urlencode
 
 import httpx
@@ -50,7 +50,7 @@ from teleclaude.cli.tool_client import (
     shutdown_refusal_message,
 )
 from teleclaude.cli.tui_clearance import clear_tui_bootstrap_pillars
-from teleclaude.constants import API_SOCKET_PATH, SYSTEM_DAEMON_PRINCIPAL
+from teleclaude.constants import API_SOCKET_PATH, SESSION_START_TIMEOUT_S, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.daemon_lifecycle_identity import daemon_credential_headers
 from teleclaude.core.operation_caller_identity import get_caller_session_id
@@ -155,10 +155,6 @@ class _WebSocketState:
     callback: Callable[[WsEvent], None] | None = None
     on_connect: Callable[[], None] | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
-
-
-# Above driver admission's start budget, which a GitHub-backed start may spend in full before the session is created.
-_RUN_SESSION_TIMEOUT_S: Final = 90.0
 
 
 class APIError(Exception):
@@ -750,7 +746,7 @@ class _TelecSessionAPI:
         resp = await self._request(
             "POST",
             "/sessions",
-            timeout=30.0,
+            timeout=SESSION_START_TIMEOUT_S,
             request_options=RequestOptions(
                 json_body=payload,
                 params=_computer_params(kwargs["computer"]),
@@ -786,7 +782,7 @@ class _TelecSessionAPI:
         resp = await self._request(
             "POST",
             "/sessions/run",
-            timeout=_RUN_SESSION_TIMEOUT_S,
+            timeout=SESSION_START_TIMEOUT_S,
             request_options=RequestOptions(
                 json_body=request.model_dump(exclude_unset=True),
                 params=_computer_params(kwargs.get("computer")),
