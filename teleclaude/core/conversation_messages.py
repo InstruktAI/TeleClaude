@@ -47,6 +47,7 @@ from datetime import datetime
 
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.injected_text import (
+    CALLER_CATEGORY_SEPARATOR,
     ENVELOPE_REGISTRY,
     EnvelopeField,
     EnvelopeName,
@@ -61,7 +62,6 @@ from teleclaude.core.injected_text import (
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageAuthorKind
 from teleclaude.core.roles import Role, resolve_role
 
-_CATEGORY_PREFIX_TEMPLATE = " - {category}"
 _EMPTY_CATEGORY = ""
 
 _UTC_MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
@@ -136,7 +136,7 @@ def format_identity_header(
     grammar the peer and action envelopes use. The paired closing is derived
     from this rendered opening, so the two can never disagree.
     """
-    category_segment = _CATEGORY_PREFIX_TEMPLATE.format(category=category) if category else _EMPTY_CATEGORY
+    category_segment = CALLER_CATEGORY_SEPARATOR + category if category else _EMPTY_CATEGORY
     return envelope_bracket_opening(
         semantic_envelope(
             EnvelopeName.CALLER_IDENTITY,

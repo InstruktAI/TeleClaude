@@ -21,7 +21,7 @@ from teleclaude.core.conversation_messages import (
     resolve_session_event_author,
 )
 from teleclaude.core.db import db
-from teleclaude.core.injected_text import MachineRoleLabel
+from teleclaude.core.injected_text import CALLER_CATEGORY_PART_SEPARATOR, MachineRoleLabel
 from teleclaude.core.models import JsonDict, JsonValue, MessageAuthor, MessageMetadata
 from teleclaude.core.operation_caller_identity import get_relayed_caller
 from teleclaude.core.operations.service import SerializedOperation
@@ -33,7 +33,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SESSION_EVENT_IDENTITY_RESOLVED_EVENT = "session_event_identity_resolved"
-_CATEGORY_SEPARATOR = " · "
 
 
 @dataclass(frozen=True)
@@ -98,7 +97,7 @@ async def resolve_caller_event_identity(caller_session_id: str) -> ResolvedSessi
     category_parts = [part for part in (agent.title() if agent else None, job_role) if part]
     header = format_identity_header(
         role=MachineRoleLabel.AGENT if agent else machine_role_label(role),
-        category=_CATEGORY_SEPARATOR.join(category_parts) or None,
+        category=CALLER_CATEGORY_PART_SEPARATOR.join(category_parts) or None,
         session_id=caller_session_id,
         computer=computer or config.computer.name,
         occurred_at=datetime.now(UTC),

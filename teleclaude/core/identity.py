@@ -54,7 +54,12 @@ from teleclaude.constants import (
     HUMAN_ROLES,
 )
 from teleclaude.core.db import db
-from teleclaude.core.injected_text import MachineRoleLabel, caller_header_identity
+from teleclaude.core.injected_text import (
+    CALLER_CATEGORY_PART_SEPARATOR,
+    CALLER_CATEGORY_SEPARATOR,
+    MachineRoleLabel,
+    caller_header_identity,
+)
 from teleclaude.core.models import MessageAuthor, MessageAuthorKind, Session, SessionEntryPoint
 from teleclaude.identity_reach import Reach, resolve_reach, visitor_reach
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
@@ -64,8 +69,6 @@ logger = get_logger(__name__)
 _DISCORD_AVATAR_BINDING_EVENT = "discord_avatar_binding_lifecycle"
 _UNREGISTERED_LINEAGE_PERSON_EVENT = "session_lineage_person_unregistered"
 _PERSON_CONTEXT_BINDING_REGISTRY_UNAVAILABLE = "Person registry is unavailable for context binding"
-_CALLER_CATEGORY_SEPARATOR = " - "
-_CALLER_JOB_ROLE_SEPARATOR = " · "
 
 
 class DiscordAvatarBindingOutcome(StrEnum):
@@ -832,11 +835,11 @@ def resolve_discord_caller_header_alias(opening: str, *, owning_session_id: str)
     header = caller_header_identity(opening)
     assert header is not None
     session_id, label = header
-    role_label, category_separator, category = label.partition(_CALLER_CATEGORY_SEPARATOR)
+    role_label, category_separator, category = label.partition(CALLER_CATEGORY_SEPARATOR)
     avatar: str | None = None
     job_role: str | None = None
     if role_label == MachineRoleLabel.AGENT and category_separator:
-        runtime_label, role_separator, carried_role = category.partition(_CALLER_JOB_ROLE_SEPARATOR)
+        runtime_label, role_separator, carried_role = category.partition(CALLER_CATEGORY_PART_SEPARATOR)
         try:
             presentation = AgentName.from_str(runtime_label).discord_presentation
         except ValueError:
