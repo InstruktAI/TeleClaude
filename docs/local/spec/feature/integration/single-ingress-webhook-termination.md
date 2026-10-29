@@ -38,6 +38,12 @@ producers for every procedure and agent.
 
 - **Single public node.** One computer is the ingress; it need not be the
   cluster master. No other computer serves the inbound endpoints.
+- **Intake outlives the daemon.** The ingress's receiver is a process of its
+  own under its own service unit; the daemon serves no inbound endpoint. The
+  receiver keeps receiving while the daemon restarts or an install stops it,
+  and restarts itself when the active release changes. Its service unit holds
+  the listening socket and hands it to each receiver process, so a connection
+  that arrives while the receiver restarts waits instead of being refused.
 - **Narrow reachability.** The ingress serves plain HTTP on loopback only. A
   reverse proxy on the same computer is the public surface: it terminates TLS,
   restricts source and forwards only the inbound path prefix to the ingress.
@@ -139,10 +145,16 @@ Then each computer's WhatsApp conversation handler receives the message once
 
 ## Known caveats
 
-- **The ingress is a single point of external-event intake.** While its daemon
-  is down, including during a restart or an install, the cluster processes no
-  external events but is not otherwise broken; a provider that does not
-  redeliver a failed request loses that event.
+- **The ingress is a single point of external-event intake.** While its
+  receiver's unit is not loaded, the cluster processes no external events but
+  is not otherwise broken; a provider that does not redeliver a failed request
+  loses that event.
+- **A restart is bounded by the provider's timeout.** A connection queued while
+  the receiver restarts is lost if the receiver does not serve it before the
+  provider gives up.
+- **Moving the ingress leaves the old receiver behind.** A computer that stops
+  being the ingress keeps its receiver's units until they are removed; the
+  reverse proxy no longer forwards to it.
 - **A claim is retained for a bounded time.** A delivery repeated after its claim
   has expired is relayed again.
 - **Relaying needs the cluster Redis.** While it is unreachable, the receiver

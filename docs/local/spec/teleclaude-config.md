@@ -636,7 +636,7 @@ These keys are loaded by the daemon runtime config parser in `teleclaude/config/
 computer:
   name: string
   is_master: boolean # exactly one master per fleet; gates shared Discord channel provisioning (non-master computers resolve shared channels by name, never create)
-  is_ingress_node: boolean # designates this node as the cluster's single webhook ingress; gates the loopback HTTP listener on api.tcp_port and the inbound endpoints, which relay verified requests onto the platform event stream; defaulted by the runtime config defaults
+  is_ingress_node: boolean # designates this node as the cluster's single webhook ingress; gates the ingress receiver, whose service unit listens on api.tcp_port and serves the inbound endpoints, which relay verified requests onto the platform event stream; defaulted by the runtime config defaults
 <!-- planned:distributed-todo-postgres -->
   is_cluster_db_host: boolean # designates this node as the host of the shared cluster database (Postgres); exactly one per fleet; default false. Independent of is_master and is_ingress_node — it is its own role. Currently this is usually the ingress node by deployment convention (no secure cross-node transport yet), but that is convention, not a requirement: the host may relocate once secure inter-node transport exists.
 <!-- /planned:distributed-todo-postgres -->
@@ -788,7 +788,7 @@ web_console:
   trusted_proxy: string | null # the one address the web service accepts connections from — the ingress computer's reverse proxy; loopback when the proxy and the web service share a host; defaulted by the runtime config defaults
 <!-- /planned:web-console -->
 api:
-  tcp_port: integer # public; loopback HTTP listener port on 127.0.0.1, defaulted by the runtime config defaults and carried in every machine configuration; opened only when computer.is_ingress_node is true, as the reverse proxy's webhook upstream
+  tcp_port: integer # public; loopback HTTP listener port on 127.0.0.1, defaulted by the runtime config defaults and carried in every machine configuration; opened by the ingress receiver's service unit only when computer.is_ingress_node is true, as the reverse proxy's webhook upstream
   watch_interval_s: 5
   watch_lag_threshold_ms: 250
   watch_inflight_threshold_s: 1

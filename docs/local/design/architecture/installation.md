@@ -187,6 +187,16 @@ sequenceDiagram
   definitions are deployed only when their rendered content changed, and the
   start is verified against the new revision with admission open, as the
   lifecycle contract verifies any start. The install completes there.
+- **The ingress receiver outlives the daemon.** On the ingress computer the
+  service definitions include the webhook receiver's
+  (`local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`):
+  a unit that holds its listening socket and a unit for the receiver process,
+  deployed with the others, only when their content changed, and never stopped
+  with the daemon. Because definitions are deployed while the daemon is
+  stopped, the first deployment takes the port the previous release's daemon
+  released. The receiver follows the active-release pointer: when the pointer
+  moves, it exits and its service manager starts it again on the new release
+  while the socket stays open.
 
 - **Move running terminal interfaces, then prune.** The completed act sends
   presentation's reload signal to every terminal interface its registry records
