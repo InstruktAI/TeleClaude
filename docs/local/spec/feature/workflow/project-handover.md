@@ -121,7 +121,7 @@ Then the always-on computer holds the project in its owner's home, as one of its
 And the always-on computer continues the project's todos as in any handover
 ```
 
-#### UC-PH7: A computer that cannot take the project is refused
+#### UC-PH5: A computer that cannot take the project is refused
 
 ```gherkin
 Given a person whose project's active computer is their laptop
