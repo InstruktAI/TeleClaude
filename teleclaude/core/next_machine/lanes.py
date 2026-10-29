@@ -66,8 +66,9 @@ DRIVER_ROLES: frozenset[str] = frozenset(
     }
 )
 
-#: The roles that author prepare artifacts (input, prd, architecture, diagnosis, implementation-plan). The
-#: diagnoser is dispatched as a worker while every other prepare phase runs inline as the orchestrator.
+#: The roles of the prepare lane, used to adopt a prepare phase in place. The diagnoser is dispatched as a
+#: worker while every other prepare phase runs inline as the orchestrator. Prepare-artifact write authority is
+#: the role catalog's ``prepare-artifact-write`` capability, not this grouping.
 PREPARE_AUTHOR_ROLES: frozenset[str] = frozenset(
     {
         RoleName.PREPARE_ORCHESTRATOR.value,

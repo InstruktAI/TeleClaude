@@ -2,8 +2,10 @@
 
 The artifact write boundary records *who* wrote (the resolved principal),
 enforces the claiming-group ownership boundary (every writable artifact kind),
-and, for prepare artifacts, the prepare-phase role allowlist. All three concerns
-live here so the route module stays focused on request routing.
+and, for prepare artifacts, refuses a todo whose contract is under execution and
+a caller whose role does not reach the catalog's ``prepare-artifact-write``
+capability. All of these live here so the route module stays focused on request
+routing.
 """
 
 from __future__ import annotations
@@ -14,8 +16,9 @@ from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.core.db import db as runtime_db
-from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase, is_work_lifecycle_phase
 from teleclaude.core.next_machine.runtime.sessions import claim_is_held
+from teleclaude.core.roles import Capability, Role, allows, resolve_session_role
 from teleclaude.core.session_utils import session_in_claiming_group
 from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX, Lineage
 
@@ -115,37 +118,91 @@ async def refuse_todo_update_outside_claiming_group(
     )
 
 
-async def _foreign_live_claim_holder(
-    todos_db: WorkflowStore,
-    caller_session_id: str,
-    slug: str,
-) -> str | None:
-    """Return the live claim holder when the caller is outside its group."""
+async def _live_claim_holder(todos_db: WorkflowStore, slug: str) -> str | None:
+    """Return the session holding a live claim on the slug, if any."""
     state = await todos_db.read_state(slug)
     holder = (state or {}).get("active_runner")
     if not isinstance(holder, str) or not holder:
         return None
     if not await claim_is_held(runtime_db, todos_db.project_root, slug, holder):
         return None
+    return holder
+
+
+async def _foreign_live_claim_holder(
+    todos_db: WorkflowStore,
+    caller_session_id: str,
+    slug: str,
+) -> str | None:
+    """Return the live claim holder when the caller is outside its group."""
+    holder = await _live_claim_holder(todos_db, slug)
+    if holder is None:
+        return None
     if caller_session_id and await session_in_claiming_group(caller_session_id, holder):
         return None
     return holder
 
 
-async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: str) -> None:
-    """Refuse callers outside the prepare-artifact authoring role allowlist.
+async def refuse_closed_contract(
+    todos_db: WorkflowStore,
+    identity: CallerIdentity,
+    slug: str,
+    name: str,
+) -> None:
+    """Refuse a prepare-artifact write while the todo's contract is under execution.
 
-    A prepare artifact is writable by a prepare-phase writer — a direct
-    human-identity session (empty session id), a registered session carrying one
-    of the prepare-authoring roles (`PREPARE_AUTHOR_ROLES`: the prepare
-    orchestrator and the intake, architecture, diagnosis, and planning authors),
-    or a registered roleless session that carries no role (the human-originated,
-    operator-driven shape). The gate reads the role alone; a dispatched diagnosis
-    session is a worker for fleet classification and still admitted here on its
-    role. A session id with no registry row is an unknown caller; every
-    registered session that carries a non-prepare-authoring role — work
-    orchestrator, create orchestrator, integrator, and every other worker role —
-    is refused by role with a 403.
+    The contract is under execution while the stored lifecycle phase is a work-lane
+    phase. Every caller is refused, a direct human-identity writer included; the door
+    back to preparation is the work lane's kickback. The store re-checks the same
+    predicate inside the write's transaction, which is the guarantee; this precheck
+    keeps the refusal order the contract states (claim, closed contract, capability).
+    """
+    state = await todos_db.read_state(slug)
+    phase = coerce_lifecycle_phase((state or {}).get("lifecycle_phase"))
+    if phase is None or not is_work_lifecycle_phase(phase):
+        return
+    raise await closed_contract_refusal(todos_db, identity, slug, name, phase)
+
+
+async def closed_contract_refusal(
+    todos_db: WorkflowStore,
+    identity: CallerIdentity,
+    slug: str,
+    name: str,
+    phase: LifecyclePhase,
+) -> HTTPException:
+    """Build the 409 for a prepare artifact whose contract is under execution, naming its door."""
+    holder = await _live_claim_holder(todos_db, slug)
+    if holder is not None and holder != identity.session_id:
+        door = (
+            f"Address session '{holder}', which holds the todo, about the change; it returns the todo to "
+            f"preparation with `telec todo stamp {slug} --kickback --reason <why>`."
+        )
+    else:
+        door = (
+            "The todo's work orchestrator returns it to preparation with "
+            f"`telec todo stamp {slug} --kickback --reason <why>`; the change is made there."
+        )
+    return HTTPException(
+        status_code=409,
+        detail=(
+            f"prepare artifact '{name}' for '{slug}' is not writable: the todo's contract is under "
+            f"execution (lifecycle phase '{phase.value}'). {door}"
+        ),
+    )
+
+
+async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: str) -> None:
+    """Refuse callers whose role does not reach the prepare-artifact write capability.
+
+    A prepare artifact is writable by a direct human-identity session (empty
+    session id), by a registered roleless session (the human-originated,
+    operator-driven shape), and by a registered session whose catalog role
+    reaches ``prepare-artifact-write``: every full-reach role, and the focused
+    roles whose catalog entry composes it. The gate asks the role catalog and
+    keeps no role list. A session id with no registry row is an
+    unknown caller; a role the catalog does not name reaches nothing; every
+    other focused role is refused with a 403 naming the capability.
     """
     if not identity.session_id:
         return
@@ -160,11 +217,15 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
         )
     if session.role is None:
         return
-    if session.role not in PREPARE_AUTHOR_ROLES:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"prepare artifact '{name}' for '{slug}' is not writable by a "
-                f"role-bearing session; caller role '{session.role}' is refused"
-            ),
-        )
+    role = resolve_session_role(session.role, identity.session_id)
+    if isinstance(role, Role) and allows(role, Capability.PREPARE_ARTIFACT_WRITE):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            f"prepare artifact '{name}' for '{slug}' is not writable by a role-bearing "
+            f"session whose role '{session.role}' does not reach the "
+            f"'{Capability.PREPARE_ARTIFACT_WRITE}' capability; a focused session's "
+            "write belongs to the session that dispatched it"
+        ),
+    )
