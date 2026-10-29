@@ -42,13 +42,16 @@ Pickup evaluates a project when one of these happens:
   release another computer asks this computer to make.
 - **A session ending** that worked in the project's checkout.
 - **A change made elsewhere reaching this computer.** For a project on the
-  GitHub workflow store, a change another computer or a person on GitHub
-  makes to the project's work record reaches the active computer when GitHub
-  delivers the repository's webhook for it
+  GitHub workflow store, a change another computer makes to the project's
+  work record reaches the active computer when GitHub delivers the
+  repository's webhook for it
   (`local/projects/teleclaude/spec/feature/integration/github-webhook-normalization`);
   adopting it into this computer's copy of the record
   (`local/projects/teleclaude/design/architecture/workflow-store`) wakes
-  pickup as the same change made here would.
+  pickup as the same change made here would. A person's change on an item's
+  issue that becomes a workflow act
+  (`local/projects/teleclaude/spec/feature/integration/github-work-control`)
+  is a change to the work on the computer that takes the act.
 - **A pickup setting changing:** whether pickup runs, which kinds of work it
   starts, and how many todos it drives at once. Every project the setting
   governs is evaluated.
