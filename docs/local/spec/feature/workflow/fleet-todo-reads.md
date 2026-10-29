@@ -75,13 +75,22 @@ Scenario: The repository work shown is what GitHub holds
   When the operator views the project's repository work
   Then the operator sees the repository work GitHub holds for the project
 
-Scenario: GitHub cannot be read
+Scenario: GitHub cannot be read after an earlier read
   Given a project on the GitHub workflow store
+  And the operator's computer has read the project's repository work from GitHub before
+  And GitHub now cannot be read from the operator's computer
+  When the operator views the project's repository work
+  Then the operator is told that work cannot be read from GitHub, and why
+  And sees what the operator's computer last read from GitHub, marked as not current
+  And no other computer's copy of it is shown
+
+Scenario: GitHub has never been readable
+  Given a project on the GitHub workflow store
+  And the operator's computer has never read the project's repository work from GitHub
   And GitHub cannot be read from the operator's computer
   When the operator views the project's repository work
   Then the operator is told that work cannot be read from GitHub, and why
-  And what the operator's computer last read from GitHub is shown as not current
-  And no other computer's copy of it is shown
+  And no repository work of the project is shown
 ```
 
 ## Known caveats

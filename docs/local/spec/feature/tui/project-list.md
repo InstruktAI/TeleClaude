@@ -124,13 +124,20 @@ Scenario: Making another computer active moves the project
   When another computer is made the project's active computer
   Then the operator sees the project under that computer instead
 
-Scenario: The active computer cannot be read
+Scenario: The active computer cannot be read after an earlier read
   Given a project whose todos are kept on GitHub
+  And the operator's computer has read the project's active computer before
+  And its active computer now cannot be read from GitHub
+  When an operator views the Preparation view
+  Then the operator sees the project's work kept on GitHub under the active computer last read, marked as not current
+
+Scenario: The active computer has never been read
+  Given a project whose todos are kept on GitHub
+  And the operator's computer has never read the project's active computer
   And its active computer cannot be read from GitHub
   When an operator views the Preparation view
-  Then the operator sees the project under the active computer last read, marked as not current
-  Or, when none was ever read, is told the active computer cannot be read, and why
-  And the project's work kept on GitHub is shown under no other computer
+  Then the operator is told the project's active computer cannot be read, and why
+  And sees the project's work kept on GitHub under no computer
 ```
 
 <!-- /planned:redis-claim-check-external-content -->
