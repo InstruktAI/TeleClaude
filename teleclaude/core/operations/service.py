@@ -841,8 +841,10 @@ class OperationsService:
         """
         slug = operation.slug or "<auto>"
         return (
-            f"TASK_RUNNING: {slug} — execute the next firing from the current task-plan, "
-            "record the result in the log, and stamp the firing's outcome: a success ends "
+            f"TASK_RUNNING: {slug} — first stamp this firing's start with "
+            f"`telec todo stamp {slug} --task-firing-started`, then execute the next firing "
+            "from the current task-plan, record the result in the log, and stamp the firing's "
+            "outcome: a success ends "
             "this session (delivered if one-shot, recorded and resting if recurring); an "
             "error stays alive as the human-inspection beacon."
         )
