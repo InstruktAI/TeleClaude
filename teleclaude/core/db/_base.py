@@ -18,7 +18,8 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import DB_IN_MEMORY
-from teleclaude.core.migrations.runner import baseline_migrations, run_pending_migrations
+from teleclaude.core.migration_signal import MigrationStore
+from teleclaude.core.migrations.runner import MIGRATIONS_DIR, baseline_migrations, run_pending_migrations
 from teleclaude.paths import EVENTS_DB_PATH
 from teleclaude.project_root import is_slug_worktree, resolve_invocation_roots
 
@@ -30,6 +31,7 @@ from ..models._types import JsonDict, to_json_dict
 from ..session_status import AgentStatusReason, AgentStatusValue
 from ._agent_status import decode_open_tool_calls, decode_turn_notifications
 from .connection_factory import create_async_db_engine, get_outbox_db_path
+from .stores import STORES, DaemonStore, store_db_path
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -37,6 +39,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 DB_NOT_INITIALIZED_ERROR = "Database not initialized - call initialize() first"
+CORE_SCHEMA_PATH = Path(__file__).parent.parent / "schema.sql"
 _USER_TABLE_COUNT_SQL = "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
 
 RUNTIME_COMPACTION_MIN_FREELIST_RATIO = 0.20
@@ -52,7 +55,7 @@ _MIGRATION_WORKTREE_SKIP_MESSAGE = (
 
 _WORKTREE_BOOTSTRAP_REFUSAL_TEMPLATE = (
     "%s does not exist yet, and this process is invoked from a todo worktree. "
-    "Creating the shared session database for the first time is a canonical-"
+    "Creating the shared daemon database for the first time is a canonical-"
     "checkout or daemon-owned act: baselining it here would permanently record "
     "this worktree's own undelivered migrations as applied without ever running "
     "their data transformations. Start the daemon (`make start`) or run this "
@@ -61,7 +64,7 @@ _WORKTREE_BOOTSTRAP_REFUSAL_TEMPLATE = (
 
 
 class WorktreeDatabaseBootstrapRefused(RuntimeError):
-    """A todo-worktree process attempted to create the shared session database from empty.
+    """A todo-worktree process attempted to create a shared daemon database from empty.
 
     Distinct from the pending-migration skip below: that case protects an
     already-existing database from having an undelivered migration's SQL
@@ -73,7 +76,7 @@ class WorktreeDatabaseBootstrapRefused(RuntimeError):
     permanently disappear for every row created before the canonical merge.
     The only door that closes for every migration shape, schema or data
     alike, is refusing to be the one who creates this database at all: a
-    worktree is never the owner of the shared session database's genesis.
+    worktree is never the owner of a shared daemon database's genesis.
     """
 
 
@@ -100,6 +103,17 @@ def _invoked_from_slug_worktree() -> bool:
         return is_slug_worktree(resolve_invocation_roots().repository_root)
     except (OSError, FileNotFoundError, RuntimeError):
         return False
+
+
+def _create_runtime_engine(db_path: str | Path, *, pooled: bool) -> AsyncEngine:
+    """Create the runtime engine for one daemon database file.
+
+    A throwaway in-memory database set (tests) pins a single reused connection per file; on-disk
+    databases use the SQLite dialect's pooled default.
+    """
+    if pooled:
+        return create_async_db_engine(db_path)
+    return create_async_db_engine(db_path, poolclass=StaticPool)
 
 
 @dataclass(frozen=True)
@@ -239,36 +253,75 @@ class DbBase:
         self._sessionmaker: object | None = None
         self._outbox_engine: AsyncEngine | None = None
         self._outbox_sessionmaker: object | None = None
+        self._store_engines: dict[DaemonStore, AsyncEngine] = {}
+        self._store_sessionmakers: dict[DaemonStore, object] = {}
         self.conn: aiosqlite.Connection | None = None
         self._temp_db_path: str | None = None
         self._temp_dir: str | None = None
 
     async def initialize(self) -> None:
-        """Initialize database, create tables, and run migrations."""
+        """Initialize the core database and every split store: create tables and run migrations."""
         # Ensure parent directory exists
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
         db_path = self.db_path
-        use_uri = False
         if self.db_path == DB_IN_MEMORY:
-            # Isolate the whole database set (main, outbox, events) in a private
+            # Isolate the whole database set (main, stores, outbox, events) in a private
             # per-instance directory. A bare temp file would share its parent —
             # the system temp dir — so every in-memory Db would derive the same
-            # hook_outbox.db path and leak rows across instances (and across tests).
+            # sibling paths and leak rows across instances (and across tests).
             self._temp_dir = tempfile.mkdtemp(prefix="teleclaude-db-")
             self._temp_db_path = os.path.join(self._temp_dir, "main.db")
             db_path = self._temp_db_path
-        outbox_db_path = str(get_outbox_db_path(Path(db_path).expanduser().parent))
+        home_dir = Path(db_path).expanduser().parent
+        outbox_db_path = str(get_outbox_db_path(home_dir))
+        guarded = self.db_path != DB_IN_MEMORY
 
-        # Ensure schema + migrations via aiosqlite (single-shot bootstrap)
-        self.conn = await aiosqlite.connect(db_path, uri=use_uri)
+        # The core database first: its pending migrations may move tables into a store's file, which the
+        # store's own bootstrap then finds already populated.
+        await self._bootstrap_database(db_path, CORE_SCHEMA_PATH, MIGRATIONS_DIR, MigrationStore.CORE_DATABASE, guarded)
+        for store, declaration in STORES.items():
+            await self._bootstrap_database(
+                str(store_db_path(store, home_dir)),
+                declaration.schema_file,
+                declaration.migrations_dir,
+                declaration.migration_store,
+                guarded,
+            )
+
+        # Async engines for runtime access. A throwaway in-memory database (tests)
+        # pins a single reused connection per file; on-disk databases use the SQLite
+        # dialect's pooled default.
+        self._engine = _create_runtime_engine(db_path, pooled=guarded)
+        self._outbox_engine = _create_runtime_engine(outbox_db_path, pooled=guarded)
+        self._sessionmaker = sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)
+        self._outbox_sessionmaker = sessionmaker(self._outbox_engine, expire_on_commit=False, class_=SqlAsyncSession)
+        for store in STORES:
+            engine = _create_runtime_engine(store_db_path(store, home_dir), pooled=guarded)
+            self._store_engines[store] = engine
+            self._store_sessionmakers[store] = sessionmaker(engine, expire_on_commit=False, class_=SqlAsyncSession)
+
+    async def _bootstrap_database(
+        self,
+        db_path: str,
+        schema_path: Path,
+        migrations_dir: Path,
+        migration_store: MigrationStore,
+        guarded: bool,
+    ) -> None:
+        """Bring one daemon database file to its current schema, its migration ledger kept inside it.
+
+        ``guarded`` applies the todo-worktree rules: such a process neither creates the file from empty
+        nor runs its pending migrations.
+        """
+        self.conn = await aiosqlite.connect(db_path)
         self.conn.row_factory = aiosqlite.Row
 
         # An empty database is about to be created from the current schema, so
         # its migration history is recorded rather than replayed over it.
-        created_from_current_schema = not await self._has_user_tables()
+        created_from_current_schema = not await self._has_user_tables(self.conn)
 
-        if created_from_current_schema and self.db_path != DB_IN_MEMORY and _invoked_from_slug_worktree():
+        if created_from_current_schema and guarded and _invoked_from_slug_worktree():
             # Refuse before writing any schema: creating this database's first
             # generation is a canonical-checkout or daemon-owned act. Baselining
             # it here would bake this worktree's own undelivered migrations into
@@ -276,9 +329,8 @@ class DbBase:
             # migration and silently destroys a data-shaped one.
             await self.conn.close()
             self.conn = None
-            raise WorktreeDatabaseBootstrapRefused(_WORKTREE_BOOTSTRAP_REFUSAL_TEMPLATE % self.db_path)
+            raise WorktreeDatabaseBootstrapRefused(_WORKTREE_BOOTSTRAP_REFUSAL_TEMPLATE % db_path)
 
-        schema_path = Path(__file__).parent.parent / "schema.sql"
         schema_sql = schema_path.read_text(encoding="utf-8")
 
         if created_from_current_schema:
@@ -288,16 +340,16 @@ class DbBase:
             # (canonical checkout or daemon) — recording the current migration
             # set as applied is correct because this call owns the schema it
             # just wrote.
-            await baseline_migrations(self.conn)
+            await baseline_migrations(self.conn, migrations_dir)
         else:
             # Pending migrations run against the shape their predecessors left,
             # before the current schema adds anything: each one finds the input
             # it was written for, however many releases the database skipped.
             # The current schema then only adds what the history does not create.
-            if self.db_path != DB_IN_MEMORY and _invoked_from_slug_worktree():
-                logger.debug(_MIGRATION_WORKTREE_SKIP_MESSAGE, self.db_path)
+            if guarded and _invoked_from_slug_worktree():
+                logger.debug(_MIGRATION_WORKTREE_SKIP_MESSAGE, db_path)
             else:
-                await run_pending_migrations(self.conn)
+                await run_pending_migrations(self.conn, migrations_dir, migration_store)
             await self.conn.executescript(schema_sql)  # guard: raw-sql
             await self.conn.commit()
 
@@ -305,23 +357,10 @@ class DbBase:
         await self.conn.close()
         self.conn = None
 
-        # Async engine for runtime access. A throwaway in-memory database (tests)
-        # pins a single reused connection; on-disk databases use the SQLite
-        # dialect's pooled default.
-        if self.db_path == DB_IN_MEMORY:
-            self._engine = create_async_db_engine(db_path, poolclass=StaticPool)
-            self._outbox_engine = create_async_db_engine(outbox_db_path, poolclass=StaticPool)
-        else:
-            self._engine = create_async_db_engine(db_path)
-            self._outbox_engine = create_async_db_engine(outbox_db_path)
-        self._sessionmaker = sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)
-        self._outbox_sessionmaker = sessionmaker(self._outbox_engine, expire_on_commit=False, class_=SqlAsyncSession)
-
-    async def _has_user_tables(self) -> bool:
-        """Return whether the bootstrap connection already holds application tables."""
-        if self.conn is None:
-            raise RuntimeError(DB_NOT_INITIALIZED_ERROR)
-        async with self.conn.execute(_USER_TABLE_COUNT_SQL) as cursor:  # guard: raw-sql
+    @staticmethod
+    async def _has_user_tables(conn: aiosqlite.Connection) -> bool:
+        """Return whether a bootstrap connection already holds application tables."""
+        async with conn.execute(_USER_TABLE_COUNT_SQL) as cursor:  # guard: raw-sql
             row = await cursor.fetchone()
         return bool(row) and int(row[0]) > 0
 
@@ -336,6 +375,13 @@ class DbBase:
         if self._outbox_sessionmaker is None:
             raise RuntimeError(DB_NOT_INITIALIZED_ERROR)
         return self._outbox_sessionmaker()  # type: ignore[call-arg]
+
+    def _store_session(self, store: DaemonStore) -> SqlAsyncSession:
+        """Create an async ORM session bound to one split store's database."""
+        sessionmaker_for_store = self._store_sessionmakers.get(store)
+        if sessionmaker_for_store is None:
+            raise RuntimeError(DB_NOT_INITIALIZED_ERROR)
+        return sessionmaker_for_store()  # type: ignore[operator]
 
     def is_initialized(self) -> bool:
         """Return whether the async session factory has been initialized."""
@@ -416,6 +462,7 @@ class DbBase:
             main_path,
             get_outbox_db_path(main_path.parent),
             main_path.with_name(EVENTS_DB_PATH.name),
+            *(store_db_path(store, main_path.parent) for store in STORES),
         )
         compacted = 0
         seen_paths: set[Path] = set()
@@ -434,6 +481,8 @@ class DbBase:
             await self._engine.dispose()
         if self._outbox_engine:
             await self._outbox_engine.dispose()
+        for store_engine in self._store_engines.values():
+            await store_engine.dispose()
         if self.conn:
             await self.conn.close()
         if self._temp_dir:

@@ -24,6 +24,7 @@ from ..reminders.models import (
     ReminderTrigger,
 )
 from ..reminders.observability import observe_entry_read_failure
+from .stores import DaemonStore
 
 _CLAIMED_ENTRY_MISSING = "claimed reminder occurrence is missing its firing entry"
 
@@ -143,7 +144,7 @@ class DbRemindersMixin:
         """Atomically arm or replace one session-local slug generation."""
         now = datetime.now(UTC)
         key = {"session_id": request.session_id, "slug": request.slug}
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             existing = await db_session.get(db_models.ReminderRow, key)
             generation = existing.generation + 1 if existing is not None else 1
             transition = ReminderTransition.REPLACED if existing is not None else ReminderTransition.ARMED
@@ -160,7 +161,7 @@ class DbRemindersMixin:
 
     async def get_reminder(self, *, session_id: str, slug: str) -> Reminder | None:
         """Return one caller-owned reminder aggregate."""
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             row = await db_session.get(db_models.ReminderRow, {"session_id": session_id, "slug": slug})
             return _decode_reminder(row) if row is not None else None
 
@@ -171,7 +172,7 @@ class DbRemindersMixin:
             .where(db_models.ReminderRow.session_id == session_id)
             .order_by(db_models.ReminderRow.slug)  # type: ignore[arg-type]
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             rows = (await db_session.exec(statement)).all()
             return [_decode_reminder(row) for row in rows]
 
@@ -184,7 +185,7 @@ class DbRemindersMixin:
             .where(db_models.ReminderRow.next_fire_at <= ensure_utc(at).isoformat())
             .order_by(db_models.ReminderRow.next_fire_at)  # type: ignore[arg-type]
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             rows = (await db_session.exec(statement)).all()
             return [_decode_reminder(row) for row in rows]
 
@@ -195,7 +196,7 @@ class DbRemindersMixin:
             .where(db_models.ReminderRow.claimed_occurrence_key.is_not(None))
             .order_by(db_models.ReminderRow.claimed_at)  # type: ignore[arg-type]
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             rows = (await db_session.exec(statement)).all()
             return [_decode_reminder(row) for row in rows]
 
@@ -206,7 +207,7 @@ class DbRemindersMixin:
             .where(db_models.ReminderRow.next_fire_at.is_not(None))
             .order_by(db_models.ReminderRow.next_fire_at)  # type: ignore[arg-type]
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             rows = (await db_session.exec(statement)).all()
             return [_decode_reminder(row) for row in rows]
 
@@ -216,7 +217,7 @@ class DbRemindersMixin:
         if session_id is not None:
             statement = statement.where(db_models.ReminderRow.session_id == session_id)
         statement = statement.order_by(db_models.ReminderRow.next_fire_at).limit(1)  # type: ignore[arg-type]
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             row = (await db_session.exec(statement)).first()
             return _decode_reminder(row) if row is not None else None
 
@@ -232,14 +233,14 @@ class DbRemindersMixin:
         )
         if anchor is not None:
             statement = statement.where(db_models.ReminderRow.event_anchor == anchor.value)
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             rows = (await db_session.exec(statement)).all()
             return [_decode_reminder(row) for row in rows]
 
     async def cancel_reminder(self, *, session_id: str, slug: str) -> ReminderEntry | None:
         """Atomically remove one live aggregate and append its cancellation entry."""
         now = datetime.now(UTC)
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             row = await db_session.get(db_models.ReminderRow, {"session_id": session_id, "slug": slug})
             if row is None:
                 return None
@@ -254,7 +255,7 @@ class DbRemindersMixin:
         """Remove every live aggregate for one session in one transaction."""
         now = datetime.now(UTC)
         statement = select(db_models.ReminderRow).where(db_models.ReminderRow.session_id == session_id)
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             rows = list((await db_session.exec(statement)).all())
             entry_rows = (
                 [_entry_row(row, transition=ReminderTransition.CANCELLED, occurred_at=now) for row in rows]
@@ -274,7 +275,7 @@ class DbRemindersMixin:
     ) -> ReminderEntry | None:
         """Claim the current occurrence and append its unique firing entry."""
         key = {"session_id": session_id, "slug": slug}
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             row = await db_session.get(db_models.ReminderRow, key)
             if row is None or row.generation != generation or row.occurrence_key != occurrence_key:
                 return None
@@ -314,7 +315,7 @@ class DbRemindersMixin:
     async def accept_reminder_occurrence(self, entry: ReminderEntry) -> Reminder | None:
         """Consume a one-shot or advance a recurring occurrence after acceptance."""
         key = {"session_id": entry.session_id, "slug": entry.slug}
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             row = await db_session.get(db_models.ReminderRow, key)
             if row is None or row.occurrence_key != entry.occurrence_key:
                 return None
@@ -343,7 +344,7 @@ class DbRemindersMixin:
     ) -> Reminder | None:
         """Re-anchor one unclaimed sliding occurrence without advancing it."""
         key = {"session_id": session_id, "slug": slug}
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             row = await db_session.get(db_models.ReminderRow, key)
             if (
                 row is None
@@ -365,7 +366,7 @@ class DbRemindersMixin:
             .where(db_models.ReminderEntryRow.entry_id > after_entry_id)
             .order_by(db_models.ReminderEntryRow.entry_id)  # type: ignore[arg-type]
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
             rows = (await db_session.exec(statement)).all()
             entries: list[ReminderEntryReadItem] = []
             for row in rows:

@@ -36,10 +36,10 @@ _LOG_MISSING_UP = "Migration %s missing up() function"
 _LOG_BASELINED = "Baselined %d migration(s) against the freshly created schema"
 
 
-def _migration_files() -> list[Path]:
-    """Return every migration file in version order."""
+def _migration_files(migrations_dir: Path) -> list[Path]:
+    """Return every migration file of one store in version order."""
     return sorted(
-        f for f in MIGRATIONS_DIR.glob("*.py") if re.match(_VERSION_FILE_PATTERN, f.name) and f.name not in _SKIP_FILES
+        f for f in migrations_dir.glob("*.py") if re.match(_VERSION_FILE_PATTERN, f.name) and f.name not in _SKIP_FILES
     )
 
 
@@ -56,7 +56,7 @@ async def _applied_versions(db: aiosqlite.Connection) -> set[str]:
     return {cast(str, row[0]) for row in rows}
 
 
-async def baseline_migrations(db: aiosqlite.Connection) -> int:
+async def baseline_migrations(db: aiosqlite.Connection, migrations_dir: Path = MIGRATIONS_DIR) -> int:
     """Record every migration as applied without executing any of it.
 
     A database created from the current schema already holds the end state that
@@ -68,6 +68,7 @@ async def baseline_migrations(db: aiosqlite.Connection) -> int:
 
     Args:
         db: Database connection to a schema that was just created
+        migrations_dir: The store's migration directory; defaults to the core database's
 
     Returns:
         Number of migrations recorded as applied
@@ -76,7 +77,7 @@ async def baseline_migrations(db: aiosqlite.Connection) -> int:
     applied = await _applied_versions(db)
 
     baselined = 0
-    for migration_file in _migration_files():
+    for migration_file in _migration_files(migrations_dir):
         version = migration_file.stem
         if version in applied:
             continue
@@ -88,11 +89,17 @@ async def baseline_migrations(db: aiosqlite.Connection) -> int:
     return baselined
 
 
-async def run_pending_migrations(db: aiosqlite.Connection) -> int:
-    """Run all pending migrations in order.
+async def run_pending_migrations(
+    db: aiosqlite.Connection,
+    migrations_dir: Path = MIGRATIONS_DIR,
+    store: MigrationStore = MigrationStore.CORE_DATABASE,
+) -> int:
+    """Run all pending migrations of one store in order.
 
     Args:
-        db: Database connection
+        db: Connection to the store's database file
+        migrations_dir: The store's migration directory; defaults to the core database's
+        store: The store whose owner signals before each migration; defaults to the core database
 
     Returns:
         Number of migrations applied
@@ -101,7 +108,7 @@ async def run_pending_migrations(db: aiosqlite.Connection) -> int:
     applied = await _applied_versions(db)
 
     applied_count = 0
-    for migration_file in _migration_files():
+    for migration_file in _migration_files(migrations_dir):
         version = migration_file.stem  # e.g., "001_add_ux_columns"
 
         if version in applied:
@@ -122,7 +129,7 @@ async def run_pending_migrations(db: aiosqlite.Connection) -> int:
             logger.error(_LOG_MISSING_UP, version)
             continue
 
-        signal_migration_started(MigrationStore.CORE_DATABASE)
+        signal_migration_started(store)
         await module.up(db)  # type: ignore[misc, unused-ignore]  # Dynamic module load
 
         await db.execute(_INSERT_APPLIED_SQL, (version,))

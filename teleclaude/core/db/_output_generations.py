@@ -15,6 +15,7 @@ from sqlmodel import select
 
 from .. import db_models
 from ..models import GenerationHandle
+from .stores import DaemonStore
 
 _TERMINAL_INTENT_STATUSES = ("resolved", "omitted", "replayed")
 
@@ -86,7 +87,7 @@ class DbOutputGenerationsMixin:
         is_legacy: bool = False,
     ) -> OutputGeneration:
         """Persist a new generation identity. Idempotent on ``generation_id``."""
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             existing = await db_session.get(db_models.OutputGenerationRow, generation_id)
             if existing is not None:
                 return _decode_generation(existing)
@@ -107,7 +108,7 @@ class DbOutputGenerationsMixin:
 
     async def get_output_generation(self, generation_id: str) -> OutputGeneration | None:
         """Return one generation by id."""
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             row = await db_session.get(db_models.OutputGenerationRow, generation_id)
             return _decode_generation(row) if row is not None else None
 
@@ -119,7 +120,7 @@ class DbOutputGenerationsMixin:
             .order_by(db_models.OutputGenerationRow.created_at.desc())  # type: ignore[attr-defined]
             .limit(1)
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             row = (await db_session.exec(stmt)).first()
             return _decode_generation(row) if row is not None else None
 
@@ -150,7 +151,7 @@ class DbOutputGenerationsMixin:
 
     async def get_consumer_cursor(self, *, session_id: str, consumer: str) -> db_models.OutputConsumerCursorRow | None:
         """Return one consumer's delivery cursor for a session, if any."""
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             return await db_session.get(
                 db_models.OutputConsumerCursorRow, {"session_id": session_id, "consumer": consumer}
             )
@@ -165,7 +166,7 @@ class DbOutputGenerationsMixin:
     ) -> None:
         """Persist one consumer's delivery cursor, independent of every other consumer."""
         now = datetime.now(UTC).isoformat()
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             existing = await db_session.get(
                 db_models.OutputConsumerCursorRow, {"session_id": session_id, "consumer": consumer}
             )
@@ -190,7 +191,7 @@ class DbOutputGenerationsMixin:
         self, *, session_id: str, consumer: str, generation_id: str
     ) -> db_models.OutputConsumerReceiptRow | None:
         """Return one consumer's edit-target receipt for a specific generation, if any."""
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             return await db_session.get(
                 db_models.OutputConsumerReceiptRow,
                 {"session_id": session_id, "consumer": consumer, "generation_id": generation_id},
@@ -207,7 +208,7 @@ class DbOutputGenerationsMixin:
     ) -> None:
         """Persist one consumer's edit target and delivered offset for one generation."""
         now = datetime.now(UTC).isoformat()
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             existing = await db_session.get(
                 db_models.OutputConsumerReceiptRow,
                 {"session_id": session_id, "consumer": consumer, "generation_id": generation_id},
@@ -239,7 +240,7 @@ class DbOutputGenerationsMixin:
         channel_id: str,
     ) -> DiscordSendIntent:
         """Persist a pending webhook create intent before dispatch. Idempotent on ``intent_id``."""
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             existing = await db_session.get(db_models.DiscordSendIntentRow, intent_id)
             if existing is not None:
                 return _decode_intent(existing)
@@ -258,7 +259,7 @@ class DbOutputGenerationsMixin:
 
     async def get_discord_send_intent(self, intent_id: str) -> DiscordSendIntent | None:
         """Return one Discord send intent by id."""
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             row = await db_session.get(db_models.DiscordSendIntentRow, intent_id)
             return _decode_intent(row) if row is not None else None
 
@@ -267,7 +268,7 @@ class DbOutputGenerationsMixin:
         stmt = select(db_models.DiscordSendIntentRow).where(db_models.DiscordSendIntentRow.status == "pending")
         if session_id is not None:
             stmt = stmt.where(db_models.DiscordSendIntentRow.session_id == session_id)
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             rows = (await db_session.exec(stmt)).all()
             return [_decode_intent(row) for row in rows]
 
@@ -278,7 +279,7 @@ class DbOutputGenerationsMixin:
         callers must not retry a terminal disposition into a different one.
         """
         now = datetime.now(UTC).isoformat()
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             row = await db_session.get(db_models.DiscordSendIntentRow, intent_id)
             if row is None or row.status in _TERMINAL_INTENT_STATUSES:
                 return False
@@ -292,7 +293,7 @@ class DbOutputGenerationsMixin:
     async def omit_discord_send_intent(self, *, intent_id: str) -> bool:
         """Close an intent as 'omitted': inconclusive reconciliation, lane released, never resent."""
         now = datetime.now(UTC).isoformat()
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             row = await db_session.get(db_models.DiscordSendIntentRow, intent_id)
             if row is None or row.status in _TERMINAL_INTENT_STATUSES:
                 return False
@@ -316,7 +317,7 @@ class DbOutputGenerationsMixin:
         missing or not currently 'omitted'.
         """
         now = datetime.now(UTC).isoformat()
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
             omitted = await db_session.get(db_models.DiscordSendIntentRow, omitted_intent_id)
             if omitted is None or omitted.status != "omitted":
                 return None
