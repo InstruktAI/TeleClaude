@@ -58,22 +58,6 @@ feature specs remain the current contract.
   anything else loads. Consumers ask this contract and never restate the
   layout.
 
-<!-- planned-change:prepare-artifact-write-gates-on-job-role -->
-
-- **Also owns:** which entry procedure each todo-lifecycle dispatch names —
-  the prepare and work overviews, the build, review, finalize, drift-analysis,
-  task and deferral procedures — and every emission of those procedure IDs by
-  the lifecycle state machines and the lifecycle runner; and the lane
-  groupings of catalog role names its own gates read: the preparation-authoring
-  roles (prepare-orchestrator, intaker, architect, diagnoser, planner), the
-  worktree-writer roles (builder, finalizer) and the work-lane roles
-  (work-orchestrator and the writers). The artifact-authority gate, kickback
-  stamping and the checkpoint's worktree dirty-set selection consume those
-  groupings by role name; the catalog composes the roles and decides nothing
-  about lanes (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
-
-<!-- change:prepare-artifact-write-gates-on-job-role -->
-
 - **Also owns:** which entry procedure each todo-lifecycle dispatch names —
   the prepare and work overviews, the build, review, finalize, drift-analysis,
   task and deferral procedures — and every emission of those procedure IDs by
@@ -88,8 +72,6 @@ feature specs remain the current contract.
   Prepare-artifact write authority reads no grouping: it consults the catalog's
   `prepare-artifact-write` capability
   (`local/projects/teleclaude/spec/feature/workflow/artifact-versioning`).
-
-<!-- /planned-change:prepare-artifact-write-gates-on-job-role -->
 
 - **Also owns (failed-check bugs):** the filer that turns failed required CI
   checks into bugs
@@ -184,13 +166,6 @@ concerned:
 - `local/projects/teleclaude/adr/0052-orchestrator-dedup-registry-authoritative` — orchestrator dedup through the registry
 - `local/projects/teleclaude/adr/0053-hold-scoped-to-autostart-enabled-kinds` — hold limited to autostart-enabled kinds
 
-<!-- planned-change:prepare-artifact-write-gates-on-job-role -->
-
-- `local/projects/teleclaude/adr/0056-roleless-sessions-exempt-from-prepare-write-role-gate` — roleless sessions writing prepare artifacts
-
-<!-- change:prepare-artifact-write-gates-on-job-role -->
-<!-- /planned-change:prepare-artifact-write-gates-on-job-role -->
-
 - `local/projects/teleclaude/adr/0057-spec-coverage-enforcement-by-review` — spec coverage enforced by review
 - `local/projects/teleclaude/adr/0060-task-firing-outcome-contract` — task firings reporting a durable outcome
 - `local/projects/teleclaude/adr/0061-hold-is-durable-dispatch-brake` — hold as the durable dispatch brake
@@ -219,12 +194,8 @@ concerned:
 - `local/projects/teleclaude/adr/0138-a-filing-completes-after-its-request-under-a-receipt` — a filing returns a receipt and completes after its request, in its project's acceptance order
 - `local/projects/teleclaude/adr/0147-a-review-runs-each-lane-in-a-fresh-native-subagent-under-a-judging-parent` — each review lane in a fresh native subagent under a parent that briefs, reconciles and judges the whole
 
-<!-- planned:prepare-artifact-write-gates-on-job-role -->
-
 - `local/projects/teleclaude/adr/0149-prepare-artifact-write-authority-is-a-catalog-capability` — prepare-artifact write authority read from the role catalog
 - `local/projects/teleclaude/adr/0151-prepare-artifacts-close-while-their-contract-is-under-execution` — prepare artifacts closed to every caller while their contract is under execution
-
-<!-- /planned:prepare-artifact-write-gates-on-job-role -->
 
 ## See Also
 
