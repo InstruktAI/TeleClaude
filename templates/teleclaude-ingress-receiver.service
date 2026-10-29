@@ -1,0 +1,21 @@
+[Unit]
+Description=TeleClaude ingress webhook receiver
+Requires=teleclaude-ingress-receiver.socket
+After=network.target teleclaude-ingress-receiver.socket
+
+[Service]
+Type=simple
+User={{USER}}
+WorkingDirectory={{WORKING_DIR}}
+Environment=PATH={{PATH}}
+Environment=UV_NO_SYNC=1
+Environment=XDG_DATA_HOME={{XDG_DATA_HOME}}
+ExecStart={{PYTHON_PATH}} -m teleclaude.hooks.ingress_receiver
+# The receiver exits when the active release moves; the socket stays open while it starts again.
+Restart=always
+RestartSec=1
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target

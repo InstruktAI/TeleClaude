@@ -66,7 +66,6 @@ from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, LegacyFacts
 from teleclaude.hooks.dispatcher import HookDispatcher
 from teleclaude.hooks.github_handler import GitHubCommentEvent, handle_github_event
 from teleclaude.hooks.handlers import HandlerRegistry
-from teleclaude.hooks.inbound import install_inbound_routes
 from teleclaude.hooks.normalizers.github import GITHUB_SOURCE
 from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline
@@ -132,10 +131,6 @@ _MEMORY_TRANSITION_LOG_TASK_NAME = "memory_transition"
 _MEMORY_TRANSITION_PASS_FAILED_EVENT = "memory.transition.pass_failed"
 _MEMORY_TRANSITION_INCOMPLETE_EVENT = "Conversation-memory transition incomplete; retrying until complete"
 _MEMORY_TRANSITION_END_REASON = "conversation_memory_transition"
-_API_SERVER_ATTRIBUTE = "api_server"
-_API_APP_ATTRIBUTE = "app"
-_INBOUND_ROUTES_INSTALLED_EVENT = "Inbound endpoints installed on the ingress computer"
-_INBOUND_ROUTES_UNAVAILABLE_EVENT = "API app or event producer unavailable; inbound endpoints are not installed"
 _DUPLICATE_RUNTIME_CONSUMER_NAMES_ERROR = "runtime and platform event consumers must have unique names"
 _DISCORD_VOICE_ADAPTER_REQUIRED = "Discord runtime voice consumer has no active adapter capability"
 _DISCORD_ADAPTER_KEY = "discord"
@@ -558,18 +553,5 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         )
 
         await self._prepare_relay_delivery_consumer(dispatcher)
-        self._install_inbound_routes()
 
         logger.info("Webhook service initialized")
-
-    def _install_inbound_routes(self) -> None:
-        """Mount the inbound endpoints on the API app, on the ingress computer only."""
-        if not config.computer.is_ingress_node:
-            return
-        app = getattr(getattr(self.lifecycle, _API_SERVER_ATTRIBUTE, None), _API_APP_ATTRIBUTE, None)
-        producer = self._event_producer
-        if app is None or producer is None:
-            logger.warning(_INBOUND_ROUTES_UNAVAILABLE_EVENT)
-            return
-        install_inbound_routes(app, producer)
-        logger.info(_INBOUND_ROUTES_INSTALLED_EVENT)

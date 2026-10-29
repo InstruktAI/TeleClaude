@@ -27,6 +27,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config.declaration_changes import identity_declaration_watch_paths
 from teleclaude.config.machine import config
 from teleclaude.core.config_watcher import ConfigWatcher
+from teleclaude.core.reconciliation.installation import loaded_release_revision, runs_active_release
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
 from teleclaude.events.producer import EventProducer
 from teleclaude.events.scoped_redis import close_scoped_clients, scoped_redis_clients
@@ -43,6 +44,8 @@ LAUNCHD_SOCKET_NAME: Final = "Listeners"
 # systemd hands the first activated socket over as this descriptor (sd_listen_fds).
 _SYSTEMD_FIRST_FD: Final = 3
 _STARTUP_POLL_S: Final = 0.05
+# How often the receiver checks whether an install moved the active-release pointer.
+_RELEASE_POLL_S: Final = 2.0
 
 
 def build_receiver_app(producer: EventProducer) -> FastAPI:
@@ -95,6 +98,14 @@ async def _refresh_catalog() -> None:
     get_project_catalog_service().refresh()
 
 
+async def _exit_when_release_moves(server: uvicorn.Server) -> None:
+    """Stop serving once the active release is no longer this process's, so the unit starts the new one."""
+    while runs_active_release():
+        await asyncio.sleep(_RELEASE_POLL_S)
+    logger.info("ingress_receiver_release_moved")
+    server.should_exit = True
+
+
 async def serve() -> None:
     """Serve the inbound endpoints until the process is stopped."""
     if not config.computer.is_ingress_node:
@@ -111,6 +122,10 @@ async def serve() -> None:
     listener, handed_over = _listening_socket()
     server = uvicorn.Server(uvicorn.Config(build_receiver_app(producer), log_level="warning"))
     serve_task = asyncio.create_task(server.serve(sockets=[listener]))
+    # A receiver started from a release follows the pointer; one started from a checkout has none to follow.
+    release_task = (
+        asyncio.create_task(_exit_when_release_moves(server)) if loaded_release_revision() is not None else None
+    )
     try:
         while not server.started and not serve_task.done():
             await asyncio.sleep(_STARTUP_POLL_S)
@@ -119,6 +134,8 @@ async def serve() -> None:
         await serve_task
     finally:
         watcher_task.cancel()
+        if release_task is not None:
+            release_task.cancel()
         await close_scoped_clients(clients)
 
 

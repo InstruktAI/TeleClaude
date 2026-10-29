@@ -55,7 +55,6 @@ from teleclaude.api.bugs_routes import router as bugs_router
 from teleclaude.api.commit_review_stamp_routes import router as commit_review_stamp_router
 from teleclaude.api.config_routes import router as config_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
-from teleclaude.api.ingress_listener import WebhookIngressListener
 from teleclaude.api.operations_routes import router as operations_router
 from teleclaude.api.relay_boundary import relay_boundary
 from teleclaude.api.shutdown_refusal import STATE_CHANGING_METHODS, shutdown_refusal_response
@@ -117,7 +116,6 @@ from teleclaude.events.schemas.system import (
     RuntimeOperationOutcomeData,
     RuntimeSessionStatusData,
 )
-from teleclaude.hooks.inbound import INBOUND_PATH_PREFIX
 from teleclaude.identity_reach import ReachCache
 from teleclaude.mcp.runtime import McpRuntimePool
 from teleclaude.memory.api_routes import router as memory_router
@@ -155,7 +153,6 @@ class RequestSurface(StrEnum):
     """The long-lived servers that make up the daemon's request surface."""
 
     API_SERVER = "api_task"
-    WEBHOOK_INGRESS = "webhook_ingress"
 
 
 ServerExitHandler = Callable[[RequestSurface, BaseException | None, bool | None, bool | None, bool], None]
@@ -186,15 +183,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             person_secret_resolver=resolve_person_mcp_secret_values,
         )
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
-        self._webhook_ingress_listener: WebhookIngressListener | None = None
-        if config.computer.is_ingress_node:
-            self._webhook_ingress_listener = WebhookIngressListener(
-                self.app,
-                port=config.api.tcp_port,
-                keep_alive_timeout_s=API_TIMEOUT_KEEP_ALIVE_S,
-                stop_timeout_s=API_STOP_TIMEOUT_S,
-                on_unexpected_exit=self._on_ingress_listener_exit,
-            )
         self._setup_routes()
         configure_relay_carrier(client)
         configure_relayed_request(self.app)
@@ -514,9 +502,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                     path=request.url.path,
                     operation=operation,
                 )
-            # Inbound external requests authenticate by signature alone and carry no caller identity.
-            carries_caller = not request.url.path.startswith(INBOUND_PATH_PREFIX)
-            caller_token = set_caller_session_id(carried_caller_session_id(request) if carries_caller else None)
+            caller_token = set_caller_session_id(carried_caller_session_id(request))
             try:
                 with continuation.bound() if continuation is not None else nullcontext():
                     return await call_next(request)
@@ -755,8 +741,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             raise TimeoutError("API server failed to start within timeout")
 
         logger.info("API server listening on %s", self.socket_path)
-        if self._running and self._webhook_ingress_listener is not None:
-            await self._webhook_ingress_listener.start()
 
     async def restart_server(self) -> None:
         """Restart uvicorn server without tearing down server state."""
@@ -771,10 +755,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._on_server_exit = handler
 
     async def _stop_server(self) -> None:
-        """Stop the webhook ingress listener before the Unix API server."""
-        if self._webhook_ingress_listener is not None:
-            await self._webhook_ingress_listener.stop()
-
+        """Stop the Unix API server."""
         server = self.server
         if server:
             logger.debug(
@@ -907,13 +888,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
         if self._on_server_exit:
             self._on_server_exit(RequestSurface.API_SERVER, exc, server_started, server_should_exit, socket_exists)
-
-    def _on_ingress_listener_exit(self, exc: BaseException | None, should_exit: bool | None) -> None:
-        """Report the webhook ingress listener's unexpected exit through the request-surface exit handler."""
-        if self._on_server_exit:
-            self._on_server_exit(
-                RequestSurface.WEBHOOK_INGRESS, exc, True, should_exit, os.path.exists(self.socket_path)
-            )
 
 
 def _get_fd_count() -> int:
