@@ -246,9 +246,19 @@ class InputHandlersMixin:
         return None
 
     async def _dispatch_file_attachments(
-        self, session: Session, message: object, attachments: list[object], *, recovered_at: datetime | None = None
+        self,
+        session: Session,
+        message: object,
+        attachments: list[object],
+        *,
+        recovered_at: datetime | None = None,
+        retain_refusal: bool = False,
     ) -> None:
-        """Download file/image attachments and dispatch them for processing to ``session``."""
+        """Download file/image attachments and dispatch them for processing to ``session``.
+
+        A draining refusal is answered to the sender. A caller whose place is recovered after the restart sets
+        ``retain_refusal``: the refusal is raised without a notice, so the message stays unprocessed.
+        """
         recoverable_errors = self._discord_errors()
 
         # Get text caption for the first attachment only (to avoid duplication)
@@ -270,6 +280,8 @@ class InputHandlersMixin:
                     recovered_at,
                 )
             except ShutdownRefusal:
+                if retain_refusal:
+                    raise
                 await self.answer_shutdown_refusal(session.session_id)  # type: ignore[attr-defined]
                 return
             except recoverable_errors as exc:

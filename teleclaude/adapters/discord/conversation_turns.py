@@ -122,9 +122,9 @@ class ConversationTurnsMixin:
     - _discord_actor_name(author, user_id) -> str
     - _discord_actor_avatar_url(author) -> str | None
     - _metadata(**kwargs) -> MessageMetadata
-    - _dispatch_command(session, message_id, metadata, command_name, payload, handler) (async)
-    - _dispatch_voice_attachment(session, message, attachment, *, recovered_at) -> Task | None (async)
-    - _dispatch_file_attachments(session, message, attachments, *, recovered_at) (async)
+    - _dispatch_command(session, message_id, metadata, command_name, payload, handler, *, retain_refusal) (async)
+    - _dispatch_voice_attachment(session, message, attachment, *, recovered_at, retain_refusal) -> Task | None (async)
+    - _dispatch_file_attachments(session, message, attachments, *, recovered_at, retain_refusal) (async)
     """
 
     if TYPE_CHECKING:
@@ -147,14 +147,28 @@ class ConversationTurnsMixin:
             command_name: str,
             payload: dict[str, object],  # guard: loose-dict - Command payload for UI adapters
             handler: Callable[[], Awaitable[object]],
+            *,
+            retain_refusal: bool = False,
         ) -> object: ...
 
         async def _dispatch_voice_attachment(
-            self, session: Session, message: object, attachment: object, *, recovered_at: datetime | None = None
+            self,
+            session: Session,
+            message: object,
+            attachment: object,
+            *,
+            recovered_at: datetime | None = None,
+            retain_refusal: bool = False,
         ) -> asyncio.Task[object] | None: ...
 
         async def _dispatch_file_attachments(
-            self, session: Session, message: object, attachments: list[object], *, recovered_at: datetime | None = None
+            self,
+            session: Session,
+            message: object,
+            attachments: list[object],
+            *,
+            recovered_at: datetime | None = None,
+            retain_refusal: bool = False,
         ) -> None: ...
 
     def _message_sender(self, message: object) -> _MessageSender | None:

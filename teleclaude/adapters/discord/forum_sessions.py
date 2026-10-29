@@ -78,8 +78,8 @@ class ForumSessionsMixin:
     - _resolve_forum_context(message) -> tuple[str, str | None]
     - _is_thread_channel(channel) -> bool
     - _discord_errors() -> tuple[type[Exception], ...] (from InputHandlersMixin)
-    - _dispatch_voice_attachment(session, message, attachment, *, recovered_at) -> Task | None (async; from InputHandlersMixin)
-    - _dispatch_file_attachments(session, message, attachments, *, recovered_at) (async; from InputHandlersMixin)
+    - _dispatch_voice_attachment(session, message, attachment, *, recovered_at, retain_refusal) -> Task | None (async; from InputHandlersMixin)
+    - _dispatch_file_attachments(session, message, attachments, *, recovered_at, retain_refusal) (async; from InputHandlersMixin)
     """
 
     if TYPE_CHECKING:
@@ -96,11 +96,23 @@ class ForumSessionsMixin:
         def _discord_errors(self) -> tuple[type[Exception], ...]: ...
 
         async def _dispatch_voice_attachment(
-            self, session: Session, message: object, attachment: object, *, recovered_at: datetime | None = None
+            self,
+            session: Session,
+            message: object,
+            attachment: object,
+            *,
+            recovered_at: datetime | None = None,
+            retain_refusal: bool = False,
         ) -> asyncio.Task[object] | None: ...
 
         async def _dispatch_file_attachments(
-            self, session: Session, message: object, attachments: list[object], *, recovered_at: datetime | None = None
+            self,
+            session: Session,
+            message: object,
+            attachments: list[object],
+            *,
+            recovered_at: datetime | None = None,
+            retain_refusal: bool = False,
         ) -> None: ...
 
     async def resolve_or_create_session(self, message: object, *, first_message: str | None = None) -> Session | None:
