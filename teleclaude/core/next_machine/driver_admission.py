@@ -720,7 +720,8 @@ def parse_admission_conflict(slug: str, detail: str | None) -> ClaimConflict | N
     return ClaimConflict.from_error_payload(slug, {str(key): value for key, value in payload.items()})
 
 
-class ClaimHolderReport(BaseModel):
+@dataclass(frozen=True)
+class ClaimHolderReport:
     """Who holds a todo's driver claim, as driver admission's holder rule finds it.
 
     ``HELD`` names the holding session and the computer that answered for it, or, when no computer
@@ -728,12 +729,43 @@ class ClaimHolderReport(BaseModel):
     claim could not be read; it is never ``FREE``.
     """
 
+    status: ClaimStatus
+    session_id: str | None = None
+    computer: str | None = None
+    unanswered: tuple[str, ...] = ()
+    reason: str | None = None
+
+
+class ClaimHolderAnswer(BaseModel):
+    """The wire body of a holder read: a :class:`ClaimHolderReport` between the active computer and its asker."""
+
     model_config = ConfigDict(frozen=True)
     status: ClaimStatus
     session_id: str | None = None
     computer: str | None = None
     unanswered: tuple[str, ...] = ()
     reason: str | None = None
+
+    @classmethod
+    def from_report(cls, report: ClaimHolderReport) -> ClaimHolderAnswer:
+        """The wire body that carries ``report``."""
+        return cls(
+            status=report.status,
+            session_id=report.session_id,
+            computer=report.computer,
+            unanswered=report.unanswered,
+            reason=report.reason,
+        )
+
+    def to_report(self) -> ClaimHolderReport:
+        """The report this wire body carried."""
+        return ClaimHolderReport(
+            status=self.status,
+            session_id=self.session_id,
+            computer=self.computer,
+            unanswered=self.unanswered,
+            reason=self.reason,
+        )
 
 
 def _undetermined(slug: str, reason: str) -> ClaimHolderReport:
@@ -844,7 +876,7 @@ async def _ask_active_computer_claim_holder(
     if response.status_code != _HTTP_OK:
         return _undetermined(slug, f"the active computer answered status {response.status_code}")
     try:
-        return ClaimHolderReport.model_validate_json(base64.b64decode(response.body_b64))
+        return ClaimHolderAnswer.model_validate_json(base64.b64decode(response.body_b64)).to_report()
     except ValueError:
         return _undetermined(slug, "the active computer's answer could not be read")
 
@@ -884,13 +916,15 @@ def _role_of(view: object) -> str | None:
     return role if isinstance(role, str) and role else None
 
 
-async def _remote_holder_role(computer: str, session_id: str, caller: AdmissionCaller, until: float) -> str | None:
+async def _remote_holder_role(
+    computer: str, session_id: str, project_root: Path, caller: AdmissionCaller, until: float
+) -> str | None:
     try:
         response = await _carry(
             computer,
             HTTPMethod.GET,
             f"/sessions/{session_id}",
-            query=[],
+            query=[[_PROJECT_PATH_FIELD, project_identity_for_folder(project_root)]],
             body=b"",
             caller=caller,
             deadline_s=min(HOLDER_ROLE_RELAY_DEADLINE_S, until - asyncio.get_running_loop().time()),
@@ -903,13 +937,19 @@ async def _remote_holder_role(computer: str, session_id: str, caller: AdmissionC
 
 
 async def holder_role(
-    report: ClaimHolderReport, *, reader: CliCaller, remote_caller: AdmissionCaller | None, until: float
+    report: ClaimHolderReport,
+    project_root: Path,
+    *,
+    reader: CliCaller,
+    remote_caller: AdmissionCaller | None,
+    until: float,
 ) -> str | None:
     """The role of the session a ``HELD`` report names, read only where the caller's reach admits the record.
 
     A holder on this computer is read through agent_runtime's :func:`inspect_local` as ``reader``. A holder
     elsewhere is read through that computer's own session read, carried as ``remote_caller``, which is the
-    caller's own principal and never the daemon's; with none there is no remote read. A held claim no
+    caller's own principal and never the daemon's, and naming ``project_root`` so the caller is admitted at the
+    project's scope there rather than the platform's; with no principal there is no remote read. A held claim no
     computer answered for, a record outside reach, a refusal, silence or the deadline name no role.
     """
     if report.status is not ClaimStatus.HELD or not report.session_id or not report.computer:
@@ -919,7 +959,7 @@ async def holder_role(
             if report.computer != config.computer.name:
                 if remote_caller is None:
                     return None
-                return await _remote_holder_role(report.computer, report.session_id, remote_caller, until)
+                return await _remote_holder_role(report.computer, report.session_id, project_root, remote_caller, until)
             read = await inspect_local(reader, report.session_id)
             return _role_of(curated_view(read.values)) if isinstance(read, SessionRecordFound) else None
     except TimeoutError:

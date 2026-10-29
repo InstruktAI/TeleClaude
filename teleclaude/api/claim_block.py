@@ -51,6 +51,7 @@ async def claim_block_for(project_root: Path, slug: str, identity: CallerIdentit
     principal = principal_for_carried_caller(identity)
     role = await holder_role(
         report,
+        project_root,
         reader=caller_for_role_resolution(identity),
         remote_caller=replace(caller, principal=principal) if principal else None,
         until=until,
