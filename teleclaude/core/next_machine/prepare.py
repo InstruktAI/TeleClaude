@@ -122,14 +122,19 @@ async def _hydrate_artifact_presence_for_adoption(
     *,
     repo_root: str,
 ) -> None:
-    """Load current artifact presence into state before handoff adoption."""
+    """Load current artifact presence into state before handoff adoption.
+
+    Stored provenance is kept only while it describes the current stored artifact; a digest
+    that differs from the stored content is re-captured in full.
+    """
     for state_key, artifact_name in _ADOPTION_ARTIFACTS:
         entry = getattr(writer.state.artifacts, state_key)
         if not await todos_db.artifact_exists(slug, artifact_name):
             continue
         artifact_body = await todos_db.read_artifact(slug, artifact_name)
         snippet_digest_fn = snippet_body_digest_for(repo_root)
-        if entry.digest and entry.async_provenance_complete:
+        current_digest = await todos_db.artifact_digest(slug, artifact_name)
+        if entry.digest and entry.async_provenance_complete and entry.digest == current_digest:
             if not entry.owned_snippet_digests or not entry.referenced_snippet_digests:
                 owned_snippet_digests = await read_owned_snippet_digests(
                     todos_db,
