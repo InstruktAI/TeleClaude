@@ -54,7 +54,7 @@ driven; it relies on driver admission for everything a start decides.
 - **The receiving computer continues each released todo** in the phase it
   stood in, once its claim is released, without a person starting it. This
   holds whatever the automatic-start setting is for new work of the todo's
-  kind, because someone already chose to drive that todo.
+  kind.
 - **Sessions that drive no todo stay where they are.** A person's own
   conversations, and any session that is not a todo's lifecycle orchestrator or
   one of its workers, are not ended or moved.
