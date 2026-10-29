@@ -41,11 +41,12 @@ driven; it relies on driver admission for everything a start decides.
 
 - **The receiving computer becomes active.** From then on it starts the
   project's todos that no orchestrator drives, as the active computer does.
-- **The giving computer winds down.** It starts no new orchestrator for the
-  project. Each of its orchestrators for the project starts no new step,
-  finishes the step it is in, leaves what that step produced on the project's
-  shared record, ends together with the sessions it started, and releases its
-  claim.
+- **The giving computer winds down without waiting for running steps.** It
+  starts no new orchestrator for the project. Each of its orchestrators for the
+  project starts no new step, stops the step it is in at the first point where
+  that step's progress is saved on the project's shared record, ends together
+  with the sessions it started, and releases its claim. The receiving computer
+  redoes only what was in flight and not yet saved.
 - **The shared record carries the work.** What an orchestrator leaves behind
   reaches the receiving computer through the record every computer reads: the
   todo's state and artifacts in the project's workflow store, and its commits
@@ -62,12 +63,22 @@ driven; it relies on driver admission for everything a start decides.
 
 - **One report per handover,** readable from either computer until the
   handover is complete. It names each todo that was being driven and whether it
-  has moved to the receiving computer or is still finishing a step on the giving
-  computer.
+  has moved to the receiving computer, is still winding down on the giving
+  computer, or was taken over from a giving computer that did not answer.
 - **When the giving computer can be closed.** The report says whether the
-  giving computer still runs any step for the project. Once it runs none, the
-  giving computer can be closed without holding up any todo.
+  giving computer still runs anything for the project. Once it runs nothing,
+  the giving computer can be closed without holding up any todo.
 
+### When a computer does not answer
+
+- **A giving computer that does not answer** does not hold its todos back. The
+  receiving computer takes each of them over at once, from its last saved
+  state. Once a todo has moved, the giving computer can no longer change its
+  state, its artifacts or its work. When it is back, it ends its orchestrators
+  for the project.
+- **A receiving computer that does not answer, or holds no checkout of the
+  project,** is refused before anything changes, naming why. The active
+  computer and every orchestrator stay as they were.
 - **Handing a project to the computer that is already active** changes nothing
   and says so.
 
@@ -82,6 +93,25 @@ When the person hands the project over to their always-on computer
 Then each of those todos is continued on the always-on computer in the phase it stood in
 And what the laptop's orchestrators had produced is there for the always-on computer
 And the person sees when the laptop can be closed without holding up any todo
+```
+
+#### UC-PH4: Hand a project over while the laptop is asleep
+
+```gherkin
+Given a person whose project's active computer is their laptop, which is asleep
+And orchestrators on the laptop were driving some of the project's todos
+When the person hands the project over to their always-on computer from elsewhere
+Then the always-on computer drives each of those todos at once, from its last saved state
+And once the laptop wakes, it changes none of those todos
+```
+
+#### UC-PH5: A computer that cannot take the project is refused
+
+```gherkin
+Given a person whose project's active computer is their laptop
+When the person hands the project over to a computer that does not answer or has no checkout of it
+Then the handover is refused, naming why
+And the laptop stays the project's active computer, with its orchestrators running as before
 ```
 
 ## Known caveats
