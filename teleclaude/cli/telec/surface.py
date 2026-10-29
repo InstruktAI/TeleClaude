@@ -2091,7 +2091,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[F.FLAG_HELP],
                 examples=["telec app status"],
                 auth=CommandAuth(
-                    capability=Capability.INSTALLATION_READ, human=_HR_MEMBER, scope=CommandScope.PLATFORM
+                    capability=Capability.INSTALLATION_READ,
+                    human=_HR_MEMBER,
+                    scope=CommandScope.PLATFORM,
+                    machine_account=True,
                 ),
             ),
             "start": CommandDef(
@@ -2099,19 +2102,34 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[F.FLAG_HELP],
                 notes=["Refuses until the machine configuration is valid; complete it with `telec config`."],
                 examples=["telec app start"],
-                auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                auth=CommandAuth(
+                    capability=Capability.INSTALLATION,
+                    human=_HR_ADMIN,
+                    scope=CommandScope.PLATFORM,
+                    machine_account=True,
+                ),
             ),
             "stop": CommandDef(
                 desc="Stop the installation's daemon once its accepted work has settled",
                 flags=[F.FLAG_HELP],
                 examples=["telec app stop"],
-                auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                auth=CommandAuth(
+                    capability=Capability.INSTALLATION,
+                    human=_HR_ADMIN,
+                    scope=CommandScope.PLATFORM,
+                    machine_account=True,
+                ),
             ),
             "restart": CommandDef(
                 desc="Restart the installation's daemon on its active release",
                 flags=[F.FLAG_HELP],
                 examples=["telec app restart"],
-                auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                auth=CommandAuth(
+                    capability=Capability.INSTALLATION,
+                    human=_HR_ADMIN,
+                    scope=CommandScope.PLATFORM,
+                    machine_account=True,
+                ),
             ),
             "install": CommandDef(
                 desc="Install a revision as the active release",
@@ -2123,7 +2141,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "The previously active release stays installed. When no migration started the install can be rolled back; after one started, the way back is a forward repair.",
                 ],
                 examples=["telec app install", "telec app install v1.4.0"],
-                auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                auth=CommandAuth(
+                    capability=Capability.INSTALLATION,
+                    human=_HR_ADMIN,
+                    scope=CommandScope.PLATFORM,
+                    machine_account=True,
+                ),
             ),
             "rollback": CommandDef(
                 desc="Make the previously active release active again",
@@ -2132,7 +2155,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Refused, naming the condition, when a migration has started since the active release became active."
                 ],
                 examples=["telec app rollback"],
-                auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                auth=CommandAuth(
+                    capability=Capability.INSTALLATION,
+                    human=_HR_ADMIN,
+                    scope=CommandScope.PLATFORM,
+                    machine_account=True,
+                ),
             ),
             "assessed": CommandDef(
                 desc="Record that an install's running release has been assessed",
@@ -2144,7 +2172,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Refuses, naming the owed install, when it carries another number, and while the daemon does not serve the active release.",
                 ],
                 examples=["telec app assessed 3"],
-                auth=CommandAuth(capability=Capability.INSTALLATION, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                auth=CommandAuth(
+                    capability=Capability.INSTALLATION,
+                    human=_HR_ADMIN,
+                    scope=CommandScope.PLATFORM,
+                    machine_account=True,
+                ),
             ),
         },
     ),
