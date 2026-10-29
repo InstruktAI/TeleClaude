@@ -637,7 +637,7 @@ computer:
   name: string
   is_master: boolean # exactly one master per fleet; gates shared Discord channel provisioning (non-master computers resolve shared channels by name, never create)
   is_ingress_node: boolean # designates this node as the cluster's single webhook ingress; gates the inbound endpoints, which relay verified requests onto the platform event stream: served on api.tcp_port by the daemon, or by the ingress receiver once computer.ingress_receiver is true; defaulted by the runtime config defaults
-  ingress_receiver: boolean # on the ingress, true moves the inbound endpoints from the daemon to the standalone ingress receiver under its own service units; turned on once a release with the receiver is active there; default false
+  ingress_receiver: boolean # on the ingress, true moves the inbound endpoints from the daemon to the standalone ingress receiver under its own service units, and a change hands the port over before the daemon restarts; turned on once a release with the receiver is active there; defaulted by the runtime config defaults
 <!-- planned:distributed-todo-postgres -->
   is_cluster_db_host: boolean # designates this node as the host of the shared cluster database (Postgres); exactly one per fleet; default false. Independent of is_master and is_ingress_node — it is its own role. Currently this is usually the ingress node by deployment convention (no secure cross-node transport yet), but that is convention, not a requirement: the host may relocate once secure inter-node transport exists.
 <!-- /planned:distributed-todo-postgres -->

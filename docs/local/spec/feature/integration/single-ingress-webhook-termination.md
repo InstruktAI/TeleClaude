@@ -41,7 +41,8 @@ producers for every procedure and agent.
 - **Intake outlives the daemon.** Once the ingress turns on its receiver
   (`computer.ingress_receiver`), the receiver is a process of its own under its
   own service unit and the daemon serves no inbound endpoint; until then the
-  daemon serves them on the same port, as before the receiver existed. The
+  daemon serves them on the same port. Changing the setting hands the port over
+  in either direction before the daemon restarts to apply it. The
   receiver keeps receiving while the daemon restarts or an install stops it,
   and restarts itself when the active release changes or a validated machine
   configuration change needs a restart; an invalid change leaves it running on
@@ -151,9 +152,10 @@ Then each computer's WhatsApp conversation handler receives the message once
 
 ## Known caveats
 
-- **The ingress is a single point of external-event intake.** While its
-  receiver's unit is not loaded, the cluster processes no external events but
-  is not otherwise broken; a provider that does not redeliver a failed request
+- **The ingress is a single point of external-event intake.** While the server
+  of its inbound endpoints is down (the daemon, or the receiver's unit once the
+  receiver is turned on), the cluster processes no external events but is not
+  otherwise broken; a provider that does not redeliver a failed request
   loses that event.
 - **A restart is bounded by the provider's timeout.** A connection queued while
   the receiver restarts is lost if the receiver does not serve it before the
