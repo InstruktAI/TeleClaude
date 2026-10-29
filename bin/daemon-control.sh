@@ -586,8 +586,9 @@ start_daemon() {
         install_service
     fi
 
-    # The receiver's units are deployed or withdrawn while the daemon is stopped, so the port is settled for
-    # whichever of the two serves the ingress; a failure fails the start before the daemon runs.
+    # The receiver's units are deployed or withdrawn before the daemon is started, per computer.ingress_receiver;
+    # the daemon then serves the inbound endpoints only while they are absent. A daemon that still holds the port
+    # (a start of a running daemon) makes a deployment fail, and a failure fails the start before the daemon runs.
     if ! install_ingress_receiver; then
         log_error "Failed to deploy or withdraw the ingress receiver"
         return 1

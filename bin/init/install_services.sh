@@ -666,7 +666,7 @@ ingress_receiver_port() {
     errors="$(mktemp)"
     if ! PYTHONPATH="$PROJECT_ROOT" "$PROJECT_ROOT/.venv/bin/python" -c '
 from teleclaude.config.machine import config
-print(config.api.tcp_port if config.computer.ingress_by_receiver else "")' 2>"$errors"; then
+print(config.api.tcp_port if config.computer.is_ingress_node and config.computer.ingress_receiver else "")' 2>"$errors"; then
         log_error "Could not read whether this computer is the ingress: $(tail -n 3 "$errors")"
         rm -f "$errors"
         return 1
@@ -808,7 +808,8 @@ install_service() {
             install_launchd_cron_service
             ;;
     esac
-    # Deployment follows a verified daemon start (bin/daemon-control.sh); a comparison names its differences here.
+    # Deployment runs before the daemon starts (bin/daemon-control.sh start_daemon); a comparison names its
+    # differences here.
     if defer_service_changes; then
         install_ingress_receiver
     fi

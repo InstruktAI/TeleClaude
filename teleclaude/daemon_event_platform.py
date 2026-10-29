@@ -72,6 +72,7 @@ from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline, relay_delivery_group
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
+from teleclaude.install.ingress_receiver import receiver_units_installed
 from teleclaude.memory.closure import build_memory_closure_consumer
 from teleclaude.memory.transition import run_transition, run_transition_until_complete
 from teleclaude.mirrors.closure import build_mirror_closure_consumer
@@ -559,7 +560,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     def _install_inbound_routes(self) -> None:
         """Mount the inbound endpoints on the API app while the daemon serves this computer's ingress."""
-        if not config.computer.ingress_by_daemon:
+        if not config.computer.is_ingress_node or receiver_units_installed():
             return
         app = getattr(getattr(self.lifecycle, "api_server", None), "app", None)
         producer = self._event_producer

@@ -119,6 +119,7 @@ from teleclaude.events.schemas.system import (
 )
 from teleclaude.hooks.inbound import INBOUND_PATH_PREFIX
 from teleclaude.identity_reach import ReachCache
+from teleclaude.install.ingress_receiver import receiver_units_installed
 from teleclaude.mcp.runtime import McpRuntimePool
 from teleclaude.memory.api_routes import router as memory_router
 from teleclaude.paths import REPO_ROOT
@@ -187,8 +188,8 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         )
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._webhook_ingress_listener: WebhookIngressListener | None = None
-        # Until the standalone receiver serves this ingress, the daemon serves the inbound endpoints itself.
-        if config.computer.ingress_by_daemon:
+        # While the standalone receiver's units are not installed, the daemon serves the inbound endpoints itself.
+        if config.computer.is_ingress_node and not receiver_units_installed():
             self._webhook_ingress_listener = WebhookIngressListener(
                 self.app,
                 port=config.api.tcp_port,
@@ -908,12 +909,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
         if self._on_server_exit:
             self._on_server_exit(RequestSurface.API_SERVER, exc, server_started, server_should_exit, socket_exists)
-
-    async def stop_ingress_listener(self) -> None:
-        """Release the webhook ingress port, where the daemon serves it, for the ingress receiver to take."""
-        if self._webhook_ingress_listener is not None:
-            await self._webhook_ingress_listener.stop()
-            self._webhook_ingress_listener = None
 
     def _on_ingress_listener_exit(self, exc: BaseException | None, should_exit: bool | None) -> None:
         """Report the webhook ingress listener's unexpected exit through the request-surface exit handler."""

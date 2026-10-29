@@ -337,18 +337,8 @@ class ComputerConfig(ClosedModel):
     host: TEXT | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})
     tmux_binary: TEXT = Field(default="tmux", json_schema_extra={"tier": Tier.INTERNAL})
     is_ingress_node: FLAG = Field(default=False, json_schema_extra={"tier": Tier.TUI})
-    # Turned on for the ingress once a release with the standalone receiver is active (ADR-0148).
+    # Whether the installation deploys the standalone ingress receiver's units on the ingress (ADR-0148).
     ingress_receiver: FLAG = Field(default=False, json_schema_extra={"tier": Tier.TUI})
-
-    @property
-    def ingress_by_receiver(self) -> bool:
-        """Whether this computer's inbound endpoints are served by the standalone receiver."""
-        return self.is_ingress_node and self.ingress_receiver
-
-    @property
-    def ingress_by_daemon(self) -> bool:
-        """Whether this computer's daemon serves the inbound endpoints itself."""
-        return self.is_ingress_node and not self.ingress_receiver
 
     @model_validator(mode="before")
     @classmethod
