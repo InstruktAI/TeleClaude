@@ -239,10 +239,11 @@ first turn of each eligible session missing from GitHub.
 - **A turn the runtime never saw complete.** A turn with no later turn, no
   covering agent stop and an open session is not completed and is not
   captured until one of those holds.
-- **A transcript file the chain names is missing.** The runtime logs it as an
-  anomaly and the file contributes no turns; the conversation shows nothing in
-  its place. A file that exists but fails to read fails the read, and capture
-  retries it.
+- **A transcript file the chain names is missing or fails to read.** The
+  completed-turns read defines the outcome
+  (`local/projects/teleclaude/spec/feature/agent_runtime/session-transcript-retrieval`,
+  Completed turns read). The conversation shows nothing for a missing file,
+  and a failed read leaves the session's capture for the next pass.
 - **A lost working copy.** Captured turns not yet on GitHub are captured again
   from the runtime.
 - **A computer that does not hold the project.** It publishes nothing for its
