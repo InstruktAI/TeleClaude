@@ -26,6 +26,7 @@ class ProjectCatalogService:
         self._projects: list[ProjectNode] | None = None
         self._entries: list[ProjectCatalogEntry] | None = None
         self._unresolved_roots: list[Path] | None = None
+        self._generation = 0
 
     # -- Loading ----------------------------------------------------------
 
@@ -45,9 +46,15 @@ class ProjectCatalogService:
 
     def refresh(self) -> None:
         """Invalidate the cached project list; next access reloads from disk."""
+        self._generation += 1
         self._projects = None
         self._entries = None
         self._unresolved_roots = None
+
+    @property
+    def generation(self) -> int:
+        """Advances on every refresh, so a view derived from the catalog knows when to derive it again."""
+        return self._generation
 
     # -- Queries ----------------------------------------------------------
 
