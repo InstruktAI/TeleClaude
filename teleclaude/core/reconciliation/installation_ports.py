@@ -69,6 +69,9 @@ _PUBLICATION_MODULE = "teleclaude.entrypoints.install_publication"
 _SCHEMA_MODULE = "teleclaude.core.reconciliation.config_schemas"
 _RELEASE_OPTION = "--release"
 _PUBLISH_TIMEOUT_SECONDS = 900.0
+# The ingress receiver's module; a release without it has no receiver units to run (ADR-0148).
+_INGRESS_RECEIVER_SOURCE = Path("teleclaude") / "hooks" / "ingress_receiver.py"
+_WITHDRAW_TIMEOUT_SECONDS = 120.0
 _PUBLISH_FAILED = "{module} exited {exit_code}: {output}"
 _PUBLISH_TIMED_OUT = "{module} did not finish within {seconds:.0f}s"
 _STOP_CLEANUP_WARNING_EVENT = "install_stop_cleanup_failure"
@@ -208,8 +211,39 @@ class LiveInstallPorts:
         return StepVerdict(succeeded=True)
 
     def switch(self, revision: str | None) -> None:
-        """Point ``current`` at the release of ``revision`` in one atomic step."""
+        """Point ``current`` at the release of ``revision`` in one atomic step.
+
+        Switching to a release that predates the ingress receiver first withdraws the receiver's units, through
+        the outgoing release's installer, so that release's daemon serves the inbound endpoints on its port again.
+        """
+        if revision is not None and not (self._layout.release_path(revision) / _INGRESS_RECEIVER_SOURCE).is_file():
+            self._withdraw_ingress_receiver(revision)
         switch_current(self._layout, revision)
+
+    def _withdraw_ingress_receiver(self, revision: str) -> None:
+        outgoing = self._layout.active_release()
+        if outgoing is None:
+            return
+        result = run_process_group_command(
+            [
+                "bash",
+                "-c",
+                "source bin/init/install_services.sh && { ! declare -F withdraw_ingress_receiver >/dev/null"
+                " || withdraw_ingress_receiver; }",
+            ],
+            outgoing,
+            {**release_process_environment(), "PROJECT_ROOT": str(outgoing)},
+            timeout_seconds=_WITHDRAW_TIMEOUT_SECONDS,
+            capture_output=secret_output_masker(outgoing),
+        )
+        if result.timed_out or result.exit_code != 0:
+            logger.warning(
+                "ingress_receiver_withdrawal_failed",
+                revision=revision,
+                exit_code=result.exit_code,
+                timed_out=result.timed_out,
+                output_tail=result.output_tail,
+            )
 
     def start_and_verify(self, revision: str | None, checkout: Path | None) -> StepVerdict:
         """Start through ``current`` (or the checkout's lifecycle) and verify the daemon serves ``revision``."""

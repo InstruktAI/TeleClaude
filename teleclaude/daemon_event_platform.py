@@ -373,7 +373,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         logger.debug("No active reaction for retained internal event", event_name=data.event_name, event_id=event.id)
 
     async def _prepare_relay_delivery_consumer(self, dispatcher: HookDispatcher) -> None:
-        """Prepare the relay reader position before any ingress can publish to its stream."""
+        """Prepare this computer's relay reader position on the cluster event stream."""
         clients = self._event_redis_client
         if clients is None:
             raise RuntimeError("Relay delivery reader requires the event platform Redis connection")
@@ -453,7 +453,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         logger.info(_SOURCE_READER_STARTED_EVENT)
 
     async def _start_event_platform_prepare(self) -> None:
-        """Prepare the owned producer, both reader positions, and ingress boundary before startup producers run."""
+        """Prepare the owned producer and both reader positions before startup producers run."""
         redis_configured = bool(config.redis.cluster.url)
         self._event_platform_status = _EventPlatformStatus(redis_configured=redis_configured)
         await self._init_event_db_storage()
@@ -522,7 +522,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._start_installation_source_reader(event_producer)
 
     async def _init_webhook_service(self) -> None:
-        """Prepare the hook dispatcher, inbound routes and its reader position before startup producers run."""
+        """Prepare the hook dispatcher and its relay reader position before startup producers run."""
 
         contract_registry = ContractRegistry()
         handler_registry = HandlerRegistry()

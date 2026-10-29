@@ -159,7 +159,7 @@ ServerExitHandler = Callable[[RequestSurface, BaseException | None, bool | None,
 
 
 class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableOverride]
-    """HTTP API server on Unix socket with an optional webhook ingress listener."""
+    """HTTP API server on the daemon's Unix socket."""
 
     def __init__(
         self,
@@ -576,7 +576,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             )
 
     async def start(self) -> None:
-        """Start the Unix API server and configured webhook ingress listener."""
+        """Start the Unix API server."""
         self._running = True
         logger.info("API server starting")
         await self._start_server()
@@ -700,7 +700,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 self._dump_stacks("slow_requests")
 
     async def _start_server(self) -> None:
-        """Start the Unix API server and optional webhook ingress listener."""
+        """Start the Unix API server."""
         if self.server_task and not self.server_task.done():
             logger.warning("API server already running; skipping start")
             return

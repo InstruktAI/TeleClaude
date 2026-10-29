@@ -662,9 +662,40 @@ withdraw_docs_watch_service() {
 
 # The port the ingress receiver listens on, or nothing when this computer is not the ingress.
 ingress_receiver_port() {
-    PYTHONPATH="$PROJECT_ROOT" "$PROJECT_ROOT/.venv/bin/python" -c '
+    local errors
+    errors="$(mktemp)"
+    if ! PYTHONPATH="$PROJECT_ROOT" "$PROJECT_ROOT/.venv/bin/python" -c '
 from teleclaude.config.machine import config
-print(config.api.tcp_port if config.computer.is_ingress_node else "")' 2>/dev/null
+print(config.api.tcp_port if config.computer.is_ingress_node else "")' 2>"$errors"; then
+        log_error "Could not read whether this computer is the ingress: $(tail -n 3 "$errors")"
+        rm -f "$errors"
+        return 1
+    fi
+    rm -f "$errors"
+}
+
+# Remove the ingress receiver's units: this computer is no longer the ingress, or a release without the
+# receiver becomes active.
+withdraw_ingress_receiver() {
+    local name="$INGRESS_RECEIVER_LABEL"
+    case "$PLATFORM" in
+        linux)
+            local socket_file="/etc/systemd/system/${name}.socket"
+            local service_file="/etc/systemd/system/${name}.service"
+            [ -f "$socket_file" ] || [ -f "$service_file" ] || return 0
+            _tc_sudo "stop the ingress receiver" systemctl disable --now "${name}.socket" "${name}.service" || true
+            _tc_sudo "remove the ingress receiver units" rm -f "$socket_file" "$service_file"
+            _tc_sudo "reload systemd after removing the ingress receiver" systemctl daemon-reload
+            ;;
+        macos)
+            local plist_file
+            plist_file="$(launchd_plist_path "$name")"
+            [ -f "$plist_file" ] || return 0
+            launchctl bootout "$(launchd_domain)/$name" 2>/dev/null || true
+            rm -f "$plist_file"
+            ;;
+    esac
+    log_info "Withdrew the ingress receiver's units"
 }
 
 install_systemd_ingress_receiver() {
@@ -750,8 +781,12 @@ install_launchd_ingress_receiver() {
 # The ingress receiver's units exist only on the ingress computer (single-ingress-webhook-termination).
 install_ingress_receiver() {
     local port
-    port="$(ingress_receiver_port)"
-    [ -n "$port" ] || return 0
+    # An unreadable configuration changes nothing: a passing doubt never withdraws a working receiver.
+    port="$(ingress_receiver_port)" || return 0
+    if [ -z "$port" ]; then
+        defer_service_changes || withdraw_ingress_receiver
+        return 0
+    fi
     case "$PLATFORM" in
         linux) install_systemd_ingress_receiver "$port" ;;
         macos) install_launchd_ingress_receiver "$port" ;;

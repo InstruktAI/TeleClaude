@@ -365,8 +365,9 @@ def _claim_identity(endpoint: _Endpoint, headers: Mapping[str, str], body: bytes
 
     The source (protocol and declaring home) leads it, so two sources never share a claim. GitHub's own
     delivery id identifies a GitHub delivery, and a digest of the verified body identifies every other one.
-    The delivery id header is not signed: within its source, a request presenting another id can re-relay a
-    body that source already signed, and can claim a future delivery only by guessing its random id.
+    The delivery id header is not signed. Within its source, a request that replays a body the source signed
+    can present any id: it can relay that body again, or claim an id the source will deliver later, which a
+    GitHub event shares across Apps, so the id can be known in advance.
     """
     delivery_id = headers.get("x-github-delivery") if endpoint.protocol is RelayProtocol.GITHUB else None
     delivery = delivery_id or hashlib.sha256(body).hexdigest()

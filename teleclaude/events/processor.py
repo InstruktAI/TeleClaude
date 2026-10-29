@@ -44,6 +44,15 @@ _GROUP_NAME_FIELD = "name"
 _GROUP_RETIRED_EVENT = "event_processor_group_drained_and_retired"
 
 
+async def ensure_consumer_group(redis_client: Any, stream: str, group: str) -> None:
+    """Create ``group`` at the stream's end unless it exists; an existing group keeps its position."""
+    try:
+        await redis_client.xgroup_create(stream, group, id="$", mkstream=True)
+    except Exception as exc:
+        if "BUSYGROUP" not in str(exc):
+            raise
+
+
 class RecoverySweepEnded(Exception):
     """The stale-pending recovery sweep returned while its processor was still running, so the processor's run ends."""
 
@@ -231,11 +240,7 @@ class EventProcessor[DecodedT: BaseModel]:
 
     async def _ensure_consumer_group(self) -> None:
         """Create the Redis consumer group if it does not already exist."""
-        try:
-            await self._redis.xgroup_create(self._stream, self._group, id="$", mkstream=True)
-        except Exception as exc:
-            if "BUSYGROUP" not in str(exc):
-                raise
+        await ensure_consumer_group(self._redis, self._stream, self._group)
 
     async def _recover_pending(self, *, include_current_consumer: bool = True) -> None:
         """Recover and process pending entries assigned to this or stale consumers."""

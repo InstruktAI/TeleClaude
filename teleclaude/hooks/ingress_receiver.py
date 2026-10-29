@@ -18,20 +18,20 @@ import ctypes
 import os
 import socket
 import sys
-from typing import Any, Final
+from typing import Final
 
 import uvicorn
 from fastapi import FastAPI
 from instrukt_ai_logging import get_logger
-from redis.exceptions import ResponseError
 
 from teleclaude.config.declaration_changes import identity_declaration_watch_paths
-from teleclaude.config.machine import config
+from teleclaude.config.machine import config, config_path, dotenv_path
 from teleclaude.core.config_watcher import ConfigWatcher
 from teleclaude.core.reconciliation.installation import loaded_release_revision, runs_active_release
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
+from teleclaude.events.processor import ensure_consumer_group
 from teleclaude.events.producer import EventProducer
-from teleclaude.events.scope import EventScope, ScopedClients
+from teleclaude.events.scope import EventScope
 from teleclaude.events.scoped_redis import close_scoped_clients, scoped_redis_clients
 from teleclaude.hooks.inbound import install_inbound_routes
 from teleclaude.hooks.relay_delivery import relay_delivery_group
@@ -41,12 +41,14 @@ from teleclaude.services.project_catalog.service import get_project_catalog_serv
 
 logger = get_logger(__name__)
 
-_HOST: Final = "127.0.0.1"
 # systemd hands the first activated socket over as this descriptor (sd_listen_fds).
 _SYSTEMD_FIRST_FD: Final = 3
 _STARTUP_POLL_S: Final = 0.05
 # How often the receiver checks whether an install moved the active-release pointer.
 _RELEASE_POLL_S: Final = 2.0
+# The exit status that asks the unit to start the receiver again (EX_TEMPFAIL): the release or the machine
+# configuration changed. A clean exit (0) leaves it stopped, as on a computer that is not the ingress.
+_RESTART_STATUS: Final = 75
 
 
 def build_receiver_app(producer: EventProducer) -> FastAPI:
@@ -58,10 +60,8 @@ def build_receiver_app(producer: EventProducer) -> FastAPI:
 
 def _systemd_socket() -> socket.socket | None:
     """The socket systemd activated for this process, if it was started that way."""
-    listen_pid = os.environ.get("LISTEN_PID")  # guard: direct-env-read - allowed: systemd socket-activation protocol
-    listen_fds = os.environ.get(
-        "LISTEN_FDS", "0"
-    )  # guard: direct-env-read - allowed: systemd socket-activation protocol
+    listen_pid = os.environ.get("LISTEN_PID")  # guard: direct-env-read - allowed: systemd socket activation
+    listen_fds = os.environ.get("LISTEN_FDS", "0")  # guard: direct-env-read - allowed: systemd socket activation
     if listen_pid != str(os.getpid()) or int(listen_fds) < 1:
         return None
     return socket.socket(fileno=_SYSTEMD_FIRST_FD)
@@ -90,22 +90,8 @@ def _listening_socket() -> tuple[socket.socket, bool]:
         return held, True
     bound = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     bound.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    bound.bind((_HOST, config.api.tcp_port))
+    bound.bind(("127.0.0.1", config.api.tcp_port))
     return bound, False
-
-
-async def _ensure_relay_group(clients: ScopedClients[Any], stream: str) -> None:
-    """Create this computer's relay group before the first relay, so its daemon reads every event relayed here.
-
-    A daemon that creates the group itself, at the stream's end, after the receiver relayed, would skip that event.
-    """
-    try:
-        await clients.for_scope(EventScope.CLUSTER).xgroup_create(
-            stream, relay_delivery_group(config.computer.name), id="$", mkstream=True
-        )
-    except ResponseError as error:
-        if "BUSYGROUP" not in str(error):
-            raise
 
 
 async def _refresh_catalog() -> None:
@@ -113,62 +99,93 @@ async def _refresh_catalog() -> None:
     get_project_catalog_service().refresh()
 
 
-def _stop_without_watcher(task: asyncio.Task[None], server: uvicorn.Server) -> None:
-    if task.cancelled():
-        return
-    logger.error("ingress_receiver_watcher_ended", exc_info=task.exception())
-    server.should_exit = True
+class _Receiver:
+    """One receiver process: serves until stopped, and says whether its unit should start it again."""
+
+    def __init__(self, server: uvicorn.Server) -> None:
+        self._server = server
+        self.restart = False
+
+    def stop(self, *, restart: bool) -> None:
+        self.restart = self.restart or restart
+        self._server.should_exit = True
+
+    def supervise(self, task: asyncio.Task[None], event: str) -> None:
+        """Stop serving, for a fresh process, when a task the receiver depends on ends unexpectedly."""
+
+        def ended(done: asyncio.Task[None]) -> None:
+            if done.cancelled():
+                return
+            logger.error(event, exc_info=done.exception())
+            self.stop(restart=True)
+
+        task.add_done_callback(ended)
+
+    async def follow_release(self) -> None:
+        """Stop serving once the active release is no longer this process's, so the unit starts the new one."""
+        while runs_active_release():
+            await asyncio.sleep(_RELEASE_POLL_S)
+        logger.info("ingress_receiver_release_moved")
+        self.stop(restart=True)
+
+    async def machine_configuration_changed(self) -> None:
+        """Start again on the changed machine configuration, which decides whether this computer is the ingress."""
+        logger.info("ingress_receiver_configuration_changed")
+        self.stop(restart=True)
 
 
-async def _exit_when_release_moves(server: uvicorn.Server) -> None:
-    """Stop serving once the active release is no longer this process's, so the unit starts the new one."""
-    while runs_active_release():
-        await asyncio.sleep(_RELEASE_POLL_S)
-    logger.info("ingress_receiver_release_moved")
-    server.should_exit = True
-
-
-async def serve() -> None:
-    """Serve the inbound endpoints until the process is stopped."""
+async def serve() -> int:
+    """Serve the inbound endpoints until the process is stopped; return the process's exit status."""
     if not config.computer.is_ingress_node:
-        # The unit is deployed on the ingress computer only; elsewhere there is nothing to receive.
+        # Not the ingress (any more): stay stopped; the next install or start removes this computer's receiver units.
         logger.warning("ingress_receiver_not_ingress_node")
-        return
+        return 0
     clients = scoped_redis_clients()
     producer = EventProducer(
         redis_clients=clients,
         fact_resolver=EnvelopeFactResolver(session_id=lambda: None, ownership_index=load_project_ownership_index),
     )
-    await _ensure_relay_group(clients, producer.stream_name())
-    # Ownership facts on relayed events come from the catalog, which this process keeps current itself.
-    watcher_task = asyncio.create_task(ConfigWatcher(identity_declaration_watch_paths, _refresh_catalog).run())
-    listener, handed_over = _listening_socket()
-    server = uvicorn.Server(uvicorn.Config(build_receiver_app(producer), log_level="warning"))
-    serve_task = asyncio.create_task(server.serve(sockets=[listener]))
-    # Without its watcher the receiver would relay stale ownership, so losing it ends the process for its unit
-    # to start again.
-    watcher_task.add_done_callback(lambda task: _stop_without_watcher(task, server))
-    # A receiver started from a release follows the pointer; one started from a checkout has none to follow.
-    release_task = (
-        asyncio.create_task(_exit_when_release_moves(server)) if loaded_release_revision() is not None else None
-    )
+    tasks: list[asyncio.Task[None]] = []
     try:
+        # This computer's relay group exists before the first relay, so its daemon reads every event relayed here.
+        await ensure_consumer_group(
+            clients.for_scope(EventScope.CLUSTER), producer.stream_name(), relay_delivery_group(config.computer.name)
+        )
+        listener, handed_over = _listening_socket()
+        server = uvicorn.Server(uvicorn.Config(build_receiver_app(producer), log_level="warning"))
+        receiver = _Receiver(server)
+        # Ownership facts on relayed events come from the catalog, which this process keeps current itself.
+        declarations = asyncio.create_task(ConfigWatcher(identity_declaration_watch_paths, _refresh_catalog).run())
+        receiver.supervise(declarations, "ingress_receiver_declaration_watcher_ended")
+        machine = ConfigWatcher(
+            [config_path, config_path.parent / "experiments.yml", dotenv_path], receiver.machine_configuration_changed
+        )
+        tasks += [declarations, asyncio.create_task(machine.run())]
+        receiver.supervise(tasks[-1], "ingress_receiver_configuration_watcher_ended")
+        # A receiver started from a release follows the pointer; one started from a checkout has none to follow.
+        if loaded_release_revision() is not None:
+            tasks.append(asyncio.create_task(receiver.follow_release()))
+            receiver.supervise(tasks[-1], "ingress_receiver_release_follower_ended")
+        serve_task = asyncio.create_task(server.serve(sockets=[listener]))
         while not server.started and not serve_task.done():
             await asyncio.sleep(_STARTUP_POLL_S)
         if server.started:
             logger.info("ingress_receiver_listening", address=listener.getsockname(), handed_over=handed_over)
         await serve_task
+        return _RESTART_STATUS if receiver.restart else 0
+    except Exception:
+        logger.exception("ingress_receiver_failed")
+        raise
     finally:
-        watcher_task.cancel()
-        if release_task is not None:
-            release_task.cancel()
+        for task in tasks:
+            task.cancel()
         await close_scoped_clients(clients)
 
 
 def main() -> None:
     """Entry point of the receiver's service unit."""
     setup_logging(level=config.daemon.log_level, source="ingress-receiver")
-    asyncio.run(serve())
+    sys.exit(asyncio.run(serve()))
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ _DEFAULT_POLL_INTERVAL_S = 2.0
 _INITIAL_SNAPSHOT_FAILED = "Config watcher initial snapshot failed; continuing to watch"
 _PATH_RESOLUTION_FAILED = "Config watcher could not resolve paths; continuing to watch"
 _POLL_FAILED = "Config watcher poll failed; continuing to watch"
-_STAT_FAILED = "Config watcher could not stat %s: %s"
+_STAT_FAILED = "Config watcher could not stat a watched path: %s"
 _STARTED = "Config watcher started (paths=%d, interval=%.0fs)"
 
 
@@ -50,7 +50,8 @@ class ConfigWatcher:
             except FileNotFoundError:
                 snapshot[path] = None
             except OSError as exc:
-                logger.error(_STAT_FAILED, path, exc)
+                # The path and the error text can name a person (home directories), so only the error kind is logged.
+                logger.error(_STAT_FAILED, type(exc).__name__)
                 snapshot[path] = None
         return snapshot
 

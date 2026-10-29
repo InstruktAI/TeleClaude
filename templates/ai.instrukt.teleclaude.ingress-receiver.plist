@@ -41,8 +41,13 @@
     <string>/dev/null</string>
     <key>RunAtLoad</key>
     <true/>
-    <!-- The receiver exits when the active release moves; launchd starts it again on the new one. -->
+    <!-- The receiver exits with a failure status when the active release or the machine configuration changes,
+         and launchd starts it again; it exits cleanly, and stays stopped, when this computer is no longer the
+         ingress. -->
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
 </dict>
 </plist>
