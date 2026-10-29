@@ -51,10 +51,9 @@ dependencies, including request-surface binding where required.
 
 A configured event Redis that does not answer never stops startup
 (`local/projects/teleclaude/policy/daemon-availability`). Before startup
-continues, the daemon records and logs which scope's Redis did not answer. The
-event consumers on that Redis start once it answers, without a restart; how
-they take their positions and resume belongs to
-`local/projects/teleclaude/design/architecture/event-delivery`.
+continues, the daemon records and logs which scope's Redis did not answer. What
+the event consumers on that Redis do while it is away and once it answers
+belongs to `local/projects/teleclaude/design/architecture/event-delivery`.
 <!-- /planned:daemon-startup-aborts-without-redis -->
 
 Before adapters, pollers or conversation delivery emit new output, startup
@@ -256,8 +255,7 @@ And the service manager does not relaunch it
 Given a person works with TeleClaude on a computer whose cluster Redis does not answer
 When the daemon starts, or the cluster Redis stops answering while the daemon serves
 Then the daemon keeps serving the person's sessions and commands on that computer
-And the daemon does not stop or restart while the cluster Redis stays away
-And once the cluster Redis answers again, the daemon handles that computer's cross-computer events again without a restart
+And the cluster Redis being away neither stops nor restarts the daemon
 ```
 
 <!-- /planned:daemon-startup-aborts-without-redis -->

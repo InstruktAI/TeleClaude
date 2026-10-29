@@ -264,10 +264,10 @@ ordering guarantee for these separate transports.
   one record of whether it answers: the loss and the return are logged once
   each, and every reader on that Redis waits for it. Then a retained consumer
   resumes from its group, recovering its pending entries in order before it
-  reads new ones, and a live consumer repeats its source-recovery handover
-  under `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`.
-  A failure that is not the Redis connection still ends the reader's run under
-  its supervisor.
+  reads new ones, and a live consumer resumes as its own recovery contract in
+  `local/projects/teleclaude/spec/feature/event-catalog/event-consumers` states
+  for a connection failure. A failure that is not the Redis connection still
+  ends the reader's run under its supervisor.
 - A Redis that did not answer at startup has the positions of the readers on it
   taken once it answers. A retained consumer whose group already exists resumes
   from it; one whose group is new starts at that moment, so it omits what that
