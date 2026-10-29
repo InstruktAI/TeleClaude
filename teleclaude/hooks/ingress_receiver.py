@@ -33,7 +33,7 @@ from teleclaude.config.machine import (
     reload_config,
     restart_required_sections,
 )
-from teleclaude.core.config_validation_reports import ConfigValidationReports
+from teleclaude.core.config_validation_reports import MACHINE_CONFIGURATION, ConfigValidationReports
 from teleclaude.core.config_watcher import ConfigWatcher
 from teleclaude.core.reconciliation.installation import loaded_release_revision, runs_active_release
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
@@ -58,8 +58,6 @@ _RELEASE_POLL_S: Final = 2.0
 # machine configuration that needs a restart changed. A clean exit (0) is not restarted by the unit; on a computer
 # that is not the ingress, a connection to the held socket can still start the receiver, which exits before serving.
 _RESTART_STATUS: Final = 75
-# The configuration name the daemon reports the machine configuration's validation under.
-_MACHINE_CONFIGURATION: Final = "machine"
 
 
 def build_receiver_app(producer: EventProducer) -> FastAPI:
@@ -147,10 +145,10 @@ class _Receiver:
             changed = reload_config()
         except ConfigLoadError as error:
             # The running configuration stays in force, as for the daemon (machine-config-load).
-            await self._reports.refused(_MACHINE_CONFIGURATION, config_path, error)
+            await self._reports.refused(MACHINE_CONFIGURATION, config_path, error)
             return
-        await self._reports.accepted(_MACHINE_CONFIGURATION, config_path)
-        if not config.computer.is_ingress_node:
+        await self._reports.accepted(MACHINE_CONFIGURATION, config_path)
+        if not config.computer.ingress_by_receiver:
             logger.info("ingress_receiver_no_longer_ingress")
             self.stop(restart=False)
             return
@@ -171,14 +169,18 @@ async def serve() -> int:
 
     machine = ConfigWatcher(machine_configuration_sources(), machine_changed)
     reports = ConfigValidationReports()
+    startup_refusal: ConfigLoadError | None = None
     try:
         reload_config()
     except ConfigLoadError as error:
-        # Startup keeps the configuration it loaded; the refusal is reported like any later one.
-        await reports.refused(_MACHINE_CONFIGURATION, config_path, error)
-    if not config.computer.is_ingress_node:
-        # Not the ingress: exit before serving; the next install or start removes this computer's receiver units.
+        # Startup keeps the configuration it loaded; the refusal is reported once events can be published.
+        startup_refusal = error
+    if not config.computer.ingress_by_receiver:
+        # Not the ingress, or its receiver is not turned on: exit before serving; the next install or start
+        # removes this computer's receiver units.
         logger.warning("ingress_receiver_not_ingress_node")
+        if startup_refusal is not None:
+            await reports.refused(MACHINE_CONFIGURATION, config_path, startup_refusal)
         return 0
     clients = scoped_redis_clients()
     producer = EventProducer(
@@ -187,6 +189,8 @@ async def serve() -> int:
     )
     # Platform events this process reports (configuration refusals) go through its producer.
     configure_producer(producer)
+    if startup_refusal is not None:
+        await reports.refused(MACHINE_CONFIGURATION, config_path, startup_refusal)
     tasks: list[asyncio.Task[None]] = []
     try:
         # This computer's relay group exists before the first relay, so its daemon reads every event relayed here.

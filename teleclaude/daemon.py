@@ -23,7 +23,6 @@ _MODULE_IMPORT_STARTED_AT = time.perf_counter()
 _IMPORT_TIMINGS: list[tuple[str, float, float]] = []
 logger = get_logger("teleclaude.daemon")
 
-_MACHINE_CONFIGURATION = "machine"
 _STOP_REASON = "stop"
 _PREPARED_GRACE_EXIT_REASON = "prepared-grace-exit"
 _PREPARED_EXIT_TASK_NAME = "prepared-instance-exit"
@@ -112,7 +111,7 @@ from teleclaude.config.machine import (
     restart_required_sections,
 )
 from teleclaude.config.registered_homes import live_tier_declarations
-from teleclaude.core.config_validation_reports import ConfigValidationReports
+from teleclaude.core.config_validation_reports import MACHINE_CONFIGURATION, ConfigValidationReports
 from teleclaude.core.config_watcher import ConfigWatcher
 
 _record_import_timing("teleclaude.config.machine", _t)
@@ -1349,15 +1348,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             changed = reload_config()
         except ConfigLoadError as error:
             # The running configuration stays in force; restart and start refuse this file too.
-            await self._config_validation_reports.refused(_MACHINE_CONFIGURATION, config_path, error)
+            await self._config_validation_reports.refused(MACHINE_CONFIGURATION, config_path, error)
             return
-        await self._config_validation_reports.accepted(_MACHINE_CONFIGURATION, config_path)
+        await self._config_validation_reports.accepted(MACHINE_CONFIGURATION, config_path)
         if not changed:
             return
         try:
             await publish_event(
                 EffectiveConfigUpdated(
-                    subject=ConfigurationRef(_MACHINE_CONFIGURATION),
+                    subject=ConfigurationRef(MACHINE_CONFIGURATION),
                     home=EventHomeMarker.NONE,
                     data=EffectiveConfigUpdatedData(
                         project_path=str(WORKING_DIR),

@@ -66,6 +66,7 @@ from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, LegacyFacts
 from teleclaude.hooks.dispatcher import HookDispatcher
 from teleclaude.hooks.github_handler import GitHubCommentEvent, handle_github_event
 from teleclaude.hooks.handlers import HandlerRegistry
+from teleclaude.hooks.inbound import install_inbound_routes
 from teleclaude.hooks.normalizers.github import GITHUB_SOURCE
 from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline, relay_delivery_group
@@ -552,5 +553,18 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         )
 
         await self._prepare_relay_delivery_consumer(dispatcher)
+        self._install_inbound_routes()
 
         logger.info("Webhook service initialized")
+
+    def _install_inbound_routes(self) -> None:
+        """Mount the inbound endpoints on the API app while the daemon serves this computer's ingress."""
+        if not config.computer.ingress_by_daemon:
+            return
+        app = getattr(getattr(self.lifecycle, "api_server", None), "app", None)
+        producer = self._event_producer
+        if app is None or producer is None:
+            logger.warning("inbound_routes_unavailable")
+            return
+        install_inbound_routes(app, producer)
+        logger.info("inbound_routes_installed")
