@@ -37,18 +37,6 @@ logger = get_logger(__name__)
 
 # The public platform stream is the default for existing producer callers.
 DEFAULT_EVENT_STREAM = "teleclaude:events"
-# Claim the delivery and append it in one step, so a claim never stands without its event (ADR-0148).
-_CLAIM_AND_APPEND_SCRIPT = """
-if not redis.call('SET', KEYS[2], '1', 'NX', 'EX', ARGV[1]) then
-  return false
-end
-local command = {'XADD', KEYS[1], 'MAXLEN', '~', ARGV[2], '*'}
-for index = 3, #ARGV do
-  command[#command + 1] = ARGV[index]
-end
-return redis.call(unpack(command))
-"""
-_CLAIM_KEY_TEMPLATE = "teleclaude:ingress:claim:{identity}"
 _PRODUCER_MISSING_EVENT_TEMPLATE = "event emitted but EventProducer not configured: event=%s stream=%s"
 _PRODUCER_NOT_CONFIGURED_TEMPLATE = "EventProducer not configured for stream {stream}. Call configure_producer() first."
 _CONFIGURED_PRODUCER_ACCESS_EVENT = "configured producer access"
@@ -120,23 +108,32 @@ class EventProducer:
         client = self._clients.for_scope(EventScope.CLUSTER)
         fields = [part for pair in entry.items() for part in pair]
         try:
+            # Claim and append in one step, so a claim never stands without its event (ADR-0148).
             entry_id = await client.eval(
-                _CLAIM_AND_APPEND_SCRIPT,
+                """
+                if not redis.call('SET', KEYS[2], '1', 'NX', 'EX', ARGV[1]) then
+                  return false
+                end
+                local command = {'XADD', KEYS[1], 'MAXLEN', '~', ARGV[2], '*'}
+                for index = 3, #ARGV do
+                  command[#command + 1] = ARGV[index]
+                end
+                return redis.call(unpack(command))
+                """,
                 2,
                 self._stream,
-                _CLAIM_KEY_TEMPLATE.format(identity=claim),
+                f"teleclaude:ingress:claim:{claim}",
                 ttl_s,
                 self._maxlen,
                 *fields,
             )
         except Exception:
-            logger.exception("EventProducer.emit_once FAILED: event=%s", received.type)
+            logger.exception("event_producer_claimed_append_failed", event=received.type, claim=claim)
             raise
         if entry_id is None:
-            logger.info("EventProducer.emit_once duplicate: event=%s claim=%s", received.type, claim)
             return None
         result = entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
-        logger.info("EventProducer.emit_once OK: event=%s entry_id=%s", received.type, result)
+        logger.debug("event_producer_claimed_append_ok", event=received.type, entry_id=result)
         return result
 
     async def emit_internal(self, event: PlatformEvent[Any, Any], legacy: LegacyFacts, /) -> str:

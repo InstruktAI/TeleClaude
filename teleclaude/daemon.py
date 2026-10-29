@@ -89,30 +89,6 @@ def _emit_import_timing_logs() -> None:
             logger.warning("Slow daemon import: module=%s dt=%.3fs", label, dt)
 
 
-def _identity_declaration_documents() -> list[Path]:
-    """Return the watched configuration declarations that exist as files."""
-    return [
-        path for path in _identity_declaration_watch_paths() if path.name == ConfigFileName.OVERLAY and path.is_file()
-    ]
-
-
-def _identity_declaration_watch_paths() -> list[Path]:
-    """Return config declarations whose changes can alter identity reach."""
-    paths = {GLOBAL_CONFIG_PATH, PEOPLE_DIR, COMPANIES_ROOT, PROJECTS_MANIFEST_PATH}
-    if PEOPLE_DIR.is_dir():
-        for person_dir in PEOPLE_DIR.iterdir():
-            paths.add(person_dir)
-            paths.add(person_dir / ConfigFileName.OVERLAY)
-    if COMPANIES_ROOT.is_dir():
-        for company_dir in COMPANIES_ROOT.iterdir():
-            paths.add(company_dir)
-            paths.add(company_dir / ConfigFileName.OVERLAY)
-    for project_root in load_roots():
-        paths.add(project_root)
-        paths.add(project_root / ConfigFileName.OVERLAY)
-    return sorted(paths)
-
-
 _t = time.perf_counter()
 import teleclaude.observability.httpx_runtime_debug as _httpx_runtime_debug
 
@@ -298,19 +274,18 @@ from teleclaude.mirrors.processors import register_default_processors
 _record_import_timing("teleclaude.mirrors.processors", _t)
 
 _t = time.perf_counter()
-from teleclaude.config.declaration_changes import publish_declaration_changes
+from teleclaude.config.declaration_changes import (
+    identity_declaration_documents,
+    identity_declaration_watch_paths,
+    publish_declaration_changes,
+)
 from teleclaude.paths import (
-    COMPANIES_ROOT,
     DAEMON_PID_PATH,
     ENV_PATH,
-    GLOBAL_CONFIG_PATH,
     MAIN_DB_PATH,
-    PEOPLE_DIR,
     PROJECTS_MANIFEST_PATH,
     RUNTIME_SETTINGS_PATH,
-    ConfigFileName,
 )
-from teleclaude.project_manifest import load_roots
 
 _record_import_timing("teleclaude.paths", _t)
 
@@ -1032,7 +1007,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             logger.info("Project registry watcher started (%s)", PROJECTS_MANIFEST_PATH)
 
             identity_declarations_watcher = ConfigWatcher(
-                _identity_declaration_watch_paths, self._on_identity_declarations_changed
+                identity_declaration_watch_paths, self._on_identity_declarations_changed
             )
             self.identity_declarations_watch_task = self.task_registry.supervise(
                 _Worker.IDENTITY_DECLARATIONS_WATCH, identity_declarations_watcher.run, restart=True
@@ -1351,7 +1326,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
     async def _on_identity_declarations_changed(self) -> None:
         """Judge the changed declarations, then refresh config-owned project facts and invalidate identity reach."""
-        await self._judge_declaration_readiness(_identity_declaration_documents())
+        await self._judge_declaration_readiness(identity_declaration_documents())
         await self.lifecycle.refresh_local_projects(ProjectRefreshTrigger.REGISTRY_CHANGE)
         publish_declaration_changes()
 
