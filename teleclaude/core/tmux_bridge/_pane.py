@@ -398,7 +398,7 @@ async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None 
 
     This is the hot polling boundary. The snapshot must remain narrow and
     stable: liveness plus pane output only. Requests arriving within one batch
-    window share a single tmux subprocess (output-polling, one snapshot call per tick).
+    window share chained tmux calls, a few per tick (output-polling, snapshots shared per tick).
     """
     window_lines = capture_lines if isinstance(capture_lines, int) and capture_lines > 0 else DEFAULT_CAPTURE_LINES
     return await _snapshot_batcher().request(session_name, window_lines)
@@ -415,7 +415,7 @@ _CHAIN_ARGV_BYTES_MAX = 8192
 
 
 class _SnapshotBatcher:
-    """Gather the snapshot requests of one tick and take them in one chained tmux call."""
+    """Gather the snapshot requests of one tick and take them in size-bounded chained tmux calls."""
 
     def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
