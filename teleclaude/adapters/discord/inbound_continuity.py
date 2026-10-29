@@ -6,6 +6,8 @@ channel is a place. This module owns what keeps those messages from being lost
 
 * the per-place ordered handoff: every managed-place input, live or recovered, is handled after the one before
   it in the same place has concluded, and a place's cursor moves to a message only when its handling concluded;
+  a message the draining daemon refused has not concluded, so its place is held for the rest of the process and
+  the recovery after the restart hands the message and everything after it on;
 * the live gate: a place's live input waits while that place's history is being recovered;
 * recovery passes: after each new gateway session, and after each later publication of routing, the history of
   every place bound to a still-active session is read after its cursor and handed to the same handling a live
@@ -195,6 +197,7 @@ class InboundContinuity:
         self._pending: dict[int, RecoveryPlace] = {}
         self._recovered: set[int] = set()
         self._failing: set[int] = set()
+        self._held: set[int] = set()
         self._epoch = 0
         self._request_serial = 0
         self._enumerated_serial = 0
@@ -231,15 +234,26 @@ class InboundContinuity:
     async def _handle_in_order(
         self, place_id: int, message_id: int, message: object, recovered_at: datetime | None
     ) -> None:
-        """Handle one message once the one before it has concluded, then move the place's cursor to it."""
+        """Handle one message once the one before it has concluded, then move the place's cursor to it.
+
+        A message the draining daemon refused has not concluded: the cursor stays before it and the place is held,
+        so nothing after it is handled or moves the cursor past it. Admission never reopens within a process, so the
+        hold is never lifted; the recovery after the restart hands the refused message and its successors on.
+        """
         lock = self._locks.setdefault(place_id, asyncio.Lock())
         try:
             async with lock:
+                if place_id in self._held:
+                    return
                 cursor = await self._store.get_discord_inbound_cursor(place_id)
                 if cursor is not None and message_id <= cursor:
                     return
                 try:
                     await self._host._handle_managed_message(message, recovered_at)
+                except ShutdownRefusal:
+                    self._held.add(place_id)
+                    logger.info("discord_place_input_retained_for_recovery", place_id=place_id, message_id=message_id)
+                    return
                 except Exception:
                     # A failure of the handling is its definitive end; the handling reports it as it always has.
                     logger.error(_HANDLING_FAILED_EVENT, place_id=place_id, message_id=message_id, exc_info=True)
