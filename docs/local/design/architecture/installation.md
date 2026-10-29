@@ -187,8 +187,9 @@ sequenceDiagram
   definitions are deployed only when their rendered content changed, and the
   start is verified against the new revision with admission open, as the
   lifecycle contract verifies any start. The install completes there.
-- **The ingress receiver outlives the daemon.** On the ingress computer the
-  service definitions include the webhook receiver's
+- **The ingress receiver outlives the daemon.** On an ingress computer that has
+  turned its receiver on (`computer.ingress_receiver`), the service definitions
+  include the webhook receiver's
   (`local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`):
   a unit that holds its listening socket and a unit for the receiver process.
   They are deployed once the daemon is up, only when their content changed, and
@@ -360,12 +361,11 @@ checkout stays a registered project.
   so that most migrations run inside it.
 - **An owner cannot signal to the install record**: the migration counts as
   started, and rollback refuses.
-- **The first install that brings the ingress receiver is recovered by the
-  release before it.** That release's controller switches back without
-  removing the receiver's units, so if such an install fails after its daemon
-  came up on the ingress computer, the restored release cannot serve on the
-  port the units hold, and external events stop until the next install of a
-  release with the receiver, which the channel attempts again.
+- **A release before the receiver's switch cannot activate it.** The receiver
+  is turned on only by its machine setting, after a release that has the
+  receiver is active; the first install of such a release changes nothing for
+  intake, so its recovery, run by the release before it, has no receiver units
+  to meet.
 
 ## See Also
 

@@ -38,8 +38,10 @@ producers for every procedure and agent.
 
 - **Single public node.** One computer is the ingress; it need not be the
   cluster master. No other computer serves the inbound endpoints.
-- **Intake outlives the daemon.** The ingress's receiver is a process of its
-  own under its own service unit; the daemon serves no inbound endpoint. The
+- **Intake outlives the daemon.** Once the ingress turns on its receiver
+  (`computer.ingress_receiver`), the receiver is a process of its own under its
+  own service unit and the daemon serves no inbound endpoint; until then the
+  daemon serves them on the same port, as before the receiver existed. The
   receiver keeps receiving while the daemon restarts or an install stops it,
   and restarts itself when the active release changes or a validated machine
   configuration change needs a restart; an invalid change leaves it running on
