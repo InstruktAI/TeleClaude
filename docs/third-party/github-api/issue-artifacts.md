@@ -83,6 +83,10 @@ repository in an enrolled organization.
 - **Conditional writes:** a `PATCH` with `If-Match` is refused with `400`
   ("Conditional request headers are not allowed in unsafe requests unless
   supported by the endpoint"). Reads return an `ETag`.
+- **Conditional reads:** a list request sent with `If-None-Match` and the
+  previous list's `ETag` answers `304 Not Modified` with no body while the
+  issue's artifacts are unchanged; after an artifact is saved it answers `200`
+  with the list and a new `ETag`.
 - **Deletion:** anyone who may update the issue can delete any artifact,
   including one an App created. A deleted artifact and its history cannot be
   restored.
