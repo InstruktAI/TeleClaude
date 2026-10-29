@@ -19,7 +19,7 @@ from teleclaude.utils.transcript import StructuredMessage
 # Bump to force every existing mirror to re-derive through the reconciliation loop.
 # A bump re-runs full generation per transcript, so it is not the cheap route for a
 # classification-only change.
-DERIVATION_VERSION = 5
+DERIVATION_VERSION = 6
 
 _TITLE_MAX_CHARS = 120
 
