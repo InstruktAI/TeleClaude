@@ -37,7 +37,7 @@ visibility: public
 
 <!-- planned:teleclaude-db-split -->
 
-- **Session-Scoped Retention**: A session's latest output generation, its consumer cursors and receipts, and its reminder entries are live state while the session is open. They are pruned once the session has been closed for longer than the runtime retention window; superseded generations and receipts, terminal Discord send intents, terminal control payloads and failed procedure events are pruned once older than the window, and delivered procedure events once their assigned session has been closed for longer than it. Session startup handovers are never pruned by retention, because restart reads them for the session's whole life.
+- **Session-Scoped Retention**: A session's latest output generation, its consumer cursors and receipts, and its reminder entries are live state while the session is open. They are pruned once the session has been closed for longer than the runtime retention window; superseded generations and receipts, terminal Discord send intents, terminal control payloads and failed procedure events are pruned once older than the window, and delivered procedure events once their assigned session has been closed for longer than it. Session startup handovers are never pruned by retention.
 - **Maintenance Does Not Stall Writers**: Runtime maintenance holds a store's write lock only for short statements. The periodic WAL checkpoint is passive and never waits on readers, retention deletes run per store, and compaction (`VACUUM`) runs only while the daemon opens its stores, before it serves — so the first opening after an install compacts what the install's migrations freed (`sdlc/policy/state-storage`, Write isolation follows contention).
 
 <!-- /planned:teleclaude-db-split -->
@@ -290,6 +290,9 @@ lets recovery verify the captured audio still exists before resubmitting.
 1. Closed sessions older than the runtime retention window are purged.
 2. Session TMPDIRs and session-owned workspace directories are reconciled against live DB session truth.
 3. `session_map.json` is pruned as a cache; mappings survive only when the matching DB row is open or recoverable.
+
+<!-- planned-change:teleclaude-db-split -->
+
 4. Operational DB tables prune terminal or orphan rows after the retention window:
    `operations`, `inbound_queue`, `hook_outbox.db`,
    `session_listeners`, `voice_assignments`, and `voice_transcriptions` (terminal
@@ -297,6 +300,21 @@ lets recovery verify the captured audio still exists before resubmitting.
 5. `events.db` prunes resolved notifications and reviewed quarantined events after the retention window while preserving unresolved work.
 6. Orphaned `/tmp/teleclaude_voice/voice_*` audio files are removed only when they are old enough and no recoverable `voice_transcriptions` row still references their path.
 7. Runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`) are compacted only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
+
+<!-- change:teleclaude-db-split -->
+
+4. Operational DB tables prune terminal or orphan rows after the retention window:
+   `operations`, `inbound_queue`, `hook_outbox.db`,
+   `session_listeners`, `voice_assignments`, and `voice_transcriptions` (terminal
+   `succeeded`/`failed` rows; orphaned temp audio with no live row is swept alongside),
+   plus `control_outbox`, `procedure_event_inbox`, `discord_send_intents`,
+   `output_generations`, `output_consumer_cursors`, `output_consumer_receipts` and
+   `reminder_entries` under the Session-Scoped Retention invariant.
+5. `events.db` prunes resolved notifications and reviewed quarantined events after the retention window while preserving unresolved work.
+6. Orphaned `/tmp/teleclaude_voice/voice_*` audio files are removed only when they are old enough and no recoverable `voice_transcriptions` row still references their path.
+7. Runtime maintenance never compacts. Store opening, before the daemon serves, compacts the runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`, `output.db`, `operations.db`, `reminders.db`) only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
+
+<!-- /planned-change:teleclaude-db-split -->
 
 ### 6. Native-entry generation and Discord-send durability
 
@@ -311,6 +329,16 @@ lets recovery verify the captured audio still exists before resubmitting.
 - **Lock contention**: SQLite write conflicts delay/deny writes under pressure.
 - **Migration failure**: Daemon startup aborts until schema issue is fixed.
 - **Outbox backlog growth**: If worker path is unhealthy, undelivered rows accumulate.
+
+<!-- planned-change:teleclaude-db-split -->
+
 - **Disk pressure**: WAL/table/freelist growth can degrade performance or fail writes; daemon maintenance checkpoints WAL and threshold-compacts runtime SQLite files.
+
+<!-- change:teleclaude-db-split -->
+
+- **Disk pressure**: WAL/table/freelist growth can degrade performance or fail writes; daemon maintenance checkpoints WAL passively, and store opening threshold-compacts runtime SQLite files before the daemon serves.
+
+<!-- /planned-change:teleclaude-db-split -->
+
 - **Corrupt row payload**: Outbox row is deleted (with error logging) to avoid infinite retry loops.
 - **Voice audio lost before recovery**: Recovery marks the row failed and resolves the original user notice instead of silently dropping the spoken input.

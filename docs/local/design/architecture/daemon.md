@@ -130,15 +130,17 @@ sequenceDiagram
 
 <!-- change:teleclaude-db-split -->
 
-| Worker                | Interval (default) | Purpose                                                                                             |
-| --------------------- | ------------------ | --------------------------------------------------------------------------------------------------- |
-| Hook Outbox           | 1s                 | Process agent lifecycle hooks                                                                       |
-| Poller Watch          | 5s                 | Keep per-session output pollers aligned with tmux                                                   |
-| Resource Monitor      | 60s                | Emit runtime resource snapshots                                                                     |
-| WAL Checkpoint        | 300s               | Fold the main database WAL back into the file without waiting on readers or blocking writers        |
-| Launchd Watch         | 300s (optional)    | Log launchd state transitions on macOS                                                              |
-| Runtime Maintenance   | 1h                 | Prune stale sessions, scratch dirs, caches, operational rows and event runtime rows; never compacts |
-| Closed Session Replay | 1h                 | Re-emit `session_closed` for recently closed sessions (12h window)                                  |
+Each worker's cadence is set by the daemon's runtime configuration or by the worker's own loop.
+
+| Worker                | Purpose                                                                                             |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| Hook Outbox           | Process agent lifecycle hooks                                                                       |
+| Poller Watch          | Keep per-session output pollers aligned with tmux                                                   |
+| Resource Monitor      | Emit runtime resource snapshots                                                                     |
+| WAL Checkpoint        | Fold the main database WAL back into the file without waiting on readers or blocking writers        |
+| Launchd Watch         | Log launchd state transitions on macOS (optional)                                                   |
+| Runtime Maintenance   | Prune stale sessions, scratch dirs, caches, operational rows and event runtime rows; never compacts |
+| Closed Session Replay | Re-emit `session_closed` for recently closed sessions                                               |
 
 <!-- /planned-change:teleclaude-db-split -->
 
@@ -218,7 +220,7 @@ by the existing startup and accepted-input recovery contracts.
 
 <!-- change:daemon-startup-aborts-without-redis -->
 
-- **Event Redis Unreachable**: The daemon starts and serves while a configured event-platform Redis does not answer (`local/projects/teleclaude/policy/daemon-availability`, `docs/local/adr/0145-a-computer-keeps-working-while-its-cluster-redis-is-unreachable.md`). Startup logs which scope's Redis did not answer and holds the event platform's recovery progress at blocked until it answers. The event producers are registered before the API socket opens either way, so no `/todos/*` operation can land before them; a publication to a Redis that does not answer fails at its caller. Readers on a scope whose Redis answered start after the API socket is bound, as at every start; readers on a scope whose Redis did not answer take their positions and start once it answers, without a restart. A reader whose Redis stops answering while the daemon serves waits for it and resumes from its group instead of ending its task (`local/projects/teleclaude/design/architecture/event-delivery`).
+- **Event Redis Unreachable**: The daemon starts and serves while a configured event-platform Redis does not answer (`local/projects/teleclaude/policy/daemon-availability`). Startup logs which scope's Redis did not answer and holds the event platform's recovery progress at blocked until it answers. The event producers are registered before the API socket opens either way, so no `/todos/*` operation can land before them. The event readers on a Redis that answered start after the API socket is bound, as at every start; those on a Redis that did not answer start once it answers, without a restart. A Redis that stops answering while the daemon serves does not end the daemon's tasks; how its readers wait and resume belongs to `local/projects/teleclaude/design/architecture/event-delivery`.
 
 <!-- /planned-change:daemon-startup-aborts-without-redis -->
 
@@ -228,3 +230,11 @@ by the existing startup and accepted-input recovery contracts.
 - **Worker Task Crash**: A long-lived worker is supervised (`sdlc/policy/code-quality-practices`, Error Handling and Recovery). Its supervisor logs the end and starts a replacement while the worker's restart budget lasts. A worker that cannot be replaced in place, or that exhausts its budget, escalates: the daemon runs its ordinary shutdown and the service manager relaunches it (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`, UC-DL17).
 
 - **Shutdown Timeout**: Cleanup takes too long; systemd may SIGKILL and leak resources.
+
+<!-- planned:daemon-startup-aborts-without-redis -->
+
+## See Also
+
+- docs/local/adr/0145-a-computer-keeps-working-while-its-cluster-redis-is-unreachable.md — why the daemon starts and serves while its cluster Redis is unreachable.
+
+<!-- /planned:daemon-startup-aborts-without-redis -->

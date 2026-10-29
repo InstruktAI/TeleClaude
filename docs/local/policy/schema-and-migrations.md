@@ -117,8 +117,6 @@ Every database this repository owns and every migration of each of its stores.
   migrations: would this apply cleanly to a database that already has its
   result, and to one at its predecessor's shape; and would a database created
   purely from that store's schema file be complete without it.
-- A table declared in two stores' schema files, or a store whose schema file and
-  migration ledger live apart from its own database file, is a defect.
 
 <!-- /planned-change:teleclaude-db-split -->
 
