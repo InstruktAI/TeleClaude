@@ -15,7 +15,8 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import TodoStatus
-from teleclaude.core.todos_db._errors import HolderWriteRefused
+from teleclaude.core.next_machine.lifecycle import coerce_lifecycle_phase, is_work_lifecycle_phase
+from teleclaude.core.todos_db._errors import ContractUnderExecutionRefused, HolderWriteRefused
 from teleclaude.core.todos_db._identity_pin import apply_todo_identity_pin
 from teleclaude.core.todos_db._models import (
     TODO_ARTIFACT_TABLE,
@@ -210,14 +211,29 @@ class TodosDbArtifactsMixin:
         *,
         updated_by: str | None = None,
         session: SqlAsyncSession | None = None,
+        refuse_executing_contract: bool = False,
     ) -> None:
-        """Upsert artifact content and append to version history."""
+        """Upsert artifact content and append to version history.
+
+        ``refuse_executing_contract`` refuses the write while the todo's stored lifecycle phase is a
+        work-lane phase. A store-owned transaction takes the writer before it reads the phase, so a
+        concurrent work entry either commits before the read and the write is refused, or commits
+        after the write. A caller-owned session decides when its transaction takes the writer.
+        """
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         updated_by = as_session_id(updated_by)
         try:
             now = datetime.now(UTC).isoformat()
             digest = _sha256(content)
+            if refuse_executing_contract:
+                if owns_session:
+                    connection = await db_session.connection()
+                    await connection.exec_driver_sql("BEGIN IMMEDIATE")
+                state = await self.read_state_in_session(slug, db_session)  # type: ignore[attr-defined]
+                phase = coerce_lifecycle_phase((state or {}).get("lifecycle_phase"))
+                if phase is not None and is_work_lifecycle_phase(phase):
+                    raise ContractUnderExecutionRefused(slug, phase)
             row_id = await self._ensure_artifact_id(slug, db_session)
 
             db_session.add(
