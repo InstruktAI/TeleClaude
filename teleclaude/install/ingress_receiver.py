@@ -10,10 +10,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-_LAUNCHD_PLIST = Path.home() / "Library" / "LaunchAgents" / "ai.instrukt.teleclaude.ingress-receiver.plist"
 _SYSTEMD_SOCKET = Path("/etc/systemd/system") / "teleclaude-ingress-receiver.socket"
 
 
 def receiver_units_installed() -> bool:
-    """Whether the ingress receiver's service definition is installed on this computer."""
-    return (_LAUNCHD_PLIST if sys.platform == "darwin" else _SYSTEMD_SOCKET).is_file()
+    """Whether the ingress receiver's service definition is installed on this computer (systemd only)."""
+    return sys.platform == "linux" and _SYSTEMD_SOCKET.is_file()

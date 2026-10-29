@@ -90,13 +90,12 @@ if [ "$PLATFORM" = "macos" ]; then
     CRON_LABEL="ai.instrukt.teleclaude.cron"
     # TeleClaude's own local Redis, deployed by the install act (teleclaude/install/local_redis.py).
     LOCAL_REDIS_LABEL="ai.instrukt.teleclaude.redis"
-    # The ingress computer's webhook receiver, which outlives the daemon (ADR-0148, ADR-0150).
-    INGRESS_RECEIVER_LABEL="ai.instrukt.teleclaude.ingress-receiver"
     SERVICE_LABEL="$V1_DAEMON_LABEL"
     SERVICE_PATH="$HOME/Library/LaunchAgents/$SERVICE_LABEL.plist"
 else
     SERVICE_LABEL="teleclaude"
     CRON_LABEL="teleclaude-cron"
+    # The ingress computer's webhook receiver, which outlives the daemon (ADR-0148, ADR-0150); systemd only.
     INGRESS_RECEIVER_LABEL="teleclaude-ingress-receiver"
     # bin/daemon-control.sh consumes SERVICE_PATH from this sourced module.
     # shellcheck disable=SC2034
@@ -111,7 +110,6 @@ managed_launchd_labels() {
 # Units the installation deploys that outlive the daemon: stopping the daemon leaves them running.
 outliving_launchd_labels() {
     printf '%s\n' "$LOCAL_REDIS_LABEL"
-    printf '%s\n' "$INGRESS_RECEIVER_LABEL"
 }
 
 # launchd resolvers. These resolve and query; they perform no service
@@ -677,26 +675,14 @@ print(config.api.tcp_port if config.computer.is_ingress_node and config.computer
 # Remove the ingress receiver's units: this computer is no longer the ingress, or a release without the
 # receiver becomes active.
 withdraw_ingress_receiver() {
+    [ "$PLATFORM" = "linux" ] || return 0
     local name="$INGRESS_RECEIVER_LABEL"
-    case "$PLATFORM" in
-        linux)
-            local socket_file="/etc/systemd/system/${name}.socket"
-            local service_file="/etc/systemd/system/${name}.service"
-            [ -f "$socket_file" ] || [ -f "$service_file" ] || return 0
-            _tc_sudo "stop the ingress receiver" systemctl disable --now "${name}.socket" "${name}.service" || return 1
-            _tc_sudo "remove the ingress receiver units" rm -f "$socket_file" "$service_file" || return 1
-            _tc_sudo "reload systemd after removing the ingress receiver" systemctl daemon-reload || return 1
-            ;;
-        macos)
-            local plist_file
-            plist_file="$(launchd_plist_path "$name")"
-            [ -f "$plist_file" ] || return 0
-            if is_launchd_unit_loaded "$name"; then
-                launchctl bootout "$(launchd_domain)/$name" || return 1
-            fi
-            rm -f "$plist_file" || return 1
-            ;;
-    esac
+    local socket_file="/etc/systemd/system/${name}.socket"
+    local service_file="/etc/systemd/system/${name}.service"
+    [ -f "$socket_file" ] || [ -f "$service_file" ] || return 0
+    _tc_sudo "stop the ingress receiver" systemctl disable --now "${name}.socket" "${name}.service" || return 1
+    _tc_sudo "remove the ingress receiver units" rm -f "$socket_file" "$service_file" || return 1
+    _tc_sudo "reload systemd after removing the ingress receiver" systemctl daemon-reload || return 1
     log_info "Withdrew the ingress receiver's units"
 }
 
@@ -747,43 +733,10 @@ install_systemd_ingress_receiver() {
     fi
 }
 
-install_launchd_ingress_receiver() {
-    local port="$1"
-    local name="$INGRESS_RECEIVER_LABEL"
-    local plist_file
-    plist_file="$(launchd_plist_path "$name")"
-
-    mkdir -p "$HOME/Library/LaunchAgents"
-    local launchd_path
-    launchd_path="$(launchd_path_env)"
-    local rendered_file
-    rendered_file="$(mktemp)"
-    render_template_or_die "$PROJECT_ROOT/templates/${name}.plist" "$rendered_file" \
-        "PYTHON_PATH=$SERVICE_ROOT/.venv/bin/python" "WORKING_DIR=$SERVICE_ROOT" "PATH=$launchd_path" \
-        "XDG_DATA_HOME=$SERVICE_DATA_HOME" "PORT=$port"
-
-    local deployed=false
-    if deploy_or_die "$rendered_file" "$plist_file"; then
-        deployed=true
-    fi
-    rm -f "$rendered_file"
-    # On demand or under --check the difference is named above and nothing is loaded.
-    defer_service_changes && return 0
-
-    local domain
-    domain="$(launchd_domain)"
-    # Each step returns its failure itself: callers run this under a condition, where errexit does not apply.
-    if is_launchd_unit_loaded "$name"; then
-        $deployed || return 0
-        # A changed definition reloads the job, which closes and reopens its socket.
-        launchctl bootout "$domain/$name" || return 1
-    fi
-    launchctl bootstrap "$domain" "$plist_file" || return 1
-    log_info "Loaded ingress receiver: $plist_file"
-}
-
 # The ingress receiver's units exist only on the ingress computer (single-ingress-webhook-termination).
 install_ingress_receiver() {
+    # The standalone receiver runs under systemd; on other computers the daemon serves the ingress.
+    [ "$PLATFORM" = "linux" ] || return 0
     local port
     # An unreadable configuration withdraws nothing and deploys nothing, and fails the comparison.
     port="$(ingress_receiver_port)" || return 1
@@ -791,10 +744,7 @@ install_ingress_receiver() {
         defer_service_changes || withdraw_ingress_receiver
         return
     fi
-    case "$PLATFORM" in
-        linux) install_systemd_ingress_receiver "$port" ;;
-        macos) install_launchd_ingress_receiver "$port" ;;
-    esac
+    install_systemd_ingress_receiver "$port"
 }
 
 install_service() {
