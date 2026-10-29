@@ -809,10 +809,12 @@ sequenceDiagram
   item's next write of that artifact. A rebuild reads each item's artifacts
   with one list request, which carries their current bodies, and restores the
   committed version of each; it reads an artifact's version history only when
-  its current version is not the committed one. Earlier versions are not
-  restored, so their diffs are unavailable on a computer that rebuilt the
-  item. An item whose committed version a rebuild cannot read is unverifiable
-  there and rebuild refuses store resolution naming the item.
+  its current version is not the committed one. An earlier version a rebuilt
+  working copy lacks is read from GitHub the first time something asks for it,
+  a diff or an older version, with one read of that artifact's history, and is
+  kept; only a version older than the 30 GitHub serves is then unavailable. An
+  item whose committed version a rebuild cannot read is unverifiable there and
+  rebuild refuses store resolution naming the item.
 - A repository whose issue artifacts become unavailable, because GitHub
   changes or withdraws the preview, refuses store resolution and every write
   with that cause; the working copy is left as it is.
