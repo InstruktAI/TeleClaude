@@ -58,6 +58,8 @@ feature specs remain the current contract.
   anything else loads. Consumers ask this contract and never restate the
   layout.
 
+<!-- planned-change:prepare-artifact-write-gates-on-job-role -->
+
 - **Also owns:** which entry procedure each todo-lifecycle dispatch names —
   the prepare and work overviews, the build, review, finalize, drift-analysis,
   task and deferral procedures — and every emission of those procedure IDs by
@@ -69,6 +71,25 @@ feature specs remain the current contract.
   stamping and the checkpoint's worktree dirty-set selection consume those
   groupings by role name; the catalog composes the roles and decides nothing
   about lanes (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
+
+<!-- change:prepare-artifact-write-gates-on-job-role -->
+
+- **Also owns:** which entry procedure each todo-lifecycle dispatch names —
+  the prepare and work overviews, the build, review, finalize, drift-analysis,
+  task and deferral procedures — and every emission of those procedure IDs by
+  the lifecycle state machines and the lifecycle runner; and the lane
+  groupings of catalog role names its own gates read: the prepare-lane
+  roles (prepare-orchestrator, intaker, architect, diagnoser, planner), the
+  worktree-writer roles (builder, finalizer) and the work-lane roles
+  (work-orchestrator and the writers). Lifecycle in-place adoption, kickback
+  stamping and the checkpoint's worktree dirty-set selection consume those
+  groupings by role name; the catalog composes the roles and decides nothing
+  about lanes (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
+  Prepare-artifact write authority reads no grouping: it consults the catalog's
+  `prepare-artifact-write` capability
+  (`local/projects/teleclaude/spec/feature/workflow/artifact-versioning`).
+
+<!-- /planned-change:prepare-artifact-write-gates-on-job-role -->
 
 - **Also owns (failed-check bugs):** the filer that turns failed required CI
   checks into bugs
