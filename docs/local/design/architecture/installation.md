@@ -196,7 +196,11 @@ sequenceDiagram
   stopped, the first deployment takes the port the previous release's daemon
   released. The receiver follows the active-release pointer: when the pointer
   moves, it exits and its service manager starts it again on the new release
-  while the socket stays open.
+  while the socket stays open. On a computer that is no longer the ingress, the
+  receiver stays stopped and deployment removes its units. Switching to a
+  release that predates the receiver, by rollback or by an install's recovery,
+  first removes the receiver's units through the outgoing release, so the
+  earlier release's daemon serves the inbound endpoints on its port again.
 
 - **Move running terminal interfaces, then prune.** The completed act sends
   presentation's reload signal to every terminal interface its registry records
@@ -363,5 +367,6 @@ checkout stays a registered project.
 - docs/local/policy/agent-service-control.md
 - docs/local/policy/daemon-availability.md
 - docs/local/adr/0130-the-platform-runs-from-an-installation-not-its-project.md — why the platform runs from an installation and a commit changes nothing live.
+- docs/local/adr/0150-the-service-manager-holds-the-webhook-receivers-listening-socket.md — why the receiver's unit holds its socket across receiver restarts.
 
 - docs/local/adr/0131-the-platforms-documentation-publishes-from-its-project-commits.md — why the platform's documentation publishes from its project's commits and from an install only where no platform checkout does.

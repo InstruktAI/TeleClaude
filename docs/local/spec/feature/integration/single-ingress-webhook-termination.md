@@ -41,7 +41,9 @@ producers for every procedure and agent.
 - **Intake outlives the daemon.** The ingress's receiver is a process of its
   own under its own service unit; the daemon serves no inbound endpoint. The
   receiver keeps receiving while the daemon restarts or an install stops it,
-  and restarts itself when the active release changes. Its service unit holds
+  and restarts itself when the active release or the machine configuration
+  changes; on a computer that is no longer the ingress it stays stopped. Its
+  service unit holds
   the listening socket and hands it to each receiver process, so a connection
   that arrives while the receiver restarts waits instead of being refused.
 - **Narrow reachability.** The ingress serves plain HTTP on loopback only. A
@@ -152,9 +154,10 @@ Then each computer's WhatsApp conversation handler receives the message once
 - **A restart is bounded by the provider's timeout.** A connection queued while
   the receiver restarts is lost if the receiver does not serve it before the
   provider gives up.
-- **Moving the ingress leaves the old receiver behind.** A computer that stops
-  being the ingress keeps its receiver's units until they are removed; the
-  reverse proxy no longer forwards to it.
+- **A former ingress keeps its receiver's units until its next start.** The
+  receiver stops serving as soon as its computer's configuration says it is no
+  longer the ingress; the units themselves are removed by the next start or
+  install of that computer.
 - **A claim is retained for a bounded time.** A delivery repeated after its claim
   has expired is relayed again.
 - **Claims taken before claims named their source are not recognised.** A
@@ -177,3 +180,4 @@ Then each computer's WhatsApp conversation handler receives the message once
 - docs/local/adr/0111-external-events-enter-as-ordinary-platform-events.md
 - docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md
 - docs/local/adr/0148-the-webhook-receiver-runs-beside-the-daemon-and-claims-each-delivery-before-relaying-it.md
+- docs/local/adr/0150-the-service-manager-holds-the-webhook-receivers-listening-socket.md
