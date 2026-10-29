@@ -1,5 +1,5 @@
 ---
-description: Changes to the issue artifacts of a GitHub-backed project's open work items reach the cluster as github.issue_artifact events, through the same relay as webhook deliveries, found with conditional requests that download an artifact only when it changed.
+description: Changes to the issue artifacts of a GitHub-backed project's open work items reach the cluster as github.issue_artifact events, through the same relay as webhook deliveries, found with conditional requests that download an issue's artifacts only when one of them changed.
 delivered_by:
   - github-artifact-events
 visibility: internal
@@ -37,17 +37,19 @@ nothing changed.
   platform event, with the origin and subject a webhook delivery for that
   project carries, through the claim that publishes a delivery once
   (`local/projects/teleclaude/spec/feature/integration/github-webhook-normalization`).
-  The claim's identity is the issue, the artifact and the time of its newest
-  version, so the same change is published once however many times it is
-  found.
+  The claim's identity is the issue, the artifact, the action and the time of
+  the newest version the change concerns (for a deletion, the last version
+  seen), so the same change is published once however many times it is found,
+  and a deletion is never mistaken for the save before it.
 - **Which issues.** The open issues of the project's repository work items.
   Closed issues, the ledger issue and the board issue are not looked at.
 - **Where it runs.** On the project's active computer, the one computer that
   writes the project's claims; no other computer looks.
 - **Data and requests.** Each look at an issue is one REST list request of its
   artifacts, sent with the entity tag of the previous answer. An issue whose
-  artifacts are unchanged answers that nothing changed, with no body; only an
-  issue whose artifacts changed sends its artifacts. Changes are found by
+  artifacts are unchanged answers that nothing changed, with no body; an issue
+  where any artifact changed answers with all of its artifacts, bodies
+  included, once. Changes are found by
   comparing each artifact's number and the time of its newest version with
   what the previous answer held, never by hashing content. No GraphQL request
   is sent.
