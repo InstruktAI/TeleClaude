@@ -1,5 +1,5 @@
 ---
-description: A person hands a GitHub-backed project's running work from its active computer to another computer with one command, in either direction; the orchestrators on the giving computer finish their current step, leave their work on the shared record and end, and the receiving computer continues each todo where it stood.
+description: A person hands a GitHub-backed project's running work from its active computer to another computer with one command, in either direction; the orchestrators on the giving computer stop at their step's last saved progress and end, and the receiving computer continues each todo from there at once.
 delivered_by:
   - active-computer-handover
 ---
