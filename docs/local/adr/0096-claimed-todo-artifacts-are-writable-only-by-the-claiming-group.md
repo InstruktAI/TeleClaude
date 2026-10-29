@@ -7,6 +7,12 @@ description: A claimed todo's artifacts are writable only by the session holding
 
 # ADR-0096: Claimed todo artifacts are writable only by the claiming group — ADR
 
+## Status
+
+Superseded in part by ADR-0149: the prepare-author role gate is replaced by the
+role catalog's `prepare-artifact-write` capability; the claiming group and its
+precedence stand.
+
 ## Context
 
 Artifact-write admission reads the caller and not the object. The only guard a

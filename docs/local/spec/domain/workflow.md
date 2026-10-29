@@ -174,7 +174,14 @@ concerned:
 - `local/projects/teleclaude/adr/0051-task-run-is-persistent` — task runs as persistent sessions
 - `local/projects/teleclaude/adr/0052-orchestrator-dedup-registry-authoritative` — orchestrator dedup through the registry
 - `local/projects/teleclaude/adr/0053-hold-scoped-to-autostart-enabled-kinds` — hold limited to autostart-enabled kinds
+
+<!-- planned-change:prepare-artifact-write-gates-on-job-role -->
+
 - `local/projects/teleclaude/adr/0056-roleless-sessions-exempt-from-prepare-write-role-gate` — roleless sessions writing prepare artifacts
+
+<!-- change:prepare-artifact-write-gates-on-job-role -->
+<!-- /planned-change:prepare-artifact-write-gates-on-job-role -->
+
 - `local/projects/teleclaude/adr/0057-spec-coverage-enforcement-by-review` — spec coverage enforced by review
 - `local/projects/teleclaude/adr/0060-task-firing-outcome-contract` — task firings reporting a durable outcome
 - `local/projects/teleclaude/adr/0061-hold-is-durable-dispatch-brake` — hold as the durable dispatch brake
@@ -202,6 +209,12 @@ concerned:
 - `local/projects/teleclaude/adr/0137-a-github-backed-claim-is-settled-per-todo` — settling a GitHub-backed claim per todo: driver answers, ordered releases, reactivation
 - `local/projects/teleclaude/adr/0138-a-filing-completes-after-its-request-under-a-receipt` — a filing returns a receipt and completes after its request, in its project's acceptance order
 - `local/projects/teleclaude/adr/0147-a-review-runs-each-lane-in-a-fresh-native-subagent-under-a-judging-parent` — each review lane in a fresh native subagent under a parent that briefs, reconciles and judges the whole
+
+<!-- planned:prepare-artifact-write-gates-on-job-role -->
+
+- `local/projects/teleclaude/adr/0149-prepare-artifact-write-authority-is-a-catalog-capability` — prepare-artifact write authority read from the role catalog
+
+<!-- /planned:prepare-artifact-write-gates-on-job-role -->
 
 ## See Also
 
