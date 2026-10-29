@@ -39,8 +39,6 @@ from teleclaude.services.project_catalog.service import get_project_catalog_serv
 logger = get_logger(__name__)
 
 _HOST: Final = "127.0.0.1"
-# The name the launchd definition gives the socket it holds for the receiver.
-LAUNCHD_SOCKET_NAME: Final = "Listeners"
 # systemd hands the first activated socket over as this descriptor (sd_listen_fds).
 _SYSTEMD_FIRST_FD: Final = 3
 _STARTUP_POLL_S: Final = 0.05
@@ -67,13 +65,13 @@ def _systemd_socket() -> socket.socket | None:
 
 
 def _launchd_socket() -> socket.socket | None:
-    """The socket launchd holds for this process under ``LAUNCHD_SOCKET_NAME``, if it declares one."""
+    """The socket launchd holds for this process under the definition's ``Listeners`` name, if it declares one."""
     if sys.platform != "darwin":
         return None
     libsystem = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
     fds = ctypes.POINTER(ctypes.c_int)()
     count = ctypes.c_size_t(0)
-    status = libsystem.launch_activate_socket(LAUNCHD_SOCKET_NAME.encode(), ctypes.byref(fds), ctypes.byref(count))
+    status = libsystem.launch_activate_socket(b"Listeners", ctypes.byref(fds), ctypes.byref(count))
     if status != 0 or count.value < 1:
         # ESRCH: not started by launchd with this socket; ENOENT: no such socket declared.
         return None
@@ -96,6 +94,13 @@ def _listening_socket() -> tuple[socket.socket, bool]:
 async def _refresh_catalog() -> None:
     """Reload the project catalog after a registry or declaration change, as the daemon's watchers do."""
     get_project_catalog_service().refresh()
+
+
+def _stop_without_watcher(task: asyncio.Task[None], server: uvicorn.Server) -> None:
+    if task.cancelled():
+        return
+    logger.error("ingress_receiver_watcher_ended", exc_info=task.exception())
+    server.should_exit = True
 
 
 async def _exit_when_release_moves(server: uvicorn.Server) -> None:
@@ -122,6 +127,9 @@ async def serve() -> None:
     listener, handed_over = _listening_socket()
     server = uvicorn.Server(uvicorn.Config(build_receiver_app(producer), log_level="warning"))
     serve_task = asyncio.create_task(server.serve(sockets=[listener]))
+    # Without its watcher the receiver would relay stale ownership, so losing it ends the process for its unit
+    # to start again.
+    watcher_task.add_done_callback(lambda task: _stop_without_watcher(task, server))
     # A receiver started from a release follows the pointer; one started from a checkout has none to follow.
     release_task = (
         asyncio.create_task(_exit_when_release_moves(server)) if loaded_release_revision() is not None else None

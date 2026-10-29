@@ -157,6 +157,9 @@ Then each computer's WhatsApp conversation handler receives the message once
   reverse proxy no longer forwards to it.
 - **A claim is retained for a bounded time.** A delivery repeated after its claim
   has expired is relayed again.
+- **Claims taken before claims named their source are not recognised.** A
+  delivery claimed under the earlier identity, which named only the delivery,
+  is relayed again if it is repeated within that claim's retention.
 - **Relaying needs the cluster Redis.** While it is unreachable, the receiver
   cannot claim or publish, and a delivery fails.
 - **A computer that is not running misses relayed events.** The stream is

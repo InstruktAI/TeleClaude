@@ -20,7 +20,7 @@ _INITIAL_SNAPSHOT_FAILED = "Config watcher initial snapshot failed; continuing t
 _PATH_RESOLUTION_FAILED = "Config watcher could not resolve paths; continuing to watch"
 _POLL_FAILED = "Config watcher poll failed; continuing to watch"
 _STAT_FAILED = "Config watcher could not stat %s: %s"
-_STARTED = "Config watcher started (paths=%s, interval=%.0fs)"
+_STARTED = "Config watcher started (paths=%d, interval=%.0fs)"
 
 
 class ConfigWatcher:
@@ -72,7 +72,8 @@ class ConfigWatcher:
         except Exception:
             logger.exception(_PATH_RESOLUTION_FAILED)
             watched_paths = []
-        logger.info(_STARTED, [str(path) for path in watched_paths], self._poll_interval_s)
+        # The paths can name people (home directories), so only their number is logged.
+        logger.info(_STARTED, len(watched_paths), self._poll_interval_s)
         try:
             while True:
                 await asyncio.sleep(self._poll_interval_s)
