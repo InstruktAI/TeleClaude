@@ -64,21 +64,21 @@ place.
 
 ### Use cases
 
-#### UC-FTR1: An operator sees a GitHub-backed project's todos as GitHub holds them, from any computer
+#### UC-FTR1: An operator sees a GitHub-backed project's repository work as GitHub holds it, from any computer
 
 ```gherkin
-Scenario: The todos shown are the ones GitHub holds
-  Given a project whose todos are kept on GitHub
+Scenario: The repository work shown is what GitHub holds
+  Given a project on the GitHub workflow store
   And an operator at any computer of the fleet
-  When the operator views the project's todos
-  Then the operator sees the todos GitHub holds for the project
+  When the operator views the project's repository work
+  Then the operator sees the repository work GitHub holds for the project
 
 Scenario: GitHub cannot be read
-  Given a project whose todos are kept on GitHub
+  Given a project on the GitHub workflow store
   And GitHub cannot be read from the operator's computer
-  When the operator views the project's todos
-  Then the operator is told the todos cannot be read from GitHub, and why
-  And no other computer's copy of them is shown
+  When the operator views the project's repository work
+  Then the operator is told that work cannot be read from GitHub, and why
+  And no other computer's copy of it is shown
 ```
 
 ## Known caveats
