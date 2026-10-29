@@ -235,17 +235,20 @@ superseded, folded, or due for removal that is still active; a todo that
 duplicates or only re-reports the root cause another todo owns; a dependency
 that names a removed, delivered, or superseded todo, or omits an ordering a
 current design requires. The standing peer falsifies each finding and its exit
-before this role acts on it. The exits are those of the reconciliation clause
-of `sdlc/policy/todo-creation-discipline` — hold with a `log` entry, realign
-the dependencies and record why in `log`, or retract:
+before this role acts on it. Workflow accepts a todo update or artifact write
+only from the todo's claim, so this role writes only to a todo no live session
+claims:
 
-- A todo with a live claimant receives the complete flag; the claimant
-  chooses its exit. When the claimant has declared an exit it has not
-  executed, or cannot answer, this role executes the declared exit, ending the
-  claimant's sessions first where retraction requires it.
-- A todo with no live claimant is reconciled by this role directly.
-- A filing that carries the human's request in his own words, or an exit
-  that would abandon an outcome `general/policy/human-contract` assigns to
+- A todo with a live claimant receives the complete flag of the reconciliation
+  clause in `sdlc/policy/todo-creation-discipline`; the claimant chooses its
+  exit and records it. When the claimant has declared a retraction it has not
+  executed, this role ends the claimant's sessions, which releases the claim,
+  and retracts the todo.
+- A todo with no live claimant is reconciled by this role: a hold with its
+  reason in `log`, dependencies realigned with `telec todo update --after` and
+  the reason in `log`, or retraction with `telec todo remove`.
+- Retracting a filing that carries the human's request in his own words, or
+  any exit that abandons an outcome `general/policy/human-contract` assigns to
   him, is carried to him instead.
 
 ### 6. Log what is worth knowing later
@@ -356,7 +359,8 @@ alternatives for anything they cover:
 - `telec todo artifacts read <slug> <name>` — a todo's input, log, and plans.
 - `telec todo update <slug> --hold --reason <why>` / `--after <dep>`,
   `telec todo artifacts write <slug> log <entry>`, and `telec todo remove <slug>`
-  — only the step-5 landscape exits, after the peer's falsification.
+  — only the step-5 landscape exits on unclaimed todos, after the peer's
+  falsification.
 - `telec sessions end <id>` — also the sessions of a claimant whose declared
   retraction this role executes under step 5.
 - `telec docs index` / `telec docs get <id>` — contracts, re-read before ruling.
