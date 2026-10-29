@@ -116,20 +116,6 @@ sequenceDiagram
 
 ### 3. Background Workers
 
-<!-- planned-change:teleclaude-db-split -->
-
-| Worker                | Interval (default) | Purpose                                                                                                            |
-| --------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| Hook Outbox           | 1s                 | Process agent lifecycle hooks                                                                                      |
-| Poller Watch          | 5s                 | Keep per-session output pollers aligned with tmux                                                                  |
-| Resource Monitor      | 60s                | Emit runtime resource snapshots                                                                                    |
-| WAL Checkpoint        | 300s               | Prevent unbounded SQLite WAL growth                                                                                |
-| Launchd Watch         | 300s (optional)    | Log launchd state transitions on macOS                                                                             |
-| Runtime Maintenance   | 1h                 | Prune stale sessions, scratch dirs, caches, operational rows, event runtime rows, and compact runtime SQLite files |
-| Closed Session Replay | 1h                 | Re-emit `session_closed` for recently closed sessions (12h window)                                                 |
-
-<!-- change:teleclaude-db-split -->
-
 Each worker's cadence is set by the daemon's runtime configuration or by the worker's own loop.
 
 | Worker                | Purpose                                                                                             |
@@ -141,8 +127,6 @@ Each worker's cadence is set by the daemon's runtime configuration or by the wor
 | Launchd Watch         | Log launchd state transitions on macOS (optional)                                                   |
 | Runtime Maintenance   | Prune stale sessions, scratch dirs, caches, operational rows and event runtime rows; never compacts |
 | Closed Session Replay | Re-emit `session_closed` for recently closed sessions                                               |
-
-<!-- /planned-change:teleclaude-db-split -->
 
 An operator can force the same behavior on demand with:
 

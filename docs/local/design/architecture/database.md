@@ -15,15 +15,7 @@ visibility: public
 
 ## Invariants
 
-<!-- planned-change:teleclaude-db-split -->
-
-- **Database Location**: All databases live under `~/.teleclaude/`. Main DB is `teleclaude.db`, events are `events.db`, mirrors are `mirrors.db`, and hook delivery uses `hook_outbox.db`.
-
-<!-- change:teleclaude-db-split -->
-
 - **Database Location**: All databases live in the TeleClaude home, one file per owner, each its own write-isolation unit (`sdlc/policy/state-storage`). The home and the main, events and mirrors files are declared in `teleclaude/paths.py`, the hook outbox file in `teleclaude/core/db/connection_factory.py`, and the output, operations and reminders files in the daemon's store registry. Output streaming, operations and reminders each have their own file. State that session creation or control delivery writes in one transaction with sessions — startup handovers, procedure event delivery, the control outbox and the inbound queue with its turn bindings — stays in the main database.
-
-<!-- /planned-change:teleclaude-db-split -->
 
 - **Fail Before Serve**: Migrations run before interfaces are considered ready.
 - **Headless Compatibility**: Sessions may have `tmux_session_name = NULL` and still be valid (`lifecycle_status='headless'`).
@@ -35,23 +27,10 @@ visibility: public
 
 - **Durable History Exclusion**: `mirrors.db`, memory tables, todo/project artifact databases, and other history domains are not pruned by runtime maintenance.
 
-<!-- planned:teleclaude-db-split -->
-
 - **Session-Scoped Retention**: A session's latest output generation, its consumer cursors and receipts, and its reminder entries are live state while the session is open. They are pruned once the session has been closed for longer than the runtime retention window; superseded generations and receipts, terminal Discord send intents, terminal control payloads and failed procedure events are pruned once older than the window, and delivered procedure events once their assigned session has been closed for longer than it. Session startup handovers are never pruned by retention.
 - **Maintenance Does Not Stall Writers**: Runtime maintenance holds a store's write lock only for short statements. The periodic WAL checkpoint is passive and never waits on readers, retention deletes run per store, and compaction (`VACUUM`) runs only while the daemon opens its stores, before it serves (`sdlc/policy/state-storage`, Write isolation follows contention).
 
-<!-- /planned:teleclaude-db-split -->
-
-<!-- planned-change:teleclaude-db-split -->
-
-- Schema bootstraps from `teleclaude/core/schema.sql`.
-- Incremental schema changes run through numbered migrations (`teleclaude/core/migrations/*.py`) tracked in `schema_migrations`.
-
-<!-- change:teleclaude-db-split -->
-
 - Each store reaches its current schema through its own schema file and migration ledger (`local/projects/teleclaude/policy/schema-and-migrations`).
-
-<!-- /planned-change:teleclaude-db-split -->
 
 <!-- planned:distributed-todo-postgres -->
 
@@ -291,18 +270,6 @@ lets recovery verify the captured audio still exists before resubmitting.
 2. Session TMPDIRs and session-owned workspace directories are reconciled against live DB session truth.
 3. `session_map.json` is pruned as a cache; mappings survive only when the matching DB row is open or recoverable.
 
-<!-- planned-change:teleclaude-db-split -->
-
-4. Operational DB tables prune terminal or orphan rows after the retention window:
-   `operations`, `inbound_queue`, `hook_outbox.db`,
-   `session_listeners`, `voice_assignments`, and `voice_transcriptions` (terminal
-   `succeeded`/`failed` rows; orphaned temp audio with no live row is swept alongside).
-5. `events.db` prunes resolved notifications and reviewed quarantined events after the retention window while preserving unresolved work.
-6. Orphaned `/tmp/teleclaude_voice/voice_*` audio files are removed only when they are old enough and no recoverable `voice_transcriptions` row still references their path.
-7. Runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`) are compacted only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
-
-<!-- change:teleclaude-db-split -->
-
 4. Operational DB tables prune terminal or orphan rows after the retention window:
    `operations`, `inbound_queue`, `hook_outbox.db`,
    `session_listeners`, `voice_assignments`, and `voice_transcriptions` (terminal
@@ -312,8 +279,6 @@ lets recovery verify the captured audio still exists before resubmitting.
 5. `events.db` prunes resolved notifications and reviewed quarantined events after the retention window while preserving unresolved work.
 6. Orphaned `/tmp/teleclaude_voice/voice_*` audio files are removed only when they are old enough and no recoverable `voice_transcriptions` row still references their path.
 7. Runtime maintenance never compacts. Store opening, before the daemon serves, compacts every runtime SQLite file only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
-
-<!-- /planned-change:teleclaude-db-split -->
 
 ### 6. Native-entry generation and Discord-send durability
 
@@ -329,15 +294,7 @@ lets recovery verify the captured audio still exists before resubmitting.
 - **Migration failure**: Daemon startup aborts until schema issue is fixed.
 - **Outbox backlog growth**: If worker path is unhealthy, undelivered rows accumulate.
 
-<!-- planned-change:teleclaude-db-split -->
-
-- **Disk pressure**: WAL/table/freelist growth can degrade performance or fail writes; daemon maintenance checkpoints WAL and threshold-compacts runtime SQLite files.
-
-<!-- change:teleclaude-db-split -->
-
 - **Disk pressure**: WAL/table/freelist growth can degrade performance or fail writes; daemon maintenance checkpoints WAL passively, and store opening threshold-compacts runtime SQLite files before the daemon serves.
-
-<!-- /planned-change:teleclaude-db-split -->
 
 - **Corrupt row payload**: Outbox row is deleted (with error logging) to avoid infinite retry loops.
 - **Voice audio lost before recovery**: Recovery marks the row failed and resolves the original user notice instead of silently dropping the spoken input.
