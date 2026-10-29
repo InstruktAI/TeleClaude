@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from sqlalchemy import delete, exists, func, or_
 from sqlalchemy.orm import aliased
@@ -19,7 +20,21 @@ from .. import db_models
 from ..models import GenerationHandle
 from .stores import DaemonStore
 
-_TERMINAL_INTENT_STATUSES = ("resolved", "omitted", "replayed")
+
+class DiscordSendIntentStatus(StrEnum):
+    """The dispositions of a durable Discord send intent."""
+
+    PENDING = "pending"
+    RESOLVED = "resolved"
+    OMITTED = "omitted"
+    REPLAYED = "replayed"
+
+
+_TERMINAL_INTENT_STATUSES = (
+    DiscordSendIntentStatus.RESOLVED,
+    DiscordSendIntentStatus.OMITTED,
+    DiscordSendIntentStatus.REPLAYED,
+)
 
 
 @dataclass(frozen=True)
@@ -252,7 +267,7 @@ class DbOutputGenerationsMixin:
                 session_id=session_id,
                 generation_id=generation_id,
                 channel_id=channel_id,
-                status="pending",
+                status=DiscordSendIntentStatus.PENDING,
                 created_at=now,
             )
             db_session.add(row)
@@ -267,7 +282,9 @@ class DbOutputGenerationsMixin:
 
     async def get_pending_discord_send_intents(self, *, session_id: str | None = None) -> list[DiscordSendIntent]:
         """Return every intent still awaiting a terminal disposition (restart reconciliation target)."""
-        stmt = select(db_models.DiscordSendIntentRow).where(db_models.DiscordSendIntentRow.status == "pending")
+        stmt = select(db_models.DiscordSendIntentRow).where(
+            db_models.DiscordSendIntentRow.status == DiscordSendIntentStatus.PENDING
+        )
         if session_id is not None:
             stmt = stmt.where(db_models.DiscordSendIntentRow.session_id == session_id)
         async with self._store_session(DaemonStore.OUTPUT) as db_session:
@@ -285,7 +302,7 @@ class DbOutputGenerationsMixin:
             row = await db_session.get(db_models.DiscordSendIntentRow, intent_id)
             if row is None or row.status in _TERMINAL_INTENT_STATUSES:
                 return False
-            row.status = "resolved"
+            row.status = DiscordSendIntentStatus.RESOLVED
             row.platform_message_id = platform_message_id
             row.resolved_at = now
             db_session.add(row)
@@ -299,7 +316,7 @@ class DbOutputGenerationsMixin:
             row = await db_session.get(db_models.DiscordSendIntentRow, intent_id)
             if row is None or row.status in _TERMINAL_INTENT_STATUSES:
                 return False
-            row.status = "omitted"
+            row.status = DiscordSendIntentStatus.OMITTED
             row.resolved_at = now
             db_session.add(row)
             await db_session.commit()
@@ -321,16 +338,16 @@ class DbOutputGenerationsMixin:
         now = datetime.now(UTC).isoformat()
         async with self._store_session(DaemonStore.OUTPUT) as db_session:
             omitted = await db_session.get(db_models.DiscordSendIntentRow, omitted_intent_id)
-            if omitted is None or omitted.status != "omitted":
+            if omitted is None or omitted.status != DiscordSendIntentStatus.OMITTED:
                 return None
-            omitted.status = "replayed"
+            omitted.status = DiscordSendIntentStatus.REPLAYED
             db_session.add(omitted)
             new_row = db_models.DiscordSendIntentRow(
                 intent_id=new_intent_id,
                 session_id=omitted.session_id,
                 generation_id=generation_id,
                 channel_id=channel_id,
-                status="pending",
+                status=DiscordSendIntentStatus.PENDING,
                 replays_intent_id=omitted_intent_id,
                 created_at=now,
             )
@@ -385,7 +402,10 @@ class DbOutputGenerationsMixin:
                     generations.session_id.notin_(retained_session_ids),  # type: ignore[attr-defined]
                     generations.generation_id != latest_of_generation_session,
                 ),
-                ~exists().where(intents.generation_id == generations.generation_id, intents.status == "pending"),
+                ~exists().where(
+                    intents.generation_id == generations.generation_id,
+                    intents.status == DiscordSendIntentStatus.PENDING,
+                ),
             ),
             delete(cursors).where(
                 cursors.session_id.notin_(retained_session_ids),  # type: ignore[attr-defined]
