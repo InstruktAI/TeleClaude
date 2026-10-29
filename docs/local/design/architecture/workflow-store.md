@@ -540,26 +540,11 @@ master admits each conversation request before sending it:
   facades share this identity and event-hook attachment; sync calls stay native
   sync and do not invoke a nested event loop.
 
-<!-- planned-change:artifact-writes-outlast-push-deadline -->
-
 - Adapter commands retain existing transaction boundaries and callback
   multiplicity. Artifact content and version append commit together and notify;
   provenance state is a later, separate commit and notification. A failure
   between those commits remains observable as it is today. Delivery and later
   dependency cleanup likewise retain their source-defined boundaries.
-
-<!-- change:artifact-writes-outlast-push-deadline -->
-
-- Adapter commands retain existing transaction boundaries and callback
-  multiplicity. Artifact content and version append commit together and notify;
-  provenance state is a later, separate commit and notification. A failure
-  between those commits remains observable as it is today. Delivery likewise
-  retains its source-defined boundary. Dependency cleanup after a delivery
-  removes the delivered item from each dependent item in a transaction of its
-  own, so every cleanup commit changes one item, and a cleanup cut short leaves
-  only the references it had not yet removed.
-
-<!-- /planned-change:artifact-writes-outlast-push-deadline -->
 
 - A phase mutation persists before its existing transition notification. Failed
   persistence emits no successful transition. Hook registration occurs once
@@ -619,30 +604,12 @@ master admits each conversation request before sending it:
   deadline, however many transactions the request commits. Waiting for a
   database connection before a transaction starts is not cut short by it.
 
-<!-- planned-change:artifact-writes-outlast-push-deadline -->
-
 - GitHub I/O runs on an adapter-owned I/O thread: a sync caller blocks on it
   without starting an event loop of its own, and an async caller awaits it
   without blocking the daemon's loop. Requests on that thread run one at a
   time. An issue reflection or a pull request unit never runs alongside
   another one, but holds the request serialization only for each of its own
   requests, so a push waits behind at most one request in flight.
-
-<!-- change:artifact-writes-outlast-push-deadline -->
-
-- GitHub I/O runs on an adapter-owned I/O thread: a sync caller blocks on it
-  without starting an event loop of its own, and an async caller awaits it
-  without blocking the daemon's loop. Requests on that thread run one at a
-  time. While a push runs under the push deadline, requests of work other than
-  a push wait until no such push is under way: a push waits only for the one
-  request already in flight when it began and for the requests of another
-  project's push, which take turns with its own, so the push deadline is spent
-  on push requests. A paced restore keeps the per-request serialization. An
-  issue reflection, a pull request unit or a board unit never runs alongside
-  another one, and holds the request serialization only for each of its own
-  requests.
-
-<!-- /planned-change:artifact-writes-outlast-push-deadline -->
 
 - No working-copy write waits for the writer on a thread that runs an event
   loop. A commit whose reflection needs no GitHub write records that in the
@@ -836,8 +803,6 @@ sequenceDiagram
   saved and the rest was not. A background operation records the refusal as
   its failure.
 
-<!-- planned-change:artifact-writes-outlast-push-deadline -->
-
 - A transaction whose GitHub I/O outlasts the push deadline aborts its local
   commit and refuses with the provider's unavailable cause, as any failed GitHub
   write before the commit point does. When its request's deadline is what ran
@@ -845,22 +810,6 @@ sequenceDiagram
   explicit refusal instead. If the push had already sent its commit-point
   write, that refusal says the change may have been saved and appears once the
   store refreshes.
-
-<!-- change:artifact-writes-outlast-push-deadline -->
-
-- A transaction whose GitHub I/O outlasts the push deadline aborts its local
-  commit and refuses with the provider's unavailable cause, as any failed GitHub
-  write before the commit point does. When its request's deadline is what ran
-  out, the transaction aborts the same way, and the API caller receives the
-  explicit refusal instead. If the push had already sent its commit-point
-  write, that refusal says the change may have been saved and appears once the
-  store refreshes. The store starts that refresh once the refused transaction
-  has ended, the recovery a conflict-refused write already gets, so the saved
-  change does not wait for the periodic refresh. Every content part of a new artifact version is a request under the same
-  push deadline, so a version with more parts than the deadline covers is
-  refused like any other push that outlasts it.
-
-<!-- /planned-change:artifact-writes-outlast-push-deadline -->
 
 - Bookkeeping refused for the writer after a completed reflection or pull
   request leaves that reflection owed, and refresh writes it again.
