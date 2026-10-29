@@ -52,6 +52,10 @@ First read the sdlc principles as listed in the sdlc baseline that apply to this
   the work's external systems offer for it, read from their current
   documentation (`sdlc/procedure/lifecycle/prepare/architecture`, step 1a).
   This is the baseline step 3 judges the design against.
+- In the same pass, before any design material, classify each piece of
+  durable state the PRD's outcomes require under `sdlc/policy/state-storage`
+  and place it: nature, owner, loss cost, medium, write isolation, scope and
+  lifecycle. Step 2 compares the design against this classification.
 - `telec todo artifacts read {slug} architecture` — the index of the design
   under review.
 - Every indexed snippet in its pending view, `telec docs get <id> --target {slug}`,
@@ -83,9 +87,10 @@ the relationship only; it cannot be the sole home of a participating domain
 rule.
 
 For every piece of durable state the design introduces, relocates or changes,
-classify it yourself under `sdlc/policy/state-storage` before you read the
-artifact's State ownership and storage section, then compare. Verify the
-claimed loss cost, write pattern and existing store against source.
+compare its placement in the indexed snippets with your own classification from
+step 1. A piece of state your classification did not anticipate is classified
+before you read its reasoning. Verify the design's loss cost, write pattern and
+existing store against source.
 
 ### 3. Reject undocumented divergence and unsupported invention
 

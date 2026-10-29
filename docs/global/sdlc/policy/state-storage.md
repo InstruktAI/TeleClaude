@@ -45,14 +45,15 @@ Before a design gives a piece of state a home, it states:
 
 ### Write isolation follows contention
 
-- An embedded database file is one write-isolation unit: its writers wait on
-  each other. State shares a database file only with state of the same owning
-  domain and a compatible write pattern.
+- The write-isolation unit is the scope within which a store makes writers wait
+  on each other; the store's own concurrency model defines it (SQLite: one
+  database file). State shares a write-isolation unit only with state of the
+  same owning domain and a compatible write pattern.
 - Background writers, such as pollers, outboxes, delivery queues and
   maintenance, never share a write-isolation unit with a path a person or an
   agent waits on.
 - A domain whose write pattern or lifecycle differs from its neighbours' gets
-  its own database file. Having fewer files is no reason to share one.
+  its own write-isolation unit. Having fewer files is no reason to share one.
 
 ### Scope and lifecycle are declared
 
@@ -76,8 +77,9 @@ Before a design gives a piece of state a home, it states:
 - A database brings a schema, migrations and a shared write lock; a state file
   brings none of these but is rewritten whole. Matching the medium to the
   state's shape pays each cost only where the state needs what it buys.
-- An embedded database admits one writer at a time. A background writer sharing
-  a file with a waiting path adds its write durations to every waiter's latency
+- Writers sharing a write-isolation unit wait on each other. A background
+  writer sharing one with a waiting path adds its write durations to every
+  waiter's latency
   (`sdlc/policy/code-quality-practices`, Concurrency).
 - State left behind when its responsibility moves is rebuilt from scratch by
   the new owner, at the cost the rebuild states.
