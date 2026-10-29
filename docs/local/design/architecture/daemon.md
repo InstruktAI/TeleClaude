@@ -214,7 +214,15 @@ by the existing startup and accepted-input recovery contracts.
 - **Migration Failure**: Database schema incompatible. Manual intervention required. No automatic rollback.
 - **Interface Startup Failure (API/Adapter)**: Daemon fails startup (fail-fast) rather than running in partial mode.
 
-- **Redis Unavailable at Startup**: Daemon fails startup (fail-fast). Redis is required by the event platform; downstream code (operations, integration, signals) emits events unconditionally and cannot tolerate a missing producer. systemd/launchd restarts with backoff until Redis returns. Adapter startup and event-producer registration complete before the API socket opens, so no `/todos/*` operation can land before the producer is registered. The event consumer — the Redis-stream event processor and the scheduler minute clock — starts only after the API socket is bound, so in-daemon pipeline stages that reach the daemon's own API over that socket never run before the socket exists.
+<!-- planned-change:daemon-startup-aborts-without-redis -->
+
+- **Redis Unavailable at Startup**: Daemon fails startup (fail-fast). Redis is required by the event platform; downstream code (operations, integration, signals) emits events unconditionally and cannot tolerate a missing producer. systemd/launchd restarts with backoff until Redis returns. Adapter startup and event-producer registration complete before the API socket opens, so no `/todos/*` operation can land before the producer is registered. The event consumer — the Redis-stream event processor and the scheduler minute clock — starts only after the API socket is bound, so in-daemon pipeline stages that reach the daemon's own API over that socket never run before the socket exists. While Redis stays unreachable every relaunch fails the same way, so a Redis outage is a TeleClaude outage of the same length. A long-lived event reader whose Redis stops answering while the daemon serves ends its task; once its restart budget is spent, that end becomes the daemon's ordinary shutdown, and the relaunch then meets this startup failure. This contradicts `local/projects/teleclaude/policy/daemon-availability`.
+
+<!-- change:daemon-startup-aborts-without-redis -->
+
+- **Event Redis Unreachable**: The daemon starts and serves while a configured event-platform Redis does not answer (`local/projects/teleclaude/policy/daemon-availability`). Startup logs which scope's Redis did not answer and holds the event platform's recovery progress at blocked until it answers. The event producers are registered before the API socket opens either way, so no `/todos/*` operation can land before them. The event readers on a Redis that answered start after the API socket is bound, as at every start; those on a Redis that did not answer start once it answers, without a restart. A Redis that stops answering while the daemon serves ends neither its event readers nor the daemon; how those readers wait and resume belongs to `local/projects/teleclaude/design/architecture/event-delivery`.
+
+<!-- /planned-change:daemon-startup-aborts-without-redis -->
 
 - **Cache Warmup Timeout**: Daemon fails to start. Indicates database corruption or resource exhaustion.
 - **Unclean Shutdown (SIGKILL)**: Hooks and commands may be partially processed. Next startup recovers from outbox.
@@ -222,3 +230,11 @@ by the existing startup and accepted-input recovery contracts.
 - **Worker Task Crash**: A long-lived worker is supervised (`sdlc/policy/code-quality-practices`, Error Handling and Recovery). Its supervisor logs the end and starts a replacement while the worker's restart budget lasts. A worker that cannot be replaced in place, or that exhausts its budget, escalates: the daemon runs its ordinary shutdown and the service manager relaunches it (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`, UC-DL17).
 
 - **Shutdown Timeout**: Cleanup takes too long; systemd may SIGKILL and leak resources.
+
+<!-- planned:daemon-startup-aborts-without-redis -->
+
+## See Also
+
+- docs/local/adr/0145-a-computer-keeps-working-while-its-cluster-redis-is-unreachable.md — why the daemon starts and serves while its cluster Redis is unreachable.
+
+<!-- /planned:daemon-startup-aborts-without-redis -->
