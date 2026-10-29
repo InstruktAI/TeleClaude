@@ -260,16 +260,17 @@ ordering guarantee for these separate transports.
 
 <!-- planned:daemon-startup-aborts-without-redis -->
 
-- A Redis that does not answer stops only the readers and publications on it.
-  A reader whose Redis stops answering does not end its run: it logs the loss
-  once, waits until that Redis answers, logs the return and resumes from its
-  group, recovering its pending entries in order before it reads new ones. A
-  failure that is not the Redis connection still ends the run under its
-  supervisor. A publication to a Redis that does not answer fails at its
-  caller; nothing holds it for later delivery.
-- A scope whose Redis did not answer at startup has its reader positions taken
-  once it answers. A consumer whose group already exists resumes from it; a
-  consumer whose group is new starts at that moment, so it omits what that
+- A Redis that stops answering does not end the readers on it. Each Redis has
+  one record of whether it answers: the loss and the return are logged once
+  each, and every reader on that Redis waits for it. Then a retained consumer
+  resumes from its group, recovering its pending entries in order before it
+  reads new ones, and a live consumer repeats its source-recovery handover
+  under `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`.
+  A failure that is not the Redis connection still ends the reader's run under
+  its supervisor.
+- A Redis that did not answer at startup has the positions of the readers on it
+  taken once it answers. A retained consumer whose group already exists resumes
+  from it; one whose group is new starts at that moment, so it omits what that
   Redis took in before.
 
 <!-- /planned:daemon-startup-aborts-without-redis -->
