@@ -38,12 +38,6 @@ producers for every procedure and agent.
 
 - **Single public node.** One computer is the ingress; it need not be the
   cluster master. No other computer serves the inbound endpoints.
-- **Intake outlives the daemon.** The ingress's receiver is a process of its
-  own, under its own service unit, separate from the daemon; it keeps receiving
-  while the daemon restarts or an install replaces it. Its service unit holds
-  the listening socket and hands it to the receiver, so a connection that
-  arrives while the receiver restarts for a new release waits instead of being
-  refused.
 - **Narrow reachability.** The ingress serves plain HTTP on loopback only. A
   reverse proxy on the same computer is the public surface: it terminates TLS,
   restricts source and forwards only the inbound path prefix to the ingress.
@@ -59,12 +53,14 @@ producers for every procedure and agent.
 - **Unconditional relay.** The ingress relays every verified request regardless
   of its own configuration or whether it would itself act. The ingress decides
   nothing about the reaction.
-- **Each delivery is relayed once.** A verified request is published through one
-  atomic step on the cluster Redis that claims its delivery identity and
-  publishes only when the claim is new. The identity is the provider's own
-  delivery identifier where the provider supplies one, and a digest of the
-  verified request otherwise. A repeated delivery, received by this receiver or
-  another, publishes nothing while its claim is retained.
+- **Each delivery is relayed once per source.** A verified request is published
+  through one atomic step on the cluster Redis that claims its delivery identity
+  and publishes only when the claim is new. The identity belongs to the
+  authenticated source (its protocol and declaring home): GitHub's delivery
+  identifier for a GitHub request, and a digest of the verified request
+  otherwise. A repeated delivery from the same source publishes nothing while
+  its claim is retained and is still answered as accepted; two sources never
+  share a claim.
 - **Ordinary platform events.** A relayed event is published on the platform
   event stream under the event envelope contract
   (`@docs/local/spec/feature/event-catalog/event-envelope.md`):
@@ -143,10 +139,10 @@ Then each computer's WhatsApp conversation handler receives the message once
 
 ## Known caveats
 
-- **The ingress is a single point of external-event intake.** While its receiver
-  is down, the cluster processes no external events but is not otherwise broken;
-  a daemon restart does not take the receiver down. A second receiver can be
-  added without redesign, since the claim relays each delivery once.
+- **The ingress is a single point of external-event intake.** While its daemon
+  is down, including during a restart or an install, the cluster processes no
+  external events but is not otherwise broken; a provider that does not
+  redeliver a failed request loses that event.
 - **A claim is retained for a bounded time.** A delivery repeated after its claim
   has expired is relayed again.
 - **Relaying needs the cluster Redis.** While it is unreachable, the receiver
@@ -165,3 +161,4 @@ Then each computer's WhatsApp conversation handler receives the message once
 - docs/local/adr/0055-proxy-fronted-ingress-reuse.md
 - docs/local/adr/0111-external-events-enter-as-ordinary-platform-events.md
 - docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md
+- docs/local/adr/0148-the-webhook-receiver-runs-beside-the-daemon-and-claims-each-delivery-before-relaying-it.md

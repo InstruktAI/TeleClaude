@@ -175,9 +175,12 @@ Then the ingress accepts the request without a restart and relays the event
 
 ## Known caveats
 
-- A provider retries a transient failure, and the ingress does not deduplicate
-  retried deliveries. A retried request is relayed as a new event; consumers own
-  the idempotency of their work.
+- A provider retries a transient failure. The ingress relays a retried delivery
+  once per source while its claim is retained
+  (`local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`);
+  a retry after the claim expires, or a request whose body differs from the
+  original where no delivery identifier exists, is relayed as a new event.
+  Consumers own the idempotency of their work.
 - The ingress must hold the configuration and `.env` of every home that
   receives external events, because verification happens there.
 - The subscription handshake is Meta's protocol; the native and GitHub
