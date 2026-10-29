@@ -27,6 +27,8 @@ from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_status import is_session_terminal
 
+from ._message_acceptance import settle_undelivered_wake
+
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
@@ -191,10 +193,15 @@ async def notify_delivery_exhausted(
 ) -> None:
     """Present the durable notice associated with a terminal delivery cause.
 
-    A conversation row that expired while held notifies its conversation
-    channel. Every other terminal cause, including the expiry of a held
-    platform-authored row, reaches the producer of the row.
+    A control wake that ended undelivered first has its acceptance retired
+    (``settle_undelivered_wake``), whatever the cause. A rejected row carries no
+    notice. A conversation row that expired while held notifies its
+    conversation channel. Every other terminal cause, including the expiry of a
+    held platform-authored row, reaches the producer of the row.
     """
+    await settle_undelivered_wake(row, cause)
+    if cause is DeliveryTerminalCause.REJECTED:
+        return
     source = InjectedTextSourceFeature(row["source_feature"])
     if (
         cause is DeliveryTerminalCause.HOLD_EXPIRED

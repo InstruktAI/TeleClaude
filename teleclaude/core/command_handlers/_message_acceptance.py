@@ -8,13 +8,17 @@ from datetime import UTC, datetime
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import InboundQueueRow, db
+from teleclaude.core.inbound_queue import DeliveryTerminalCause
 from teleclaude.core.injected_text import TranscriptEntryKind, visible_input_update, wake_occurrence_key
 from teleclaude.core.models import Session
 from teleclaude.core.models._session import SessionField
 from teleclaude.core.session_listeners import record_startup_work_accepted
+from teleclaude.core.session_status import is_session_terminal
 
 logger = get_logger(__name__)
 _ACCEPTANCE_EVIDENCE_WRITE_FAILED_EVENT = "inbound_acceptance_evidence_write_failed"
+_UNDELIVERED_WAKE_SETTLED_EVENT = "undelivered_wake_settled"
+_UNDELIVERED_WAKE_SETTLEMENT_FAILED_EVENT = "undelivered_wake_settlement_failed"
 
 
 def is_canonical_wake(row: InboundQueueRow) -> bool:
@@ -64,8 +68,11 @@ async def record_acceptance_evidence(
 ) -> None:
     """Record the instant an acceptance wrote and the turn identity its wake gate read, never raising.
 
-    A failure leaves the row without evidence, which keeps it unsettleable; it never interrupts the post-insert
-    callback, so the delivery worker still starts.
+    A worker can end the row undelivered before this evidence exists; its terminal settlement then found
+    nothing to settle with. The row is therefore read again after the write, and a row already expired is
+    settled here. Together with the terminal side reading the evidence after the row's terminal status is
+    committed, whichever side finishes second sees both writes. A failure leaves the row without evidence, or
+    unsettled, and never interrupts the post-insert callback, so the delivery worker still starts.
     """
     try:
         await db.record_inbound_acceptance_evidence(
@@ -73,12 +80,64 @@ async def record_acceptance_evidence(
             accepted_input_at=accepted_at,
             runtime_turn_id=runtime_turn_id,
         )
+        row = await db.get_inbound_row(row_id)
+        if row is not None and row["status"] == "expired":
+            await settle_undelivered_wake(row)
     except Exception as exc:
         logger.warning(
             _ACCEPTANCE_EVIDENCE_WRITE_FAILED_EVENT,
             session_id=session_id,
             inbound_row_id=row_id,
             error=str(exc),
+        )
+
+
+async def settle_undelivered_wake(row: InboundQueueRow, cause: DeliveryTerminalCause | None = None) -> None:
+    """Retire the acceptance of a control wake that ended undelivered, when nothing newer was recorded.
+
+    The wake's acceptance stamped the session's input clock, and no turn followed, so the session keeps
+    reading as running and every later control payload waits for a wake that is never sent. The session is
+    given an idle boundary only while its input clock is no later than the wake's own acceptance instant and
+    its runtime turn identity is absent or the one the wake saw; the check is part of the write. Newer input
+    or a native turn leaves the session untouched. The wake itself is not repeated here: the next handoff,
+    restore continuation or idle boundary wakes the session once the stale clock no longer suppresses it.
+
+    The acceptance evidence is read fresh from the store, because the worker's row snapshot may predate it.
+    A row without evidence is not settled. ``cause`` is for the log only: the acceptance side does not know
+    which terminal path the worker took. Failures are logged and contained.
+    """
+    if not is_canonical_wake(row):
+        return
+    try:
+        evidence = await db.get_inbound_acceptance_evidence(row["id"])
+        if evidence is None:
+            return
+        session = await db.get_session(row["session_id"])
+        if session is None or is_session_terminal(
+            lifecycle_status=session.lifecycle_status, closed_at=session.closed_at
+        ):
+            return
+        settled = await db.update_session_if_acceptance_unchanged(
+            row["session_id"],
+            accepted_input_at=evidence.accepted_input_at,
+            accepted_runtime_turn_id=evidence.runtime_turn_id,
+            last_agent_idle_at=datetime.now(UTC),
+        )
+    except Exception as exc:
+        logger.warning(
+            _UNDELIVERED_WAKE_SETTLEMENT_FAILED_EVENT,
+            session_id=row["session_id"],
+            inbound_row_id=row["id"],
+            cause=cause.value if cause is not None else None,
+            error=str(exc),
+        )
+        return
+    if settled is not None:
+        logger.info(
+            _UNDELIVERED_WAKE_SETTLED_EVENT,
+            session_id=row["session_id"],
+            inbound_row_id=row["id"],
+            cause=cause.value if cause is not None else None,
         )
 
 

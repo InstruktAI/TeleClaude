@@ -493,10 +493,11 @@ class DbInboundMixin:
             rows = result.all()
             return [_decode_inbound_row(row) for row in rows]
 
-    async def get_inbound_row(self, row_id: int) -> db_models.InboundQueue | None:
-        """Fetch one accepted inbound row by id, including its caller-provenance columns."""
+    async def get_inbound_row(self, row_id: int) -> InboundQueueRow | None:
+        """Fetch one accepted inbound row by id, read fresh, including its caller-provenance columns."""
         async with self._session() as db_session:
-            return await db_session.get(db_models.InboundQueue, row_id)
+            row = await db_session.get(db_models.InboundQueue, row_id)
+            return _decode_inbound_row(row) if row is not None else None
 
     async def record_inbound_acceptance_evidence(
         self,
