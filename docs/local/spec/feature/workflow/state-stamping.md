@@ -11,6 +11,23 @@ visibility: 'public'
 
 A one-shot task-outcome success reconciles lifecycle markers only in the task's own project; it does not read or change another project's documentation. A code-review record retains the reviewed commit, verdict, reviewer identity, and supplied reason. It is also recorded on the Todo claimed by the stamping session, or by its initiating session when the reviewer has no claim; if neither has a claim, no Todo review state is written.
 
+<!-- planned:task-firing-timestamp-line -->
+
+`--task-firing-started` is the firing-start stamp for a `kind="task"` Todo. The
+session running the firing stamps it before it reads the Todo's `log`, and only
+the session that is the Todo's live `active_runner` may stamp it. The stamp takes
+the instant from the system clock, records a firing-start audit event naming the
+stamping session, and then appends that firing's line to the end of the `log`
+(`local/projects/teleclaude/spec/feature/workflow/work-state-machine`). When the
+Todo already holds a firing-start event naming the stamping session, the stamp
+answers with the current state and writes nothing. A firing-start stamp on a
+non-task Todo, or from any other session, is refused before any write. A stamp
+that fails before its event is recorded writes nothing; one that fails after it
+leaves that firing without a line, and a repeated stamp from the session does
+not add one. Either failure is reported to the caller.
+
+<!-- /planned:task-firing-timestamp-line -->
+
 The same state-write boundary owns artifact-write provenance capture. On every `telec todo artifacts write` for a drift-tracked artifact (`input`, `prd`, `architecture`, `implementation-plan`), the workflow's provenance boundary records the evidence needed for every drift class applicable to that artifact. Existing persisted fields: `codebase_sha_at_write` (captured via the origin-main-sha helper — never local HEAD) and `referenced_paths`, plus `upstream_digests` (the persisted-state field, aka `upstream_artifact_digests` in spec/documentation). Added persisted fields: `owned_snippet_digests`, `referenced_snippet_digests`, `produced_at`, and, for the `implementation-plan` only, `dependency_artifact_digests` — pure additive defaults with no migration. See `@spec/feature/workflow/drift-detection` for the per-class semantics. Rewriting an artifact re-captures all provenance fields at the new write and clears every drift-reviewed stamp for that artifact so the next derivation starts from a fresh anchor.
 
 ## Canonical fields
@@ -250,19 +267,3 @@ And an unresolved stamp with an empty or missing reason is refused before any wr
   `telec todo update --release` refuses to clear it, so recovery is `--task-outcome
 success` (which delivers) or a deliberate manual start; a firing that ends without a
   stamp leaves the Todo re-runnable.
-
-<!-- planned:task-firing-timestamp-line -->
-
-- `--task-firing-started` is the **firing-start** stamp for a `kind="task"` Todo,
-  stamped by the session running the firing before it reads the Todo's `log`. The
-  stamp boundary takes the instant from the system clock, appends that firing's
-  line to the end of the `log`
-  (`local/projects/teleclaude/spec/feature/workflow/work-state-machine`), and
-  records a firing-start audit event naming the stamping session. A session that
-  already stamped a firing start on the Todo is answered with the current state
-  and nothing is appended. The stamp requires a TeleClaude session that owns the
-  Todo's claim or binding, and a firing-start stamp on a non-task Todo is refused
-  before any write. A failed stamp writes no event and reports its error to the
-  caller.
-
-<!-- /planned:task-firing-timestamp-line -->
