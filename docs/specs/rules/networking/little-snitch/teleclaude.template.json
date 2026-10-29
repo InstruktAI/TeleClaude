@@ -30,13 +30,31 @@
       "notes": "Package index and managed Python downloads."
     },
     {
+      "formula": "node",
+      "keg-path": "bin/node",
+      "remote-domains": ["npmjs.org"],
+      "protocol": "tcp",
+      "ports": "443",
+      "action": "allow",
+      "notes": "npm, which runs under this node, fetches packages from the npm registry."
+    },
+    {
       "formula": "node@24",
       "keg-path": "bin/node",
       "remote-domains": ["npmjs.org"],
       "protocol": "tcp",
       "ports": "443",
       "action": "allow",
-      "notes": "npm and pnpm (which Homebrew runs under this node) fetch packages from the npm registry."
+      "notes": "npm, which runs under this node, fetches packages from the npm registry."
+    },
+    {
+      "formula": "pnpm",
+      "keg-path": "bin/pnpm",
+      "remote-domains": ["npmjs.org"],
+      "protocol": "tcp",
+      "ports": "443",
+      "action": "allow",
+      "notes": "pnpm is its own binary in Homebrew and fetches packages from the npm registry."
     },
     {
       "process": "identifier.FWJYW4S8P8/com.steipete.gogcli.gog",
