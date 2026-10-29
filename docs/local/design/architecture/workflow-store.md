@@ -419,8 +419,7 @@ master admits each conversation request before sending it:
   during the pause is answered deferred until its end.
 - **The budget survives a restart.** The master's request runtime records the
   time of each conversation append it sends within the last hour and the end
-  of any pause in the daemon's operational database
-  (`local/projects/teleclaude/policy/single-database`), and reloads both
+  of any pause in the daemon's operational database, and reloads both
   before it admits a conversation request after it starts. A computer that
   becomes the master holds none of its predecessor's record, so it admits no
   conversation request until an hour after it became master, the longest

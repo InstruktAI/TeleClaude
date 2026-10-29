@@ -175,7 +175,7 @@ sequenceDiagram
   todo store, so open-time schema and data migrations run while no older reader
   serves. Each owner signals to the install act, before it changes anything,
   that it is starting a migration; an owner that cannot signal counts as having
-  started one (`local/projects/teleclaude/policy/single-database`). The ledger
+  started one (`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`). The ledger
   runners already know when they start one; the stores that migrate when opened
   emit the same signal. The configuration owner signals from its document
   migration runner before it migrates each document, whether an install or a

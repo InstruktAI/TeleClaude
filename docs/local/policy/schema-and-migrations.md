@@ -81,4 +81,4 @@ Every database this repository owns and every migration under
 
 ## See Also
 
-- docs/local/policy/single-database.md — which database a table belongs to, once it is established that it needs one.
+- ~/.teleclaude/docs/sdlc/policy/state-storage.md — whether state needs a database, and which database file it belongs in.
