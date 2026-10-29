@@ -224,7 +224,7 @@ class TodoEventKind(StrEnum):
 
 
 class TaskStamp(StrEnum):
-    """Closed vocabulary of the task lane's stamp types."""
+    """Task-lane stamp types dispatched through this discriminator (the firing-start stamp)."""
 
     FIRING_STARTED = "task_firing_started"
 
