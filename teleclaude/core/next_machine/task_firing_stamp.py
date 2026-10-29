@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -18,17 +18,24 @@ if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
 
 
+def firing_start_directive(slug: str) -> str:
+    """The first act of every task firing, as directive text for a session that runs one in place."""
+    return f"first stamp this firing's start with `telec todo stamp {slug} --task-firing-started`"
+
+
 async def apply_task_firing_started_stamp(
     todos_db: WorkflowStore,
     writer: StateWriter,
     slug: str,
     *,
     caller_session_id: str,
+    started_at: datetime,
 ) -> dict[str, StateValue]:
     """Record the start of a task firing as one timed line at the end of the ``log``.
 
-    The running session stamps its own start as its first act, so the instant is the
-    system clock at execution start, rendered in ``computer.timezone``. The audit
+    The running session stamps its own start as its first act; ``started_at`` is the
+    system-clock instant the composing dispatch captures for that stamp, rendered in
+    ``computer.timezone``. The audit
     event commits first and names the stamping session; a repeat from that session
     finds it and writes nothing, so a session's firing carries at most one line.
     """
@@ -40,7 +47,6 @@ async def apply_task_firing_started_stamp(
     ):
         return writer.to_dict()
 
-    started_at = datetime.now(UTC)
     zone_name = config.computer.timezone
     try:
         zone = ZoneInfo(zone_name)

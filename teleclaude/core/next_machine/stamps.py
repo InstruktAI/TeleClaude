@@ -356,6 +356,7 @@ async def _apply_mutation_stamp(
             writer,
             slug,
             caller_session_id=caller_session_id or _EMPTY_TEXT,
+            started_at=datetime.now(UTC),
         )
     elif stamp_type == "task_outcome":
         return await _apply_task_outcome_stamp(
