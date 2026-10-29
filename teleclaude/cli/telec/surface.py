@@ -988,6 +988,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     " [--drift-reviewed <artifact> <verdict> <reason>]"
                     " [--build-complete] [--finalize-ready]"
                     " [--kickback --reason <reason>]"
+                    " [--task-firing-started]"
                     " [--task-outcome <success|error> [--reason <text>]]"
                     " [--diagnosis-settled] [--diagnosis-unresolved --reason <reason>]"
                 ),
@@ -1003,6 +1004,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_STAMP_FINALIZE_READY,
                     F.FLAG_STAMP_KICKBACK,
                     F.FLAG_STAMP_REASON,
+                    F.FLAG_STAMP_TASK_FIRING_STARTED,
                     F.FLAG_STAMP_TASK_OUTCOME,
                     F.FLAG_STAMP_DIAGNOSIS_SETTLED,
                     F.FLAG_STAMP_DIAGNOSIS_UNRESOLVED,
@@ -1020,6 +1022,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec todo stamp my-slug --verdict changes_requested --phase build_review",
                     "telec todo stamp my-slug --finalize-ready",
                     'telec todo stamp my-slug --kickback --reason "<why the plan cannot be built>"',
+                    "telec todo stamp my-task --task-firing-started",
                     "telec todo stamp my-task --task-outcome success",
                     'telec todo stamp my-task --task-outcome error --reason "<why a human is needed>"',
                     "telec todo stamp my-bug --diagnosis-settled",
