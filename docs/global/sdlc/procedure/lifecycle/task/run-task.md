@@ -50,7 +50,7 @@ finalize, or commit.
 
 - A `task-plan` artifact exists. A `log` artifact may not. When it exists, it
   may hold platform-written firing lines, `[HH:MM:SS-DD/MM] execution`, one for
-  each firing whose start the platform recorded.
+  each firing whose start was stamped.
 
 <!-- /planned-change:task-firing-timestamp-line -->
 
@@ -72,11 +72,15 @@ finalize, or commit.
 
 <!-- change:task-firing-timestamp-line -->
 
-1. **Read the evidence first.** You may be a fresh instance — the first dispatch, or
-   a revival after a daemon restart — with no memory of prior firings
-   (`general/principle/continuity`). Read the `log` before anything else; it carries
-   the continuity narrative across firings. Each `[HH:MM:SS-DD/MM] execution` line
-   in it is the platform's record of when a firing started, not an entry of yours.
+1. **Stamp the start, then read the evidence.** Before reading anything, stamp
+   this firing's start with `telec todo stamp {slug} --task-firing-started`. The
+   platform appends this firing's line to the `log`; a repeated stamp from this
+   session appends nothing. If the stamp fails, continue the firing and record the
+   failure in step 6. You may be a fresh instance — the first dispatch, or a
+   revival after a daemon restart — with no memory of prior firings
+   (`general/principle/continuity`). Then read the `log`; it carries the continuity
+   narrative across firings. Each `[HH:MM:SS-DD/MM] execution` line in it is the
+   platform's record of when a firing started, not an entry of yours.
    The durable outcome the previous firing stamped is the authoritative "this firing
    completed" signal — a stamped instant is never repeated. If the `log` holds
    nothing beyond firing lines and no outcome is stamped, this is the first firing

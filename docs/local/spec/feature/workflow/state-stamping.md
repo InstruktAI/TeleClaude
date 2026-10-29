@@ -250,3 +250,19 @@ And an unresolved stamp with an empty or missing reason is refused before any wr
   `telec todo update --release` refuses to clear it, so recovery is `--task-outcome
 success` (which delivers) or a deliberate manual start; a firing that ends without a
   stamp leaves the Todo re-runnable.
+
+<!-- planned:task-firing-timestamp-line -->
+
+- `--task-firing-started` is the **firing-start** stamp for a `kind="task"` Todo,
+  stamped by the session running the firing before it reads the Todo's `log`. The
+  stamp boundary takes the instant from the system clock, appends that firing's
+  line to the end of the `log`
+  (`local/projects/teleclaude/spec/feature/workflow/work-state-machine`), and
+  records a firing-start audit event naming the stamping session. A session that
+  already stamped a firing start on the Todo is answered with the current state
+  and nothing is appended. The stamp requires a TeleClaude session that owns the
+  Todo's claim or binding, and a firing-start stamp on a non-task Todo is refused
+  before any write. A failed stamp writes no event and reports its error to the
+  caller.
+
+<!-- /planned:task-firing-timestamp-line -->

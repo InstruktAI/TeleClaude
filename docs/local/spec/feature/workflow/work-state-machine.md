@@ -19,20 +19,22 @@ Task execution is a separate non-SDLC lane. The lifecycle runner starts `sdlc/pr
 
 <!-- planned:task-firing-timestamp-line -->
 
-Each task firing records when it started. When the task-run lane accepts a fresh
-run session for a task, from a lifecycle runner dispatch or a manual start, or a
-manual start by a session holding no claim on the task takes it up to run the
-firing in place, the platform appends exactly one line,
-`[HH:MM:SS-DD/MM] execution`, to the end of the task's `log`. The line carries
-that start instant from the system clock as 24-hour time and day/month in the
+Each task firing records when it started. The session running a firing stamps
+its start (`--task-firing-started`,
+`local/projects/teleclaude/spec/feature/workflow/state-stamping`) before it reads
+the task's `log`: a fresh `sdlc/procedure/lifecycle/task/run-task` session as its
+first act, and a session that takes a task up by hand to run the firing in place
+as the first act of that firing. The stamp appends exactly one line,
+`[HH:MM:SS-DD/MM] execution`, to the end of the task's `log`. The line carries the
+stamp's instant from the system clock as 24-hour time and day/month in the
 computer's configured timezone (`computer.timezone`,
-`local/projects/teleclaude/spec/teleclaude-config`), and it is appended before
-the start's outcome returns to its caller. A dispatch that starts no session, one
-that records a session an earlier dispatch already started, and a manual start by
-the session already driving the task append nothing. A failure to append is
-logged and leaves the firing running, so that firing has no line. The platform
-writes no other part of the `log`, and the run session carries every firing line
-verbatim (`sdlc/procedure/lifecycle/task/run-task`).
+`local/projects/teleclaude/spec/teleclaude-config`). A session that never begins
+its firing appends nothing, and a session's further firing-start stamps on the
+same task append nothing. A failed stamp leaves the firing running without a line.
+The `log`'s only writers are therefore the firing's own session and the stamp it
+invokes, in that session's order; the platform writes no other part of the `log`,
+and the run session carries every firing line verbatim
+(`sdlc/procedure/lifecycle/task/run-task`).
 
 <!-- /planned:task-firing-timestamp-line -->
 
