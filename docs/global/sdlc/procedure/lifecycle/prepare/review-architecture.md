@@ -19,6 +19,7 @@ dispatch:
 - @~/.teleclaude/docs/sdlc/principle/architectural-defaults.md
 - @~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 - @~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
+- @~/.teleclaude/docs/sdlc/policy/state-storage.md
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/review-build.md
 
 ## Goal
@@ -81,6 +82,11 @@ uses an explicit published contract. A cross-cutting design document may own
 the relationship only; it cannot be the sole home of a participating domain
 rule.
 
+For every piece of durable state the design introduces, relocates or changes,
+classify it yourself under `sdlc/policy/state-storage` before you read the
+artifact's State ownership and storage section, then compare. Verify the
+claimed loss cost, write pattern and existing store against source.
+
 ### 3. Reject undocumented divergence and unsupported invention
 
 Reject divergence from architectural defaults when its trade-off is unstated or
@@ -116,6 +122,12 @@ Reject wrong-context placement, duplicated policy in a consumer, host-as-owner
 reasoning, or a direct dependency that bypasses the owning context's contract.
 These are Critical findings even when the code would sit in the correct
 architectural layer or match an adjacent implementation pattern.
+
+Reject durable state the design leaves unclassified, and storage that breaks
+`sdlc/policy/state-storage`. Durable state that has no persisted home, or lives
+inside a derived store, is Critical. Any other breach is Important: a medium
+that does not fit the state's shape, a write-isolation unit shared with a path
+people or agents wait on, or an undeclared scope, bound or transfer.
 
 ### 4. Write the complete review report
 

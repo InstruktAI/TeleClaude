@@ -463,7 +463,8 @@ Quality rules:
 A structural decision shapes the system beyond the work that makes it: it
 writes a decision record, reworks a cross-cutting design or a domain spec's
 model, or changes how callers receive an outcome, which store is a record's
-system of record, or a resource every caller of an operation crosses. It gets
+system of record, where durable state is stored (`sdlc/policy/state-storage`),
+or a resource every caller of an operation crosses. It gets
 architecture treatment whatever the todo's kind:
 
 - Its author names, for each concern it touches, the paradigm that already

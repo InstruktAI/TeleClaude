@@ -220,7 +220,7 @@ may expose crossings, but no path-name or prose scanner determines ownership.
 
 #### Paradigm-fit assessment
 
-**Authority:** `design-fundamentals`, `backward-compatibility-hygiene`, `substrate-anchoring`.
+**Authority:** `design-fundamentals`, `backward-compatibility-hygiene`, `substrate-anchoring`, `state-storage`.
 
 Check whether the implementation follows existing codebase paradigms:
 
@@ -243,6 +243,13 @@ Check whether the implementation follows existing codebase paradigms:
    it, even one whose every part reuses an existing module
    (`substrate-anchoring`)? An undeclared parallel is **Critical**. A declared
    divergence whose reason does not hold is **Important**.
+
+7. **State placement**: Does every piece of durable state the change
+   introduces, relocates or changes live where the reviewed design placed it,
+   and does that placement hold under `state-storage`? Durable state the design
+   never declared, or durable state with no persisted home or living inside a
+   derived store, is **Critical**. Any other `state-storage` breach is
+   **Important**.
 
 Paradigm violations are **Important** at minimum. An introduced or worsened
 violation on the change path is Important. Where the reviewer establishes
