@@ -18,7 +18,7 @@ from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifec
 from teleclaude.core.next_machine.slug_resolution import effective_delivered_slugs_for_dependencies
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, TASK_LIFECYCLE_PHASE_ORDER
 from teleclaude.types.todo_kind import TodoKind
-from teleclaude.types.todos import CommitReviewDetail, HoldAuditReason, TodoEventKind, TodoState
+from teleclaude.types.todos import ClaimStatus, CommitReviewDetail, HoldAuditReason, TodoEventKind, TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -96,12 +96,13 @@ class BlockerEntry(TypedDict, total=False):
 class ClaimBlock(TypedDict):
     """The ``claim`` block in the show payload: who holds an active todo's lifecycle claim.
 
-    ``status`` is ``held`` (``session_id`` names the holder; ``computer`` the computer that answered for
-    it, ``role`` its role when readable, ``unanswered`` the computers that did not answer when none
-    did), ``free``, or ``undetermined`` (``reason`` says why). It is not ``state.active_runner``.
+    ``session_id`` names the holder and ``computer`` the computer that answered for it; ``role`` is
+    present only where the caller may read the holder's session record; ``unanswered`` names the
+    computers that did not answer when none did; ``reason`` says why a claim is undetermined. It is not
+    ``state.active_runner``.
     """
 
-    status: Literal["held", "free", "undetermined"]
+    status: ClaimStatus
     session_id: NotRequired[str]
     computer: NotRequired[str]
     role: NotRequired[str]

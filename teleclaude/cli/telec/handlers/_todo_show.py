@@ -5,11 +5,14 @@ from __future__ import annotations
 import json as _json
 from typing import cast
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.addressing import addressed_computer, project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.surface import TODO_SHOW
+from teleclaude.cli.tool_client import ToolAPIError, tool_api_call, tool_api_request
 from teleclaude.constants import SLUG_NOT_FOUND_DETAIL
 from teleclaude.core.todos_db._show import (
     ClaimBlock,
@@ -19,31 +22,33 @@ from teleclaude.core.todos_db._show import (
     payload_is_active_todo,
 )
 from teleclaude.core.workflow_store.store import WorkflowStore
+from teleclaude.types.todos import ClaimStatus
 
 __all__ = ["_handle_todo_show"]
 
+logger = get_logger(__name__)
+
 _USAGE = "Usage: telec todo show <slug> [--include-removed] [--include-artifact-content]"
-# Longer than the daemon's nested waits for a holder read (master relay, then the holder's role read), shorter
-# than the client's default 30s.
+# Longer than the daemon's read deadline (``CLAIM_READ_DEADLINE_S``), shorter than the client's default wait.
 _CLAIM_READ_TIMEOUT_S = 25.0
-_CLAIM_UNREACHABLE_REASON = "daemon not reachable: {error}"
+
+
+def _undetermined_claim(slug: str, reason: str) -> ClaimBlock:
+    """The block for a claim this command could not read; the daemon cannot record that it was not reached."""
+    logger.warning("todo claim undetermined", slug=slug, reason=reason)
+    return ClaimBlock(status=ClaimStatus.UNDETERMINED, reason=reason)
 
 
 def _read_claim(slug: str) -> ClaimBlock:
     """Ask the daemon who holds the todo's claim; whatever keeps it from answering is ``undetermined``."""
-    from teleclaude.cli.tool_client import (  # noqa: PLC0415 - command boundary: daemon API client.
-        ToolAPIError,
-        tool_api_request,
-    )
-
     try:
         answer = tool_api_request(
             "GET", f"/todos/claim/{slug}", params={"cwd": project_reference()}, timeout=_CLAIM_READ_TIMEOUT_S
         )
     except ToolAPIError as error:
-        return ClaimBlock(status="undetermined", reason=_CLAIM_UNREACHABLE_REASON.format(error=error))
-    if not isinstance(answer, dict) or "status" not in answer:
-        return ClaimBlock(status="undetermined", reason=_CLAIM_UNREACHABLE_REASON.format(error="unreadable answer"))
+        return _undetermined_claim(slug, f"daemon not reachable: {error}")
+    if not isinstance(answer, dict) or answer.get("status") not in tuple(ClaimStatus):
+        return _undetermined_claim(slug, "daemon not reachable: unreadable answer")
     return cast(ClaimBlock, answer)
 
 
@@ -67,8 +72,6 @@ def _handle_todo_show(args: list[str]) -> None:
         )
 
     if addressed_computer() is not None:
-        from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - command boundary: daemon API client.
-
         remote = tool_api_call(
             "GET",
             f"/todos/show/{slug}",

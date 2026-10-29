@@ -749,8 +749,9 @@ async def todo_claim_holder(
 ) -> ClaimHolderReport:
     """Say, as the project's active computer, who holds a GitHub-backed todo's claim, by the rule a driver start is admitted by.
 
-    Reads only: no start section is taken and no claim is written. Answers 503 when this computer is not
-    the project's active computer; a read it cannot decide within its budget answers ``undetermined``.
+    Reads only: no start section is taken and no claim is written. Refuses as
+    ``HTTPStatus.SERVICE_UNAVAILABLE`` when this computer is not the project's active computer; a read it
+    cannot decide in time is reported ``undetermined``.
     """
     try:
         return await answer_relayed_claim_holder(

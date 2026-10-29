@@ -86,7 +86,7 @@ async def claim_of_todo(
     cwd: str | None = None,
     identity: CallerIdentity = Depends(carried_caller),
 ) -> ClaimBlock:
-    """Return who holds one active todo's lifecycle claim, as a driver start from this computer would find it."""
+    """Return who holds one active todo's lifecycle claim, by the rule driver admission finds a holder with."""
     project_root = request_project_root(cwd)
     payload = await assemble_show_payload(await _get_workflow_store_from_cwd(str(project_root)), slug)
     if payload is None or not payload_is_active_todo(payload):
