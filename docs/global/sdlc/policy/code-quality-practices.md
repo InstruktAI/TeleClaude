@@ -42,6 +42,13 @@ visibility: 'public'
 - Tolerate duplicated **code** when the alternative couples unrelated domains. Duplication is cheaper than the wrong abstraction.
 - Do not create abstractions for patterns that occur once (**YAGNI**). Wait for a second real consumer.
 
+### Presentation and Enrichment
+
+- Build presentation from established records and prepared display facts, trusting their owning contracts. Resolve missing display facts in the presentation-enrichment owner before rendering.
+- Reuse expensive presentation-only lookups across records and renders through a cache owned by the enrichment helper or service. Keep source-loading primitives under their existing validation and freshness contracts; cheap pure formatting remains direct.
+- The cache owner defines its identity and scope keys, source dependencies, invalidation, freshness, and cold-load or refresh-failure behavior. Source changes invalidate dependent facts, including cached misses, through the existing change-notification path where available. Any TTL follows the display facts' freshness needs and supplements invalidation.
+- Prepare expensive display facts outside rendering and serialization loops. Keep blocking source reads and freshness checks off shared event loops on cold loads and refreshes as well as cache hits. Concurrent refreshes publish only values whose dependencies remain current after invalidation.
+
 ### Error Handling and Recovery
 
 - Fail fast on contract violations with clear diagnostics.
@@ -94,6 +101,8 @@ A loop that serves independent callers shares its fate across all of them: whate
 A string's owner exists so its knowledge lives in one place: two copies of one value drift apart, and a consumer that imports the owner shows the dependency to readers and to import-graph and blast-radius tooling. A string used once has no second copy to drift and no consumer to trace, so naming it buys neither and costs every reader a lookup.
 
 A lock, transaction or queue shared with unrelated work makes its holders' durations part of every waiter's latency. Taken on a path many sessions call, it charges each caller the longest concurrent holder — a commit's quality gate, an integration push — and an unbounded wait stretches that past the caller's deadline, so work that succeeds is reported as failed. Protection is visible in the code that takes the resource; its cost is visible only in who else holds it, which is why the bound and the deadline are stated alongside the protection.
+
+Presentation repeats as records multiply and views redraw. Source discovery or validation hidden inside a display helper makes that cost part of every render and can stall unrelated work sharing its event loop. Caching at the enrichment owner preserves the source contract while reusing display facts; explicit dependencies and invalidation keep those facts coherent when their sources change.
 
 ## Scope
 
