@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from teleclaude.types.lifecycle import LifecyclePhase
+
 
 class HolderWriteRefused(ValueError):
     """A write or removal targeted a structural holder slug.
@@ -24,10 +26,12 @@ class ContractUnderExecutionRefused(ValueError):
     specific type and surface a clean 409.
     """
 
-    def __init__(self, slug: str, phase: str) -> None:
+    def __init__(self, slug: str, phase: LifecyclePhase) -> None:
         self.slug = slug
         self.phase = phase
-        super().__init__(f"Cannot write artifact: the contract of todo {slug!r} is under execution (phase {phase})")
+        super().__init__(
+            f"Cannot write artifact: the contract of todo {slug!r} is under execution (phase {phase.value})"
+        )
 
 
 class HolderTransitionRefused(ValueError):

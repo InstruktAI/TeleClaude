@@ -16,7 +16,7 @@ from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.core.db import db as runtime_db
-from teleclaude.core.next_machine.lifecycle import coerce_lifecycle_phase, is_work_lifecycle_phase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase, is_work_lifecycle_phase
 from teleclaude.core.next_machine.runtime.sessions import claim_is_held
 from teleclaude.core.roles import Capability, Role, allows, resolve_session_role
 from teleclaude.core.session_utils import session_in_claiming_group
@@ -161,7 +161,7 @@ async def refuse_closed_contract(
     phase = coerce_lifecycle_phase((state or {}).get("lifecycle_phase"))
     if phase is None or not is_work_lifecycle_phase(phase):
         return
-    raise await closed_contract_refusal(todos_db, identity, slug, name, phase.value)
+    raise await closed_contract_refusal(todos_db, identity, slug, name, phase)
 
 
 async def closed_contract_refusal(
@@ -169,7 +169,7 @@ async def closed_contract_refusal(
     identity: CallerIdentity,
     slug: str,
     name: str,
-    phase: str,
+    phase: LifecyclePhase,
 ) -> HTTPException:
     """Build the 409 for a prepare artifact whose contract is under execution, naming its door."""
     holder = await _live_claim_holder(todos_db, slug)
@@ -187,7 +187,7 @@ async def closed_contract_refusal(
         status_code=409,
         detail=(
             f"prepare artifact '{name}' for '{slug}' is not writable: the todo's contract is under "
-            f"execution (lifecycle phase '{phase}'). {door}"
+            f"execution (lifecycle phase '{phase.value}'). {door}"
         ),
     )
 

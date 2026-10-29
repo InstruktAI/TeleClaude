@@ -233,7 +233,7 @@ class TodosDbArtifactsMixin:
                 state = await self.read_state_in_session(slug, db_session)  # type: ignore[attr-defined]
                 phase = coerce_lifecycle_phase((state or {}).get("lifecycle_phase"))
                 if phase is not None and is_work_lifecycle_phase(phase):
-                    raise ContractUnderExecutionRefused(slug, phase.value)
+                    raise ContractUnderExecutionRefused(slug, phase)
             row_id = await self._ensure_artifact_id(slug, db_session)
 
             db_session.add(
