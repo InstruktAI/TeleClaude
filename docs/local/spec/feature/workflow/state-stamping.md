@@ -26,10 +26,10 @@ answers with the current state and writes nothing. A firing-start stamp on a
 non-task Todo is refused before any write. A refusal before the event write
 writes nothing. When the event write or the line write is refused, the store's
 report says whether that write may already be saved; a stamp can therefore end
-in error with its event recorded, and with or without its line. Because the
-event is written before the line, a later stamp from the same session appends
-nothing after any of these outcomes, so a session's firing has at most one line
-and may have none. Every failure is reported to the caller.
+in error with its event recorded, and with or without its line. After any of
+these outcomes, a later stamp from the same session appends nothing; a session's
+firing has at most one line and may have none. Every failure is reported to the
+caller.
 
 <!-- /planned:task-firing-timestamp-line -->
 
