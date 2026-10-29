@@ -44,6 +44,9 @@ class MigrationStore(StrEnum):
     MIRRORS = "mirrors"
     TODOS = "todos"
     HOOK_OUTBOX = "hook_outbox"
+    OUTPUT = "output"
+    OPERATIONS = "operations"
+    REMINDERS = "reminders"
 
 
 class MigrationExitCode(IntEnum):

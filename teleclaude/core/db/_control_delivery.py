@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import delete, func, update
+from sqlalchemy import and_, delete, func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -165,6 +165,34 @@ def _envelope_fields_match(envelope_fields_json: str | None, key_fields: dict[st
 
 class DbControlDeliveryMixin:
     """Public persistence seam for producer handoff, drain, and close cleanup."""
+
+    async def prune_control_delivery(self, *, cutoff_iso: str, retained_session_ids: set[str]) -> tuple[int, int]:
+        """Delete control payloads and procedure events whose work is over and older than the cutoff.
+
+        Terminal control payloads and failed procedure events go once past the cutoff. A delivered
+        procedure event can still be unfinished work for its assigned session, so it goes only when that
+        session is no longer retained. Returns the rows removed from each table, in that order.
+        """
+        outbox_stmt = delete(db_models.ControlDelivery).where(
+            db_models.ControlDelivery.outcome.is_not(None),
+            db_models.ControlDelivery.terminal_at < cutoff_iso,
+        )
+        assigned = db_models.ProcedureEventInbox.assigned_session_id
+        events_stmt = delete(db_models.ProcedureEventInbox).where(
+            db_models.ProcedureEventInbox.terminal_at < cutoff_iso,
+            or_(
+                db_models.ProcedureEventInbox.outcome == db_models.ProcedureEventDeliveryOutcome.FAILED.value,
+                and_(
+                    db_models.ProcedureEventInbox.outcome == db_models.ProcedureEventDeliveryOutcome.DELIVERED.value,
+                    or_(assigned.is_(None), assigned.notin_(retained_session_ids)),
+                ),
+            ),
+        )
+        async with self._session() as db_session:
+            outbox_result = await db_session.exec(outbox_stmt)
+            events_result = await db_session.exec(events_stmt)
+            await db_session.commit()
+            return outbox_result.rowcount or 0, events_result.rowcount or 0
 
     async def prepare_procedure_event_wake_opportunity(self, *, session_id: str) -> str | None:
         """Create or reuse a correlated wake opportunity for pending assigned events."""
