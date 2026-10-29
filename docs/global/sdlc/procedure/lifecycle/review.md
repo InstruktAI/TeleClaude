@@ -15,8 +15,6 @@ description: Shared review execution contract for lanes, evidence, citations, se
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/silent-failure-audit.md
 - @~/.teleclaude/docs/sdlc/principle/module-depth.md
 - @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
-- @~/.teleclaude/docs/sdlc/policy/definition-of-done.md
-- @~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 
 ## Goal
 

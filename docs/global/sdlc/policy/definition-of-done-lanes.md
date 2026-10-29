@@ -12,7 +12,6 @@ visibility: public
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/principle-violation-hunt.md
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/silent-failure-audit.md
 - @~/.teleclaude/docs/sdlc/policy/quality-predicate-registry.md
-- @~/.teleclaude/docs/sdlc/policy/definition-of-done.md
 
 ## Rules
 
