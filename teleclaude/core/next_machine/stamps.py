@@ -78,6 +78,7 @@ from teleclaude.core.next_machine.state_mutation import (
     StateMutationError,
     StateWriter,
 )
+from teleclaude.core.next_machine.task_firing_stamp import apply_task_firing_started_stamp
 from teleclaude.core.next_machine.work_lane_release import WorkLaneReturnReason, work_lane_return_follow_through
 from teleclaude.core.operation_follow_through import FollowThrough
 from teleclaude.core.roles import RoleName
@@ -86,7 +87,7 @@ from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_project_root
 from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import HoldAuditSource, HoldAuditState
+from teleclaude.types.todos import HoldAuditSource, HoldAuditState, TaskStamp
 
 logger = get_logger(__name__)
 
@@ -347,6 +348,13 @@ async def _apply_mutation_stamp(
             slug,
             reason=value,
             repo_root=cwd,
+            caller_session_id=caller_session_id or _EMPTY_TEXT,
+        )
+    elif stamp_type == TaskStamp.FIRING_STARTED:
+        return await apply_task_firing_started_stamp(
+            todos_db,
+            writer,
+            slug,
             caller_session_id=caller_session_id or _EMPTY_TEXT,
         )
     elif stamp_type == "task_outcome":
