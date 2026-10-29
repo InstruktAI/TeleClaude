@@ -492,9 +492,11 @@ master admits each conversation request before sending it:
   - A republication save GitHub throttles ends the republication pass, and
     the working copy records when republication may resume: the time GitHub's
     response names, or, when it names none, one minute after the throttle,
-    doubling while throttles continue. Until then no republication save is
-    made. The refresh's other requests, and workflow writes, keep their own
-    behavior: a throttled one refuses with GitHub's cause.
+    doubling while throttles continue. Until then the daemon's automatic
+    refresh of the project makes no request: it is skipped before the store's
+    resolution, board setup and every refresh read. A throttle met by any other request
+    records nothing: that request refuses with GitHub's cause, as before.
+    Workflow writes are not held.
 - **Record reads.** Refresh reads an item's record comment by the comment id
   its working copy holds for the item, one comment with its edit history. It
   lists an issue's comments only for an issue whose record comment the working
