@@ -45,10 +45,12 @@ docs/specs/rules/networking/open-snitch/
 The rules are **committed, never ephemeral**. An agent reads the committed rules
 and extends them; it does not re-derive them per run.
 
-### 2. Declare this repository's own binaries
+### 2. Declare the binaries this repository's code runs
 
-Rules name the binaries this repository ships. A rule matching any process is not
-a declaration of what an application needs — it is the removal of the filter.
+Rules name the binaries this repository ships and the tools its install flow
+installs for its code to run, each with the destinations it needs. A rule
+matching any process is not a declaration of what an application needs — it is
+the removal of the filter.
 
 For rule syntax, read the vendors' own format documentation (linked under
 See Also) rather than a copy of it.
@@ -83,34 +85,38 @@ Acceptance is not symmetric, and the difference decides what can be automated:
 - **OpenSnitch applies by file drop** into the daemon's rules directory. On Linux
   hosts this is owned by the project's install flow.
 
-### 5. Reach the rules over the transport
+### 5. Publish the rules where hosts subscribe
 
-A host-level `RULES_BASE_URL` environment variable points at the HTTPS endpoint
-that serves rule files to subscribing filters. The endpoint serves a file from
-**its own host's filesystem**, addressed by a `path` query parameter —
-`GET {RULES_BASE_URL}?path=<path on the serving host>` — and refuses any
-extension outside its allowlist. It does not read the repository.
+A subscribing filter fetches its rules over HTTPS from a host with a publicly
+trusted certificate. The repository's own GitHub Pages site is that host: a
+scheduled job in the repository builds the served rule file from the committed
+source and deploys it to Pages, and commits nothing. A host subscribes to
+`https://<owner>.github.io/<repository>/<file>`. Until the job has published,
+the committed rules are inert — a defined state, not a failure.
 
-Publication is therefore its own step: a committed rule file reaches the serving
-host by an explicit transport action, and the endpoint only serves what already
-landed there. A repository that commits rules and configures `RULES_BASE_URL`
-has still published nothing until that action runs.
+A package manager that installs each version at its own path gives every
+upgrade a new path, and macOS reports a running binary by its resolved path,
+never by a symlink to it. Homebrew installs a formula under
+`<prefix>/Cellar/<formula>/<version>[_<revision>]/`, with `/opt/homebrew` and
+`/usr/local` as its prefixes. The committed source therefore names the formula
+and the binary's path inside the formula's folder, never a version. The job
+expands each entry into one rule per version and prefix: it reads the current
+version from the package manager's API and keeps every version the published
+file already carries, so a host still running an older version keeps its rule.
 
-When the variable is unset the transport is **absent — a defined state, not a
-failure**: the rules stay committed and inert, and a host adopts them once the
-transport is configured. A configured variable is not by itself a working
-transport — an endpoint serving no file answers a subscription with a
-not-found, and the rules stay just as inert.
+A binary signed with a Developer ID carries a team ID, so its rule names its code
+identity (`identifier.TEAM_ID/IDENTIFIER`) instead of a path and survives every
+upgrade unchanged.
 
-The endpoint is a **trust boundary**: a subscribing host applies the rules it
-serves, and a subscribing filter offers no hook to verify a signature over the
-content it fetches. Integrity rests on three things instead — TLS for channel
-integrity and server authentication, an origin-gated endpoint, and a source that
-is reviewed and committed before it is published. Point `RULES_BASE_URL` only at
-such an endpoint.
+Little Snitch subscribes once per machine to the published file as a remote rule
+group. "Disable new allow rules" is turned off for that group; otherwise every
+version the job adds arrives disabled.
 
-Content authentication is not part of this boundary, and a compromised serving
-host is outside it.
+The published file is a **trust boundary**: a subscribing host applies the rules
+it serves, and a subscribing filter offers no hook to verify a signature over the
+content it fetches. Integrity rests on TLS for channel integrity and server
+authentication, on the repository's own Pages site as the only origin, and on a
+source that is reviewed and committed before the job publishes it.
 
 ### 6. Reflect a new binary or destination as part of delivery
 
@@ -123,6 +129,7 @@ fire on the next host or the next rebuild.
 
 - Committed rule files at the convention path in the repository that ships the
   binaries.
+- The rule file the repository's job publishes on its Pages site.
 - On macOS, a machine subscribed once to the published rule group.
 - On Linux, rules applied to the daemon's rules directory by the install flow.
 
@@ -134,8 +141,8 @@ fire on the next host or the next rebuild.
   identity on every build.
 - **A newly declared rule is not honored.** The filter has not reloaded. Restart its
   daemon, then retry.
-- **The transport is unreachable or unset.** The rules remain committed and inert.
-  Configure `RULES_BASE_URL`; do not hand-enter rules on the host instead.
+- **A prompt names a version the published file lacks.** The publishing job has not
+  run since that upgrade. Run it; do not hand-enter rules on the host instead.
 
 ## Discipline
 
