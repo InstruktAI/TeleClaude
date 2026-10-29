@@ -76,7 +76,7 @@ sequenceDiagram
 - **One title per user turn**: Duplicate `agent_stop` signals inside the same user turn must not generate a second title update.
 - **Adapter-owned title QoS**: Raw semantic title changes are delivered through `SESSION_TITLE_CHANGED`; each UI adapter owns latest-only coalescing and platform-specific title pacing.
 - **Deterministic cadence**: Output cadence is config-driven (`polling.output_cadence_s`, default `1.0`).
-- **One snapshot call per tick**: Pollers tick on a common beat of the cadence, and the snapshots requested within a tick are taken in one multiplexer call that chains every requested session. A session the server no longer holds ends that chain at its own capture; it is reported missing, and a further multiplexer call takes the sessions after it.
+- **Snapshots shared per tick**: Pollers tick on a common beat of the cadence, and the snapshots requested within a tick are taken together, in chained multiplexer calls that each hold as many sessions as the multiplexer's command size allows, run concurrently. The cadence is unchanged however many sessions there are. A session the server no longer holds ends its chain at its own capture; it is reported missing, and a further multiplexer call takes the sessions after it in that chain.
 - **No Blocking**: Polling runs in async task; never blocks main event loop or command execution.
 - **Graceful Stop**: Poller cleanup completes before session marked fully closed.
 

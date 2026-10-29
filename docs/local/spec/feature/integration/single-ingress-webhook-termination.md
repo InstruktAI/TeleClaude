@@ -40,7 +40,10 @@ producers for every procedure and agent.
   cluster master. No other computer serves the inbound endpoints.
 - **Intake outlives the daemon.** The ingress's receiver is a process of its
   own, under its own service unit, separate from the daemon; it keeps receiving
-  while the daemon restarts or an install replaces it.
+  while the daemon restarts or an install replaces it. Its service unit holds
+  the listening socket and hands it to the receiver, so a connection that
+  arrives while the receiver restarts for a new release waits instead of being
+  refused.
 - **Narrow reachability.** The ingress serves plain HTTP on loopback only. A
   reverse proxy on the same computer is the public surface: it terminates TLS,
   restricts source and forwards only the inbound path prefix to the ingress.

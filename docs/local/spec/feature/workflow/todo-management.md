@@ -35,7 +35,7 @@ Lifecycle and artifact-changing actions are addressable by slug or by a todo's d
 
 <!-- planned:todo-show-claim-holder -->
 
-`telec todo show` reports who holds an active todo's lifecycle claim in a `claim` block. The block names the holding session, the computer running it and that session's role, or states that no session holds the todo. The holder it names is the one the holder rule of `local/projects/teleclaude/spec/feature/workflow/driver-admission` finds at that moment, judged where that rule judges it: by the computer asked, for its own sessions, and for a project on the GitHub workflow store by the project's active computer. It is the session a start decided there would be refused naming as the holder, and the block names whatever else that refusal would name; when no session holds the todo, no start is refused for a holder. On a computer that is not the project's active one, a start is refused as driver admission states for such a computer, and the block there still names the holder the active computer finds. When the holder cannot be decided — the daemon or the project's active computer cannot be reached, the project names no active computer, or no decision arrives within the read's wait — the block says the holder is undetermined and why, and never reports the todo as free. The state block's `active_runner` keeps its own meaning as the recorded driver link, and can differ from the holder: it can name a session that no longer holds the todo, or be empty while a session holds it. Iceboxed, delivered and removed todos and the structural projection of a holder carry no `claim` block.
+`telec todo show` reports who holds an active todo's lifecycle claim in a `claim` block. The block names the holding session, the computer running it and that session's role, or states that no session holds the todo. The holder it names is the one the holder rule of `local/projects/teleclaude/spec/feature/workflow/driver-admission` finds at that moment, judged where that rule judges it, on whichever computer `todo show` runs, and the block carries what that rule names with the holder. When the holder cannot be decided — the daemon or the project's active computer cannot be reached, the project names no active computer, or no decision arrives within the read's wait — the block says the holder is undetermined and why, and never reports the todo as free. The state block's `active_runner` keeps its own meaning as the recorded driver link, and can differ from the holder: it can name a session that no longer holds the todo, or be empty while a session holds it. Iceboxed, delivered and removed todos and the structural projection of a holder carry no `claim` block.
 
 <!-- /planned:todo-show-claim-holder -->
 
@@ -369,6 +369,8 @@ And a `--reason` supplied without `--hold` is refused before any write rather th
 
 #### UC-WM29: Every hold has truthful provenance and a meaningful reason
 
+<!-- planned-change:github-item-acts -->
+
 ```gherkin
 Given a hold set through any path — a manual writer (`telec todo update --hold`, `telec todo create --hold`) or an automatic writer (a task-error stamp, a diagnosis-unresolved stamp, a session-close hold, or another grounded mechanism)
 When an observer reads the hold through `telec todo show`
@@ -377,6 +379,19 @@ And a manual writer received that reason from its caller, and an automatic write
 And the command that set the hold is never presented as its reason
 And a hold recorded before this contract, whose stored reason is the command that set it, is projected as reason-unknown and is never interpreted as a gate, an owner, or a reason
 ```
+
+<!-- change:github-item-acts -->
+
+```gherkin
+Given a hold set through any path — a manual writer (`telec todo update --hold`, `telec todo create --hold`), a person's hold from the item's GitHub issue, or an automatic writer (a task-error stamp, a diagnosis-unresolved stamp, a session-close hold, or another grounded mechanism)
+When an observer reads the hold through `telec todo show`
+Then the hold's reason says why the hold exists or names the gate or owner it waits on, or, for a person's hold from GitHub, who held it there
+And a manual writer received that reason from its caller, a person's hold from GitHub carries the reason the platform infers from that act, naming the person and that they held it on GitHub, and an automatic writer produced its own causal reason
+And a command name is never presented as a hold's reason
+And a hold recorded before this contract, whose stored reason is the command that set it, is projected as reason-unknown and is never interpreted as a gate, an owner, or a reason
+```
+
+<!-- /planned-change:github-item-acts -->
 
 #### UC-WM30: A human operator can hold an active todo from the preparation view
 

@@ -45,7 +45,7 @@ def _next_malformed_streak(exc: Exception, streak: int) -> int:
 def _until_next_beat(poll_interval: float) -> float:
     """Seconds until the next whole multiple of the cadence, so every poller ticks on the same beat.
 
-    Ticking together lets the snapshots of a tick share one tmux call (output-polling).
+    Ticking together lets the snapshots of a tick share chained tmux calls (output-polling).
     """
     return poll_interval - (time.monotonic() % poll_interval)
 
