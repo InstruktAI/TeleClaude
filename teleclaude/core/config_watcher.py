@@ -16,9 +16,9 @@ from instrukt_ai_logging import get_logger
 logger = get_logger(__name__)
 
 _DEFAULT_POLL_INTERVAL_S = 2.0
-_INITIAL_SNAPSHOT_FAILED = "Config watcher initial snapshot failed; continuing to watch"
-_PATH_RESOLUTION_FAILED = "Config watcher could not resolve paths; continuing to watch"
-_POLL_FAILED = "Config watcher poll failed; continuing to watch"
+_INITIAL_SNAPSHOT_FAILED = "Config watcher initial snapshot failed (%s); continuing to watch"
+_PATH_RESOLUTION_FAILED = "Config watcher could not resolve paths (%s); continuing to watch"
+_POLL_FAILED = "Config watcher poll failed (%s); continuing to watch"
 _STAT_FAILED = "Config watcher could not stat a watched path: %s"
 _STARTED = "Config watcher started (paths=%d, interval=%.0fs)"
 
@@ -38,8 +38,9 @@ class ConfigWatcher:
         self._poll_interval_s = poll_interval_s
         try:
             self._mtimes = self._snapshot()
-        except Exception:
-            logger.exception(_INITIAL_SNAPSHOT_FAILED)
+        except Exception as exc:
+            # Path discovery can fail on a path that names a person, so only the error kind is logged.
+            logger.error(_INITIAL_SNAPSHOT_FAILED, type(exc).__name__)
             self._mtimes = {}
 
     def _snapshot(self) -> dict[Path, float | None]:
@@ -70,8 +71,8 @@ class ConfigWatcher:
         """
         try:
             watched_paths = self._paths()
-        except Exception:
-            logger.exception(_PATH_RESOLUTION_FAILED)
+        except Exception as exc:
+            logger.error(_PATH_RESOLUTION_FAILED, type(exc).__name__)
             watched_paths = []
         # The paths can name people (home directories), so only their number is logged.
         logger.info(_STARTED, len(watched_paths), self._poll_interval_s)
@@ -81,8 +82,8 @@ class ConfigWatcher:
                 try:
                     if not self._changed():
                         continue
-                except Exception:
-                    logger.exception(_POLL_FAILED)
+                except Exception as exc:
+                    logger.error(_POLL_FAILED, type(exc).__name__)
                     continue
                 try:
                     await self._on_change()

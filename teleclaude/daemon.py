@@ -104,7 +104,13 @@ _t = time.perf_counter()
 from teleclaude.config._machine_build import WORKING_DIR
 from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.loader import validate_declaration_file
-from teleclaude.config.machine import config, config_path, dotenv_path, reload_config, restart_required_sections
+from teleclaude.config.machine import (
+    config,
+    config_path,
+    machine_configuration_sources,
+    reload_config,
+    restart_required_sections,
+)
 from teleclaude.config.registered_homes import live_tier_declarations
 from teleclaude.core.config_validation_reports import ConfigValidationReports
 from teleclaude.core.config_watcher import ConfigWatcher
@@ -993,7 +999,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             # experiments.yml, and .env — so any edit triggers the reload decision.
             # The handler hot-reloads live sections and restarts only when a
             # connection-bound section changed.
-            config_watch_paths = [config_path, config_path.parent / "experiments.yml", dotenv_path]
+            config_watch_paths = machine_configuration_sources()
             config_watcher = ConfigWatcher(config_watch_paths, self._on_config_files_changed)
             self.config_watch_task = self.task_registry.supervise(
                 _Worker.CONFIG_WATCH, config_watcher.run, restart=True

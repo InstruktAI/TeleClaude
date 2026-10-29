@@ -122,7 +122,7 @@ class EventProducer:
                 """,
                 2,
                 self._stream,
-                f"teleclaude:ingress:claim:v2:{claim}",
+                f"teleclaude:ingress:claims:{claim}",
                 ttl_s,
                 self._maxlen,
                 *fields,

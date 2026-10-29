@@ -630,6 +630,13 @@ start_daemon() {
                 return 1
             fi
         fi
+        # The ingress receiver's units follow a daemon that came up, so a failed first install leaves none behind
+        # for the earlier release to meet.
+        if ! install_ingress_receiver; then
+            stop_startup_log_stream
+            log_error "Failed to deploy the ingress receiver"
+            return 1
+        fi
         stop_startup_log_stream
         if [ -f "$PID_FILE" ]; then
             PID=$(cat "$PID_FILE")

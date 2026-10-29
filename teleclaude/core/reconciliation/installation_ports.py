@@ -69,8 +69,9 @@ _PUBLICATION_MODULE = "teleclaude.entrypoints.install_publication"
 _SCHEMA_MODULE = "teleclaude.core.reconciliation.config_schemas"
 _RELEASE_OPTION = "--release"
 _PUBLISH_TIMEOUT_SECONDS = 900.0
-# The ingress receiver's module; a release without it has no receiver units to run (ADR-0148).
-_INGRESS_RECEIVER_SOURCE = Path("teleclaude") / "hooks" / "ingress_receiver.py"
+# A release that ships the receiver's socket unit runs a receiver that adopts the socket its unit holds; an earlier
+# one cannot use those units (ADR-0148, ADR-0150).
+_INGRESS_RECEIVER_SOCKET_UNIT = Path("templates") / "teleclaude-ingress-receiver.socket"
 _WITHDRAW_TIMEOUT_SECONDS = 120.0
 _PUBLISH_FAILED = "{module} exited {exit_code}: {output}"
 _PUBLISH_TIMED_OUT = "{module} did not finish within {seconds:.0f}s"
@@ -213,10 +214,11 @@ class LiveInstallPorts:
     def switch(self, revision: str | None) -> None:
         """Point ``current`` at the release of ``revision`` in one atomic step.
 
-        Switching to a release that predates the ingress receiver first withdraws the receiver's units, through
-        the outgoing release's installer, so that release's daemon serves the inbound endpoints on its port again.
+        Switching to a release that cannot run the ingress receiver's units first withdraws them, through the
+        outgoing release's installer, so that release's daemon serves the inbound endpoints on its port again. A
+        withdrawal that fails leaves ``current`` where it was and raises.
         """
-        if revision is not None and not (self._layout.release_path(revision) / _INGRESS_RECEIVER_SOURCE).is_file():
+        if revision is not None and not (self._layout.release_path(revision) / _INGRESS_RECEIVER_SOCKET_UNIT).is_file():
             self._withdraw_ingress_receiver(revision)
         switch_current(self._layout, revision)
 
@@ -237,13 +239,14 @@ class LiveInstallPorts:
             capture_output=secret_output_masker(outgoing),
         )
         if result.timed_out or result.exit_code != 0:
-            logger.warning(
+            logger.error(
                 "ingress_receiver_withdrawal_failed",
                 revision=revision,
                 exit_code=result.exit_code,
                 timed_out=result.timed_out,
                 output_tail=result.output_tail,
             )
+            raise RuntimeError(f"could not withdraw the ingress receiver before switching to {revision}")
 
     def start_and_verify(self, revision: str | None, checkout: Path | None) -> StepVerdict:
         """Start through ``current`` (or the checkout's lifecycle) and verify the daemon serves ``revision``."""

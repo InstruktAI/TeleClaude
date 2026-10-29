@@ -12,6 +12,7 @@ import yaml
 from teleclaude.config._bootstrap import resolve_runtime_config_path
 from teleclaude.config._machine_build import (
     CONFIG_LOAD_ID,
+    EXPERIMENTS_FILE_NAME,
     WORKING_DIR,
     build_config_from_raw,
 )
@@ -59,6 +60,11 @@ _config_path = resolve_runtime_config_path()
 _config: TeleclaudeConfig | None = None
 config_path = _config_path
 dotenv_path = ENV_PATH  # public alias; the config watcher watches config_path + dotenv_path
+
+
+def machine_configuration_sources() -> list[Path]:
+    """The files the machine configuration is built from; a change to any of them can change it."""
+    return [_config_path, _config_path.parent / EXPERIMENTS_FILE_NAME, dotenv_path]
 
 
 def _runtime_config() -> TeleclaudeConfig:

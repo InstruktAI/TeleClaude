@@ -683,16 +683,18 @@ withdraw_ingress_receiver() {
             local socket_file="/etc/systemd/system/${name}.socket"
             local service_file="/etc/systemd/system/${name}.service"
             [ -f "$socket_file" ] || [ -f "$service_file" ] || return 0
-            _tc_sudo "stop the ingress receiver" systemctl disable --now "${name}.socket" "${name}.service" || true
-            _tc_sudo "remove the ingress receiver units" rm -f "$socket_file" "$service_file"
-            _tc_sudo "reload systemd after removing the ingress receiver" systemctl daemon-reload
+            _tc_sudo "stop the ingress receiver" systemctl disable --now "${name}.socket" "${name}.service" || return 1
+            _tc_sudo "remove the ingress receiver units" rm -f "$socket_file" "$service_file" || return 1
+            _tc_sudo "reload systemd after removing the ingress receiver" systemctl daemon-reload || return 1
             ;;
         macos)
             local plist_file
             plist_file="$(launchd_plist_path "$name")"
             [ -f "$plist_file" ] || return 0
-            launchctl bootout "$(launchd_domain)/$name" 2>/dev/null || true
-            rm -f "$plist_file"
+            if is_launchd_unit_loaded "$name"; then
+                launchctl bootout "$(launchd_domain)/$name" || return 1
+            fi
+            rm -f "$plist_file" || return 1
             ;;
     esac
     log_info "Withdrew the ingress receiver's units"
@@ -781,11 +783,11 @@ install_launchd_ingress_receiver() {
 # The ingress receiver's units exist only on the ingress computer (single-ingress-webhook-termination).
 install_ingress_receiver() {
     local port
-    # An unreadable configuration changes nothing: a passing doubt never withdraws a working receiver.
-    port="$(ingress_receiver_port)" || return 0
+    # An unreadable configuration withdraws nothing and deploys nothing, and fails the comparison.
+    port="$(ingress_receiver_port)" || return 1
     if [ -z "$port" ]; then
         defer_service_changes || withdraw_ingress_receiver
-        return 0
+        return
     fi
     case "$PLATFORM" in
         linux) install_systemd_ingress_receiver "$port" ;;
@@ -804,7 +806,10 @@ install_service() {
             install_launchd_cron_service
             ;;
     esac
-    install_ingress_receiver
+    # Deployment follows a verified daemon start (bin/daemon-control.sh); a comparison names its differences here.
+    if defer_service_changes; then
+        install_ingress_receiver
+    fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

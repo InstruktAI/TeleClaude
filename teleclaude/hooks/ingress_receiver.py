@@ -25,7 +25,13 @@ from fastapi import FastAPI
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.declaration_changes import identity_declaration_watch_paths
-from teleclaude.config.machine import config, config_path, dotenv_path
+from teleclaude.config.errors import ConfigLoadError
+from teleclaude.config.machine import (
+    config,
+    machine_configuration_sources,
+    reload_config,
+    restart_required_sections,
+)
 from teleclaude.core.config_watcher import ConfigWatcher
 from teleclaude.core.reconciliation.installation import loaded_release_revision, runs_active_release
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
@@ -46,8 +52,9 @@ _SYSTEMD_FIRST_FD: Final = 3
 _STARTUP_POLL_S: Final = 0.05
 # How often the receiver checks whether an install moved the active-release pointer.
 _RELEASE_POLL_S: Final = 2.0
-# The exit status that asks the unit to start the receiver again (EX_TEMPFAIL): the release or the machine
-# configuration changed. A clean exit (0) leaves it stopped, as on a computer that is not the ingress.
+# The exit status that asks the unit to start the receiver again (EX_TEMPFAIL): the release or a section of the
+# machine configuration that needs a restart changed. A clean exit (0) is not restarted by the unit; on a computer
+# that is not the ingress, a connection to the held socket can still start the receiver, which exits before serving.
 _RESTART_STATUS: Final = 75
 
 
@@ -114,7 +121,8 @@ class _Receiver:
         """Stop serving, for a fresh process, when a task the receiver depends on ends unexpectedly."""
 
         def ended(done: asyncio.Task[None]) -> None:
-            if done.cancelled():
+            # A task that finishes on its own has already stopped the receiver for its reason.
+            if done.cancelled() or done.exception() is None:
                 return
             logger.error(event, exc_info=done.exception())
             self.stop(restart=True)
@@ -129,15 +137,39 @@ class _Receiver:
         self.stop(restart=True)
 
     async def machine_configuration_changed(self) -> None:
-        """Start again on the changed machine configuration, which decides whether this computer is the ingress."""
-        logger.info("ingress_receiver_configuration_changed")
-        self.stop(restart=True)
+        """Apply a validated machine configuration change as the daemon does; an invalid one changes nothing."""
+        try:
+            changed = reload_config()
+        except ConfigLoadError as error:
+            # The running configuration stays in force, as for the daemon (machine-config-load).
+            logger.warning("ingress_receiver_configuration_refused", error_kind=type(error).__name__)
+            return
+        if not config.computer.is_ingress_node:
+            logger.info("ingress_receiver_no_longer_ingress")
+            self.stop(restart=False)
+            return
+        restart = restart_required_sections(changed)
+        if restart:
+            logger.info("ingress_receiver_configuration_changed", sections=sorted(restart))
+            self.stop(restart=True)
 
 
 async def serve() -> int:
     """Serve the inbound endpoints until the process is stopped; return the process's exit status."""
+    # The machine watcher takes its baseline before the role is read, so a change written meanwhile is seen.
+    pending: list[_Receiver] = []
+
+    async def machine_changed() -> None:
+        if pending:
+            await pending[0].machine_configuration_changed()
+
+    machine = ConfigWatcher(machine_configuration_sources(), machine_changed)
+    try:
+        reload_config()
+    except ConfigLoadError as error:
+        logger.warning("ingress_receiver_configuration_refused", error_kind=type(error).__name__)
     if not config.computer.is_ingress_node:
-        # Not the ingress (any more): stay stopped; the next install or start removes this computer's receiver units.
+        # Not the ingress: exit before serving; the next install or start removes this computer's receiver units.
         logger.warning("ingress_receiver_not_ingress_node")
         return 0
     clients = scoped_redis_clients()
@@ -154,12 +186,10 @@ async def serve() -> int:
         listener, handed_over = _listening_socket()
         server = uvicorn.Server(uvicorn.Config(build_receiver_app(producer), log_level="warning"))
         receiver = _Receiver(server)
+        pending.append(receiver)
         # Ownership facts on relayed events come from the catalog, which this process keeps current itself.
         declarations = asyncio.create_task(ConfigWatcher(identity_declaration_watch_paths, _refresh_catalog).run())
         receiver.supervise(declarations, "ingress_receiver_declaration_watcher_ended")
-        machine = ConfigWatcher(
-            [config_path, config_path.parent / "experiments.yml", dotenv_path], receiver.machine_configuration_changed
-        )
         tasks += [declarations, asyncio.create_task(machine.run())]
         receiver.supervise(tasks[-1], "ingress_receiver_configuration_watcher_ended")
         # A receiver started from a release follows the pointer; one started from a checkout has none to follow.
