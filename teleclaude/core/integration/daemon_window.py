@@ -278,8 +278,13 @@ def start_until_verified(lifecycle: Lifecycle, accepts: Callable[[HealthDTO], bo
             time.sleep(_POLL_INTERVAL_SECONDS)
             continue
         preparation = health.preparation
-        if accepts(health) and preparation is not None and preparation.phase is DrainPhase.OPEN:
+        # A start that finished with a failure (a hard dependency, the ingress receiver) is not verified by a
+        # healthy daemon alone.
+        start_failed = not started.timed_out and started.exit_code != 0
+        if not start_failed and accepts(health) and preparation is not None and preparation.phase is DrainPhase.OPEN:
             return StartAttempt(started=started, verified=True, start_commit=health.start_commit)
+        if start_failed:
+            break
         reason = _START_UNVERIFIED
         time.sleep(_POLL_INTERVAL_SECONDS)
 

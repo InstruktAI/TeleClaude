@@ -1,0 +1,56 @@
+name: Little Snitch rules
+
+# Publishes the Little Snitch rule file for TeleClaude's Homebrew tools to this repository's Pages site
+# (sdlc/procedure/network-access-rules). Each run adds a rule for every formula's current Homebrew version
+# and keeps every version already published; it commits nothing.
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  push:
+    branches: [main]
+    paths:
+      - docs/specs/rules/networking/little-snitch/**
+      - tools/ci/little_snitch_rules.py
+  workflow_dispatch:
+    inputs:
+      add:
+        description: Versions a computer runs that are not published yet, as space-separated formula=version
+        type: string
+        required: false
+
+concurrency:
+  group: little-snitch-rules
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        id: pages
+      - name: Build the rule file
+        env:
+          ADD: ${{ inputs.add }}
+          PAGES_URL: ${{ steps.pages.outputs.base_url }}
+        # ADD is split into arguments on purpose: each word is one formula=version.
+        run: |
+          python3 -m tools.ci.little_snitch_rules \
+            --source docs/specs/rules/networking/little-snitch/teleclaude.template.json \
+            --published-url "$PAGES_URL/teleclaude.lsrules" \
+            --output "$RUNNER_TEMP/site/teleclaude.lsrules" \
+            --add $ADD
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/site
+      - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        id: deployment

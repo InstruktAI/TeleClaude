@@ -7,6 +7,11 @@ description: The ingress's webhook receiver runs as its own service beside the d
 
 # The webhook receiver runs beside the daemon and claims each delivery before relaying it — ADR
 
+## Status
+
+Amended in part by ADR-0150: the receiver restarts for every install, and its
+service unit holds the listening socket so that restart refuses no delivery.
+
 ## Context
 
 ADR-0055 placed the ingress's webhook routes on the daemon's own localhost API
@@ -33,11 +38,6 @@ that intake through its own restarts; a fleet may want more than one receiver.
   request against its declared source, normalize it, and relay it. It serves on
   loopback behind the same mandatory reverse proxy ADR-0055 requires; the daemon
   no longer serves the inbound paths.
-- **The service manager holds the listening socket.** The receiver's port is
-  opened by its service unit (a systemd socket unit, a launchd socket
-  declaration) and handed to the receiver process, so connections arriving while
-  the receiver restarts to run a newly installed release wait in the socket's
-  queue instead of being refused.
 - **Each delivery is claimed before it is relayed.** The receiver publishes a
   verified delivery onto the cluster stream through one atomic step on the
   cluster Redis that claims the delivery's identity and publishes it only when
@@ -57,9 +57,9 @@ decisions are retained.
 
 **Positive:**
 
-- Intake no longer stops for daemon restarts or for an install's stopped window.
-  The receiver restarts to run each newly installed release, but its socket stays
-  open across that restart, so no delivery is refused for it.
+- Intake no longer stops for daemon restarts or installs; the receiver stops only
+  when its own code changes, so the window in which a delivery can be lost
+  shrinks from every restart to those rare ones.
 - A single computer is as robust as a fleet's ingress; a fleet's extra receivers
   are a reverse proxy setting, not new code.
 - A provider retry or a duplicated delivery is relayed once.
@@ -73,10 +73,6 @@ decisions are retained.
   expired is relayed again.
 - The receiver needs the cluster Redis to relay: while it is unreachable, a
   delivery fails as it did before this decision.
-- A queued connection waits only as long as the provider's own request timeout;
-  a receiver that takes longer to start loses it.
-- Socket activation differs per service manager, so the receiver carries an
-  adoption path for each supported platform.
 
 ## Alternatives Considered
 

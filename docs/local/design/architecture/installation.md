@@ -187,7 +187,24 @@ sequenceDiagram
   definitions are deployed only when their rendered content changed, and the
   start is verified against the new revision with admission open, as the
   lifecycle contract verifies any start. The install completes there.
-
+- **The ingress receiver outlives the daemon.** On a systemd ingress computer
+  that has turned its receiver on (`computer.ingress_receiver`), the service
+  definitions include the webhook receiver's
+  (`local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`):
+  a unit that holds its listening socket and a unit for the receiver process.
+  They are deployed, only when their content changed, or withdrawn before the
+  daemon is started or restarted, and are never stopped with the daemon; the
+  daemon serves the inbound endpoints only while they are absent. A start that
+  finds the daemon running leaves the units as they are until its next restart.
+  A failed deployment or withdrawal fails a start; at a restart the units are
+  withdrawn instead, so the restarted daemon serves the endpoints itself. The
+  receiver follows the active-release pointer: when the pointer moves, it exits
+  and its service manager starts it again on the new release while the socket
+  stays open. On a computer that is no longer the ingress, deployment removes
+  the receiver's units. Switching to a release that cannot run them, by
+  rollback or by an install's recovery, first removes them through the outgoing
+  release, so the earlier release's daemon serves the inbound endpoints on its
+  port again; a removal that fails leaves the active release in place.
 - **Move running terminal interfaces, then prune.** The completed act sends
   presentation's reload signal to every terminal interface its registry records
   (`local/projects/teleclaude/design/architecture/tui-state-layout`), then
@@ -346,6 +363,11 @@ checkout stays a registered project.
   so that most migrations run inside it.
 - **An owner cannot signal to the install record**: the migration counts as
   started, and rollback refuses.
+- **A release before the receiver's switch cannot activate it.** The receiver
+  is turned on only by its machine setting, after a release that has the
+  receiver is active; the first install of such a release changes nothing for
+  intake, so its recovery, run by the release before it, has no receiver units
+  to meet.
 
 ## See Also
 
@@ -353,5 +375,6 @@ checkout stays a registered project.
 - docs/local/policy/agent-service-control.md
 - docs/local/policy/daemon-availability.md
 - docs/local/adr/0130-the-platform-runs-from-an-installation-not-its-project.md — why the platform runs from an installation and a commit changes nothing live.
+- docs/local/adr/0150-the-service-manager-holds-the-webhook-receivers-listening-socket.md — why the receiver's unit holds its socket across receiver restarts.
 
 - docs/local/adr/0131-the-platforms-documentation-publishes-from-its-project-commits.md — why the platform's documentation publishes from its project's commits and from an install only where no platform checkout does.

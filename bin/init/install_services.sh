@@ -95,6 +95,8 @@ if [ "$PLATFORM" = "macos" ]; then
 else
     SERVICE_LABEL="teleclaude"
     CRON_LABEL="teleclaude-cron"
+    # The ingress computer's webhook receiver, which outlives the daemon (ADR-0148, ADR-0150); systemd only.
+    INGRESS_RECEIVER_LABEL="teleclaude-ingress-receiver"
     # bin/daemon-control.sh consumes SERVICE_PATH from this sourced module.
     # shellcheck disable=SC2034
     SERVICE_PATH="/etc/systemd/system/$SERVICE_LABEL.service"
@@ -656,6 +658,95 @@ withdraw_docs_watch_service() {
     esac
 }
 
+# The port the ingress receiver listens on, or nothing when the receiver does not serve this computer's ingress.
+ingress_receiver_port() {
+    local errors
+    errors="$(mktemp)"
+    if ! PYTHONPATH="$PROJECT_ROOT" "$PROJECT_ROOT/.venv/bin/python" -c '
+from teleclaude.config.machine import config
+print(config.api.tcp_port if config.computer.is_ingress_node and config.computer.ingress_receiver else "")' 2>"$errors"; then
+        log_error "Could not read whether this computer is the ingress: $(tail -n 3 "$errors")"
+        rm -f "$errors"
+        return 1
+    fi
+    rm -f "$errors"
+}
+
+# Remove the ingress receiver's units: this computer is no longer the ingress, or a release without the
+# receiver becomes active.
+withdraw_ingress_receiver() {
+    [ "$PLATFORM" = "linux" ] || return 0
+    local name="$INGRESS_RECEIVER_LABEL"
+    local socket_file="/etc/systemd/system/${name}.socket"
+    local service_file="/etc/systemd/system/${name}.service"
+    [ -f "$socket_file" ] || [ -f "$service_file" ] || return 0
+    _tc_sudo "stop the ingress receiver" systemctl disable --now "${name}.socket" "${name}.service" || return 1
+    _tc_sudo "remove the ingress receiver units" rm -f "$socket_file" "$service_file" || return 1
+    _tc_sudo "reload systemd after removing the ingress receiver" systemctl daemon-reload || return 1
+    log_info "Withdrew the ingress receiver's units"
+}
+
+install_systemd_ingress_receiver() {
+    local port="$1"
+    local name="$INGRESS_RECEIVER_LABEL"
+    local socket_file="/etc/systemd/system/${name}.socket"
+    local service_file="/etc/systemd/system/${name}.service"
+    local service_path="$SERVICE_ROOT/.venv/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+    local rendered_socket rendered_service
+    rendered_socket="$(mktemp)"
+    rendered_service="$(mktemp)"
+    render_template_or_die "$PROJECT_ROOT/templates/${name}.socket" "$rendered_socket" "PORT=$port"
+    render_template_or_die "$PROJECT_ROOT/templates/${name}.service" "$rendered_service" \
+        "PYTHON_PATH=$SERVICE_ROOT/.venv/bin/python" "WORKING_DIR=$SERVICE_ROOT" "PATH=$service_path" "XDG_DATA_HOME=$SERVICE_DATA_HOME"
+
+    local socket_deployed=false
+    local service_deployed=false
+    if deploy_or_die "$rendered_socket" "$socket_file" --sudo; then
+        socket_deployed=true
+    fi
+    if deploy_or_die "$rendered_service" "$service_file" --sudo; then
+        service_deployed=true
+    fi
+    rm -f "$rendered_socket" "$rendered_service"
+    # On demand or under --check the differences are named above and nothing is started.
+    defer_service_changes && return 0
+
+    # Each step returns its failure itself: callers run this under a condition, where errexit does not apply.
+    if $socket_deployed || $service_deployed; then
+        log_info "Deployed ingress receiver systemd definition(s)"
+        _tc_sudo "reload systemd after deploying the ingress receiver" systemctl daemon-reload || return 1
+    fi
+    if $socket_deployed && systemctl is-active --quiet "${name}.socket"; then
+        # A socket whose service runs refuses a restart; the service starts again on the new socket.
+        _tc_sudo "stop ${name}.service" systemctl stop "${name}.service" || return 1
+        _tc_sudo "restart ${name}.socket" systemctl restart "${name}.socket" || return 1
+    fi
+    if ! systemctl is-enabled --quiet "${name}.socket" || ! systemctl is-active --quiet "${name}.socket"; then
+        _tc_sudo "enable ${name}.socket" systemctl enable --now "${name}.socket" || return 1
+    fi
+    if $service_deployed && systemctl is-active --quiet "${name}.service"; then
+        _tc_sudo "restart ${name}.service" systemctl restart "${name}.service" || return 1
+    fi
+    if ! systemctl is-enabled --quiet "${name}.service" || ! systemctl is-active --quiet "${name}.service"; then
+        _tc_sudo "enable ${name}.service" systemctl enable --now "${name}.service" || return 1
+    fi
+}
+
+# The ingress receiver's units exist only on the ingress computer (single-ingress-webhook-termination).
+install_ingress_receiver() {
+    # The standalone receiver runs under systemd; on other computers the daemon serves the ingress.
+    [ "$PLATFORM" = "linux" ] || return 0
+    local port
+    # An unreadable configuration withdraws nothing and deploys nothing, and fails the comparison.
+    port="$(ingress_receiver_port)" || return 1
+    if [ -z "$port" ]; then
+        defer_service_changes || withdraw_ingress_receiver
+        return
+    fi
+    install_systemd_ingress_receiver "$port"
+}
+
 install_service() {
     case "$PLATFORM" in
         linux)
@@ -667,6 +758,11 @@ install_service() {
             install_launchd_cron_service
             ;;
     esac
+    # Deployment runs before the daemon starts (bin/daemon-control.sh start_daemon); a comparison names its
+    # differences here.
+    if defer_service_changes; then
+        install_ingress_receiver
+    fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

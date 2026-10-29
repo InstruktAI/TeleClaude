@@ -119,6 +119,7 @@ from teleclaude.events.schemas.system import (
 )
 from teleclaude.hooks.inbound import INBOUND_PATH_PREFIX
 from teleclaude.identity_reach import ReachCache
+from teleclaude.install.ingress_receiver import receiver_units_installed
 from teleclaude.mcp.runtime import McpRuntimePool
 from teleclaude.memory.api_routes import router as memory_router
 from teleclaude.paths import REPO_ROOT
@@ -162,7 +163,7 @@ ServerExitHandler = Callable[[RequestSurface, BaseException | None, bool | None,
 
 
 class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableOverride]
-    """HTTP API server on Unix socket with an optional webhook ingress listener."""
+    """HTTP API server on the daemon's Unix socket, with the webhook ingress listener while the daemon serves it."""
 
     def __init__(
         self,
@@ -187,7 +188,8 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         )
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._webhook_ingress_listener: WebhookIngressListener | None = None
-        if config.computer.is_ingress_node:
+        # While the standalone receiver's units are not installed, the daemon serves the inbound endpoints itself.
+        if config.computer.is_ingress_node and not receiver_units_installed():
             self._webhook_ingress_listener = WebhookIngressListener(
                 self.app,
                 port=config.api.tcp_port,
@@ -590,7 +592,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             )
 
     async def start(self) -> None:
-        """Start the Unix API server and configured webhook ingress listener."""
+        """Start the Unix API server."""
         self._running = True
         logger.info("API server starting")
         await self._start_server()
@@ -714,7 +716,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 self._dump_stacks("slow_requests")
 
     async def _start_server(self) -> None:
-        """Start the Unix API server and optional webhook ingress listener."""
+        """Start the Unix API server."""
         if self.server_task and not self.server_task.done():
             logger.warning("API server already running; skipping start")
             return
@@ -771,7 +773,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._on_server_exit = handler
 
     async def _stop_server(self) -> None:
-        """Stop the webhook ingress listener before the Unix API server."""
+        """Stop the webhook ingress listener, where the daemon serves one, before the Unix API server."""
         if self._webhook_ingress_listener is not None:
             await self._webhook_ingress_listener.stop()
 

@@ -82,7 +82,7 @@ _CONFIG_READ_ERROR = "Failed to read config file {path}: {error}"
 _KIND_MISMATCH_ERROR = "Machine configuration at {path} declares kind '{kind}', expected 'computer'"
 _REMOTE_ENTRY_MAPPING_ERROR = "Invalid remote_computers entry '{name}': expected a mapping, got {actual}."
 _SCALAR_INPUT_ERROR = "Expected a scalar configuration value."
-_EXPERIMENTS_FILE_NAME = "experiments.yml"
+EXPERIMENTS_FILE_NAME = "experiments.yml"
 _UTF8_ENCODING = "utf-8"
 
 
@@ -512,7 +512,7 @@ def build_config_from_raw(
         **{CONFIG_LOAD_ID: load_id, CONFIG_LOAD_OUTCOME: CONFIG_LOAD_ACCEPTED, CONFIG_LOAD_STAGE: CONFIG_LOAD_BUILD},
     )
 
-    experiments_path = sibling_dir / _EXPERIMENTS_FILE_NAME
+    experiments_path = sibling_dir / EXPERIMENTS_FILE_NAME
     try:
         if experiments_path.exists():
             with open(experiments_path, encoding=_UTF8_ENCODING) as stream:

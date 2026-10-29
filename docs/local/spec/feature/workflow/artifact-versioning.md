@@ -151,6 +151,8 @@ artifact-remove boundaries, and records the writing session's id as `updated_by`
 A caller that is no session authors under no session and records nothing there;
 an unidentified caller may not write at all.
 
+<!-- planned-change:prepare-artifact-write-gates-on-job-role -->
+
 Independently of which session is driving the slug, a prepare artifact is writable
 only by a prepare-phase writer: a session carrying one of the prepare-authoring job
 roles, a human-identity session, or a roleless session — a TeleClaude session that
@@ -176,6 +178,39 @@ Work artifacts (`review-findings`, `deferrals`, `quality-checklist`) carry no
 prepare-author role gate. Like every other writable kind, they are gated by the
 claim.
 
+<!-- change:prepare-artifact-write-gates-on-job-role -->
+
+Independently of which session is driving the slug, a prepare artifact is writable
+only by a prepare-phase writer: a caller whose reach, as the role catalog resolves
+it (`local/projects/teleclaude/spec/feature/identity/agent-roles`), includes the
+`prepare-artifact-write` capability, or a direct human-identity writer, which
+carries no session. A session the catalog does not admit is refused with HTTP 403;
+the refusal names the recorded role and the capability, and states that a focused
+session's write belongs to the session that dispatched it. The write boundary keeps
+no role list of its own. An unregistered session id is an unknown caller and is
+refused with HTTP 403.
+
+A prepare artifact of a todo whose contract is under execution — its lifecycle phase
+is one of the work lane's, from build started through finalize ready — is writable
+by no caller, the direct human-identity writer included. The write is refused with
+HTTP 409 before any state mutation, naming the phase and the door that reopens the
+contract: the todo's work orchestrator returns it to preparation with
+`telec todo stamp <slug> --kickback --reason <why>`, so any other caller addresses
+the session that holds the todo; the prepare lane's next call then moves the todo
+out of the work lane. A delivered todo stays read-only for every artifact kind.
+
+These gates read the object and the catalog, not the slug's holder, and compose with
+the claim gate above. The claim gate decides first: a caller outside the claiming
+group is refused as a claim conflict whatever its role. The closed-contract refusal
+applies next, to every caller the claim gate admitted, and the capability refusal
+last.
+
+Work artifacts (`review-findings`, `deferrals`, `quality-checklist`) carry no
+prepare-artifact capability or closed-contract gate. Like every other writable kind,
+they are gated by the claim.
+
+<!-- /planned-change:prepare-artifact-write-gates-on-job-role -->
+
 The `check-failures` artifact is platform-written. The API and CLI write and
 remove boundaries refuse it as platform-owned read-only for every caller, before
 any state mutation, and the CLI's writable kind list excludes it. Only the
@@ -183,6 +218,8 @@ workflow's failed-check filer writes it, through the workflow store in its own
 process and under no session, so the claim gate never applies to it. Reads are
 not gated. What it records is
 `local/projects/teleclaude/spec/feature/workflow/failed-check-bugs`.
+
+<!-- planned-change:prepare-artifact-write-gates-on-job-role -->
 
 #### UC-WAV9: Worker write to a prepare artifact is refused by role
 
@@ -193,6 +230,12 @@ When the worker attempts to write a prepare artifact (input, prd, architecture, 
 Then the workflow service refuses the write by role with HTTP 403, before any state mutation
 And the artifact's current version is unchanged
 ```
+
+<!-- change:prepare-artifact-write-gates-on-job-role -->
+
+#### UC-WAV9: Worker write to a prepare artifact is refused by role
+
+<!-- /planned-change:prepare-artifact-write-gates-on-job-role -->
 
 #### UC-WAV10: A dispatched worker writes while the orchestrator that dispatched it holds the todo
 
@@ -235,6 +278,8 @@ And each artifact carries the distinct session ids recorded as updated_by across
 And an artifact whose versions recorded no writer carries none
 ```
 
+<!-- planned-change:prepare-artifact-write-gates-on-job-role -->
+
 #### UC-WAV15: A work-orchestrator write to a prepare artifact is refused by role
 
 ```gherkin
@@ -245,6 +290,12 @@ Then the workflow service refuses the write by role before any state mutation
 And the response status is HTTP 403
 And the artifact's current version is unchanged
 ```
+
+<!-- change:prepare-artifact-write-gates-on-job-role -->
+
+#### UC-WAV15: A work-orchestrator write to a prepare artifact is refused by role
+
+<!-- /planned-change:prepare-artifact-write-gates-on-job-role -->
 
 #### UC-WAV16: A human-identity write to an unheld slug is accepted without acquiring a claim
 
@@ -342,3 +393,10 @@ And the verdict stamp binds the current report digest rather than inferring evid
 ## See Also
 
 - docs/local/adr/0096-claimed-todo-artifacts-are-writable-only-by-the-claiming-group.md — why a claimed todo's artifacts are writable only by the claiming group, and why the claim gate decides before the role gate.
+
+<!-- planned:prepare-artifact-write-gates-on-job-role -->
+
+- docs/local/adr/0149-prepare-artifact-write-authority-is-a-catalog-capability.md — why a prepare artifact's writer is admitted by a catalog capability rather than a role list the write boundary keeps.
+- docs/local/adr/0151-prepare-artifacts-close-while-their-contract-is-under-execution.md — why a contract under execution closes the prepare artifacts to every caller.
+
+<!-- /planned:prepare-artifact-write-gates-on-job-role -->

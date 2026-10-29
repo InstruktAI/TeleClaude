@@ -27,6 +27,8 @@ from teleclaude.hooks.webhook_models import HookEvent
 
 logger = get_logger(__name__)
 
+# Each computer reads relayed events through its own consumer group on the cluster event stream.
+_RELAY_DELIVERY_GROUP_PREFIX: Final = "relay-delivery-"
 _DOMAIN_SEPARATOR = "."
 _SOURCE_PROTOCOL_SEPARATOR = ":"
 _NOT_RELAYED_ERROR = "event {event!r} is not a relayed event"
@@ -81,6 +83,11 @@ def _github_hook_event(event: StreamEvent) -> HookEvent:
 
 def _whatsapp_hook_event(event: StreamEvent) -> HookEvent:
     return whatsapp_hook_event(_name_after_domain(event), _relayed_payload(event))
+
+
+def relay_delivery_group(computer: str) -> str:
+    """The consumer group through which ``computer`` reads relayed events."""
+    return _RELAY_DELIVERY_GROUP_PREFIX + computer
 
 
 _REBUILDERS: Final[Mapping[RelayProtocol, Callable[[StreamEvent], HookEvent]]] = {

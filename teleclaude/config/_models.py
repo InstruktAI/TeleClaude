@@ -337,6 +337,8 @@ class ComputerConfig(ClosedModel):
     host: TEXT | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})
     tmux_binary: TEXT = Field(default="tmux", json_schema_extra={"tier": Tier.INTERNAL})
     is_ingress_node: FLAG = Field(default=False, json_schema_extra={"tier": Tier.TUI})
+    # Whether the installation deploys the standalone ingress receiver's units on the ingress (ADR-0148).
+    ingress_receiver: FLAG = Field(default=False, json_schema_extra={"tier": Tier.TUI})
 
     @model_validator(mode="before")
     @classmethod

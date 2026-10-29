@@ -23,7 +23,6 @@ _MODULE_IMPORT_STARTED_AT = time.perf_counter()
 _IMPORT_TIMINGS: list[tuple[str, float, float]] = []
 logger = get_logger("teleclaude.daemon")
 
-_MACHINE_CONFIGURATION = "machine"
 _STOP_REASON = "stop"
 _PREPARED_GRACE_EXIT_REASON = "prepared-grace-exit"
 _PREPARED_EXIT_TASK_NAME = "prepared-instance-exit"
@@ -89,30 +88,6 @@ def _emit_import_timing_logs() -> None:
             logger.warning("Slow daemon import: module=%s dt=%.3fs", label, dt)
 
 
-def _identity_declaration_documents() -> list[Path]:
-    """Return the watched configuration declarations that exist as files."""
-    return [
-        path for path in _identity_declaration_watch_paths() if path.name == ConfigFileName.OVERLAY and path.is_file()
-    ]
-
-
-def _identity_declaration_watch_paths() -> list[Path]:
-    """Return config declarations whose changes can alter identity reach."""
-    paths = {GLOBAL_CONFIG_PATH, PEOPLE_DIR, COMPANIES_ROOT, PROJECTS_MANIFEST_PATH}
-    if PEOPLE_DIR.is_dir():
-        for person_dir in PEOPLE_DIR.iterdir():
-            paths.add(person_dir)
-            paths.add(person_dir / ConfigFileName.OVERLAY)
-    if COMPANIES_ROOT.is_dir():
-        for company_dir in COMPANIES_ROOT.iterdir():
-            paths.add(company_dir)
-            paths.add(company_dir / ConfigFileName.OVERLAY)
-    for project_root in load_roots():
-        paths.add(project_root)
-        paths.add(project_root / ConfigFileName.OVERLAY)
-    return sorted(paths)
-
-
 _t = time.perf_counter()
 import teleclaude.observability.httpx_runtime_debug as _httpx_runtime_debug
 
@@ -128,9 +103,15 @@ _t = time.perf_counter()
 from teleclaude.config._machine_build import WORKING_DIR
 from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.loader import validate_declaration_file
-from teleclaude.config.machine import config, config_path, dotenv_path, reload_config, restart_required_sections
+from teleclaude.config.machine import (
+    config,
+    config_path,
+    machine_configuration_sources,
+    reload_config,
+    restart_required_sections,
+)
 from teleclaude.config.registered_homes import live_tier_declarations
-from teleclaude.core.config_validation_reports import ConfigValidationReports
+from teleclaude.core.config_validation_reports import MACHINE_CONFIGURATION, ConfigValidationReports
 from teleclaude.core.config_watcher import ConfigWatcher
 
 _record_import_timing("teleclaude.config.machine", _t)
@@ -298,19 +279,18 @@ from teleclaude.mirrors.processors import register_default_processors
 _record_import_timing("teleclaude.mirrors.processors", _t)
 
 _t = time.perf_counter()
-from teleclaude.config.declaration_changes import publish_declaration_changes
+from teleclaude.config.declaration_changes import (
+    identity_declaration_documents,
+    identity_declaration_watch_paths,
+    publish_declaration_changes,
+)
 from teleclaude.paths import (
-    COMPANIES_ROOT,
     DAEMON_PID_PATH,
     ENV_PATH,
-    GLOBAL_CONFIG_PATH,
     MAIN_DB_PATH,
-    PEOPLE_DIR,
     PROJECTS_MANIFEST_PATH,
     RUNTIME_SETTINGS_PATH,
-    ConfigFileName,
 )
-from teleclaude.project_manifest import load_roots
 
 _record_import_timing("teleclaude.paths", _t)
 
@@ -1018,7 +998,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             # experiments.yml, and .env — so any edit triggers the reload decision.
             # The handler hot-reloads live sections and restarts only when a
             # connection-bound section changed.
-            config_watch_paths = [config_path, config_path.parent / "experiments.yml", dotenv_path]
+            config_watch_paths = machine_configuration_sources()
             config_watcher = ConfigWatcher(config_watch_paths, self._on_config_files_changed)
             self.config_watch_task = self.task_registry.supervise(
                 _Worker.CONFIG_WATCH, config_watcher.run, restart=True
@@ -1032,7 +1012,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             logger.info("Project registry watcher started (%s)", PROJECTS_MANIFEST_PATH)
 
             identity_declarations_watcher = ConfigWatcher(
-                _identity_declaration_watch_paths, self._on_identity_declarations_changed
+                identity_declaration_watch_paths, self._on_identity_declarations_changed
             )
             self.identity_declarations_watch_task = self.task_registry.supervise(
                 _Worker.IDENTITY_DECLARATIONS_WATCH, identity_declarations_watcher.run, restart=True
@@ -1351,7 +1331,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
     async def _on_identity_declarations_changed(self) -> None:
         """Judge the changed declarations, then refresh config-owned project facts and invalidate identity reach."""
-        await self._judge_declaration_readiness(_identity_declaration_documents())
+        await self._judge_declaration_readiness(identity_declaration_documents())
         await self.lifecycle.refresh_local_projects(ProjectRefreshTrigger.REGISTRY_CHANGE)
         publish_declaration_changes()
 
@@ -1368,15 +1348,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             changed = reload_config()
         except ConfigLoadError as error:
             # The running configuration stays in force; restart and start refuse this file too.
-            await self._config_validation_reports.refused(_MACHINE_CONFIGURATION, config_path, error)
+            await self._config_validation_reports.refused(MACHINE_CONFIGURATION, config_path, error)
             return
-        await self._config_validation_reports.accepted(_MACHINE_CONFIGURATION, config_path)
+        await self._config_validation_reports.accepted(MACHINE_CONFIGURATION, config_path)
         if not changed:
             return
         try:
             await publish_event(
                 EffectiveConfigUpdated(
-                    subject=ConfigurationRef(_MACHINE_CONFIGURATION),
+                    subject=ConfigurationRef(MACHINE_CONFIGURATION),
                     home=EventHomeMarker.NONE,
                     data=EffectiveConfigUpdatedData(
                         project_path=str(WORKING_DIR),
