@@ -16,7 +16,16 @@ visibility: 'public'
 
 - Redis transport implements RemoteExecutionProtocol for request/response.
 - Redis transport never performs UI messaging.
+
+<!-- planned-change:daemon-startup-aborts-without-redis -->
+
 - The transport runs on the shared cluster Redis, never on a computer's local Redis. The event platform needs the cluster Redis to start; Telegram multi-computer operation does not need the transport.
+
+<!-- change:daemon-startup-aborts-without-redis -->
+
+- The transport runs on the shared cluster Redis, never on a computer's local Redis. Telegram multi-computer operation does not need the transport.
+
+<!-- /planned-change:daemon-startup-aborts-without-redis -->
 
 ```mermaid
 flowchart LR

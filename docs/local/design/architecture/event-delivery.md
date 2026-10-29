@@ -258,6 +258,22 @@ ordering guarantee for these separate transports.
 - Earlier peers retain their declared interoperability limits. Adapting their
   envelopes does not establish source ordering absent from their records.
 
+<!-- planned:daemon-startup-aborts-without-redis -->
+
+- A Redis that does not answer stops only the readers and publications on it.
+  A reader whose Redis stops answering does not end its run: it logs the loss
+  once, waits until that Redis answers, logs the return and resumes from its
+  group, recovering its pending entries in order before it reads new ones. A
+  failure that is not the Redis connection still ends the run under its
+  supervisor. A publication to a Redis that does not answer fails at its
+  caller; nothing holds it for later delivery.
+- A scope whose Redis did not answer at startup has its reader positions taken
+  once it answers. A consumer whose group already exists resumes from it; a
+  consumer whose group is new starts at that moment, so it omits what that
+  Redis took in before.
+
+<!-- /planned:daemon-startup-aborts-without-redis -->
+
 ## See Also
 
 - docs/local/adr/0116-each-reaction-to-a-platform-event-is-an-independent-consumer.md
@@ -265,5 +281,12 @@ ordering guarantee for these separate transports.
 - docs/local/adr/0141-a-local-redis-that-cannot-be-set-up-never-fails-the-install.md — why setup prepares while serving, applies in the stopped window, and never fails the install.
 - docs/local/adr/0143-teleclaude-runs-its-own-local-redis-on-every-computer.md — why the local Redis is TeleClaude's own instance on every computer, the cluster host included.
 - docs/local/adr/0144-a-fleets-cluster-redis-is-provided-or-provisioned-on-its-master.md — why a lone computer's cluster Redis is its local Redis.
+
+<!-- planned:daemon-startup-aborts-without-redis -->
+
+- docs/local/adr/0145-a-computer-keeps-working-while-its-cluster-redis-is-unreachable.md — why a computer starts and serves while its cluster Redis is unreachable.
+
+<!-- /planned:daemon-startup-aborts-without-redis -->
+
 - docs/local/design/architecture/cache.md
 - docs/local/design/architecture/api-server.md
