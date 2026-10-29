@@ -1,7 +1,7 @@
 """Agent role catalog: the one place a role's reach and class are composed.
 
-A capability is one named unit of reach — one family of ``telec`` commands, or one grant to start
-sessions of one class. A role declares an explicit capability set; a role marked ``full_reach``
+A capability is one named unit of reach — one family of ``telec`` commands, one grant to start
+sessions of one class, or one class of todo artifact a write boundary admits. A role declares an explicit capability set; a role marked ``full_reach``
 reaches every capability. Every consumer that asks what a role may do or what kind of session it is
 reads this catalog and keeps no role list of its own
 (``local/projects/teleclaude/spec/feature/identity/agent-roles``).
@@ -20,7 +20,7 @@ _UNKNOWN_ROLE_LOG = "Session %s records role %r, which the role catalog does not
 
 
 class Capability(StrEnum):
-    """One command family, or one dispatch grant, a role may reach."""
+    """One command family, one dispatch grant, or one class of todo artifact a write boundary admits, a role may reach."""
 
     DOCS_READ = "docs-read"
     TODO_READ = "todo-read"
@@ -54,6 +54,7 @@ class Capability(StrEnum):
     MEMORIES_READ = "memories-read"
     MEMORIES_SAVE = "memories-save"
     DISPATCH_FOCUSED = "dispatch-focused"
+    PREPARE_ARTIFACT_WRITE = "prepare-artifact-write"
 
 
 class RoleClass(StrEnum):
@@ -207,7 +208,7 @@ _CATALOG: dict[RoleName, Role] = dict(
             RoleName.DIAGNOSER,
             RoleClass.FOCUSED,
             False,
-            _FOCUSED_BASELINE | {Capability.TRANSCRIPT_READ},
+            _FOCUSED_BASELINE | {Capability.TRANSCRIPT_READ, Capability.PREPARE_ARTIFACT_WRITE},
         ),
         _entry(
             RoleName.DRIFT_ANALYZER,
