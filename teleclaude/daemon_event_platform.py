@@ -68,7 +68,7 @@ from teleclaude.hooks.github_handler import GitHubCommentEvent, handle_github_ev
 from teleclaude.hooks.handlers import HandlerRegistry
 from teleclaude.hooks.normalizers.github import GITHUB_SOURCE
 from teleclaude.hooks.registry import ContractRegistry
-from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline
+from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline, relay_delivery_group
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
 from teleclaude.memory.closure import build_memory_closure_consumer
@@ -113,7 +113,6 @@ async def _close_both(clients: ScopedClients[Any]) -> None:
 
 _EVENT_DB_REQUIRED_FOR_PIPELINE_CONTEXT = "_build_pipeline_context always runs after _init_event_db_storage"
 _RELAY_DELIVERY_PROCESSOR_NAME = "relay-delivery"
-_RELAY_DELIVERY_GROUP_PREFIX = "relay-delivery-"
 _RELAY_DELIVERY_CONSUMER_SUFFIX = "-relay-"
 _RELAY_DELIVERY_TASK_NAME = "relay-delivery-processor"
 _RELAY_DELIVERY_STARTED_EVENT = "Relay delivery processor started"
@@ -387,7 +386,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             pipeline=RelayDeliveryPipeline(dispatcher),
             codec=PLATFORM_ENTRY_CODEC,
             declared_name=_RELAY_DELIVERY_PROCESSOR_NAME,
-            group=_RELAY_DELIVERY_GROUP_PREFIX + computer_label,
+            group=relay_delivery_group(computer_label),
             consumer_name=computer_label + _RELAY_DELIVERY_CONSUMER_SUFFIX + str(os.getpid()),
             idle_threshold_ms=reliability.idle_threshold_ms,
             max_attempts=reliability.max_attempts,

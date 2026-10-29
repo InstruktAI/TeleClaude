@@ -18,11 +18,12 @@ import ctypes
 import os
 import socket
 import sys
-from typing import Final
+from typing import Any, Final
 
 import uvicorn
 from fastapi import FastAPI
 from instrukt_ai_logging import get_logger
+from redis.exceptions import ResponseError
 
 from teleclaude.config.declaration_changes import identity_declaration_watch_paths
 from teleclaude.config.machine import config
@@ -30,8 +31,10 @@ from teleclaude.core.config_watcher import ConfigWatcher
 from teleclaude.core.reconciliation.installation import loaded_release_revision, runs_active_release
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
 from teleclaude.events.producer import EventProducer
+from teleclaude.events.scope import EventScope, ScopedClients
 from teleclaude.events.scoped_redis import close_scoped_clients, scoped_redis_clients
 from teleclaude.hooks.inbound import install_inbound_routes
+from teleclaude.hooks.relay_delivery import relay_delivery_group
 from teleclaude.logging_config import setup_logging
 from teleclaude.services.project_catalog.ownership import load_project_ownership_index
 from teleclaude.services.project_catalog.service import get_project_catalog_service
@@ -91,6 +94,20 @@ def _listening_socket() -> tuple[socket.socket, bool]:
     return bound, False
 
 
+async def _ensure_relay_group(clients: ScopedClients[Any], stream: str) -> None:
+    """Create this computer's relay group before the first relay, so its daemon reads every event relayed here.
+
+    A daemon that creates the group itself, at the stream's end, after the receiver relayed, would skip that event.
+    """
+    try:
+        await clients.for_scope(EventScope.CLUSTER).xgroup_create(
+            stream, relay_delivery_group(config.computer.name), id="$", mkstream=True
+        )
+    except ResponseError as error:
+        if "BUSYGROUP" not in str(error):
+            raise
+
+
 async def _refresh_catalog() -> None:
     """Reload the project catalog after a registry or declaration change, as the daemon's watchers do."""
     get_project_catalog_service().refresh()
@@ -122,6 +139,7 @@ async def serve() -> None:
         redis_clients=clients,
         fact_resolver=EnvelopeFactResolver(session_id=lambda: None, ownership_index=load_project_ownership_index),
     )
+    await _ensure_relay_group(clients, producer.stream_name())
     # Ownership facts on relayed events come from the catalog, which this process keeps current itself.
     watcher_task = asyncio.create_task(ConfigWatcher(identity_declaration_watch_paths, _refresh_catalog).run())
     listener, handed_over = _listening_socket()
