@@ -6,6 +6,7 @@ description: Shared review execution contract for lanes, evidence, citations, se
 
 ## Required reads
 
+- @~/.teleclaude/docs/sdlc/bundle.md
 - @~/.teleclaude/docs/sdlc/policy/definition-of-done-lanes.md
 - @~/.teleclaude/docs/sdlc/policy/process-change-authority.md
 - @~/.teleclaude/docs/general/policy/human-involvement-recording.md
@@ -56,7 +57,10 @@ preferred classification or design alone does not reopen a decision.
 ### 1. Execute every applicable review lane
 
 **Build the lane set.** It has two sources, and every entry in it receives a
-disposition: applicable, or `N/A` with its reason.
+disposition: applicable, or `N/A` with its reason. A lane applies when the target
+or its affected dependencies give it a concrete subject, within the catalog's
+own triggers; it is `N/A` when its trigger finds none. A subject need not look
+defective: finding defects is the lane's work.
 
 - The general lanes of `sdlc/policy/definition-of-done-lanes`. The catalog owns
   each lane's focus, severity guidance, trigger conditions, and the Definition
@@ -85,12 +89,14 @@ qualifications, and verbatim excerpts of the owner rules the lane needs; the
 finding rules of step 4; and the result it returns: findings in the step 4
 format, or clean-pass evidence, plus any gap it could not close. On a disputed
 point the brief gives the evidence and the question, never the finding to reach
-or avoid, and it states no preferred verdict. The subagent reads beyond its
-brief wherever its lane requires and reports missing context as a gap. It
-investigates and returns evidence, and runs no command that acts as the session
-— reminders, stamps, sends, writes — because it carries your platform identity;
-every session act stays yours. Where the harness offers no native subagents, run
-the lanes as separate passes yourself.
+or avoid, and it states no preferred verdict. You hold the domain bundle and cut
+each brief from it. The brief is the lane subagent's complete mandate: it reads
+only the sources its question requires, follows only the Required reads those
+sources need, and reports missing context as a gap. It investigates and returns
+evidence, and runs no command that acts as the session — reminders, stamps,
+sends, writes — because it carries your platform identity; every session act
+stays yours. Where the harness offers no native subagents, run the lanes as
+separate passes yourself.
 
 For the tests lane, independently re-prove every triggered `TQ-*` predicate.
 Record evidence for each triggered predicate or a reasoned `N/A`. Evidence

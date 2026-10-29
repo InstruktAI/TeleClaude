@@ -7,6 +7,8 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:antigravity-native-subagents-allowed -->
+
 The background loop in the integration service that polls the hook
 outbox, claims entries in batches under a lock TTL, fans out per-session
 work to lightweight per-session worker tasks, and dispatches each entry
@@ -28,6 +30,40 @@ through one of three mutually-exclusive paths:
    awaited in-line (NOT fire-and-forget through the event bus) so that
    the per-session outbox worker only marks the entry delivered after
    the coordinator finishes.
+
+<!-- change:antigravity-native-subagents-allowed -->
+
+The background loop in the integration service that polls the hook
+outbox, claims entries in batches under a lock TTL, fans out per-session
+work to lightweight per-session worker tasks, and dispatches each entry
+through one of four mutually-exclusive paths:
+
+1. **Session-state mutation** (checkpoint-seen, native-metadata-update,
+   native-session-refresh) → routed to in-process mutation handlers. No
+   event-bus emit.
+
+2. **Agent-error** → handed to the runtime's error-publication capability,
+   preserving the error's existing reach and failure contract under
+   `local/projects/teleclaude/design/architecture/event-delivery`. The outbox
+   entry settles only after the runtime accepts publication; a publication
+   failure remains eligible for the existing retry contract.
+
+3. **All other agent events** (agent-session-start, user-prompt-submit,
+   tool-use, agent-stop) → built into an agent-event context and passed
+   directly to the local agent-event coordinator. The coordinator is
+   awaited in-line (NOT fire-and-forget through the event bus) so that
+   the per-session outbox worker only marks the entry delivered after
+   the coordinator finishes.
+
+4. **Checkpoint relay** → handed to control delivery as a checkpoint payload
+   for the entry's session
+   (`local/projects/teleclaude/design/architecture/checkpoint-system`). No
+   event-bus emit. A checkpoint-relay entry is a lifecycle entry of the
+   critical class: it is never evicted for staleness, throttled or coalesced,
+   and it settles only once control delivery has accepted the handoff; a
+   refused handoff is retryable.
+
+<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 The dispatcher exists because hook events are emitted from a short-lived
 subprocess and must reach the integration service's in-process state

@@ -21,12 +21,12 @@ re-prompt itself with the checkpoint instruction.
 
 <!-- planned:antigravity-native-subagents-allowed -->
 
-An Antigravity conversation that has invoked a provider-native subagent also
-reaches checkpoint evaluation at each of its own `Stop` events that is not
-idle. A required checkpoint answers that `Stop` with the continuation
-decision; otherwise it is dropped like any `Stop` that is not idle. The turn
-completion forwarded from a subagent's idle `Stop`
-(`local/projects/teleclaude/spec/hook-normalized-events`) is never evaluated.
+An Antigravity turn completion forwarded from a provider-native subagent's
+idle `Stop` (`local/projects/teleclaude/spec/hook-normalized-events`) is
+evaluated like every agent-stop event. A checkpoint it requires is never
+answered on that hook, which receives the provider's plain success response;
+it is relayed to the session's control delivery instead
+(`local/projects/teleclaude/design/architecture/checkpoint-system`).
 
 <!-- /planned:antigravity-native-subagents-allowed -->
 

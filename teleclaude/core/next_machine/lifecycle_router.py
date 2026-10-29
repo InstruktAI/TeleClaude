@@ -8,12 +8,13 @@ wakes the runner only when the session worked in a project checkout.
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.config.machine import config
 from teleclaude.core.next_machine.lifecycle_runner import (
     default_session_runner,
     project_path_from_event_payload,
@@ -60,21 +61,17 @@ _MISSING_PROJECT_EVENT = "Workflow runner wake-up skipped: missing project ident
 _ENDED_OUTSIDE_CHECKOUT_EVENT = "Session-ended wake-up skipped: the session did not work in a project checkout"
 
 
-async def _wake_every_local_checkout(trigger: str) -> None:
-    """Wake the lifecycle runner for each project checkout on this computer."""
-    client = TelecAPIClient(daemon_credential=True)
-    await client.connect()
-    try:
-        projects = await client.list_projects()
-    finally:
-        await client.close()
-    for project in projects:
-        if project.computer and project.computer != config.computer.name:
+async def _wake_every_local_checkout(trigger: str, discover_projects: Callable[[], list[str]]) -> None:
+    """Wake the lifecycle runner for each project checkout on this computer.
+
+    The registered projects are enumerated through the discovery the router was built with, not through
+    this daemon's own API; waking the runner for each of them is unchanged.
+    """
+    for project_path in await asyncio.to_thread(discover_projects):
+        if not is_project_checkout(project_path):
+            logger.debug(_NOT_A_CHECKOUT_EVENT, project_path=project_path)
             continue
-        if not is_project_checkout(project.path):
-            logger.debug(_NOT_A_CHECKOUT_EVENT, project_path=project.path)
-            continue
-        await run_lifecycle_runner(project.path, trigger=trigger, client_factory=default_session_runner)
+        await run_lifecycle_runner(project_path, trigger=trigger, client_factory=default_session_runner)
 
 
 def _checkout_of_ended_session(project_path: str | None) -> str | None:
@@ -85,14 +82,14 @@ def _checkout_of_ended_session(project_path: str | None) -> str | None:
     return resolved if is_project_checkout(resolved) else None
 
 
-async def _route(event: ReceivedEvent) -> None:
+async def _route(event: ReceivedEvent, *, discover_projects: Callable[[], list[str]]) -> None:
     """Wake the lifecycle runner for the project an event concerns; the minute tick wakes every local checkout."""
     if not get_shutdown_drain().is_open:
         # Waking the runner starts new work; the next process's minute tick wakes it again.
         logger.debug("lifecycle runner wake-up paused while draining", event=event.type)
         return
     if event.type == _SCHEDULER_TICK:
-        await _wake_every_local_checkout(event.type)
+        await _wake_every_local_checkout(event.type, discover_projects)
         return
     if event.type == _TODO_CREATED:
         created = TodoCreatedData.model_validate(event.data)
@@ -111,13 +108,16 @@ async def _route(event: ReceivedEvent) -> None:
     await run_lifecycle_runner(project_path, trigger=event.type, client_factory=default_session_runner)
 
 
-def build_lifecycle_router_consumer() -> Consumer:
-    """The consumer that wakes the lifecycle runner on this computer's workflow events."""
+def build_lifecycle_router_consumer(discover_projects: Callable[[], list[str]]) -> Consumer:
+    """The consumer that wakes the lifecycle runner on this computer's workflow events.
+
+    ``discover_projects`` enumerates this computer's registered project roots for the minute tick.
+    """
     return Consumer(
         name=LIFECYCLE_ROUTER_CONSUMER,
         interest=Interest(
             types=(*(TypePattern(declared.type_name()) for declared in _TRIGGER_TYPES), *_SESSION_ENDED_PATTERNS),
             own_computer_only=True,
         ),
-        handler=_route,
+        handler=partial(_route, discover_projects=discover_projects),
     )

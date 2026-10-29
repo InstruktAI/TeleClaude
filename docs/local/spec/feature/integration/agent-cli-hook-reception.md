@@ -126,9 +126,21 @@ And the session is not reported complete while provider work remains active
   with the third-party webhook subsystem.
 - Consumes session-map state owned by the `agent_runtime` context
   (sessions and native-session-id mapping).
+
+<!-- planned-change:antigravity-native-subagents-allowed -->
+
 - Emits checkpoint-seen, native-metadata-update, native-session-refresh,
   agent-session-start, user-prompt-submit, tool-use, agent-stop, agent-idle,
   and agent-error entries into the hook outbox (see `hook-event-outbox`).
+
+<!-- change:antigravity-native-subagents-allowed -->
+
+- Emits checkpoint-seen, checkpoint-relay, native-metadata-update,
+  native-session-refresh, agent-session-start, user-prompt-submit, tool-use,
+  agent-stop, agent-idle, and agent-error entries into the hook outbox (see
+  `hook-event-outbox`).
+
+<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 ## Known caveats
 
@@ -175,9 +187,9 @@ And the session is not reported complete while provider work remains active
   forwarded as its root conversation's turn completion
   (`local/projects/teleclaude/spec/hook-normalized-events`); the response to
   that `Stop` is the plain success response and never a checkpoint
-  continuation; the turn's checkpoint boundary is the invoking conversation's
-  own `Stop`
-  (`local/projects/teleclaude/spec/feature/integration/agent-stop-checkpoint-blocking`).
+  continuation; a checkpoint the forwarded completion requires is relayed to
+  control delivery
+  (`local/projects/teleclaude/design/architecture/checkpoint-system`).
 - Recognizing a subagent depends on Antigravity writing its origin record
   before the subagent's first hook, and Antigravity documents neither the record
   nor its timing. A subagent hook that arrives before its record is handled as

@@ -14,6 +14,9 @@ event on the platform event stream rather than on `cluster.webhook.*`, and
 every request is signed. The proxy-fronted loopback ingress and per-route
 signature trust stand.
 
+Superseded in part by ADR-0148: the webhook routes are served by a receiver of
+their own beside the daemon, not by the daemon's localhost API server.
+
 ## Context
 
 ADR-0028 designated a single ingress that binds its webhook server to a LAN/router address, with the router port-forwarding public traffic and in-process source restriction to the router. That decision assumed the daemon is itself the public surface.

@@ -37,6 +37,18 @@ logger = get_logger(__name__)
 
 # The public platform stream is the default for existing producer callers.
 DEFAULT_EVENT_STREAM = "teleclaude:events"
+# Claim the delivery and append it in one step, so a claim never stands without its event (ADR-0148).
+_CLAIM_AND_APPEND_SCRIPT = """
+if not redis.call('SET', KEYS[2], '1', 'NX', 'EX', ARGV[1]) then
+  return false
+end
+local command = {'XADD', KEYS[1], 'MAXLEN', '~', ARGV[2], '*'}
+for index = 3, #ARGV do
+  command[#command + 1] = ARGV[index]
+end
+return redis.call(unpack(command))
+"""
+_CLAIM_KEY_TEMPLATE = "teleclaude:ingress:claim:{identity}"
 _PRODUCER_MISSING_EVENT_TEMPLATE = "event emitted but EventProducer not configured: event=%s stream=%s"
 _PRODUCER_NOT_CONFIGURED_TEMPLATE = "EventProducer not configured for stream {stream}. Call configure_producer() first."
 _CONFIGURED_PRODUCER_ACCESS_EVENT = "configured producer access"
@@ -95,6 +107,37 @@ class EventProducer:
         entry = encode(received, legacy, omit_notification_facts=omit_notification_facts)
         scope = EventScope.CLUSTER if isinstance(event, RelayedEvent) else scope_of(received.type)
         return await self._append(received.type, entry, received.subject, scope)
+
+    async def emit_once(self, event: RelayedEvent, legacy: LegacyFacts, /, *, claim: str, ttl_s: int) -> str | None:
+        """Append a relayed event only when ``claim`` is new, claiming it in the same atomic step.
+
+        Returns the stream entry id, or ``None`` when the claim was already taken, which means another
+        receipt of the same delivery has relayed it. The claim is kept for ``ttl_s`` seconds.
+        """
+        received = self._received_event(event)
+        omit_notification_facts = await self._notification_facts_unread()
+        entry = encode(received, legacy, omit_notification_facts=omit_notification_facts)
+        client = self._clients.for_scope(EventScope.CLUSTER)
+        fields = [part for pair in entry.items() for part in pair]
+        try:
+            entry_id = await client.eval(
+                _CLAIM_AND_APPEND_SCRIPT,
+                2,
+                self._stream,
+                _CLAIM_KEY_TEMPLATE.format(identity=claim),
+                ttl_s,
+                self._maxlen,
+                *fields,
+            )
+        except Exception:
+            logger.exception("EventProducer.emit_once FAILED: event=%s", received.type)
+            raise
+        if entry_id is None:
+            logger.info("EventProducer.emit_once duplicate: event=%s claim=%s", received.type, claim)
+            return None
+        result = entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
+        logger.info("EventProducer.emit_once OK: event=%s entry_id=%s", received.type, result)
+        return result
 
     async def emit_internal(self, event: PlatformEvent[Any, Any], legacy: LegacyFacts, /) -> str:
         """Append a typed runtime fact with its earlier wire form while the fleet still requires it."""
