@@ -38,19 +38,18 @@ producers for every procedure and agent.
 
 - **Single public node.** One computer is the ingress; it need not be the
   cluster master. No other computer serves the inbound endpoints.
-- **Intake outlives the daemon.** Once the ingress turns on its receiver
-  (`computer.ingress_receiver`), the receiver is a process of its own under its
-  own service unit and the daemon serves no inbound endpoint; until then the
-  daemon serves them on the same port. Changing the setting hands the port over
-  in either direction before the daemon restarts to apply it. The
+- **Intake outlives the daemon.** On the ingress, the standalone receiver
+  serves the inbound endpoints while its service units are installed, and the
+  daemon serves them while they are not. The installation deploys or withdraws
+  the units, as `computer.ingress_receiver` says, at the next start, restart or
+  install of that computer, so a configuration edit alone moves nothing. The
   receiver keeps receiving while the daemon restarts or an install stops it,
   and restarts itself when the active release changes or a validated machine
   configuration change needs a restart; an invalid change leaves it running on
   its configuration. On a computer that is no longer the ingress it exits
-  before serving. Its
-  service unit holds
-  the listening socket and hands it to each receiver process, so a connection
-  that arrives while the receiver restarts waits instead of being refused.
+  before serving. Its service unit holds the listening socket and hands it to
+  each receiver process, so a connection that arrives while the receiver
+  restarts waits instead of being refused.
 - **Narrow reachability.** The ingress serves plain HTTP on loopback only. A
   reverse proxy on the same computer is the public surface: it terminates TLS,
   restricts source and forwards only the inbound path prefix to the ingress.
@@ -153,8 +152,8 @@ Then each computer's WhatsApp conversation handler receives the message once
 ## Known caveats
 
 - **The ingress is a single point of external-event intake.** While the server
-  of its inbound endpoints is down (the daemon, or the receiver's unit once the
-  receiver is turned on), the cluster processes no external events but is not
+  of its inbound endpoints is down (the daemon, or the receiver's unit while its
+  units are installed), the cluster processes no external events but is not
   otherwise broken; a provider that does not redeliver a failed request
   loses that event.
 - **A restart is bounded by the provider's timeout.** A connection queued while
