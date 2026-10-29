@@ -37,34 +37,6 @@ _LATEST_GENERATION_SQL: Final = f"""(
     ORDER BY latest.created_at DESC LIMIT 1
 )"""
 
-_SELECT_PRESENT_TABLES_SQL: Final = f"SELECT name FROM {_SOURCE}.sqlite_master WHERE type = 'table'"
-_SELECT_SOURCE_DDL_SQL: Final = f"""
-SELECT name, sql FROM {_SOURCE}.sqlite_master
-WHERE tbl_name = ? AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%'
-ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name
-"""
-_SELECT_TARGET_OBJECTS_SQL: Final = "SELECT name FROM sqlite_master"
-_SELECT_SEQUENCE_SQL: Final = f"SELECT seq FROM {_SOURCE}.sqlite_sequence WHERE name = ?"
-_UPDATE_SEQUENCE_SQL: Final = f"UPDATE {_TARGET}.sqlite_sequence SET seq = max(seq, ?) WHERE name = ?"
-_INSERT_SEQUENCE_SQL: Final = f"INSERT INTO {_TARGET}.sqlite_sequence (name, seq) VALUES (?, ?)"
-_ATTACH_SQL: Final = f"ATTACH DATABASE ? AS {_TARGET}"
-_DETACH_SQL: Final = f"DETACH DATABASE {_TARGET}"
-_DATABASE_LIST_SQL: Final = "PRAGMA database_list"
-
-_INSERT_RETAINED_SQL: Final = (
-    "INSERT OR IGNORE INTO {target}.{table} SELECT s.* FROM {source}.{table} AS s WHERE {keep}"
-)
-_COUNT_SQL: Final = "SELECT count(*) FROM {source}.{table} AS s WHERE {keep}"
-_COUNT_ALL_SQL: Final = "SELECT count(*) FROM {source}.{table}"
-_COUNT_MISSING_SQL: Final = (
-    "SELECT count(*) FROM {source}.{table} AS s WHERE {keep} "
-    "AND NOT EXISTS (SELECT 1 FROM {target}.{table} AS d WHERE {same_key})"
-)
-_DROP_SQL: Final = "DROP TABLE {source}.{table}"
-
-_MOVED_EVENT: Final = "store_tables_moved"
-_VERIFY_FAILED: Final = "{store}: {missing} retained {table} row(s) are missing from the target; source tables kept"
-
 
 class _Table(NamedTuple):
     """One moved table: its primary key and the rows of it the retention window keeps."""
@@ -149,7 +121,7 @@ _SEQUENCED_TABLES: Final = frozenset({"reminder_entries"})
 
 async def _main_directory(db: aiosqlite.Connection) -> Path | None:
     """Return the directory of the connection's main database file, or None for a database with no file."""
-    async with db.execute(_DATABASE_LIST_SQL) as cursor:
+    async with db.execute("PRAGMA database_list") as cursor:
         for _, name, file in await cursor.fetchall():
             if name == _SOURCE and file:
                 return Path(file).parent
@@ -157,7 +129,7 @@ async def _main_directory(db: aiosqlite.Connection) -> Path | None:
 
 
 async def _present_tables(db: aiosqlite.Connection) -> set[str]:
-    async with db.execute(_SELECT_PRESENT_TABLES_SQL) as cursor:
+    async with db.execute(f"SELECT name FROM {_SOURCE}.sqlite_master WHERE type = 'table'") as cursor:
         return {row[0] for row in await cursor.fetchall()}
 
 
@@ -171,10 +143,17 @@ async def _create_target_objects(db: aiosqlite.Connection, target_path: Path, ta
     """Create every table and index the target lacks, from the source's own DDL."""
     source_ddl: list[tuple[str, str]] = []
     for table in tables:
-        async with db.execute(_SELECT_SOURCE_DDL_SQL, (table.name,)) as cursor:
+        async with db.execute(
+            f"""
+            SELECT name, sql FROM {_SOURCE}.sqlite_master
+            WHERE tbl_name = ? AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%'
+            ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name
+            """,
+            (table.name,),
+        ) as cursor:
             source_ddl.extend((row[0], row[1]) for row in await cursor.fetchall())
     async with aiosqlite.connect(target_path) as target:
-        async with target.execute(_SELECT_TARGET_OBJECTS_SQL) as cursor:
+        async with target.execute("SELECT name FROM sqlite_master") as cursor:
             existing = {row[0] for row in await cursor.fetchall()}
         for name, statement in source_ddl:
             if name not in existing:
@@ -184,13 +163,15 @@ async def _create_target_objects(db: aiosqlite.Connection, target_path: Path, ta
 
 async def _carry_sequence(db: aiosqlite.Connection, table: str) -> None:
     """Continue the target's AUTOINCREMENT sequence past every id the source ever issued."""
-    async with db.execute(_SELECT_SEQUENCE_SQL, (table,)) as cursor:
+    async with db.execute(f"SELECT seq FROM {_SOURCE}.sqlite_sequence WHERE name = ?", (table,)) as cursor:
         source_row = await cursor.fetchone()
     if source_row is None:
         return
-    updated = await db.execute(_UPDATE_SEQUENCE_SQL, (source_row[0], table))
+    updated = await db.execute(
+        f"UPDATE {_TARGET}.sqlite_sequence SET seq = max(seq, ?) WHERE name = ?", (source_row[0], table)
+    )
     if updated.rowcount == 0:
-        await db.execute(_INSERT_SEQUENCE_SQL, (table, source_row[0]))
+        await db.execute(f"INSERT INTO {_TARGET}.sqlite_sequence (name, seq) VALUES (?, ?)", (table, source_row[0]))
 
 
 async def _move_store(db: aiosqlite.Connection, store: _Store, directory: Path, params: Mapping[str, str]) -> None:
@@ -203,15 +184,18 @@ async def _move_store(db: aiosqlite.Connection, store: _Store, directory: Path, 
     target_path = directory / store.file_name
     await _create_target_objects(db, target_path, tables)
 
-    await db.execute(_ATTACH_SQL, (str(target_path),))
+    await db.execute(f"ATTACH DATABASE ? AS {_TARGET}", (str(target_path),))
     try:
         carried: dict[str, int] = {}
         discarded: dict[str, int] = {}
         for table in tables:
-            fields = {"source": _SOURCE, "target": _TARGET, "table": table.name, "keep": table.keep}
-            await db.execute(_INSERT_RETAINED_SQL.format(**fields), params)
-            kept = await _scalar(db, _COUNT_SQL.format(**fields), params)
-            total = await _scalar(db, _COUNT_ALL_SQL.format(**fields), params)
+            await db.execute(
+                f"INSERT OR IGNORE INTO {_TARGET}.{table.name} SELECT s.* FROM {_SOURCE}.{table.name} AS s "
+                f"WHERE {table.keep}",
+                params,
+            )
+            kept = await _scalar(db, f"SELECT count(*) FROM {_SOURCE}.{table.name} AS s WHERE {table.keep}", params)
+            total = await _scalar(db, f"SELECT count(*) FROM {_SOURCE}.{table.name}", params)
             carried[table.name] = kept
             discarded[table.name] = total - kept
             if table.name in _SEQUENCED_TABLES:
@@ -220,25 +204,26 @@ async def _move_store(db: aiosqlite.Connection, store: _Store, directory: Path, 
 
         for table in tables:
             same_key = " AND ".join(f"d.{column} = s.{column}" for column in table.key)
-            fields = {
-                "source": _SOURCE,
-                "target": _TARGET,
-                "table": table.name,
-                "keep": table.keep,
-                "same_key": same_key,
-            }
-            missing = await _scalar(db, _COUNT_MISSING_SQL.format(**fields), params)
+            missing = await _scalar(
+                db,
+                f"SELECT count(*) FROM {_SOURCE}.{table.name} AS s WHERE {table.keep} "
+                f"AND NOT EXISTS (SELECT 1 FROM {_TARGET}.{table.name} AS d WHERE {same_key})",
+                params,
+            )
             if missing:
-                raise RuntimeError(_VERIFY_FAILED.format(store=store.file_name, missing=missing, table=table.name))
+                raise RuntimeError(
+                    f"{store.file_name}: {missing} retained {table.name} row(s) are missing from the target; "
+                    "source tables kept"
+                )
 
         for table in tables:
-            await db.execute(_DROP_SQL.format(source=_SOURCE, table=table.name))
+            await db.execute(f"DROP TABLE {_SOURCE}.{table.name}")
         await db.commit()
     finally:
         # A failed run leaves no open transaction to block the detach; the source tables are still in place.
         await db.rollback()
-        await db.execute(_DETACH_SQL)
-    logger.info(_MOVED_EVENT, store=store.file_name, carried=carried, discarded=discarded)
+        await db.execute(f"DETACH DATABASE {_TARGET}")
+    logger.info("store_tables_moved", store=store.file_name, carried=carried, discarded=discarded)
 
 
 async def up(db: aiosqlite.Connection) -> None:

@@ -94,7 +94,6 @@ _GITHUB_STORE_REFRESH_FAILED = "github_store_refresh_failed"
 _INVALID_WORKFLOW_STORE_SWEEP = "Removed-todo retention sweep skipped invalid workflow store"
 
 _SOFT_DELETING_EXPIRED_EVENT = "maintenance.expired_session.soft_deleting"
-_CLOSED_SESSION_CLEANUP_FAILED_EVENT = "maintenance.closed_session_cleanup.failed"
 
 
 # Closed agent-runtime session retention keeps recent creator-session links
@@ -629,7 +628,7 @@ class MaintenanceService:
             try:
                 await self._cleanup_closed_session(session, now)
             except Exception:  # supervision boundary: one session's failure never ends the pass
-                logger.error(_CLOSED_SESSION_CLEANUP_FAILED_EVENT, session_id=session.session_id, exc_info=True)
+                logger.error("maintenance.closed_session_cleanup.failed", session_id=session.session_id, exc_info=True)
 
     async def _cleanup_closed_session(self, session: Session, now: datetime) -> None:
         if session.closed_at is None:

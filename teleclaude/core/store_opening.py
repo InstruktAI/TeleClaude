@@ -28,8 +28,6 @@ from teleclaude.project_manifest import load_roots
 logger = get_logger(__name__)
 
 _PROJECT_STORE_OPEN_FAILED = "project_todo_store_open_failed"
-_RETENTION_PASS_FAILED = "store_opening_retention_failed"
-_COMPACTION_FAILED = "store_opening_compaction_failed"
 
 
 @dataclass(frozen=True)
@@ -48,14 +46,14 @@ async def open_stores() -> StoreOpening:
     try:
         await db.prune_runtime_retention(datetime.now(UTC))
     except Exception:  # supervision boundary: housekeeping never keeps the stores from opening
-        logger.error(_RETENTION_PASS_FAILED, exc_info=True)
+        logger.error("store_opening_retention_failed", exc_info=True)
     await get_event_db()
     ensure_mirrors_store()
     # Compaction rewrites a file under its write lock, so it runs only here, while nothing is served.
     try:
         await db.compact_runtime_databases_if_needed()
     except Exception:  # supervision boundary: housekeeping never keeps the stores from opening
-        logger.error(_COMPACTION_FAILED, exc_info=True)
+        logger.error("store_opening_compaction_failed", exc_info=True)
     failed: list[Path] = []
     for root in load_roots():
         try:

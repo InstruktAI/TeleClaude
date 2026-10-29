@@ -30,7 +30,6 @@ _ARCHIVE_JSON_PATH = f"$.{ARCHIVE_SECTION}"
 _ARCHIVE_SOURCE_JSON_PATH = f"$.{ARCHIVE_SECTION}.{ArchiveStampField.SOURCE_IDENTITY}"
 _ARCHIVED_TRANSITION_REASON = "archived"
 _EMPTY_TITLE = ""
-_RUNTIME_RETENTION_PRUNED_EVENT = "runtime_retention.pruned"
 
 
 def not_archive_record() -> ColumnElement[bool]:
@@ -85,7 +84,7 @@ class DbSessionRetentionMixin:
             cutoff_iso=cutoff_iso, retained_session_ids=retained_session_ids
         )
         logger.debug(
-            _RUNTIME_RETENTION_PRUNED_EVENT,
+            "runtime_retention.pruned",
             control_payloads=control_payloads,
             procedure_events=procedure_events,
             send_intents=send_intents,
