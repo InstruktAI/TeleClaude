@@ -40,9 +40,8 @@ another session, a notification, or a reminder firing. A session whose agent is
 `active`, `blocked` or `stalled`, or whose status is not yet known, is not idle.
 
 A designated conversation session that the conversation idle cycle maintains
-(`local/projects/teleclaude/spec/feature/agent_runtime/conversation-continuity`)
-is not parked automatically; that cycle already frees its runtime on its own
-terms.
+is parked like any other session. Its compaction and close remain that cycle's
+(`local/projects/teleclaude/spec/feature/agent_runtime/conversation-continuity`).
 
 Parking a session never closes it. Giving up the runtime is not the agent
 exiting, so no close, close notification or session-ended processing follows
