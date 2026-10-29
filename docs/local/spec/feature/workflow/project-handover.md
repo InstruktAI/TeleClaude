@@ -9,7 +9,7 @@ delivered_by:
 ## What it is
 
 The behavioral contract for handing a project on the GitHub workflow store from
-its active computer to another computer that holds a checkout of it. A person,
+its active computer to another computer. A person,
 or an agent acting for them, runs one command from any computer, naming the
 project and the computer that is to take it over.
 
@@ -76,9 +76,15 @@ driven; it relies on driver admission for everything a start decides.
   state. Once a todo has moved, the giving computer can no longer change its
   state, its artifacts or its work. When it is back, it ends its orchestrators
   for the project.
-- **A receiving computer that does not answer, or holds no checkout of the
-  project,** is refused before anything changes, naming why. The active
-  computer and every orchestrator stay as they were.
+- **A receiving computer without a checkout of the project** gets one as part
+  of the handover: the project's repository is checked out into the home of the
+  project's declared owner on that computer, in the place where that owner's
+  projects live, and adopted there
+  (`local/projects/teleclaude/spec/feature/config/project-ownership`,
+  `local/projects/teleclaude/spec/feature/config/project-registry`).
+- **A receiving computer that does not answer, or on which that checkout cannot
+  be made,** is refused before anything changes, naming why. The active computer
+  and every orchestrator stay as they were.
 - **Handing a project to the computer that is already active** changes nothing
   and says so.
 
@@ -105,11 +111,21 @@ Then the always-on computer drives each of those todos at once, from its last sa
 And once the laptop wakes, it changes none of those todos
 ```
 
-#### UC-PH5: A computer that cannot take the project is refused
+#### UC-PH6: Hand a project over to a computer that has never held it
 
 ```gherkin
 Given a person whose project's active computer is their laptop
-When the person hands the project over to a computer that does not answer or has no checkout of it
+And their always-on computer holds no checkout of the project
+When the person hands the project over to their always-on computer
+Then the always-on computer holds the project in its owner's home, as one of its projects
+And the always-on computer continues the project's todos as in any handover
+```
+
+#### UC-PH7: A computer that cannot take the project is refused
+
+```gherkin
+Given a person whose project's active computer is their laptop
+When the person hands the project over to a computer that does not answer
 Then the handover is refused, naming why
 And the laptop stays the project's active computer, with its orchestrators running as before
 ```
