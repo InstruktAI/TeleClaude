@@ -52,8 +52,9 @@ dependencies, including request-surface binding where required.
 A configured event Redis that does not answer never stops startup
 (`local/projects/teleclaude/policy/daemon-availability`). Before startup
 continues, the daemon records and logs which scope's Redis did not answer.
-While that lasts, the daemon's readiness answer reports it serving and names
-the Redis that does not answer. What the event consumers on that Redis do while
+While that lasts, the daemon's readiness answer names the Redis that does not
+answer, and an unanswering Redis alone never makes it report the daemon as not
+serving; draining is reported as it is at any other time. What the event consumers on that Redis do while
 it is away and once it answers belongs to
 `local/projects/teleclaude/design/architecture/event-delivery`.
 <!-- /planned:daemon-startup-aborts-without-redis -->

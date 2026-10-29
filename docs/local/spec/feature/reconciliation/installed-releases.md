@@ -100,11 +100,12 @@ starts the daemon on it, under the guarantees of
 <!-- planned:daemon-startup-aborts-without-redis -->
 
 - **Degraded serving.** A daemon whose readiness answer reports it serving
-  while an event Redis does not answer is serving
+  while naming an event Redis that does not answer is serving
   (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).
-  `telec app start` and `telec app restart` succeed on it, and an install
-  verifying it completes. Each reports which Redis does not answer, as
-  `telec app status` does while that lasts.
+  `telec app start` succeeds on it and reports which Redis does not answer, and
+  an install verifying it completes. `telec app status` reports which Redis does
+  not answer while it lasts. `telec app restart` keeps its own outcome and leaves
+  health to `telec app status`.
 
 <!-- /planned:daemon-startup-aborts-without-redis -->
 
