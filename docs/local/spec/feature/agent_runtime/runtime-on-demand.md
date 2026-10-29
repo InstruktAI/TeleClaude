@@ -27,11 +27,9 @@ parked.
 A session is parked in one of two ways:
 
 - **Manually.** An operator parks an open session they want to keep without it
-  costing anything meanwhile. Parking applies whatever the agent is doing; an
-  agent parked during a turn loses that turn the way a restart does, and its
-  conversation is kept.
-- **Automatically.** An open session whose agent has stayed `idle` for the
-  parking idle threshold is parked, unless a client is attached to its host
+  costing anything meanwhile.
+- **Automatically.** An open session whose agent has stayed `idle` for twenty
+  minutes is parked, unless a client is attached to its host
   pane. A session someone is watching is never parked automatically.
 
 The idle period runs from the moment the agent last became `idle` and restarts
@@ -81,7 +79,7 @@ And the session is not closed
 #### UC-ROD2: An operator's waiting sessions stop costing resources
 
 ```gherkin
-Given an operator's open session whose agent has been idle for the parking idle threshold
+Given an operator's open session whose agent has been idle for twenty minutes
 When no client is attached to the session's host pane
 Then the session is parked
 And a session whose host pane has a client attached is not parked
@@ -118,9 +116,9 @@ And a later delivery or the operator's choice to continue it revives it in the s
 ## Known caveats
 
 - **Revival is a cold start.** The agent CLI starts again, which takes a few
-  seconds and some CPU; the parking idle threshold exists so that a session in
+  seconds and some CPU; the twenty-minute idle period exists so that a session in
   active use between messages is not parked.
 - **A session that keeps waking itself is not parked automatically.** An agent
   turn started by a reminder firing restarts the idle period, so a session whose
-  recurring reminder fires more often than the parking idle threshold stays
+  recurring reminder fires more often than every twenty minutes stays
   unparked. It can still be parked manually, and its next firing revives it.
