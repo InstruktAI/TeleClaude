@@ -346,8 +346,14 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         command_name: str,
         payload: dict[str, object],  # guard: loose-dict - Command payload for UI adapters
         handler: Callable[[], Awaitable[object]],
+        *,
+        retain_refusal: bool = False,
     ) -> object:
-        """Run command with UI pre/post handling and broadcast to other adapters."""
+        """Run command with UI pre/post handling and broadcast to other adapters.
+
+        A draining refusal is answered to the sender and re-raised. A caller whose place is recovered after the
+        restart sets ``retain_refusal``: the refusal is re-raised without a notice, so the message stays unprocessed.
+        """
         if message_id:
             await self.client.pre_handle_command(session, metadata.origin)
 
@@ -358,7 +364,8 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                 await self.send_error_feedback(session.session_id, str(exc))
             raise
         except ShutdownRefusal:
-            await self.answer_shutdown_refusal(session.session_id)
+            if not retain_refusal:
+                await self.answer_shutdown_refusal(session.session_id)
             raise
 
         if message_id:
@@ -367,7 +374,10 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         return result
 
     async def answer_shutdown_refusal(self, session_id: str) -> None:
-        """Tell the sender their input was refused because the daemon is restarting, so they can resend it."""
+        """Tell the sender their input was refused because the daemon is restarting, so they can resend it.
+
+        For an ingress that has no recovery of its own; a place recovered after the restart is not told to resend.
+        """
         await self.send_error_feedback(session_id, _SHUTDOWN_REFUSAL_NOTICE)
 
     async def answer_refusal_of[T](self, session_id: str, work: Awaitable[T]) -> T | None:
