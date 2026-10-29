@@ -55,9 +55,10 @@ from teleclaude.core.todos_db._exceptions import (
     OperationFailure,
 )
 from teleclaude.core.todos_db._write_admission import WorkingCopyWriteRefused
+from teleclaude.core.workflow_store.github import GitHubIdentityRefused
 from teleclaude.core.workflow_store.github_active_computer import read_active_computer
 from teleclaude.core.workflow_store.github_io_transport import GitHubIORefused
-from teleclaude.core.workflow_store.github_store import refresh_github_workflow_store
+from teleclaude.core.workflow_store.github_store import GitHubStoreSelectionRefused, refresh_github_workflow_store
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.types.commands import RelayedResponse
 from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, ClaimStatus
@@ -425,11 +426,12 @@ async def resolve_admitting_computer(project_root: Path, slug: str) -> str | Non
     """Name the project's active computer when it is not this one; ``None`` when this computer is it.
 
     Raises :class:`AdmissionUnavailable` when the project names no active computer, naming the act that
-    sets it, or when GitHub does not answer the read.
+    sets it, when GitHub does not answer the read, or when this computer cannot select the project's
+    GitHub workflow store to make it.
     """
     try:
         active = await read_active_computer(project_root)
-    except GitHubIORefused as refused:
+    except (GitHubIORefused, GitHubIdentityRefused, GitHubStoreSelectionRefused) as refused:
         raise AdmissionUnavailable(
             slug=slug, reason=AdmissionUnavailableReason.ACTIVE_COMPUTER_UNREADABLE, detail=str(refused)
         ) from refused
