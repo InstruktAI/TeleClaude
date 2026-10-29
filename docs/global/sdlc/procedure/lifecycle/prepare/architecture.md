@@ -17,6 +17,7 @@ dispatch:
 - @~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 - @~/.teleclaude/docs/sdlc/principle/architectural-defaults.md
 - @~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
+- @~/.teleclaude/docs/sdlc/policy/state-storage.md
 
 ## Goal
 
@@ -142,7 +143,10 @@ Before choosing a mechanism, settle two things from the substrate, as
   changes, and where the platform already keeps facts of that kind — a
   configuration fact, a domain store's record, a runtime coordination value —
   and place it there. A fact decided by intent and changed by a deliberate act
-  is configuration, whatever component reads it.
+  is configuration, whatever component reads it. Durable state the design
+  introduces, relocates or changes is classified and placed under
+  `sdlc/policy/state-storage`: its nature, owner and loss cost, then the
+  medium, write isolation, scope and lifecycle that follow from them.
 - **Each external system the design depends on.** Inventory the primitives it
   offers for the problem: where state can live and who may change it, what
   guarantees its writes give, how it delivers events, and what identity and
@@ -188,7 +192,7 @@ restates the other; live contracts are not decision journals:
 | **Responsibility ownership** | For every changed behavior, invariant, state transition, or vocabulary decision: its single bounded-context owner, its architectural layer inside that context, and the published contract used by every consumer. |
 | **Event flow changes** | Events produced or consumed, compatibility implications, and reuse of existing taxonomy where it serves the target. |
 | **Surface changes** | User-facing and external surfaces, named by the product outcome and the applicable scaffold or justified alternative. |
-| **State ownership** | State introduced or modified, its single owner, and the explicit contracts through which others observe it. |
+| **State ownership and storage** | State introduced or modified, its single owner, and the explicit contracts through which others observe it; for durable state, its classification and placement under `sdlc/policy/state-storage`. |
 | **Platform defaults assessed** | Defaults and flavors reused where they fit; gaps, adaptations, and deliberate divergences with their evidenced trade-offs. A missing flavor is a design constraint to resolve, not automatic permission to hack or an automatic veto on the target. |
 
 | **Prior art & adopt-vs-build** | For every external system the design depends on, its primitives inventory from step 1a; and when the design introduces infrastructure or a security boundary of its own: the reference implementations, current vendor documentation, and at least one comparable production architecture surveyed, and the adopt-vs-build decision with its reason. Bespoke infrastructure or a custom security mechanism with no prior-art evidence is a blocking finding (`general/principle/grounding`). |

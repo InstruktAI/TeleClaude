@@ -180,8 +180,7 @@ identity, status or transcript of any session
 a subagent's `Stop` with `fullyIdle == true`: it is forwarded as the
 `agent_stop` of the subagent's root conversation, the one at the top of its
 invocation chain, carrying that conversation's identity and none of the
-subagent's, and it never reports a failure. The observed provider behavior
-this rests on is recorded in `docs/third-party/antigravity-cli/sub-agents.md`.
+subagent's, and it never reports a failure.
 
 <!-- /planned:antigravity-native-subagents-allowed -->
 
@@ -320,3 +319,9 @@ Ordering model:
 ## See Also
 
 - docs/local/spec/feature/agent_runtime/session-input-delivery.md — startup input readiness is separate from normalized lifecycle activation.
+
+<!-- planned:antigravity-native-subagents-allowed -->
+
+- docs/third-party/antigravity-cli/sub-agents.md — the observed Antigravity subagent records and idle reporting that subagent hook handling rests on.
+
+<!-- /planned:antigravity-native-subagents-allowed -->

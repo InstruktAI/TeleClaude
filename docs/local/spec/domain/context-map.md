@@ -84,6 +84,8 @@ contracts and never creates shared ownership.
   event's origin, and narrow their audience within `identity`'s reach without
   widening it. They send through `integration`'s own person-addressed delivery.
 
+<!-- planned-change:lean-git-commit-scope -->
+
 - The sealed commit surface (`agent_runtime`) reads tier answers from `config`
   at two coordinates — the repository root's declared tier, and the acting
   invocation context root's invocation-context and project-subscription
@@ -96,6 +98,22 @@ contracts and never creates shared ownership.
   membership — which of the repository's paths are retained; `agent_runtime`
   asks, and neither decides membership nor substitutes an answer where none is
   published.
+
+<!-- change:lean-git-commit-scope -->
+
+- The sealed commit surface (`agent_runtime`) reads tier answers from `config`
+  at two coordinates — the repository root's declared tier, and the acting
+  invocation context root's invocation-context and project-subscription
+  answers. `config` owns those facts and their axes, which grant no operation;
+  `agent_runtime` owns the decisions taken from them — seal coverage, commit
+  availability, and gate selection — under its own approved product contract,
+  and never derives a permission the axes do not publish.
+- `reconciliation` owns the TeleClaude home's history: the home's `.gitignore`,
+  which git applies, and the home snapshot that records it. The commit surface
+  (`agent_runtime`) consumes no membership answer; for a commit requested in
+  the home it runs `reconciliation`'s snapshot and reports its outcome.
+
+<!-- /planned-change:lean-git-commit-scope -->
 
 - A dispatch names a procedure by its domain-qualified snippet ID, and the
   context whose contract governs the dispatch emits that ID: `workflow` emits

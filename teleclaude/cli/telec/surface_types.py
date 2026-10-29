@@ -85,11 +85,17 @@ def admits_any_caller(caller_independent: bool, desk_command: bool) -> bool:
 
 @dataclass(frozen=True)
 class CommandAuth:
-    """Caller-independent declaration, or the capability and person roles a CLI command admits."""
+    """Caller-independent declaration, or the capability and person roles a CLI command admits.
+
+    A ``machine_account`` command is one the computer's own operating-system account operates: a caller
+    outside any session is admitted to it on the installation's own computer, logged in or not, while
+    a session is still judged by its capability and person band.
+    """
 
     capability: Capability | None = None  # the one command capability admitting agent callers; None for person-only
     human: frozenset[str] = frozenset()  # allowed human roles (admin must be explicit)
     caller_independent: bool = False
+    machine_account: bool = False
     scope: CommandScope = CommandScope.INVOCATION
     scope_flag: str | None = None
     when_flag: tuple[FlagConditionedAuth, ...] = ()

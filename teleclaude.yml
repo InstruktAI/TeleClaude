@@ -67,6 +67,14 @@ checkpoint:
         - teleclaude.entrypoints.docs_layout_convergence
       main_only: true
       precedence: 45
+    blueprint:
+      command:
+        - '{interpreter}'
+        - -c
+        - pass
+      main_only: true
+      precedence: 50
+      runs_while_serving: true
   bindings:
     - scope:
         include:

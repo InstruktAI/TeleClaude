@@ -19,6 +19,17 @@ result listing required actions. If any actions are required, the receiver
 emits an adapter-formatted block decision that causes the agent CLI to
 re-prompt itself with the checkpoint instruction.
 
+<!-- planned:antigravity-native-subagents-allowed -->
+
+An Antigravity turn completion forwarded from a provider-native subagent's
+idle `Stop` (`local/projects/teleclaude/spec/hook-normalized-events`) is
+evaluated like every agent-stop event. A checkpoint it requires is never
+answered on that hook, which receives the provider's plain success response;
+it is relayed to the session's control delivery instead
+(`local/projects/teleclaude/design/architecture/checkpoint-system`).
+
+<!-- /planned:antigravity-native-subagents-allowed -->
+
 Checkpoint evaluation consumes one complete native execution address. When
 the normalized stop hook carries both a native session identifier and a
 transcript path, the receiver selects that hook address while preserving the

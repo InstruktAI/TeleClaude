@@ -210,7 +210,9 @@ contract governs only what happens when maintenance runs.
   closes after the last of them: it starts the daemon through `make start` and
   verifies, within a bound it owns, that the started daemon answers its health
   read with admission open and reports the checkout's current tip as the commit
-  it started from. The restart action succeeds only on that verification.
+  it started from. A start command that finishes with a failure is not
+  verified, however healthy the daemon. The restart action succeeds only on
+  that verification.
 
 - **Actions after the start.** The registry declares which actions run while
   the daemon serves

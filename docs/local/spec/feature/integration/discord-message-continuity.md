@@ -15,20 +15,10 @@ their Team channel. A daemon restart does not lose what they post there.
 
 Every window of a restart is covered:
 
-<!-- planned-change:inbound-refused-while-draining-is-dropped -->
-
-- the daemon is stopped;
-- the daemon is running but not yet connected to Discord;
-- the daemon is connected but its Discord routing is not yet established.
-
-<!-- change:inbound-refused-while-draining-is-dropped -->
-
 - the daemon is draining for a restart and refuses new input;
 - the daemon is stopped;
 - the daemon is running but not yet connected to Discord;
 - the daemon is connected but its Discord routing is not yet established.
-
-<!-- /planned-change:inbound-refused-while-draining-is-dropped -->
 
 A message a person posts in any of these windows, in a place bound to a
 still-active session, reaches that session once the daemon is back. It arrives
@@ -69,25 +59,6 @@ Messages in channels the daemon does not manage keep their current handling.
 
 #### UC-DMC1: A person's message posted around a restart reaches their session
 
-<!-- planned-change:inbound-refused-while-draining-is-dropped -->
-
-```gherkin
-Scenario Outline: A message posted while the daemon restarts
-  Given a person has an active session bound to a Discord thread or to their Team channel
-  And the daemon is <window>
-  When the person posts a message there
-  Then once the daemon is back the message reaches that session exactly once
-  And the messages posted there reach the session in the order they were posted
-
-  Examples:
-    | window                                                 |
-    | stopped                                                |
-    | running but not yet connected to Discord               |
-    | connected but its Discord routing is not yet established |
-```
-
-<!-- change:inbound-refused-while-draining-is-dropped -->
-
 ```gherkin
 Scenario Outline: A message posted while the daemon restarts
   Given a person has an active session bound to a Discord thread or to their Team channel
@@ -104,8 +75,6 @@ Scenario Outline: A message posted while the daemon restarts
     | running but not yet connected to Discord                 |
     | connected but its Discord routing is not yet established |
 ```
-
-<!-- /planned-change:inbound-refused-while-draining-is-dropped -->
 
 ## Canonical fields
 

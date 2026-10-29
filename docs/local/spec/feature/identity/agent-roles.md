@@ -15,7 +15,8 @@ description: The closed catalog of agent session roles — each an explicit set 
 An agent session carries at most one role, named for its assignment. The role
 catalog is the closed set of roles a session may carry and the one place a
 role's reach is composed. A **capability** is one named unit of reach: one
-family of `telec` commands, or one grant to start sessions of one class. A
+family of `telec` commands, one grant to start sessions of one class, or one
+class of todo artifact a write boundary admits. A
 **role** declares an explicit, minimal set of capabilities. A role marked
 `full_reach` reaches every capability; its explicit set is then documentation
 of the role's ordinary surface and binds nothing, and the focus of such a
@@ -33,7 +34,9 @@ dispatch privilege
 procedure's role declaration (`general/spec/snippet-authoring-schema`),
 standing classification
 (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`),
-focused-role history exclusion and launch ownership. Which
+focused-role history exclusion, launch ownership and prepare-artifact write
+authority (`local/projects/teleclaude/spec/feature/workflow/artifact-versioning`).
+Which
 commands declare which command capability is the CLI surface schema's, grouped
 as `local/projects/teleclaude/design/cli-authorization-matrix` describes.
 
@@ -53,41 +56,43 @@ own identity and is never a session role.
 
 ### Capabilities
 
-| Capability             | Reach                                                                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `docs-read`            | Reading documentation.                                                                                                   |
-| `todo-read`            | Listing and showing todos and bugs.                                                                                      |
-| `todo-write`           | Creating, updating, freezing, removing and delivering todos; filing bugs and suppressions.                               |
-| `artifact-read`        | Reading and diffing todo artifacts.                                                                                      |
-| `artifact-write`       | Writing and removing todo artifacts.                                                                                     |
-| `stamp`                | Stamping todo state and commit-review verdicts.                                                                          |
-| `todo-orchestration`   | Driving a todo state machine.                                                                                            |
-| `integration`          | Integrating deliveries to canonical main and reading dirty-path ownership.                                               |
-| `maintenance-recovery` | Inspecting and recovering canonical-main maintenance.                                                                    |
-| `memory-curation`      | Curating memories and prospects from conversation extractions.                                                           |
-| `session-observe`      | Listing and showing sessions, searching history, and reading the fleet's computers, projects and agents.                 |
-| `transcript-read`      | Showing or tailing the transcript of a named session.                                                                    |
-| `operation-read`       | Reading the outcome of an operation one's session started or one's reach admits.                                         |
-| `session-act`          | Starting, running, reviving, restarting, ending and messaging sessions other than one's own.                             |
-| `self-acts`            | Results, files, unsubscribing, ending and restarting for one's own session.                                              |
-| `messaging`            | Messaging a person.                                                                                                      |
-| `audio`                | Transcribing supplied audio to text.                                                                                     |
-| `jobs`                 | Enabling, disabling and running jobs.                                                                                    |
-| `jobs-read`            | Listing jobs and their runtime status.                                                                                   |
-| `job-report`           | Reporting the result of a job run.                                                                                       |
-| `config`               | Changing configuration, and reading person and company configuration.                                                    |
-| `config-read`          | Reading and validating machine, global and project configuration.                                                        |
-| `reminders`            | Arming, listing and cancelling reminders.                                                                                |
-| `code-check`           | Inspecting code: blast radius, lint and tests.                                                                           |
-| `code`                 | Formatting, file declarations and commits.                                                                               |
-| `mcp`                  | Listing and calling MCP tools.                                                                                           |
-| `peer-talk`            | Sending to another session. No focused role holds it.                                                                    |
-| `memories-read`        | Listing, searching, deleting and tracing a person's own memories outside an extraction.                                  |
-| `memories-save`        | Saving a memory observation when the human the session works for asks it to. Every role reaches it; no role composes it. |
-| `dispatch-focused`     | Starting a session whose role is of class `focused`.                                                                     |
+| Capability               | Reach                                                                                                                                               |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs-read`              | Reading documentation.                                                                                                                              |
+| `todo-read`              | Listing and showing todos and bugs.                                                                                                                 |
+| `todo-write`             | Creating, updating, freezing, removing and delivering todos; filing bugs and suppressions.                                                          |
+| `artifact-read`          | Reading and diffing todo artifacts.                                                                                                                 |
+| `artifact-write`         | Writing and removing todo artifacts.                                                                                                                |
+| `prepare-artifact-write` | Writing the prepare artifacts: input, prd, architecture, diagnosis and implementation plan. The diagnoser is the one focused role that composes it. |
+| `stamp`                  | Stamping todo state and commit-review verdicts.                                                                                                     |
+| `todo-orchestration`     | Driving a todo state machine.                                                                                                                       |
+| `integration`            | Integrating deliveries to canonical main and reading dirty-path ownership.                                                                          |
+| `maintenance-recovery`   | Inspecting and recovering canonical-main maintenance.                                                                                               |
+| `memory-curation`        | Curating memories and prospects from conversation extractions.                                                                                      |
+| `session-observe`        | Listing and showing sessions, searching history, and reading the fleet's computers, projects and agents.                                            |
+| `transcript-read`        | Showing or tailing the transcript of a named session.                                                                                               |
+| `operation-read`         | Reading the outcome of an operation one's session started or one's reach admits.                                                                    |
+| `session-act`            | Starting, running, reviving, restarting, ending and messaging sessions other than one's own.                                                        |
+| `self-acts`              | Results, files, unsubscribing, ending and restarting for one's own session.                                                                         |
+| `messaging`              | Messaging a person.                                                                                                                                 |
+| `audio`                  | Transcribing supplied audio to text.                                                                                                                |
+| `jobs`                   | Enabling, disabling and running jobs.                                                                                                               |
+| `jobs-read`              | Listing jobs and their runtime status.                                                                                                              |
+| `job-report`             | Reporting the result of a job run.                                                                                                                  |
+| `config`                 | Changing configuration, and reading person and company configuration.                                                                               |
+| `config-read`            | Reading and validating machine, global and project configuration.                                                                                   |
+| `reminders`              | Arming, listing and cancelling reminders.                                                                                                           |
+| `code-check`             | Inspecting code: blast radius, lint and tests.                                                                                                      |
+| `code`                   | Formatting, file declarations and commits.                                                                                                          |
+| `mcp`                    | Listing and calling MCP tools.                                                                                                                      |
+| `peer-talk`              | Sending to another session. No focused role holds it.                                                                                               |
+| `memories-read`          | Listing, searching, deleting and tracing a person's own memories outside an extraction.                                                             |
+| `memories-save`          | Saving a memory observation when the human the session works for asks it to. Every role reaches it; no role composes it.                            |
+| `dispatch-focused`       | Starting a session whose role is of class `focused`.                                                                                                |
 
 The command families are the catalog's vocabulary; which command declares
-which family is the CLI surface schema's.
+which family is the CLI surface schema's. `prepare-artifact-write` is declared by
+no command: the workflow's artifact write boundary consults it.
 
 ### Roles
 
@@ -219,3 +224,5 @@ none is a human launch.
 - docs/local/spec/feature/identity/command-clearance.md — the gate that admits a role by its capabilities.
 - docs/local/spec/feature/agent_runtime/procedure-entry.md — how a session receives the role its procedure declares.
 - docs/local/adr/0123-procedures-are-entrypoints-and-roles-are-explicit-capability-sets.md — why roles default to contained and full reach is opt-in.
+
+- docs/local/adr/0149-prepare-artifact-write-authority-is-a-catalog-capability.md — why prepare-artifact write authority is a catalog capability the diagnoser alone among the focused roles composes.

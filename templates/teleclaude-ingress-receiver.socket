@@ -1,0 +1,9 @@
+[Unit]
+Description=TeleClaude ingress receiver socket (held across receiver restarts)
+
+[Socket]
+ListenStream=127.0.0.1:{{PORT}}
+Service=teleclaude-ingress-receiver.service
+
+[Install]
+WantedBy=sockets.target

@@ -25,6 +25,8 @@ from teleclaude.events.wire import LegacyFacts
 
 logger = get_logger(__name__)
 
+# The name the machine configuration's validation is reported under.
+MACHINE_CONFIGURATION: Final = "machine"
 _REFUSED_EVENT: Final = "config_document_refused"
 _RECOVERED_EVENT: Final = "config_document_recovered"
 _UNPUBLISHED_EVENT: Final = "config_validation_event_unpublished"

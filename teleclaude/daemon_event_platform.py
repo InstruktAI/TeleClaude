@@ -69,13 +69,15 @@ from teleclaude.hooks.handlers import HandlerRegistry
 from teleclaude.hooks.inbound import install_inbound_routes
 from teleclaude.hooks.normalizers.github import GITHUB_SOURCE
 from teleclaude.hooks.registry import ContractRegistry
-from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline
+from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline, relay_delivery_group
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
+from teleclaude.install.ingress_receiver import receiver_units_installed
 from teleclaude.memory.closure import build_memory_closure_consumer
 from teleclaude.memory.transition import run_transition, run_transition_until_complete
 from teleclaude.mirrors.closure import build_mirror_closure_consumer
 from teleclaude.services.project_catalog.ownership import load_project_ownership_index
+from teleclaude.services.project_catalog.service import registered_project_paths
 from teleclaude.transport.internal_event_compat import (
     InternalEventCompatIngressData,
     SessionLifecycleContext,
@@ -113,7 +115,6 @@ async def _close_both(clients: ScopedClients[Any]) -> None:
 
 _EVENT_DB_REQUIRED_FOR_PIPELINE_CONTEXT = "_build_pipeline_context always runs after _init_event_db_storage"
 _RELAY_DELIVERY_PROCESSOR_NAME = "relay-delivery"
-_RELAY_DELIVERY_GROUP_PREFIX = "relay-delivery-"
 _RELAY_DELIVERY_CONSUMER_SUFFIX = "-relay-"
 _RELAY_DELIVERY_TASK_NAME = "relay-delivery-processor"
 _RELAY_DELIVERY_STARTED_EVENT = "Relay delivery processor started"
@@ -131,10 +132,6 @@ _MEMORY_TRANSITION_LOG_TASK_NAME = "memory_transition"
 _MEMORY_TRANSITION_PASS_FAILED_EVENT = "memory.transition.pass_failed"
 _MEMORY_TRANSITION_INCOMPLETE_EVENT = "Conversation-memory transition incomplete; retrying until complete"
 _MEMORY_TRANSITION_END_REASON = "conversation_memory_transition"
-_API_SERVER_ATTRIBUTE = "api_server"
-_API_APP_ATTRIBUTE = "app"
-_INBOUND_ROUTES_INSTALLED_EVENT = "Inbound endpoints installed on the ingress computer"
-_INBOUND_ROUTES_UNAVAILABLE_EVENT = "API app or event producer unavailable; inbound endpoints are not installed"
 _DUPLICATE_RUNTIME_CONSUMER_NAMES_ERROR = "runtime and platform event consumers must have unique names"
 _DISCORD_VOICE_ADAPTER_REQUIRED = "Discord runtime voice consumer has no active adapter capability"
 _DISCORD_ADAPTER_KEY = "discord"
@@ -249,7 +246,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         assert self._event_producer is not None  # configured by _start_event_platform_prepare
         assert self._event_catalog is not None  # built by _start_event_platform_prepare
         return [
-            build_lifecycle_router_consumer(),
+            build_lifecycle_router_consumer(registered_project_paths),
             build_mirror_closure_consumer(),
             build_memory_closure_consumer(),
             build_procedure_activation_consumer(),
@@ -378,7 +375,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         logger.debug("No active reaction for retained internal event", event_name=data.event_name, event_id=event.id)
 
     async def _prepare_relay_delivery_consumer(self, dispatcher: HookDispatcher) -> None:
-        """Prepare the relay reader position before any ingress can publish to its stream."""
+        """Prepare this computer's relay reader position on the cluster event stream."""
         clients = self._event_redis_client
         if clients is None:
             raise RuntimeError("Relay delivery reader requires the event platform Redis connection")
@@ -391,7 +388,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             pipeline=RelayDeliveryPipeline(dispatcher),
             codec=PLATFORM_ENTRY_CODEC,
             declared_name=_RELAY_DELIVERY_PROCESSOR_NAME,
-            group=_RELAY_DELIVERY_GROUP_PREFIX + computer_label,
+            group=relay_delivery_group(computer_label),
             consumer_name=computer_label + _RELAY_DELIVERY_CONSUMER_SUFFIX + str(os.getpid()),
             idle_threshold_ms=reliability.idle_threshold_ms,
             max_attempts=reliability.max_attempts,
@@ -458,7 +455,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         logger.info(_SOURCE_READER_STARTED_EVENT)
 
     async def _start_event_platform_prepare(self) -> None:
-        """Prepare the owned producer, both reader positions, and ingress boundary before startup producers run."""
+        """Prepare the owned producer and both reader positions before startup producers run."""
         redis_configured = bool(config.redis.cluster.url)
         self._event_platform_status = _EventPlatformStatus(redis_configured=redis_configured)
         await self._init_event_db_storage()
@@ -527,7 +524,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._start_installation_source_reader(event_producer)
 
     async def _init_webhook_service(self) -> None:
-        """Prepare the hook dispatcher, inbound routes and its reader position before startup producers run."""
+        """Prepare the hook dispatcher and its relay reader position before startup producers run."""
 
         contract_registry = ContractRegistry()
         handler_registry = HandlerRegistry()
@@ -562,13 +559,13 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         logger.info("Webhook service initialized")
 
     def _install_inbound_routes(self) -> None:
-        """Mount the inbound endpoints on the API app, on the ingress computer only."""
-        if not config.computer.is_ingress_node:
+        """Mount the inbound endpoints on the API app while the daemon serves this computer's ingress."""
+        if not config.computer.is_ingress_node or receiver_units_installed():
             return
-        app = getattr(getattr(self.lifecycle, _API_SERVER_ATTRIBUTE, None), _API_APP_ATTRIBUTE, None)
+        app = getattr(getattr(self.lifecycle, "api_server", None), "app", None)
         producer = self._event_producer
         if app is None or producer is None:
-            logger.warning(_INBOUND_ROUTES_UNAVAILABLE_EVENT)
+            logger.warning("inbound_routes_unavailable")
             return
         install_inbound_routes(app, producer)
-        logger.info(_INBOUND_ROUTES_INSTALLED_EVENT)
+        logger.info("inbound_routes_installed")

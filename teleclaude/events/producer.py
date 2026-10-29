@@ -96,6 +96,46 @@ class EventProducer:
         scope = EventScope.CLUSTER if isinstance(event, RelayedEvent) else scope_of(received.type)
         return await self._append(received.type, entry, received.subject, scope)
 
+    async def emit_once(self, event: RelayedEvent, legacy: LegacyFacts, /, *, claim: str, ttl_s: int) -> str | None:
+        """Append a relayed event only when ``claim`` is new, claiming it in the same atomic step.
+
+        Returns the stream entry id, or ``None`` when the claim was already taken, which means another
+        receipt of the same delivery has relayed it. The claim is kept for ``ttl_s`` seconds.
+        """
+        received = self._received_event(event)
+        omit_notification_facts = await self._notification_facts_unread()
+        entry = encode(received, legacy, omit_notification_facts=omit_notification_facts)
+        client = self._clients.for_scope(EventScope.CLUSTER)
+        fields = [part for pair in entry.items() for part in pair]
+        try:
+            # Claim and append in one step, so a claim never stands without its event (ADR-0148).
+            entry_id = await client.eval(
+                """
+                if not redis.call('SET', KEYS[2], '1', 'NX', 'EX', ARGV[1]) then
+                  return false
+                end
+                local command = {'XADD', KEYS[1], 'MAXLEN', '~', ARGV[2], '*'}
+                for index = 3, #ARGV do
+                  command[#command + 1] = ARGV[index]
+                end
+                return redis.call(unpack(command))
+                """,
+                2,
+                self._stream,
+                f"teleclaude:ingress:claims:{claim}",
+                ttl_s,
+                self._maxlen,
+                *fields,
+            )
+        except Exception:
+            logger.exception("event_producer_claimed_append_failed", event=received.type, claim=claim)
+            raise
+        if entry_id is None:
+            return None
+        result = entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
+        logger.debug("event_producer_claimed_append_ok", event=received.type, entry_id=result)
+        return result
+
     async def emit_internal(self, event: PlatformEvent[Any, Any], legacy: LegacyFacts, /) -> str:
         """Append a typed runtime fact with its earlier wire form while the fleet still requires it."""
         if self._stream != INTERNAL_EVENT_STREAM:

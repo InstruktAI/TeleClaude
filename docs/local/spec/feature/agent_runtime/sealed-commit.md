@@ -31,6 +31,8 @@ The contract resolves four classes of file state at commit time:
 3. **Partial-staged tracked** files (staged hunks + later working-tree delta) in the pathspec are **blocked** by the partial-staging guard. The diagnostic directs the agent at `telec repo add <path>` as the recovery: it fully restages the file so the staged version matches the working tree, removing the ambiguity, after which the commit proceeds cleanly.
 4. **Unmerged-index** files (post-conflict, pre-resolution-stage) in the pathspec are staged internally so the integrator's conflict-resolution flow runs through the same sealed path.
 
+<!-- planned-change:lean-git-commit-scope -->
+
 On a shared branch the scope itself is strictly `(live session declarations) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. In a linked worktree the declaration term does not apply and the scope is drawn from the worktree's dirty paths within the acting context root. Two acts declare a path: a successful `telec repo add <path>...` writes each accepted path, with the instant it was declared, to the declaring session's own declaration record, and a successful edit-tool call whose input names the file it writes is declared the same way when the runtime reports that call (`sdlc/design/workspace-scoping`). The entry stays live until the commit that carries it lands. A path named only by shell-command text contributes no evidence, and no transcript is read to establish a declaration.
 
 A context root's **own material** is what lies under it minus what belongs to another owner. Ownership is the test, not whether TeleClaude resolves a nested root as a context: a nested root belongs to another owner when it declares a different tier, when it anchors a context of its own, or when it holds a repository of its own, and any one of those is enough. So a person's material and a company's material are both foreign to the global context that encloses them, a person-owned project is foreign to the person context that encloses it, and an unrelated checkout nested anywhere is foreign to every context above it — including the cases that anchor no context at all.
@@ -40,6 +42,14 @@ The two halves answer different failures and neither substitutes for the other. 
 The retained set is the fourth term and its membership is not this contract's to compute: where a repository's owner publishes a membership answer, that owner answers for any path with exactly one of `retained`, `not-retained`, or `outside`, and attaches no instruction to it. What the answer means here is this contract's decision: only `retained` is eligible. `not-retained` and `outside` are alike ineligible however the path is reached — the first because the owner excludes it, the second because the owner has no standing over it — and neither is ever read as permission. A repository whose owner publishes no such answer carries no such term: there is nothing to consume, this surface neither invents nor substitutes one, and the first three terms carry the bound alone. Publication and its absence are both the owner's facts, read from the owner's contract.
 
 Containment bounds every path that reaches inspection, staging, or commit — not only the computed scope. A path named through an explicit declaration or subset channel is subject to the same bound: naming a path does not admit material outside the acting context root's own material, and such a path is refused rather than carried.
+<!-- change:lean-git-commit-scope -->
+
+On a shared branch the scope itself is strictly `(live session declarations) ∩ (currently dirty paths)`. In a linked worktree the declaration term does not apply and the scope is drawn from the worktree's dirty paths. Two acts declare a path: a successful `telec repo add <path>...` writes each accepted path, with the instant it was declared, to the declaring session's own declaration record, and a successful edit-tool call whose input names the file it writes is declared the same way when the runtime reports that call (`sdlc/design/workspace-scoping`). The entry stays live until the commit that carries it lands. A path named only by shell-command text contributes no evidence, and no transcript is read to establish a declaration.
+
+Git stages the scope, so git's own ignore rules, repository boundary and pathspec handling decide what can be staged, and this contract keeps no second evaluation of any of them. Before committing, the contract reads what git staged: an embedded repository, staged as a gitlink entry, is refused, and so is a declared path that staged nothing. Each refusal names the path and its reason, and nothing is committed.
+
+In the TeleClaude home a commit request records nothing of its own: `telec repo commit` runs the home snapshot (`local/projects/teleclaude/spec/feature/reconciliation/home-repository`) and reports its outcome, and `telec repo add` declares nothing there. The seal still refuses raw `git add` and `git commit` in the home.
+<!-- /planned-change:lean-git-commit-scope -->
 
 Within a single context root, and outside any nested root, the scope remains transcript-derived and a path is still touched by being read, so two sessions working the same path there are not separated by this contract; that case belongs to dirty-path ownership attribution, not to scoping.
 
@@ -208,6 +218,8 @@ And the message carries no Session: trailer
 
 #### UC-NCR-1 — Change inspection from a context root below the repository root
 
+<!-- planned-change:lean-git-commit-scope -->
+
 #### UC-NCR-2 — A commit from a nested context root lands only that context's changes
 
 #### UC-NCR-3 — Concurrent work elsewhere in the same history is untouched
@@ -247,6 +259,35 @@ Scenario: Preview the exact payload from a nested context
 #### UC-NCR-10 — A declared path outside the acting context's own material is refused
 
 #### UC-NCR-12 — A commit taken mid-merge does not escape the bound
+
+<!-- change:lean-git-commit-scope -->
+
+#### UC-NCR-5 — A developer can inspect what a commit will carry
+
+```gherkin
+Scenario: Review the scope summary at the main-branch gate
+  Given a developer is preparing a commit on main through a non-integrator agent
+  When the commit-first gate card appears
+  Then it shows a per-file diffstat of the resolved commit scope against HEAD
+  And identifies when the scope is empty
+  And if the scope cannot be resolved, directs the agent to inspect the diff
+```
+
+#### UC-NCR-7 — The seal holds at an invocation context root that is not a project
+
+#### UC-NCR-8 — An invocation context carrying neither subscriptions nor a participating surface commits with no gates and no substitute
+
+#### UC-NCR-14 — A home declaring no capabilities gets only the documentation checks
+
+#### UC-NCR-15 — A tier carrying code still requires its native toolchain
+
+#### UC-NCR-9 — A context root that is also the repository root is unchanged
+
+#### UC-NCR-16 — A commit requested in the home records the home's snapshot
+
+#### UC-NCR-17 — An embedded repository is refused by name
+
+<!-- /planned-change:lean-git-commit-scope -->
 
 #### UC-NCR-11 — A location with no context root inside a sealed repository cannot reach raw git
 

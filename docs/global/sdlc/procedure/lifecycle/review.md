@@ -6,6 +6,7 @@ description: Shared review execution contract for lanes, evidence, citations, se
 
 ## Required reads
 
+- @~/.teleclaude/docs/sdlc/bundle.md
 - @~/.teleclaude/docs/sdlc/policy/definition-of-done-lanes.md
 - @~/.teleclaude/docs/sdlc/policy/process-change-authority.md
 - @~/.teleclaude/docs/general/policy/human-involvement-recording.md
@@ -14,8 +15,6 @@ description: Shared review execution contract for lanes, evidence, citations, se
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/work/silent-failure-audit.md
 - @~/.teleclaude/docs/sdlc/principle/module-depth.md
 - @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
-- @~/.teleclaude/docs/sdlc/policy/definition-of-done.md
-- @~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 
 ## Goal
 
@@ -56,7 +55,10 @@ preferred classification or design alone does not reopen a decision.
 ### 1. Execute every applicable review lane
 
 **Build the lane set.** It has two sources, and every entry in it receives a
-disposition: applicable, or `N/A` with its reason.
+disposition: applicable, or `N/A` with its reason. A lane applies when the target
+or its affected dependencies give it a concrete subject, within the catalog's
+own triggers; it is `N/A` when its trigger finds none. A subject need not look
+defective: finding defects is the lane's work.
 
 - The general lanes of `sdlc/policy/definition-of-done-lanes`. The catalog owns
   each lane's focus, severity guidance, trigger conditions, and the Definition
@@ -77,14 +79,22 @@ the harness's own subagents, in parallel (`general/principle/parallel-work`).
 Each starts fresh, with the brief as its only context from you: use the
 harness's fresh-subagent form, never a fork of your own conversation, so your
 reasoning and conclusions do not frame its investigation. A lane's brief carries
-the lane and the address of its catalog section; the exact target and how to
-read it; the intent basis this review established, with its source addresses;
-the project focus points that bear on the lane, with theirs; the finding rules
-of step 4; and the result it returns: findings in the step 4 format, or
-clean-pass evidence, plus any gap it could not close. The brief states no
-preferred verdict. The subagent reads beyond its brief wherever its lane
-requires and reports missing context as a gap. Where the harness offers no
-native subagents, run the lanes as separate passes yourself.
+one lane question and the address of the lane's catalog section; the exact read
+addresses of the frozen target; the intent basis this review established, with
+its source addresses; the project focus points that bear on the lane, with
+theirs; the source facts you have already established, with their addresses and
+qualifications, and verbatim excerpts of the owner rules the lane needs; the
+finding rules of step 4; and the result it returns: findings in the step 4
+format, or clean-pass evidence, plus any gap it could not close. On a disputed
+point the brief gives the evidence and the question, never the finding to reach
+or avoid, and it states no preferred verdict. You hold the domain bundle and cut
+each brief from it. The brief is the lane subagent's complete mandate: it reads
+only the sources its question requires, follows only the Required reads those
+sources need, and reports missing context as a gap. It investigates and returns
+evidence, and runs no command that acts as the session — reminders, stamps,
+sends, writes — because it carries your platform identity; every session act
+stays yours. Where the harness offers no native subagents, run the lanes as
+separate passes yourself.
 
 For the tests lane, independently re-prove every triggered `TQ-*` predicate.
 Record evidence for each triggered predicate or a reasoned `N/A`. Evidence
@@ -92,7 +102,10 @@ supplied by the author directs attention but never substitutes for review proof.
 
 **Reconcile, then assess the whole.** A lane's result is evidence you judge. A
 missing or unsupported lane result is re-run, not filled in by you. Route a
-contradiction or a dependency between lanes back to the lanes it concerns. Then
+contradiction or a dependency between lanes back to the lanes it concerns. A
+follow-up to a lane asks a narrower question, or puts a competing reading or
+counter-evidence to it as something to test; where the evidence already settles
+a point, record your own judgment instead of asking the lane to confirm it. Then
 make your own assessment of the whole target: coverage, that every changed file
 and every decision the target introduces appears in some lane's evidence; and
 fit, that the target as a whole serves the intent. A coverage hole goes back to
@@ -100,7 +113,8 @@ a lane; a fit defect you can establish is your own finding under step 4.
 
 Each executed lane produces a findings section, even when it has no findings.
 A missing section means the review is incomplete: execute the missing lane
-before producing a verdict.
+before producing a verdict. The report states every lane's disposition and, for
+each executed lane, the question its brief asked.
 
 ### 2. Apply the quality gates
 

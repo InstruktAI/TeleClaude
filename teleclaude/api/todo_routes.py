@@ -55,10 +55,12 @@ from teleclaude.core.human_involvement import (
     resolve_human_involvement,
 )
 from teleclaude.core.next_machine.driver_admission import (
+    ClaimHolderAnswer,
     DriverAdmissionRequest,
     DriverReleaseRequest,
     StartRequest,
     admit_relayed_start,
+    answer_relayed_claim_holder,
     release_relayed_claim,
 )
 from teleclaude.core.next_machine.kind_migration import (
@@ -737,6 +739,27 @@ async def todo_driver_release(
     except AdmissionUnavailable as unavailable:
         raise _driver_refusal(unavailable, HTTPStatus.SERVICE_UNAVAILABLE) from unavailable
     return _DriverClaimResponse(cleared=cleared)
+
+
+@router.get("/claim-holder")
+async def todo_claim_holder(
+    project_path: str,
+    slug: str,
+    identity: CallerIdentity = Depends(carried_caller),
+) -> ClaimHolderAnswer:
+    """Say, as the project's active computer, who holds a GitHub-backed todo's claim, by the rule a driver start is admitted by.
+
+    Reads only: no start section is taken and no claim is written. Refuses as
+    ``HTTPStatus.SERVICE_UNAVAILABLE`` when this computer is not the project's active computer; a read it
+    cannot decide in time is reported ``undetermined``.
+    """
+    try:
+        report = await answer_relayed_claim_holder(
+            resolve_project_root(project_path), slug, admission_caller_for(identity)
+        )
+    except AdmissionUnavailable as unavailable:
+        raise _driver_refusal(unavailable, HTTPStatus.SERVICE_UNAVAILABLE) from unavailable
+    return ClaimHolderAnswer.from_report(report)
 
 
 class _SessionAnswerResponse(BaseModel):

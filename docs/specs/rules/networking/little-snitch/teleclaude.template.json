@@ -1,0 +1,68 @@
+{
+  "name": "TeleClaude Homebrew tools",
+  "description": "Outbound access for the Homebrew-installed tools TeleClaude runs. Published by the repository's little-snitch-rules workflow, which adds a rule for each new Homebrew version and keeps the earlier ones.",
+  "rules": [
+    {
+      "formula": "gh",
+      "keg-path": "bin/gh",
+      "remote-domains": ["github.com", "githubusercontent.com"],
+      "protocol": "tcp",
+      "ports": "443",
+      "action": "allow",
+      "notes": "GitHub API and downloads."
+    },
+    {
+      "formula": "git",
+      "keg-path": "libexec/git-core/git-remote-http",
+      "remote-domains": ["github.com"],
+      "protocol": "tcp",
+      "ports": "443",
+      "action": "allow",
+      "notes": "HTTPS fetch and push run in this helper, not in git itself."
+    },
+    {
+      "formula": "uv",
+      "keg-path": "bin/uv",
+      "remote-domains": ["pypi.org", "pythonhosted.org", "github.com", "githubusercontent.com"],
+      "protocol": "tcp",
+      "ports": "443",
+      "action": "allow",
+      "notes": "Package index and managed Python downloads."
+    },
+    {
+      "formula": "node",
+      "keg-path": "bin/node",
+      "remote-domains": ["npmjs.org"],
+      "protocol": "tcp",
+      "ports": "443",
+      "action": "allow",
+      "notes": "npm, which runs under this node, fetches packages from the npm registry."
+    },
+    {
+      "formula": "node@24",
+      "keg-path": "bin/node",
+      "remote-domains": ["npmjs.org"],
+      "protocol": "tcp",
+      "ports": "443",
+      "action": "allow",
+      "notes": "npm, which runs under this node, fetches packages from the npm registry."
+    },
+    {
+      "formula": "pnpm",
+      "keg-path": "bin/pnpm",
+      "remote-domains": ["npmjs.org"],
+      "protocol": "tcp",
+      "ports": "443",
+      "action": "allow",
+      "notes": "pnpm is its own binary in Homebrew and fetches packages from the npm registry."
+    },
+    {
+      "process": "identifier.FWJYW4S8P8/com.steipete.gogcli.gog",
+      "remote-domains": ["googleapis.com", "google.com"],
+      "protocol": "tcp",
+      "ports": "443",
+      "action": "allow",
+      "notes": "gog: Developer-ID signed, so this rule survives upgrades."
+    }
+  ]
+}

@@ -189,12 +189,14 @@ How the store maps onto the repository is owned by
   reports, log and the rest) is one GitHub issue artifact on the item's issue,
   under the artifact's name, created by the platform App. Every version the
   workflow writes is a saved version of that artifact, in the order it was
-  written, and is never rewritten; the artifact's history names who saved each
-  version. Implementation and task plans are plan artifacts, every other
-  artifact a document. Workflow state too large for the record is kept the
-  same way, as the item's `workflow-state` artifact. The platform writes no artifact content into a comment and reads none from one; content comments left from before native artifacts are no part of the record. A version someone else saves is replaced by the
-  platform's version when the store next reads the item's artifacts, and an
-  artifact someone else adds is left as it is and is never part of the record.
+  written, and is never rewritten. GitHub's history of the artifact names the
+  platform App as the account that saved each version; which workflow session
+  wrote a version, and when, is kept in the record for every version GitHub
+  still serves. Implementation and task plans are plan artifacts, every other
+  artifact a document. An artifact the platform created in a write that then
+  failed can remain beside it under the same name; it is never part of the
+  record. Workflow state too large for the record is kept the
+  same way, as the item's `workflow-state` artifact. The platform writes no artifact content into a comment and reads none from one; content comments left from before native artifacts are no part of the record. A version someone else saves stays the artifact's current version on GitHub until the platform next saves that artifact, and is never part of the record; an artifact someone else adds is left as it is and is never part of the record.
 
 <!-- /planned-change:github-native-artifacts -->
 
@@ -232,9 +234,7 @@ How the store maps onto the repository is owned by
   strings and personal data are removed as far as detection recognizes them;
   a turn whose masking or detection cannot complete appears only as
   `[session:<id> role:<role> action:turn turn:<n> at:<time> withheld]`, with
-  no content, and a turn whose transcript was deleted before it could be taken
-  appears only as
-  `[session:<id> role:<role> action:turn turn:<n> at:<time> unavailable]`. The project's
+  no content. The project's
   conversation starts at the moment recorded by the first
   `[action:conversation-start at:<time>]` entry on its ledger issue; turns
   completed before it are not written. The conversation is never part of the
@@ -396,11 +396,20 @@ Scenario: A turn that cannot be cleaned is withheld
 - GitHub serves only the newest 30 versions of an artifact to the platform. A
   computer that rebuilds the work from GitHub restores at most those; older
   versions stay on the computer that wrote them.
-- GitHub announces no change to an artifact, so a version someone else saves
-  stays the artifact's current version until the store next refreshes the
-  item.
+- GitHub announces no change to an artifact and the platform does not scan
+  for one, so a version someone else saves stays the artifact's current version
+  on GitHub until the platform next saves that artifact; it never changes the
+  work.
 - A version larger than GitHub accepts for one artifact is refused, and the
   workflow command that wrote it fails with that cause.
+- Work already on GitHub when native artifacts arrive is republished as
+  native artifacts by the computer that works the project, a few items at a
+  time within GitHub's limits; for a large repository this takes hours. A
+  workflow command that changes an item not yet republished fails, saying to
+  send it again, until that item is republished. On the computer that works
+  the project, such a command puts the item among those republished first;
+  how soon it is reached depends on how many others are waiting there and on
+  GitHub's limits.
 
 <!-- /planned:github-native-artifacts -->
 

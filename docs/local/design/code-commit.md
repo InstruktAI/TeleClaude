@@ -322,6 +322,8 @@ todo worktree, a successful commit also publishes the todo's branch to
    the real git binary (via GitPython) so the wrapper's redirect does not loop
    back into telec; git still runs the installed hooks.
 
+<!-- planned-change:lean-git-commit-scope -->
+
 9. **`MERGE_HEAD`-aware commit degrades the pathspec boundary where the tree has
    one owner.** When `MERGE_HEAD` is present (resolved via `repo.git_dir`, not a
    literal `.git/` path, so this holds inside worktrees), git categorically
@@ -364,6 +366,44 @@ todo worktree, a successful commit also publishes the todo's branch to
     admits, `not-retained` and `outside` alike excluding; a repository whose
     owner publishes none carries no such term, and this surface neither
     decides membership nor substitutes an answer in either case.
+
+<!-- change:lean-git-commit-scope -->
+
+9. **`MERGE_HEAD`-aware commit degrades the pathspec boundary where the tree has
+   one owner.** When `MERGE_HEAD` is present (resolved via `repo.git_dir`, not a
+   literal `.git/` path, so this holds inside worktrees), git categorically
+   refuses a pathspec-scoped commit during an active merge, independent of
+   whether the pathspec happens to cover the entire resolved index. In a
+   single-owner tree — a worker's own worktree, the integration worktree, a
+   project checkout — Invariant 3's pathspec boundary therefore does not apply:
+   `telec repo commit` requires every unmerged path already resolved
+   (`telec repo add`-ed) — it errors out listing any that remain rather than
+   committing an unresolved conflict — then commits with no pathspec at all:
+   `git commit -F <msg>` with no trailing `-- <pathspec>`. The hook grades the
+   full staged merge result, not the caller's pathspec.
+
+10. **Two roots resolve as a pair, once, at the entry points.** Every
+    `telec repo` verb resolves the invocation context root (the nearest
+    declaration above the invocation directory) and the repository root (the
+    nearest git checkout above it) as distinct coordinates and threads both to
+    everything downstream. The repository root anchors git operations and the
+    paths git reports; the invocation context root anchors permission (its
+    declared tier's answers, read from the config context's tier-permission
+    contract) and the coordinates in
+    which answers are expressed. Where the two coincide — every project
+    checkout — the pair degenerates to the single root and nothing observable
+    changes.
+
+11. **Git bounds what a commit carries.** The scope is staged through git,
+    whose ignore rules, repository boundary and pathspec handling apply
+    unchanged; this surface keeps no second evaluation of any of them. Before
+    committing it reads what git staged and refuses an embedded repository (a
+    gitlink entry) and a declared path that staged nothing, naming each path and
+    its reason. In the TeleClaude home a commit request runs the home snapshot
+    instead of a scoped commit
+    (`local/projects/teleclaude/design/architecture/home-repository`).
+
+<!-- /planned-change:lean-git-commit-scope -->
 
 12. **Config publishes facts at two coordinates; this contract owns both
     decisions.** The tier answers config publishes grant no operation. Seal

@@ -127,11 +127,9 @@ the same per-session access contract.
 - **Completion.** A turn is completed once the session has a later turn, its
   latest agent stop is at or after the turn's last entry, or the session is
   closed. Only completed turns are returned.
-- **Unreadable.** A turn whose transcript entries can no longer be read is
-  returned as unreadable with its identity and ordinal, never as an empty
-  turn.
-
-The read covers the session's whole transcript chain.
+  The read covers the session's whole transcript chain. A chain file that no
+  longer exists contributes no turns and is logged; a file that exists but fails
+  to read fails the read.
 
 <!-- /planned:github-turn-mirror -->
 

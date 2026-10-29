@@ -18,6 +18,14 @@ PREPARED_SESSION_ID_STATE_KEY = "prepared_session_id"
 SCHEMA_VERSION_STATE_KEY = "schema_version"
 
 
+class ClaimStatus(StrEnum):
+    """What a read of a todo's driver claim found."""
+
+    HELD = "held"
+    FREE = "free"
+    UNDETERMINED = "undetermined"
+
+
 class DorActions(BaseModel):
     """Legacy-bridge: actions field from old DOR-format state files. Read-only for upcycle."""
 
@@ -220,6 +228,13 @@ class TodoEventKind(StrEnum):
     COMMIT_REVIEW_STAMP = "commit_review_stamp"
     CODE_CONFORMANCE_RETURN = "code_conformance_return"
     PREPARE_CLAIM = "prepare_claim"
+    TASK_FIRING_STARTED = "task_firing_started"
+
+
+class TaskStamp(StrEnum):
+    """Task-lane stamp types dispatched through this discriminator (the firing-start stamp)."""
+
+    FIRING_STARTED = "task_firing_started"
 
 
 class CommitReviewVerdict(StrEnum):

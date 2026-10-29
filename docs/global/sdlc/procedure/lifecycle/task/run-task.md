@@ -40,21 +40,29 @@ finalize, or commit.
   task through the authenticated work-operation route (`/todos/work`), which
   resolves the operation kind from `kind=task` server-side, with no in-process
   auth bypass.
-- A `task-plan` artifact exists. A `log` artifact may not (it is absent on the
-  first firing).
+
+- A `task-plan` artifact exists. A `log` artifact may not. When it exists, it
+  may hold platform-written firing lines, `[HH:MM:SS-DD/MM] execution`, one for
+  each firing whose start was stamped.
+
 - The session is booted with the full `telec` CLI surface and available skills.
 
 ## Steps
 
 <!-- @include: docs/snippets/step-role-read.md -->
 
-1. **Read the evidence first.** You may be a fresh instance — the first dispatch, or
-   a revival after a daemon restart — with no memory of prior firings
-   (`general/principle/continuity`). Read the `log` before anything else; it carries
-   the continuity narrative across firings. The durable outcome the previous firing
-   stamped is the authoritative "this firing completed" signal — a stamped instant is
-   never repeated. If the `log` is empty or absent and no outcome is stamped, this is
-   the first firing and you begin it.
+1. **Stamp the start, then read the evidence.** Before reading anything, stamp
+   this firing's start with `telec todo stamp {slug} --task-firing-started`. The
+   platform appends this firing's line to the `log`. If the stamp fails, continue
+   the firing and record the failure in step 6. You may be a fresh instance — the first dispatch, or a
+   revival after a daemon restart — with no memory of prior firings
+   (`general/principle/continuity`). Then read the `log`; it carries the continuity
+   narrative across firings. Each `[HH:MM:SS-DD/MM] execution` line in it is the
+   platform's record of when a firing started, not an entry of yours.
+   The durable outcome the previous firing stamped is the authoritative "this firing
+   completed" signal — a stamped instant is never repeated. If the `log` holds
+   nothing beyond firing lines and no outcome is stamped, this is the first firing
+   and you begin it.
 
 2. **Read the plan.** Read the `task-plan`. It is the human-approved intent and
    carries the specifics this procedure deliberately omits — what to produce,
@@ -85,7 +93,9 @@ finalize, or commit.
 
 7. **Keep the `log` lean.** Short dated paragraphs. When the `log` has grown long
    across many firings, roll older entries up into a summary — your judgment, not a
-   rule.
+   rule. Roll up only your own entries. Firing lines are written by the platform,
+   not by you: every write of the `log` carries each of them verbatim, in place,
+   and none is rolled up, reworded, reordered, or removed.
 
 8. **Report the firing outcome.** Stamp a durable outcome on the todo — `success`
    when the firing achieved the plan's intent, `error` (with a reason) when it hit a

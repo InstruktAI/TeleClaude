@@ -271,9 +271,12 @@ working copy and the repository.
   own bookkeeping and never through a port identity. The item's **record** is
   one platform-authored comment on that issue, edited in place: the item's
   row facts, dependencies, workflow state, a revision counter and, for each
-  artifact, the number of its issue artifact and the digest of the version the
-  record commits. Each artifact is one issue artifact the platform App created
-  on the item's issue, its plans as
+  artifact, the number of its issue artifact and an entry for each of its
+  versions GitHub still serves, the newest being the version the record
+  commits. An entry carries the version's digest and the workflow writer and
+  creation time the working copy holds for it, apart from the account and time
+  GitHub records for the save. Each artifact is one issue artifact the platform
+  App created on the item's issue, its plans as
   `plan` artifacts and every other artifact as a `generic` document, and each
   version is one saved version of it, never edited once saved. The version a
   record commits is the newest version the platform App saved whose content
@@ -419,8 +422,7 @@ master admits each conversation request before sending it:
   during the pause is answered deferred until its end.
 - **The budget survives a restart.** The master's request runtime records the
   time of each conversation append it sends within the last hour and the end
-  of any pause in the daemon's operational database
-  (`local/projects/teleclaude/policy/single-database`), and reloads both
+  of any pause in the daemon's operational database, and reloads both
   before it admits a conversation request after it starts. A computer that
   becomes the master holds none of its predecessor's record, so it admits no
   conversation request until an hour after it became master, the longest
@@ -464,9 +466,40 @@ master admits each conversation request before sending it:
   every item its working copy holds as repository work, each artifact's
   versions from the working copy, oldest first, as the versions of a new issue
   artifact, then writes the item's next record revision naming those
-  artifacts. It reads nothing from the content comments and leaves them on the
-  issue. Until an item is republished, its record is not read for content and
-  writes to the item republish it first.
+  artifacts, with each version's writer and creation time taken from the
+  working copy. It reads nothing from the content comments and leaves them on
+  the issue.
+  - An item awaits republication while its committed record predates native
+    artifacts. The working copy records which items await it, and the repair
+    takes them one at a time: first an item a refused write asked for, then an
+    item whose claim is live, then the lowest issue number. An item stops
+    awaiting republication only when the record revision naming its artifacts
+    commits.
+  - Its saves are spaced like every other repair write and made outside the
+    working copy's writer. Each save GitHub acknowledges is recorded in the
+    working copy as saved for that item before the next is made, apart from
+    the version entries a committed record names, so an interrupted item
+    resumes at its first version not yet saved. A version save whose
+    acknowledgement is lost is made again, and GitHub then holds that content
+    twice; the record commits the newer. A lost acknowledgement of an
+    artifact's creation is a failure mode of its own (Failure modes).
+  - The item's next record revision is then committed by a push holding the
+    writer, the one write to an item awaiting republication that the store
+    admits. Every other write to such an item is refused before its
+    transaction changes anything, with a cause saying the item awaits
+    republication and the write can be sent again. Republication is never part
+    of that write.
+  - A request GitHub throttles during a refresh ends that refresh, and the
+    working copy records when the project's refresh may send requests again:
+    the time GitHub's response names, or, when it names none, one minute
+    after the throttle, doubling while throttles continue. Until then a
+    refresh sends no request for the project: no repair, republication,
+    issue, ledger or record read. Workflow writes are not held by it and
+    refuse with GitHub's cause when GitHub throttles them.
+- **Record reads.** Refresh reads an item's record comment by the comment id
+  its working copy holds for the item, one comment with its edit history. It
+  lists an issue's comments only for an issue whose record comment the working
+  copy does not hold, or whose held comment GitHub no longer serves.
 
 <!-- /planned:github-native-artifacts -->
 
@@ -489,11 +522,10 @@ master admits each conversation request before sending it:
   edit history, and refresh restores it on GitHub. The restored version is
   never older than the record's latest committed revision. An artifact version
   is read only when the platform App saved it; a version anyone else saved,
-  and an artifact anyone else created, is never read as state. Refresh lists
-  the artifacts of every open item, the only way a change to one is seen. When
-  an artifact's newest version is not the version its record commits, the
-  computer that works the project saves the committed content again from its
-  working copy; an artifact that is gone is created again by the item's next
+  and an artifact anyone else created, is never read as state. Nothing scans
+  artifacts: a version someone else saves changes no state, so it is not looked
+  for, and the platform's next save of that artifact becomes its current
+  version again. An artifact that is gone is created again by the item's next
   write, whose record revision names it. A comment with no recoverable bot
   version, and an artifact whose committed version GitHub no longer serves
   where no working copy holds it, is **unverifiable**: refresh leaves the
@@ -542,26 +574,11 @@ master admits each conversation request before sending it:
   facades share this identity and event-hook attachment; sync calls stay native
   sync and do not invoke a nested event loop.
 
-<!-- planned-change:artifact-writes-outlast-push-deadline -->
-
 - Adapter commands retain existing transaction boundaries and callback
   multiplicity. Artifact content and version append commit together and notify;
   provenance state is a later, separate commit and notification. A failure
   between those commits remains observable as it is today. Delivery and later
   dependency cleanup likewise retain their source-defined boundaries.
-
-<!-- change:artifact-writes-outlast-push-deadline -->
-
-- Adapter commands retain existing transaction boundaries and callback
-  multiplicity. Artifact content and version append commit together and notify;
-  provenance state is a later, separate commit and notification. A failure
-  between those commits remains observable as it is today. Delivery likewise
-  retains its source-defined boundary. Dependency cleanup after a delivery
-  removes the delivered item from each dependent item in a transaction of its
-  own, so every cleanup commit changes one item, and a cleanup cut short leaves
-  only the references it had not yet removed.
-
-<!-- /planned-change:artifact-writes-outlast-push-deadline -->
 
 - A phase mutation persists before its existing transition notification. Failed
   persistence emits no successful transition. Hook registration occurs once
@@ -621,8 +638,6 @@ master admits each conversation request before sending it:
   deadline, however many transactions the request commits. Waiting for a
   database connection before a transaction starts is not cut short by it.
 
-<!-- planned-change:artifact-writes-outlast-push-deadline -->
-
 - GitHub I/O runs on an adapter-owned I/O thread: a sync caller blocks on it
   without starting an event loop of its own, and an async caller awaits it
   without blocking the daemon's loop. Requests on that thread run one at a
@@ -630,30 +645,28 @@ master admits each conversation request before sending it:
   another one, but holds the request serialization only for each of its own
   requests, so a push waits behind at most one request in flight.
 
-<!-- change:artifact-writes-outlast-push-deadline -->
-
-- GitHub I/O runs on an adapter-owned I/O thread: a sync caller blocks on it
-  without starting an event loop of its own, and an async caller awaits it
-  without blocking the daemon's loop. Requests on that thread run one at a
-  time. While a push runs under the push deadline, requests of work other than
-  a push wait until no such push is under way: a push waits only for the one
-  request already in flight when it began and for the requests of another
-  project's push, which take turns with its own, so the push deadline is spent
-  on push requests. A paced restore keeps the per-request serialization. An
-  issue reflection, a pull request unit or a board unit never runs alongside
-  another one, and holds the request serialization only for each of its own
-  requests.
-
-<!-- /planned-change:artifact-writes-outlast-push-deadline -->
-
 - No working-copy write waits for the writer on a thread that runs an event
   loop. A commit whose reflection needs no GitHub write records that in the
   same transaction. Bookkeeping that records a completed reflection or pull
   request is written from a thread no write depends on, within the admission
   budget.
 
+<!-- planned-change:github-native-artifacts -->
+
 - The working copy's reads never reach GitHub; only writes, rebuild and
   refresh do.
+
+<!-- change:github-native-artifacts -->
+
+- The working copy's reads never reach GitHub; only writes, rebuild, refresh
+  and one exception do: reading an artifact version, or a diff between two,
+  that a rebuilt working copy lacks reads that artifact's history from GitHub
+  once (Failure modes). The read holds no writer and runs under the I/O
+  thread's request serialization like any other request; the versions it
+  returns are then kept by a working-copy write that, like rebuild, pushes
+  nothing, under the store's admission budget.
+
+<!-- /planned-change:github-native-artifacts -->
 
 - A project has one board: only the computer holding the board issue's first
   board claim creates it, and every computer uses the board its entries
@@ -695,11 +708,21 @@ as an ordinary change, so the write path below publishes it.
 A project activates the GitHub store by declaring `todos.store: github`
 together with its repository and platform App
 (`local/projects/teleclaude/spec/teleclaude-config`), with that App installed
-on the repository and the repository serving issue artifacts. Store resolution
-establishes that the repository serves them by reading the ledger issue's
-artifacts, and refuses with that cause when it does not. The first store
-resolution on a computer rebuilds the working copy from the repository; an
-empty repository yields an empty store.
+on the repository and the repository serving issue artifacts. The working
+copy records whether the repository serves them once that is known: from a
+probe, or from any artifact request GitHub answers. While it is not known,
+store resolution probes by listing the link artifacts of one issue the
+platform App opened: the ledger issue when the repository has one, otherwise
+the issue of any repository work item the working copy or its rebuild holds.
+The probe requests link artifacts only, a type the platform never creates. Resolution refuses when the repository does not serve issue
+artifacts, and refuses with the provider's cause when the probe fails
+otherwise. A repository with no platform issue has nothing to probe: its store
+resolves, and its first artifact save establishes the fact. Once the working
+copy records that the repository does not serve them, resolution and every
+write refuse with that cause until a probe, which resolution makes again
+each time, finds them served. The first store resolution on a computer
+rebuilds the working copy from the repository; an empty repository yields an
+empty store.
 Moving an existing local store's items to GitHub is not part of activation.
 The GitHub store switch
 (`local/projects/teleclaude/spec/feature/workflow/github-store-switch`) moves
@@ -707,6 +730,8 @@ them by restoring each item, with every artifact version, into the working copy
 as an ordinary change, so the write path below publishes it.
 
 <!-- /planned-change:github-native-artifacts -->
+
+<!-- planned-change:github-native-artifacts -->
 
 ```mermaid
 sequenceDiagram
@@ -727,6 +752,30 @@ sequenceDiagram
         W-->>C: refusal
     end
 ```
+
+<!-- change:github-native-artifacts -->
+
+```mermaid
+sequenceDiagram
+    participant C as Consumer
+    participant W as Working copy (local implementation)
+    participant G as GitHub adapter
+    participant R as Repository
+    C->>W: port operation
+    W->>W: apply change in transaction
+    W->>G: commit requested (changed items)
+    G->>R: read record revision
+    G->>R: save artifact versions, edit record, set reflections
+    alt all GitHub writes succeed
+        G-->>W: commit proceeds
+        W-->>C: result
+    else a write before the commit point fails or revision is newer
+        G-->>W: abort
+        W-->>C: refusal
+    end
+```
+
+<!-- /planned-change:github-native-artifacts -->
 
 ## Failure modes
 
@@ -773,12 +822,17 @@ sequenceDiagram
 
 - A newly opened issue whose transaction then aborts stays on GitHub
   unreferenced; rebuild ignores it, because an issue without a platform record
-  is not an item. An artifact version or a new artifact whose transaction then
-  aborts stays on GitHub as the artifact's newest version, which no record
-  commits: GitHub takes no conditional write and removes no version. Every
-  reader takes the version the record commits, and the next refresh on the
-  computer that works the project saves the committed content again, so
-  people may see the aborted content as the current version until then.
+  is not an item. An artifact version whose transaction then aborts stays on
+  GitHub as the artifact's newest version, which no record commits: GitHub
+  takes no conditional write and removes no version. Every reader takes the
+  version the record commits; people see the aborted content as the
+  artifact's current version until the platform next saves that artifact.
+- An artifact created in a write that then aborts, or whose creation's
+  acknowledgement is lost during republication, stays on the issue as an
+  issue artifact no record names. The next save of that workflow artifact
+  creates another issue artifact under the same name, which the record then
+  names. The unnamed one is never read, and people see both until someone
+  removes it.
 
 <!-- /planned-change:github-native-artifacts -->
 
@@ -806,16 +860,40 @@ sequenceDiagram
   copy is ever published in its place.
 - GitHub serves only an artifact's 30 newest versions. A committed version
   pushed out of that window, by saves after it or by the artifact's deletion,
-  is restored from the working copy of the computer that holds it. A rebuild
-  restores at most the 30 newest versions of each artifact; an item whose
-  committed version it cannot read is unverifiable there and rebuild refuses
-  store resolution naming the item. The diff of an older version is
-  unavailable on a computer that rebuilt the item.
+  is saved again from the working copy of the computer that holds it by the
+  item's next write of that artifact. A rebuild reads each item's artifacts
+  with one list request, which carries their current bodies, and restores the
+  committed version of each; it reads an artifact's version history only when
+  its current version is not the committed one. An earlier version a rebuilt
+  working copy lacks is read from GitHub the first time something asks for it,
+  a diff or an older version, with one read of that artifact's history, and is
+  kept with the writer and creation time its record entry names; only a
+  version older than the 30 GitHub serves is then unavailable, and the read
+  answers that the version is unavailable rather than inventing it. The caller
+  waits for that one read and the local write that keeps its result; a read
+  GitHub refuses or does not answer refuses the caller with the provider's
+  cause and keeps nothing. Only a saved version whose digest a record entry
+  names is kept; a version the platform saved for a transaction that then
+  aborted is never taken for history. An item whose committed version a
+  rebuild cannot read is unverifiable there and rebuild refuses store
+  resolution naming the item.
 - A repository whose issue artifacts become unavailable, because GitHub
   changes or withdraws the preview, refuses store resolution and every write
   with that cause; the working copy is left as it is.
-- A version larger than GitHub accepts is refused with GitHub's cause, as any
-  failed write before the commit point.
+- An artifact body GitHub refuses fails the write before the commit point
+  with the cause its response carries, a server error refusing as the
+  provider being unavailable, as any failed write before the commit point
+  does. No size limit is inferred from a response that does not state one.
+- A throttled artifact save is a write refused by a rate limit: an ordinary
+  write aborts and refuses with that cause.
+- A write to an item that awaits republication is refused for as long as the
+  item awaits it, each time saying that the item awaits republication and
+  that the write can be sent again. On the computer that runs the repair, a
+  refused write marks its item as requested, and the repair takes requested
+  items before any other, in issue order; how soon one is reached depends on
+  the requested items ahead of it, the item in progress, and any throttle or
+  other refusal that ends a pass. A write made on a computer that does not run
+  the repair marks nothing, and its item waits for the repair's order there.
 
 <!-- /planned-change:github-native-artifacts -->
 
@@ -833,8 +911,6 @@ sequenceDiagram
   saved and the rest was not. A background operation records the refusal as
   its failure.
 
-<!-- planned-change:artifact-writes-outlast-push-deadline -->
-
 - A transaction whose GitHub I/O outlasts the push deadline aborts its local
   commit and refuses with the provider's unavailable cause, as any failed GitHub
   write before the commit point does. When its request's deadline is what ran
@@ -842,22 +918,6 @@ sequenceDiagram
   explicit refusal instead. If the push had already sent its commit-point
   write, that refusal says the change may have been saved and appears once the
   store refreshes.
-
-<!-- change:artifact-writes-outlast-push-deadline -->
-
-- A transaction whose GitHub I/O outlasts the push deadline aborts its local
-  commit and refuses with the provider's unavailable cause, as any failed GitHub
-  write before the commit point does. When its request's deadline is what ran
-  out, the transaction aborts the same way, and the API caller receives the
-  explicit refusal instead. If the push had already sent its commit-point
-  write, that refusal says the change may have been saved and appears once the
-  store refreshes. The store starts that refresh once the refused transaction
-  has ended, the recovery a conflict-refused write already gets, so the saved
-  change does not wait for the periodic refresh. Every content part of a new artifact version is a request under the same
-  push deadline, so a version with more parts than the deadline covers is
-  refused like any other push that outlasts it.
-
-<!-- /planned-change:artifact-writes-outlast-push-deadline -->
 
 - Bookkeeping refused for the writer after a completed reflection or pull
   request leaves that reflection owed, and refresh writes it again.

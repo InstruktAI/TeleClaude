@@ -16,9 +16,20 @@ Two signal axes feed a shared checkpoint builder (`checkpoint.py`):
 1. **File-based** — `git diff --name-only HEAD` maps changed files to file categories and judgment actions (for example, changed code may owe a live-runtime log check). After an integration-controlled canonical-root advancement, the checkout-scoped range marker carries only the outstanding log judgment when the advanced paths owe one. Deterministic maintenance is recorded and started at the advancement boundary, then runs outside checkpoint evaluation. Git is the category oracle only — never the arbiter of what is in-scope or done.
 1. **Transcript-based** — Tool call timeline from the current checkpoint cycle provides file attribution, suppression evidence (action already taken), error state detection, and edit hygiene observations.
 
+<!-- planned-change:antigravity-native-subagents-allowed -->
+
 One delivery path exists:
 
 - **Claude/Gemini/Codex**: Hook-based invisible checkpoint. The hook receiver (`receiver.py`) evaluates the checkpoint condition at the `agent_stop` boundary and returns blocking hook output to stdout. The agent keeps running without the checkpoint text appearing in the tmux pane.
+
+<!-- change:antigravity-native-subagents-allowed -->
+
+Two delivery paths exist:
+
+- **Claude/Gemini/Codex**: Hook-based invisible checkpoint. The hook receiver (`receiver.py`) evaluates the checkpoint condition at the `agent_stop` boundary and returns blocking hook output to stdout. The agent keeps running without the checkpoint text appearing in the tmux pane.
+- **Antigravity turn completed on a subagent's hook**: the turn completion of an Antigravity conversation can arrive on its provider-native subagent's idle `Stop` (`local/projects/teleclaude/spec/hook-normalized-events`). The receiver evaluates the checkpoint for the conversation's session exactly as at any `agent_stop`, answers the subagent's hook with the plain success response, and relays a required checkpoint through the hook outbox to control delivery, which brings it to the conversation (`local/projects/teleclaude/spec/feature/agent_runtime/control-delivery`).
+
+<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 All agents call the same `get_checkpoint_content()` entry point, ensuring parity.
 
@@ -63,7 +74,17 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 9. **Turn-scoped hook escape hatch**: The receiver honors a per-session clear marker file (`teleclaude_checkpoint_clear`) in the session temp directory. If present, `agent_stop` passes through immediately for the current turn; the marker is hard-cleared at the next `user_prompt_submit`, so a manual clear lasts one turn only. The involuntary recheck loop-guard (re-entry limiter) is retained as the hard backstop against an evidence-miss spinning forever. Otherwise, every `agent_stop` evaluates the current checkpoint-cycle scope; repeated stop events are acceptable because the latest checkpoint prompt resets files, evidence, and errors together.
 
+<!-- planned-change:antigravity-native-subagents-allowed -->
+
 10. **Hook stop suppression**: When `_maybe_checkpoint_output` fires for Claude/Gemini/Codex, the receiver prints blocking JSON and exits without enqueuing the `agent_stop` event. The daemon never sees the blocked stop, so no output extraction, TTS, or listener notifications fire for checkpoint turns.
+
+<!-- change:antigravity-native-subagents-allowed -->
+
+10. **Hook stop suppression**: When `_maybe_checkpoint_output` fires for Claude/Gemini/Codex, the receiver prints blocking JSON and exits without enqueuing the `agent_stop` event. The daemon never sees the blocked stop, so no output extraction, TTS, or listener notifications fire for checkpoint turns.
+
+    A relayed checkpoint suppresses the forwarded `agent_stop` the same way, for every session: the turn completion is published only when the checkpoint turn it starts ends.
+
+<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 11. **Suppressibility**: Every judgment-action heuristic checks for positive evidence in the checkpoint-cycle tool-call timeline. If the expected judgment action was already performed in that cycle (for example, a log check or targeted test), its instruction is suppressed. `telec repo commit` output that reaches the main-branch classification gate is evidence that the commit-options step was performed, even though no approved commit occurred. When all instructions are suppressed and no observations remain, the checkpoint is "all-clear".
 

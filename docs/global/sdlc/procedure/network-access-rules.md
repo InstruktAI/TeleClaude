@@ -26,7 +26,7 @@ per-connection outbound filter is installed and prompting:
 
 ## Preconditions
 
-- The repository ships binaries that open outbound connections.
+- The repository's code runs binaries that open outbound connections.
 - The host has been checked for a per-connection outbound filter. Detection
   precedes authoring; absent a filter, the procedure ends here.
 
@@ -45,10 +45,13 @@ docs/specs/rules/networking/open-snitch/
 The rules are **committed, never ephemeral**. An agent reads the committed rules
 and extends them; it does not re-derive them per run.
 
-### 2. Declare this repository's own binaries
+### 2. Declare the binaries this repository's code runs
 
-Rules name the binaries this repository ships. A rule matching any process is not
-a declaration of what an application needs — it is the removal of the filter.
+Rules name the binaries this repository ships and every tool its code needs to
+run — whether its install flow installs the tool or expects it to be installed
+beforehand — each with the destinations it needs. A rule
+matching any process is not a declaration of what an application needs — it is
+the removal of the filter.
 
 For rule syntax, read the vendors' own format documentation (linked under
 See Also) rather than a copy of it.
@@ -83,34 +86,43 @@ Acceptance is not symmetric, and the difference decides what can be automated:
 - **OpenSnitch applies by file drop** into the daemon's rules directory. On Linux
   hosts this is owned by the project's install flow.
 
-### 5. Reach the rules over the transport
+### 5. Publish the rules where hosts subscribe
 
-A host-level `RULES_BASE_URL` environment variable points at the HTTPS endpoint
-that serves rule files to subscribing filters. The endpoint serves a file from
-**its own host's filesystem**, addressed by a `path` query parameter —
-`GET {RULES_BASE_URL}?path=<path on the serving host>` — and refuses any
-extension outside its allowlist. It does not read the repository.
+A subscribing filter fetches its rules over HTTPS from a host with a publicly
+trusted certificate. The repository's own GitHub Pages site is that host: a
+scheduled job in the repository builds the served rule file from the committed
+source and deploys it to Pages, and commits nothing. A host subscribes to
+`https://<owner>.github.io/<repository>/<file>`. Until the job has published,
+the committed rules are inert — a defined state, not a failure.
 
-Publication is therefore its own step: a committed rule file reaches the serving
-host by an explicit transport action, and the endpoint only serves what already
-landed there. A repository that commits rules and configures `RULES_BASE_URL`
-has still published nothing until that action runs.
+A package manager that installs each version at its own path gives every
+upgrade a new path. Homebrew keeps each installed version of a formula in its
+own folder under its prefix's Cellar, with `/opt/homebrew` and `/usr/local` as
+its prefixes (Homebrew's Formula Cookbook and installation pages, under See
+Also), and a filter that matches the full path a process runs from sees that
+versioned folder. The committed source
+therefore names the formula and the binary's path inside the formula's folder,
+never a version. The job expands each entry into one rule per version and
+prefix: it reads the current version from the package manager's API, keeps
+every version the published file already carries, and adds a version named to
+it by hand, so a host still running an older version keeps or gets its rule.
 
-When the variable is unset the transport is **absent — a defined state, not a
-failure**: the rules stay committed and inert, and a host adopts them once the
-transport is configured. A configured variable is not by itself a working
-transport — an endpoint serving no file answers a subscription with a
-not-found, and the rules stay just as inert.
+Little Snitch also matches a process by its code identity: the team identifier
+and the identifier of its code signature (`identifier.TEAM_ID/IDENTIFIER`; its
+code identity and rules file format pages, under See Also). A binary signed with
+a team identifier that keeps the same identity from version to version, such as
+a Developer ID signed tool, has its rule name that identity instead of a path,
+and the rule holds across its upgrades.
 
-The endpoint is a **trust boundary**: a subscribing host applies the rules it
-serves, and a subscribing filter offers no hook to verify a signature over the
-content it fetches. Integrity rests on three things instead — TLS for channel
-integrity and server authentication, an origin-gated endpoint, and a source that
-is reviewed and committed before it is published. Point `RULES_BASE_URL` only at
-such an endpoint.
+Little Snitch subscribes once per machine to the published file as a remote rule
+group. "Disable new allow rules" is turned off for that group; otherwise every
+version the job adds arrives disabled.
 
-Content authentication is not part of this boundary, and a compromised serving
-host is outside it.
+The published file is a **trust boundary**: a subscribing host applies the rules
+it serves, and a subscribing filter offers no hook to verify a signature over the
+content it fetches. Integrity rests on TLS for channel integrity and server
+authentication, on the repository's own Pages site as the only origin, and on a
+source that is reviewed and committed before the job publishes it.
 
 ### 6. Reflect a new binary or destination as part of delivery
 
@@ -123,6 +135,7 @@ fire on the next host or the next rebuild.
 
 - Committed rule files at the convention path in the repository that ships the
   binaries.
+- The rule file the repository's job publishes on its Pages site.
 - On macOS, a machine subscribed once to the published rule group.
 - On Linux, rules applied to the daemon's rules directory by the install flow.
 
@@ -134,15 +147,17 @@ fire on the next host or the next rebuild.
   identity on every build.
 - **A newly declared rule is not honored.** The filter has not reloaded. Restart its
   daemon, then retry.
-- **The transport is unreachable or unset.** The rules remain committed and inert.
-  Configure `RULES_BASE_URL`; do not hand-enter rules on the host instead.
+- **A prompt names a version the published file lacks.** Run the publishing job,
+  naming that formula and version as a version to add when it is older than the
+  package manager's current one; a plain run adds only the current version. Do
+  not hand-enter rules on the host instead.
 
 ## Discipline
 
 The committed rules are the source of truth and the filter is downstream of them.
 An agent that meets a prompt reaches for the committed file, not for the filter's
 own interface, because a rule entered by hand lives on one machine and is lost to
-every other. A rule names the binaries this repository ships; reaching for a
+every other. A rule names the binaries this repository's code runs; reaching for a
 match-any-process rule ends the prompting by removing the filter, which is the
 failure this procedure exists to prevent. The formats are stable, so rules are
 extended rather than re-derived per run. Where no such filter runs the procedure
@@ -152,4 +167,7 @@ is inert — that is a no-op, never a step to work around.
 
 - ~/.teleclaude/docs/sdlc/procedure/macos-stable-code-signing.md — the identity half: a rule survives a rebuild only when the binary's identity does.
 - https://help.obdev.at/littlesnitch6/adv-lsrules-file-format — Little Snitch `.lsrules` format reference.
+- https://help.obdev.at/littlesnitch6/adv-code-identity — Little Snitch code identity: team identifier and signing identifier.
+- https://docs.brew.sh/Formula-Cookbook — Homebrew's Cellar: one folder per installed formula version.
+- https://docs.brew.sh/Installation — Homebrew's default prefixes, `/opt/homebrew` and `/usr/local`.
 - https://github.com/evilsocket/opensnitch/wiki/Rules — OpenSnitch rule format reference.

@@ -11,6 +11,24 @@ visibility: 'public'
 
 A one-shot task-outcome success reconciles lifecycle markers only in the task's own project; it does not read or change another project's documentation. A code-review record retains the reviewed commit, verdict, reviewer identity, and supplied reason. It is also recorded on the Todo claimed by the stamping session, or by its initiating session when the reviewer has no claim; if neither has a claim, no Todo review state is written.
 
+`--task-firing-started` is the firing-start stamp for a `kind="task"` Todo. The
+session running the firing stamps it before it reads the Todo's `log`. It passes
+the same caller authority as `--task-outcome`: a TeleClaude session bound to the
+Todo, holding its claim, or stamping an unclaimed Todo; a human caller is
+refused. The stamp takes the instant from the system clock, records a
+firing-start audit event naming the stamping session, and then appends that
+firing's line to the end of the `log`
+(`local/projects/teleclaude/spec/feature/workflow/work-state-machine`). When the
+Todo already holds a firing-start event naming the stamping session, the stamp
+answers with the current state and writes nothing. A firing-start stamp on a
+non-task Todo is refused before any write. A refusal before the event write
+writes nothing. When the event write or the line write is refused, the store's
+report says whether that write may already be saved; a stamp can therefore end
+in error with its event recorded, and with or without its line. After any of
+these outcomes, a later stamp from the same session appends nothing; a session's
+firing has at most one line and may have none. Every failure is reported to the
+caller.
+
 The same state-write boundary owns artifact-write provenance capture. On every `telec todo artifacts write` for a drift-tracked artifact (`input`, `prd`, `architecture`, `implementation-plan`), the workflow's provenance boundary records the evidence needed for every drift class applicable to that artifact. Existing persisted fields: `codebase_sha_at_write` (captured via the origin-main-sha helper — never local HEAD) and `referenced_paths`, plus `upstream_digests` (the persisted-state field, aka `upstream_artifact_digests` in spec/documentation). Added persisted fields: `owned_snippet_digests`, `referenced_snippet_digests`, `produced_at`, and, for the `implementation-plan` only, `dependency_artifact_digests` — pure additive defaults with no migration. See `@spec/feature/workflow/drift-detection` for the per-class semantics. Rewriting an artifact re-captures all provenance fields at the new write and clears every drift-reviewed stamp for that artifact so the next derivation starts from a fresh anchor.
 
 ## Canonical fields

@@ -269,6 +269,16 @@ is_pid_alive() {
     [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1
 }
 
+daemon_process_running() {
+    local pid
+    if [ "$PLATFORM" = "macos" ]; then
+        pid="$(launchd_unit_pid "$SERVICE_LABEL")"
+    else
+        pid="$(systemd_main_pid)"
+    fi
+    is_pid_alive "$pid"
+}
+
 pid_label() {
     local entry="$1"
     printf '%s\n' "${entry%%:*}"
@@ -584,6 +594,17 @@ start_daemon() {
     else
         # Content-gated: a no-op once every definition already matches.
         install_service
+    fi
+
+    # The receiver's units are deployed or withdrawn before the daemon is started, per computer.ingress_receiver;
+    # the daemon then serves the inbound endpoints only while they are absent. A running daemon keeps the units
+    # it started with until its next restart, so whoever serves keeps serving; a failure fails the start before
+    # the daemon runs.
+    if daemon_process_running; then
+        log_info "The daemon is running; the ingress receiver's units are reconciled at its next restart"
+    elif ! install_ingress_receiver; then
+        log_error "Failed to deploy or withdraw the ingress receiver"
+        return 1
     fi
 
     start_startup_log_stream
@@ -1083,13 +1104,33 @@ restart_daemon() {
         return 1
     fi
 
+    # Under launchd, KeepAlive would relaunch the daemon while a restart changes the receiver's units, and that
+    # instance would keep the earlier view of them. Such a restart takes the daemon out of launchd as the act that
+    # terminates the prepared instance, so no unprepared instance is ever started or stopped, and the start below
+    # launches it fresh on the reconciled units.
+    local unload_daemon=false
+    if [ "$PLATFORM" = "macos" ] && ingress_receiver_change_pending; then
+        unload_daemon=true
+    fi
+
     if [ "$prepare_rc" -eq 0 ]; then
         log_info "Terminating prepared daemon (pid $PREPARED_PID)..."
-        signal_prepared_daemon "$PREPARED_PID"
+        if $unload_daemon; then
+            launchctl bootout "$(launchd_domain)/$SERVICE_LABEL" 2>/dev/null || true
+        else
+            signal_prepared_daemon "$PREPARED_PID"
+        fi
         if ! wait_for_daemon_death "$STOP_WAIT_SECONDS" "$SERVICE_LABEL:$PREPARED_PID"; then
             log_error "Prepared daemon did not exit within ${STOP_WAIT_SECONDS}s; not forcing it ('make kill' is the explicit forced path)"
             return 1
         fi
+    fi
+
+    # With the daemon gone and its port free, the receiver's units follow computer.ingress_receiver. When that
+    # fails, the units are withdrawn, so the restarted daemon serves the inbound endpoints itself.
+    if ! install_ingress_receiver; then
+        log_error "Failed to deploy or withdraw the ingress receiver; withdrawing it so the daemon serves the inbound endpoints"
+        withdraw_ingress_receiver || log_error "Could not withdraw the ingress receiver; the inbound endpoints may be unserved"
     fi
 
     # Nothing may follow the service-manager action; see daemon-availability.

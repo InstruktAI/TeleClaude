@@ -5,7 +5,7 @@ about to be applied, a stored revision behind the code's, a retired shape about 
 Creating a store or table that did not exist is not one. Whether a migration runs from a ledger or
 when its store is opened, the owner calls ``signal_migration_started`` at the point where it knows a
 step will change something, and never classifies what the step did: a started migration counts as a
-change (``local/projects/teleclaude/policy/single-database``).
+change (``local/projects/teleclaude/spec/feature/reconciliation/installed-releases``).
 
 The sink is bound to the installation whose state is migrating. A signal is written to the install
 record only when the signalling process runs the installation's active release, or is the install

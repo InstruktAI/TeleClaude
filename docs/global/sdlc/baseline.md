@@ -1,3 +1,4 @@
+@~/.teleclaude/docs/general/principle/parallel-work.md
 @~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 @~/.teleclaude/docs/sdlc/policy/no-semantic-validators.md
 @~/.teleclaude/docs/sdlc/policy/code-quality.md

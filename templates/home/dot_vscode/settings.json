@@ -1,3 +1,7 @@
 {
-  "search.followSymlinks": false
+  "search.followSymlinks": false,
+  "files.watcherExclude": {
+    "tmp/**": true,
+    "backups/**": true
+  }
 }

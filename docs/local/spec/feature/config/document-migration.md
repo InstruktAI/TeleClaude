@@ -90,6 +90,8 @@ read or unsupported shape is a failed outcome. Other registered documents retain
 the persistence rules above; an explicit configuration writer retains its own
 write contract.
 
+<!-- planned-change:lean-git-commit-scope -->
+
 A migration run commits what it persists. A document tracked in a git
 repository that had no uncommitted changes gets one migration commit in that
 repository, containing that document alone. A document that already carried
@@ -97,6 +99,19 @@ uncommitted changes is migrated in place and left for whoever owns those
 changes; its pending edits are preserved and nothing is committed on their
 behalf. A document whose commit is refused is restored to its committed
 content. Untracked documents are written without a commit.
+<!-- change:lean-git-commit-scope -->
+
+A migration run commits what it persists outside the TeleClaude home. A
+document tracked in a git repository that had no uncommitted changes gets one migration commit in that
+repository, containing that document alone. A document that already carried
+uncommitted changes is migrated in place and left for whoever owns those
+changes; its pending edits are preserved and nothing is committed on their
+behalf. A document whose commit is refused is restored to its committed
+content. Untracked documents are written without a commit.
+In the TeleClaude home a migration run commits nothing: the home snapshot
+records what it persisted
+(`local/projects/teleclaude/spec/feature/reconciliation/home-repository`).
+<!-- /planned-change:lean-git-commit-scope -->
 
 A migration that moves a value out of a document delivers it to its
 config-owned destination before the document drops it. Where the value's final

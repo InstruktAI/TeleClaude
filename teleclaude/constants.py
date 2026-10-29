@@ -216,7 +216,8 @@ ARTIFACT_INVESTIGATION = "investigation"
 ARTIFACT_IMPLEMENTATION_PLAN = "implementation-plan"
 ARTIFACT_TASK_PLAN = "task-plan"
 # The kind=task lane's continuity / restart-idempotency record: read on start,
-# appended with dated entries per firing, kept lean. A run-phase product — not
+# kept lean. The run agent appends dated entries per firing; the firing-start
+# stamp appends one timed firing line per firing. A run-phase product — not
 # prepare-owned, not drift-tracked, not lifecycle-relevant.
 ARTIFACT_LOG = "log"
 # DEPRECATED: bug reports now live in the universal "input" artifact (kind=bug is
@@ -289,9 +290,10 @@ ARTIFACT_PLATFORM_WRITTEN_REFUSAL = "artifact kind '{name}' is platform-owned re
 
 ARTIFACT_NAMES_WRITABLE: frozenset[str] = ARTIFACT_NAMES - ARTIFACT_NAMES_RETIRED - ARTIFACT_NAMES_PLATFORM_WRITTEN
 
-# The prepare-owned derivation-root artifacts. Writable only by a prepare-phase
-# writer (a prepare-orchestrator, human-identity session, or roleless operator
-# session); writes are versioned and independent of lifecycle ownership. See the Write authority contract in
+# The prepare-owned derivation-root artifacts. Writable only by a caller whose
+# role reaches the `prepare-artifact-write` capability, a roleless operator
+# session, or a direct human-identity writer; writes are versioned and independent
+# of lifecycle ownership. See the Write authority contract in
 # docs/local/spec/feature/workflow/artifact-versioning.md.
 PREPARE_ARTIFACT_NAMES: frozenset[str] = frozenset(
     {

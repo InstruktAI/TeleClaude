@@ -8,6 +8,8 @@ description: TUI Sessions-view row action gestures — the mouse and key gesture
 
 ## What it is
 
+<!-- planned-change:session-parking -->
+
 The TUI Sessions view turns row gestures into session-lifecycle actions. A single
 click previews a session and focuses its pane; Shift-click previews without pane
 focus; double-click toggles the row's sticky pane; the Option+Shift-click chord
@@ -15,6 +17,19 @@ fast-closes the clicked session. On a headless row — one with no live pane —
 plain click, Shift-click, Space, or Enter revives the session instead of
 previewing it. The keyboard `k` binding closes the selected session through a
 confirmation modal.
+<!-- change:session-parking -->
+
+The TUI Sessions view turns row gestures into session-lifecycle actions. A single
+click previews a session and focuses its pane; Shift-click previews without pane
+focus; double-click toggles the row's sticky pane; the Option+Shift-click chord
+fast-closes the clicked session. On a headless or parked row — one with no live
+pane — a plain click, Shift-click, Space, or Enter revives the session instead of
+previewing it. The keyboard `k` binding closes the selected session through a
+confirmation modal. The keyboard `P` (Shift-P) binding parks the selected open
+session that is not already parked
+(`local/projects/teleclaude/spec/feature/agent_runtime/runtime-on-demand`);
+a closed or parked row receives no park request.
+<!-- /planned-change:session-parking -->
 
 Three keyboard gestures request handoff only for open sessions. `o` on an open
 session row requests automatic successor selection; `o` on a project header
@@ -69,6 +84,8 @@ A new session remains listed while its host pane is being created. A pending
 selection is retained until the pane is bound; it does not trigger headless
 revival or wait for the agent's first runtime event.
 
+<!-- planned-change:session-parking -->
+
 #### UC-SACT-3: An operator returns to a headless session
 
 ```
@@ -78,6 +95,20 @@ Then the view requests exactly one revive for that session
 And the view requests no preview for that session
 And the view requests no close for that session
 ```
+
+<!-- change:session-parking -->
+
+#### UC-SACT-3: An operator returns to a session without a live pane
+
+```
+Given a headless or parked session row in the TUI Sessions view
+When the operator plain-clicks that row
+Then the view requests exactly one revive for that session
+And the view requests no preview for that session
+And the view requests no close for that session
+```
+
+<!-- /planned-change:session-parking -->
 
 #### UC-SACT-4: An operator can request an automatic handoff for an open session
 
@@ -141,3 +172,17 @@ When the operator enters a path and confirms
 Then the start request uses the path as entered on the selected computer
 And the operator receives that computer's answer
 ```
+
+<!-- planned:session-parking -->
+
+#### UC-SACT-10: An operator parks a session from the Sessions view
+
+```gherkin
+Given a human operator selects an open session row in the TUI Sessions view that is not parked
+When the operator presses `P`
+Then the view requests exactly one park for that session, addressed to its computer
+And the view requests no close, restart, or revive for that session
+And a closed or parked session row receives no park request
+```
+
+<!-- /planned:session-parking -->

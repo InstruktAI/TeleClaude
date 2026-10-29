@@ -152,29 +152,33 @@ A caller that is no session authors under no session and records nothing there;
 an unidentified caller may not write at all.
 
 Independently of which session is driving the slug, a prepare artifact is writable
-only by a prepare-phase writer: a session carrying one of the prepare-authoring job
-roles, a human-identity session, or a roleless session — a TeleClaude session that
-carries no job role, the shape of a human-originated, operator-driven session. The
-prepare-authoring roles are the ones the prepare lifecycle confers on a session that
-derives a prepare artifact: the prepare orchestrator and the intake, architecture,
-diagnosis, and planning authors. A session that carries any other job role — a work
-orchestrator, a create orchestrator, the integrator, a builder, a reviewer, a finalizer
-— is refused by role with HTTP 403. The gate reads the job alone. A session's system
-role is not consulted, so a dispatched session carrying a prepare-authoring job is
-admitted on that job while remaining a worker for every purpose that classifies fleet
-sessions. An unregistered session id is an unknown caller and is refused with HTTP 403.
-This prepare-author gate is a capability boundary, not a claim: it does not consult or
-alter the slug's holder. It composes with the claim gate above — a prepare artifact is
-writable only by a caller that is both inside the claiming group, when the slug is
-claimed, and a prepare-phase writer. The claim gate decides first: a caller outside the
-claiming group is refused as a claim conflict regardless of job role, and the role
-refusal applies only to a caller the claim gate has already admitted.
-The write boundary does not enforce the convention that a work-phase defect in a
-prepare artifact is routed back through prepare.
+only by a prepare-phase writer: a caller whose reach, as the role catalog resolves
+it (`local/projects/teleclaude/spec/feature/identity/agent-roles`), includes the
+`prepare-artifact-write` capability, or a direct human-identity writer, which
+carries no session. A session the catalog does not admit is refused with HTTP 403;
+the refusal names the recorded role and the capability, and states that a focused
+session's write belongs to the session that dispatched it. The write boundary keeps
+no role list of its own. An unregistered session id is an unknown caller and is
+refused with HTTP 403.
+
+A prepare artifact of a todo whose contract is under execution — its lifecycle phase
+is one of the work lane's, from build started through finalize ready — is writable
+by no caller, the direct human-identity writer included. The write is refused with
+HTTP 409 before any state mutation, naming the phase and the door that reopens the
+contract: the todo's work orchestrator returns it to preparation with
+`telec todo stamp <slug> --kickback --reason <why>`, so any other caller addresses
+the session that holds the todo; the prepare lane's next call then moves the todo
+out of the work lane. A delivered todo stays read-only for every artifact kind.
+
+These gates read the object and the catalog, not the slug's holder, and compose with
+the claim gate above. The claim gate decides first: a caller outside the claiming
+group is refused as a claim conflict whatever its role. The closed-contract refusal
+applies next, to every caller the claim gate admitted, and the capability refusal
+last.
 
 Work artifacts (`review-findings`, `deferrals`, `quality-checklist`) carry no
-prepare-author role gate. Like every other writable kind, they are gated by the
-claim.
+prepare-artifact capability or closed-contract gate. Like every other writable kind,
+they are gated by the claim.
 
 The `check-failures` artifact is platform-written. The API and CLI write and
 remove boundaries refuse it as platform-owned read-only for every caller, before
@@ -185,14 +189,6 @@ not gated. What it records is
 `local/projects/teleclaude/spec/feature/workflow/failed-check-bugs`.
 
 #### UC-WAV9: Worker write to a prepare artifact is refused by role
-
-```gherkin
-Given a worker session that carries a non-prepare job role
-And the slug is unclaimed or the worker is inside its claiming group
-When the worker attempts to write a prepare artifact (input, prd, architecture, diagnosis, or implementation-plan)
-Then the workflow service refuses the write by role with HTTP 403, before any state mutation
-And the artifact's current version is unchanged
-```
 
 #### UC-WAV10: A dispatched worker writes while the orchestrator that dispatched it holds the todo
 
@@ -236,15 +232,6 @@ And an artifact whose versions recorded no writer carries none
 ```
 
 #### UC-WAV15: A work-orchestrator write to a prepare artifact is refused by role
-
-```gherkin
-Given a live work-orchestrator session
-And the slug is unclaimed or the work orchestrator is inside its claiming group
-When it attempts to write a prepare artifact at any lifecycle phase
-Then the workflow service refuses the write by role before any state mutation
-And the response status is HTTP 403
-And the artifact's current version is unchanged
-```
 
 #### UC-WAV16: A human-identity write to an unheld slug is accepted without acquiring a claim
 
@@ -342,3 +329,6 @@ And the verdict stamp binds the current report digest rather than inferring evid
 ## See Also
 
 - docs/local/adr/0096-claimed-todo-artifacts-are-writable-only-by-the-claiming-group.md — why a claimed todo's artifacts are writable only by the claiming group, and why the claim gate decides before the role gate.
+
+- docs/local/adr/0149-prepare-artifact-write-authority-is-a-catalog-capability.md — why a prepare artifact's writer is admitted by a catalog capability rather than a role list the write boundary keeps.
+- docs/local/adr/0151-prepare-artifacts-close-while-their-contract-is-under-execution.md — why a contract under execution closes the prepare artifacts to every caller.

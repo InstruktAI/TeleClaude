@@ -126,9 +126,21 @@ And the session is not reported complete while provider work remains active
   with the third-party webhook subsystem.
 - Consumes session-map state owned by the `agent_runtime` context
   (sessions and native-session-id mapping).
+
+<!-- planned-change:antigravity-native-subagents-allowed -->
+
 - Emits checkpoint-seen, native-metadata-update, native-session-refresh,
   agent-session-start, user-prompt-submit, tool-use, agent-stop, agent-idle,
   and agent-error entries into the hook outbox (see `hook-event-outbox`).
+
+<!-- change:antigravity-native-subagents-allowed -->
+
+- Emits checkpoint-seen, checkpoint-relay, native-metadata-update,
+  native-session-refresh, agent-session-start, user-prompt-submit, tool-use,
+  agent-stop, agent-idle, and agent-error entries into the hook outbox (see
+  `hook-event-outbox`).
+
+<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 ## Known caveats
 
@@ -169,19 +181,18 @@ And the session is not reported complete while provider work remains active
   the conversation that invoked it, and a subagent never becomes a session of
   its own. The subagent is recognized from the record Antigravity keeps in the
   subagent's own conversation store naming the `invoke_subagent` call as its
-  origin (`docs/third-party/antigravity-cli/sub-agents.md`); no hook payload
-  field carries that ancestry. An absent or unreadable
+  origin; no hook payload field carries that ancestry. An absent or unreadable
   record leaves the hook a primary conversation's. Each discarded hook still
   receives the provider's success response. An idle `Stop` from a subagent is
   forwarded as its root conversation's turn completion
   (`local/projects/teleclaude/spec/hook-normalized-events`); the response to
   that `Stop` is the plain success response and never a checkpoint
-  continuation.
+  continuation; a checkpoint the forwarded completion requires is relayed to
+  control delivery
+  (`local/projects/teleclaude/design/architecture/checkpoint-system`).
 - Recognizing a subagent depends on Antigravity writing its origin record
-  before the subagent's first hook. The observed lead ranges from about 0.3 s
-  to 6 s on CLI 1.2.13 and 1.4.7
-  (`docs/third-party/antigravity-cli/sub-agents.md`), and Antigravity documents
-  neither the record nor its timing. A subagent hook that arrives before its record is handled as
+  before the subagent's first hook, and Antigravity documents neither the record
+  nor its timing. A subagent hook that arrives before its record is handled as
   a primary conversation's.
 
 <!-- /planned-change:antigravity-native-subagents-allowed -->
@@ -211,3 +222,11 @@ And the session is not reported complete while provider work remains active
   exits with a failure status.
 - The receiver swallows persistence errors during native-metadata
   writes with a warning log; the hook event itself is still enqueued.
+
+<!-- planned:antigravity-native-subagents-allowed -->
+
+## See Also
+
+- docs/third-party/antigravity-cli/sub-agents.md — the Antigravity subagent origin record and its observed timing.
+
+<!-- /planned:antigravity-native-subagents-allowed -->

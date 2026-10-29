@@ -58,6 +58,8 @@ INBOUND_PATH_PREFIX: Final = "/hooks/inbound"
 _INBOUND_WEBHOOK_EVENT_ACCEPTED = "inbound_webhook_event_accepted"
 _INBOUND_WEBHOOK_REFUSED = "inbound_webhook_refused"
 _INBOUND_WEBHOOK_RELAY_FAILED = "inbound_webhook_relay_failed"
+# Longer than a provider's redelivery window, so a redelivered request is still recognised (ADR-0148).
+_CLAIM_TTL_S: Final = 3 * 24 * 3600
 _INBOUND_DECLARATION_UNREADABLE = "inbound_declaration_unreadable"
 _SECRET_FIELD = "secret"
 _VERIFY_TOKEN_FIELD = "verify_token"
@@ -358,6 +360,20 @@ async def _resolve_whatsapp() -> _Endpoint:
     )
 
 
+def _claim_identity(endpoint: _Endpoint, headers: Mapping[str, str], body: bytes) -> str:
+    """The identity a delivery is claimed under, within its authenticated source.
+
+    The source (protocol and declaring home) leads it, so two sources never share a claim. GitHub's own
+    delivery id identifies a GitHub delivery, and a digest of the verified body identifies every other one.
+    The delivery id header is not signed. Within its source, a request that replays a body the source signed
+    can present any id: it can relay that body again, or claim an id the source will deliver later, which a
+    GitHub event shares across Apps, so the id can be known in advance.
+    """
+    delivery_id = headers.get("x-github-delivery") if endpoint.protocol is RelayProtocol.GITHUB else None
+    delivery = delivery_id or hashlib.sha256(body).hexdigest()
+    return f"{endpoint.protocol.value}:{endpoint.home}:{delivery}"
+
+
 class InboundRelay:
     """Verify, translate and relay inbound requests for one ingress computer."""
 
@@ -374,11 +390,12 @@ class InboundRelay:
             relayed = _TRANSLATORS[endpoint.protocol](document, headers)
         except (json.JSONDecodeError, _InvalidBody) as error:
             raise _refuse(_Refusal.INVALID_BODY, endpoint.protocol, endpoint.home) from error
-        for event in relayed:
-            await self._emit(endpoint, event)
+        delivery = _claim_identity(endpoint, headers, body)
+        for index, event in enumerate(relayed):
+            await self._emit(endpoint, event, claim=f"{delivery}:{index}")
         return dict(_ACCEPTED_BODY)
 
-    async def _emit(self, endpoint: _Endpoint, event: _RelayedEvent) -> None:
+    async def _emit(self, endpoint: _Endpoint, event: _RelayedEvent, *, claim: str) -> None:
         relayed = RelayedEvent(
             type=event.name,
             subject=InboundSourceRef(
@@ -399,7 +416,7 @@ class InboundRelay:
         )
         hook_event = relayed_hook_event(self._producer.stage(relayed, legacy))
         try:
-            await self._producer.emit(relayed, legacy)
+            entry_id = await self._producer.emit_once(relayed, legacy, claim=claim, ttl_s=_CLAIM_TTL_S)
         except Exception as error:
             logger.error(
                 _INBOUND_WEBHOOK_RELAY_FAILED,
@@ -410,6 +427,12 @@ class InboundRelay:
             )
             # A transient failure so the sender retries the delivery.
             raise HTTPException(status_code=_STATUS_BAD_GATEWAY, detail=_DETAIL_RELAY_ERROR) from error
+        if entry_id is None:
+            # Another receipt of this delivery relayed it; this one is accepted and relays nothing.
+            logger.info(
+                "inbound_webhook_duplicate_dropped", event=event.name, protocol=endpoint.protocol.value, claim=claim
+            )
+            return
         logger.info(
             _INBOUND_WEBHOOK_EVENT_ACCEPTED,
             source=hook_event.source,

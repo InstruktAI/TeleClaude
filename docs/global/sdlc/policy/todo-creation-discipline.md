@@ -299,8 +299,11 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
 
 - **A flag binds only a live claimant.** An unclaimed todo has no message-based
   flag path and consumes no active preparation effort; its next claimant must
-  apply the entry audit before deriving from it. Creation lineage is
-  audit evidence, not a guarantee that the creator is still reachable.
+  apply the entry audit before deriving from it, unless a coordinator the
+  human has started reconciles it first under the landscape clause of
+  `sdlc/procedure/lifecycle/coordinate`, which also executes a claimant's
+  declared but unexecuted exit. Creation lineage is audit evidence, not a
+  guarantee that the creator is still reachable.
 
 - **The claimant pauses preparation immediately.** It advances no phase,
   dispatches no new child, and does not act on child output produced for the

@@ -26,6 +26,7 @@ class ProjectCatalogService:
         self._projects: list[ProjectNode] | None = None
         self._entries: list[ProjectCatalogEntry] | None = None
         self._unresolved_roots: list[Path] | None = None
+        self._generation = 0
 
     # -- Loading ----------------------------------------------------------
 
@@ -45,9 +46,15 @@ class ProjectCatalogService:
 
     def refresh(self) -> None:
         """Invalidate the cached project list; next access reloads from disk."""
+        self._generation += 1
         self._projects = None
         self._entries = None
         self._unresolved_roots = None
+
+    @property
+    def generation(self) -> int:
+        """Advances on every refresh, so a view derived from the catalog knows when to derive it again."""
+        return self._generation
 
     # -- Queries ----------------------------------------------------------
 
@@ -121,6 +128,13 @@ class ProjectCatalogService:
 
 # Single-slot dict so the module-level cache has a stable, mutable container
 _INSTANCE_SLOT: dict[str, ProjectCatalogService] = {}
+
+
+def registered_project_paths() -> list[str]:
+    """This computer's registered project roots, in registry order, from a refreshed catalog."""
+    catalog = get_project_catalog_service()
+    catalog.refresh()
+    return [str(entry.root) for entry in catalog.list_entries()]
 
 
 def get_project_catalog_service() -> ProjectCatalogService:

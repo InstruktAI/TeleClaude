@@ -4,6 +4,11 @@ The catalog loads every registered project through the configuration loader, so 
 answered from the same validated declarations every other consumer reads. A registered root
 whose declaration does not load as a project answers no ownership and still shadows any root
 that contains it.
+
+The index is kept per process and rebuilt when the catalog it is read from is refreshed: every
+caller-role lookup asks for it, and building it reads the registry and every registered root. A
+process that holds the index for long refreshes the catalog when the registry or a declaration
+changes, as the daemon's watchers do.
 """
 
 from __future__ import annotations
@@ -13,7 +18,7 @@ from pathlib import Path
 
 from teleclaude.config.identity_schema import ProjectOwnerKind, project_owner_identity
 from teleclaude.project_manifest import load_roots
-from teleclaude.services.project_catalog.service import get_project_catalog_service
+from teleclaude.services.project_catalog.service import ProjectCatalogService, get_project_catalog_service
 
 
 @dataclass(frozen=True)
@@ -60,9 +65,30 @@ class ProjectOwnershipIndex:
         return tuple(ownership for _, ownership in self._ownership_by_root if ownership is not None)
 
 
+@dataclass(frozen=True)
+class _CachedIndex:
+    catalog: ProjectCatalogService
+    generation: int
+    index: ProjectOwnershipIndex
+
+
+_cached_index: _CachedIndex | None = None
+
+
 def load_project_ownership_index() -> ProjectOwnershipIndex:
-    """Snapshot every registered root with the ownership its catalog project declares."""
+    """Snapshot every registered root with the ownership its catalog project declares, reused until a refresh."""
+    global _cached_index
     catalog = get_project_catalog_service()
+    generation = catalog.generation
+    cached = _cached_index
+    if cached is not None and cached.catalog is catalog and cached.generation == generation:
+        return cached.index
+    index = _build_project_ownership_index(catalog)
+    _cached_index = _CachedIndex(catalog, generation, index)
+    return index
+
+
+def _build_project_ownership_index(catalog: ProjectCatalogService) -> ProjectOwnershipIndex:
     ownership_by_root: list[tuple[Path, ProjectOwnership | None]] = []
     for root in load_roots():
         node = catalog.get_by_root(root)

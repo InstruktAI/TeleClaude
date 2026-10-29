@@ -3,6 +3,7 @@
 import asyncio
 import os
 import pwd
+import secrets
 import time
 from dataclasses import dataclass
 from enum import StrEnum
@@ -12,6 +13,7 @@ import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.machine import config
+from teleclaude.runtime.binaries import resolve_tmux_query_binary
 from teleclaude.utils import strip_ansi_codes
 
 from ._subprocess import (
@@ -121,6 +123,11 @@ class PaneProcessIdentity:
     tty: str
 
 
+def _query_binary() -> str:
+    """The tmux binary for a read that only queries the running server (tmux-pane-orchestration)."""
+    return resolve_tmux_query_binary(config.computer.tmux_binary)
+
+
 async def get_server_pane_processes(socket_path: Path) -> tuple[PaneProcessIdentity, ...] | None:
     """Read all pane roots from one explicitly selected platform server."""
     command = (
@@ -173,7 +180,7 @@ def pane_evidence_tail(surface_text: str) -> str:
 async def get_pane_tty(session_name: str) -> str | None:
     """Get tty path for the tmux pane backing a session."""
     try:
-        cmd = [config.computer.tmux_binary, "display-message", "-p", "-t", session_name, "#{pane_tty}"]
+        cmd = [_query_binary(), "display-message", "-p", "-t", session_name, "#{pane_tty}"]
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
@@ -280,7 +287,7 @@ async def capture_pane(
         # -e = include escape sequences (ANSI codes for styling detection)
         window_lines = capture_lines if isinstance(capture_lines, int) and capture_lines > 0 else DEFAULT_CAPTURE_LINES
         cmd = [
-            config.computer.tmux_binary,
+            _query_binary(),
             "capture-pane",
             "-t",
             session_name,
@@ -387,74 +394,191 @@ def _parse_snapshot_stdout(stdout: bytes) -> tuple[str, bool]:
 
 
 async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None = None) -> PaneSnapshot:
-    """Collect required polling state in one tmux subprocess.
+    """Collect required polling state for one session through the tick's shared snapshot call.
 
     This is the hot polling boundary. The snapshot must remain narrow and
-    stable: liveness plus pane output only.
+    stable: liveness plus pane output only. Requests arriving within one batch
+    window share chained tmux calls, a few per tick (output-polling, snapshots shared per tick).
     """
-
     window_lines = capture_lines if isinstance(capture_lines, int) and capture_lines > 0 else DEFAULT_CAPTURE_LINES
-    cmd = [
-        config.computer.tmux_binary,
-        "capture-pane",
-        "-t",
-        session_name,
-        "-p",
-        "-J",
-        "-e",
-        "-S",
-        f"-{window_lines}",
-        ";",
-        "display-message",
-        "-p",
-        _SNAPSHOT_MARKER,
-        ";",
-        "list-panes",
-        "-t",
-        session_name,
-        "-F",
-        "#{pane_dead}",
-    ]
+    return await _snapshot_batcher().request(session_name, window_lines)
 
-    try:
-        # The slot encloses spawn and communicate so the timeout budget starts at
-        # spawn, never while a requester waits for a free slot.
-        async with get_snapshot_semaphore():
-            try:
-                result = await asyncio.create_subprocess_exec(
-                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-            except FileNotFoundError as e:
-                raise TmuxUnavailableError(_TMUX_UNAVAILABLE_ERROR.format(session_name=session_name, error=e)) from e
-            # A timeout here (SubprocessTimeoutError) is logged (throttled/aggregated) by the poll
-            # loop that owns retry cadence, not per tick here.
-            stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
-        if result.returncode != 0:
-            stderr_text = stderr.decode().strip()
-            if result.returncode == 127:
-                # Logged (throttled/aggregated) by the poll loop that owns retry cadence, not per tick here.
-                raise TmuxUnavailableError(_TMUX_UNAVAILABLE_ERROR.format(session_name=session_name, error=stderr_text))
-            if any(diagnostic in stderr_text.lower() for diagnostic in _MissingPaneDiagnostic):
-                return PaneSnapshot(session_exists=False, pane_dead=False, output_raw="", output_normalized="")
-            logger.warning(
-                "Failed to collect pane snapshot for session %s: returncode=%d, stderr=%s",
-                session_name,
-                result.returncode,
-                stderr_text,
+
+# How long the first request of a tick waits for the others before the shared call runs.
+_SNAPSHOT_BATCH_WINDOW_S = 0.05
+# Each batch marks its sessions with a fresh random marker, so no pane's output can contain it.
+_BATCH_MARKER_TEMPLATE = "__TELECLAUDE_PANE_BATCH_{nonce}__"
+_BATCH_NONCE_BYTES = 12
+# tmux refuses a client command beyond its message size (about 16 KiB, "command too long"), so a
+# batch runs as several chains, each kept well under that limit.
+_CHAIN_ARGV_BYTES_MAX = 8192
+
+
+class _SnapshotBatcher:
+    """Gather the snapshot requests of one tick and take them in size-bounded chained tmux calls."""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+        self._pending: dict[tuple[str, int], list[asyncio.Future[PaneSnapshot]]] = {}
+        self._scheduled = False
+
+    async def request(self, session_name: str, window_lines: int) -> PaneSnapshot:
+        future: asyncio.Future[PaneSnapshot] = self._loop.create_future()
+        # Keyed by session and line budget together: each budget is captured as requested.
+        self._pending.setdefault((session_name, window_lines), []).append(future)
+        if not self._scheduled:
+            self._scheduled = True
+            self._loop.call_later(_SNAPSHOT_BATCH_WINDOW_S, self._start_flush)
+        return await future
+
+    def _start_flush(self) -> None:
+        self._scheduled = False
+        batch, self._pending = self._pending, {}
+        if batch:
+            self._loop.create_task(self._flush(batch))
+
+    async def _flush(self, batch: dict[tuple[str, int], list[asyncio.Future[PaneSnapshot]]]) -> None:
+        await asyncio.gather(*(self._flush_chain(batch, chain) for chain in _chains(list(batch))))
+
+    async def _flush_chain(
+        self, batch: dict[tuple[str, int], list[asyncio.Future[PaneSnapshot]]], remaining: list[tuple[str, int]]
+    ) -> None:
+        try:
+            while remaining:
+                results, failed = await _run_snapshot_chain(remaining)
+                for target, snapshot in results.items():
+                    _resolve(batch[target], snapshot)
+                if failed is None:
+                    break
+                _resolve(batch[failed], _MISSING_SNAPSHOT)
+                remaining = remaining[remaining.index(failed) + 1 :]
+        except BaseException as error:  # every waiter of the chain learns the failure that ended it
+            for target in remaining:
+                for waiter in batch[target]:
+                    if not waiter.done():
+                        waiter.set_exception(error)
+            if not isinstance(error, Exception):
+                raise
+
+
+_batchers: dict[asyncio.AbstractEventLoop, _SnapshotBatcher] = {}
+
+
+def _snapshot_batcher() -> _SnapshotBatcher:
+    """The running loop's batcher; futures and the batch task belong to that loop."""
+    loop = asyncio.get_running_loop()
+    batcher = _batchers.get(loop)
+    if batcher is None:
+        batcher = _batchers[loop] = _SnapshotBatcher(loop)
+    return batcher
+
+
+def _resolve(waiters: list[asyncio.Future[PaneSnapshot]], snapshot: PaneSnapshot) -> None:
+    for waiter in waiters:
+        if not waiter.done():
+            waiter.set_result(snapshot)
+
+
+_MISSING_SNAPSHOT = PaneSnapshot(session_exists=False, pane_dead=False, output_raw="", output_normalized="")
+
+
+def _target_command(marker: str, index: int, session_name: str, window_lines: int) -> list[str]:
+    """The chained tmux commands that snapshot one target, led by its position marker."""
+    return [
+        "display-message", "-p", f"{marker}{index}", ";",
+        "capture-pane", "-t", session_name, "-p", "-J", "-e", "-S", f"-{window_lines}", ";",
+        "display-message", "-p", _SNAPSHOT_MARKER, ";",
+        "list-panes", "-t", session_name, "-F", "#{pane_dead}",
+    ]  # fmt: skip
+
+
+def _chains(targets: list[tuple[str, int]]) -> list[list[tuple[str, int]]]:
+    """Split a batch into chains whose tmux command stays within ``_CHAIN_ARGV_BYTES_MAX``."""
+    # A marker of the real length stands in for the nonce each chain draws.
+    sample_marker = _BATCH_MARKER_TEMPLATE.format(nonce="0" * 2 * _BATCH_NONCE_BYTES)
+    chains: list[list[tuple[str, int]]] = []
+    current: list[tuple[str, int]] = []
+    size = 0
+    for target in targets:
+        # The index grows the marker by a few digits; the separator ";" and NUL bytes are counted per argument.
+        cost = sum(len(arg) + 1 for arg in _target_command(sample_marker, len(current), *target)) + 2
+        if current and size + cost > _CHAIN_ARGV_BYTES_MAX:
+            chains.append(current)
+            current, size = [], 0
+        current.append(target)
+        size += cost
+    if current:
+        chains.append(current)
+    return chains
+
+
+async def _run_snapshot_chain(
+    targets: list[tuple[str, int]],
+) -> tuple[dict[tuple[str, int], PaneSnapshot], tuple[str, int] | None]:
+    """Snapshot ``targets`` in one tmux call; also name the session whose missing pane ended the chain, if any.
+
+    tmux stops a command chain at its first failing command, so a session the server no longer
+    holds ends the chain at its own capture: the sessions before it are complete, the ones after it
+    were not attempted.
+    """
+    marker = _BATCH_MARKER_TEMPLATE.format(nonce=secrets.token_hex(_BATCH_NONCE_BYTES))
+    cmd: list[str] = [_query_binary()]
+    for index, (session_name, window_lines) in enumerate(targets):
+        if index:
+            cmd.append(";")
+        cmd += _target_command(marker, index, session_name, window_lines)
+    first = targets[0][0]
+    # The slot encloses spawn and communicate so the timeout budget starts at
+    # spawn, never while a requester waits for a free slot.
+    async with get_snapshot_semaphore():
+        try:
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            raise ValueError(f"tmux snapshot failed for {session_name}: {stderr_text}")
-
-        output_text, pane_dead = _parse_snapshot_stdout(stdout)
-        return PaneSnapshot(
+        except FileNotFoundError as e:
+            raise TmuxUnavailableError(_TMUX_UNAVAILABLE_ERROR.format(session_name=first, error=e)) from e
+        # A timeout here (SubprocessTimeoutError) is logged (throttled/aggregated) by the poll
+        # loop that owns retry cadence, not per tick here.
+        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
+    stderr_text = stderr.decode().strip()
+    if result.returncode == 127:
+        # Logged (throttled/aggregated) by the poll loop that owns retry cadence, not per tick here.
+        raise TmuxUnavailableError(_TMUX_UNAVAILABLE_ERROR.format(session_name=first, error=stderr_text))
+    segments = _split_batch_stdout(stdout, marker)
+    results: dict[tuple[str, int], PaneSnapshot] = {}
+    failed: tuple[str, int] | None = None
+    last_started = len(segments) - 1
+    for index, target in enumerate(targets):
+        segment = segments[index] if index < len(segments) else None
+        if segment is None or (result.returncode != 0 and index == last_started):
+            failed = target
+            break
+        output_text, pane_dead = _parse_snapshot_stdout(segment)
+        results[target] = PaneSnapshot(
             session_exists=True,
             pane_dead=pane_dead,
             output_raw=output_text,
             output_normalized=_normalize_pane_output(output_text),
         )
+    if failed is not None and not any(d in stderr_text.lower() for d in _MissingPaneDiagnostic):
+        logger.warning(
+            "Failed to collect pane snapshot for session %s: returncode=%d, stderr=%s",
+            failed[0],
+            result.returncode,
+            stderr_text,
+        )
+        raise ValueError(f"tmux snapshot failed for {failed[0]}: {stderr_text}")
+    return results, failed
 
-    except (OSError, ValueError) as e:
-        logger.error("Exception collecting pane snapshot for session %s: %s", session_name, e)
-        raise
+
+def _split_batch_stdout(stdout: bytes, marker: str) -> list[bytes]:
+    """Each started target's part of a batched snapshot, in chain order, split on this batch's marker."""
+    decoded = stdout.decode("utf-8", errors="replace")
+    segments: list[bytes] = []
+    for part in decoded.split(marker)[1:]:
+        _index, _, body = part.partition("\n")
+        segments.append(body.encode("utf-8"))
+    return segments
 
 
 async def kill_session(session_name: str) -> bool:
@@ -485,7 +609,7 @@ async def list_tmux_sessions() -> list[str]:
         List of session names
     """
     try:
-        cmd = [config.computer.tmux_binary, "list-sessions", "-F", "#{session_name}"]
+        cmd = [_query_binary(), "list-sessions", "-F", "#{session_name}"]
 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -514,7 +638,7 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
         True if session exists, False otherwise
     """
     try:
-        cmd = [config.computer.tmux_binary, "has-session", "-t", session_name]
+        cmd = [_query_binary(), "has-session", "-t", session_name]
 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE

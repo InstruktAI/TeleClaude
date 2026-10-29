@@ -8,14 +8,13 @@ visibility: 'public'
 ## Rules
 
 - **Read a domain's baseline bundle once, at entry.** When a task enters a
-  knowledge domain — writing or reviewing code or tests enters
-  `sdlc` — read
-  `~/.teleclaude/docs/<domain>/bundle.md` in full, as a file, unless its
-  contracts are already loaded this session. The bundle is the domain's mandatory
-  contract, pre-resolved for one pass; a procedure that always needs it names the
-  bundle in its `## Required reads`. It is a generated artifact with no snippet
-  id, so `telec docs get` does not serve it; its generation already leaves
-  undelivered content out.
+  knowledge domain, read `~/.teleclaude/docs/<domain>/bundle.md` in full, as a
+  file, unless its contracts are already loaded this session. A task enters
+  `sdlc` when it writes or changes code or tests. The bundle is the domain's
+  mandatory contract, pre-resolved for one pass; a procedure that always needs
+  it names the bundle in its `## Required reads`. It is a generated artifact
+  with no snippet id, so `telec docs get` does not serve it; its generation
+  already leaves undelivered content out.
 - **`telec docs` is the entry point for discovery, and always filtered.** Use
   `--areas`, `--domains`, and/or `--baseline-only`; an unfiltered index floods the
   context. Retrieve before any task where missing context could alter decisions.

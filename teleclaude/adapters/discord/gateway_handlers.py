@@ -116,8 +116,8 @@ class GatewayHandlersMixin:
     - _is_bot_message(message) -> bool
     - _is_customer_session(session) -> bool
     - _resolve_or_create_discord_session(message) -> tuple[Session | None, bool] (async)
-    - _handle_voice_attachment(message, attachment, *, recovered_at) -> Task | None (async)
-    - _handle_file_attachments(message, attachments, *, recovered_at) (async)
+    - _handle_voice_attachment(message, attachment, *, recovered_at, retain_refusal) -> Task | None (async)
+    - _handle_file_attachments(message, attachments, *, recovered_at, retain_refusal) (async)
     - _extract_audio_attachment(message) -> object | None
     - _extract_file_attachments(message) -> list[object]
     - _discord_actor_name(author, user_id) -> str
@@ -194,11 +194,21 @@ class GatewayHandlersMixin:
         def _extract_file_attachments(message: object) -> list[object]: ...
 
         async def _handle_voice_attachment(
-            self, message: object, attachment: object, *, recovered_at: datetime | None = None
+            self,
+            message: object,
+            attachment: object,
+            *,
+            recovered_at: datetime | None = None,
+            retain_refusal: bool = False,
         ) -> asyncio.Task[object] | None: ...
 
         async def _handle_file_attachments(
-            self, message: object, attachments: list[object], *, recovered_at: datetime | None = None
+            self,
+            message: object,
+            attachments: list[object],
+            *,
+            recovered_at: datetime | None = None,
+            retain_refusal: bool = False,
         ) -> None: ...
 
         async def _resolve_or_create_discord_session(
@@ -489,6 +499,9 @@ class GatewayHandlersMixin:
         """Handle a message of a managed place; a live message and a recovered one take this one path.
 
         ``recovered_at`` is the time a recovered message was originally posted, absent for a live one.
+
+        A place is recovered after a restart, so a draining refusal is not answered to the sender: it propagates to
+        the continuity, which leaves the message unprocessed.
         """
         channel = getattr(message, "channel", None)
 
@@ -502,14 +515,18 @@ class GatewayHandlersMixin:
         # Voice/audio attachment — handle before the text guard
         audio_attachment = self._extract_audio_attachment(message)
         if audio_attachment is not None:
-            voice_task = await self._handle_voice_attachment(message, audio_attachment, recovered_at=recovered_at)
+            voice_task = await self._handle_voice_attachment(
+                message, audio_attachment, recovered_at=recovered_at, retain_refusal=True
+            )
             await await_conclusion([voice_task])
             return
 
         # Handle image/file attachments (non-audio)
         file_attachments = self._extract_file_attachments(message)
         if file_attachments:
-            await self._handle_file_attachments(message, file_attachments, recovered_at=recovered_at)
+            await self._handle_file_attachments(
+                message, file_attachments, recovered_at=recovered_at, retain_refusal=True
+            )
 
         text = getattr(message, "content", None)
         if not isinstance(text, str) or not text.strip():
@@ -579,6 +596,7 @@ class GatewayHandlersMixin:
             "process_message",
             cmd.to_payload(),
             lambda: get_command_service().process_message(cmd),
+            retain_refusal=True,
         )
 
     async def _handle_escalation_thread_message(self, message: object) -> None:
