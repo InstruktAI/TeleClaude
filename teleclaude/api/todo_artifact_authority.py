@@ -199,8 +199,8 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
     session id), by a registered roleless session (the human-originated,
     operator-driven shape), and by a registered session whose catalog role
     reaches ``prepare-artifact-write``: every full-reach role, and the focused
-    roles whose explicit set composes it (the diagnoser). The gate asks the
-    role catalog and keeps no role list. A session id with no registry row is an
+    roles whose catalog entry composes it. The gate asks the role catalog and
+    keeps no role list. A session id with no registry row is an
     unknown caller; a role the catalog does not name reaches nothing; every
     other focused role is refused with a 403 naming the capability.
     """
