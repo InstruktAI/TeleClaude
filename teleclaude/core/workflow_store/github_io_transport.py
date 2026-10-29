@@ -52,6 +52,7 @@ class GitHubIOFailure(StrEnum):
     VALIDATION_REFUSED = "validation_refused"
     ROLE_UNMAPPED = "role_unmapped"
     ISSUE_ARTIFACTS_UNAVAILABLE = "issue_artifacts_unavailable"
+    AWAITING_REPUBLICATION = "awaiting_republication"
 
 
 @asynccontextmanager

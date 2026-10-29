@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
@@ -32,10 +31,8 @@ class WorkingCopyField(StrEnum):
     PROJECTION_DIGEST = "projection_digest"
     TABLE_NAME = "table_name"
     ROW_ID = "row_id"
-    REMOTE_VERSION_ID = "remote_version_id"
     REMOTE_RECORD_ID = "remote_record_id"
     COMMENT_ID = "comment_id"
-    COMMENT_IDS = "comment_ids"
     REMOTE_ID = "remote_id"
     VERSION_ID = "version_id"
     DIGEST = "digest"
@@ -59,6 +56,9 @@ class WorkingCopyField(StrEnum):
     PROJECTION_REPAIR_AFTER_ISSUE = "projection_repair_after_issue"
     SUPPRESSED = "suppressed"
     SINGLETON = "singleton"
+    ISSUE_ARTIFACTS = "issue_artifacts"
+    REPUBLICATION_NOT_BEFORE = "republication_not_before"
+    REPUBLICATION_BACKOFF = "republication_backoff"
 
 
 class WorkingCopySql(StrEnum):
@@ -94,10 +94,14 @@ class WorkingCopySql(StrEnum):
     ARTIFACTS_BY_ITEM = "SELECT * FROM todo_artifacts WHERE id = :item_id ORDER BY name"
     VERSIONS_BY_ITEM = "SELECT * FROM todo_artifact_versions WHERE id = :item_id"
     UNPUSHED_VERSION_FILTER = (
-        " AND NOT EXISTS (SELECT 1 FROM github_artifact_content AS pushed "
-        "WHERE pushed.item_id = todo_artifact_versions.id "
-        "AND pushed.version_id = todo_artifact_versions.version_id "
-        "AND pushed.digest = todo_artifact_versions.digest)"
+        " AND NOT EXISTS (SELECT 1 FROM github_artifact_entry AS named "
+        "WHERE named.item_id = todo_artifact_versions.id "
+        "AND named.version_id = todo_artifact_versions.version_id "
+        "AND named.digest = todo_artifact_versions.digest)"
+        " AND NOT EXISTS (SELECT 1 FROM github_republication_progress AS saved "
+        "WHERE saved.item_id = todo_artifact_versions.id "
+        "AND saved.version_id = todo_artifact_versions.version_id "
+        "AND saved.digest = todo_artifact_versions.digest)"
     )
     VERSION_ORDER = " ORDER BY version_id"
     PROJECT_BY_ID = "SELECT * FROM {} WHERE id = :row_id"
@@ -114,7 +118,6 @@ class WorkingCopySql(StrEnum):
     LAST_INSERT_ID = "SELECT last_insert_rowid()"
     CLEAR_PENDING_ITEMS = "DELETE FROM working_copy_pending_item"
     CLEAR_PENDING_PROJECTS = "DELETE FROM working_copy_pending_project"
-    CLEAR_ARTIFACT_MAPS = "DELETE FROM github_artifact_content WHERE item_id = :item_id"
     ITEM_BOOKKEEPING = "SELECT * FROM github_item WHERE item_id = :item_id"
     ITEMS_WITHOUT_ISSUE_ID = (
         "SELECT item_id, issue_number FROM github_item WHERE issue_number IS NOT NULL AND issue_id IS NULL"
@@ -131,24 +134,12 @@ class WorkingCopySql(StrEnum):
         "base_revision = excluded.base_revision, "
         "projection_digest = COALESCE(excluded.projection_digest, github_item.projection_digest)"
     )
-    PRUNE_ARTIFACT_MAPS = (
-        "DELETE FROM github_artifact_content WHERE item_id = :item_id AND NOT EXISTS ("
-        "SELECT 1 FROM todo_artifact_versions WHERE id = :item_id "
-        "AND version_id = github_artifact_content.version_id)"
+    VERSION_NAMES = "SELECT DISTINCT name FROM todo_artifact_versions WHERE id = :item_id"
+    VERSION_BY_IDENTITY = (
+        "SELECT version_id FROM todo_artifact_versions WHERE id = :item_id AND name = :name "
+        "AND digest = :digest AND created_at IS :created_at ORDER BY version_id DESC LIMIT 1"
     )
-    ARTIFACT_MAP_BY_LOCAL_ID = (
-        "SELECT remote_version_id, digest FROM github_artifact_content "
-        "WHERE item_id = :item_id AND version_id = :version_id"
-    )
-    SAVE_ARTIFACT_MAP = (
-        "INSERT INTO github_artifact_content(item_id, version_id, remote_version_id, digest, comment_ids) "
-        "VALUES (:item_id, :version_id, :remote_version_id, :digest, :comment_ids) "
-        "ON CONFLICT(item_id, version_id) DO UPDATE SET remote_version_id = excluded.remote_version_id, "
-        "digest = excluded.digest, comment_ids = excluded.comment_ids"
-    )
-    ARTIFACT_LOCAL_ID = (
-        "SELECT version_id FROM github_artifact_content WHERE item_id = :item_id AND remote_version_id = :remote_id"
-    )
+    DELETE_VERSIONS_OF_ARTIFACT = "DELETE FROM todo_artifact_versions WHERE id = :item_id AND name = :name"
     REPOSITORY_BOOKKEEPING = "SELECT * FROM github_repository WHERE singleton = 1"
     REPOSITORY_INITIALIZED = "SELECT initialized FROM github_repository WHERE singleton = 1"
     MARK_REPOSITORY_INITIALIZED = "UPDATE github_repository SET initialized = 1 WHERE singleton = 1"
@@ -211,7 +202,6 @@ class WorkingCopyTable(StrEnum):
     TODO_DEPS = "todo_deps"
     COMMIT_REVIEW = "commit_review"
     DOCUMENTATION_TRANSFER = "documentation_transfer"
-    GITHUB_ARTIFACT_CONTENT = "github_artifact_content"
     GITHUB_PROJECT_RECORD = "github_project_record"
     GITHUB_ITEM = "github_item"
     GITHUB_OWED_REFLECTION = "github_owed_reflection"
@@ -227,14 +217,16 @@ _COMMA_SPACE = ", "
 _BIND_PARAMETER = ":{}"
 _EXCLUDED_ASSIGNMENT = "{} = excluded.{}"
 _TODO_ARTIFACT_CONFLICT_TARGET = "id, name"
-_ITEM_RESTORE_TABLES = (
-    WorkingCopyTable.TODO_STATE,
-    WorkingCopyTable.TODO_ARTIFACTS,
-    WorkingCopyTable.TODO_ARTIFACT_VERSIONS,
+_ITEM_REPLACED_TABLES = (WorkingCopyTable.TODO_STATE, WorkingCopyTable.TODO_ARTIFACTS)
+_ITEM_PURGE_TABLES = (*_ITEM_REPLACED_TABLES, WorkingCopyTable.TODO_ARTIFACT_VERSIONS, WorkingCopyTable.TODO)
+
+
+_CLEAR_ARTIFACT_BOOKKEEPING = (
+    "DELETE FROM github_artifact_address WHERE item_id = :item_id",
+    "DELETE FROM github_artifact_entry WHERE item_id = :item_id",
+    "DELETE FROM github_republication_progress WHERE item_id = :item_id",
+    "DELETE FROM github_republication_pending WHERE item_id = :item_id",
 )
-_ITEM_PURGE_TABLES = (*_ITEM_RESTORE_TABLES, WorkingCopyTable.TODO)
-
-
 _PROJECT_TABLES = (WorkingCopyTable.COMMIT_REVIEW, WorkingCopyTable.DOCUMENTATION_TRANSFER)
 _UPSERT_TABLE_COLUMNS: dict[WorkingCopyTable, tuple[str, ...]] = {
     WorkingCopyTable.TODO: (
@@ -499,12 +491,16 @@ def defer_foreign_keys(session: Session) -> None:
 def restore_item_snapshot(
     session: Session, snapshot: WorkingCopyItemSnapshot, *, capture_changes: bool = False
 ) -> None:
-    """Restore a full item snapshot while preserving row ids, digests and timestamps."""
+    """Restore an item snapshot, keeping the versions the copy already holds and every row id, digest and timestamp.
+
+    The snapshot carries the content a committed record names; versions only the copy holds stay, so history GitHub
+    no longer serves is not lost to a refresh. A version of an artifact the snapshot no longer carries is dropped.
+    """
     capture = nullcontext() if capture_changes else capture_suppressed(session)
     with capture:
         item_id = snapshot.item_id
         slug = str(snapshot.todo[WorkingCopyField.SLUG])
-        for table in _ITEM_RESTORE_TABLES:
+        for table in _ITEM_REPLACED_TABLES:
             session.execute(
                 text(WorkingCopySql.DELETE_ITEM_ROW.value.format(table)),
                 {WorkingCopyField.ITEM_ID: item_id},
@@ -517,22 +513,36 @@ def restore_item_snapshot(
             session.execute(text(WorkingCopySql.INSERT_DEPENDENCY), dict(dependency))
         for artifact in snapshot.artifacts:
             _upsert(session, WorkingCopyTable.TODO_ARTIFACTS, artifact)
+        carried = {str(artifact.get(WorkingCopyField.NAME)) for artifact in snapshot.artifacts}
+        carried.update(str(version.get(WorkingCopyField.NAME)) for version in snapshot.versions)
+        held = {
+            str(row[0])
+            for row in session.execute(text(WorkingCopySql.VERSION_NAMES), {WorkingCopyField.ITEM_ID: item_id}).all()
+        }
+        for name in held - carried:
+            session.execute(
+                text(WorkingCopySql.DELETE_VERSIONS_OF_ARTIFACT),
+                {WorkingCopyField.ITEM_ID: item_id, WorkingCopyField.NAME: name},
+            )
         for version in snapshot.versions:
-            remote_id = version.get(WorkingCopyField.REMOTE_VERSION_ID)
-            if not isinstance(remote_id, str) or not remote_id:
-                remote_id = uuid4().hex
-            local_version_id = artifact_local_version_id(session, item_id, remote_id)
-            local_version = dict(version)
-            local_version.pop(WorkingCopyField.REMOTE_VERSION_ID, None)
-            local_version[WorkingCopyField.VERSION_ID] = local_version_id
-            _upsert(session, WorkingCopyTable.TODO_ARTIFACT_VERSIONS, local_version)
-            if local_version_id is None:
-                local_version_id = int(session.execute(text(WorkingCopySql.LAST_INSERT_ID)).scalar_one())
-            digest = local_version.get(WorkingCopyField.DIGEST)
+            digest = version.get(WorkingCopyField.DIGEST)
             if not isinstance(digest, str):
                 raise ValueError(_ARTIFACT_DIGEST_REQUIRED)
-            if not capture_changes:
-                save_artifact_comment_ids(session, item_id, local_version_id, (), remote_id, digest)
+            held_version = _one(
+                session,
+                WorkingCopySql.VERSION_BY_IDENTITY,
+                {
+                    WorkingCopyField.ITEM_ID: item_id,
+                    WorkingCopyField.NAME: version.get(WorkingCopyField.NAME),
+                    WorkingCopyField.DIGEST: digest,
+                    WorkingCopyField.CREATED_AT: version.get(WorkingCopyField.CREATED_AT),
+                },
+            )
+            local_version = dict(version)
+            local_version[WorkingCopyField.VERSION_ID] = (
+                held_version.get(WorkingCopyField.VERSION_ID) if held_version is not None else None
+            )
+            _upsert(session, WorkingCopyTable.TODO_ARTIFACT_VERSIONS, local_version)
 
 
 def purge_item_snapshot(session: Session, item_id: str, slug: str) -> None:
@@ -547,7 +557,8 @@ def purge_item_snapshot(session: Session, item_id: str, slug: str) -> None:
                 text(WorkingCopySql.DELETE_ITEM_ROW.value.format(table)),
                 {WorkingCopyField.ITEM_ID: item_id},
             )
-        session.execute(text(WorkingCopySql.CLEAR_ARTIFACT_MAPS), {WorkingCopyField.ITEM_ID: item_id})
+        for statement in _CLEAR_ARTIFACT_BOOKKEEPING:
+            session.execute(text(statement), {WorkingCopyField.ITEM_ID: item_id})
         session.execute(text(WorkingCopySql.CLEAR_OWED_REFLECTION), {WorkingCopyField.ITEM_ID: item_id})
         session.execute(text(WorkingCopySql.CLEAR_UNVERIFIABLE), {WorkingCopyField.ITEM_ID: item_id})
 
@@ -614,66 +625,6 @@ def save_item_bookkeeping(
             WorkingCopyField.REVISION: revision,
             WorkingCopyField.BASE_REVISION: base_revision,
             WorkingCopyField.PROJECTION_DIGEST: projection_digest,
-        },
-    )
-
-
-def prune_deleted_artifact_versions(session: Session, item_id: str) -> None:
-    """Drop local identity mappings whose version rows were removed by the workflow."""
-    session.execute(text(WorkingCopySql.PRUNE_ARTIFACT_MAPS), {WorkingCopyField.ITEM_ID: item_id})
-
-
-def artifact_remote_version_id(session: Session, item_id: str, version_id: int, digest: str) -> str:
-    row = _one(
-        session,
-        WorkingCopySql.ARTIFACT_MAP_BY_LOCAL_ID,
-        {WorkingCopyField.ITEM_ID: item_id, WorkingCopyField.VERSION_ID: version_id},
-    )
-    remote_id = row.get(WorkingCopyField.REMOTE_VERSION_ID) if row is not None else None
-    recorded_digest = row.get(WorkingCopyField.DIGEST) if row is not None else None
-    if isinstance(remote_id, str) and remote_id and recorded_digest == digest:
-        return remote_id
-    remote_id = uuid4().hex
-    session.execute(
-        text(WorkingCopySql.SAVE_ARTIFACT_MAP),
-        {
-            WorkingCopyField.ITEM_ID: item_id,
-            WorkingCopyField.VERSION_ID: version_id,
-            WorkingCopyField.REMOTE_VERSION_ID: remote_id,
-            WorkingCopyField.DIGEST: digest,
-            WorkingCopyField.COMMENT_IDS: json.dumps([]),
-        },
-    )
-    return remote_id
-
-
-def artifact_local_version_id(session: Session, item_id: str, remote_id: str) -> int | None:
-    row = _one(
-        session,
-        WorkingCopySql.ARTIFACT_LOCAL_ID,
-        {WorkingCopyField.ITEM_ID: item_id, WorkingCopyField.REMOTE_ID: remote_id},
-    )
-    version_id = row.get(WorkingCopyField.VERSION_ID) if row is not None else None
-    return version_id if isinstance(version_id, int) else None
-
-
-def save_artifact_comment_ids(
-    session: Session,
-    item_id: str,
-    version_id: int,
-    comment_ids: Sequence[int],
-    remote_version_id: str,
-    digest: str,
-) -> None:
-    """Record every content comment after append succeeds."""
-    session.execute(
-        text(WorkingCopySql.SAVE_ARTIFACT_MAP),
-        {
-            WorkingCopyField.ITEM_ID: item_id,
-            WorkingCopyField.VERSION_ID: version_id,
-            WorkingCopyField.REMOTE_VERSION_ID: remote_version_id,
-            WorkingCopyField.DIGEST: digest,
-            WorkingCopyField.COMMENT_IDS: json.dumps(list(comment_ids)),
         },
     )
 

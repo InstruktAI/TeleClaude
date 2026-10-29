@@ -24,9 +24,21 @@ from teleclaude.config.loader import github_actor_for_app_id
 from teleclaude.config.project_models import TodoStoreBackend, TodoStoreConfig
 from teleclaude.constants import TodoStatus
 from teleclaude.core.todos_db._adapter import TodosDb
+from teleclaude.core.todos_db._github_artifacts import (
+    ArtifactFact,
+    EntryRow,
+    any_republication_pending,
+    artifact_address,
+    committed_entries,
+    issue_artifacts_fact,
+    keep_hydrated_version,
+    read_republication_wait,
+    save_issue_artifacts_fact,
+)
 from teleclaude.core.todos_db._github_board import board_setup, mark_all_board_items_owed_at, owed_board_items
 from teleclaude.core.todos_db._github_pull_requests import work_item_for_number
 from teleclaude.core.todos_db._github_questions import insert_awaiting_question
+from teleclaude.core.todos_db._rows import ArtifactVersionRow, ArtifactWritersRow
 from teleclaude.core.todos_db._working_copy import (
     WorkingCopyField,
     WorkingCopyItemSnapshot,
@@ -46,10 +58,12 @@ from teleclaude.core.workflow_store.github import (
     GitHubRepositoryIdentity,
     resolve_github_repository_identity,
 )
+from teleclaude.core.workflow_store.github_artifact_values import served_version_content
 from teleclaude.core.workflow_store.github_board_io import GitHubBoardIO
 from teleclaude.core.workflow_store.github_board_queue import repair_owed_board_items
 from teleclaude.core.workflow_store.github_board_setup import BoardRepairOutcome, BoardSetupCause, GitHubBoardSetup
 from teleclaude.core.workflow_store.github_io import GitHubMutationPacing, GitHubWorkflowIO
+from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_push import GitHubWorkflowPush
 from teleclaude.core.workflow_store.github_push_deadline import await_within_push_deadline, begin_push_deadline
@@ -67,6 +81,7 @@ from teleclaude.project_manifest import load_roots
 from teleclaude.project_root import is_project_checkout
 from teleclaude.types.github_binding import GitHubActorAssignment
 from teleclaude.types.github_issue import GitHubIssueReference
+from teleclaude.utils.transcript_discovery import as_session_id
 
 if TYPE_CHECKING:
     from .store import WorkflowStore
@@ -91,6 +106,10 @@ _IN_MEMORY_ENGINE_URL = "sqlite://"
 _ACTIVE_RUNNER = "active_runner"
 _BOARD_SETUP_FAILED = "github_store_board_setup_failed"
 _ITEM_ID = "item_id"
+_PROBE_ARTIFACT_TYPE = "link"
+_PROBE_PAGE_SIZE = 1
+_LEDGER_ISSUE_NUMBER = "SELECT ledger_issue_number FROM github_repository WHERE singleton = 1"
+_ANY_ITEM_ISSUE_NUMBER = "SELECT issue_number FROM github_item WHERE issue_number IS NOT NULL LIMIT 1"
 logger = get_logger(__name__)
 _unreadable_working_copies: set[Path] = set()
 _instances: dict[str, GitHubWorkflowStore] = {}
@@ -201,9 +220,136 @@ class GitHubWorkflowStore(TodosDb):
         """Populate a newly created working copy from the repository before serving it."""
         await self._sync.rebuild()
 
-    async def refresh_working_copy(self) -> int:
-        """Adopt committed changes made by another computer and repair owed reflections."""
-        return await self._sync.refresh()
+    async def refresh_working_copy(self, *, republish: bool = False) -> int:
+        """Adopt committed changes made by another computer and repair owed reflections.
+
+        `republish` lets the repair publish the items whose record predates native artifacts.
+        """
+        return await self._sync.refresh(republish=republish)
+
+    async def ensure_issue_artifacts(self) -> None:
+        """Establish that the repository serves issue artifacts, refusing with the distinct cause when it does not.
+
+        While the recorded fact is unknown or not-served, one `link`-filtered list on a platform issue answers it:
+        the platform creates no `link` artifacts, so the answer carries no workflow body. A served repository
+        needs no request. With no platform issue to ask, the first artifact request establishes the fact.
+        """
+        async with self._session() as session:
+            fact, target = await session.run_sync(_probe_target)
+        if fact is ArtifactFact.SERVED or target is None:
+            return
+        try:
+            await self._io.async_list_artifacts(target, _PROBE_ARTIFACT_TYPE, _PROBE_PAGE_SIZE)
+        except GitHubIORefused as refused:
+            if refused.reason is GitHubIOFailure.ISSUE_ARTIFACTS_UNAVAILABLE:
+                await self._record_fact(ArtifactFact.NOT_SERVED)
+            raise
+        await self._record_fact(ArtifactFact.SERVED)
+
+    async def _record_fact(self, fact: ArtifactFact) -> None:
+        async with self._session() as session:
+            async with session.begin():
+                await session.run_sync(acquire_repository_writer)
+                await session.run_sync(save_issue_artifacts_fact, fact)
+
+    def ensure_issue_artifacts_sync(self) -> None:
+        """Synchronous sibling of `ensure_issue_artifacts` for CLI and integration processes."""
+        with self._sync_session() as session:
+            fact, target = _probe_target(session)
+        if fact is ArtifactFact.SERVED or target is None:
+            return
+        try:
+            self._io.list_artifacts(target, _PROBE_ARTIFACT_TYPE, _PROBE_PAGE_SIZE)
+        except GitHubIORefused as refused:
+            if refused.reason is GitHubIOFailure.ISSUE_ARTIFACTS_UNAVAILABLE:
+                self._record_fact_sync(ArtifactFact.NOT_SERVED)
+            raise
+        self._record_fact_sync(ArtifactFact.SERVED)
+
+    def _record_fact_sync(self, fact: ArtifactFact) -> None:
+        with self._sync_session() as session:
+            with session.begin():
+                acquire_repository_writer(session)
+                save_issue_artifacts_fact(session, fact)
+
+    async def artifact_versions(self, slug: str, name: str, *, limit: int = 50) -> list[ArtifactVersionRow]:
+        """Version history of an artifact; versions a rebuilt copy lacks are read from GitHub once, on first use."""
+        await self._hydrate_versions(slug, name, limit=limit)
+        return await super().artifact_versions(slug, name, limit=limit)
+
+    async def artifacts_diff(
+        self, slug: str, name: str, old_digest: str, new_digest: str, *, include_removed: bool = False
+    ) -> str:
+        await self._hydrate_versions(
+            slug, name, digests=frozenset({old_digest, new_digest}), include_removed=include_removed
+        )
+        return await super().artifacts_diff(slug, name, old_digest, new_digest, include_removed=include_removed)
+
+    async def list_artifacts_with_writers(
+        self, slug: str, *, include_removed: bool = False
+    ) -> list[ArtifactWritersRow]:
+        """Writers across each artifact's versions: the committed record's, then any only the copy holds."""
+        rows = await super().list_artifacts_with_writers(slug, include_removed=include_removed)
+        async with self._session() as session:
+            item_id = await self._resolve_artifact_id(slug, session, include_removed=include_removed)
+            entries = await session.run_sync(committed_entries, item_id) if item_id is not None else ()
+        named: dict[str, list[str]] = {}
+        for entry in entries:
+            writer = as_session_id(entry.updated_by)
+            if writer and writer not in named.setdefault(entry.name, []):
+                named[entry.name].append(writer)
+        return [
+            ArtifactWritersRow(
+                name=row["name"],
+                writers=[
+                    *named.get(row["name"], []),
+                    *(w for w in row["writers"] if w not in named.get(row["name"], [])),
+                ],
+            )
+            for row in rows
+        ]
+
+    async def _hydrate_versions(
+        self,
+        slug: str,
+        name: str,
+        *,
+        limit: int | None = None,
+        digests: frozenset[str] | None = None,
+        include_removed: bool = False,
+    ) -> None:
+        """Keep the requested versions a committed record names but this copy holds no content for.
+
+        One single-artifact read serves them all; a refused read refuses the caller with the provider's cause and
+        keeps nothing. A version GitHub no longer serves stays absent, as for any version the copy never had.
+        """
+        async with self._session() as session:
+            item_id = await self._resolve_artifact_id(slug, session, include_removed=include_removed)
+            if item_id is None:
+                return
+            entries, issue_number, artifact_number = await session.run_sync(_hydration_target, item_id, name)
+        newest_first = sorted((entry for entry in entries if entry.name == name), key=lambda e: -e.ordinal)
+        wanted = [
+            entry
+            for entry in (newest_first[:limit] if limit is not None else newest_first)
+            if entry.version_id is None and (digests is None or entry.digest in digests)
+        ]
+        if not wanted or issue_number is None or artifact_number is None:
+            return
+        history = await self._io.async_read_artifact(issue_number, artifact_number)
+        found = [
+            (entry, content)
+            for entry in wanted
+            if (content := served_version_content(history.versions, self._assignment.actor.id, entry.digest))
+            is not None
+        ]
+        if not found:
+            return
+        async with self._session() as session:
+            async with session.begin():
+                await session.run_sync(acquire_repository_writer)
+                for entry, content in found:
+                    await session.run_sync(keep_hydrated_version, item_id, entry, content)
 
     async def refresh_board_setup(self, computer: str) -> None:
         """Set the project's board up when none is recorded or setup is owed; only the daemon calls this."""
@@ -345,6 +491,7 @@ async def get_github_workflow_store(project_root_or_cwd: str | Path) -> Workflow
         existing = _instances.get(key)
         if existing is not None:
             existing.serve_async_callers()
+            await existing.ensure_issue_artifacts()
             return existing
         path = Path(key)
         existed = path.is_file()
@@ -355,6 +502,7 @@ async def get_github_workflow_store(project_root_or_cwd: str | Path) -> Workflow
         if _new_instance_hook is not None:
             _new_instance_hook(store, str(root))
         _instances[key] = store
+        await store.ensure_issue_artifacts()
         return store
     finally:
         lock.release()
@@ -369,6 +517,7 @@ def get_github_workflow_store_sync(project_root_or_cwd: str | Path) -> WorkflowS
     try:
         existing = _instances.get(key)
         if existing is not None:
+            existing.ensure_issue_artifacts_sync()
             return existing
         path = Path(key)
         existed = path.is_file()
@@ -379,6 +528,7 @@ def get_github_workflow_store_sync(project_root_or_cwd: str | Path) -> WorkflowS
         if _new_instance_hook is not None:
             _new_instance_hook(store, str(root))
         _instances[key] = store
+        store.ensure_issue_artifacts_sync()
         return store
     finally:
         lock.release()
@@ -491,18 +641,52 @@ def read_github_item_issue(project_root: str | Path, slug: str) -> GitHubIssueRe
     return GitHubIssueReference(number=number, url=HttpUrl(_ISSUE_URL.format(identity.repository, number)))
 
 
-async def refresh_github_workflow_store(project_root_or_cwd: str | Path, *, computer: str) -> int:
+async def refresh_github_workflow_store(
+    project_root_or_cwd: str | Path, *, computer: str, republish: bool = False
+) -> int:
     """Refresh the selected project's shared GitHub working copy from the daemon.
 
     The daemon alone sets the project's board up, as `computer`, ahead of the refresh so the items the
-    setup owes are written by it.
+    setup owes are written by it. While a throttle met by republication holds the project, nothing is
+    requested at all, not even to resolve the store. `republish` lets this refresh also publish the items whose
+    record predates native artifacts; only the computer that works the project passes it.
     """
+    if _republication_held(project_root_or_cwd):
+        return 0
     store = cast(GitHubWorkflowStore, await get_github_workflow_store(project_root_or_cwd))
     try:
         await store.refresh_board_setup(computer)
     except Exception as error:  # supervision boundary: the board never holds back the refresh
         logger.warning(_BOARD_SETUP_FAILED, reason=type(error).__name__, exc_info=True)
-    return await store.refresh_working_copy()
+    return await store.refresh_working_copy(republish=republish)
+
+
+def _republication_held(project_root_or_cwd: str | Path) -> bool:
+    """Whether a throttle met by republication still holds the project's automatic refresh.
+
+    Reads only the existing working copy, with no writer, rebuild or provider call.
+    """
+    path = github_working_copy_path(resolve_github_store_selection(project_root_or_cwd)[0])
+    if not path.is_file():
+        return False
+    try:
+        with _open_working_copy_read_only(path) as session:
+            not_before = read_republication_wait(session).not_before
+    except DBAPIError:
+        return False
+    return not_before is not None and not_before > datetime.now(UTC)
+
+
+def republication_owed(project_root_or_cwd: str | Path) -> bool:
+    """Whether the project's working copy holds items whose record predates native artifacts."""
+    path = github_working_copy_path(resolve_github_store_selection(project_root_or_cwd)[0])
+    if not path.is_file():
+        return False
+    try:
+        with _open_working_copy_read_only(path) as session:
+            return any_republication_pending(session)
+    except DBAPIError:
+        return False
 
 
 async def repair_github_board(project_root_or_cwd: str | Path, *, computer: str) -> BoardRepairOutcome:
@@ -539,6 +723,29 @@ def resolve_github_store_selection(
     if assignment is None:
         raise GitHubStoreSelectionRefused(_UNKNOWN_APP)
     return identity.project_path, identity, assignment
+
+
+def _probe_target(session: SyncSession) -> tuple[ArtifactFact | None, int | None]:
+    """The recorded artifact fact and the platform issue to ask about it: the ledger's, else any item's."""
+    fact = issue_artifacts_fact(session)
+    if fact is ArtifactFact.SERVED:
+        return fact, None
+    number = session.execute(text(_LEDGER_ISSUE_NUMBER)).scalar_one_or_none()
+    if not isinstance(number, int):
+        number = session.execute(text(_ANY_ITEM_ISSUE_NUMBER)).scalar_one_or_none()
+    return fact, number if isinstance(number, int) else None
+
+
+def _hydration_target(
+    session: SyncSession, item_id: str, name: str
+) -> tuple[tuple[EntryRow, ...], int | None, int | None]:
+    bookkeeping = item_bookkeeping(session, item_id)
+    issue_number = bookkeeping.get(WorkflowField.ISSUE_NUMBER) if bookkeeping is not None else None
+    return (
+        committed_entries(session, item_id),
+        issue_number if isinstance(issue_number, int) else None,
+        artifact_address(session, item_id, name),
+    )
 
 
 def _slug_of(session: SyncSession, item_id: str) -> str:

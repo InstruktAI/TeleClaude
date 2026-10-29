@@ -17,7 +17,6 @@ from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, 
 from teleclaude.core.workflow_store.github_record import (
     LedgerCommit,
     has_ledger_marker,
-    is_content_comment,
     parse_ledger_commit,
     trusted_comment_body,
 )
@@ -38,10 +37,10 @@ def ledger_entries(comments: tuple[GitHubComment, ...], bot_login: str) -> list[
             bot_login=bot_login,
         )
         if trusted is None:
-            if comment.author == bot_login and not is_content_comment(comment.body):
+            if comment.author == bot_login and has_ledger_marker(comment.body):
                 raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
             continue
-        if is_content_comment(trusted) or not has_ledger_marker(trusted):
+        if not has_ledger_marker(trusted):
             continue
         try:
             committed.append((parse_ledger_commit(trusted).transaction_id, comment.database_id))
