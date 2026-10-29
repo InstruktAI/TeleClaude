@@ -318,45 +318,44 @@ class DbBase:
         self.conn = await aiosqlite.connect(db_path)
         self.conn.row_factory = aiosqlite.Row
 
-        # An empty database is about to be created from the current schema, so
-        # its migration history is recorded rather than replayed over it.
-        created_from_current_schema = not await self._has_user_tables(self.conn)
+        try:
+            # An empty database is about to be created from the current schema, so
+            # its migration history is recorded rather than replayed over it.
+            created_from_current_schema = not await self._has_user_tables(self.conn)
 
-        if created_from_current_schema and guarded and _invoked_from_slug_worktree():
-            # Refuse before writing any schema: creating this database's first
-            # generation is a canonical-checkout or daemon-owned act. Baselining
-            # it here would bake this worktree's own undelivered migrations into
-            # the ledger as applied, which is only safe for a schema-shaped
-            # migration and silently destroys a data-shaped one.
+            if created_from_current_schema and guarded and _invoked_from_slug_worktree():
+                # Refuse before writing any schema: creating this database's first
+                # generation is a canonical-checkout or daemon-owned act. Baselining
+                # it here would bake this worktree's own undelivered migrations into
+                # the ledger as applied, which is only safe for a schema-shaped
+                # migration and silently destroys a data-shaped one.
+                raise WorktreeDatabaseBootstrapRefused(_WORKTREE_BOOTSTRAP_REFUSAL_TEMPLATE % db_path)
+
+            schema_sql = schema_path.read_text(encoding="utf-8")
+
+            if created_from_current_schema:
+                await self.conn.executescript(schema_sql)  # guard: raw-sql
+                await self.conn.commit()
+                # Reached only for a genuine bootstrap not invoked from a worktree
+                # (canonical checkout or daemon) — recording the current migration
+                # set as applied is correct because this call owns the schema it
+                # just wrote.
+                await baseline_migrations(self.conn, migrations_dir)
+            else:
+                # Pending migrations run against the shape their predecessors left,
+                # before the current schema adds anything: each one finds the input
+                # it was written for, however many releases the database skipped.
+                # The current schema then only adds what the history does not create.
+                if guarded and _invoked_from_slug_worktree():
+                    logger.debug(_MIGRATION_WORKTREE_SKIP_MESSAGE, db_path)
+                else:
+                    await run_pending_migrations(self.conn, migrations_dir, migration_store)
+                await self.conn.executescript(schema_sql)  # guard: raw-sql
+                await self.conn.commit()
+        finally:
+            # Close the bootstrap connection, failure included — runtime access uses the SQLAlchemy pool
             await self.conn.close()
             self.conn = None
-            raise WorktreeDatabaseBootstrapRefused(_WORKTREE_BOOTSTRAP_REFUSAL_TEMPLATE % db_path)
-
-        schema_sql = schema_path.read_text(encoding="utf-8")
-
-        if created_from_current_schema:
-            await self.conn.executescript(schema_sql)  # guard: raw-sql
-            await self.conn.commit()
-            # Reached only for a genuine bootstrap not invoked from a worktree
-            # (canonical checkout or daemon) — recording the current migration
-            # set as applied is correct because this call owns the schema it
-            # just wrote.
-            await baseline_migrations(self.conn, migrations_dir)
-        else:
-            # Pending migrations run against the shape their predecessors left,
-            # before the current schema adds anything: each one finds the input
-            # it was written for, however many releases the database skipped.
-            # The current schema then only adds what the history does not create.
-            if guarded and _invoked_from_slug_worktree():
-                logger.debug(_MIGRATION_WORKTREE_SKIP_MESSAGE, db_path)
-            else:
-                await run_pending_migrations(self.conn, migrations_dir, migration_store)
-            await self.conn.executescript(schema_sql)  # guard: raw-sql
-            await self.conn.commit()
-
-        # Close bootstrap connection — runtime access uses the SQLAlchemy pool
-        await self.conn.close()
-        self.conn = None
 
     @staticmethod
     async def _has_user_tables(conn: aiosqlite.Connection) -> bool:
