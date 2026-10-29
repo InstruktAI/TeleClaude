@@ -17,6 +17,25 @@ per-slug orchestration contract.
 
 Task execution is a separate non-SDLC lane. The lifecycle runner starts `sdlc/procedure/lifecycle/task/run-task <slug>` for a prepared, authorized task; the Phase B build/review/finalize machine does not handle task execution and does not create a worktree. `sdlc/procedure/lifecycle/task/run-task` reads and grooms `task-plan`, performs the authorized work, records results in the task-plan, and ends on a `success` firing — a recurring task is re-run as a fresh `sdlc/procedure/lifecycle/task/run-task` at its next due instant — while an `error` firing stays alive for human follow-up; it never self-ends through finalize-ready cleanup.
 
+<!-- planned:task-firing-timestamp-line -->
+
+Each task firing records when it started. When the task-run lane accepts a fresh
+run session for a task, from a lifecycle runner dispatch or a manual start, or a
+manual start by a session holding no claim on the task takes it up to run the
+firing in place, the platform appends exactly one line,
+`[HH:MM:SS-DD/MM] execution`, to the end of the task's `log`. The line carries
+that start instant from the system clock as 24-hour time and day/month in the
+computer's configured timezone (`computer.timezone`,
+`local/projects/teleclaude/spec/teleclaude-config`), and it is appended before
+the start's outcome returns to its caller. A dispatch that starts no session, one
+that records a session an earlier dispatch already started, and a manual start by
+the session already driving the task append nothing. A failure to append is
+logged and leaves the firing running, so that firing has no line. The platform
+writes no other part of the `log`, and the run session carries every firing line
+verbatim (`sdlc/procedure/lifecycle/task/run-task`).
+
+<!-- /planned:task-firing-timestamp-line -->
+
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. `origin/main` is also the only baseline the worktree references afterwards: an agent inside `trees/<slug>` does not name the local `main` branch in any git invocation, for any subcommand. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
 
 Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. The work state machine owns the work-entry drift path end-to-end. When a tracked artifact's collapsed drift status is `pending`, work does NOT mutate work-state and does NOT create or touch a worktree; its bounce returns a script that dispatches the `sdlc/procedure/lifecycle/prepare/drift-analyze` worker and tells the orchestrator to re-enter `telec todo work {slug}` once the analyzer idles — this path never enters the prepare machine. The analyzer stamps its `--drift-reviewed` verdict and drives no transition. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. On re-entry the work machine reads the stamped verdict. A `cosmetic` verdict is non-blocking: work proceeds to worktree creation and build dispatch. A `substantive` verdict returns the Todo to preparation through the lifecycle runner: the work machine releases the Todo's lifecycle claim, and the platform ends the slug's work-lane sessions — every session the calling work orchestrator started, then the work orchestrator itself — only after the machine has answered the orchestrator's call. The worktree, local and remote branch, workspace directory, and build commits remain. No session changes lanes: the lifecycle runner dispatches a fresh prepare orchestrator, which re-derives the affected artifact; at `prepared` that orchestrator ends like any other and releases the claim, and the lifecycle runner dispatches a fresh work orchestrator, which continues the existing build against the changed plan (UC-WSM10). Neither lifecycle machine adopts a session that holds the slug in the other lane; each refuses it instead. The cosmetic path attempts no artifact write, so it never contends with the write-authority guard.
@@ -190,6 +209,20 @@ Then the (project_root, my-feature) single-flight lock serializes them
 And the second call observes the prepared worktree and reuses it
 And the same slug called concurrently from a different project root acquires a separate lock and runs in parallel
 ```
+
+<!-- planned:task-firing-timestamp-line -->
+
+#### UC-WSM20: The operator reads when each task firing started
+
+```gherkin
+Given an operator's authorized task has started three firings, one after another
+And one further start of it was refused before any run session existed
+When the operator reads the task's log
+Then the log holds exactly three "[HH:MM:SS-DD/MM] execution" lines, in the order the firings started
+And each line shows its firing's start time in the computer's configured timezone
+```
+
+<!-- /planned:task-firing-timestamp-line -->
 
 #### UC-WSM1: Bug build dispatches the build worker with the plan + diagnosis contract
 

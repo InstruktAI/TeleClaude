@@ -48,9 +48,9 @@ finalize, or commit.
 
 <!-- change:task-firing-timestamp-line -->
 
-- A `task-plan` artifact exists. A `log` artifact exists and ends with the
-  platform-written firing line for this firing, `[HH:MM:SS-DD/MM] execution`;
-  on the first firing it holds only that line.
+- A `task-plan` artifact exists. A `log` artifact may not. When it exists, it
+  may hold platform-written firing lines, `[HH:MM:SS-DD/MM] execution`, one for
+  each firing whose start the platform recorded.
 
 <!-- /planned-change:task-firing-timestamp-line -->
 
@@ -121,9 +121,9 @@ finalize, or commit.
 
 7. **Keep the `log` lean.** Short dated paragraphs. When the `log` has grown long
    across many firings, roll older entries up into a summary — your judgment, not a
-   rule. Firing lines are never rolled up, reworded, reordered, or removed: they
-   are the task's only record of when it ran, so every write of the `log` carries
-   each of them verbatim.
+   rule. Roll up only your own entries. Firing lines are written by the platform,
+   not by you: every write of the `log` carries each of them verbatim, in place,
+   and none is rolled up, reworded, reordered, or removed.
 
 <!-- /planned-change:task-firing-timestamp-line -->
 

@@ -94,22 +94,10 @@ feature specs remain the current contract.
 
 <!-- planned:task-firing-timestamp-line -->
 
-- **Also owns (the task firing line):** the `log` of a `kind=task` todo records
-  when each of its firings started. Every firing appends exactly one line,
-  `[HH:MM:SS-DD/MM] execution`, to the end of the task's `log`: the instant the
-  firing started, read from the system clock and rendered as 24-hour time and
-  day/month in the computer's configured timezone (`computer.timezone`,
-  `local/projects/teleclaude/spec/teleclaude-config`). A firing starts when the
-  task-run lane accepts a fresh run session for the task, from a lifecycle
-  runner dispatch or a manual start, or when a manual start by a session that
-  holds no claim on the task takes the task up to run the firing in place. The
-  line is appended as soon as that start is accepted, before the start's outcome
-  returns to its caller. A dispatch that starts no
-  session, one that records a session an earlier dispatch already started, and
-  a manual start by the session already driving the task each append nothing. A
-  failure to append the line is logged and leaves the firing running. The run session keeps every firing line verbatim
-  (`sdlc/procedure/lifecycle/task/run-task`); the platform never writes any
-  other part of the `log`.
+- **Also owns (the task firing line):** the record in a `kind=task` todo's
+  `log` of when each firing started — one platform-written line per firing,
+  whose rules are `local/projects/teleclaude/spec/feature/workflow/work-state-machine`.
+  The platform writes no other part of the `log`.
 
 <!-- /planned:task-firing-timestamp-line -->
 
