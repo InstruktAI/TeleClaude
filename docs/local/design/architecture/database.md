@@ -21,7 +21,7 @@ visibility: public
 
 <!-- change:teleclaude-db-split -->
 
-- **Database Location**: All databases live under `~/.teleclaude/`, one file per owner, each its own write-isolation unit (`sdlc/policy/state-storage`); the files are declared in `teleclaude/paths.py` and the daemon's store registry. Output streaming, operations and reminders each have their own file. State that session creation or control delivery writes in one transaction with sessions — startup handovers, procedure event delivery, the control outbox and the inbound queue with its turn bindings — stays in the main database.
+- **Database Location**: All databases live in the TeleClaude home, one file per owner, each its own write-isolation unit (`sdlc/policy/state-storage`). The home and the main, events and mirrors files are declared in `teleclaude/paths.py`, the hook outbox file in `teleclaude/core/db/connection_factory.py`, and the output, operations and reminders files in the daemon's store registry. Output streaming, operations and reminders each have their own file. State that session creation or control delivery writes in one transaction with sessions — startup handovers, procedure event delivery, the control outbox and the inbound queue with its turn bindings — stays in the main database.
 
 <!-- /planned-change:teleclaude-db-split -->
 
