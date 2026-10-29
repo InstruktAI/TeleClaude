@@ -526,6 +526,7 @@ class MaintenanceService:
                 await db.cleanup_inbound(runtime_cutoff_iso)
                 await db.cleanup_orphan_inbound(now_iso)
                 await db.cleanup_terminal_operations(runtime_cutoff_iso)
+                await db.prune_runtime_retention(now)
                 await db.cleanup_hook_outbox(runtime_cutoff_iso)
                 await db.cleanup_orphan_session_listeners()
                 try:

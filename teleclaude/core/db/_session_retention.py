@@ -11,6 +11,7 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import ColumnElement, func
 from sqlmodel import select
 
+from teleclaude.constants import RUNTIME_RECORD_RETENTION_WINDOW
 from teleclaude.core.runtime_events import publish_session_source_change
 from teleclaude.events.schemas.system import RuntimeSessionChange
 
@@ -28,6 +29,7 @@ _ARCHIVE_JSON_PATH = f"$.{ARCHIVE_SECTION}"
 _ARCHIVE_SOURCE_JSON_PATH = f"$.{ARCHIVE_SECTION}.{ArchiveStampField.SOURCE_IDENTITY}"
 _ARCHIVED_TRANSITION_REASON = "archived"
 _EMPTY_TITLE = ""
+_RUNTIME_RETENTION_PRUNED_EVENT = "runtime_retention.pruned"
 
 
 def not_archive_record() -> ColumnElement[bool]:
@@ -63,6 +65,34 @@ class ArchiveSessionRecord:
 
 class DbSessionRetentionMixin:
     """Soft deletion and archive records: a session record outlives its running life and its pruning."""
+
+    async def prune_runtime_retention(self, now: datetime) -> None:
+        """Prune the runtime state that outlived its retention window, one owner at a time.
+
+        The retained sessions are read once; each owner removes its own expired rows by its own predicate.
+        """
+        cutoff = now - RUNTIME_RECORD_RETENTION_WINDOW
+        cutoff_iso = cutoff.isoformat()
+        retained_session_ids = await self._retained_session_ids(closed_since=cutoff)
+        control_payloads, procedure_events = await self.prune_control_delivery(
+            cutoff_iso=cutoff_iso, retained_session_ids=retained_session_ids
+        )
+        send_intents, receipts, generations, cursors = await self.prune_output_state(
+            cutoff_iso=cutoff_iso, retained_session_ids=retained_session_ids
+        )
+        reminder_entries = await self.prune_reminder_entries(
+            cutoff_iso=cutoff_iso, retained_session_ids=retained_session_ids
+        )
+        logger.debug(
+            _RUNTIME_RETENTION_PRUNED_EVENT,
+            control_payloads=control_payloads,
+            procedure_events=procedure_events,
+            send_intents=send_intents,
+            receipts=receipts,
+            generations=generations,
+            cursors=cursors,
+            reminder_entries=reminder_entries,
+        )
 
     async def soft_delete_session(self, session_id: str) -> None:
         """Stamp a closed session as soft-deleted and tell observers it left navigation.

@@ -11,10 +11,11 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
-from sqlalchemy import text  # guard: raw-sql
+from sqlalchemy import and_, or_, text  # guard: raw-sql
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import DB_IN_MEMORY
@@ -382,6 +383,25 @@ class DbBase:
         if sessionmaker_for_store is None:
             raise RuntimeError(DB_NOT_INITIALIZED_ERROR)
         return sessionmaker_for_store()  # type: ignore[operator]
+
+    async def _retained_session_ids(self, *, closed_since: datetime | None = None) -> set[str]:
+        """Return the ids of sessions that retention keeps.
+
+        A session is retained while it is open; with ``closed_since``, also when it closed at or after that
+        instant.
+        """
+        retained = and_(
+            db_models.Session.closed_at.is_(None),
+            or_(
+                db_models.Session.lifecycle_status.is_(None),
+                db_models.Session.lifecycle_status != "closed",
+            ),
+        )
+        if closed_since is not None:
+            retained = or_(retained, db_models.Session.closed_at >= closed_since)
+        async with self._session() as db_session:
+            result = await db_session.exec(select(db_models.Session.session_id).where(retained))
+            return set(result.all())
 
     def is_initialized(self) -> bool:
         """Return whether the async session factory has been initialized."""

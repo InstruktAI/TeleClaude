@@ -388,3 +388,24 @@ class DbRemindersMixin:
                     observe_entry_read_failure(failure)
                     entries.append(failure)
             return entries
+
+    async def prune_reminder_entries(self, *, cutoff_iso: str, retained_session_ids: set[str]) -> int:
+        """Delete reminder entries older than the cutoff whose session is no longer retained.
+
+        An entry whose occurrence key a live or claimed reminder still carries stays: the claim looks its
+        firing entry up by that key.
+        """
+        entries = db_models.ReminderEntryRow
+        reminders = db_models.ReminderRow
+        statement = delete(entries).where(
+            entries.occurred_at < cutoff_iso,
+            entries.session_id.notin_(retained_session_ids),  # type: ignore[attr-defined]
+            entries.occurrence_key.notin_(select(reminders.occurrence_key)),  # type: ignore[attr-defined]
+            entries.occurrence_key.notin_(  # type: ignore[attr-defined]
+                select(reminders.claimed_occurrence_key).where(reminders.claimed_occurrence_key.is_not(None))
+            ),
+        )
+        async with self._store_session(DaemonStore.REMINDERS) as db_session:
+            result = await db_session.exec(statement)
+            await db_session.commit()
+            return result.rowcount or 0

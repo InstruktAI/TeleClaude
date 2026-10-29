@@ -409,16 +409,7 @@ class DbHooksMixin:
 
     async def cleanup_hook_outbox(self, older_than_iso: str) -> int:
         """Delete expired hook outbox rows or rows whose session is no longer live."""
-        live_stmt = select(db_models.Session.session_id).where(
-            db_models.Session.closed_at.is_(None),
-            or_(
-                db_models.Session.lifecycle_status.is_(None),
-                db_models.Session.lifecycle_status != "closed",
-            ),
-        )
-        async with self._session() as db_session:
-            result = await db_session.exec(live_stmt)
-            live_session_ids = set(result.all())
+        live_session_ids = await self._retained_session_ids()
 
         orphan_condition = db_models.HookOutbox.session_id.notin_(live_session_ids) if live_session_ids else true()
         stmt = delete(db_models.HookOutbox).where(

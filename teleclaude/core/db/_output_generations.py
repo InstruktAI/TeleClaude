@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy import delete, exists, func, or_
+from sqlalchemy.orm import aliased
 from sqlmodel import select
 
 from .. import db_models
@@ -335,3 +337,63 @@ class DbOutputGenerationsMixin:
             db_session.add(new_row)
             await db_session.commit()
             return _decode_intent(new_row)
+
+    async def prune_output_state(self, *, cutoff_iso: str, retained_session_ids: set[str]) -> tuple[int, int, int, int]:
+        """Delete output state that no live consumer can still read, older than the cutoff.
+
+        Terminal Discord send intents go first, then receipts and generations other than a retained
+        session's latest, then the cursors of sessions no longer retained. A generation a pending intent
+        references stays. Returns the rows removed from intents, receipts, generations and cursors, in that
+        order.
+        """
+        intents = db_models.DiscordSendIntentRow
+        receipts = db_models.OutputConsumerReceiptRow
+        generations = db_models.OutputGenerationRow
+        cursors = db_models.OutputConsumerCursorRow
+
+        # The latest generation per session, by the order get_latest_output_generation reads.
+        sibling = aliased(generations)
+        latest_of_receipt_session = (
+            select(sibling.generation_id)
+            .where(sibling.session_id == receipts.session_id)
+            .order_by(sibling.created_at.desc())  # type: ignore[attr-defined]
+            .limit(1)
+            .scalar_subquery()
+        )
+        latest_of_generation_session = (
+            select(sibling.generation_id)
+            .where(sibling.session_id == generations.session_id)
+            .order_by(sibling.created_at.desc())  # type: ignore[attr-defined]
+            .limit(1)
+            .scalar_subquery()
+        )
+        statements = (
+            delete(intents).where(
+                intents.status.in_(_TERMINAL_INTENT_STATUSES),  # type: ignore[attr-defined]
+                func.coalesce(intents.resolved_at, intents.created_at) < cutoff_iso,
+            ),
+            delete(receipts).where(
+                receipts.updated_at < cutoff_iso,
+                or_(
+                    receipts.session_id.notin_(retained_session_ids),  # type: ignore[attr-defined]
+                    receipts.generation_id != latest_of_receipt_session,
+                ),
+            ),
+            delete(generations).where(
+                generations.created_at < cutoff_iso,
+                or_(
+                    generations.session_id.notin_(retained_session_ids),  # type: ignore[attr-defined]
+                    generations.generation_id != latest_of_generation_session,
+                ),
+                ~exists().where(intents.generation_id == generations.generation_id, intents.status == "pending"),
+            ),
+            delete(cursors).where(
+                cursors.session_id.notin_(retained_session_ids),  # type: ignore[attr-defined]
+                cursors.updated_at < cutoff_iso,
+            ),
+        )
+        async with self._store_session(DaemonStore.OUTPUT) as db_session:
+            removed = tuple([(await db_session.exec(statement)).rowcount or 0 for statement in statements])
+            await db_session.commit()
+        intents_removed, receipts_removed, generations_removed, cursors_removed = removed
+        return intents_removed, receipts_removed, generations_removed, cursors_removed
