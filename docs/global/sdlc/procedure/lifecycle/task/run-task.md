@@ -74,9 +74,8 @@ finalize, or commit.
 
 1. **Stamp the start, then read the evidence.** Before reading anything, stamp
    this firing's start with `telec todo stamp {slug} --task-firing-started`. The
-   platform appends this firing's line to the `log`; a repeated stamp from this
-   session appends nothing. If the stamp fails, continue the firing and record the
-   failure in step 6. You may be a fresh instance — the first dispatch, or a
+   platform appends this firing's line to the `log`. If the stamp fails, continue
+   the firing and record the failure in step 6. You may be a fresh instance — the first dispatch, or a
    revival after a daemon restart — with no memory of prior firings
    (`general/principle/continuity`). Then read the `log`; it carries the continuity
    narrative across firings. Each `[HH:MM:SS-DD/MM] execution` line in it is the
