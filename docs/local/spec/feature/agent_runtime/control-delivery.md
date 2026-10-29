@@ -140,6 +140,20 @@ And the session transcript remains the inspectable record of what the agent rece
 
 #### UC-CDL13:
 
+<!-- planned:failed-control-wake-leaves-session-running -->
+
+#### UC-CDL14: A wake that ends undelivered leaves the session idle for the next control payload
+
+```gherkin
+Given an idle session whose wake for a pending control payload was accepted
+And that wake ends undelivered without the agent starting a turn
+And no other input has started a turn since
+When a later control payload is handed off while the session can be woken
+Then the session is woken for that payload
+```
+
+<!-- /planned:failed-control-wake-leaves-session-running -->
+
 ## Known caveats
 
 - This surface's contract ends at its own boundary: a semantic payload rendered
