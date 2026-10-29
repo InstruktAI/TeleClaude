@@ -9,7 +9,7 @@ description: A prepare artifact's writer is admitted by the role catalog's prepa
 
 ## Status
 
-Superseded in part by ADR-0150: a todo whose contract is under execution closes
+Superseded in part by ADR-0151: a todo whose contract is under execution closes
 its prepare artifacts to every caller, the work orchestrator included, so the
 phase condition this record left as a separate decision is taken. The statement
 under Consequences that the capability is the catalog's first declared by no

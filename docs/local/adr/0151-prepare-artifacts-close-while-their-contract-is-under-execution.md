@@ -1,6 +1,6 @@
 ---
 visibility: public
-number: 0150
+number: 0151
 date: 2026-10-29
 description: While a todo's lifecycle phase is one of the work lane's, its prepare artifacts are writable by no caller, the work orchestrator and a direct human-identity writer included; kickback through the work orchestrator reopens the contract.
 ---
