@@ -21,7 +21,7 @@ visibility: public
 
 <!-- change:teleclaude-db-split -->
 
-- **Database Location**: All databases live under `~/.teleclaude/`, one file per owner, each its own write-isolation unit (`sdlc/policy/state-storage`). Main DB is `teleclaude.db`; output streaming (output generations, consumer cursors and receipts, Discord send intents) uses `output.db`; operations use `operations.db`; reminders and their entries use `reminders.db`; events are `events.db`, mirrors are `mirrors.db`, and hook delivery uses `hook_outbox.db`. State that session creation or control delivery writes in one transaction with sessions — startup handovers, procedure event delivery, the control outbox and the inbound queue with its turn bindings — stays in `teleclaude.db`.
+- **Database Location**: All databases live under `~/.teleclaude/`, one file per owner, each its own write-isolation unit (`sdlc/policy/state-storage`); the files are declared in `teleclaude/paths.py` and the daemon's store registry. Output streaming, operations and reminders each have their own file. State that session creation or control delivery writes in one transaction with sessions — startup handovers, procedure event delivery, the control outbox and the inbound queue with its turn bindings — stays in the main database.
 
 <!-- /planned-change:teleclaude-db-split -->
 
@@ -38,7 +38,7 @@ visibility: public
 <!-- planned:teleclaude-db-split -->
 
 - **Session-Scoped Retention**: A session's latest output generation, its consumer cursors and receipts, and its reminder entries are live state while the session is open. They are pruned once the session has been closed for longer than the runtime retention window; superseded generations and receipts, terminal Discord send intents, terminal control payloads and failed procedure events are pruned once older than the window, and delivered procedure events once their assigned session has been closed for longer than it. Session startup handovers are never pruned by retention.
-- **Maintenance Does Not Stall Writers**: Runtime maintenance holds a store's write lock only for short statements. The periodic WAL checkpoint is passive and never waits on readers, retention deletes run per store, and compaction (`VACUUM`) runs only while the daemon opens its stores, before it serves — so the first opening after an install compacts what the install's migrations freed (`sdlc/policy/state-storage`, Write isolation follows contention).
+- **Maintenance Does Not Stall Writers**: Runtime maintenance holds a store's write lock only for short statements. The periodic WAL checkpoint is passive and never waits on readers, retention deletes run per store, and compaction (`VACUUM`) runs only while the daemon opens its stores, before it serves (`sdlc/policy/state-storage`, Write isolation follows contention).
 
 <!-- /planned:teleclaude-db-split -->
 
@@ -49,7 +49,7 @@ visibility: public
 
 <!-- change:teleclaude-db-split -->
 
-- Each store bootstraps from its own schema file — `teleclaude/core/schema.sql` for `teleclaude.db` — and takes incremental changes through its own numbered migrations tracked in the `schema_migrations` ledger inside its own file (`local/projects/teleclaude/policy/schema-and-migrations`).
+- Each store reaches its current schema through its own schema file and migration ledger (`local/projects/teleclaude/policy/schema-and-migrations`).
 
 <!-- /planned-change:teleclaude-db-split -->
 
@@ -307,12 +307,11 @@ lets recovery verify the captured audio still exists before resubmitting.
    `operations`, `inbound_queue`, `hook_outbox.db`,
    `session_listeners`, `voice_assignments`, and `voice_transcriptions` (terminal
    `succeeded`/`failed` rows; orphaned temp audio with no live row is swept alongside),
-   plus `control_outbox`, `procedure_event_inbox`, `discord_send_intents`,
-   `output_generations`, `output_consumer_cursors`, `output_consumer_receipts` and
-   `reminder_entries` under the Session-Scoped Retention invariant.
+   plus the control outbox, procedure events, output-streaming state and reminder
+   entries under the Session-Scoped Retention invariant.
 5. `events.db` prunes resolved notifications and reviewed quarantined events after the retention window while preserving unresolved work.
 6. Orphaned `/tmp/teleclaude_voice/voice_*` audio files are removed only when they are old enough and no recoverable `voice_transcriptions` row still references their path.
-7. Runtime maintenance never compacts. Store opening, before the daemon serves, compacts the runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`, `output.db`, `operations.db`, `reminders.db`) only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
+7. Runtime maintenance never compacts. Store opening, before the daemon serves, compacts every runtime SQLite file only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
 
 <!-- /planned-change:teleclaude-db-split -->
 
