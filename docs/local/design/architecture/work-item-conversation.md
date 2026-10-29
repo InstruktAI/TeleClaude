@@ -239,11 +239,9 @@ first turn of each eligible session missing from GitHub.
 - **A turn the runtime never saw complete.** A turn with no later turn, no
   covering agent stop and an open session is not completed and is not
   captured until one of those holds.
-- **A transcript file the chain names is missing.** Native transcripts are
-  kept by the agent runtimes under the settings TeleClaude deploys and nothing
-  in the platform deletes them, so a missing file is an anomaly, not a state
-  the conversation represents: the runtime logs it and the file contributes
-  no turns. A file that exists but fails to read fails the read, and capture
+- **A transcript file the chain names is missing.** The runtime logs it as an
+  anomaly and the file contributes no turns; the conversation shows nothing in
+  its place. A file that exists but fails to read fails the read, and capture
   retries it.
 - **A lost working copy.** Captured turns not yet on GitHub are captured again
   from the runtime.
