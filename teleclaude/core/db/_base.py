@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import aiosqlite
 from instrukt_ai_logging import get_logger
 from sqlalchemy import and_, or_, text  # guard: raw-sql
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlmodel import select
@@ -255,7 +255,7 @@ class DbBase:
         self._outbox_engine: AsyncEngine | None = None
         self._outbox_sessionmaker: object | None = None
         self._store_engines: dict[DaemonStore, AsyncEngine] = {}
-        self._store_sessionmakers: dict[DaemonStore, object] = {}
+        self._store_sessionmakers: dict[DaemonStore, async_sessionmaker[SqlAsyncSession]] = {}
         self.conn: aiosqlite.Connection | None = None
         self._temp_db_path: str | None = None
         self._temp_dir: str | None = None
@@ -300,7 +300,9 @@ class DbBase:
         for store in STORES:
             engine = _create_runtime_engine(store_db_path(store, home_dir), pooled=guarded)
             self._store_engines[store] = engine
-            self._store_sessionmakers[store] = sessionmaker(engine, expire_on_commit=False, class_=SqlAsyncSession)
+            self._store_sessionmakers[store] = async_sessionmaker(
+                engine, expire_on_commit=False, class_=SqlAsyncSession
+            )
 
     async def _bootstrap_database(
         self,
@@ -381,7 +383,7 @@ class DbBase:
         sessionmaker_for_store = self._store_sessionmakers.get(store)
         if sessionmaker_for_store is None:
             raise RuntimeError(DB_NOT_INITIALIZED_ERROR)
-        return sessionmaker_for_store()  # type: ignore[operator]
+        return sessionmaker_for_store()
 
     async def _retained_session_ids(self, *, closed_since: datetime | None = None) -> set[str]:
         """Return the ids of sessions that retention keeps.
