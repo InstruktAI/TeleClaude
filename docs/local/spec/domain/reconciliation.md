@@ -22,6 +22,8 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 ### Ownership boundary
 
+<!-- planned-change:lean-git-commit-scope -->
+
 - **Owns:** comparison of declared installation capabilities with observed
   machine state and selection of sanctioned convergence actions, including the
   rule deciding which material the home's history retains; and each macOS
@@ -45,6 +47,35 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   the declaration and its advertisement only; which capability a consumer
   requires before coordinating, and what it does when a peer lacks it, is that
   consumer's own contract.
+
+<!-- change:lean-git-commit-scope -->
+
+- **Owns:** comparison of declared installation capabilities with observed
+  machine state and selection of sanctioned convergence actions, including the
+  home's `.gitignore`, written from the platform's home template, which decides
+  what the home's history retains, and the home snapshot that records that
+  history; and each macOS
+  machine's launcher code identity — its signing authority, the signing store
+  that holds it, the unlock secret that opens that store, and the record of what
+  the installed launchers were built from. That state is created on the machine
+  it serves, is never shared with another machine, and lies outside the home's
+  retained set.
+- **Does not own:** service lifecycle mechanics, configuration schema, or the
+  application behavior of the capabilities it reconciles.
+- **Published contracts:** reconciliation observations, plans, and outcomes
+  consumed by sanctioned installation and service-control surfaces; the home's
+  membership predicate, which is git's evaluation of the home's `.gitignore`:
+  `retained` for a path the file admits, `not-retained` for one it ignores, and
+  `outside` for a path beyond the home root; and the home snapshot, which the
+  commit surface runs for a commit requested in the home.
+- **Also published:** fleet discovery facts for this installation — which node
+  is the mesh master, and which capabilities this node advertises — carried on
+  the heartbeat as additive fields and readable by every peer. The context owns
+  the declaration and its advertisement only; which capability a consumer
+  requires before coordinating, and what it does when a peer lacks it, is that
+  consumer's own contract.
+
+<!-- /planned-change:lean-git-commit-scope -->
 
 #### Launcher code identity
 
