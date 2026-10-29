@@ -489,11 +489,10 @@ master admits each conversation request before sending it:
   edit history, and refresh restores it on GitHub. The restored version is
   never older than the record's latest committed revision. An artifact version
   is read only when the platform App saved it; a version anyone else saved,
-  and an artifact anyone else created, is never read as state. Refresh lists
-  the artifacts of every open item, the only way a change to one is seen. When
-  an artifact's newest version is not the version its record commits, the
-  computer that works the project saves the committed content again from its
-  working copy; an artifact that is gone is created again by the item's next
+  and an artifact anyone else created, is never read as state. Nothing scans
+  artifacts: a version someone else saves changes no state, so it is not looked
+  for, and the platform's next save of that artifact becomes its current
+  version again. An artifact that is gone is created again by the item's next
   write, whose record revision names it. A comment with no recoverable bot
   version, and an artifact whose committed version GitHub no longer serves
   where no working copy holds it, is **unverifiable**: refresh leaves the
@@ -776,9 +775,9 @@ sequenceDiagram
   is not an item. An artifact version or a new artifact whose transaction then
   aborts stays on GitHub as the artifact's newest version, which no record
   commits: GitHub takes no conditional write and removes no version. Every
-  reader takes the version the record commits, and the next refresh on the
-  computer that works the project saves the committed content again, so
-  people may see the aborted content as the current version until then.
+  reader takes the version the record commits; people see the aborted content
+  as the artifact's current version until the platform next saves that
+  artifact.
 
 <!-- /planned-change:github-native-artifacts -->
 
@@ -806,11 +805,14 @@ sequenceDiagram
   copy is ever published in its place.
 - GitHub serves only an artifact's 30 newest versions. A committed version
   pushed out of that window, by saves after it or by the artifact's deletion,
-  is restored from the working copy of the computer that holds it. A rebuild
-  restores at most the 30 newest versions of each artifact; an item whose
-  committed version it cannot read is unverifiable there and rebuild refuses
-  store resolution naming the item. The diff of an older version is
-  unavailable on a computer that rebuilt the item.
+  is saved again from the working copy of the computer that holds it by the
+  item's next write of that artifact. A rebuild reads each item's artifacts
+  with one list request, which carries their current bodies, and restores the
+  committed version of each; it reads an artifact's version history only when
+  its current version is not the committed one. Earlier versions are not
+  restored, so their diffs are unavailable on a computer that rebuilt the
+  item. An item whose committed version a rebuild cannot read is unverifiable
+  there and rebuild refuses store resolution naming the item.
 - A repository whose issue artifacts become unavailable, because GitHub
   changes or withdraws the preview, refuses store resolution and every write
   with that cause; the working copy is left as it is.
