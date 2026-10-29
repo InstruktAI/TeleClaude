@@ -24,33 +24,39 @@ its todos:
   that serves it, and that computer's workflow store is the only source of
   them. How they reach its peers is
   `local/projects/teleclaude/design/architecture/redis-transport`.
-- **A project on the GitHub workflow store** keeps its todos on GitHub. Every
-  computer reads them from GitHub through its own workflow store
+- **A project on the GitHub workflow store** keeps its repository work on
+  GitHub: every item the store publishes there, with its artifacts. Every
+  computer reads that from GitHub through its own workflow store
   (`local/projects/teleclaude/design/architecture/workflow-store`), whichever
-  computers serve the project. No computer's workflow store is the source of
-  another computer's read of them.
+  computers serve the project, and also when the read names another computer.
+  No computer's workflow store is the source of another computer's read of it.
+  The project's items that are not repository work — tasks and creative-track
+  work — the store keeps only on the computer that holds them
+  (`local/projects/teleclaude/adr/0126-non-repository-work-stays-in-the-github-store-working-copy`),
+  so that computer is their only source, as for a project on the local store.
 
-A computer reads a GitHub-backed project's todos from GitHub to show them only
-while something consumes them: an explicit read, such as a view being opened or
-an agent listing them, or a view subscribed to todo or project changes. While a
-subscription is held, a change GitHub holds for those todos reaches the
+A computer reads a GitHub-backed project's repository work from GitHub to show
+it only while something consumes it: an explicit read, such as a view being opened or
+an agent listing it, or a view subscribed to todo or project changes. While a
+subscription is held, a change GitHub holds for that work reaches the
 subscribed view without another explicit read. Without one, nothing is read
 until the next explicit read. The workflow store's own upkeep of the projects a
 computer serves stays as the workflow store defines it.
 
-A read of todos that have not changed on GitHub since the computer last read
-them revalidates that read instead of fetching the todos again. A computer reads
+A read of repository work that has not changed on GitHub since the computer
+last read it revalidates that read instead of fetching it again. A computer reads
 one GitHub repository once, however many of its peers serve the project.
 
-When GitHub cannot be read, the read says that the project's todos cannot be
-read from GitHub, and why. It never shows another computer's copy in their
+When GitHub cannot be read, the read says that the project's repository work
+cannot be read from GitHub, and why. It never shows another computer's copy in their
 place.
 
 ## Canonical fields
 
 - **Where a project's todos come from.** The local workflow store: the computer
-  that serves the project. The GitHub workflow store: GitHub, read by each
-  computer for itself.
+  that serves the project. The GitHub workflow store: GitHub for repository work
+  and its artifacts, read by each computer for itself; the holding computer for
+  tasks and creative-track work.
 - **Consumer.** An explicit read, or a held subscription to todo or project
   changes. A computer with neither reads nothing from GitHub to show todos.
 - **Unreadable source.** The read says so and why; no other computer's copy
@@ -77,10 +83,6 @@ Scenario: GitHub cannot be read
 
 ## Known caveats
 
-- A read addressed to another computer — a todo listing that names that
-  computer, or a file opened from a row under it — is answered by that
-  computer, as `local/projects/teleclaude/spec/feature/integration/computer-addressed-execution`
-  defines, and carries back what that computer read.
-- A computer reads a GitHub-backed project's todos only as the GitHub App the
-  project's store declaration names; a computer without that App says the todos
-  cannot be read.
+- A computer reads a GitHub-backed project's repository work only as the GitHub
+  App the project's store declaration names; a computer without that App says
+  that work cannot be read.

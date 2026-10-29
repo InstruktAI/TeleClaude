@@ -25,12 +25,13 @@ adds, renames, or drops is shown as it now is.
 
 <!-- planned:redis-claim-check-external-content -->
 
-The Preparation view shows a project whose todos are kept on GitHub once, under
-the computer its repository names as active
+The Preparation view shows the repository work of a project on the GitHub
+workflow store once, under the computer its repository names as active
 (`local/projects/teleclaude/spec/feature/workflow/driver-admission`), however many
-computers list it, with the todos the viewer's own computer reads from GitHub
+computers list the project, as the viewer's own computer reads it from GitHub
 (`local/projects/teleclaude/spec/feature/workflow/fleet-todo-reads`). When another
-computer is made active, the project moves under that computer.
+computer is made active, that work moves under that computer. The project's
+tasks and creative-track work stay under the computer that holds them.
 
 <!-- /planned:redis-claim-check-external-content -->
 
@@ -56,10 +57,10 @@ fails is decided by `local/projects/teleclaude/spec/feature/presentation/work-fe
 
 - **Listing.** Per computer, the daemon's project listing for the viewer: display
   name and folder, in registry order, of the registry entries whose subject the
-  viewer's reach admits, with the todos each shows. A project whose todos are
-  kept on GitHub shows the todos the viewer's own computer reads from GitHub,
-  in the Preparation view under its active computer only. Live updates about an
-  entry reach only viewers whose reach admits it.
+  viewer's reach admits, with the todos each shows. A project on the GitHub
+  workflow store shows its repository work as the viewer's own computer reads it
+  from GitHub, in the Preparation view under its active computer only. Live
+  updates about an entry reach only viewers whose reach admits it.
 
 <!-- /planned-change:redis-claim-check-external-content -->
 
@@ -111,7 +112,7 @@ And the operator sees the project in both views under the name its folder gives 
 Scenario: The project appears once, under its active computer
   Given a project whose todos are kept on GitHub is listed by several computers
   When an operator views the Preparation view
-  Then the operator sees the project once, under the computer its repository names as active
+  Then the operator sees the project's work kept on GitHub once, under the computer its repository names as active
 
 Scenario: Making another computer active moves the project
   Given an operator sees a GitHub-backed project under its active computer in the Preparation view
