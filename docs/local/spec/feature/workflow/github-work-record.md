@@ -403,8 +403,11 @@ Scenario: A turn that cannot be cleaned is withheld
 - Work already on GitHub when native artifacts arrive is republished as
   native artifacts by the computer that works the project, a few items at a
   time within GitHub's limits; for a large repository this takes hours. A
-  workflow command that changes an item not yet republished fails once,
-  saying to send it again shortly, and that item is republished next.
+  workflow command that changes an item not yet republished fails, saying to
+  send it again, until that item is republished. On the computer that works
+  the project, such a command moves the item to the front, so it is
+  republished after the item in progress, or later when GitHub throttles the
+  republication.
 
 <!-- /planned:github-native-artifacts -->
 
