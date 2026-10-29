@@ -239,15 +239,14 @@ first turn of each eligible session missing from GitHub.
 - **A turn the runtime never saw complete.** A turn with no later turn, no
   covering agent stop and an open session is not completed and is not
   captured until one of those holds.
-- **A turn the runtime cannot read at capture.** This occurs when a transcript
-  was deleted before the capturer took its turn: by hand, or by an agent's
-  own retention under the settings TeleClaude deploys for it. The runtime
-  reports it unreadable; the publisher
-  logs the loss and posts the turn as unavailable in its place, as the work
-  record specifies.
+- **A transcript file the chain names is missing.** Native transcripts are
+  kept by the agent runtimes under the settings TeleClaude deploys and nothing
+  in the platform deletes them, so a missing file is an anomaly, not a state
+  the conversation represents: the runtime logs it and the file contributes
+  no turns. A file that exists but fails to read fails the read, and capture
+  retries it.
 - **A lost working copy.** Captured turns not yet on GitHub are captured again
-  from the runtime; a turn whose source is also gone is lost, as a lost
-  working copy loses non-repository work.
+  from the runtime.
 - **A computer that does not hold the project.** It publishes nothing for its
   sessions on that project's items.
 - **A record write GitHub refuses.** GitHub's secondary limits change without

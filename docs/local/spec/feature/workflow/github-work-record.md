@@ -232,9 +232,7 @@ How the store maps onto the repository is owned by
   strings and personal data are removed as far as detection recognizes them;
   a turn whose masking or detection cannot complete appears only as
   `[session:<id> role:<role> action:turn turn:<n> at:<time> withheld]`, with
-  no content, and a turn whose transcript was deleted before it could be taken
-  appears only as
-  `[session:<id> role:<role> action:turn turn:<n> at:<time> unavailable]`. The project's
+  no content. The project's
   conversation starts at the moment recorded by the first
   `[action:conversation-start at:<time>]` entry on its ledger issue; turns
   completed before it are not written. The conversation is never part of the
