@@ -26,7 +26,7 @@ per-connection outbound filter is installed and prompting:
 
 ## Preconditions
 
-- The repository ships binaries that open outbound connections.
+- The repository's code runs binaries that open outbound connections.
 - The host has been checked for a per-connection outbound filter. Detection
   precedes authoring; absent a filter, the procedure ends here.
 
@@ -47,8 +47,9 @@ and extends them; it does not re-derive them per run.
 
 ### 2. Declare the binaries this repository's code runs
 
-Rules name the binaries this repository ships and the tools its install flow
-installs for its code to run, each with the destinations it needs. A rule
+Rules name the binaries this repository ships and every tool its code needs to
+run — whether its install flow installs the tool or expects it to be installed
+beforehand — each with the destinations it needs. A rule
 matching any process is not a declaration of what an application needs — it is
 the removal of the filter.
 
@@ -95,18 +96,23 @@ source and deploys it to Pages, and commits nothing. A host subscribes to
 the committed rules are inert — a defined state, not a failure.
 
 A package manager that installs each version at its own path gives every
-upgrade a new path, and macOS reports a running binary by its resolved path,
-never by a symlink to it. Homebrew installs a formula under
-`<prefix>/Cellar/<formula>/<version>[_<revision>]/`, with `/opt/homebrew` and
-`/usr/local` as its prefixes. The committed source therefore names the formula
-and the binary's path inside the formula's folder, never a version. The job
-expands each entry into one rule per version and prefix: it reads the current
-version from the package manager's API and keeps every version the published
-file already carries, so a host still running an older version keeps its rule.
+upgrade a new path. Homebrew keeps each installed version of a formula in its
+own folder under its prefix's Cellar (Homebrew's
+[Formula Cookbook](https://docs.brew.sh/Formula-Cookbook) and
+[installation](https://docs.brew.sh/Installation) pages name the Cellar and the
+`/opt/homebrew` and `/usr/local` prefixes), and a filter that matches the full
+path a process runs from sees that versioned folder. The committed source
+therefore names the formula and the binary's path inside the formula's folder,
+never a version. The job expands each entry into one rule per version and
+prefix: it reads the current version from the package manager's API, keeps
+every version the published file already carries, and adds a version named to
+it by hand, so a host still running an older version keeps or gets its rule.
 
-A binary signed with a Developer ID carries a team ID, so its rule names its code
-identity (`identifier.TEAM_ID/IDENTIFIER`) instead of a path and survives every
-upgrade unchanged.
+Little Snitch also matches a process by its code identity
+(`identifier.TEAM_ID/IDENTIFIER`), which only a Developer ID signature carries
+(the [rules file format](https://help.obdev.at/littlesnitch6/adv-lsrules-file-format)
+describes both forms); such a binary's rule names that identity instead of a
+path and survives every upgrade unchanged.
 
 Little Snitch subscribes once per machine to the published file as a remote rule
 group. "Disable new allow rules" is turned off for that group; otherwise every
@@ -141,15 +147,17 @@ fire on the next host or the next rebuild.
   identity on every build.
 - **A newly declared rule is not honored.** The filter has not reloaded. Restart its
   daemon, then retry.
-- **A prompt names a version the published file lacks.** The publishing job has not
-  run since that upgrade. Run it; do not hand-enter rules on the host instead.
+- **A prompt names a version the published file lacks.** Run the publishing job,
+  naming that formula and version as a version to add when it is older than the
+  package manager's current one; a plain run adds only the current version. Do
+  not hand-enter rules on the host instead.
 
 ## Discipline
 
 The committed rules are the source of truth and the filter is downstream of them.
 An agent that meets a prompt reaches for the committed file, not for the filter's
 own interface, because a rule entered by hand lives on one machine and is lost to
-every other. A rule names the binaries this repository ships; reaching for a
+every other. A rule names the binaries this repository's code runs; reaching for a
 match-any-process rule ends the prompting by removing the filter, which is the
 failure this procedure exists to prevent. The formats are stable, so rules are
 extended rather than re-derived per run. Where no such filter runs the procedure
