@@ -23,6 +23,17 @@ name, in registry order
 list changes, whether or not any session changed with it: a project the daemon
 adds, renames, or drops is shown as it now is.
 
+<!-- planned:redis-claim-check-external-content -->
+
+The Preparation view shows a project whose todos are kept on GitHub once, under
+the computer its repository names as active
+(`local/projects/teleclaude/spec/feature/workflow/driver-admission`), however many
+computers list it, with the todos the viewer's own computer reads from GitHub
+(`local/projects/teleclaude/spec/feature/workflow/fleet-todo-reads`). When another
+computer is made active, the project moves under that computer.
+
+<!-- /planned:redis-claim-check-external-content -->
+
 An operator adds a project from the local computer's header in either view by
 naming a folder. The new-project action asks for nothing else: the project's
 name comes from the folder it adopts. The TUI hands the folder to its daemon,
@@ -34,10 +45,24 @@ fails is decided by `local/projects/teleclaude/spec/feature/presentation/work-fe
 
 ## Canonical fields
 
+<!-- planned-change:redis-claim-check-external-content -->
+
 - **Listing.** Per computer, the daemon's project listing for the viewer: display
   name and folder, in registry order, of the registry entries whose subject the
   viewer's reach admits, with the todos each shows. Live updates about an entry
   reach only viewers whose reach admits it.
+
+<!-- change:redis-claim-check-external-content -->
+
+- **Listing.** Per computer, the daemon's project listing for the viewer: display
+  name and folder, in registry order, of the registry entries whose subject the
+  viewer's reach admits, with the todos each shows. A project whose todos are
+  kept on GitHub shows the todos the viewer's own computer reads from GitHub,
+  in the Preparation view under its active computer only. Live updates about an
+  entry reach only viewers whose reach admits it.
+
+<!-- /planned-change:redis-claim-check-external-content -->
+
 - **Redraw.** Any change to a computer's listing redraws both views.
 - **New-project input.** A folder path. Missing folders are created by the
   daemon's adoption; a path naming a file, or a folder already on the list, is
@@ -77,3 +102,21 @@ And the operator sees the project in both views under the name its folder gives 
 #### UC-TUI-PL4: A failed add tells the operator why
 
 #### UC-TUI-PL5: Another computer's header offers no new-project action
+
+<!-- planned:redis-claim-check-external-content -->
+
+#### UC-TUI-PL6: An operator sees a GitHub-backed project's work under the computer that drives it
+
+```gherkin
+Scenario: The project appears once, under its active computer
+  Given a project whose todos are kept on GitHub is listed by several computers
+  When an operator views the Preparation view
+  Then the operator sees the project once, under the computer its repository names as active
+
+Scenario: Making another computer active moves the project
+  Given an operator sees a GitHub-backed project under its active computer in the Preparation view
+  When another computer is made the project's active computer
+  Then the operator sees the project under that computer instead
+```
+
+<!-- /planned:redis-claim-check-external-content -->
