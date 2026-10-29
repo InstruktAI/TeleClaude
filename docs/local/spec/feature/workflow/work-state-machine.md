@@ -17,8 +17,6 @@ per-slug orchestration contract.
 
 Task execution is a separate non-SDLC lane. The lifecycle runner starts `sdlc/procedure/lifecycle/task/run-task <slug>` for a prepared, authorized task; the Phase B build/review/finalize machine does not handle task execution and does not create a worktree. `sdlc/procedure/lifecycle/task/run-task` reads and grooms `task-plan`, performs the authorized work, records results in the task-plan, and ends on a `success` firing — a recurring task is re-run as a fresh `sdlc/procedure/lifecycle/task/run-task` at its next due instant — while an `error` firing stays alive for human follow-up; it never self-ends through finalize-ready cleanup.
 
-<!-- planned:task-firing-timestamp-line -->
-
 Each task firing records when it started. The session running a firing stamps
 its start (`--task-firing-started`,
 `local/projects/teleclaude/spec/feature/workflow/state-stamping`) before it reads
@@ -35,8 +33,6 @@ The `log`'s only writers are therefore the firing's own session and the stamp it
 invokes, in that session's order; the platform writes no other part of the `log`,
 and the run session carries every firing line verbatim
 (`sdlc/procedure/lifecycle/task/run-task`).
-
-<!-- /planned:task-firing-timestamp-line -->
 
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. `origin/main` is also the only baseline the worktree references afterwards: an agent inside `trees/<slug>` does not name the local `main` branch in any git invocation, for any subcommand. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
 
@@ -212,8 +208,6 @@ And the second call observes the prepared worktree and reuses it
 And the same slug called concurrently from a different project root acquires a separate lock and runs in parallel
 ```
 
-<!-- planned:task-firing-timestamp-line -->
-
 #### UC-WSM20: The operator reads when each task firing started
 
 ```gherkin
@@ -223,8 +217,6 @@ When the operator reads the task's log
 Then the log holds exactly three "[HH:MM:SS-DD/MM] execution" lines, in the order the firings started
 And each line shows its firing's start time in the computer's configured timezone
 ```
-
-<!-- /planned:task-firing-timestamp-line -->
 
 #### UC-WSM1: Bug build dispatches the build worker with the plan + diagnosis contract
 

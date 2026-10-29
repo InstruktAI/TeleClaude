@@ -95,14 +95,10 @@ feature specs remain the current contract.
   open bug whose record holds a failure of that check on that branch since its
   last recovery there.
 
-<!-- planned:task-firing-timestamp-line -->
-
 - **Also owns (the task firing line):** the record in a `kind=task` todo's
   `log` of when each firing started — one platform-written line per firing,
   whose rules are `local/projects/teleclaude/spec/feature/workflow/work-state-machine`.
   The platform writes no other part of the `log`.
-
-<!-- /planned:task-firing-timestamp-line -->
 
 ### Preparation completion provenance
 

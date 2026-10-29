@@ -41,36 +41,15 @@ finalize, or commit.
   resolves the operation kind from `kind=task` server-side, with no in-process
   auth bypass.
 
-<!-- planned-change:task-firing-timestamp-line -->
-
-- A `task-plan` artifact exists. A `log` artifact may not (it is absent on the
-  first firing).
-
-<!-- change:task-firing-timestamp-line -->
-
 - A `task-plan` artifact exists. A `log` artifact may not. When it exists, it
   may hold platform-written firing lines, `[HH:MM:SS-DD/MM] execution`, one for
   each firing whose start was stamped.
-
-<!-- /planned-change:task-firing-timestamp-line -->
 
 - The session is booted with the full `telec` CLI surface and available skills.
 
 ## Steps
 
 <!-- @include: docs/snippets/step-role-read.md -->
-
-<!-- planned-change:task-firing-timestamp-line -->
-
-1. **Read the evidence first.** You may be a fresh instance — the first dispatch, or
-   a revival after a daemon restart — with no memory of prior firings
-   (`general/principle/continuity`). Read the `log` before anything else; it carries
-   the continuity narrative across firings. The durable outcome the previous firing
-   stamped is the authoritative "this firing completed" signal — a stamped instant is
-   never repeated. If the `log` is empty or absent and no outcome is stamped, this is
-   the first firing and you begin it.
-
-<!-- change:task-firing-timestamp-line -->
 
 1. **Stamp the start, then read the evidence.** Before reading anything, stamp
    this firing's start with `telec todo stamp {slug} --task-firing-started`. The
@@ -84,8 +63,6 @@ finalize, or commit.
    completed" signal — a stamped instant is never repeated. If the `log` holds
    nothing beyond firing lines and no outcome is stamped, this is the first firing
    and you begin it.
-
-<!-- /planned-change:task-firing-timestamp-line -->
 
 2. **Read the plan.** Read the `task-plan`. It is the human-approved intent and
    carries the specifics this procedure deliberately omits — what to produce,
@@ -114,21 +91,11 @@ finalize, or commit.
    across firings and restarts; if it is not in the `log` or a workspace artifact, it
    is lost.
 
-<!-- planned-change:task-firing-timestamp-line -->
-
-7. **Keep the `log` lean.** Short dated paragraphs. When the `log` has grown long
-   across many firings, roll older entries up into a summary — your judgment, not a
-   rule.
-
-<!-- change:task-firing-timestamp-line -->
-
 7. **Keep the `log` lean.** Short dated paragraphs. When the `log` has grown long
    across many firings, roll older entries up into a summary — your judgment, not a
    rule. Roll up only your own entries. Firing lines are written by the platform,
    not by you: every write of the `log` carries each of them verbatim, in place,
    and none is rolled up, reworded, reordered, or removed.
-
-<!-- /planned-change:task-firing-timestamp-line -->
 
 8. **Report the firing outcome.** Stamp a durable outcome on the todo — `success`
    when the firing achieved the plan's intent, `error` (with a reason) when it hit a
