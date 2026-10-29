@@ -18,7 +18,7 @@ from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifec
 from teleclaude.core.next_machine.slug_resolution import effective_delivered_slugs_for_dependencies
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, TASK_LIFECYCLE_PHASE_ORDER
 from teleclaude.types.todo_kind import TodoKind
-from teleclaude.types.todos import CommitReviewDetail, HoldAuditReason, TodoEventKind, TodoState
+from teleclaude.types.todos import ClaimStatus, CommitReviewDetail, HoldAuditReason, TodoEventKind, TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -93,6 +93,23 @@ class BlockerEntry(TypedDict, total=False):
     blocked_by: list[BlockerEntry]
 
 
+class ClaimBlock(TypedDict):
+    """The ``claim`` block in the show payload: who holds an active todo's lifecycle claim.
+
+    ``session_id`` names the holder and ``computer`` the computer that answered for it; ``role`` is
+    present only where the caller may read the holder's session record; ``unanswered`` names the
+    computers that did not answer when none did; ``reason`` says why a claim is undetermined. It is not
+    ``state.active_runner``.
+    """
+
+    status: ClaimStatus
+    session_id: NotRequired[str]
+    computer: NotRequired[str]
+    role: NotRequired[str]
+    unanswered: NotRequired[list[str]]
+    reason: NotRequired[str]
+
+
 class TodoShowPayload(TypedDict, total=False):
     """Lifecycle-bearing todo payload for ``telec todo show``."""
 
@@ -115,6 +132,7 @@ class TodoShowPayload(TypedDict, total=False):
     next_commands: dict[str, str]
     artifacts: list[str]
     artifact_content: dict[str, str]
+    claim: ClaimBlock
 
 
 class HolderShowPayload(TypedDict):
@@ -539,6 +557,13 @@ async def _assemble_holder_payload(
             artifact_content[name] = await todos_db.read_artifact(slug, name)
         payload["artifact_content"] = artifact_content
     return payload
+
+
+def payload_is_active_todo(payload: ShowPayload) -> bool:
+    """Whether the payload shows a live lifecycle todo, the only kind a driver start is admitted for."""
+    if payload.get("stage") == _HOLDER_PHASE:
+        return False
+    return payload.get("roadmap", {}).get("status") == TodoStatus.ACTIVE.value
 
 
 async def assemble_show_payload(

@@ -29,12 +29,12 @@ from typing import Any
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict
 
-from teleclaude.caller_identity import cleared_command_path
+from teleclaude.caller_identity import CliCaller, cleared_command_path
 from teleclaude.config.machine import config
 from teleclaude.config.registered_homes import project_identity_for_folder
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.command_dispatch import RemoteDispatchError, RemoteDispatchReason
-from teleclaude.core.db import Db, get_db
+from teleclaude.core.db import Db, SessionRecordFound, get_db
 from teleclaude.core.inbound.fleet import known_computer_names
 from teleclaude.core.next_machine.driver_claim import set_active_runner
 from teleclaude.core.next_machine.runner_types import RunnerLane, RunnerTodo
@@ -46,6 +46,7 @@ from teleclaude.core.next_machine.runtime.sessions import (
     recheck_slug_holder,
 )
 from teleclaude.core.relay_carrier import carry_request
+from teleclaude.core.session_inspection import InspectionGroup, SessionColumn, curated_view, inspect_local
 from teleclaude.core.todos_db._exceptions import (
     AdmissionUnavailable,
     AdmissionUnavailableReason,
@@ -53,18 +54,20 @@ from teleclaude.core.todos_db._exceptions import (
     DriverStartBusy,
     OperationFailure,
 )
+from teleclaude.core.todos_db._write_admission import WorkingCopyWriteRefused
 from teleclaude.core.workflow_store.github import GitHubIdentityRefused
 from teleclaude.core.workflow_store.github_active_computer import read_active_computer
 from teleclaude.core.workflow_store.github_io_transport import GitHubIORefused
 from teleclaude.core.workflow_store.github_store import GitHubStoreSelectionRefused, refresh_github_workflow_store
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.types.commands import RelayedResponse
-from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY
+from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, ClaimStatus
 
 logger = get_logger(__name__)
 
 SESSION_ANSWER_PATH = "/todos/session-answer"
 RELEASE_PATH = "/todos/driver-release"
+CLAIM_HOLDER_PATH = "/todos/claim-holder"
 
 # The waits nest: a question to a computer < the active computer's answer to an admission < the start's whole
 # budget, which leaves room inside the request timeout of ``TelecAPIClient.run_session`` for the guard before it
@@ -76,6 +79,15 @@ QUESTION_DEADLINE_S = 4.0
 ADMISSION_BUDGET_S = 45.0
 RELEASE_RELAY_DEADLINE_S = 50.0
 START_BUDGET_S = 60.0
+# A read of the holder is bounded end to end, each enclosing wait longer than what it encloses: a question to a
+# computer (``QUESTION_DEADLINE_S``) < the active computer's answer < the relay to it < the whole read on the
+# computer asked, which also covers the one session read that names a remote holder's role < the wait of the CLI
+# that asked (the show handler's ``_CLAIM_READ_TIMEOUT_S``) < the client default that waits on an addressed show.
+# A read that outlasts its deadline is undetermined, never free.
+CLAIM_HOLDER_ANSWER_S = 12.0
+CLAIM_HOLDER_RELAY_DEADLINE_S = 15.0
+CLAIM_READ_DEADLINE_S = 20.0
+HOLDER_ROLE_RELAY_DEADLINE_S = 5.0
 
 _JSON_CONTENT_TYPE = "application/json"
 _PROJECT_PATH_FIELD = "project_path"
@@ -708,3 +720,249 @@ def parse_admission_conflict(slug: str, detail: str | None) -> ClaimConflict | N
     if not isinstance(payload, dict) or payload.get(_KIND_FIELD) != ADMISSION_CONFLICT_KIND:
         return None
     return ClaimConflict.from_error_payload(slug, {str(key): value for key, value in payload.items()})
+
+
+@dataclass(frozen=True)
+class ClaimHolderReport:
+    """Who holds a todo's driver claim, as driver admission's holder rule finds it.
+
+    ``HELD`` names the holding session and the computer that answered for it, or, when no computer
+    answered for it, the computers that did not (``unanswered``). ``UNDETERMINED`` carries why the
+    claim could not be read; it is never ``FREE``.
+    """
+
+    status: ClaimStatus
+    session_id: str | None = None
+    computer: str | None = None
+    unanswered: tuple[str, ...] = ()
+    reason: str | None = None
+
+
+class ClaimHolderAnswer(BaseModel):
+    """The wire body of a holder read: a :class:`ClaimHolderReport` between the active computer and its asker."""
+
+    model_config = ConfigDict(frozen=True)
+    status: ClaimStatus
+    session_id: str | None = None
+    computer: str | None = None
+    unanswered: tuple[str, ...] = ()
+    reason: str | None = None
+
+    @classmethod
+    def from_report(cls, report: ClaimHolderReport) -> ClaimHolderAnswer:
+        """The wire body that carries ``report``."""
+        return cls(
+            status=report.status,
+            session_id=report.session_id,
+            computer=report.computer,
+            unanswered=report.unanswered,
+            reason=report.reason,
+        )
+
+    def to_report(self) -> ClaimHolderReport:
+        """The report this wire body carried."""
+        return ClaimHolderReport(
+            status=self.status,
+            session_id=self.session_id,
+            computer=self.computer,
+            unanswered=self.unanswered,
+            reason=self.reason,
+        )
+
+
+def _undetermined(slug: str, reason: str) -> ClaimHolderReport:
+    logger.warning("driver claim holder undetermined", slug=slug, reason=reason)
+    return ClaimHolderReport(status=ClaimStatus.UNDETERMINED, reason=reason)
+
+
+def _unavailable_reason(unavailable: AdmissionUnavailable) -> str:
+    return f"{unavailable.reason.value} ({unavailable.detail})" if unavailable.detail else unavailable.reason.value
+
+
+async def _read_before(
+    slug: str, until: float, work: Coroutine[object, object, ClaimHolderReport], *, expired: str
+) -> ClaimHolderReport:
+    """Run ``work`` until the loop-clock deadline ``until``; every refusal it declares is an ``UNDETERMINED`` report.
+
+    Declared refusals are the active computer being unavailable, an operation refused, and the GitHub
+    I/O and working-copy writers refusing; anything else is a defect and propagates. So does the
+    refusal to answer as a computer that is not the active one, which the relayed answer owns.
+    """
+    try:
+        async with asyncio.timeout_at(until):
+            return await work
+    except TimeoutError:
+        return _undetermined(slug, expired)
+    except AdmissionUnavailable as unavailable:
+        if unavailable.reason is AdmissionUnavailableReason.NOT_THE_ACTIVE_COMPUTER:
+            raise
+        return _undetermined(slug, _unavailable_reason(unavailable))
+    except (OperationFailure, GitHubIORefused, WorkingCopyWriteRefused) as refusal:
+        return _undetermined(slug, f"the claim could not be read: {type(refusal).__name__}: {refusal}")
+
+
+async def _local_holder(project_root: Path, slug: str) -> ClaimHolderReport | None:
+    """The session holding ``slug`` on this computer, as the start's own re-check finds it, with no exemption."""
+    holder = await recheck_slug_holder(
+        await get_db(), await get_workflow_store(project_root), project_root, slug, exempt_session_id=None
+    )
+    if holder is None:
+        return None
+    return ClaimHolderReport(status=ClaimStatus.HELD, session_id=holder, computer=config.computer.name)
+
+
+async def _judge_recorded_claim(project_root: Path, slug: str, caller: AdmissionCaller) -> ClaimHolderReport:
+    """The recorded claim on ``slug`` as the active computer judges it; free when none is recorded or it ended."""
+    state = await (await get_workflow_store(project_root)).read_state(slug)
+    claim = state.get(ACTIVE_RUNNER_STATE_KEY) if state is not None else None
+    if not isinstance(claim, str) or not claim:
+        return ClaimHolderReport(status=ClaimStatus.FREE)
+    judgment = await judge_claim(project_root, slug, claim, caller=caller)
+    if not judgment.held:
+        return ClaimHolderReport(status=ClaimStatus.FREE)
+    return ClaimHolderReport(
+        status=ClaimStatus.HELD, session_id=claim, computer=judgment.computer, unanswered=judgment.unanswered
+    )
+
+
+async def _holder_on_active_computer(project_root: Path, slug: str, caller: AdmissionCaller) -> ClaimHolderReport:
+    """Read the holder in the order a start's admission decides it, with no section, exemption or write.
+
+    The refresh runs as a task that outlives its waiter, so one already begun is never cancelled midway;
+    the reads after it are abandoned freely when the caller's deadline passes.
+    """
+    await asyncio.shield(spawn_tracked(refresh_github_workflow_store(project_root, computer=config.computer.name)))
+    local = await _local_holder(project_root, slug)
+    if local is not None:
+        return local
+    return await _judge_recorded_claim(project_root, slug, caller)
+
+
+async def _answer_as_active_computer(project_root: Path, slug: str, caller: AdmissionCaller) -> ClaimHolderReport:
+    active = await resolve_admitting_computer(project_root, slug)
+    if active is not None:
+        raise AdmissionUnavailable(slug=slug, reason=AdmissionUnavailableReason.NOT_THE_ACTIVE_COMPUTER, detail=active)
+    return await _holder_on_active_computer(project_root, slug, caller)
+
+
+async def answer_relayed_claim_holder(project_root: Path, slug: str, caller: AdmissionCaller) -> ClaimHolderReport:
+    """Answer a holder read another computer relayed here; refuse unless this computer is the project's active computer.
+
+    Discovering the active computer and reading the claim share the one answer deadline.
+    """
+    return await _read_before(
+        slug,
+        asyncio.get_running_loop().time() + CLAIM_HOLDER_ANSWER_S,
+        _answer_as_active_computer(project_root, slug, caller),
+        expired="the active computer did not answer in time",
+    )
+
+
+async def _ask_active_computer_claim_holder(
+    active: str, project_root: Path, slug: str, caller: AdmissionCaller, *, until: float
+) -> ClaimHolderReport:
+    """Ask the active computer who holds ``slug``; whatever keeps its answer from being read is ``UNDETERMINED``."""
+    query = [[_PROJECT_PATH_FIELD, project_identity_for_folder(project_root)], [_SLUG_FIELD, slug]]
+    try:
+        response = await _carry(
+            active,
+            HTTPMethod.GET,
+            CLAIM_HOLDER_PATH,
+            query=query,
+            body=b"",
+            caller=caller,
+            deadline_s=min(CLAIM_HOLDER_RELAY_DEADLINE_S, until - asyncio.get_running_loop().time()),
+        )
+    except (RemoteDispatchError, RuntimeError, ValueError) as error:
+        return _undetermined(slug, f"{AdmissionUnavailableReason.ACTIVE_COMPUTER_DID_NOT_ANSWER.value} ({error})")
+    if response.status_code != _HTTP_OK:
+        return _undetermined(slug, f"the active computer answered status {response.status_code}")
+    try:
+        return ClaimHolderAnswer.model_validate_json(base64.b64decode(response.body_b64)).to_report()
+    except ValueError:
+        return _undetermined(slug, "the active computer's answer could not be read")
+
+
+async def _claim_holder_here(project_root: Path, slug: str, caller: AdmissionCaller, until: float) -> ClaimHolderReport:
+    local = await _local_holder(project_root, slug)
+    if local is not None:
+        return local
+    if not is_github_backed(project_root):
+        return ClaimHolderReport(status=ClaimStatus.FREE)
+    active = await resolve_admitting_computer(project_root, slug)
+    if active is None:
+        return await _holder_on_active_computer(project_root, slug, caller)
+    return await _ask_active_computer_claim_holder(active, project_root, slug, caller, until=until)
+
+
+async def claim_holder(project_root: Path, slug: str, caller: AdmissionCaller, *, until: float) -> ClaimHolderReport:
+    """Read who holds ``slug``'s claim by driver admission's holder rule, before the loop-clock deadline ``until``.
+
+    This computer's own holders answer first, as a start's re-check does. A local-store project has no
+    other. A GitHub-backed project's recorded claim is judged by the project's active computer: this
+    computer when it is the active one, otherwise the one it relays the read to, and that answer is the
+    report. Discovering the active computer, the read or the relay, and nothing else run under ``until``.
+    Anything that keeps the claim from being decided is ``UNDETERMINED`` naming why, never ``FREE``.
+    """
+    return await _read_before(
+        slug,
+        until,
+        _claim_holder_here(project_root, slug, caller, until),
+        expired="the claim was not read in time",
+    )
+
+
+def _role_of(view: object) -> str | None:
+    group = view.get(InspectionGroup.ROLE.value) if isinstance(view, dict) else None
+    role = group.get(SessionColumn.ROLE.value) if isinstance(group, dict) else None
+    return role if isinstance(role, str) and role else None
+
+
+async def _remote_holder_role(
+    computer: str, session_id: str, project_root: Path, caller: AdmissionCaller, until: float
+) -> str | None:
+    try:
+        response = await _carry(
+            computer,
+            HTTPMethod.GET,
+            f"/sessions/{session_id}",
+            query=[[_PROJECT_PATH_FIELD, project_identity_for_folder(project_root)]],
+            body=b"",
+            caller=caller,
+            deadline_s=min(HOLDER_ROLE_RELAY_DEADLINE_S, until - asyncio.get_running_loop().time()),
+        )
+        if response.status_code != _HTTP_OK:
+            return None
+        return _role_of(json.loads(base64.b64decode(response.body_b64)))
+    except (RemoteDispatchError, RuntimeError, ValueError):
+        return None
+
+
+async def holder_role(
+    report: ClaimHolderReport,
+    project_root: Path,
+    *,
+    reader: CliCaller,
+    remote_caller: AdmissionCaller | None,
+    until: float,
+) -> str | None:
+    """The role of the session a ``HELD`` report names, read only where the caller's reach admits the record.
+
+    A holder on this computer is read through agent_runtime's :func:`inspect_local` as ``reader``. A holder
+    elsewhere is read through that computer's own session read, carried as ``remote_caller``, which is the
+    caller's own principal and never the daemon's, and naming ``project_root`` so the caller is admitted at the
+    project's scope there rather than the platform's; with no principal there is no remote read. A held claim no
+    computer answered for, a record outside reach, a refusal, silence or the deadline name no role.
+    """
+    if report.status is not ClaimStatus.HELD or not report.session_id or not report.computer:
+        return None
+    try:
+        async with asyncio.timeout_at(until):
+            if report.computer != config.computer.name:
+                if remote_caller is None:
+                    return None
+                return await _remote_holder_role(report.computer, report.session_id, project_root, remote_caller, until)
+            read = await inspect_local(reader, report.session_id)
+            return _role_of(curated_view(read.values)) if isinstance(read, SessionRecordFound) else None
+    except TimeoutError:
+        return None

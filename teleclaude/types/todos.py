@@ -18,6 +18,14 @@ PREPARED_SESSION_ID_STATE_KEY = "prepared_session_id"
 SCHEMA_VERSION_STATE_KEY = "schema_version"
 
 
+class ClaimStatus(StrEnum):
+    """What a read of a todo's driver claim found."""
+
+    HELD = "held"
+    FREE = "free"
+    UNDETERMINED = "undetermined"
+
+
 class DorActions(BaseModel):
     """Legacy-bridge: actions field from old DOR-format state files. Read-only for upcycle."""
 
