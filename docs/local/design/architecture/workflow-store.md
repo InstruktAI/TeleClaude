@@ -479,9 +479,10 @@ master admits each conversation request before sending it:
     working copy's writer. Each save GitHub acknowledges is recorded in the
     working copy as saved for that item before the next is made, apart from
     the version entries a committed record names, so an interrupted item
-    resumes at its first version not yet saved. A save whose acknowledgement
-    is lost is made again, and GitHub then holds that content twice; the
-    record commits the newest.
+    resumes at its first version not yet saved. A version save whose
+    acknowledgement is lost is made again, and GitHub then holds that content
+    twice; the record commits the newer. A lost acknowledgement of an
+    artifact's creation is a failure mode of its own (Failure modes).
   - The item's next record revision is then committed by a push holding the
     writer, the one write to an item awaiting republication that the store
     admits. Every other write to such an item is refused before its
@@ -709,13 +710,13 @@ probe, or from any artifact request GitHub answers. While it is not known,
 store resolution probes by listing the link artifacts of one issue the
 platform App opened: the ledger issue when the repository has one, otherwise
 the issue of any repository work item the working copy or its rebuild holds.
-The platform creates no link artifacts, so the probe carries no workflow
-content. Resolution refuses when the repository does not serve issue
+The probe requests link artifacts only, a type the platform never creates. Resolution refuses when the repository does not serve issue
 artifacts, and refuses with the provider's cause when the probe fails
 otherwise. A repository with no platform issue has nothing to probe: its store
 resolves, and its first artifact save establishes the fact. Once the working
 copy records that the repository does not serve them, resolution and every
-write refuse with that cause. The first store resolution on a computer
+write refuse with that cause until a probe, which resolution makes again
+each time, finds them served. The first store resolution on a computer
 rebuilds the working copy from the repository; an empty repository yields an
 empty store.
 Moving an existing local store's items to GitHub is not part of activation.
@@ -817,12 +818,17 @@ sequenceDiagram
 
 - A newly opened issue whose transaction then aborts stays on GitHub
   unreferenced; rebuild ignores it, because an issue without a platform record
-  is not an item. An artifact version or a new artifact whose transaction then
-  aborts stays on GitHub as the artifact's newest version, which no record
-  commits: GitHub takes no conditional write and removes no version. Every
-  reader takes the version the record commits; people see the aborted content
-  as the artifact's current version until the platform next saves that
-  artifact.
+  is not an item. An artifact version whose transaction then aborts stays on
+  GitHub as the artifact's newest version, which no record commits: GitHub
+  takes no conditional write and removes no version. Every reader takes the
+  version the record commits; people see the aborted content as the
+  artifact's current version until the platform next saves that artifact.
+- An artifact created in a write that then aborts, or whose creation's
+  acknowledgement is lost during republication, stays on the issue as an
+  issue artifact no record names. The next save of that workflow artifact
+  creates another issue artifact under the same name, which the record then
+  names. The unnamed one is never read, and people see both until someone
+  removes it.
 
 <!-- /planned-change:github-native-artifacts -->
 
@@ -879,11 +885,11 @@ sequenceDiagram
 - A write to an item that awaits republication is refused for as long as the
   item awaits it, each time saying that the item awaits republication and
   that the write can be sent again. On the computer that runs the repair, a
-  refused write moves that item to the front of the repair's order; the item
-  is then republished after the item in progress, or after a throttle's wait
-  when GitHub throttles the repair. A write made on a computer that does not
-  run the repair moves nothing, and its item waits for the repair's order
-  there.
+  refused write marks its item as requested, and the repair takes requested
+  items before any other, in issue order; how soon one is reached depends on
+  the requested items ahead of it, the item in progress, and any throttle or
+  other refusal that ends a pass. A write made on a computer that does not run
+  the repair marks nothing, and its item waits for the repair's order there.
 
 <!-- /planned-change:github-native-artifacts -->
 
