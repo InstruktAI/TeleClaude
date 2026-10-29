@@ -38,11 +38,14 @@ producers for every procedure and agent.
 
 - **Single public node.** One computer is the ingress; it need not be the
   cluster master. No other computer serves the inbound endpoints.
-- **Intake outlives the daemon.** On the ingress, the standalone receiver
-  serves the inbound endpoints while its service units are installed, and the
-  daemon serves them while they are not. The installation deploys or withdraws
-  the units, as `computer.ingress_receiver` says, at the next start, restart or
-  install of that computer, so a configuration edit alone moves nothing. The
+- **Intake outlives the daemon.** On an ingress managed by systemd, the
+  standalone receiver serves the inbound endpoints while its service units are
+  installed, and the daemon serves them while they are not; on any other
+  ingress the daemon serves them. The installation deploys or withdraws the
+  units, as `computer.ingress_receiver` says, at the next restart or install of
+  that computer, or at a start that finds no daemon running; a start that finds
+  the daemon running leaves them as they are. A configuration edit alone moves
+  nothing. The
   receiver keeps receiving while the daemon restarts or an install stops it,
   and restarts itself when the active release changes or a validated machine
   configuration change needs a restart; an invalid change leaves it running on
@@ -159,10 +162,10 @@ Then each computer's WhatsApp conversation handler receives the message once
 - **A restart is bounded by the provider's timeout.** A connection queued while
   the receiver restarts is lost if the receiver does not serve it before the
   provider gives up.
-- **A former ingress keeps its receiver's units until its next start.** The
+- **A former ingress keeps its receiver's units until its next restart.** The
   receiver stops serving as soon as its computer's configuration says it is no
-  longer the ingress; the units themselves are removed by the next start or
-  install of that computer.
+  longer the ingress; the units themselves are removed by that computer's next
+  restart or install, or a start that finds no daemon running.
 - **A claim is retained for a bounded time.** A delivery repeated after its claim
   has expired is relayed again.
 - **Claims taken before claims named their source are not recognised.** A

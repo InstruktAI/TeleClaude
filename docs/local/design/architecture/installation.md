@@ -187,9 +187,9 @@ sequenceDiagram
   definitions are deployed only when their rendered content changed, and the
   start is verified against the new revision with admission open, as the
   lifecycle contract verifies any start. The install completes there.
-- **The ingress receiver outlives the daemon.** On an ingress computer that has
-  turned its receiver on (`computer.ingress_receiver`), the service definitions
-  include the webhook receiver's
+- **The ingress receiver outlives the daemon.** On a systemd ingress computer
+  that has turned its receiver on (`computer.ingress_receiver`), the service
+  definitions include the webhook receiver's
   (`local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`):
   a unit that holds its listening socket and a unit for the receiver process.
   They are deployed, only when their content changed, or withdrawn before the
