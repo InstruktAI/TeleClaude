@@ -14,17 +14,22 @@ A one-shot task-outcome success reconciles lifecycle markers only in the task's 
 <!-- planned:task-firing-timestamp-line -->
 
 `--task-firing-started` is the firing-start stamp for a `kind="task"` Todo. The
-session running the firing stamps it before it reads the Todo's `log`, and only
-the session that is the Todo's live `active_runner` may stamp it. The stamp takes
-the instant from the system clock, records a firing-start audit event naming the
-stamping session, and then appends that firing's line to the end of the `log`
+session running the firing stamps it before it reads the Todo's `log`. It passes
+the same caller authority as `--task-outcome`: a TeleClaude session bound to the
+Todo, holding its claim, or stamping an unclaimed Todo; a human caller is
+refused. The stamp takes the instant from the system clock, records a
+firing-start audit event naming the stamping session, and then appends that
+firing's line to the end of the `log`
 (`local/projects/teleclaude/spec/feature/workflow/work-state-machine`). When the
 Todo already holds a firing-start event naming the stamping session, the stamp
 answers with the current state and writes nothing. A firing-start stamp on a
-non-task Todo, or from any other session, is refused before any write. A stamp
-that fails before its event is recorded writes nothing; one that fails after it
-leaves that firing without a line, and a repeated stamp from the session does
-not add one. Either failure is reported to the caller.
+non-task Todo is refused before any write. A refusal before the event write
+writes nothing. When the event write or the line write is refused, the store's
+report says whether that write may already be saved; a stamp can therefore end
+in error with its event recorded, and with or without its line. Because the
+event is written before the line, a later stamp from the same session appends
+nothing after any of these outcomes, so a session's firing has at most one line
+and may have none. Every failure is reported to the caller.
 
 <!-- /planned:task-firing-timestamp-line -->
 

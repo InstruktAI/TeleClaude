@@ -30,7 +30,7 @@ stamp's instant from the system clock as 24-hour time and day/month in the
 computer's configured timezone (`computer.timezone`,
 `local/projects/teleclaude/spec/teleclaude-config`). A session that never begins
 its firing appends nothing, and a session's further firing-start stamps on the
-same task append nothing. A failed stamp leaves the firing running without a line.
+same task append nothing. A failed stamp leaves the firing running with at most one line.
 The `log`'s only writers are therefore the firing's own session and the stamp it
 invokes, in that session's order; the platform writes no other part of the `log`,
 and the run session carries every firing line verbatim
