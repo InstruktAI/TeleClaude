@@ -71,7 +71,11 @@ from teleclaude.paths import REPO_ROOT
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
 from ._delivery_notices import notify_delivery_exhausted as notify_delivery_exhausted
-from ._message_acceptance import ensure_inbound_acceptance_metadata, record_accepted_input_metadata
+from ._message_acceptance import (
+    ensure_inbound_acceptance_metadata,
+    record_acceptance_evidence,
+    record_accepted_input_metadata,
+)
 from ._message_delivery import inject_inbound_text
 from ._recovered_input import recovered_entry_facts, recovered_posted_at_stamp, with_recovered_notice
 from ._utils import STARTUP_GATE_POLL_INTERVAL_S, STARTUP_GATE_TIMEOUT_S, StartPollingFunc
@@ -896,13 +900,19 @@ async def accept_inbound_message(
         content = with_recovered_notice(content, cmd.recovered_posted_at)
 
     async def _record_after_insert(_row_id: int) -> None:
-        await record_accepted_input_metadata(
+        accepted_at = await record_accepted_input_metadata(
             session_id=session_id,
             origin=origin,
             message_text=content,
             origin_metadata=cmd.origin_metadata,
             visible_source_text=(command_input["source_text"] if command_input else None),
             caller_session_id=cmd.caller_session_id,
+        )
+        await record_acceptance_evidence(
+            session_id=session_id,
+            row_id=_row_id,
+            accepted_at=accepted_at,
+            runtime_turn_id=session.runtime_turn_id,
         )
         await db.record_procedure_event_wake_acceptance(
             session_id=session_id,

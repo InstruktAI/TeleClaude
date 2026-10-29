@@ -53,6 +53,8 @@ class InboundQueueRow(TypedDict):
     binding_disposition: str | None
     reflection_claimed_at: str | None
     locked_at: str | None
+    accepted_input_at: str | None
+    accepted_runtime_turn_id: str | None
 
 
 class OperationRow(TypedDict):
