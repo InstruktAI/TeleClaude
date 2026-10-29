@@ -64,8 +64,8 @@ _ENDED_OUTSIDE_CHECKOUT_EVENT = "Session-ended wake-up skipped: the session did 
 async def _wake_every_local_checkout(trigger: str, discover_projects: Callable[[], list[str]]) -> None:
     """Wake the lifecycle runner for each project checkout on this computer.
 
-    The registered projects are enumerated through the discovery the router was built with, not through
-    this daemon's own API; waking the runner for each of them is unchanged.
+    The registered projects come from the discovery the router was built with; the runner is woken for each
+    one that is a project checkout.
     """
     for project_path in await asyncio.to_thread(discover_projects):
         if not is_project_checkout(project_path):
