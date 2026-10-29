@@ -492,9 +492,12 @@ master admits each conversation request before sending it:
   - A request GitHub throttles during a refresh ends that refresh, and the
     working copy records when the project's refresh may send requests again:
     the time GitHub's response names, or, when it names none, one minute
-    after the throttle, doubling while throttles continue. Until then a
-    refresh sends no request for the project: no repair, republication,
-    issue, ledger or record read. Workflow writes are not held by it and
+    after the throttle, doubling while throttles continue. Until then the
+    daemon's refresh of the project sends no request at all: it is skipped
+    before the store's resolution and its availability probe, before board
+    setup, and before any repair, republication, issue, ledger or record read.
+    A throttle met by any of those steps, the probe and board setup included,
+    records the wait the same way. Workflow writes are not held by it and
     refuse with GitHub's cause when GitHub throttles them.
 - **Record reads.** Refresh reads an item's record comment by the comment id
   its working copy holds for the item, one comment with its edit history. It
