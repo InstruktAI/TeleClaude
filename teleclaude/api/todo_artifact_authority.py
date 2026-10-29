@@ -2,8 +2,8 @@
 
 The artifact write boundary records *who* wrote (the resolved principal),
 enforces the claiming-group ownership boundary (every writable artifact kind),
-and, for prepare artifacts, the prepare-phase role allowlist. All three concerns
-live here so the route module stays focused on request routing.
+and, for prepare artifacts, the catalog's ``prepare-artifact-write`` capability.
+All three concerns live here so the route module stays focused on request routing.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.core.db import db as runtime_db
-from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES
 from teleclaude.core.next_machine.runtime.sessions import claim_is_held
+from teleclaude.core.roles import Capability, Role, allows, resolve_session_role
 from teleclaude.core.session_utils import session_in_claiming_group
 from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX, Lineage
 
@@ -133,19 +133,16 @@ async def _foreign_live_claim_holder(
 
 
 async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: str) -> None:
-    """Refuse callers outside the prepare-artifact authoring role allowlist.
+    """Refuse callers whose role does not reach the prepare-artifact write capability.
 
-    A prepare artifact is writable by a prepare-phase writer — a direct
-    human-identity session (empty session id), a registered session carrying one
-    of the prepare-authoring roles (`PREPARE_AUTHOR_ROLES`: the prepare
-    orchestrator and the intake, architecture, diagnosis, and planning authors),
-    or a registered roleless session that carries no role (the human-originated,
-    operator-driven shape). The gate reads the role alone; a dispatched diagnosis
-    session is a worker for fleet classification and still admitted here on its
-    role. A session id with no registry row is an unknown caller; every
-    registered session that carries a non-prepare-authoring role — work
-    orchestrator, create orchestrator, integrator, and every other worker role —
-    is refused by role with a 403.
+    A prepare artifact is writable by a direct human-identity session (empty
+    session id), by a registered roleless session (the human-originated,
+    operator-driven shape), and by a registered session whose catalog role
+    reaches ``prepare-artifact-write``: every full-reach role, and the focused
+    roles whose explicit set composes it (the diagnoser). The gate asks the
+    role catalog and keeps no role list. A session id with no registry row is an
+    unknown caller; a role the catalog does not name reaches nothing; every
+    other focused role is refused with a 403 naming the capability.
     """
     if not identity.session_id:
         return
@@ -160,11 +157,15 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
         )
     if session.role is None:
         return
-    if session.role not in PREPARE_AUTHOR_ROLES:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"prepare artifact '{name}' for '{slug}' is not writable by a "
-                f"role-bearing session; caller role '{session.role}' is refused"
-            ),
-        )
+    role = resolve_session_role(session.role, identity.session_id)
+    if isinstance(role, Role) and allows(role, Capability.PREPARE_ARTIFACT_WRITE):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            f"prepare artifact '{name}' for '{slug}' is not writable by a role-bearing "
+            f"session whose role '{session.role}' does not reach the "
+            f"'{Capability.PREPARE_ARTIFACT_WRITE}' capability; a focused session's "
+            "write belongs to the session that dispatched it"
+        ),
+    )
