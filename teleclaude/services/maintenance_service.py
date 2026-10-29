@@ -107,6 +107,7 @@ _SOFT_DELETING_EXPIRED_EVENT = "maintenance.expired_session.soft_deleting"
 # constant below and the two are deliberately independent — see
 # local/projects/teleclaude/spec/domain/agent_runtime and local/projects/teleclaude/spec/domain/workflow.
 CLOSED_SESSION_RETENTION_WINDOW = timedelta(days=90)
+CLOSED_SESSION_CLEANUP_BATCH_SIZE = 200
 VOICE_TEMP_AUDIO_PREFIX = "voice_"
 VOICE_TEMP_AUDIO_RACE_SAFETY = timedelta(minutes=10)
 PURGE_REASON_COMMIT_FAILURE = "commit_failure"
@@ -531,6 +532,7 @@ class MaintenanceService:
                 await db.cleanup_inbound(runtime_cutoff_iso)
                 await db.cleanup_orphan_inbound(now_iso)
                 await db.cleanup_terminal_operations(runtime_cutoff_iso)
+                await db.prune_runtime_retention(now)
                 await db.cleanup_hook_outbox(runtime_cutoff_iso)
                 await db.cleanup_orphan_session_listeners()
                 try:
@@ -538,10 +540,6 @@ class MaintenanceService:
                     await event_db.prune_handled_events(older_than=now - HANDLED_RECORD_RETENTION)
                 except Exception:
                     logger.warning("Event DB runtime cleanup skipped", exc_info=True)
-                try:
-                    await db.compact_runtime_databases_if_needed()
-                except Exception:
-                    logger.warning("SQLite runtime compaction skipped", exc_info=True)
                 try:
                     await get_operations_service().expire_stale_operations()
                 except Exception:
@@ -622,42 +620,47 @@ class MaintenanceService:
             )
 
     async def _cleanup_inactive_sessions(self) -> None:
-        cutoff_time = datetime.now(UTC) - CLOSED_SESSION_RETENTION_WINDOW
-        sessions = await db.list_sessions(include_closed=True, include_headless=True)
+        now = datetime.now(UTC)
+        sessions = await db.list_sessions_owed_closed_cleanup(
+            expired_before=now - CLOSED_SESSION_RETENTION_WINDOW,
+            limit=CLOSED_SESSION_CLEANUP_BATCH_SIZE,
+        )
 
+        # Open sessions are never auto-closed: users and agents close them explicitly. The cleanup only
+        # soft-deletes closed sessions past the retention window, oldest closure first, and one session's
+        # failure never ends the pass for the rest.
         for session in sessions:
-            if not session.last_activity:
-                logger.warning("No last_activity for session %s", session.session_id)
-                continue
+            try:
+                await self._cleanup_closed_session(session, now)
+            except Exception:  # supervision boundary: one session's failure never ends the pass
+                logger.error("maintenance.closed_session_cleanup.failed", session_id=session.session_id, exc_info=True)
 
-            if session.closed_at:
-                # Historical rows can have closed_at set but lifecycle_status still "active".
-                # Normalize once and skip repeated cleanup/deletion attempts.
-                if session.lifecycle_status != "closed":
-                    await transition_session(
-                        db,
-                        session.session_id,
-                        LifecycleTransition(SessionLifecycleStatus.CLOSED, LifecycleTransitionReason.CLOSED),
-                    )
-                # Soft-delete closed sessions past the retention window; the record is retained.
-                if session.closed_at < cutoff_time:
-                    logger.info(
-                        _SOFT_DELETING_EXPIRED_EVENT,
-                        session_id=session.session_id,
-                        closed_ago=str(datetime.now(UTC) - session.closed_at),
-                    )
-                    await session_cleanup.terminate_session(
-                        session.session_id,
-                        self._client,
-                        reason="closed_expired",
-                        session=session,
-                        kill_tmux=False,
-                        soft_delete=True,
-                    )
-                continue
-
-            # Open sessions are never auto-closed. Users and agents close them explicitly.
-            # The cleanup routine only soft-deletes closed sessions past the retention window.
+    async def _cleanup_closed_session(self, session: Session, now: datetime) -> None:
+        if session.closed_at is None:
+            return
+        # Historical rows can have closed_at set but lifecycle_status still "active".
+        # Normalize once and skip repeated cleanup/deletion attempts.
+        if session.lifecycle_status != SessionLifecycleStatus.CLOSED.value:
+            await transition_session(
+                db,
+                session.session_id,
+                LifecycleTransition(SessionLifecycleStatus.CLOSED, LifecycleTransitionReason.CLOSED),
+            )
+        # Soft-delete closed sessions past the retention window; the record is retained.
+        if session.closed_at < now - CLOSED_SESSION_RETENTION_WINDOW:
+            logger.info(
+                _SOFT_DELETING_EXPIRED_EVENT,
+                session_id=session.session_id,
+                closed_ago=str(now - session.closed_at),
+            )
+            await session_cleanup.terminate_session(
+                session.session_id,
+                self._client,
+                reason="closed_expired",
+                session=session,
+                kill_tmux=False,
+                soft_delete=True,
+            )
 
     async def _cleanup_worktree_trash(self) -> None:
         """Reclaim released worktrees outside caller execution and the event loop."""

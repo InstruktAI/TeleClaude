@@ -16,6 +16,7 @@ from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.services.project_catalog.ownership import ProjectOwnershipIndex, load_project_ownership_index
 
 from .. import db_models
+from .stores import DaemonStore
 
 if TYPE_CHECKING:
     pass
@@ -104,7 +105,7 @@ class DbOperationsMixin:
             heartbeat_at=now,
             attempt_count=0,
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             db_session.add(row)
             await db_session.commit()
             await db_session.refresh(row)
@@ -117,7 +118,7 @@ class DbOperationsMixin:
             db_models.Operation.cwd,
             db_models.Operation.session_project_path,
         ).where(db_models.Operation.subject.is_(None))
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             result = await db_session.exec(stmt)
             return list(result.all())
 
@@ -134,7 +135,7 @@ class DbOperationsMixin:
             .where(db_models.Operation.subject.is_(None))
             .values(subject=subject, subject_owner=subject_owner)
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
             return result.rowcount or 0
@@ -173,7 +174,7 @@ class DbOperationsMixin:
 
     async def get_operation(self, operation_id: str) -> db_models.Operation | None:
         """Fetch an operation by id."""
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             return await db_session.get(db_models.Operation, operation_id)
 
     async def get_operation_by_request(
@@ -194,7 +195,7 @@ class DbOperationsMixin:
             .where(db_models.Operation.caller_session_id == caller_session_id)
             .where(db_models.Operation.client_request_id == client_request_id)
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             result = await db_session.exec(stmt)
             return result.first()
 
@@ -220,7 +221,7 @@ class DbOperationsMixin:
             stmt = stmt.where(db_models.Operation.slug.is_(None))
         else:
             stmt = stmt.where(db_models.Operation.slug == slug)
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             result = await db_session.exec(stmt)
             for operation in result.all():
                 if existing_match_ok is None or existing_match_ok(operation):
@@ -251,7 +252,7 @@ class DbOperationsMixin:
                 )
             )
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             result = await db_session.exec(stmt)
             return list(result.all())
 
@@ -276,7 +277,7 @@ class DbOperationsMixin:
         )
         if exclude_operation_id is not None:
             stmt = stmt.where(db_models.Operation.operation_id != exclude_operation_id)
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             result = await db_session.exec(stmt)
             return list(result.all())
 
@@ -288,7 +289,7 @@ class DbOperationsMixin:
             .where(db_models.Operation.slug == old_slug)
             .values(slug=new_slug, updated_at=now_iso)
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
             return result.rowcount or 0
@@ -307,7 +308,7 @@ class DbOperationsMixin:
                 attempt_count=db_models.Operation.attempt_count + 1,
             )
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
             return (result.rowcount or 0) == 1
@@ -320,7 +321,7 @@ class DbOperationsMixin:
             .where(db_models.Operation.state == "running")
             .values(updated_at=now_iso, heartbeat_at=now_iso)
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             await db_session.exec(stmt)
             await db_session.commit()
 
@@ -346,7 +347,7 @@ class DbOperationsMixin:
                 heartbeat_at=now_iso,
             )
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             await db_session.exec(stmt)
             await db_session.commit()
 
@@ -376,7 +377,7 @@ class DbOperationsMixin:
                 completed_at=now_iso,
             )
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
             return (result.rowcount or 0) == 1
@@ -408,7 +409,7 @@ class DbOperationsMixin:
                 completed_at=now_iso,
             )
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
             return (result.rowcount or 0) == 1
@@ -420,7 +421,7 @@ class DbOperationsMixin:
         staleness is an outcome, and a caller cannot be named from a rowcount.
         """
         now_iso = datetime.now(UTC).isoformat()
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             id_stmt = select(db_models.Operation.operation_id).where(
                 db_models.Operation.state.in_(["queued", "running"])
             )
@@ -454,7 +455,7 @@ class DbOperationsMixin:
         staleness is an outcome, and a caller cannot be named from a rowcount.
         """
         now_iso = datetime.now(UTC).isoformat()
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             id_stmt = select(db_models.Operation.operation_id).where(
                 and_(
                     db_models.Operation.state == "running",
@@ -501,7 +502,7 @@ class DbOperationsMixin:
                 )
             )
         )
-        async with self._session() as db_session:
+        async with self._store_session(DaemonStore.OPERATIONS) as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
             return result.rowcount or 0

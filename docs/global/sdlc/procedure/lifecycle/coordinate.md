@@ -60,11 +60,6 @@ while their basis is challenged.
 - Attention fallen between roles — restored.
 - Production that is duplicate, unjustified, or misplaced — the collision
   surfaced to whoever owns that judgment.
-- The project's todo landscape — kept valid and aligned with the current
-  designs: a todo whose premise has failed, that duplicates or merely
-  re-reports another todo's root cause, or whose dependencies no longer match
-  the work they order is reconciled by its claimant, or by this role where no
-  claimant does (step 5).
 - The human — reached only with what `general/policy/human-contract` assigns
   to him, as evidence and the smallest live question, never a transcript.
 
@@ -106,12 +101,10 @@ session. A mandate meant to outlive the session is a change to this contract,
 made by the human. A decision other roles must honour enters governed lifecycle
 state first, or private conversation becomes policy.
 
-**No lifecycle execution.** It never drives a slug's state machine and never
-dispatches work. It changes todo state only through the reconciliation exits
-of step 5's landscape clause — hold, dependency realignment, retraction — and
-writes no other todo artifact than the `log` entry an exit records. Making work
-move is the runner's and the owners' business; this role restores the awareness
-that lets them move it and keeps the queue they draw from truthful.
+**No lifecycle execution.** It never drives a slug's state machine, never
+dispatches work, and never mutates todo state or artifacts. Making work move is
+the runner's and the owners' business; this role restores the awareness that
+lets them move it.
 
 The sole session-lifecycle exception is a true orphan: a session whose recorded
 initiator is no longer live and whose work no other live session has assumed,
@@ -226,30 +219,8 @@ claimant under the reconciliation clause of
 `sdlc/policy/todo-creation-discipline`, which also governs settlement. This role may take up
 a deadlock it observes: it owns that disposition with its standing peer
 falsifying, and only residue the human contract assigns to the human is left
-for him.
-
-**Reconcile the todo landscape.** Each sweep reads the active todos against the
-current designs, their `input` and `log` artifacts, and their claimants' latest
-output, for three findings: a todo its claimant has declared invalid,
-superseded, folded, or due for removal that is still active; a todo that
-duplicates or only re-reports the root cause another todo owns; a dependency
-that names a removed, delivered, or superseded todo, or omits an ordering a
-current design requires. The standing peer falsifies each finding and its exit
-before this role acts on it. Workflow accepts a todo update or artifact write
-only from the todo's claim, so this role writes only to a todo no live session
-claims:
-
-- A todo with a live claimant receives the complete flag of the reconciliation
-  clause in `sdlc/policy/todo-creation-discipline`; the claimant chooses its
-  exit and records it. When the claimant has declared a retraction it has not
-  executed, this role ends the claimant's sessions, which releases the claim,
-  and retracts the todo.
-- A todo with no live claimant is reconciled by this role: a hold with its
-  reason in `log`, dependencies realigned with `telec todo update --after` and
-  the reason in `log`, or retraction with `telec todo remove`.
-- Retracting a filing that carries the human's request in his own words, or
-  any exit that abandons an outcome `general/policy/human-contract` assigns to
-  him, is carried to him instead.
+for him. An unclaimed todo has no flag path — the reconciliation clause
+itself governs that boundary.
 
 ### 6. Log what is worth knowing later
 
@@ -347,7 +318,7 @@ alternatives for anything they cover:
 - `telec sessions tail <id>` — a session's record; read before judging it.
 - `telec sessions send <id> <pointer>` — the intervention surface.
 - `telec reminders set session-departure` — the step-0 yield only; never used at sweep end.
-- `telec sessions end <id>` — the evidence-complete true-orphan exception
+- `telec sessions end <id>` — only the evidence-complete true-orphan exception
   under No lifecycle execution.
 - `telec sessions start` — establish the standing peer lazily, at most one live.
 - `telec sessions send <peer-id> <case> --direct` / `--close-link` — open one
@@ -356,13 +327,6 @@ alternatives for anything they cover:
   after the peer has falsified its ownership and coverage; the only creation
   surface this role has.
 - `telec todo list` / `telec todo show <slug>` — queue state and todo records.
-- `telec todo artifacts read <slug> <name>` — a todo's input, log, and plans.
-- `telec todo update <slug> --hold --reason <why>` / `--after <dep>`,
-  `telec todo artifacts write <slug> log <entry>`, and `telec todo remove <slug>`
-  — only the step-5 landscape exits on unclaimed todos, after the peer's
-  falsification.
-- `telec sessions end <id>` — also the sessions of a claimant whose declared
-  retraction this role executes under step 5.
 - `telec docs index` / `telec docs get <id>` — contracts, re-read before ruling.
 - `telec projects list` — the project name for the step-6 log path.
 
