@@ -41,8 +41,10 @@ producers for every procedure and agent.
 - **Intake outlives the daemon.** The ingress's receiver is a process of its
   own under its own service unit; the daemon serves no inbound endpoint. The
   receiver keeps receiving while the daemon restarts or an install stops it,
-  and restarts itself when the active release or the machine configuration
-  changes; on a computer that is no longer the ingress it stays stopped. Its
+  and restarts itself when the active release changes or a validated machine
+  configuration change needs a restart; an invalid change leaves it running on
+  its configuration. On a computer that is no longer the ingress it exits
+  before serving. Its
   service unit holds
   the listening socket and hands it to each receiver process, so a connection
   that arrives while the receiver restarts waits instead of being refused.

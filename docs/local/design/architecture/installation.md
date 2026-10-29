@@ -190,18 +190,17 @@ sequenceDiagram
 - **The ingress receiver outlives the daemon.** On the ingress computer the
   service definitions include the webhook receiver's
   (`local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`):
-  a unit that holds its listening socket and a unit for the receiver process,
-  deployed with the others, only when their content changed, and never stopped
-  with the daemon. Because definitions are deployed while the daemon is
-  stopped, the first deployment takes the port the previous release's daemon
-  released. The receiver follows the active-release pointer: when the pointer
-  moves, it exits and its service manager starts it again on the new release
-  while the socket stays open. On a computer that is no longer the ingress, the
-  receiver stays stopped and deployment removes its units. Switching to a
-  release that predates the receiver, by rollback or by an install's recovery,
-  first removes the receiver's units through the outgoing release, so the
-  earlier release's daemon serves the inbound endpoints on its port again.
-
+  a unit that holds its listening socket and a unit for the receiver process.
+  They are deployed once the daemon's start is verified, only when their
+  content changed, and never stopped with the daemon; the earlier release's
+  daemon has released the port by then, and a failed install deploys none. The
+  receiver follows the active-release pointer: when the pointer moves, it exits
+  and its service manager starts it again on the new release while the socket
+  stays open. On a computer that is no longer the ingress, deployment removes
+  the receiver's units. Switching to a release that cannot run them, by
+  rollback or by an install's recovery, first removes them through the outgoing
+  release, so the earlier release's daemon serves the inbound endpoints on its
+  port again; a removal that fails leaves the active release in place.
 - **Move running terminal interfaces, then prune.** The completed act sends
   presentation's reload signal to every terminal interface its registry records
   (`local/projects/teleclaude/design/architecture/tui-state-layout`), then
