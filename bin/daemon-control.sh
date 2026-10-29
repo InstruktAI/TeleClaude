@@ -586,6 +586,13 @@ start_daemon() {
         install_service
     fi
 
+    # The receiver's units are deployed or withdrawn while the daemon is stopped, so the port is settled for
+    # whichever of the two serves the ingress; a failure fails the start before the daemon runs.
+    if ! install_ingress_receiver; then
+        log_error "Failed to deploy or withdraw the ingress receiver"
+        return 1
+    fi
+
     start_startup_log_stream
 
     if [ "$PLATFORM" = "macos" ]; then
@@ -629,13 +636,6 @@ start_daemon() {
                 log_error "Failed to activate the periodic job timer: $CRON_TIMER_UNIT"
                 return 1
             fi
-        fi
-        # The ingress receiver's units follow a daemon that came up, so a failed first install leaves none behind
-        # for the earlier release to meet.
-        if ! install_ingress_receiver; then
-            stop_startup_log_stream
-            log_error "Failed to deploy the ingress receiver"
-            return 1
         fi
         stop_startup_log_stream
         if [ -f "$PID_FILE" ]; then

@@ -909,6 +909,12 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         if self._on_server_exit:
             self._on_server_exit(RequestSurface.API_SERVER, exc, server_started, server_should_exit, socket_exists)
 
+    async def stop_ingress_listener(self) -> None:
+        """Release the webhook ingress port, where the daemon serves it, for the ingress receiver to take."""
+        if self._webhook_ingress_listener is not None:
+            await self._webhook_ingress_listener.stop()
+            self._webhook_ingress_listener = None
+
     def _on_ingress_listener_exit(self, exc: BaseException | None, should_exit: bool | None) -> None:
         """Report the webhook ingress listener's unexpected exit through the request-surface exit handler."""
         if self._on_server_exit:

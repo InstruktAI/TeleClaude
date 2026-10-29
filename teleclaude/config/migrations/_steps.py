@@ -34,6 +34,7 @@ from teleclaude.config.migrations import (
     v027_channel_enrollment,
     v028_split_redis_by_scope,
     v029_declare_cluster_redis_username,
+    v030_declare_ingress_receiver,
 )
 
 STEPS: Final = (
@@ -66,4 +67,5 @@ STEPS: Final = (
     v027_channel_enrollment,
     v028_split_redis_by_scope,
     v029_declare_cluster_redis_username,
+    v030_declare_ingress_receiver,
 )

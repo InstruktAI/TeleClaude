@@ -24,6 +24,8 @@ _IMPORT_TIMINGS: list[tuple[str, float, float]] = []
 logger = get_logger("teleclaude.daemon")
 
 _STOP_REASON = "stop"
+# The installer deploys or withdraws the ingress receiver's units within this bound (systemctl or launchctl).
+_INGRESS_HANDOVER_TIMEOUT_S = 120.0
 _PREPARED_GRACE_EXIT_REASON = "prepared-grace-exit"
 _PREPARED_EXIT_TASK_NAME = "prepared-instance-exit"
 _PREPARED_EXIT_LABEL = "prepared_instance_exit"
@@ -284,13 +286,16 @@ from teleclaude.config.declaration_changes import (
     identity_declaration_watch_paths,
     publish_declaration_changes,
 )
+from teleclaude.core.reconciliation.installation_release import release_process_environment
 from teleclaude.paths import (
     DAEMON_PID_PATH,
     ENV_PATH,
     MAIN_DB_PATH,
     PROJECTS_MANIFEST_PATH,
+    REPO_ROOT,
     RUNTIME_SETTINGS_PATH,
 )
+from teleclaude.runtime.command_runner import run_process_group_command
 
 _record_import_timing("teleclaude.paths", _t)
 
@@ -1343,7 +1348,12 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         is not hot-reloadable, request a graceful shutdown — the service manager relaunches
         the daemon after a clean exit it did not itself request, and the daemon reads the
         fresh config at startup.
+
+        A change of who serves this computer's ingress hands it over before that restart: the daemon releases
+        its listener's port and the installer deploys or withdraws the receiver's units, so the restarted daemon
+        and the receiver find the port as the new setting expects.
         """
+        ingress_before = (config.computer.ingress_by_daemon, config.computer.ingress_by_receiver)
         try:
             changed = reload_config()
         except ConfigLoadError as error:
@@ -1375,12 +1385,34 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             from teleclaude.api import chiptunes_routes  # startup boundary
 
             self._broadcast_chiptunes_state(await asyncio.to_thread(chiptunes_routes.current_track_preferences))
+        if (config.computer.ingress_by_daemon, config.computer.ingress_by_receiver) != ingress_before:
+            await self._hand_over_ingress()
         restart = restart_required_sections(changed)
         if restart:
             logger.info("Config change in restart-required section(s) %s; restarting to apply", sorted(restart))
             self.request_shutdown(f"config-change:{','.join(sorted(restart))}")
         else:
             logger.info("Config hot-reloaded live: %s", sorted(changed))
+
+    async def _hand_over_ingress(self) -> None:
+        """Release the daemon's ingress port, then let the installer deploy or withdraw the receiver's units."""
+        await self.lifecycle.api_server.stop_ingress_listener()
+        result = await asyncio.to_thread(
+            run_process_group_command,
+            ["bash", "-c", "source bin/init/install_services.sh && install_ingress_receiver"],
+            REPO_ROOT,
+            {**release_process_environment(), "PROJECT_ROOT": str(REPO_ROOT)},
+            timeout_seconds=_INGRESS_HANDOVER_TIMEOUT_S,
+        )
+        if result.timed_out or result.exit_code != 0:
+            logger.error(
+                "ingress_handover_failed",
+                exit_code=result.exit_code,
+                timed_out=result.timed_out,
+                output_tail=result.output_tail,
+            )
+            return
+        logger.info("ingress_handover_completed", by_receiver=config.computer.ingress_by_receiver)
 
     async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
         """Wrapper around polling_coordinator.schedule_polling (creates background task).
