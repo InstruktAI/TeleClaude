@@ -34,6 +34,7 @@ from teleclaude.core.models import Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_idle_compaction import live_idle_close
 from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.shutdown_drain import ShutdownRefusal
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -144,11 +145,31 @@ def session_serves_input(session: Session) -> bool:
     )
 
 
+@dataclass(frozen=True)
+class InputRefused:
+    """What spawned input work returns when the daemon refused it because it is draining.
+
+    A returned outcome, not a raised error: the task registry reports every raising task as a failure, and a
+    drain refusal is no failure of the work.
+    """
+
+    refusal: ShutdownRefusal
+
+
+async def report_refusal_of[T](work: Awaitable[T]) -> T | InputRefused:
+    """Await input work, reporting a draining refusal as the work's outcome instead of answering it to the sender."""
+    try:
+        return await work
+    except ShutdownRefusal as refusal:
+        return InputRefused(refusal)
+
+
 async def await_conclusion(tasks: Iterable[asyncio.Task[object] | None]) -> None:
-    """Wait for spawned input work to end, however it ends, and refuse to call it concluded if it was cancelled.
+    """Wait for spawned input work to end, however it ends, and refuse to call it concluded if it did not.
 
     A failure of the work is reported by the task registry as it is for any background work; here it only ends
-    the wait. Work cancelled by a shutdown has not concluded, so the cursor must not pass it.
+    the wait. Work cancelled by a shutdown has not concluded, so the cursor must not pass it, and neither has work
+    the draining daemon refused: that raises the refusal.
     """
     spawned = {task for task in tasks if task is not None}
     if not spawned:
@@ -156,6 +177,11 @@ async def await_conclusion(tasks: Iterable[asyncio.Task[object] | None]) -> None
     done, _ = await asyncio.wait(spawned)
     if any(task.cancelled() for task in done):
         raise asyncio.CancelledError
+    for task in done:
+        if task.exception() is None:
+            outcome = task.result()
+            if isinstance(outcome, InputRefused):
+                raise outcome.refusal
 
 
 class InboundContinuity:
