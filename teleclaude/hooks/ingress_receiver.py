@@ -4,8 +4,9 @@ It serves the inbound endpoints on the loopback port the reverse proxy forwards 
 and relays it onto the cluster stream through the claim that publishes each delivery once. It carries
 nothing of the daemon, so it keeps receiving while the daemon restarts or an install replaces it.
 
-Its systemd socket unit holds the listening socket and hands it over, so connections arriving while the
-receiver restarts wait in the socket's queue. Run outside a unit, it binds the port itself.
+Its service unit holds the listening socket and hands it over (a systemd socket unit, a launchd socket
+declaration), so connections arriving while the receiver restarts wait in the socket's queue. Run outside
+a unit, it binds the port itself.
 
 Run as ``python -m teleclaude.hooks.ingress_receiver`` under its own service unit.
 """
@@ -13,6 +14,7 @@ Run as ``python -m teleclaude.hooks.ingress_receiver`` under its own service uni
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import os
 import socket
 import sys
@@ -74,9 +76,25 @@ def _systemd_socket() -> socket.socket | None:
     return socket.socket(fileno=_SYSTEMD_FIRST_FD)
 
 
+def _launchd_socket() -> socket.socket | None:
+    """The socket launchd holds for this process under the definition's ``Listeners`` name, if it declares one."""
+    if sys.platform != "darwin":
+        return None
+    libsystem = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+    fds = ctypes.POINTER(ctypes.c_int)()
+    count = ctypes.c_size_t(0)
+    status = libsystem.launch_activate_socket(b"Listeners", ctypes.byref(fds), ctypes.byref(count))
+    if status != 0 or count.value < 1:
+        # ESRCH: not started by launchd with this socket; ENOENT: no such socket declared.
+        return None
+    descriptors = [fds[index] for index in range(count.value)]
+    libsystem.free(fds)
+    return socket.socket(fileno=descriptors[0])
+
+
 def _listening_socket() -> tuple[socket.socket, bool]:
     """The socket to serve on, and whether the service manager handed it over."""
-    held = _systemd_socket()
+    held = _systemd_socket() or _launchd_socket()
     if held is not None:
         return held, True
     bound = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

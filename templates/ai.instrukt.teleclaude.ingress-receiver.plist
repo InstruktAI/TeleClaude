@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.instrukt.teleclaude.ingress-receiver</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PYTHON_PATH}}</string>
+        <string>-m</string>
+        <string>teleclaude.hooks.ingress_receiver</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{{WORKING_DIR}}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>.venv/bin:{{PATH}}</string>
+        <key>UV_NO_SYNC</key>
+        <string>1</string>
+        <key>XDG_DATA_HOME</key>
+        <string>{{XDG_DATA_HOME}}</string>
+    </dict>
+    <!-- launchd holds this socket while the job is loaded and hands it to each receiver process
+         (launch_activate_socket), so a connection during a restart waits instead of being refused. -->
+    <key>Sockets</key>
+    <dict>
+        <key>Listeners</key>
+        <dict>
+            <key>SockNodeName</key>
+            <string>127.0.0.1</string>
+            <key>SockServiceName</key>
+            <string>{{PORT}}</string>
+            <key>SockFamily</key>
+            <string>IPv4</string>
+        </dict>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/dev/null</string>
+    <key>StandardErrorPath</key>
+    <string>/dev/null</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <!-- The receiver exits with a failure status when the active release changes or a machine configuration
+         change needs a restart, and launchd starts it again. On a computer that is no longer the ingress it exits
+         cleanly and is not restarted for that; a connection to the held socket can start it, and it exits before
+         serving. -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+</dict>
+</plist>
