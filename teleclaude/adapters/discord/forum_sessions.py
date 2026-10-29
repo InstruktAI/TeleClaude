@@ -146,7 +146,7 @@ class ForumSessionsMixin:
         return forum_project_path or context.project_path
 
     async def _handle_voice_attachment(
-        self, message: object, attachment: object, *, recovered_at: datetime | None = None
+        self, message: object, attachment: object, *, recovered_at: datetime | None = None, retain_refusal: bool = False
     ) -> asyncio.Task[object] | None:
         """Resolve the message's session through the legacy resolver, then dispatch the voice attachment.
 
@@ -160,10 +160,17 @@ class ForumSessionsMixin:
             return None
         if not session:
             return None
-        return await self._dispatch_voice_attachment(session, message, attachment, recovered_at=recovered_at)
+        return await self._dispatch_voice_attachment(
+            session, message, attachment, recovered_at=recovered_at, retain_refusal=retain_refusal
+        )
 
     async def _handle_file_attachments(
-        self, message: object, attachments: list[object], *, recovered_at: datetime | None = None
+        self,
+        message: object,
+        attachments: list[object],
+        *,
+        recovered_at: datetime | None = None,
+        retain_refusal: bool = False,
     ) -> None:
         """Resolve the message's session through the legacy resolver, then dispatch the file attachments."""
         recoverable_errors = self._discord_errors()
@@ -174,7 +181,9 @@ class ForumSessionsMixin:
             return
         if not session:
             return
-        await self._dispatch_file_attachments(session, message, attachments, recovered_at=recovered_at)
+        await self._dispatch_file_attachments(
+            session, message, attachments, recovered_at=recovered_at, retain_refusal=retain_refusal
+        )
 
     async def _resolve_or_create_session(
         self,

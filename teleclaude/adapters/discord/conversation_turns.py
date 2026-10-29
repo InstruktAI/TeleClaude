@@ -196,6 +196,7 @@ class ConversationTurnsMixin:
         sender: _MessageSender,
         channel_id: int,
         recovered_at: datetime | None = None,
+        retain_refusal: bool = False,
     ) -> None:
         """Dispatch the text of a conversation message to its session as one input."""
         message_id = str(getattr(message, _ID_ATTR, _NO_TEXT)).strip()
@@ -228,6 +229,7 @@ class ConversationTurnsMixin:
             _PROCESS_MESSAGE_EVENT,
             cmd.to_payload(),
             lambda: get_command_service().process_message(cmd),
+            retain_refusal=retain_refusal,
         )
 
     async def _deliver_message_input(
@@ -238,21 +240,29 @@ class ConversationTurnsMixin:
         sender: _MessageSender,
         channel_id: int,
         recovered_at: datetime | None = None,
+        retain_refusal: bool = False,
     ) -> list[asyncio.Task[object]]:
         """Deliver everything one Discord message carries to its resolved conversation session, once.
 
         The text accompanies the first file as its caption, and stands alone as its own input only
         when no file carries it. Each part is accepted under its provider identity. The transcriptions of
         its voice attachments run on, and their tasks are returned for a caller that must wait for them.
+
+        A draining refusal is answered to the sender. A caller whose conversation is recovered after the restart
+        sets ``retain_refusal``: the refusal is then carried on without a notice, so the message stays unprocessed.
         """
         if content.text and not content.files:
-            await self._deliver_message_text(session, message, content.text, sender, channel_id, recovered_at)
+            await self._deliver_message_text(
+                session, message, content.text, sender, channel_id, recovered_at, retain_refusal
+            )
         if content.files:
-            await self._dispatch_file_attachments(session, message, list(content.files), recovered_at=recovered_at)
+            await self._dispatch_file_attachments(
+                session, message, list(content.files), recovered_at=recovered_at, retain_refusal=retain_refusal
+            )
         transcriptions: list[asyncio.Task[object]] = []
         for attachment in content.audio:
             transcription = await self._dispatch_voice_attachment(
-                session, message, attachment, recovered_at=recovered_at
+                session, message, attachment, recovered_at=recovered_at, retain_refusal=retain_refusal
             )
             if transcription is not None:
                 transcriptions.append(transcription)
@@ -323,7 +333,8 @@ class ConversationTurnsMixin:
 
         Provisioning designates the channel for ``person_slug``; the core admits the message only from
         that person and decides, with every other computer receiving it, which one answers. The message is
-        concluded once its voice attachments have been accepted or have failed.
+        concluded once its voice attachments have been accepted or have failed. The channel is recovered after a
+        restart, so a draining refusal is not answered to the sender: it propagates to the continuity.
         """
         sender = self._message_sender(message)
         if sender is None:
@@ -346,7 +357,9 @@ class ConversationTurnsMixin:
 
         async def _deliver(session: Session) -> None:
             transcriptions.extend(
-                await self._deliver_message_input(session, message, content, sender, channel_id, recovered_at)
+                await self._deliver_message_input(
+                    session, message, content, sender, channel_id, recovered_at, retain_refusal=True
+                )
             )
 
         async def _reply(reply_text: str) -> None:
