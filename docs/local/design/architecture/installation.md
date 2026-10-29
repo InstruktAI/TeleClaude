@@ -187,9 +187,9 @@ sequenceDiagram
   definitions are deployed only when their rendered content changed, and the
   start is verified against the new revision with admission open, as the
   lifecycle contract verifies any start. The install completes there.
-- **The ingress receiver outlives the daemon.** On a systemd ingress computer
-  that has turned its receiver on (`computer.ingress_receiver`), the service
-  definitions include the webhook receiver's
+- **The ingress receiver outlives the daemon.** On an ingress computer that has
+  turned its receiver on (`computer.ingress_receiver`), the service definitions
+  include the webhook receiver's
   (`local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`):
   a unit that holds its listening socket and a unit for the receiver process.
   They are deployed, only when their content changed, or withdrawn before the
@@ -197,7 +197,10 @@ sequenceDiagram
   daemon serves the inbound endpoints only while they are absent. A start that
   finds the daemon running leaves the units as they are until its next restart.
   A failed deployment or withdrawal fails a start; at a restart the units are
-  withdrawn instead, so the restarted daemon serves the endpoints itself. The
+  withdrawn instead, so the restarted daemon serves the endpoints itself. A
+  restart that changes the units under launchd first takes the daemon out of
+  launchd, so no relaunch runs while they change and the daemon starts afresh
+  on them. The
   receiver follows the active-release pointer: when the pointer moves, it exits
   and its service manager starts it again on the new release while the socket
   stays open. On a computer that is no longer the ingress, deployment removes

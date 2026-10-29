@@ -7,12 +7,6 @@ description: The ingress receiver's listening socket is held by its service unit
 
 # The service manager holds the webhook receiver's listening socket — ADR
 
-## Status
-
-Applied to systemd only: the receiver runs on an ingress managed by systemd, and
-an ingress managed by launchd keeps its daemon serving the inbound endpoints
-(single-ingress-webhook-termination).
-
 ## Context
 
 ADR-0148 runs the webhook receiver as its own service beside the daemon, so

@@ -38,10 +38,9 @@ producers for every procedure and agent.
 
 - **Single public node.** One computer is the ingress; it need not be the
   cluster master. No other computer serves the inbound endpoints.
-- **Intake outlives the daemon.** On an ingress managed by systemd, the
-  standalone receiver serves the inbound endpoints while its service units are
-  installed, and the daemon serves them while they are not; on any other
-  ingress the daemon serves them. The installation deploys or withdraws the
+- **Intake outlives the daemon.** On the ingress, the standalone receiver
+  serves the inbound endpoints while its service units are installed, and the
+  daemon serves them while they are not. The installation deploys or withdraws the
   units, as `computer.ingress_receiver` says, at the next restart or install of
   that computer, or at a start that finds no daemon running; a start that finds
   the daemon running leaves them as they are. A configuration edit alone moves
