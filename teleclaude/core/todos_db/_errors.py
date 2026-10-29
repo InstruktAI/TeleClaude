@@ -14,6 +14,22 @@ class HolderWriteRefused(ValueError):
     """
 
 
+class ContractUnderExecutionRefused(ValueError):
+    """A prepare-artifact write was refused because the todo's contract is under execution.
+
+    The todo's stored lifecycle phase is a work-lane phase, so the contract the work
+    lane is executing against must not change underneath it. ``phase`` carries the
+    stored phase for the refusal detail. Subclasses ``ValueError`` so existing
+    ``except ValueError`` paths keep working, while the API layer can catch this
+    specific type and surface a clean 409.
+    """
+
+    def __init__(self, slug: str, phase: str) -> None:
+        self.slug = slug
+        self.phase = phase
+        super().__init__(f"Cannot write artifact: the contract of todo {slug!r} is under execution (phase {phase})")
+
+
 class HolderTransitionRefused(ValueError):
     """A holder transition was refused because the parent is past prepare.
 

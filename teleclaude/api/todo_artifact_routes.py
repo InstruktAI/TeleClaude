@@ -16,6 +16,8 @@ from pydantic import BaseModel, ConfigDict
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.todo_artifact_authority import (
+    closed_contract_refusal,
+    refuse_closed_contract,
     refuse_foreign_claim,
     refuse_non_prepare_writer,
     resolved_write_principal,
@@ -36,7 +38,7 @@ from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFAC
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.todo_creation import DRIFT_TRACKED_ARTIFACT_NAMES, sync_artifact_provenance_state
 from teleclaude.core.todos_db._artifacts import malformed_digest_detail
-from teleclaude.core.todos_db._errors import HolderWriteRefused
+from teleclaude.core.todos_db._errors import ContractUnderExecutionRefused, HolderWriteRefused
 from teleclaude.project_root import resolve_project_root
 
 if TYPE_CHECKING:
@@ -171,11 +173,19 @@ async def write_artifact(
     await _refuse_holder_mutation(todos_db, slug)
     await require_slug_in_todo(todos_db, slug)
     await refuse_foreign_claim(todos_db, identity, slug)
-    if name in PREPARE_ARTIFACT_NAMES:
+    is_prepare_artifact = name in PREPARE_ARTIFACT_NAMES
+    if is_prepare_artifact:
+        await refuse_closed_contract(todos_db, identity, slug, name)
         await refuse_non_prepare_writer(identity, slug, name)
     effective_updated_by = resolved_write_principal(identity)
     try:
-        await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
+        await todos_db.write_artifact(
+            slug,
+            name,
+            content,
+            updated_by=effective_updated_by,
+            refuse_executing_contract=is_prepare_artifact,
+        )
         _ = codebase_sha_at_write, referenced_paths
         if name in DRIFT_TRACKED_ARTIFACT_NAMES:
             await sync_artifact_provenance_state(
@@ -188,6 +198,8 @@ async def write_artifact(
             )
     except HolderWriteRefused as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ContractUnderExecutionRefused as exc:
+        raise await closed_contract_refusal(todos_db, identity, slug, name, exc.phase) from exc
     if name in {artifacts.report_artifact_name for artifacts in REVIEW_EVIDENCE_ARTIFACTS.values()}:
         logger.info(
             "workflow.review_report_written",

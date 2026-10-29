@@ -2,8 +2,10 @@
 
 The artifact write boundary records *who* wrote (the resolved principal),
 enforces the claiming-group ownership boundary (every writable artifact kind),
-and, for prepare artifacts, the catalog's ``prepare-artifact-write`` capability.
-All three concerns live here so the route module stays focused on request routing.
+and, for prepare artifacts, refuses a todo whose contract is under execution and
+a caller whose role does not reach the catalog's ``prepare-artifact-write``
+capability. All of these live here so the route module stays focused on request
+routing.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.core.db import db as runtime_db
+from teleclaude.core.next_machine.lifecycle import coerce_lifecycle_phase, is_work_lifecycle_phase
 from teleclaude.core.next_machine.runtime.sessions import claim_is_held
 from teleclaude.core.roles import Capability, Role, allows, resolve_session_role
 from teleclaude.core.session_utils import session_in_claiming_group
@@ -27,6 +30,18 @@ _FOREIGN_ARTIFACT_CLAIM_DETAIL = (
     "Address that session about the concern instead of writing into its "
     "record (sdlc/policy/todo-creation-discipline, "
     "'Reconcile a flagged live todo')."
+)
+_CLOSED_CONTRACT_DETAIL = (
+    "prepare artifact '{name}' for '{slug}' is not writable: the todo's contract is under "
+    "execution (lifecycle phase '{phase}'). {door}"
+)
+_KICKBACK_DOOR = (
+    "The todo's work orchestrator returns it to preparation with "
+    "`telec todo stamp {slug} --kickback --reason <why>`; the change is made there."
+)
+_HOLDER_DOOR = (
+    "Address session '{holder}', which holds the todo, about the change; it returns the todo to "
+    "preparation with `telec todo stamp {slug} --kickback --reason <why>`."
 )
 _FOREIGN_UPDATE_CLAIM_DETAIL = (
     "todo '{slug}' is claimed by session '{holder}'; update refused. "
@@ -115,21 +130,69 @@ async def refuse_todo_update_outside_claiming_group(
     )
 
 
-async def _foreign_live_claim_holder(
-    todos_db: WorkflowStore,
-    caller_session_id: str,
-    slug: str,
-) -> str | None:
-    """Return the live claim holder when the caller is outside its group."""
+async def _live_claim_holder(todos_db: WorkflowStore, slug: str) -> str | None:
+    """Return the session holding a live claim on the slug, if any."""
     state = await todos_db.read_state(slug)
     holder = (state or {}).get("active_runner")
     if not isinstance(holder, str) or not holder:
         return None
     if not await claim_is_held(runtime_db, todos_db.project_root, slug, holder):
         return None
+    return holder
+
+
+async def _foreign_live_claim_holder(
+    todos_db: WorkflowStore,
+    caller_session_id: str,
+    slug: str,
+) -> str | None:
+    """Return the live claim holder when the caller is outside its group."""
+    holder = await _live_claim_holder(todos_db, slug)
+    if holder is None:
+        return None
     if caller_session_id and await session_in_claiming_group(caller_session_id, holder):
         return None
     return holder
+
+
+async def refuse_closed_contract(
+    todos_db: WorkflowStore,
+    identity: CallerIdentity,
+    slug: str,
+    name: str,
+) -> None:
+    """Refuse a prepare-artifact write while the todo's contract is under execution.
+
+    The contract is under execution while the stored lifecycle phase is a work-lane
+    phase. Every caller is refused, a direct human-identity writer included; the door
+    back to preparation is the work lane's kickback. The store re-checks the same
+    predicate inside the write's transaction, which is the guarantee; this precheck
+    keeps the refusal order the contract states (claim, closed contract, capability).
+    """
+    state = await todos_db.read_state(slug)
+    phase = coerce_lifecycle_phase((state or {}).get("lifecycle_phase"))
+    if phase is None or not is_work_lifecycle_phase(phase):
+        return
+    raise await closed_contract_refusal(todos_db, identity, slug, name, phase.value)
+
+
+async def closed_contract_refusal(
+    todos_db: WorkflowStore,
+    identity: CallerIdentity,
+    slug: str,
+    name: str,
+    phase: str,
+) -> HTTPException:
+    """Build the 409 for a prepare artifact whose contract is under execution, naming its door."""
+    holder = await _live_claim_holder(todos_db, slug)
+    if holder is not None and holder != identity.session_id:
+        door = _HOLDER_DOOR.format(holder=holder, slug=slug)
+    else:
+        door = _KICKBACK_DOOR.format(slug=slug)
+    return HTTPException(
+        status_code=409,
+        detail=_CLOSED_CONTRACT_DETAIL.format(name=name, slug=slug, phase=phase, door=door),
+    )
 
 
 async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: str) -> None:
