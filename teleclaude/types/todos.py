@@ -220,6 +220,13 @@ class TodoEventKind(StrEnum):
     COMMIT_REVIEW_STAMP = "commit_review_stamp"
     CODE_CONFORMANCE_RETURN = "code_conformance_return"
     PREPARE_CLAIM = "prepare_claim"
+    TASK_FIRING_STARTED = "task_firing_started"
+
+
+class TaskStamp(StrEnum):
+    """Task-lane stamp types dispatched through this discriminator (the firing-start stamp)."""
+
+    FIRING_STARTED = "task_firing_started"
 
 
 class CommitReviewVerdict(StrEnum):

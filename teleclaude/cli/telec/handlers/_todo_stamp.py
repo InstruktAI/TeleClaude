@@ -11,13 +11,14 @@ from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs, parse_command
 from teleclaude.cli.telec.surface import TODO_STAMP
 from teleclaude.cli.telec.surface_types import Flag
 from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.types.todos import TaskStamp
 
 __all__ = ["_handle_todo_stamp"]
 _MISSING_STAMP_FLAG_MESSAGE = (
     "Missing stamp flag (--verdict, --prd-approved, --architecture-skipped, "
     "--task-approved, --drift-reviewed, --build-complete, "
     "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
-    "--art-approved, --visuals-approved, --kickback, --task-outcome, "
+    "--art-approved, --visuals-approved, --kickback, --task-firing-started, --task-outcome, "
     "--diagnosis-settled, --diagnosis-unresolved)"
 )
 
@@ -116,6 +117,9 @@ def _parse_todo_stamp_args(parsed: ParsedArgs) -> tuple[str | None, str | None, 
         stamp_type = "kickback"
     if parsed.has(F.FLAG_STAMP_DIAGNOSIS_UNRESOLVED):
         stamp_type = "diagnosis_unresolved"
+    if parsed.has(F.FLAG_STAMP_TASK_FIRING_STARTED):
+        stamp_type = TaskStamp.FIRING_STARTED
+        value = ""
     if parsed.has(F.FLAG_STAMP_TASK_OUTCOME):
         stamp_type = "task_outcome"
         phase = parsed.value(F.FLAG_STAMP_TASK_OUTCOME)

@@ -216,7 +216,8 @@ ARTIFACT_INVESTIGATION = "investigation"
 ARTIFACT_IMPLEMENTATION_PLAN = "implementation-plan"
 ARTIFACT_TASK_PLAN = "task-plan"
 # The kind=task lane's continuity / restart-idempotency record: read on start,
-# appended with dated entries per firing, kept lean. A run-phase product — not
+# kept lean. The run agent appends dated entries per firing; the firing-start
+# stamp appends one timed firing line per firing. A run-phase product — not
 # prepare-owned, not drift-tracked, not lifecycle-relevant.
 ARTIFACT_LOG = "log"
 # DEPRECATED: bug reports now live in the universal "input" artifact (kind=bug is

@@ -401,6 +401,9 @@ FLAG_STAMP_BUILD_COMPLETE = Flag(
     arity=SWITCH,
 )
 FLAG_STAMP_FINALIZE_READY = Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff", arity=SWITCH)
+FLAG_STAMP_TASK_FIRING_STARTED = Flag(
+    "--task-firing-started", desc="Task firing start: append this firing's line to the log", arity=SWITCH
+)
 FLAG_STAMP_KICKBACK = Flag(
     "--kickback",
     desc=(
