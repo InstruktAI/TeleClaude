@@ -489,9 +489,13 @@ master admits each conversation request before sending it:
     transaction changes anything, with a cause saying the item awaits
     republication and the write can be sent again. Republication is never part
     of that write.
-  - A repair write GitHub throttles ends the pass. The next pass starts no
-    earlier than the time GitHub's response names, or, when it names none,
-    one minute after the throttle, doubling while throttles continue.
+  - A request GitHub throttles during a refresh ends that refresh, and the
+    working copy records when the project's refresh may send requests again:
+    the time GitHub's response names, or, when it names none, one minute
+    after the throttle, doubling while throttles continue. Until then a
+    refresh sends no request for the project: no repair, republication,
+    issue, ledger or record read. Workflow writes are not held by it and
+    refuse with GitHub's cause when GitHub throttles them.
 - **Record reads.** Refresh reads an item's record comment by the comment id
   its working copy holds for the item, one comment with its edit history. It
   lists an issue's comments only for an issue whose record comment the working
