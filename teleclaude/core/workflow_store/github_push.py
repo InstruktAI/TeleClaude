@@ -59,9 +59,9 @@ from teleclaude.core.workflow_store.github_board_queue import dispatch_staged_bo
 from teleclaude.core.workflow_store.github_conflict_refresh import ConflictRefreshScheduler
 from teleclaude.core.workflow_store.github_io import (
     GitHubComment,
-    GitHubOperation,
     GitHubWorkflowIO,
 )
+from teleclaude.core.workflow_store.github_io_operation import GitHubOperation
 from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused
 from teleclaude.core.workflow_store.github_ledger import GitHubLedgerRefused, find_ledger
 from teleclaude.core.workflow_store.github_ledger_commits import LedgerCommitView
@@ -381,6 +381,7 @@ class GitHubWorkflowPush:
         ):
             return None
         if snapshot is not None and not _github_reflection.is_repository_work(snapshot.state):
+            clear_republication_item(session, item_id)
             if issue_number is None:
                 return None
             revision = None

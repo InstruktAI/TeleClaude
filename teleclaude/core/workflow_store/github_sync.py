@@ -16,6 +16,7 @@ from teleclaude.core.todos_db._github_artifacts import (
     any_republication_pending,
     clear_artifact_deletion,
     clear_republication_item,
+    foreign_pending_items,
     mark_foreign_pending,
     owed_artifact_deletions,
     save_committed_artifacts,
@@ -157,7 +158,7 @@ class GitHubWorkflowSync:
 
         resolved: list[tuple[GitHubIssue, GitHubComment, WorkingCopyItemSnapshot, ItemRevision, bool]] = []
         for issue, record, record_comment, revision in updates:
-            snapshot = await self._snapshot_from_revision(issue.number, revision)
+            snapshot = await self._snapshot_from_revision(issue.number, revision, native=record.native_artifacts)
             resolved.append((issue, record_comment, snapshot, revision, record.native_artifacts))
 
         ledger_comment_id = max((comment.database_id for _entry, comment in ledger_entries), default=None)
@@ -217,7 +218,7 @@ class GitHubWorkflowSync:
         )
         resolved: list[tuple[GitHubIssue, GitHubComment, WorkingCopyItemSnapshot, ItemRevision, bool]] = []
         for issue, record, record_comment, revision in updates:
-            snapshot = self._snapshot_from_revision_sync(issue.number, revision)
+            snapshot = self._snapshot_from_revision_sync(issue.number, revision, native=record.native_artifacts)
             resolved.append((issue, record_comment, snapshot, revision, record.native_artifacts))
         ledger_comment_id = max((comment.database_id for _entry, comment in ledger_entries), default=None)
         issue_watermark = latest_issue_timestamp(issues)
@@ -372,7 +373,9 @@ class GitHubWorkflowSync:
         owed_overrides = {
             item_id: reflection_overrides[item_id] for item_id in applied_purges if item_id in reflection_overrides
         }
-        blocked_items = {item_id for item_id, _reason in unverifiable}
+        async with self.store._session() as session:
+            held_without_content = await session.run_sync(foreign_pending_items)
+        blocked_items = {item_id for item_id, _reason in unverifiable} | held_without_content
         try:
             repaired_reflections = await self._repair_owed_reflections(owed_overrides, blocked_items)
             if repaired_reflections:
@@ -476,7 +479,7 @@ class GitHubWorkflowSync:
     async def _backfill_issue_comments(self, issue: GitHubIssue, comments: Sequence[GitHubComment]) -> None:
         """Give the issue's record and ledger comments their readable envelope; the machine payload stays exact.
 
-        A record whose state is an issue artifact keeps the envelope it has: rendering one needs that state.
+        A record whose state is not in the record itself keeps the envelope it has: rendering one needs that state.
         """
         bot_login = self.assignment.actor.login
         for comment in comments:
@@ -489,9 +492,10 @@ class GitHubWorkflowSync:
             if has_record_marker(trusted):
                 record = parse_record_comment(trusted)
                 revision = record.pending.revision if record.pending is not None else record.committed
-                if revision.state_content_pointer is not None:
+                state = _effective_state_mapping(revision)
+                if state is None:
                     continue
-                replacement = reenvelope_record_comment(trusted, record, _effective_state_mapping(revision))
+                replacement = reenvelope_record_comment(trusted, record, state)
             elif has_ledger_marker(trusted):
                 replacement = reenvelope_ledger_comment(trusted, parse_ledger_commit(trusted))
             if replacement != comment.body:
@@ -546,9 +550,7 @@ class GitHubWorkflowSync:
             revision = effective_revision(record, committed_transactions)
             if not is_repository_work(revision.state):
                 continue
-            if not record.native_artifacts and (
-                not _legacy_restorable(revision) or await self._item_id_for_issue(issue_number) is not None
-            ):
+            if not record.native_artifacts and await self._item_id_for_issue(issue_number) is not None:
                 continue
             trusted = trusted_body(record_comment, self.assignment.actor.login)
             if trusted is not None and record_comment.body != trusted:
@@ -559,7 +561,10 @@ class GitHubWorkflowSync:
             purged = revision.todo.get(WorkflowField.STATUS) == WorkflowTodoStatus.PURGED
             try:
                 snapshot = await self._snapshot_from_revision(
-                    issue_number, revision, frozenset({INPUT_ARTIFACT_NAME}) if purged else None
+                    issue_number,
+                    revision,
+                    frozenset({INPUT_ARTIFACT_NAME}) if purged else None,
+                    native=record.native_artifacts,
                 )
             except GitHubWorkflowSyncRefused:
                 unverifiable.append((revision.item_id, _CONTENT_UNVERIFIABLE))
@@ -707,18 +712,24 @@ class GitHubWorkflowSync:
                 await session.run_sync(operation)
 
     async def _snapshot_from_revision(
-        self, issue_number: int, revision: ItemRevision, names: frozenset[str] | None = None
+        self, issue_number: int, revision: ItemRevision, names: frozenset[str] | None = None, *, native: bool = True
     ) -> WorkingCopyItemSnapshot:
         try:
-            return await snapshot_from_revision(self.io, self.assignment.actor.id, issue_number, revision, names)
+            return await snapshot_from_revision(
+                self.io, self.assignment.actor.id, issue_number, revision, names, native=native
+            )
         except ArtifactContentUnavailable:
             raise GitHubWorkflowSyncRefused(_ITEM_CONTENT_INCOMPLETE.format(issue_number)) from None
 
-    def _snapshot_from_revision_sync(self, issue_number: int, revision: ItemRevision) -> WorkingCopyItemSnapshot:
+    def _snapshot_from_revision_sync(
+        self, issue_number: int, revision: ItemRevision, *, native: bool
+    ) -> WorkingCopyItemSnapshot:
         """Run the snapshot read on the I/O loop, which serves the asynchronous provider operations."""
         return cast(
             WorkingCopyItemSnapshot,
-            shared_github_io_loop().submit(self._snapshot_from_revision(issue_number, revision)).result(),
+            shared_github_io_loop()
+            .submit(self._snapshot_from_revision(issue_number, revision, native=native))
+            .result(),
         )
 
 
@@ -753,8 +764,6 @@ def _select_rebuild_records(
         if record is None or record_comment is None:
             continue
         revision = effective_revision(record, committed_ids)
-        if not record.native_artifacts and not _legacy_restorable(revision):
-            continue
         if not is_repository_work(revision.state):
             continue
         if revision.todo.get(WorkflowField.STATUS) == WorkflowTodoStatus.PURGED:
@@ -801,11 +810,6 @@ def _find_record_for_refresh(
     return record, comment, None
 
 
-def _legacy_restorable(revision: ItemRevision) -> bool:
-    """Whether a record that predates native artifacts still names the item completely without its content."""
-    return revision.state is None or isinstance(revision.state.get(WorkflowField.STATE), str)
-
-
 def _mirror_record(session: Session, item_id: str, revision: ItemRevision, native: bool) -> None:
     """Mirror an adopted record: a native one names the item's artifacts and ends any wait for republication.
 
@@ -819,11 +823,13 @@ def _mirror_record(session: Session, item_id: str, revision: ItemRevision, nativ
         mark_foreign_pending(session, item_id)
 
 
-def _effective_state_mapping(revision: ItemRevision) -> Mapping[str, object]:
-    """The state a record's readable envelope shows; a state kept as an artifact is not read for it."""
-    value = revision.state.get(WorkflowField.STATE) if revision.state is not None else None
-    if not isinstance(value, str):
+def _effective_state_mapping(revision: ItemRevision) -> Mapping[str, object] | None:
+    """The state a record's readable envelope shows; None when the record does not carry the state itself."""
+    if revision.state is None:
         return {}
+    value = revision.state.get(WorkflowField.STATE)
+    if not isinstance(value, str):
+        return None
     try:
         parsed = json.loads(value)
     except json.JSONDecodeError:

@@ -33,6 +33,7 @@ __all__ = [
     "clear_artifact_deletion",
     "clear_republication_item",
     "committed_entries",
+    "foreign_pending_items",
     "initialize_artifact_bookkeeping",
     "issue_artifacts_fact",
     "keep_hydrated_version",
@@ -153,6 +154,7 @@ class _Sql(StrEnum):
     )
     PENDING = "SELECT 1 FROM github_republication_pending WHERE item_id = :item_id"
     ANY_PENDING = "SELECT 1 FROM github_republication_pending LIMIT 1"
+    FOREIGN_ITEMS = "SELECT item_id FROM github_republication_pending WHERE local_content = 0"
     LOCAL_PENDING = "SELECT 1 FROM github_republication_pending WHERE local_content = 1 LIMIT 1"
     FOREIGN_PENDING = (
         "INSERT OR IGNORE INTO github_republication_pending(item_id, requested, local_content) VALUES (:item_id, 0, 0)"
@@ -318,6 +320,11 @@ def any_republication_pending(session: Session) -> bool:
     return session.execute(text(_Sql.ANY_PENDING)).first() is not None
 
 
+def foreign_pending_items(session: Session) -> frozenset[str]:
+    """The items held without content here: their reflections wait until their native record is adopted."""
+    return frozenset(str(row[0]) for row in session.execute(text(_Sql.FOREIGN_ITEMS)).all())
+
+
 def local_republication_pending(session: Session) -> bool:
     """Whether some pending item's content is held by this copy, so this copy can republish it."""
     return session.execute(text(_Sql.LOCAL_PENDING)).first() is not None
@@ -442,13 +449,14 @@ def read_republication_wait(session: Session) -> RepublicationWait:
 def keep_hydrated_version(session: Session, item_id: str, entry: EntryRow, content: str) -> None:
     """Keep a named version read back from GitHub as a local row, without making the item look changed.
 
-    The entry is read again under the writer: a concurrent reader may have kept it already, and a second row would
-    be an unlinked copy of committed history that the next write would save as a new version.
+    The entry is read again under the writer: a concurrent reader may have kept it already, or the artifact's removal
+    may have dropped it, and a row kept for either would be an unlinked copy of history that the next write would
+    save as a new version.
     """
-    linked = session.execute(
+    held = session.execute(
         text(_Sql.ENTRY_LINKED), {_Field.ITEM_ID: item_id, _Field.NAME: entry.name, _Field.ORDINAL: entry.ordinal}
-    ).scalar_one_or_none()
-    if linked is not None:
+    ).first()
+    if held is None or held[0] is not None:
         return
     with capture_suppressed(session):
         session.execute(

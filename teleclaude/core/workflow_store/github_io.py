@@ -77,7 +77,6 @@ __all__ = [
     "GitHubComment",
     "GitHubIssue",
     "GitHubMutationPacing",
-    "GitHubOperation",
     "GitHubRepositoryScope",
     "GitHubWorkflowIO",
 ]

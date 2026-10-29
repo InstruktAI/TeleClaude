@@ -36,6 +36,7 @@ from teleclaude.core.workflow_store.github_artifact_values import artifact_type
 from teleclaude.core.workflow_store.github_io import GitHubWorkflowIO
 from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused
 from teleclaude.core.workflow_store.github_record import WorkflowField
+from teleclaude.core.workflow_store.github_reflection import is_repository_work
 from teleclaude.types.github_binding import GitHubActorAssignment
 
 __all__ = ["GitHubRepublication"]
@@ -85,7 +86,7 @@ class GitHubRepublication:
     async def _republish(self, item_id: str) -> None:
         async with self.store._session() as session:
             snapshot, issue_number, progress = await session.run_sync(_read_item, item_id)
-        if snapshot is None or issue_number is None:
+        if snapshot is None or issue_number is None or not is_repository_work(snapshot.state):
             await self._transaction(clear_republication_item, item_id)
             return
         saved = {row.version_id for row in progress}

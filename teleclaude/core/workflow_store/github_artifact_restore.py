@@ -23,13 +23,20 @@ class ArtifactContentUnavailable(RuntimeError):
 
 
 async def snapshot_from_revision(
-    io: GitHubWorkflowIO, bot_id: int, issue_number: int, revision: ItemRevision, names: frozenset[str] | None = None
+    io: GitHubWorkflowIO,
+    bot_id: int,
+    issue_number: int,
+    revision: ItemRevision,
+    names: frozenset[str] | None = None,
+    *,
+    native: bool = True,
 ) -> WorkingCopyItemSnapshot:
     """The working-copy rows a committed revision names: its current content, read from the issue's artifacts.
 
     One list call returns every artifact's current body. A committed version that is not the artifact's current
     one, or whose current version a person saved, takes one single-artifact read of the versions GitHub serves.
-    Earlier versions the record lists are not read; they come on first use. `names` limits the artifacts read.
+    Earlier versions the record lists are not read; they come on first use. `names` limits the artifacts read. A record that
+    predates native artifacts names no content: its item is restored without the state it kept in comments.
     """
     todo = dict(revision.todo)
     slug = str(todo.get(WorkflowField.SLUG, _EMPTY))
@@ -47,6 +54,8 @@ async def snapshot_from_revision(
         if state is None:
             raise ArtifactContentUnavailable(_STATE_INCOMPLETE)
         state[WorkflowField.STATE] = await _committed_content(io, bot_id, issue_number, listing, pointer)
+    if state is not None and not native and state.get(WorkflowField.STATE) is None:
+        state = None
     if state is not None:
         state.setdefault(WorkflowField.ID, revision.item_id)
         state.setdefault(WorkflowField.SLUG, slug)
