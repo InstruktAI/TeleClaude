@@ -97,22 +97,22 @@ the committed rules are inert — a defined state, not a failure.
 
 A package manager that installs each version at its own path gives every
 upgrade a new path. Homebrew keeps each installed version of a formula in its
-own folder under its prefix's Cellar (Homebrew's
-[Formula Cookbook](https://docs.brew.sh/Formula-Cookbook) and
-[installation](https://docs.brew.sh/Installation) pages name the Cellar and the
-`/opt/homebrew` and `/usr/local` prefixes), and a filter that matches the full
-path a process runs from sees that versioned folder. The committed source
+own folder under its prefix's Cellar, with `/opt/homebrew` and `/usr/local` as
+its prefixes (Homebrew's Formula Cookbook and installation pages, under See
+Also), and a filter that matches the full path a process runs from sees that
+versioned folder. The committed source
 therefore names the formula and the binary's path inside the formula's folder,
 never a version. The job expands each entry into one rule per version and
 prefix: it reads the current version from the package manager's API, keeps
 every version the published file already carries, and adds a version named to
 it by hand, so a host still running an older version keeps or gets its rule.
 
-Little Snitch also matches a process by its code identity
-(`identifier.TEAM_ID/IDENTIFIER`), which only a Developer ID signature carries
-(the [rules file format](https://help.obdev.at/littlesnitch6/adv-lsrules-file-format)
-describes both forms); such a binary's rule names that identity instead of a
-path and survives every upgrade unchanged.
+Little Snitch also matches a process by its code identity: the team identifier
+and the identifier of its code signature (`identifier.TEAM_ID/IDENTIFIER`; its
+code identity and rules file format pages, under See Also). A binary signed with
+a team identifier that keeps the same identity from version to version, such as
+a Developer ID signed tool, has its rule name that identity instead of a path,
+and the rule holds across its upgrades.
 
 Little Snitch subscribes once per machine to the published file as a remote rule
 group. "Disable new allow rules" is turned off for that group; otherwise every
@@ -167,4 +167,7 @@ is inert — that is a no-op, never a step to work around.
 
 - ~/.teleclaude/docs/sdlc/procedure/macos-stable-code-signing.md — the identity half: a rule survives a rebuild only when the binary's identity does.
 - https://help.obdev.at/littlesnitch6/adv-lsrules-file-format — Little Snitch `.lsrules` format reference.
+- https://help.obdev.at/littlesnitch6/adv-code-identity — Little Snitch code identity: team identifier and signing identifier.
+- https://docs.brew.sh/Formula-Cookbook — Homebrew's Cellar: one folder per installed formula version.
+- https://docs.brew.sh/Installation — Homebrew's default prefixes, `/opt/homebrew` and `/usr/local`.
 - https://github.com/evilsocket/opensnitch/wiki/Rules — OpenSnitch rule format reference.
