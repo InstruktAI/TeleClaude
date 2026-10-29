@@ -97,6 +97,17 @@ starts the daemon on it, under the guarantees of
   reports the failure and which stores its migrations reached, is never
   reported as complete, and is repaired forward.
 
+<!-- planned:daemon-startup-aborts-without-redis -->
+
+- **Degraded serving.** A daemon whose readiness answer reports it serving
+  while an event Redis does not answer is serving
+  (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).
+  `telec app start` and `telec app restart` succeed on it, and an install
+  verifying it completes. Each reports which Redis does not answer, as
+  `telec app status` does while that lasts.
+
+<!-- /planned:daemon-startup-aborts-without-redis -->
+
 - **Running terminal interfaces move with the install.** A completed install
   reloads every running terminal interface onto the new active release
   (`local/projects/teleclaude/design/architecture/tui-state-layout`), so the
