@@ -69,7 +69,10 @@ def _scope(project_root: Path) -> tuple[GitHubTransport, str, GitHubActorAssignm
 
 
 async def read_active_computer(project_root: Path) -> str | None:
-    """The computer the project names as active, or ``None`` when it names none. Raises ``GitHubIORefused``.
+    """The computer the project names as active, or ``None`` when it names none.
+
+    Raises ``GitHubIORefused`` when GitHub does not answer, and ``GitHubIdentityRefused`` or
+    ``GitHubStoreSelectionRefused`` when this computer cannot select the project's GitHub workflow store.
 
     It runs on the shared GitHub I/O loop, which owns the process-wide request gate; see ``_on_io_loop``.
     """
