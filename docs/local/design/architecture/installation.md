@@ -191,9 +191,10 @@ sequenceDiagram
   service definitions include the webhook receiver's
   (`local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`):
   a unit that holds its listening socket and a unit for the receiver process.
-  They are deployed once the daemon's start is verified, only when their
-  content changed, and never stopped with the daemon; the earlier release's
-  daemon has released the port by then, and a failed install deploys none. The
+  They are deployed once the daemon is up, only when their content changed, and
+  never stopped with the daemon; the earlier release's daemon has released the
+  port by then. A start whose daemon never comes up deploys none, and a start
+  whose receiver deployment fails is not verified. The
   receiver follows the active-release pointer: when the pointer moves, it exits
   and its service manager starts it again on the new release while the socket
   stays open. On a computer that is no longer the ingress, deployment removes
@@ -359,6 +360,12 @@ checkout stays a registered project.
   so that most migrations run inside it.
 - **An owner cannot signal to the install record**: the migration counts as
   started, and rollback refuses.
+- **The first install that brings the ingress receiver is recovered by the
+  release before it.** That release's controller switches back without
+  removing the receiver's units, so if such an install fails after its daemon
+  came up on the ingress computer, the restored release cannot serve on the
+  port the units hold, and external events stop until the next install of a
+  release with the receiver, which the channel attempts again.
 
 ## See Also
 
