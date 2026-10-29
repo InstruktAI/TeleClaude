@@ -15,7 +15,16 @@ visibility: public
 
 ## Invariants
 
+<!-- planned-change:teleclaude-db-split -->
+
 - **Database Location**: All databases live under `~/.teleclaude/`. Main DB is `teleclaude.db`, events are `events.db`, mirrors are `mirrors.db`, and hook delivery uses `hook_outbox.db`.
+
+<!-- change:teleclaude-db-split -->
+
+- **Database Location**: All databases live under `~/.teleclaude/`, one file per owner, each its own write-isolation unit (`sdlc/policy/state-storage`). Main DB is `teleclaude.db`; output streaming (output generations, consumer cursors and receipts, Discord send intents) uses `output.db`; operations use `operations.db`; reminders and their entries use `reminders.db`; events are `events.db`, mirrors are `mirrors.db`, and hook delivery uses `hook_outbox.db`. State that session creation or control delivery writes in one transaction with sessions — startup handovers, procedure event delivery, the control outbox and the inbound queue with its turn bindings — stays in `teleclaude.db`.
+
+<!-- /planned-change:teleclaude-db-split -->
+
 - **Fail Before Serve**: Migrations run before interfaces are considered ready.
 - **Headless Compatibility**: Sessions may have `tmux_session_name = NULL` and still be valid (`lifecycle_status='headless'`).
 - **Durable Hook Queue**: Hook events are persisted before daemon processing. Processed events are hard-deleted (no soft-delete retention).
@@ -25,8 +34,24 @@ visibility: public
 - **Bound Turn Continuity**: Accepted input, its runtime-qualified native transcript binding, per-adapter output generation, conversation cursor disposition, and unresolved Discord send intent are durable operational state. An inbound row is never pruned before its binding is durable, and cleanup never creates a gap in which neither the accepted row nor its binding can identify the turn.
 
 - **Durable History Exclusion**: `mirrors.db`, memory tables, todo/project artifact databases, and other history domains are not pruned by runtime maintenance.
+
+<!-- planned:teleclaude-db-split -->
+
+- **Session-Scoped Retention**: A session's latest output generation, its consumer cursors and receipts, and its reminder entries are live state while the session is open. They are pruned once the session has been closed for longer than the runtime retention window; superseded generations and receipts, terminal Discord send intents, terminal control payloads and failed procedure events are pruned once older than the window, and delivered procedure events once their assigned session has been closed for longer than it. Session startup handovers are never pruned by retention, because restart reads them for the session's whole life.
+- **Maintenance Does Not Stall Writers**: Runtime maintenance holds a store's write lock only for short statements. The periodic WAL checkpoint is passive and never waits on readers, retention deletes run per store, and compaction (`VACUUM`) runs only while the daemon opens its stores, before it serves — so the first opening after an install compacts what the install's migrations freed (`sdlc/policy/state-storage`, Write isolation follows contention).
+
+<!-- /planned:teleclaude-db-split -->
+
+<!-- planned-change:teleclaude-db-split -->
+
 - Schema bootstraps from `teleclaude/core/schema.sql`.
 - Incremental schema changes run through numbered migrations (`teleclaude/core/migrations/*.py`) tracked in `schema_migrations`.
+
+<!-- change:teleclaude-db-split -->
+
+- Each store bootstraps from its own schema file — `teleclaude/core/schema.sql` for `teleclaude.db` — and takes incremental changes through its own numbered migrations tracked in the `schema_migrations` ledger inside its own file (`local/projects/teleclaude/policy/schema-and-migrations`).
+
+<!-- /planned-change:teleclaude-db-split -->
 
 <!-- planned:distributed-todo-postgres -->
 
