@@ -302,7 +302,7 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   apply the entry audit before deriving from it, unless a coordinator the
   human has started reconciles it first under the landscape clause of
   `sdlc/procedure/lifecycle/coordinate`, which also executes a claimant's
-  declared but unexecuted exit. Creation lineage is audit evidence, not a
+  declared but unexecuted retraction. Creation lineage is audit evidence, not a
   guarantee that the creator is still reachable.
 
 - **The claimant pauses preparation immediately.** It advances no phase,
