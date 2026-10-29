@@ -21,15 +21,14 @@ well as its own. Where a computer gets them depends on where the project keeps
 its todos:
 
 - **A project on the local workflow store** keeps its todos on the computer
-  that serves it, and only that computer can give them out. Its peers receive
-  them from it, with its project listing
-  (`local/projects/teleclaude/design/architecture/redis-transport`).
+  that serves it, and that computer's workflow store is the only source of
+  them. How they reach its peers is
+  `local/projects/teleclaude/design/architecture/redis-transport`.
 - **A project on the GitHub workflow store** keeps its todos on GitHub. Every
   computer reads them from GitHub through its own workflow store
   (`local/projects/teleclaude/design/architecture/workflow-store`), whichever
-  computers serve the project. No computer gives them to another: a computer's
-  project listing, as its peers receive it, names such a project and the store
-  that keeps its todos, and carries none of them.
+  computers serve the project. No computer's workflow store is the source of
+  another computer's read of them.
 
 A computer reads a GitHub-backed project's todos from GitHub to show them only
 while something consumes them: an explicit read, such as a view being opened or
@@ -46,9 +45,6 @@ one GitHub repository once, however many of its peers serve the project.
 When GitHub cannot be read, the read says that the project's todos cannot be
 read from GitHub, and why. It never shows another computer's copy in their
 place.
-
-A change to a GitHub-backed project's todos leaves every computer's project
-listing unchanged, so it makes no peer pull that listing again.
 
 ## Canonical fields
 
