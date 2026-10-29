@@ -31,18 +31,6 @@ _FOREIGN_ARTIFACT_CLAIM_DETAIL = (
     "record (sdlc/policy/todo-creation-discipline, "
     "'Reconcile a flagged live todo')."
 )
-_CLOSED_CONTRACT_DETAIL = (
-    "prepare artifact '{name}' for '{slug}' is not writable: the todo's contract is under "
-    "execution (lifecycle phase '{phase}'). {door}"
-)
-_KICKBACK_DOOR = (
-    "The todo's work orchestrator returns it to preparation with "
-    "`telec todo stamp {slug} --kickback --reason <why>`; the change is made there."
-)
-_HOLDER_DOOR = (
-    "Address session '{holder}', which holds the todo, about the change; it returns the todo to "
-    "preparation with `telec todo stamp {slug} --kickback --reason <why>`."
-)
 _FOREIGN_UPDATE_CLAIM_DETAIL = (
     "todo '{slug}' is claimed by session '{holder}'; update refused. "
     "Address that session about the concern instead of updating its todo."
@@ -186,12 +174,21 @@ async def closed_contract_refusal(
     """Build the 409 for a prepare artifact whose contract is under execution, naming its door."""
     holder = await _live_claim_holder(todos_db, slug)
     if holder is not None and holder != identity.session_id:
-        door = _HOLDER_DOOR.format(holder=holder, slug=slug)
+        door = (
+            f"Address session '{holder}', which holds the todo, about the change; it returns the todo to "
+            f"preparation with `telec todo stamp {slug} --kickback --reason <why>`."
+        )
     else:
-        door = _KICKBACK_DOOR.format(slug=slug)
+        door = (
+            "The todo's work orchestrator returns it to preparation with "
+            f"`telec todo stamp {slug} --kickback --reason <why>`; the change is made there."
+        )
     return HTTPException(
         status_code=409,
-        detail=_CLOSED_CONTRACT_DETAIL.format(name=name, slug=slug, phase=phase, door=door),
+        detail=(
+            f"prepare artifact '{name}' for '{slug}' is not writable: the todo's contract is under "
+            f"execution (lifecycle phase '{phase}'). {door}"
+        ),
     )
 
 
