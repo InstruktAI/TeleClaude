@@ -535,10 +535,6 @@ class MaintenanceService:
                 except Exception:
                     logger.warning("Event DB runtime cleanup skipped", exc_info=True)
                 try:
-                    await db.compact_runtime_databases_if_needed()
-                except Exception:
-                    logger.warning("SQLite runtime compaction skipped", exc_info=True)
-                try:
                     await get_operations_service().expire_stale_operations()
                 except Exception:
                     logger.debug("Operations service not available for stale sweep", exc_info=True)

@@ -411,9 +411,9 @@ class DbBase:
         _ = client
 
     async def wal_checkpoint(self) -> None:
-        """Run WAL checkpoint to prevent unbounded WAL growth."""
+        """Run a passive WAL checkpoint: it moves what readers allow and never makes a writer wait."""
         async with self._session() as session:
-            result = await session.exec(text("PRAGMA wal_checkpoint(TRUNCATE)"))  # guard: raw-sql
+            result = await session.exec(text("PRAGMA wal_checkpoint(PASSIVE)"))  # guard: raw-sql
             row = result.first()
             if row:
                 logger.debug("WAL checkpoint: busy=%s, log=%s, checkpointed=%s", *row)
