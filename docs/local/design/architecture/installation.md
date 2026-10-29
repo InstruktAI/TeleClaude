@@ -193,10 +193,11 @@ sequenceDiagram
   (`local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`):
   a unit that holds its listening socket and a unit for the receiver process.
   They are deployed, only when their content changed, or withdrawn before the
-  daemon is started, and are never stopped with the daemon; the daemon serves
-  the inbound endpoints only while they are absent. A failed deployment or
-  withdrawal fails the start; a daemon that still holds the port, as at a start
-  of a running daemon, makes a deployment fail. The
+  daemon is started or restarted, and are never stopped with the daemon; the
+  daemon serves the inbound endpoints only while they are absent. A start that
+  finds the daemon running leaves the units as they are until its next restart.
+  A failed deployment or withdrawal fails a start; at a restart the units are
+  withdrawn instead, so the restarted daemon serves the endpoints itself. The
   receiver follows the active-release pointer: when the pointer moves, it exits
   and its service manager starts it again on the new release while the socket
   stays open. On a computer that is no longer the ingress, deployment removes
