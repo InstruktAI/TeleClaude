@@ -45,6 +45,7 @@ from teleclaude.core.next_machine.manual_start import (
 )
 from teleclaude.core.next_machine.prepare import next_prepare
 from teleclaude.core.next_machine.slug_resolution import resolve_holder_children_db
+from teleclaude.core.next_machine.task_firing_stamp import firing_start_directive
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_caller_identity import (
     OperationCallerTokens,
@@ -841,8 +842,7 @@ class OperationsService:
         """
         slug = operation.slug or "<auto>"
         return (
-            f"TASK_RUNNING: {slug} — first stamp this firing's start with "
-            f"`telec todo stamp {slug} --task-firing-started`, then execute the next firing "
+            f"TASK_RUNNING: {slug} — {firing_start_directive(slug)}, then execute the next firing "
             "from the current task-plan, record the result in the log, and stamp the firing's "
             "outcome: a success ends "
             "this session (delivered if one-shot, recorded and resting if recurring); an "
