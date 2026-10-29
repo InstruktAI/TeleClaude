@@ -32,7 +32,12 @@ _HTTP_REFUSAL_WITH_MESSAGE = "{}: {}"
 _REFUSAL_WITH_DETAIL = "{}: {}"
 _MESSAGE_FIELD = "message"
 _HTTP_NOT_FOUND = 404
+_HTTP_TOO_MANY_REQUESTS = 429
 _HTTP_REFUSALS = (400, 401, 403, 422)
+_RETRY_AFTER_HEADER = "retry-after"
+_RATE_LIMIT_REMAINING_HEADER = "x-ratelimit-remaining"
+_RATE_LIMIT_RESET_HEADER = "x-ratelimit-reset"
+_RATE_LIMIT_EXHAUSTED = "0"
 _Result = TypeVar("_Result")
 _CredentialKey = tuple[int, tuple[tuple[str, str], ...]]
 
@@ -46,6 +51,7 @@ class GitHubIOFailure(StrEnum):
     NOT_FOUND = "not_found"
     VALIDATION_REFUSED = "validation_refused"
     ROLE_UNMAPPED = "role_unmapped"
+    ISSUE_ARTIFACTS_UNAVAILABLE = "issue_artifacts_unavailable"
 
 
 @asynccontextmanager
@@ -69,10 +75,13 @@ def _connection_pool() -> httpx.AsyncHTTPTransport:
 class GitHubIORefused(RuntimeError):
     """A bounded reason why one store operation could not reach GitHub."""
 
-    def __init__(self, reason: GitHubIOFailure, *, detail: str | None = None) -> None:
+    def __init__(
+        self, reason: GitHubIOFailure, *, detail: str | None = None, resume_at: datetime | None = None
+    ) -> None:
         message = reason.value if detail is None else _REFUSAL_WITH_DETAIL.format(reason.value, detail)
         super().__init__(message)
         self.reason = reason
+        self.resume_at = resume_at
 
 
 class GitHubTransport:
@@ -114,10 +123,14 @@ class GitHubTransport:
                 return await request(client)
         except GitHubIORefused:
             raise
-        except RateLimitExceeded:
-            raise GitHubIORefused(GitHubIOFailure.RATE_LIMITED) from None
+        except RateLimitExceeded as error:
+            raise GitHubIORefused(GitHubIOFailure.RATE_LIMITED, resume_at=_resume_time(error)) from None
         except RequestFailed as error:
             detail = _request_refusal_detail(operation, error)
+            if error.response.status_code == _HTTP_TOO_MANY_REQUESTS:
+                raise GitHubIORefused(
+                    GitHubIOFailure.RATE_LIMITED, detail=detail, resume_at=_resume_time(error)
+                ) from None
             if error.response.status_code == _HTTP_NOT_FOUND:
                 raise GitHubIORefused(GitHubIOFailure.NOT_FOUND, detail=detail) from None
             if error.response.status_code in _HTTP_REFUSALS:
@@ -142,6 +155,24 @@ class GitHubTransport:
             raise GitHubIORefused(GitHubIOFailure.CREDENTIAL_REFUSED) from None
         self._credentials[key] = (credential.token, credential.expires_at)
         return credential.token
+
+
+def _resume_time(error: RequestFailed) -> datetime | None:
+    """When GitHub says requests may resume: `retry-after`, else the reset time of an exhausted limit, else never."""
+    headers = error.response.headers
+    retry_after = headers.get(_RETRY_AFTER_HEADER)
+    if retry_after is not None:
+        try:
+            return datetime.now(UTC) + timedelta(seconds=int(retry_after))
+        except ValueError:
+            return None
+    reset = headers.get(_RATE_LIMIT_RESET_HEADER)
+    if headers.get(_RATE_LIMIT_REMAINING_HEADER) == _RATE_LIMIT_EXHAUSTED and reset is not None:
+        try:
+            return datetime.fromtimestamp(int(reset), tz=UTC)
+        except ValueError:
+            return None
+    return None
 
 
 def _request_refusal_detail(operation: StrEnum, error: RequestFailed) -> str:

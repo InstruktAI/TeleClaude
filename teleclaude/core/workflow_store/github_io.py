@@ -12,12 +12,19 @@ from enum import StrEnum
 from time import monotonic
 from typing import Any, TypeVar, cast
 
-from githubkit.exception import GitHubException, RequestFailed
+from githubkit.exception import GitHubException, RateLimitExceeded, RequestFailed
 from githubkit.utils import UNSET
 from githubkit_schemas.v2026_03_10.types import AppPermissionsType
 from httpx import HTTPError
 
 from teleclaude.core.workflow_store.github import GitHubRepositoryIdentity
+from teleclaude.core.workflow_store.github_io_artifacts import (
+    create_artifact,
+    delete_artifact,
+    list_artifacts,
+    read_artifact,
+    update_artifact,
+)
 from teleclaude.core.workflow_store.github_io_comments import (
     COMMENT_NODES_QUERY,
     EDIT_HISTORY_QUERY,
@@ -29,7 +36,13 @@ from teleclaude.core.workflow_store.github_io_comments import (
     written_comment,
 )
 from teleclaude.core.workflow_store.github_io_fields import GitHubField
-from teleclaude.core.workflow_store.github_io_models import GitHubComment, GitHubIssue, GitHubRepositoryScope
+from teleclaude.core.workflow_store.github_io_models import (
+    GitHubArtifact,
+    GitHubArtifactHistory,
+    GitHubComment,
+    GitHubIssue,
+    GitHubRepositoryScope,
+)
 from teleclaude.core.workflow_store.github_io_runtime import GitHubMutationPacing, shared_github_io_loop
 from teleclaude.core.workflow_store.github_io_transport import (
     GitHubIOFailure,
@@ -58,6 +71,8 @@ _PACED_WRITE_INTERVAL_S = 1.0
 
 
 __all__ = [
+    "GitHubArtifact",
+    "GitHubArtifactHistory",
     "GitHubComment",
     "GitHubIssue",
     "GitHubMutationPacing",
@@ -90,6 +105,11 @@ class GitHubOperation(StrEnum):
     READ_COMMENTS_UPDATED_SINCE = "read_comments_updated_since"
     CREATE_COMMENT = "create_comment"
     UPDATE_COMMENT = "update_comment"
+    LIST_ARTIFACTS = "list_artifacts"
+    READ_ARTIFACT = "read_artifact"
+    CREATE_ARTIFACT = "create_artifact"
+    UPDATE_ARTIFACT = "update_artifact"
+    DELETE_ARTIFACT = "delete_artifact"
 
 
 _IssueUpdate = dict[GitHubField, str | list[str] | None]
@@ -302,6 +322,46 @@ class GitHubWorkflowIO:
 
     def update_comment(self, comment_id: int, body: str) -> GitHubComment:
         return cast(GitHubComment, self._sync(GitHubOperation.UPDATE_COMMENT, comment_id, body))
+
+    async def async_list_artifacts(
+        self, number: int, artifact_type: str | None = None, first_page_size: int | None = None
+    ) -> tuple[GitHubArtifact, ...]:
+        """List an issue's artifacts with their current bodies."""
+        return cast(
+            tuple[GitHubArtifact, ...],
+            await self._call(GitHubOperation.LIST_ARTIFACTS, number, artifact_type, first_page_size),
+        )
+
+    def list_artifacts(
+        self, number: int, artifact_type: str | None = None, first_page_size: int | None = None
+    ) -> tuple[GitHubArtifact, ...]:
+        return cast(
+            tuple[GitHubArtifact, ...],
+            self._sync(GitHubOperation.LIST_ARTIFACTS, number, artifact_type, first_page_size),
+        )
+
+    async def async_read_artifact(self, number: int, artifact_number: int) -> GitHubArtifactHistory:
+        return cast(GitHubArtifactHistory, await self._call(GitHubOperation.READ_ARTIFACT, number, artifact_number))
+
+    def read_artifact(self, number: int, artifact_number: int) -> GitHubArtifactHistory:
+        return cast(GitHubArtifactHistory, self._sync(GitHubOperation.READ_ARTIFACT, number, artifact_number))
+
+    async def async_create_artifact(self, number: int, artifact_type: str, name: str, body: str) -> GitHubArtifact:
+        return cast(
+            GitHubArtifact, await self._call(GitHubOperation.CREATE_ARTIFACT, number, artifact_type, name, body)
+        )
+
+    def create_artifact(self, number: int, artifact_type: str, name: str, body: str) -> GitHubArtifact:
+        return cast(GitHubArtifact, self._sync(GitHubOperation.CREATE_ARTIFACT, number, artifact_type, name, body))
+
+    async def async_update_artifact(self, number: int, artifact_number: int, body: str) -> GitHubArtifact:
+        return cast(GitHubArtifact, await self._call(GitHubOperation.UPDATE_ARTIFACT, number, artifact_number, body))
+
+    def update_artifact(self, number: int, artifact_number: int, body: str) -> GitHubArtifact:
+        return cast(GitHubArtifact, self._sync(GitHubOperation.UPDATE_ARTIFACT, number, artifact_number, body))
+
+    async def async_delete_artifact(self, number: int, artifact_number: int) -> None:
+        await self._call(GitHubOperation.DELETE_ARTIFACT, number, artifact_number)
 
     async def _call(self, operation: GitHubOperation, *arguments: object) -> Any:
         future = shared_github_io_loop().submit(self._serialized_dispatch(operation, *arguments))
@@ -698,6 +758,8 @@ class GitHubWorkflowIO:
                 result = await client.graphql.arequest(
                     COMMENT_NODES_QUERY, {GitHubField.IDS: [str(comment.node_id) for comment in chunk]}
                 )
+            except RateLimitExceeded:
+                raise
             except (GitHubException, HTTPError, TimeoutError, OSError):
                 raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE) from None
             nodes = result.get(GitHubField.NODES)
@@ -849,6 +911,54 @@ async def _dispatch_update_comment(io: GitHubWorkflowIO, args: tuple[object, ...
     return await io._update_comment(int_argument(args[0]), str(args[1]))
 
 
+async def _dispatch_list_artifacts(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
+    number = int_argument(args[0])
+    artifact_type = None if args[1] is None else str(args[1])
+    first_page_size = args[2] if isinstance(args[2], int) else None
+    return await io._with_client(
+        GitHubOperation.LIST_ARTIFACTS,
+        lambda client: list_artifacts(client, io.repository.repository, number, artifact_type, first_page_size),
+    )
+
+
+async def _dispatch_read_artifact(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
+    number, artifact_number = int_argument(args[0]), int_argument(args[1])
+    return await io._with_client(
+        GitHubOperation.READ_ARTIFACT,
+        lambda client: read_artifact(client, io.repository.repository, number, artifact_number),
+    )
+
+
+async def _dispatch_create_artifact(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
+    number, artifact_type, name, body = int_argument(args[0]), str(args[1]), str(args[2]), str(args[3])
+    return await io._with_client(
+        GitHubOperation.CREATE_ARTIFACT,
+        lambda client: create_artifact(
+            client, io.repository.repository, number, artifact_type, name, body, io._pace_mutation_start
+        ),
+    )
+
+
+async def _dispatch_update_artifact(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
+    number, artifact_number, body = int_argument(args[0]), int_argument(args[1]), str(args[2])
+    return await io._with_client(
+        GitHubOperation.UPDATE_ARTIFACT,
+        lambda client: update_artifact(
+            client, io.repository.repository, number, artifact_number, body, io._pace_mutation_start
+        ),
+    )
+
+
+async def _dispatch_delete_artifact(io: GitHubWorkflowIO, args: tuple[object, ...]) -> None:
+    number, artifact_number = int_argument(args[0]), int_argument(args[1])
+    await io._with_client(
+        GitHubOperation.DELETE_ARTIFACT,
+        lambda client: delete_artifact(
+            client, io.repository.repository, number, artifact_number, io._pace_mutation_start
+        ),
+    )
+
+
 _OPERATION_HANDLERS: dict[GitHubOperation, Callable[[GitHubWorkflowIO, tuple[object, ...]], Awaitable[Any]]] = {
     GitHubOperation.OPEN_ISSUE: _dispatch_open_issue,
     GitHubOperation.UPDATE_ISSUE: _dispatch_update_issue,
@@ -869,6 +979,11 @@ _OPERATION_HANDLERS: dict[GitHubOperation, Callable[[GitHubWorkflowIO, tuple[obj
     GitHubOperation.READ_COMMENTS_UPDATED_SINCE: _dispatch_read_comments_updated_since,
     GitHubOperation.CREATE_COMMENT: _dispatch_create_comment,
     GitHubOperation.UPDATE_COMMENT: _dispatch_update_comment,
+    GitHubOperation.LIST_ARTIFACTS: _dispatch_list_artifacts,
+    GitHubOperation.READ_ARTIFACT: _dispatch_read_artifact,
+    GitHubOperation.CREATE_ARTIFACT: _dispatch_create_artifact,
+    GitHubOperation.UPDATE_ARTIFACT: _dispatch_update_artifact,
+    GitHubOperation.DELETE_ARTIFACT: _dispatch_delete_artifact,
 }
 
 
