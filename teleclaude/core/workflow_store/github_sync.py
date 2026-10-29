@@ -15,6 +15,8 @@ from teleclaude.core.todos_db._adapter import TodosDb
 from teleclaude.core.todos_db._github_artifacts import (
     any_republication_pending,
     clear_artifact_deletion,
+    clear_republication_item,
+    mark_foreign_pending,
     owed_artifact_deletions,
     save_committed_artifacts,
 )
@@ -153,17 +155,17 @@ class GitHubWorkflowSync:
             issues, comments_by_issue, self.assignment.actor.login
         )
 
-        resolved: list[tuple[GitHubIssue, GitHubComment, WorkingCopyItemSnapshot, ItemRevision]] = []
-        for issue, _record, record_comment, revision in updates:
+        resolved: list[tuple[GitHubIssue, GitHubComment, WorkingCopyItemSnapshot, ItemRevision, bool]] = []
+        for issue, record, record_comment, revision in updates:
             snapshot = await self._snapshot_from_revision(issue.number, revision)
-            resolved.append((issue, record_comment, snapshot, revision))
+            resolved.append((issue, record_comment, snapshot, revision, record.native_artifacts))
 
         ledger_comment_id = max((comment.database_id for _entry, comment in ledger_entries), default=None)
         issue_watermark = latest_issue_timestamp(issues)
 
         def restore(session: Session) -> None:
             defer_foreign_keys(session)
-            for issue, record_comment, snapshot, revision in resolved:
+            for issue, record_comment, snapshot, revision, native in resolved:
                 restore_item_snapshot(session, snapshot)
                 save_item_bookkeeping(
                     session,
@@ -175,7 +177,7 @@ class GitHubWorkflowSync:
                     revision=revision.revision,
                     base_revision=revision.revision,
                 )
-                save_committed_artifacts(session, snapshot.item_id, committed_artifacts(revision))
+                _mirror_record(session, snapshot.item_id, revision, native)
                 clear_item_unverifiable(session, snapshot.item_id)
                 owe_restored_item(session, snapshot.item_id, issue.number, snapshot)
             adopt_ledger_entries(session, ledger_entries)
@@ -213,16 +215,16 @@ class GitHubWorkflowSync:
         ledger_issue, ledger_entries, updates = _select_rebuild_records(
             issues, comments_by_issue, self.assignment.actor.login
         )
-        resolved: list[tuple[GitHubIssue, GitHubComment, WorkingCopyItemSnapshot, ItemRevision]] = []
-        for issue, _record, record_comment, revision in updates:
+        resolved: list[tuple[GitHubIssue, GitHubComment, WorkingCopyItemSnapshot, ItemRevision, bool]] = []
+        for issue, record, record_comment, revision in updates:
             snapshot = self._snapshot_from_revision_sync(issue.number, revision)
-            resolved.append((issue, record_comment, snapshot, revision))
+            resolved.append((issue, record_comment, snapshot, revision, record.native_artifacts))
         ledger_comment_id = max((comment.database_id for _entry, comment in ledger_entries), default=None)
         issue_watermark = latest_issue_timestamp(issues)
         with self.store._sync_session() as session:
             with session.begin():
                 defer_foreign_keys(session)
-                for issue, record_comment, snapshot, revision in resolved:
+                for issue, record_comment, snapshot, revision, native in resolved:
                     restore_item_snapshot(session, snapshot)
                     save_item_bookkeeping(
                         session,
@@ -234,7 +236,7 @@ class GitHubWorkflowSync:
                         revision=revision.revision,
                         base_revision=revision.revision,
                     )
-                    save_committed_artifacts(session, snapshot.item_id, committed_artifacts(revision))
+                    _mirror_record(session, snapshot.item_id, revision, native)
                     owe_restored_item(session, snapshot.item_id, issue.number, snapshot)
                 adopt_ledger_entries(session, ledger_entries)
                 for entry, comment in ledger_entries:
@@ -312,7 +314,7 @@ class GitHubWorkflowSync:
                 save_item_issue_id(session, item_id, issue_id)
             for item_id, reason in unverifiable:
                 mark_item_unverifiable(session, item_id, reason)
-            for issue, record_comment, revision, snapshot, collected_base_revision in remote_updates:
+            for issue, record_comment, revision, snapshot, collected_base_revision, native in remote_updates:
                 current_bookkeeping = item_bookkeeping(session, snapshot.item_id)
                 current_base_revision = (
                     _int_or_none(current_bookkeeping.get(WorkflowField.BASE_REVISION))
@@ -348,7 +350,7 @@ class GitHubWorkflowSync:
                     revision=revision.revision,
                     base_revision=revision.revision,
                 )
-                save_committed_artifacts(session, snapshot.item_id, committed_artifacts(revision))
+                _mirror_record(session, snapshot.item_id, revision, native)
                 clear_item_unverifiable(session, snapshot.item_id)
                 owe_restored_item(session, snapshot.item_id, issue.number, snapshot)
             adopt_ledger_entries(session, all_ledger)
@@ -472,7 +474,10 @@ class GitHubWorkflowSync:
         await self._run_async_transaction(mark_finished)
 
     async def _backfill_issue_comments(self, issue: GitHubIssue, comments: Sequence[GitHubComment]) -> None:
-        """Give the issue's record and ledger comments their readable envelope; the machine payload stays exact."""
+        """Give the issue's record and ledger comments their readable envelope; the machine payload stays exact.
+
+        A record whose state is an issue artifact keeps the envelope it has: rendering one needs that state.
+        """
         bot_login = self.assignment.actor.login
         for comment in comments:
             if comment.author != bot_login:
@@ -484,6 +489,8 @@ class GitHubWorkflowSync:
             if has_record_marker(trusted):
                 record = parse_record_comment(trusted)
                 revision = record.pending.revision if record.pending is not None else record.committed
+                if revision.state_content_pointer is not None:
+                    continue
                 replacement = reenvelope_record_comment(trusted, record, _effective_state_mapping(revision))
             elif has_ledger_marker(trusted):
                 replacement = reenvelope_ledger_comment(trusted, parse_ledger_commit(trusted))
@@ -509,14 +516,14 @@ class GitHubWorkflowSync:
         ledger_entries: Sequence[tuple[LedgerCommit, GitHubComment]],
         committed_transactions: set[str],
     ) -> tuple[
-        list[tuple[GitHubIssue, GitHubComment, ItemRevision, WorkingCopyItemSnapshot, int]],
+        list[tuple[GitHubIssue, GitHubComment, ItemRevision, WorkingCopyItemSnapshot, int, bool]],
         list[tuple[str, str]],
         dict[str, tuple[int, WorkingCopyItemSnapshot]],
     ]:
         candidate_numbers = {issue.number for issue in issues if issue.creator == self.assignment.actor.login}
         candidate_numbers.update(item.issue_number for entry, _comment in ledger_entries for item in entry.items)
         issue_by_number = {issue.number: issue for issue in issues}
-        updates: list[tuple[GitHubIssue, GitHubComment, ItemRevision, WorkingCopyItemSnapshot, int]] = []
+        updates: list[tuple[GitHubIssue, GitHubComment, ItemRevision, WorkingCopyItemSnapshot, int, bool]] = []
         unverifiable: list[tuple[str, str]] = []
         reflection_overrides: dict[str, tuple[int, WorkingCopyItemSnapshot]] = {}
         for issue_number in sorted(candidate_numbers):
@@ -534,10 +541,14 @@ class GitHubWorkflowSync:
                 if item_id is not None:
                     unverifiable.append((item_id, reason))
                 continue
-            if record is None or record_comment is None or not record.native_artifacts:
+            if record is None or record_comment is None:
                 continue
             revision = effective_revision(record, committed_transactions)
             if not is_repository_work(revision.state):
+                continue
+            if not record.native_artifacts and (
+                not _legacy_restorable(revision) or await self._item_id_for_issue(issue_number) is not None
+            ):
                 continue
             trusted = trusted_body(record_comment, self.assignment.actor.login)
             if trusted is not None and record_comment.body != trusted:
@@ -555,7 +566,7 @@ class GitHubWorkflowSync:
                 continue
             if purged:
                 reflection_overrides[revision.item_id] = (issue.number, snapshot)
-            updates.append((issue, record_comment, revision, snapshot, base_revision))
+            updates.append((issue, record_comment, revision, snapshot, base_revision, record.native_artifacts))
         return updates, unverifiable, reflection_overrides
 
     async def _record_comments(self, issue_number: int) -> Sequence[GitHubComment]:
@@ -741,9 +752,9 @@ def _select_rebuild_records(
         record, record_comment = _find_record(comments_by_issue.get(issue.number, ()), bot_login, issue.number)
         if record is None or record_comment is None:
             continue
-        if not record.native_artifacts:
-            continue
         revision = effective_revision(record, committed_ids)
+        if not record.native_artifacts and not _legacy_restorable(revision):
+            continue
         if not is_repository_work(revision.state):
             continue
         if revision.todo.get(WorkflowField.STATUS) == WorkflowTodoStatus.PURGED:
@@ -788,6 +799,24 @@ def _find_record_for_refresh(
     except GitHubWorkflowSyncRefused:
         return None, None, _RECORD_UNVERIFIABLE
     return record, comment, None
+
+
+def _legacy_restorable(revision: ItemRevision) -> bool:
+    """Whether a record that predates native artifacts still names the item completely without its content."""
+    return revision.state is None or isinstance(revision.state.get(WorkflowField.STATE), str)
+
+
+def _mirror_record(session: Session, item_id: str, revision: ItemRevision, native: bool) -> None:
+    """Mirror an adopted record: a native one names the item's artifacts and ends any wait for republication.
+
+    A record that predates native artifacts names none; its item is held, with no content here, until the
+    computer that holds the content republishes it.
+    """
+    if native:
+        save_committed_artifacts(session, item_id, committed_artifacts(revision))
+        clear_republication_item(session, item_id)
+    else:
+        mark_foreign_pending(session, item_id)
 
 
 def _effective_state_mapping(revision: ItemRevision) -> Mapping[str, object]:

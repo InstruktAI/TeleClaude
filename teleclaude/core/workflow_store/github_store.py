@@ -27,11 +27,11 @@ from teleclaude.core.todos_db._adapter import TodosDb
 from teleclaude.core.todos_db._github_artifacts import (
     ArtifactFact,
     EntryRow,
-    any_republication_pending,
     artifact_address,
     committed_entries,
     issue_artifacts_fact,
     keep_hydrated_version,
+    local_republication_pending,
     read_republication_wait,
     save_issue_artifacts_fact,
 )
@@ -63,6 +63,7 @@ from teleclaude.core.workflow_store.github_board_io import GitHubBoardIO
 from teleclaude.core.workflow_store.github_board_queue import repair_owed_board_items
 from teleclaude.core.workflow_store.github_board_setup import BoardRepairOutcome, BoardSetupCause, GitHubBoardSetup
 from teleclaude.core.workflow_store.github_io import GitHubMutationPacing, GitHubWorkflowIO
+from teleclaude.core.workflow_store.github_io_models import GitHubArtifactType
 from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused
 from teleclaude.core.workflow_store.github_pull_request_io import GitHubPullRequestIO
 from teleclaude.core.workflow_store.github_push import GitHubWorkflowPush
@@ -106,7 +107,6 @@ _IN_MEMORY_ENGINE_URL = "sqlite://"
 _ACTIVE_RUNNER = "active_runner"
 _BOARD_SETUP_FAILED = "github_store_board_setup_failed"
 _ITEM_ID = "item_id"
-_PROBE_ARTIFACT_TYPE = "link"
 _PROBE_PAGE_SIZE = 1
 _LEDGER_ISSUE_NUMBER = "SELECT ledger_issue_number FROM github_repository WHERE singleton = 1"
 _ANY_ITEM_ISSUE_NUMBER = "SELECT issue_number FROM github_item WHERE issue_number IS NOT NULL LIMIT 1"
@@ -239,7 +239,7 @@ class GitHubWorkflowStore(TodosDb):
         if fact is ArtifactFact.SERVED or target is None:
             return
         try:
-            await self._io.async_list_artifacts(target, _PROBE_ARTIFACT_TYPE, _PROBE_PAGE_SIZE)
+            await self._io.async_list_artifacts(target, GitHubArtifactType.LINK, _PROBE_PAGE_SIZE)
         except GitHubIORefused as refused:
             if refused.reason is GitHubIOFailure.ISSUE_ARTIFACTS_UNAVAILABLE:
                 await self._record_fact(ArtifactFact.NOT_SERVED)
@@ -259,7 +259,7 @@ class GitHubWorkflowStore(TodosDb):
         if fact is ArtifactFact.SERVED or target is None:
             return
         try:
-            self._io.list_artifacts(target, _PROBE_ARTIFACT_TYPE, _PROBE_PAGE_SIZE)
+            self._io.list_artifacts(target, GitHubArtifactType.LINK, _PROBE_PAGE_SIZE)
         except GitHubIORefused as refused:
             if refused.reason is GitHubIOFailure.ISSUE_ARTIFACTS_UNAVAILABLE:
                 self._record_fact_sync(ArtifactFact.NOT_SERVED)
@@ -651,7 +651,7 @@ async def refresh_github_workflow_store(
     requested at all, not even to resolve the store. `republish` lets this refresh also publish the items whose
     record predates native artifacts; only the computer that works the project passes it.
     """
-    if _republication_held(project_root_or_cwd):
+    if republication_held(project_root_or_cwd):
         return 0
     store = cast(GitHubWorkflowStore, await get_github_workflow_store(project_root_or_cwd))
     try:
@@ -661,7 +661,7 @@ async def refresh_github_workflow_store(
     return await store.refresh_working_copy(republish=republish)
 
 
-def _republication_held(project_root_or_cwd: str | Path) -> bool:
+def republication_held(project_root_or_cwd: str | Path) -> bool:
     """Whether a throttle met by republication still holds the project's automatic refresh.
 
     Reads only the existing working copy, with no writer, rebuild or provider call.
@@ -678,13 +678,13 @@ def _republication_held(project_root_or_cwd: str | Path) -> bool:
 
 
 def republication_owed(project_root_or_cwd: str | Path) -> bool:
-    """Whether the project's working copy holds items whose record predates native artifacts."""
+    """Whether the project's working copy holds items it can republish: their record predates native artifacts."""
     path = github_working_copy_path(resolve_github_store_selection(project_root_or_cwd)[0])
     if not path.is_file():
         return False
     try:
         with _open_working_copy_read_only(path) as session:
-            return any_republication_pending(session)
+            return local_republication_pending(session)
     except DBAPIError:
         return False
 

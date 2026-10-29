@@ -42,9 +42,6 @@ __all__ = ["GitHubRepublication"]
 
 _FIRST_PAUSE = timedelta(minutes=1)
 _LONGEST_PAUSE = timedelta(hours=1)
-_ITEM_REPUBLISHED = "github_store_item_republished"
-_REPUBLICATION_REFUSED = "github_store_republication_refused"
-_REPUBLICATION_THROTTLED = "github_store_republication_throttled"
 logger = get_logger(__name__)
 
 
@@ -73,7 +70,7 @@ class GitHubRepublication:
             order = await session.run_sync(republication_order)
         if not order:
             return
-        async with self.io.paced_mutations() as pacing:
+        async with self.io.paced_mutations(lifts_push_deadline=False) as pacing:
             for item_id in order:
                 try:
                     await self._republish(item_id)
@@ -81,7 +78,7 @@ class GitHubRepublication:
                     if refused.reason is GitHubIOFailure.RATE_LIMITED:
                         await self._record_throttle(refused)
                         raise
-                    logger.warning(_REPUBLICATION_REFUSED, item_id=item_id, reason=refused.reason.value)
+                    logger.warning("github_store_republication_refused", item_id=item_id, reason=refused.reason.value)
                     return
                 await pacing.wait_between_items()
 
@@ -115,7 +112,7 @@ class GitHubRepublication:
             numbers[name] = artifact.number
             await self._transaction(_record_save, item_id, name, version_id, digest, artifact.number)
         await self._finalize(item_id)
-        logger.debug(_ITEM_REPUBLISHED, item_id=item_id, issue_number=issue_number)
+        logger.debug("github_store_item_republished", item_id=item_id, issue_number=issue_number)
 
     async def _finalize(self, item_id: str) -> None:
         """Commit the item's record through the ordinary push, marked as the item's republication."""
@@ -139,7 +136,9 @@ class GitHubRepublication:
             pause = min(max(timedelta(seconds=held.backoff_seconds * 2), _FIRST_PAUSE), _LONGEST_PAUSE)
             wait = RepublicationWait(now + pause, int(pause.total_seconds()))
         await self._transaction(save_republication_wait, wait)
-        logger.warning(_REPUBLICATION_THROTTLED, not_before=wait.not_before.isoformat() if wait.not_before else None)
+        logger.warning(
+            "github_store_republication_throttled", not_before=wait.not_before.isoformat() if wait.not_before else None
+        )
 
     async def _transaction(self, operation: Callable[..., None], *arguments: object) -> None:
         async with self.store._session() as session:

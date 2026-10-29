@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 
 
 @dataclass(frozen=True)
@@ -37,12 +38,21 @@ class GitHubActor:
     login: str
 
 
+class GitHubArtifactType(StrEnum):
+    """The kinds of issue artifact; GitHub fixes a type at creation."""
+
+    GENERIC = "generic"
+    PLAN = "plan"
+    EMBEDDED_HTML = "embedded_html"
+    LINK = "link"
+
+
 @dataclass(frozen=True)
 class GitHubArtifact:
     """One issue artifact: its address on the issue, its current body and the accounts that touched it."""
 
     number: int
-    artifact_type: str
+    artifact_type: GitHubArtifactType
     name: str
     body: str
     creator: GitHubActor | None

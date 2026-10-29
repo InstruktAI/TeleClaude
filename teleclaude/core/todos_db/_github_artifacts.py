@@ -36,6 +36,8 @@ __all__ = [
     "initialize_artifact_bookkeeping",
     "issue_artifacts_fact",
     "keep_hydrated_version",
+    "local_republication_pending",
+    "mark_foreign_pending",
     "mark_pending_item",
     "mark_republication_requested",
     "owed_artifact_deletions",
@@ -67,7 +69,7 @@ _ENTRY_DDL = (
 )
 _PENDING_DDL = (
     "CREATE TABLE IF NOT EXISTS github_republication_pending (item_id TEXT PRIMARY KEY, "
-    "requested INTEGER NOT NULL DEFAULT 0)"
+    "requested INTEGER NOT NULL DEFAULT 0, local_content INTEGER NOT NULL DEFAULT 1)"
 )
 _PROGRESS_DDL = (
     "CREATE TABLE IF NOT EXISTS github_republication_progress (item_id TEXT NOT NULL, name TEXT NOT NULL, "
@@ -79,10 +81,13 @@ _DELETION_DDL = (
     "artifact_number INTEGER NOT NULL, PRIMARY KEY(issue_number, artifact_number))"
 )
 _PENDING_PRESENT_SQL = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'github_republication_pending'"
-# Every item the copy already holds on GitHub carries a record that predates native artifacts.
+# Every repository-work item the copy already holds on GitHub carries a record that predates native artifacts. An item
+# that is not repository work (a task, or a creative-track item) keeps its issue but is never published as work.
 _SEED_PENDING_SQL = (
     "INSERT OR IGNORE INTO github_republication_pending(item_id) SELECT i.item_id FROM github_item AS i "
-    "WHERE i.issue_number IS NOT NULL AND i.item_id IN (SELECT CAST(id AS TEXT) FROM todo)"
+    "JOIN todo AS t ON CAST(t.id AS TEXT) = i.item_id LEFT JOIN todo_state AS s ON CAST(s.id AS TEXT) = i.item_id "
+    "WHERE i.issue_number IS NOT NULL AND (s.state IS NULL OR NOT json_valid(s.state) OR ("
+    "json_extract(s.state, '$.kind') IS NOT 'task' AND (SELECT COUNT(*) FROM json_each(s.state, '$.creative')) = 0))"
 )
 _RETIRED_CONTENT_TABLE_SQL = "DROP TABLE IF EXISTS github_artifact_content"
 
@@ -148,10 +153,17 @@ class _Sql(StrEnum):
     )
     PENDING = "SELECT 1 FROM github_republication_pending WHERE item_id = :item_id"
     ANY_PENDING = "SELECT 1 FROM github_republication_pending LIMIT 1"
+    LOCAL_PENDING = "SELECT 1 FROM github_republication_pending WHERE local_content = 1 LIMIT 1"
+    FOREIGN_PENDING = (
+        "INSERT OR IGNORE INTO github_republication_pending(item_id, requested, local_content) VALUES (:item_id, 0, 0)"
+    )
+    ENTRY_LINKED = (
+        "SELECT version_id FROM github_artifact_entry WHERE item_id = :item_id AND name = :name AND ordinal = :ordinal"
+    )
     ORDER = (
         "SELECT p.item_id, p.requested, i.issue_number, s.state FROM github_republication_pending AS p "
         "LEFT JOIN github_item AS i ON i.item_id = p.item_id "
-        "LEFT JOIN todo_state AS s ON CAST(s.id AS TEXT) = p.item_id"
+        "LEFT JOIN todo_state AS s ON CAST(s.id AS TEXT) = p.item_id WHERE p.local_content = 1"
     )
     REQUESTED = "UPDATE github_republication_pending SET requested = 1 WHERE item_id = :item_id"
     CLEAR_PENDING = "DELETE FROM github_republication_pending WHERE item_id = :item_id"
@@ -306,6 +318,20 @@ def any_republication_pending(session: Session) -> bool:
     return session.execute(text(_Sql.ANY_PENDING)).first() is not None
 
 
+def local_republication_pending(session: Session) -> bool:
+    """Whether some pending item's content is held by this copy, so this copy can republish it."""
+    return session.execute(text(_Sql.LOCAL_PENDING)).first() is not None
+
+
+def mark_foreign_pending(session: Session, item_id: str) -> None:
+    """Hold an item whose record predates native artifacts but whose content this copy never held.
+
+    Its writes are refused as awaiting republication; the computer that holds the content republishes it, and
+    adopting that committed record clears the hold.
+    """
+    session.execute(text(_Sql.FOREIGN_PENDING), {_Field.ITEM_ID: item_id})
+
+
 def republication_order(session: Session) -> tuple[str, ...]:
     """The pending items in the order republication takes them: requested, then with a live claim, then by issue."""
     rows = session.execute(text(_Sql.ORDER)).all()
@@ -414,7 +440,16 @@ def read_republication_wait(session: Session) -> RepublicationWait:
 
 
 def keep_hydrated_version(session: Session, item_id: str, entry: EntryRow, content: str) -> None:
-    """Keep a named version read back from GitHub as a local row, without making the item look changed."""
+    """Keep a named version read back from GitHub as a local row, without making the item look changed.
+
+    The entry is read again under the writer: a concurrent reader may have kept it already, and a second row would
+    be an unlinked copy of committed history that the next write would save as a new version.
+    """
+    linked = session.execute(
+        text(_Sql.ENTRY_LINKED), {_Field.ITEM_ID: item_id, _Field.NAME: entry.name, _Field.ORDINAL: entry.ordinal}
+    ).scalar_one_or_none()
+    if linked is not None:
+        return
     with capture_suppressed(session):
         session.execute(
             text(_Sql.INSERT_VERSION),

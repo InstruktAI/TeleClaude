@@ -14,6 +14,7 @@ from teleclaude.core.workflow_store.github_io_models import (
     GitHubActor,
     GitHubArtifact,
     GitHubArtifactHistory,
+    GitHubArtifactType,
     GitHubArtifactVersion,
 )
 from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused, split_repository
@@ -30,7 +31,6 @@ _PAGE_SIZE = 100
 _EMPTY = ""
 _ARTIFACTS_PATH = "/repos/{}/{}/issues/{}/artifacts"
 _ARTIFACT_PATH = "/repos/{}/{}/issues/{}/artifacts/{}"
-_ARTIFACT_API_VERSION = "2026-03-10"
 _ARTIFACT_NOT_SERVED = (404, 410)
 _TIMESTAMP_UTC_SUFFIX = "Z"
 _TIMESTAMP_UTC_OFFSET = "+00:00"
@@ -43,12 +43,12 @@ class _Verb(StrEnum):
     DELETE = "DELETE"
 
 
-_HEADERS = {GitHubField.API_VERSION_HEADER.value: _ARTIFACT_API_VERSION}
+_HEADERS = {GitHubField.API_VERSION_HEADER.value: "2026-03-10"}
 Pace = Callable[[], Awaitable[None]]
 
 
 async def list_artifacts(
-    client: Any, repository: str, number: int, artifact_type: str | None, first_page_size: int | None
+    client: Any, repository: str, number: int, artifact_type: GitHubArtifactType | None, first_page_size: int | None
 ) -> tuple[GitHubArtifact, ...]:
     """List an issue's artifacts with their current bodies; `first_page_size` reads that many in one request."""
     path = _collection_path(repository, number)
@@ -87,7 +87,7 @@ async def read_artifact(client: Any, repository: str, number: int, artifact_numb
 
 
 async def create_artifact(
-    client: Any, repository: str, number: int, artifact_type: str, name: str, body: str, pace: Pace
+    client: Any, repository: str, number: int, artifact_type: GitHubArtifactType, name: str, body: str, pace: Pace
 ) -> GitHubArtifact:
     await pace()
     try:
@@ -129,7 +129,7 @@ def _item_path(repository: str, number: int, artifact_number: int) -> str:
 
 
 def _collection_refusal(error: RequestFailed) -> GitHubIORefused | RequestFailed:
-    """A repository that does not serve artifacts answers a collection read or create with 404 or 410."""
+    """A repository that does not serve artifacts refuses a collection read or create with one of these statuses."""
     if error.response.status_code in _ARTIFACT_NOT_SERVED:
         return GitHubIORefused(GitHubIOFailure.ISSUE_ARTIFACTS_UNAVAILABLE)
     return error
@@ -160,9 +160,13 @@ def _artifact(entry: object) -> GitHubArtifact:
     body = entry.get(GitHubField.BODY)
     if not isinstance(number, int) or not isinstance(artifact_type, str) or not isinstance(name, str):
         raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE)
+    try:
+        kind = GitHubArtifactType(artifact_type)
+    except ValueError:
+        raise GitHubIORefused(GitHubIOFailure.UNAVAILABLE) from None
     return GitHubArtifact(
         number,
-        artifact_type,
+        kind,
         name,
         body if isinstance(body, str) else _EMPTY,
         _actor(entry.get(GitHubField.CREATOR)),

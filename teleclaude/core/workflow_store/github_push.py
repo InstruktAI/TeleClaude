@@ -53,13 +53,11 @@ from teleclaude.core.workflow_store.github_artifact_values import (
     append_entry,
     artifact_type,
     content_digest,
-    current_version_content,
 )
 from teleclaude.core.workflow_store.github_board_io import GitHubBoardIO
 from teleclaude.core.workflow_store.github_board_queue import dispatch_staged_board_items, stage_board_reflections
 from teleclaude.core.workflow_store.github_conflict_refresh import ConflictRefreshScheduler
 from teleclaude.core.workflow_store.github_io import (
-    GitHubArtifactHistory,
     GitHubComment,
     GitHubOperation,
     GitHubWorkflowIO,
@@ -101,7 +99,6 @@ from teleclaude.core.workflow_store.github_record import (
     render_record_comment,
     trusted_comment_body,
 )
-from teleclaude.core.workflow_store.github_reflection import INPUT_ARTIFACT_NAME
 from teleclaude.core.workflow_store.github_reflection_queue import (
     dispatch_staged_pull_requests,
     dispatch_staged_reflections,
@@ -354,11 +351,16 @@ class GitHubWorkflowPush:
         if item_unverifiable(session, item_id):
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
         finalizing = session.info.get(REPUBLICATION_FINALIZING_KEY) == item_id
-        if republication_pending(session, item_id) and not finalizing:
-            session.info.setdefault(REQUESTED_ITEMS_KEY, set()).add(item_id)
-            raise GitHubIORefused(GitHubIOFailure.AWAITING_REPUBLICATION)
         unlink_missing_versions(session, item_id)
         snapshot = item_snapshot(session, item_id, unpushed_only=True)
+        if (
+            snapshot is not None
+            and _github_reflection.is_repository_work(snapshot.state)
+            and republication_pending(session, item_id)
+            and not finalizing
+        ):
+            session.info.setdefault(REQUESTED_ITEMS_KEY, set()).add(item_id)
+            raise GitHubIORefused(GitHubIOFailure.AWAITING_REPUBLICATION)
         bookkeeping = item_bookkeeping(session, item_id)
         issue_number = _int_or_none(bookkeeping.get(WorkflowField.ISSUE_NUMBER)) if bookkeeping else None
         issue_id = _int_or_none(bookkeeping.get(WorkingCopyField.ISSUE_ID)) if bookkeeping else None
@@ -397,9 +399,6 @@ class GitHubWorkflowPush:
         if snapshot is None:
             if old_revision is None or issue_number is None or node_id is None:
                 return None
-            input_content = self._read_artifact_content(
-                session, issue_number, old_revision.artifacts.get(INPUT_ARTIFACT_NAME)
-            )
             todo_row = {**old_revision.todo, WorkflowField.STATUS: WorkflowTodoStatus.PURGED}
             revision = old_revision.model_copy(
                 update={
@@ -412,7 +411,7 @@ class GitHubWorkflowPush:
                 todo=todo_row,
                 state=old_revision.state,
                 dependencies=tuple(old_revision.dependencies),
-                artifacts=({WorkflowField.NAME: INPUT_ARTIFACT_NAME, WorkflowField.CONTENT: input_content},),
+                artifacts=(),
                 versions=(),
             )
             return snapshot, issue_number, issue_id, node_id, base_revision, revision, old_record, record_comment_id
@@ -473,15 +472,22 @@ class GitHubWorkflowPush:
             if name is None or not isinstance(content, str):
                 raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
             record = records.get(name)
-            if record is None or not record.present:
+            artifact = None
+            recreated = False
+            if record is not None and record.present:
+                try:
+                    artifact = _io_call(
+                        session, self.io, GitHubOperation.UPDATE_ARTIFACT, issue_number, record.artifact_number, content
+                    )
+                except GitHubIORefused as refused:
+                    if refused.reason is not GitHubIOFailure.NOT_FOUND:
+                        raise
+                    recreated = True
+            if artifact is None:
                 artifact = _io_call(
                     session, self.io, GitHubOperation.CREATE_ARTIFACT, issue_number, artifact_type(name), name, content
                 )
-            else:
-                artifact = _io_call(
-                    session, self.io, GitHubOperation.UPDATE_ARTIFACT, issue_number, record.artifact_number, content
-                )
-            records[name] = append_entry(record, artifact.number, version)
+            records[name] = append_entry(record, artifact.number, version, recreated=recreated)
         if snapshot.versions and issue_artifacts_fact(session) is not ArtifactFact.SERVED:
             save_issue_artifacts_fact(session, ArtifactFact.SERVED)
         return records
@@ -553,7 +559,7 @@ class GitHubWorkflowPush:
         content: str,
         prior: ArtifactRecord | None,
     ) -> ArtifactRecord:
-        """Keep a state too long for the record as the item's `workflow-state` issue artifact."""
+        """Keep a state too long for the record as an issue artifact of its own."""
         digest = content_digest(content)
         if prior is not None and prior.entries and prior.entries[-1].digest == digest:
             return prior
@@ -574,19 +580,6 @@ class GitHubWorkflowPush:
         return ArtifactRecord(
             artifact_number=artifact.number, entries=[ArtifactVersionEntry(ordinal=revision, digest=digest)]
         )
-
-    def _read_artifact_content(self, session: Session, issue_number: int, record: ArtifactRecord | None) -> str:
-        """The content a record's newest entry names, read from its issue artifact and trusted by its saver and digest."""
-        if record is None or not record.present or not record.entries:
-            return _EMPTY
-        history = cast(
-            GitHubArtifactHistory,
-            _io_call(session, self.io, GitHubOperation.READ_ARTIFACT, issue_number, record.artifact_number),
-        )
-        content = current_version_content(history.artifact, self.assignment.actor.id, record.entries[-1].digest)
-        if content is None:
-            raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-        return content
 
     def _item_record(
         self, session: Session, issue_number: int, comment_id: int
@@ -644,7 +637,8 @@ class GitHubWorkflowPush:
         if revision.state_content_pointer is not None and known_state_text is not None:
             state_text: str | None = known_state_text
         elif revision.state_content_pointer is not None:
-            state_text = self._read_artifact_content(session, issue_number, revision.state_content_pointer)
+            # Only a purged item's record reaches here, with no local state; it has no live state to render.
+            return {}
         else:
             state_text = (
                 _string_or_none(revision.state.get(WorkflowField.STATE)) if revision.state is not None else None
@@ -799,7 +793,7 @@ _SYNC_IO: dict[GitHubOperation, Callable[..., Any]] = {
 
 
 def _state_text(state: Mapping[str, object] | None) -> str | None:
-    """The full state text a snapshot carries, before a long state moves out to content comments."""
+    """The full state text a snapshot carries, before a long state moves out to its own issue artifact."""
     if state is None:
         return None
     return _string_or_none(state.get(WorkflowField.STATE))

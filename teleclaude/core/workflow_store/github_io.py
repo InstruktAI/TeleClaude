@@ -8,7 +8,6 @@ from concurrent.futures import Future
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta
-from enum import StrEnum
 from time import monotonic
 from typing import Any, TypeVar, cast
 
@@ -39,10 +38,12 @@ from teleclaude.core.workflow_store.github_io_fields import GitHubField
 from teleclaude.core.workflow_store.github_io_models import (
     GitHubArtifact,
     GitHubArtifactHistory,
+    GitHubArtifactType,
     GitHubComment,
     GitHubIssue,
     GitHubRepositoryScope,
 )
+from teleclaude.core.workflow_store.github_io_operation import GitHubOperation
 from teleclaude.core.workflow_store.github_io_runtime import GitHubMutationPacing, shared_github_io_loop
 from teleclaude.core.workflow_store.github_io_transport import (
     GitHubIOFailure,
@@ -82,36 +83,6 @@ __all__ = [
 ]
 
 
-class GitHubOperation(StrEnum):
-    """Closed set of provider operations used by sync and async callers."""
-
-    OPEN_ISSUE = "open_issue"
-    UPDATE_ISSUE = "update_issue"
-    ENSURE_LABEL = "ensure_label"
-    DELETE_LABEL = "delete_label"
-    LIST_ISSUES = "list_issues"
-    LIST_LABELS = "list_labels"
-    GET_ISSUE = "get_issue"
-    LIST_SUB_ISSUES = "list_sub_issues"
-    ADD_SUB_ISSUE = "add_sub_issue"
-    REMOVE_SUB_ISSUE = "remove_sub_issue"
-    GET_PARENT = "get_parent"
-    LIST_BLOCKED_BY = "list_blocked_by"
-    ADD_BLOCKED_BY = "add_blocked_by"
-    REMOVE_BLOCKED_BY = "remove_blocked_by"
-    READ_COMMENTS = "read_comments"
-    READ_COMMENT = "read_comment"
-    READ_COMMENTS_AFTER = "read_comments_after"
-    READ_COMMENTS_UPDATED_SINCE = "read_comments_updated_since"
-    CREATE_COMMENT = "create_comment"
-    UPDATE_COMMENT = "update_comment"
-    LIST_ARTIFACTS = "list_artifacts"
-    READ_ARTIFACT = "read_artifact"
-    CREATE_ARTIFACT = "create_artifact"
-    UPDATE_ARTIFACT = "update_artifact"
-    DELETE_ARTIFACT = "delete_artifact"
-
-
 _IssueUpdate = dict[GitHubField, str | list[str] | None]
 
 
@@ -124,21 +95,28 @@ class GitHubWorkflowIO:
         self.scope = GitHubRepositoryScope(repository.repository_id, repository.repository)
         self._transport = GitHubTransport(self.scope)
         self._pacing_window: GitHubMutationPacing | None = None
+        self._lifts_push_deadline = True
 
     @property
     def paced(self) -> bool:
-        """Whether a paced-mutation window (the GitHub store switch) is open on this IO."""
-        return self._pacing_window is not None
+        """Whether a migration holds a paced-mutation window that replaces the push deadline of writes on this IO."""
+        return self._pacing_window is not None and self._lifts_push_deadline
 
     @asynccontextmanager
-    async def paced_mutations(self) -> AsyncIterator[GitHubMutationPacing]:
-        """Pace mutative requests during one migration without changing ordinary traffic."""
+    async def paced_mutations(self, *, lifts_push_deadline: bool = True) -> AsyncIterator[GitHubMutationPacing]:
+        """Pace mutative requests during one background operation.
+
+        A migration owns every write while it runs and so lifts the push deadline. Background work that runs beside
+        ordinary callers (`lifts_push_deadline=False`) paces their mutations too but leaves their deadlines.
+        """
         window = GitHubMutationPacing(last_wait_ended=monotonic())
         self._pacing_window = window
+        self._lifts_push_deadline = lifts_push_deadline
         try:
             yield window
         finally:
             self._pacing_window = None
+            self._lifts_push_deadline = True
 
     async def async_open_issue(self, title: str, body: str) -> GitHubIssue:
         return cast(GitHubIssue, await self._call(GitHubOperation.OPEN_ISSUE, title, body))
@@ -324,7 +302,7 @@ class GitHubWorkflowIO:
         return cast(GitHubComment, self._sync(GitHubOperation.UPDATE_COMMENT, comment_id, body))
 
     async def async_list_artifacts(
-        self, number: int, artifact_type: str | None = None, first_page_size: int | None = None
+        self, number: int, artifact_type: GitHubArtifactType | None = None, first_page_size: int | None = None
     ) -> tuple[GitHubArtifact, ...]:
         """List an issue's artifacts with their current bodies."""
         return cast(
@@ -333,7 +311,7 @@ class GitHubWorkflowIO:
         )
 
     def list_artifacts(
-        self, number: int, artifact_type: str | None = None, first_page_size: int | None = None
+        self, number: int, artifact_type: GitHubArtifactType | None = None, first_page_size: int | None = None
     ) -> tuple[GitHubArtifact, ...]:
         return cast(
             tuple[GitHubArtifact, ...],
@@ -346,12 +324,14 @@ class GitHubWorkflowIO:
     def read_artifact(self, number: int, artifact_number: int) -> GitHubArtifactHistory:
         return cast(GitHubArtifactHistory, self._sync(GitHubOperation.READ_ARTIFACT, number, artifact_number))
 
-    async def async_create_artifact(self, number: int, artifact_type: str, name: str, body: str) -> GitHubArtifact:
+    async def async_create_artifact(
+        self, number: int, artifact_type: GitHubArtifactType, name: str, body: str
+    ) -> GitHubArtifact:
         return cast(
             GitHubArtifact, await self._call(GitHubOperation.CREATE_ARTIFACT, number, artifact_type, name, body)
         )
 
-    def create_artifact(self, number: int, artifact_type: str, name: str, body: str) -> GitHubArtifact:
+    def create_artifact(self, number: int, artifact_type: GitHubArtifactType, name: str, body: str) -> GitHubArtifact:
         return cast(GitHubArtifact, self._sync(GitHubOperation.CREATE_ARTIFACT, number, artifact_type, name, body))
 
     async def async_update_artifact(self, number: int, artifact_number: int, body: str) -> GitHubArtifact:
@@ -911,9 +891,16 @@ async def _dispatch_update_comment(io: GitHubWorkflowIO, args: tuple[object, ...
     return await io._update_comment(int_argument(args[0]), str(args[1]))
 
 
+def _artifact_type_argument(value: object) -> GitHubArtifactType:
+    try:
+        return GitHubArtifactType(str(value))
+    except ValueError:
+        raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED) from None
+
+
 async def _dispatch_list_artifacts(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
     number = int_argument(args[0])
-    artifact_type = None if args[1] is None else str(args[1])
+    artifact_type = None if args[1] is None else _artifact_type_argument(args[1])
     first_page_size = args[2] if isinstance(args[2], int) else None
     return await io._with_client(
         GitHubOperation.LIST_ARTIFACTS,
@@ -930,7 +917,12 @@ async def _dispatch_read_artifact(io: GitHubWorkflowIO, args: tuple[object, ...]
 
 
 async def _dispatch_create_artifact(io: GitHubWorkflowIO, args: tuple[object, ...]) -> Any:
-    number, artifact_type, name, body = int_argument(args[0]), str(args[1]), str(args[2]), str(args[3])
+    number, artifact_type, name, body = (
+        int_argument(args[0]),
+        _artifact_type_argument(args[1]),
+        str(args[2]),
+        str(args[3]),
+    )
     return await io._with_client(
         GitHubOperation.CREATE_ARTIFACT,
         lambda client: create_artifact(

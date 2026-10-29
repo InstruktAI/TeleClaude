@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping, Sequence
 
-from teleclaude.core.workflow_store.github_io_models import GitHubArtifact, GitHubArtifactVersion
+from teleclaude.core.workflow_store.github_io_models import GitHubArtifact, GitHubArtifactType, GitHubArtifactVersion
 from teleclaude.core.workflow_store.github_record import ArtifactRecord, ArtifactVersionEntry, WorkflowField
 
 __all__ = [
@@ -18,17 +18,15 @@ __all__ = [
     "version_entry_from_row",
 ]
 
-# GitHub serves the 30 newest versions of an artifact; a record names no more than that.
+# GitHub serves only the newest versions of an artifact; a record names no more than that.
 ENTRY_WINDOW = 30
 _ENCODING = "utf-8"
 _PLAN_ARTIFACTS = frozenset({"implementation-plan", "task-plan"})
-_PLAN_TYPE = "plan"
-_GENERIC_TYPE = "generic"
 
 
-def artifact_type(name: str) -> str:
+def artifact_type(name: str) -> GitHubArtifactType:
     """The issue-artifact type a workflow artifact is created with; GitHub fixes a type at creation."""
-    return _PLAN_TYPE if name in _PLAN_ARTIFACTS else _GENERIC_TYPE
+    return GitHubArtifactType.PLAN if name in _PLAN_ARTIFACTS else GitHubArtifactType.GENERIC
 
 
 def content_digest(content: str) -> str:
@@ -49,11 +47,20 @@ def version_entry_from_row(ordinal: int, row: Mapping[str, object]) -> ArtifactV
 
 
 def append_entry(
-    record: ArtifactRecord | None, artifact_number: int, entry_row: Mapping[str, object]
+    record: ArtifactRecord | None,
+    artifact_number: int,
+    entry_row: Mapping[str, object],
+    *,
+    recreated: bool = False,
 ) -> ArtifactRecord:
-    """The artifact's record after one more saved version: the next ordinal, the window of the newest entries."""
-    entries: Sequence[ArtifactVersionEntry] = record.entries if record is not None and record.present else ()
-    ordinal = entries[-1].ordinal + 1 if entries else 1
+    """The artifact's record after one more saved version: the next ordinal, the window of the newest entries.
+
+    A recreated artifact starts a history of its own but keeps counting from the ordinal it replaces, so the
+    versions the copy already named stay distinct from the new ones.
+    """
+    named: Sequence[ArtifactVersionEntry] = record.entries if record is not None and record.present else ()
+    entries = () if recreated else named
+    ordinal = (named[-1].ordinal if named else 0) + 1
     entry = version_entry_from_row(ordinal, entry_row)
     return ArtifactRecord(artifact_number=artifact_number, entries=[*entries, entry][-ENTRY_WINDOW:])
 

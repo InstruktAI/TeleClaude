@@ -198,7 +198,7 @@ class WorkflowRecord(ClosedModel):
 
     @property
     def native_artifacts(self) -> bool:
-        """Whether the record names its artifacts as native issue artifacts, which only schema 2 does."""
+        """Whether the record names its artifacts as native issue artifacts."""
         return self.schema_version == _NATIVE_SCHEMA
 
 
@@ -294,8 +294,7 @@ def reenvelope_record_comment(
 def parse_record_comment(body: str) -> WorkflowRecord:
     """Decode one platform record from its marker and validate its closed schema.
 
-    A schema-1 record kept artifact content in comments, which nothing reads any more: it parses with its content
-    pointers dropped, as a record whose item is not yet republished.
+    A schema-1 record parses with its content pointers dropped: its item is not yet republished.
     """
     values = json.loads(_marker_payload(body, _RECORD_MARKER))
     if isinstance(values, dict) and values.get(_SCHEMA_VERSION) == _LEGACY_SCHEMA:

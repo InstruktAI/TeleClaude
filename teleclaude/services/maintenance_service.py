@@ -63,7 +63,11 @@ from teleclaude.core.shutdown_drain import ShutdownRefusal, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.core.workflow_store.github_active_computer import read_active_computer
-from teleclaude.core.workflow_store.github_store import refresh_github_workflow_store, republication_owed
+from teleclaude.core.workflow_store.github_store import (
+    refresh_github_workflow_store,
+    republication_held,
+    republication_owed,
+)
 from teleclaude.core.workflow_store.selection import inspect_workflow_store_presence, selected_workflow_store_backend
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.core.workflow_store.types import StorePresenceKind
@@ -719,8 +723,10 @@ class MaintenanceService:
                 if selected_workflow_store_backend(project_root) is not TodoStoreBackend.GITHUB:
                     continue
                 started = perf_counter()
-                republish = republication_owed(project_root) and (
-                    await read_active_computer(project_root) == config.computer.name
+                republish = (
+                    not republication_held(project_root)
+                    and republication_owed(project_root)
+                    and await read_active_computer(project_root) == config.computer.name
                 )
                 refreshed_items = await refresh_github_workflow_store(
                     project_root, computer=config.computer.name, republish=republish
