@@ -41,9 +41,10 @@
     <string>/dev/null</string>
     <key>RunAtLoad</key>
     <true/>
-    <!-- The receiver exits with a failure status when the active release or the machine configuration changes,
-         and launchd starts it again; it exits cleanly, and stays stopped, when this computer is no longer the
-         ingress. -->
+    <!-- The receiver exits with a failure status when the active release changes or a machine configuration
+         change needs a restart, and launchd starts it again. On a computer that is no longer the ingress it exits
+         cleanly and is not restarted for that; a connection to the held socket can start it, and it exits before
+         serving. -->
     <key>KeepAlive</key>
     <dict>
         <key>SuccessfulExit</key>

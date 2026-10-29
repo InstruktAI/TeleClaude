@@ -11,9 +11,10 @@ Environment=PATH={{PATH}}
 Environment=UV_NO_SYNC=1
 Environment=XDG_DATA_HOME={{XDG_DATA_HOME}}
 ExecStart={{PYTHON_PATH}} -m teleclaude.hooks.ingress_receiver
-# The receiver exits with a failure status when the active release or the machine configuration changes, and
-# is started again while the socket stays open; it exits cleanly, and stays stopped, when this computer is no
-# longer the ingress.
+# The receiver exits with a failure status when the active release changes or a machine configuration change
+# needs a restart, and is started again while the socket stays open. On a computer that is no longer the ingress
+# it exits cleanly and is not restarted for that; a connection to the held socket can start it, and it exits
+# before serving.
 Restart=on-failure
 RestartSec=1
 StandardOutput=null

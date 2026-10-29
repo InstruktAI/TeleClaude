@@ -28,15 +28,17 @@ from teleclaude.config.declaration_changes import identity_declaration_watch_pat
 from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.machine import (
     config,
+    config_path,
     machine_configuration_sources,
     reload_config,
     restart_required_sections,
 )
+from teleclaude.core.config_validation_reports import ConfigValidationReports
 from teleclaude.core.config_watcher import ConfigWatcher
 from teleclaude.core.reconciliation.installation import loaded_release_revision, runs_active_release
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
 from teleclaude.events.processor import ensure_consumer_group
-from teleclaude.events.producer import EventProducer
+from teleclaude.events.producer import EventProducer, configure_producer
 from teleclaude.events.scope import EventScope
 from teleclaude.events.scoped_redis import close_scoped_clients, scoped_redis_clients
 from teleclaude.hooks.inbound import install_inbound_routes
@@ -56,6 +58,8 @@ _RELEASE_POLL_S: Final = 2.0
 # machine configuration that needs a restart changed. A clean exit (0) is not restarted by the unit; on a computer
 # that is not the ingress, a connection to the held socket can still start the receiver, which exits before serving.
 _RESTART_STATUS: Final = 75
+# The configuration name the daemon reports the machine configuration's validation under.
+_MACHINE_CONFIGURATION: Final = "machine"
 
 
 def build_receiver_app(producer: EventProducer) -> FastAPI:
@@ -109,8 +113,9 @@ async def _refresh_catalog() -> None:
 class _Receiver:
     """One receiver process: serves until stopped, and says whether its unit should start it again."""
 
-    def __init__(self, server: uvicorn.Server) -> None:
+    def __init__(self, server: uvicorn.Server, reports: ConfigValidationReports) -> None:
         self._server = server
+        self._reports = reports
         self.restart = False
 
     def stop(self, *, restart: bool) -> None:
@@ -142,8 +147,9 @@ class _Receiver:
             changed = reload_config()
         except ConfigLoadError as error:
             # The running configuration stays in force, as for the daemon (machine-config-load).
-            logger.warning("ingress_receiver_configuration_refused", error_kind=type(error).__name__)
+            await self._reports.refused(_MACHINE_CONFIGURATION, config_path, error)
             return
+        await self._reports.accepted(_MACHINE_CONFIGURATION, config_path)
         if not config.computer.is_ingress_node:
             logger.info("ingress_receiver_no_longer_ingress")
             self.stop(restart=False)
@@ -164,10 +170,12 @@ async def serve() -> int:
             await pending[0].machine_configuration_changed()
 
     machine = ConfigWatcher(machine_configuration_sources(), machine_changed)
+    reports = ConfigValidationReports()
     try:
         reload_config()
     except ConfigLoadError as error:
-        logger.warning("ingress_receiver_configuration_refused", error_kind=type(error).__name__)
+        # Startup keeps the configuration it loaded; the refusal is reported like any later one.
+        await reports.refused(_MACHINE_CONFIGURATION, config_path, error)
     if not config.computer.is_ingress_node:
         # Not the ingress: exit before serving; the next install or start removes this computer's receiver units.
         logger.warning("ingress_receiver_not_ingress_node")
@@ -177,6 +185,8 @@ async def serve() -> int:
         redis_clients=clients,
         fact_resolver=EnvelopeFactResolver(session_id=lambda: None, ownership_index=load_project_ownership_index),
     )
+    # Platform events this process reports (configuration refusals) go through its producer.
+    configure_producer(producer)
     tasks: list[asyncio.Task[None]] = []
     try:
         # This computer's relay group exists before the first relay, so its daemon reads every event relayed here.
@@ -185,7 +195,7 @@ async def serve() -> int:
         )
         listener, handed_over = _listening_socket()
         server = uvicorn.Server(uvicorn.Config(build_receiver_app(producer), log_level="warning"))
-        receiver = _Receiver(server)
+        receiver = _Receiver(server, reports)
         pending.append(receiver)
         # Ownership facts on relayed events come from the catalog, which this process keeps current itself.
         declarations = asyncio.create_task(ConfigWatcher(identity_declaration_watch_paths, _refresh_catalog).run())

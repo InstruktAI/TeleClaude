@@ -726,23 +726,24 @@ install_systemd_ingress_receiver() {
     # On demand or under --check the differences are named above and nothing is started.
     defer_service_changes && return 0
 
+    # Each step returns its failure itself: callers run this under a condition, where errexit does not apply.
     if $socket_deployed || $service_deployed; then
         log_info "Deployed ingress receiver systemd definition(s)"
-        _tc_sudo "reload systemd after deploying the ingress receiver" systemctl daemon-reload
+        _tc_sudo "reload systemd after deploying the ingress receiver" systemctl daemon-reload || return 1
     fi
     if $socket_deployed && systemctl is-active --quiet "${name}.socket"; then
         # A socket whose service runs refuses a restart; the service starts again on the new socket.
-        _tc_sudo "stop ${name}.service" systemctl stop "${name}.service"
-        _tc_sudo "restart ${name}.socket" systemctl restart "${name}.socket"
+        _tc_sudo "stop ${name}.service" systemctl stop "${name}.service" || return 1
+        _tc_sudo "restart ${name}.socket" systemctl restart "${name}.socket" || return 1
     fi
     if ! systemctl is-enabled --quiet "${name}.socket" || ! systemctl is-active --quiet "${name}.socket"; then
-        _tc_sudo "enable ${name}.socket" systemctl enable --now "${name}.socket"
+        _tc_sudo "enable ${name}.socket" systemctl enable --now "${name}.socket" || return 1
     fi
     if $service_deployed && systemctl is-active --quiet "${name}.service"; then
-        _tc_sudo "restart ${name}.service" systemctl restart "${name}.service"
+        _tc_sudo "restart ${name}.service" systemctl restart "${name}.service" || return 1
     fi
     if ! systemctl is-enabled --quiet "${name}.service" || ! systemctl is-active --quiet "${name}.service"; then
-        _tc_sudo "enable ${name}.service" systemctl enable --now "${name}.service"
+        _tc_sudo "enable ${name}.service" systemctl enable --now "${name}.service" || return 1
     fi
 }
 
@@ -771,12 +772,13 @@ install_launchd_ingress_receiver() {
 
     local domain
     domain="$(launchd_domain)"
+    # Each step returns its failure itself: callers run this under a condition, where errexit does not apply.
     if is_launchd_unit_loaded "$name"; then
         $deployed || return 0
         # A changed definition reloads the job, which closes and reopens its socket.
-        launchctl bootout "$domain/$name" 2>/dev/null || true
+        launchctl bootout "$domain/$name" || return 1
     fi
-    launchctl bootstrap "$domain" "$plist_file"
+    launchctl bootstrap "$domain" "$plist_file" || return 1
     log_info "Loaded ingress receiver: $plist_file"
 }
 
