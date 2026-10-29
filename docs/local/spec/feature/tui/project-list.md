@@ -30,8 +30,13 @@ workflow store once, under the computer its repository names as active
 (`local/projects/teleclaude/spec/feature/workflow/driver-admission`), however many
 computers list the project, as the viewer's own computer reads it from GitHub
 (`local/projects/teleclaude/spec/feature/workflow/fleet-todo-reads`). When another
-computer is made active, that work moves under that computer. The project's
-tasks and creative-track work stay under the computer that holds them.
+computer is made active, that work moves under that computer. The active
+computer is read from GitHub like the work itself: a named computer that is
+offline keeps the work under it, shown as offline; when the active computer
+cannot be read, the view keeps the one it last read, marked as not current, and
+when none was ever read, it says the active computer cannot be read, and why,
+and shows that work under no computer. The project's tasks and creative-track
+work stay under the computer that holds them.
 
 <!-- /planned:redis-claim-check-external-content -->
 
@@ -118,6 +123,14 @@ Scenario: Making another computer active moves the project
   Given an operator sees a GitHub-backed project under its active computer in the Preparation view
   When another computer is made the project's active computer
   Then the operator sees the project under that computer instead
+
+Scenario: The active computer cannot be read
+  Given a project whose todos are kept on GitHub
+  And its active computer cannot be read from GitHub
+  When an operator views the Preparation view
+  Then the operator sees the project under the active computer last read, marked as not current
+  Or, when none was ever read, is told the active computer cannot be read, and why
+  And the project's work kept on GitHub is shown under no other computer
 ```
 
 <!-- /planned:redis-claim-check-external-content -->

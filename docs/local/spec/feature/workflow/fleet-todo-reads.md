@@ -48,8 +48,9 @@ last read it revalidates that read instead of fetching it again. A computer read
 one GitHub repository once, however many of its peers serve the project.
 
 When GitHub cannot be read, the read says that the project's repository work
-cannot be read from GitHub, and why. It never shows another computer's copy in their
-place.
+cannot be read from GitHub, and why. A computer that has read that work from
+GitHub before shows its last read, marked as not current; one that never has
+shows nothing in its place. It never shows another computer's copy.
 
 ## Canonical fields
 
@@ -59,7 +60,8 @@ place.
   tasks and creative-track work.
 - **Consumer.** An explicit read, or a held subscription to todo or project
   changes. A computer with neither reads nothing from GitHub to show todos.
-- **Unreadable source.** The read says so and why; no other computer's copy
+- **Unreadable source.** The read says so and why. The computer's own last read
+  from GitHub stays shown, marked as not current; no other computer's copy
   stands in.
 
 ### Use cases
@@ -78,6 +80,7 @@ Scenario: GitHub cannot be read
   And GitHub cannot be read from the operator's computer
   When the operator views the project's repository work
   Then the operator is told that work cannot be read from GitHub, and why
+  And what the operator's computer last read from GitHub is shown as not current
   And no other computer's copy of it is shown
 ```
 
