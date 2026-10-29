@@ -271,8 +271,12 @@ working copy and the repository.
   own bookkeeping and never through a port identity. The item's **record** is
   one platform-authored comment on that issue, edited in place: the item's
   row facts, dependencies, workflow state, a revision counter and, for each
-  artifact, the number of its issue artifact and the digest of the version the
-  record commits. Each artifact is one issue artifact the platform App created
+  artifact, the number of its issue artifact and an entry for each of its
+  versions GitHub still serves, the newest being the version the record
+  commits. An entry carries the version's digest and the workflow writer and
+  creation time the working copy holds for it, because GitHub names only the
+  account that saved a version and when, and every version the platform saves
+  carries the platform App's account. Each artifact is one issue artifact the platform App created
   on the item's issue, its plans as
   `plan` artifacts and every other artifact as a `generic` document, and each
   version is one saved version of it, never edited once saved. The version a
@@ -463,9 +467,16 @@ master admits each conversation request before sending it:
   every item its working copy holds as repository work, each artifact's
   versions from the working copy, oldest first, as the versions of a new issue
   artifact, then writes the item's next record revision naming those
-  artifacts. It reads nothing from the content comments and leaves them on the
-  issue. Until an item is republished, its record is not read for content and
-  writes to the item republish it first.
+  artifacts, with each version's writer and creation time taken from the
+  working copy. It reads nothing from the content comments and leaves them on
+  the issue. It takes items whose claim is live first, then the rest, and
+  spaces its writes like every other repair write. Until an item is
+  republished, its record is not read for content, and a write to it is
+  refused before its transaction changes anything, with a cause saying the
+  item awaits republication and the write can be sent again; the repair
+  republishes that item next. Republication is never part of an ordinary
+  write, because an item's versions cannot be saved within the push
+  deadline.
 
 <!-- /planned:github-native-artifacts -->
 
@@ -617,8 +628,22 @@ master admits each conversation request before sending it:
   request is written from a thread no write depends on, within the admission
   budget.
 
+<!-- planned-change:github-native-artifacts -->
+
 - The working copy's reads never reach GitHub; only writes, rebuild and
   refresh do.
+
+<!-- change:github-native-artifacts -->
+
+- The working copy's reads never reach GitHub; only writes, rebuild, refresh
+  and one exception do: reading an artifact version, or a diff between two,
+  that a rebuilt working copy lacks reads that artifact's history from GitHub
+  once (Failure modes). The read holds no writer and runs under the I/O
+  thread's request serialization like any other request; the versions it
+  returns are then kept by a working-copy write that, like rebuild, pushes
+  nothing, under the store's admission budget.
+
+<!-- /planned-change:github-native-artifacts -->
 
 - A project has one board: only the computer holding the board issue's first
   board claim creates it, and every computer uses the board its entries
@@ -660,11 +685,17 @@ as an ordinary change, so the write path below publishes it.
 A project activates the GitHub store by declaring `todos.store: github`
 together with its repository and platform App
 (`local/projects/teleclaude/spec/teleclaude-config`), with that App installed
-on the repository and the repository serving issue artifacts. Store resolution
-establishes that the repository serves them by reading the ledger issue's
-artifacts, and refuses with that cause when it does not. The first store
-resolution on a computer rebuilds the working copy from the repository; an
-empty repository yields an empty store.
+on the repository and the repository serving issue artifacts. Issue artifacts
+exist only on an issue, so store resolution establishes that the repository
+serves them by listing the artifacts of one issue the platform App opened:
+the ledger issue when the repository has one, otherwise the issue of any
+repository work item the working copy or its rebuild holds. It does so once
+for each store it resolves, and refuses with that cause when the list is not
+served. The first store resolution on a computer rebuilds the working copy
+from the repository; an empty repository yields an empty store, with no issue
+to list, and the first artifact save to its first item establishes the same
+fact, refusing that write with the same cause when GitHub does not serve
+issue artifacts.
 Moving an existing local store's items to GitHub is not part of activation.
 The GitHub store switch
 (`local/projects/teleclaude/spec/feature/workflow/github-store-switch`) moves
@@ -672,6 +703,8 @@ them by restoring each item, with every artifact version, into the working copy
 as an ordinary change, so the write path below publishes it.
 
 <!-- /planned-change:github-native-artifacts -->
+
+<!-- planned-change:github-native-artifacts -->
 
 ```mermaid
 sequenceDiagram
@@ -692,6 +725,30 @@ sequenceDiagram
         W-->>C: refusal
     end
 ```
+
+<!-- change:github-native-artifacts -->
+
+```mermaid
+sequenceDiagram
+    participant C as Consumer
+    participant W as Working copy (local implementation)
+    participant G as GitHub adapter
+    participant R as Repository
+    C->>W: port operation
+    W->>W: apply change in transaction
+    W->>G: commit requested (changed items)
+    G->>R: read record revision
+    G->>R: save artifact versions, edit record, set reflections
+    alt all GitHub writes succeed
+        G-->>W: commit proceeds
+        W-->>C: result
+    else a write before the commit point fails or revision is newer
+        G-->>W: abort
+        W-->>C: refusal
+    end
+```
+
+<!-- /planned-change:github-native-artifacts -->
 
 ## Failure modes
 
@@ -778,14 +835,33 @@ sequenceDiagram
   its current version is not the committed one. An earlier version a rebuilt
   working copy lacks is read from GitHub the first time something asks for it,
   a diff or an older version, with one read of that artifact's history, and is
-  kept; only a version older than the 30 GitHub serves is then unavailable. An
-  item whose committed version a rebuild cannot read is unverifiable there and
-  rebuild refuses store resolution naming the item.
+  kept with the writer and creation time its record entry names; only a
+  version older than the 30 GitHub serves is then unavailable, and the read
+  answers that the version is unavailable rather than inventing it. The caller
+  waits for that one read and the local write that keeps its result; a read
+  GitHub refuses or does not answer refuses the caller with the provider's
+  cause and keeps nothing. Only a saved version whose digest a record entry
+  names is kept, so a version the platform saved for a transaction that then
+  aborted is never taken for history. An item whose committed version a
+  rebuild cannot read is unverifiable there and rebuild refuses store
+  resolution naming the item.
 - A repository whose issue artifacts become unavailable, because GitHub
   changes or withdraws the preview, refuses store resolution and every write
   with that cause; the working copy is left as it is.
-- A version larger than GitHub accepts is refused with GitHub's cause, as any
-  failed write before the commit point.
+- GitHub documents no size limit for an artifact; a body it refuses fails the
+  write before the commit point with the cause its response carries, a server
+  error refusing as the provider being unavailable, as any failed write before
+  the commit point does. No response is taken to name a size limit it does
+  not state.
+- A throttled artifact save is a write refused by a rate limit: an ordinary
+  write aborts and refuses with that cause, and a repair write ends that
+  repair pass, which continues at the next refresh.
+- A write to an item that awaits republication is refused before its
+  transaction changes anything, saying that the item awaits republication and
+  that the write can be sent again. The repair republishes that item next, so
+  the wait is at most the repair's spacing after its previous item plus that
+  item's own saves. A write made on a computer that does not run the repair
+  waits for the repair's ordinary order.
 
 <!-- /planned-change:github-native-artifacts -->
 

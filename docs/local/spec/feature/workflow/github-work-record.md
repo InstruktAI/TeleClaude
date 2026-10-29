@@ -189,8 +189,10 @@ How the store maps onto the repository is owned by
   reports, log and the rest) is one GitHub issue artifact on the item's issue,
   under the artifact's name, created by the platform App. Every version the
   workflow writes is a saved version of that artifact, in the order it was
-  written, and is never rewritten; the artifact's history names who saved each
-  version. Implementation and task plans are plan artifacts, every other
+  written, and is never rewritten. GitHub's history of the artifact names the
+  platform App as the account that saved each version; which workflow session
+  wrote a version, and when, is kept in the record for every version GitHub
+  still serves. Implementation and task plans are plan artifacts, every other
   artifact a document. Workflow state too large for the record is kept the
   same way, as the item's `workflow-state` artifact. The platform writes no artifact content into a comment and reads none from one; content comments left from before native artifacts are no part of the record. A version someone else saves stays the artifact's current version on GitHub until the platform next saves that artifact, and is never part of the record; an artifact someone else adds is left as it is and is never part of the record.
 
@@ -398,6 +400,11 @@ Scenario: A turn that cannot be cleaned is withheld
   work.
 - A version larger than GitHub accepts for one artifact is refused, and the
   workflow command that wrote it fails with that cause.
+- Work already on GitHub when native artifacts arrive is republished as
+  native artifacts by the computer that works the project, a few items at a
+  time within GitHub's limits; for a large repository this takes hours. A
+  workflow command that changes an item not yet republished fails once,
+  saying to send it again shortly, and that item is republished next.
 
 <!-- /planned:github-native-artifacts -->
 
