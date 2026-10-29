@@ -10,8 +10,8 @@ description: A claimed todo's artifacts are writable only by the session holding
 ## Status
 
 Superseded in part by ADR-0149: the prepare-author role gate is replaced by the
-role catalog's `prepare-artifact-write` capability and a closed-contract
-condition; the claiming group and its precedence stand.
+role catalog's `prepare-artifact-write` capability; the claiming group and its
+precedence stand.
 
 ## Context
 

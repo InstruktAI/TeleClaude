@@ -222,6 +222,7 @@ concerned:
 <!-- planned:prepare-artifact-write-gates-on-job-role -->
 
 - `local/projects/teleclaude/adr/0149-prepare-artifact-write-authority-is-a-catalog-capability` — prepare-artifact write authority read from the role catalog
+- `local/projects/teleclaude/adr/0150-prepare-artifacts-close-while-their-contract-is-under-execution` — prepare artifacts closed to every caller while their contract is under execution
 
 <!-- /planned:prepare-artifact-write-gates-on-job-role -->
 

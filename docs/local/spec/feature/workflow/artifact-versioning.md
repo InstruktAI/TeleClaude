@@ -396,6 +396,7 @@ And the verdict stamp binds the current report digest rather than inferring evid
 
 <!-- planned:prepare-artifact-write-gates-on-job-role -->
 
-- docs/local/adr/0149-prepare-artifact-write-authority-is-a-catalog-capability.md — why a prepare artifact's writer is admitted by a catalog capability rather than a role list the write boundary keeps, and why a contract under execution closes the prepare artifacts to every caller.
+- docs/local/adr/0149-prepare-artifact-write-authority-is-a-catalog-capability.md — why a prepare artifact's writer is admitted by a catalog capability rather than a role list the write boundary keeps.
+- docs/local/adr/0150-prepare-artifacts-close-while-their-contract-is-under-execution.md — why a contract under execution closes the prepare artifacts to every caller.
 
 <!-- /planned:prepare-artifact-write-gates-on-job-role -->
