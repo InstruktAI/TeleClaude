@@ -99,9 +99,8 @@ multi-person installation that is one identity standing in for all of them.
 
 A caller on this computer for which nothing above resolves an identity — no
 session, no live terminal login, no identity carried into the TUI — is the
-computer's operator: the operating-system user the installation runs as, which
-already holds every authority the platform has on this computer (Known caveats).
-It resolves to the system principal `system:operator`. That principal names no
+computer's operator: the operating-system user the installation runs as. It
+resolves to the system principal `system:operator`. That principal names no
 person, so the operator's work is attributed to no human and no person-bound
 service acts for it (§8). A session identity document that names no admissible
 session is not the operator; that caller stays without identity (§6).
@@ -121,9 +120,9 @@ No token is issued, stored or presented for any session.
 A session the platform keeps for an agent it did not launch carries
 `system:operator` and no person role when no terminal login names a person for
 it. It is cleared as the operator, it is a session the system started when it
-ends, and no person's conversation memory is drawn from it. A commit the
-operator makes outside a session is authored by the repository's configured git
-identity, as a commit made from a logged-in terminal is.
+ends, and no person's conversation memory is drawn from it. How the operator's
+commits are attributed is owned by
+`local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`.
 
 <!-- /planned:local-operator-identity -->
 

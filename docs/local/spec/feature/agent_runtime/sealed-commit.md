@@ -373,7 +373,7 @@ Then the commit lands authored by the repository's configured git identity
 ```gherkin
 Given a session the platform keeps for an agent it did not launch, under the computer's operator
 When the agent commits through telec repo commit inside that session
-Then the commit lands through the agent-session path
+Then the commit lands with the same scope and gates as any agent session's commit
 ```
 
 <!-- /planned:local-operator-identity -->

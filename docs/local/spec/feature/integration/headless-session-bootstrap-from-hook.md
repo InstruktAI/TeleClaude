@@ -38,7 +38,8 @@ session; it is ignored without dispatch.
 Session identity follows the terminal-resolved caller: a registered person keeps
 their current identity and role; when no person resolves, the new session runs
 under the computer's operator, `system:operator`, with no person role
-(`local/projects/teleclaude/spec/identity-and-auth` §3).
+(`local/projects/teleclaude/spec/identity-and-auth` §3). What that session may
+run is decided by `local/projects/teleclaude/spec/feature/identity/command-clearance`.
 
 <!-- /planned-change:local-operator-identity -->
 
@@ -98,7 +99,6 @@ Scenario: Recognize an agent another application started
   Given another application on the computer starts a supported agent with no terminal login
   When TeleClaude recognizes the running agent
   Then a session for that agent appears in TeleClaude under the computer's operator
-  And the agent can use the telec command line at the operator's authority
 ```
 
 <!-- /planned:local-operator-identity -->

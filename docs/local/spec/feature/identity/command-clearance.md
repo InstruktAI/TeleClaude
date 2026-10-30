@@ -50,9 +50,9 @@ person resolves for it (`local/projects/teleclaude/spec/identity-and-auth` §2,
 restrictions, including when its principal is a system principal. Person callers
 retain their existing clearance rules. A caller whose session identity document
 names no admissible session is not the operator and is refused. Object ownership
-and valid operation targets remain with their owning contracts, and a
-person-bound service acts for no system principal
-(`general/principle/trust-and-guardrails`).
+and valid operation targets remain with their owning contracts
+(`general/principle/trust-and-guardrails`), and a person-bound service acts for
+no system principal (`local/projects/teleclaude/spec/identity-and-auth` §8).
 
 <!-- /planned-change:local-operator-identity -->
 

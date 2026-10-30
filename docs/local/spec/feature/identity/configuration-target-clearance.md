@@ -68,10 +68,8 @@ A caller whose principal is a system principal carries no person
 (`local/projects/teleclaude/spec/identity-and-auth` §8). The computer's operator,
 `system:operator`, holds platform-administrator standing for every configuration
 target — machine and global writes, people and companies — while naming no
-person: it is the operating-system account the installation runs as, which
-already holds every authority the platform has on the computer. Every other
-system principal holds no standing that belongs to a person or to a platform
-administrator, whatever its system role permits.
+person. Every other system principal holds no standing that belongs to a
+person or to a platform administrator, whatever its system role permits.
 
 <!-- /planned-change:local-operator-identity -->
 

@@ -323,7 +323,7 @@ And the slug's active-runner is unchanged
 ```gherkin
 Given the computer's operator outside any session
 When it writes a prepare artifact of an unclaimed todo in the prepare stage
-Then the write is accepted and records no updated_by
+Then the write is accepted and its new version names no session as its writer
 And the same write to a todo another live session has claimed is refused as a claim conflict naming the holding session
 ```
 
