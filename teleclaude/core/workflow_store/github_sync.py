@@ -454,7 +454,7 @@ class GitHubWorkflowSync:
                 comments = await self.io.async_read_comments(issue.number)
                 try:
                     await self._backfill_issue_comments(issue, comments)
-                except GitHubWorkflowSyncRefused as refusal:
+                except (GitHubWorkflowSyncRefused, ValueError) as refusal:
                     logger.warning(_PROJECTION_REPAIR_SKIPPED_ISSUE, issue_number=issue.number, reason=str(refusal))
                 else:
                     logger.debug(_PROJECTION_REPAIRED_ISSUE, issue_number=issue.number, comment_count=len(comments))
@@ -467,7 +467,7 @@ class GitHubWorkflowSync:
         return True
 
     async def _backfill_issue_comments(self, issue: GitHubIssue, comments: Sequence[GitHubComment]) -> None:
-        """Re-envelope one issue's platform comments, writing none on refusal; unreferenced content stays as is."""
+        """Re-envelope one issue's comments, writing none on refusal; unreferenced artifact comments stay as is."""
         bot_login = self.assignment.actor.login
         record: WorkflowRecord | None = None
         if any(
