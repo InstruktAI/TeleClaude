@@ -454,9 +454,17 @@ master admits each conversation request before sending it:
   comment to the current presentation: record and ledger comments are
   rendered again from their own machine data, and every other comment gains
   its envelope line. It edits only the bot's own comments and never changes
-  artifact content or machine data. The repair spaces its writes
+  artifact content or machine data. A content comment that no version of the
+  item's record references keeps its body. The repair spaces its writes
   within GitHub's limits, continues on the next refresh after an
   interruption, and records the current projection only once complete.
+- **An item the repair cannot bring forward is skipped.** When an issue's
+  record or referenced content cannot be read, the repair changes none of
+  that issue's comments, logs a warning naming the issue and the reason, and
+  goes on with the next issue. The skipped issue counts as passed: the repair
+  completes without it and does not try it again, and the refresh continues
+  as on any other pass. Refresh reads that item as it reads any other, and
+  marks it unverifiable when its record or content cannot be read.
 
 <!-- planned:github-native-artifacts -->
 

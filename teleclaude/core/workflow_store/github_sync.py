@@ -76,6 +76,7 @@ from teleclaude.core.workflow_store.github_record import (
     WorkflowRecord,
     WorkflowTodoStatus,
     artifact_history_payload_line,
+    artifact_version_ordinals,
     effective_revision,
     has_artifact_history_marker,
     has_ledger_marker,
@@ -121,6 +122,7 @@ _ITEM_ID_SQL = "SELECT item_id FROM github_item WHERE issue_number = :issue_numb
 _BASE_REVISION_SQL = "SELECT base_revision FROM github_item WHERE issue_number = :issue_number"
 _ISSUE_PROJECTION_VERSION = 1
 _PROJECTION_REPAIRED_ISSUE = "github_store_projection_repaired_issue"
+_PROJECTION_REPAIR_SKIPPED_ISSUE = "github_store_projection_repair_skipped_issue"
 _EMPTY = ""
 logger = get_logger(__name__)
 
@@ -450,21 +452,22 @@ class GitHubWorkflowSync:
                 if issue.number <= cursor:
                     continue
                 comments = await self.io.async_read_comments(issue.number)
-                await self._backfill_issue_comments(issue, comments)
+                try:
+                    await self._backfill_issue_comments(issue, comments)
+                except GitHubWorkflowSyncRefused as refusal:
+                    logger.warning(_PROJECTION_REPAIR_SKIPPED_ISSUE, issue_number=issue.number, reason=str(refusal))
+                else:
+                    logger.debug(_PROJECTION_REPAIRED_ISSUE, issue_number=issue.number, comment_count=len(comments))
                 await pacing.wait_between_items()
 
                 def mark_complete(session: Session, number: int = issue.number) -> None:
                     save_projection_repair_progress(session, number)
 
                 await self._run_async_transaction(mark_complete)
-                logger.debug(
-                    _PROJECTION_REPAIRED_ISSUE,
-                    issue_number=issue.number,
-                    comment_count=len(comments),
-                )
         return True
 
     async def _backfill_issue_comments(self, issue: GitHubIssue, comments: Sequence[GitHubComment]) -> None:
+        """Re-envelope one issue's platform comments, writing none on refusal; unreferenced content stays as is."""
         bot_login = self.assignment.actor.login
         record: WorkflowRecord | None = None
         if any(
@@ -475,7 +478,11 @@ class GitHubWorkflowSync:
         artifact_ordinals: Mapping[tuple[str, str], int] = {}
         if record is not None:
             revision = record.pending.revision if record.pending is not None else record.committed
-            artifact_ordinals = _artifact_version_ordinals(revision, comments, bot_login)
+            try:
+                artifact_ordinals = artifact_version_ordinals(revision, comments, bot_login)
+            except ValueError as error:
+                raise GitHubWorkflowSyncRefused(_ITEM_CONTENT_INCOMPLETE.format(issue.number)) from error
+        replacements: list[tuple[int, str]] = []
         for comment in comments:
             if comment.author != bot_login:
                 continue
@@ -501,7 +508,7 @@ class GitHubWorkflowSync:
                 else:
                     ordinal = artifact_ordinals.get((header.name, str(header.version)))
                     if ordinal is None:
-                        raise GitHubWorkflowSyncRefused(_ITEM_CONTENT_INCOMPLETE.format(issue.number))
+                        continue
                     fields = (
                         (CommentEnvelopeField.ACTION, CommentEnvelopeAction.ARTIFACT),
                         (CommentEnvelopeField.NAME, header.name),
@@ -525,7 +532,7 @@ class GitHubWorkflowSync:
                         (node.name, str(node.remote_version_id or node.metadata.get(WorkflowField.VERSION_ID)))
                     )
                     if ordinal is None:
-                        raise GitHubWorkflowSyncRefused(_ITEM_CONTENT_INCOMPLETE.format(issue.number))
+                        continue
                     fields = (
                         (CommentEnvelopeField.ACTION, CommentEnvelopeAction.ARTIFACT),
                         (CommentEnvelopeField.NAME, node.name),
@@ -533,7 +540,9 @@ class GitHubWorkflowSync:
                     )
                 replacement = reenvelope_artifact_history_comment(trusted, fields)
             if replacement != comment.body:
-                await self.io.async_update_comment(comment.database_id, replacement)
+                replacements.append((comment.database_id, replacement))
+        for comment_id, replacement in replacements:
+            await self.io.async_update_comment(comment_id, replacement)
 
     async def _complete_projection_repair_if_ready(self) -> None:
         def complete_if_ready(session: Session) -> None:
@@ -942,35 +951,6 @@ def _effective_state_mapping(snapshot: WorkingCopyItemSnapshot) -> Mapping[str, 
     except json.JSONDecodeError:
         return {}
     return cast(Mapping[str, object], parsed) if isinstance(parsed, dict) else {}
-
-
-def _artifact_version_ordinals(
-    revision: ItemRevision,
-    comments: Sequence[GitHubComment],
-    bot_login: str,
-) -> Mapping[tuple[str, str], int]:
-    ordinals: dict[tuple[str, str], int] = {}
-    for name, pointers in revision.artifacts.items():
-        if not pointers:
-            continue
-        history = resolve_artifact_history(
-            latest_artifact_pointer(pointers), revision.item_id, name, comments, bot_login
-        )
-        seen: set[str] = set()
-        ordinal = 0
-        for version in reversed(history):
-            if version.action is not ArtifactHistoryAction.VERSION:
-                continue
-            pointer = version.pointer
-            identity = pointer.remote_version_id or str(pointer.version)
-            if identity in seen:
-                continue
-            seen.add(identity)
-            ordinal += 1
-            for value in (pointer.remote_version_id, pointer.version, pointer.metadata.get(WorkflowField.VERSION_ID)):
-                if value is not None:
-                    ordinals[(name, str(value))] = ordinal
-    return ordinals
 
 
 def _save_artifact_pointers(session: Session, item_id: str, revision: ItemRevision) -> None:

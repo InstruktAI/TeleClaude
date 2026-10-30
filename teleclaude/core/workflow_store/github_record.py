@@ -895,3 +895,31 @@ def _scalar_row(row: Mapping[str, object] | None) -> Row:
 def _value_or_none(values: Mapping[str, object] | None, name: str) -> str | None:
     value = values.get(name) if values is not None else None
     return str(value) if value is not None else None
+
+
+def artifact_version_ordinals(
+    revision: ItemRevision, comments: Sequence[HistoryComment], bot_login: str
+) -> Mapping[tuple[str, str], int]:
+    """Number each artifact's committed versions in order, keyed by every identity a version is addressed by."""
+    ordinals: dict[tuple[str, str], int] = {}
+    for name, pointers in revision.artifacts.items():
+        if not pointers:
+            continue
+        history = resolve_artifact_history(
+            latest_artifact_pointer(pointers), revision.item_id, name, comments, bot_login
+        )
+        seen: set[str] = set()
+        ordinal = 0
+        for version in reversed(history):
+            if version.action is not ArtifactHistoryAction.VERSION:
+                continue
+            pointer = version.pointer
+            identity = pointer.remote_version_id or str(pointer.version)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            ordinal += 1
+            for value in (pointer.remote_version_id, pointer.version, pointer.metadata.get(WorkflowField.VERSION_ID)):
+                if value is not None:
+                    ordinals[(name, str(value))] = ordinal
+    return ordinals
