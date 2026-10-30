@@ -146,10 +146,24 @@ or liveness fallback. Every accepted write follows the ordinary version-append,
 `updated_by`, provenance, and digest-bound invalidation consequences while
 leaving `active_runner` unchanged.
 
+<!-- planned-change:local-operator-identity -->
+
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the writing session's id as `updated_by`.
 A caller that is no session authors under no session and records nothing there;
 an unidentified caller may not write at all.
+
+<!-- change:local-operator-identity -->
+
+The write path resolves the caller's identity, with parity to the stamp and
+artifact-remove boundaries, and records the writing session's id as `updated_by`.
+A caller that is no session, the computer's operator `system:operator` included
+(`local/projects/teleclaude/spec/identity-and-auth` §2), authors under no session
+and records nothing there; a session the platform keeps for the operator's agent
+writes as that session. A caller whose session identity document names no
+admissible session may not write at all.
+
+<!-- /planned-change:local-operator-identity -->
 
 Independently of which session is driving the slug, a prepare artifact is writable
 only by a prepare-phase writer: a caller whose reach, as the role catalog resolves

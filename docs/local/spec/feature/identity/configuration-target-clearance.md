@@ -13,12 +13,29 @@ cannot grant access to every instance of a kind. An agent acting for a human
 carries that human's verified principal; its system role can narrow the
 operation set but cannot grant an operation the principal lacks.
 
+<!-- planned-change:local-operator-identity -->
+
 The decision runs in the process that performs the configuration operation,
 before it reads governed configuration or persists a change. That process
 resolves the caller through the shared principal-resolution capability
 (`local/projects/teleclaude/spec/identity-and-auth` §6), applies the verb's role band, and then
 applies this target decision. An unidentified caller holds no role and is
 refused before any configuration is read.
+
+<!-- change:local-operator-identity -->
+
+The decision runs in the process that performs the configuration operation,
+before it reads governed configuration or persists a change. That process
+resolves the caller through the shared principal-resolution capability
+(`local/projects/teleclaude/spec/identity-and-auth` §6), applies the verb's role band, and then
+applies this target decision. A local caller for which nothing resolves an
+identity is the computer's operator, the system principal `system:operator`
+(`local/projects/teleclaude/spec/identity-and-auth` §2), and is cleared here as
+every system principal is. A caller whose session identity document names no
+admissible session holds no role and is refused before any configuration is
+read.
+
+<!-- /planned-change:local-operator-identity -->
 
 A person may read and change their own person configuration, directly or
 through an agent, its person-registry identity fields included. A company, its
