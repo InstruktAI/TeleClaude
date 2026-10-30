@@ -26,6 +26,7 @@ from teleclaude.core.todos_db._working_copy import (
     issue_relations,
     item_bookkeeping,
     item_snapshot,
+    item_unverifiable,
     items_without_issue_id,
     mark_all_issue_reflections_owed,
     mark_item_unverifiable,
@@ -122,7 +123,6 @@ _ITEM_ID_SQL = "SELECT item_id FROM github_item WHERE issue_number = :issue_numb
 _BASE_REVISION_SQL = "SELECT base_revision FROM github_item WHERE issue_number = :issue_number"
 _ISSUE_PROJECTION_VERSION = 1
 _PROJECTION_REPAIRED_ISSUE = "github_store_projection_repaired_issue"
-_PROJECTION_REPAIR_SKIPPED_ISSUE = "github_store_projection_repair_skipped_issue"
 _EMPTY = ""
 logger = get_logger(__name__)
 
@@ -455,7 +455,9 @@ class GitHubWorkflowSync:
                 try:
                     await self._backfill_issue_comments(issue, comments)
                 except (GitHubWorkflowSyncRefused, ValueError) as refusal:
-                    logger.warning(_PROJECTION_REPAIR_SKIPPED_ISSUE, issue_number=issue.number, reason=str(refusal))
+                    logger.warning(
+                        "github_store_projection_repair_skipped_issue", issue_number=issue.number, reason=str(refusal)
+                    )
                 else:
                     logger.debug(_PROJECTION_REPAIRED_ISSUE, issue_number=issue.number, comment_count=len(comments))
                 await pacing.wait_between_items()
@@ -550,6 +552,7 @@ class GitHubWorkflowSync:
             outstanding_issue_reflections = any(
                 (bookkeeping := item_bookkeeping(session, item_id)) is not None
                 and bookkeeping.get(WorkflowField.ISSUE_NUMBER) is not None
+                and not item_unverifiable(session, item_id)
                 for item_id in owed
             )
             if not outstanding_issue_reflections:

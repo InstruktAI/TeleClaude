@@ -466,7 +466,9 @@ master admits each conversation request before sending it:
   goes on with the next issue. The skipped issue counts as passed: the repair
   completes without it and does not try it again, and the refresh continues
   as on any other pass. Refresh reads that item as it reads any other, and
-  marks it unverifiable when its record or content cannot be read.
+  marks it unverifiable when its record or content cannot be read. An
+  unverifiable item's owed reflection stays owed for refresh to settle once
+  the item can be read again; it does not hold back the repair's completion.
 
 <!-- planned:github-native-artifacts -->
 
