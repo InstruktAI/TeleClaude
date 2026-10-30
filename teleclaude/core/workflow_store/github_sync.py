@@ -34,6 +34,7 @@ from teleclaude.core.todos_db._working_copy import (
     issue_relations,
     item_bookkeeping,
     item_snapshot,
+    item_unverifiable,
     items_without_issue_id,
     mark_all_issue_reflections_owed,
     mark_item_unverifiable,
@@ -458,18 +459,20 @@ class GitHubWorkflowSync:
                 if issue.number <= cursor:
                     continue
                 comments = await self.io.async_read_comments(issue.number)
-                await self._backfill_issue_comments(issue, comments)
+                try:
+                    await self._backfill_issue_comments(issue, comments)
+                except (GitHubWorkflowSyncRefused, ValueError) as refusal:
+                    logger.warning(
+                        "github_store_projection_repair_skipped_issue", issue_number=issue.number, reason=str(refusal)
+                    )
+                else:
+                    logger.debug(_PROJECTION_REPAIRED_ISSUE, issue_number=issue.number, comment_count=len(comments))
                 await pacing.wait_between_items()
 
                 def mark_complete(session: Session, number: int = issue.number) -> None:
                     save_projection_repair_progress(session, number)
 
                 await self._run_async_transaction(mark_complete)
-                logger.debug(
-                    _PROJECTION_REPAIRED_ISSUE,
-                    issue_number=issue.number,
-                    comment_count=len(comments),
-                )
 
         def mark_finished(session: Session) -> None:
             save_projection_repair_progress(session, _PRESENTATION_FINISHED)
@@ -477,11 +480,14 @@ class GitHubWorkflowSync:
         await self._run_async_transaction(mark_finished)
 
     async def _backfill_issue_comments(self, issue: GitHubIssue, comments: Sequence[GitHubComment]) -> None:
-        """Give the issue's record and ledger comments their readable envelope; the machine payload stays exact.
+        """Give the issue's record and ledger comments their readable envelope, writing none on refusal.
+
+        The machine payload stays exact.
 
         A record whose state is not in the record itself keeps the envelope it has: rendering one needs that state.
         """
         bot_login = self.assignment.actor.login
+        replacements: list[tuple[int, str]] = []
         for comment in comments:
             if comment.author != bot_login:
                 continue
@@ -499,7 +505,9 @@ class GitHubWorkflowSync:
             elif has_ledger_marker(trusted):
                 replacement = reenvelope_ledger_comment(trusted, parse_ledger_commit(trusted))
             if replacement != comment.body:
-                await self.io.async_update_comment(comment.database_id, replacement)
+                replacements.append((comment.database_id, replacement))
+        for comment_id, replacement in replacements:
+            await self.io.async_update_comment(comment_id, replacement)
 
     async def _complete_projection_repair_if_ready(self) -> None:
         def complete_if_ready(session: Session) -> None:
@@ -507,6 +515,7 @@ class GitHubWorkflowSync:
             outstanding_issue_reflections = any(
                 (bookkeeping := item_bookkeeping(session, item_id)) is not None
                 and bookkeeping.get(WorkflowField.ISSUE_NUMBER) is not None
+                and not item_unverifiable(session, item_id)
                 for item_id in owed
             )
             if not outstanding_issue_reflections and not any_republication_pending(session):

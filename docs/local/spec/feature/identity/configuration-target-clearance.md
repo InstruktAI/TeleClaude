@@ -13,12 +13,29 @@ cannot grant access to every instance of a kind. An agent acting for a human
 carries that human's verified principal; its system role can narrow the
 operation set but cannot grant an operation the principal lacks.
 
+<!-- planned-change:local-operator-identity -->
+
 The decision runs in the process that performs the configuration operation,
 before it reads governed configuration or persists a change. That process
 resolves the caller through the shared principal-resolution capability
 (`local/projects/teleclaude/spec/identity-and-auth` §6), applies the verb's role band, and then
 applies this target decision. An unidentified caller holds no role and is
 refused before any configuration is read.
+
+<!-- change:local-operator-identity -->
+
+The decision runs in the process that performs the configuration operation,
+before it reads governed configuration or persists a change. That process
+resolves the caller through the shared principal-resolution capability
+(`local/projects/teleclaude/spec/identity-and-auth` §6), applies the verb's role band, and then
+applies this target decision. A local caller for which nothing resolves an
+identity is the computer's operator, the system principal `system:operator`
+(`local/projects/teleclaude/spec/identity-and-auth` §2), and is cleared here with
+the operator's standing below. A caller whose session identity document names no
+admissible session holds no role and is refused before any configuration is
+read.
+
+<!-- /planned-change:local-operator-identity -->
 
 A person may read and change their own person configuration, directly or
 through an agent, its person-registry identity fields included. A company, its
@@ -39,9 +56,22 @@ section of it, and every caller that may read a subject reads the same fields.
 A guardrail finer than that guards no harm that restoring state cannot repair
 (`general/principle/trust-and-guardrails`).
 
+<!-- planned-change:local-operator-identity -->
+
 A caller whose principal is a system principal carries no person
 (`local/projects/teleclaude/spec/identity-and-auth` §8). It holds no standing that belongs to a
 person or to a platform administrator, whatever its system role permits.
+
+<!-- change:local-operator-identity -->
+
+A caller whose principal is a system principal carries no person
+(`local/projects/teleclaude/spec/identity-and-auth` §8). The computer's operator,
+`system:operator`, holds platform-administrator standing for every configuration
+target — machine and global writes, people and companies — while naming no
+person. Every other system principal holds no standing that belongs to a
+person or to a platform administrator, whatever its system role permits.
+
+<!-- /planned-change:local-operator-identity -->
 
 Caller resolution and the configuration-target decision do not require a valid
 machine configuration. Configuration command execution follows
@@ -92,7 +122,15 @@ a refused read returns no configuration.
 
 #### UC-CTC6: A person cannot read another person's configuration
 
+<!-- planned-change:local-operator-identity -->
+
 #### UC-CTC7: A system principal holds no person or administrator standing
+
+<!-- change:local-operator-identity -->
+
+#### UC-CTC7: A system principal other than the operator holds no person or administrator standing
+
+<!-- /planned-change:local-operator-identity -->
 
 #### UC-CTC8: Computer configuration stays repairable while it is invalid
 
@@ -114,6 +152,20 @@ a refused read returns no configuration.
 #### UC-CTC11: Whoever may work in a project changes its declaration
 
 #### UC-CTC12: Machine configuration reads the same for every admitted caller
+
+<!-- planned:local-operator-identity -->
+
+#### UC-CTC13: The computer's operator maintains configuration as a platform administrator
+
+```gherkin
+Given an agent another application started, for which no session, terminal login or carried identity resolves
+When it changes machine configuration, a person's configuration or a company's configuration
+Then each change is cleared with platform-administrator standing
+And no person is named as the caller
+And a caller whose session identity names no admissible session is refused before any configuration is read
+```
+
+<!-- /planned:local-operator-identity -->
 
 ## Known caveats
 
