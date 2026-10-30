@@ -68,18 +68,6 @@ Scenario: Recognize a manually started agent from a project worktree
   Then the session appears under its registered project and shows the branch from which the agent is working
 ```
 
-<!-- planned:local-operator-identity -->
-
-```gherkin
-Scenario: Recognize an agent another application started
-  Given another application on the computer starts a supported agent with no terminal login
-  When TeleClaude recognizes the running agent
-  Then a session for that agent appears in TeleClaude under the computer's operator
-  And the agent can use the telec command line at the operator's authority
-```
-
-<!-- /planned:local-operator-identity -->
-
 #### UC-HB2: Non-session-start event for unknown session is dropped
 
 #### UC-HB3: A person uses a manually started agent outside registered projects
@@ -100,6 +88,20 @@ And project-scoped behavior does not apply to it
 #### UC-HB7: Creation failure raises and triggers retry
 
 #### UC-HB8: Unknown managed-descendant start cannot bootstrap
+
+<!-- planned:local-operator-identity -->
+
+#### UC-HB9: An agent another application started works under the computer's operator
+
+```gherkin
+Scenario: Recognize an agent another application started
+  Given another application on the computer starts a supported agent with no terminal login
+  When TeleClaude recognizes the running agent
+  Then a session for that agent appears in TeleClaude under the computer's operator
+  And the agent can use the telec command line at the operator's authority
+```
+
+<!-- /planned:local-operator-identity -->
 
 ### Cross-context references
 
