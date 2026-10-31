@@ -105,6 +105,24 @@ session stream.
   (`local/projects/teleclaude/design/architecture/command-classification`).
   Connection projection options are not requests and name no computer.
 
+<!-- planned:api-clearance-consumes-owner-admission -->
+
+### Owner admission at API re-entry
+
+The relay receiver publishes the command admission it has completed as an
+immutable, identity-owned value on the re-entered request's ASGI scope. The
+re-entry adapter installs that value only after admission succeeds and only for
+that request. The scope value is independent of caller-location provenance and
+is carried by neither HTTP headers nor persisted operations.
+
+An API command-clearance dependency consumes admission for its exact command;
+an admission naming a different command is refused. A request with no owner
+admission follows the dependency's existing local clearance path. Object and
+configuration-target decisions retain their owning contracts. The identity
+decision remains owned by
+`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`.
+<!-- /planned:api-clearance-consumes-owner-admission -->
+
 ## Primary flows
 
 ### Connection and session state
