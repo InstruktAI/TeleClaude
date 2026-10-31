@@ -8,9 +8,11 @@ from http import HTTPStatus
 from fastapi import APIRouter, Depends, HTTPException, Query
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, caller_from_carried_identity, carried_caller
+from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, carried_caller
+from teleclaude.caller_identity import CliCaller
 from teleclaude.config.machine import config
 from teleclaude.constants import LOGIN_REQUIRED_DETAIL
+from teleclaude.core.command_dispatch import RELAY_REQUEST_TIMEOUT_S
 from teleclaude.core.runtime_events import publish_runtime_error
 from teleclaude.history.search_payload import HistorySearchPayload
 from teleclaude.history.service import (
@@ -31,6 +33,13 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
+async def _identity_resolved_caller(caller: CallerIdentity) -> CliCaller:
+    """Resolve the carried caller off the event loop, waiting no longer than the relay budget for an executor slot."""
+    return await asyncio.wait_for(
+        asyncio.to_thread(caller_for_role_resolution, caller), timeout=RELAY_REQUEST_TIMEOUT_S
+    )
+
+
 @router.get("/history/search")
 async def search_history(
     q: str = "",
@@ -42,7 +51,7 @@ async def search_history(
     caller: CallerIdentity = Depends(carried_caller),
 ) -> HistorySearchPayload:
     """Search this computer's history mirrors within the caller's reach."""
-    resolved_caller = caller_from_carried_identity(caller)
+    resolved_caller = await _identity_resolved_caller(caller)
     if not history_caller_is_identified(resolved_caller):
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
 
@@ -76,7 +85,7 @@ async def show_history(
     caller: CallerIdentity = Depends(carried_caller),
 ) -> HistoryDetailPayload:
     """Resolve and return one history detail within the caller's reach."""
-    resolved_caller = caller_from_carried_identity(caller)
+    resolved_caller = await _identity_resolved_caller(caller)
     if not history_caller_is_identified(resolved_caller):
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
     try:
