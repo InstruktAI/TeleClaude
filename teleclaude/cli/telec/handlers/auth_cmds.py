@@ -6,7 +6,12 @@ import importlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
-from teleclaude.caller_identity import NoIdentityCliCaller, PersonCliCaller, ProjectPath, authorizing_role
+from teleclaude.caller_identity import (
+    NoIdentityCliCaller,
+    ProjectPath,
+    SystemCliCaller,
+    authorizing_role,
+)
 from teleclaude.cli.session_auth import (
     ResolvedCliIdentity,
     clear_current_session_email,
@@ -31,7 +36,6 @@ __all__ = [
     "_handle_login",
     "_handle_logout",
     "_handle_whoami",
-    "_requires_tui_login",
     "_role_for_email",
 ]
 
@@ -79,15 +83,6 @@ def _role_for_email(email: str) -> str | None:
         if person.email.strip().lower() == normalized:
             return person.role
     return None
-
-
-def _requires_tui_login() -> bool:
-    """Return True when terminal login is required before launching TUI."""
-    try:
-        global_cfg = _load_global_config()
-    except (AttributeError, OSError, TypeError, ValueError):
-        return False
-    return len(global_cfg.people) > 1
 
 
 def _handle_login(args: list[str]) -> None:
@@ -142,7 +137,7 @@ def _handle_whoami(args: list[str]) -> None:
         raise SystemExit(1)
 
     identity = resolve_cli_identity()
-    if identity.in_session:
+    if identity.in_session or isinstance(identity.caller, SystemCliCaller):
         if isinstance(identity.caller, NoIdentityCliCaller):
             print(no_identity_refusal(identity))
             raise SystemExit(1)
@@ -165,8 +160,7 @@ def _handle_whoami(args: list[str]) -> None:
         return
 
     caller = identity.caller
-    email = caller.email if isinstance(caller, PersonCliCaller) else None
-    print(f"Email: {email}")
+    print(f"Email: {caller.email}")
     print(f"Role: {authorizing_role(caller, identity.role, ProjectPath(invocation_cwd())) or _UNRESOLVED_ROLE}")
     print(f"TTY: {context.tty}")
     print(f"Session auth file: {context.auth_path}")

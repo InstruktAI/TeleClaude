@@ -27,9 +27,11 @@ from teleclaude.caller_identity import (
     RoleTarget,
     SessionAct,
     SessionOf,
+    SystemCliCaller,
     human_principal_for_email,
     identity_for_session,
     is_desk_visitor,
+    is_roleless_platform_caller,
     person_entry_for_email,
     session_act_exception,
 )
@@ -41,7 +43,7 @@ from teleclaude.constants import (
     HUMAN_ROLE_CUSTOMER,
     LOCAL_COMPUTER,
     LOGIN_REQUIRED_DETAIL,
-    SYSTEM_DAEMON_PRINCIPAL,
+    SYSTEM_OPERATOR_PRINCIPAL,
     TUI_SESSION_ENV_KEY,
     MarkerState,
 )
@@ -61,6 +63,7 @@ logger = get_logger(__name__)
 SESSION_AUTH_DIR = _PATHS_SESSION_AUTH_DIR
 TUI_CARRIED_IDENTITY_ENV_KEY = "TELEC_TUI_IDENTITY"
 _OUTSIDE_AGENT_RESOLVED_EVENT = "outside_agent_resolved_to_headless_session"
+_OPERATOR_RESOLVED_EVENT = "unidentified_local_caller_resolved_to_operator"
 _NO_TERMINAL_ERROR = "No terminal detected: telec auth login must run from an interactive terminal."
 _DEVICE_ALLOCATION_KEY = "device_allocation"
 _DARWIN_PLATFORM = "darwin"
@@ -325,6 +328,20 @@ def _no_identity(in_session: bool) -> ResolvedCliIdentity:
     )
 
 
+def _operator_identity() -> ResolvedCliIdentity:
+    """The computer's operator: a caller outside any session that nothing else identifies."""
+    entry_point = _entry_point_for_caller(in_session=False)
+    logger.debug(_OPERATOR_RESOLVED_EVENT, entry_point=entry_point)
+    return ResolvedCliIdentity(
+        caller=SystemCliCaller(),
+        principal=SYSTEM_OPERATOR_PRINCIPAL,
+        role=None,
+        session_id=None,
+        in_session=False,
+        entry_point=entry_point,
+    )
+
+
 def _entry_point_for_caller(*, in_session: bool) -> str:
     """Name the client door that resolved this identity."""
     if in_session:
@@ -346,7 +363,9 @@ def resolve_cli_identity() -> ResolvedCliIdentity:
         if outside_agent_session_id is not None:
             return _resolve_session_identity(outside_agent_session_id)
         email = read_current_session_email()
-        person = person_entry_for_email(email) if email else None
+        if not email:
+            return _operator_identity()
+        person = person_entry_for_email(email)
         if person is None:
             return _no_identity(False)
         caller = PersonCliCaller(
@@ -374,8 +393,8 @@ def _outside_agent_session_id() -> str | None:
     A runtime exports its own native session id to the tool processes it spawns,
     and the agent's first hook already recorded that id on a session. A call
     carrying no session marker and not launched from the TUI resolves to that
-    session when one is live; any other call is a person's terminal and resolves
-    from the terminal login.
+    session when one is live; any other call resolves from the terminal login, or
+    is the computer's operator when no login names anyone.
     """
     if os.environ.get(TUI_SESSION_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         return None
@@ -490,7 +509,7 @@ def cli_clearance(
             return CliClearance(identity=identity, refusal=_permission_refusal(identity, role, command_path))
         return CliClearance(identity=identity, refusal=None)
 
-    if identity.principal == SYSTEM_DAEMON_PRINCIPAL and identity.role is None:
+    if is_roleless_platform_caller(identity.principal, identity.role):
         return CliClearance(identity=identity, refusal=None)
 
     action = {

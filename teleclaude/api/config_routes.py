@@ -24,5 +24,5 @@ async def run_operation(
     identity: CallerIdentity = Depends(carried_caller),
 ) -> ConfigOutcome:
     """Run one configuration operation for the caller this computer resolves from the request."""
-    standing = standing_for_caller(caller_for_role_resolution(identity))
+    standing = standing_for_caller(caller_for_role_resolution(identity), identity.principal)
     return await run_config_operation(standing, request)

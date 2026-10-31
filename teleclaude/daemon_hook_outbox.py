@@ -60,6 +60,7 @@ _HOOK_OUTBOX_BATCH_FAILED_MESSAGE = "Hook outbox batch failed; retrying after th
 _HOOK_OUTBOX_ROW_FAILED_MESSAGE = "Hook outbox row processing failed; continuing with the next row"
 _HEADLESS_BOOTSTRAP_AUTHORITY_ABSENT = "Ignoring headless session bootstrap without receiver authorization"
 _RUNTIME_HOOK_RUN_MISMATCH_EVENT = "Ignoring hook event from a superseded launch"
+_HEADLESS_OPERATOR_BOOTSTRAP_EVENT = "headless_session_bootstrapped_under_operator"
 # Headless hook events carry no mode; the launch intent requires one, and "med"
 # is the platform's standard mode.
 _HEADLESS_DEFAULT_THINKING_MODE = "med"
@@ -394,6 +395,14 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         identity = (
             get_identity_resolver().resolve(InputOrigin.TERMINAL.value, origin_metadata) if origin_metadata else None
         )
+        operator = not caller_email
+        if operator:
+            logger.info(
+                _HEADLESS_OPERATOR_BOOTSTRAP_EVENT,
+                session_id=session_id,
+                native_session_id=native_session_id or "",
+                project_path=project_path or "",
+            )
         cmd = CreateSessionCommand(
             session_id=session_id,
             headless=True,
@@ -403,7 +412,8 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             subdir=subdir,
             origin=InputOrigin.TERMINAL.value,
             origin_metadata=origin_metadata,
-            human_role=None if identity and identity.person_role else HUMAN_ROLE_CUSTOMER,
+            human_role=None if operator or (identity and identity.person_role) else HUMAN_ROLE_CUSTOMER,
+            operator=operator,
             launch_intent=SessionLaunchIntent(
                 kind=SessionLaunchKind.AGENT,
                 agent=agent_str,

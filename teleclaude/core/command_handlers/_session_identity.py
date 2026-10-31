@@ -22,6 +22,7 @@ from teleclaude.constants import (
     HUMAN_ROLE_CUSTOMER,
     HUMAN_ROLES,
     SYSTEM_DAEMON_PRINCIPAL,
+    SYSTEM_OPERATOR_PRINCIPAL,
     WORKTREE_DIR,
 )
 from teleclaude.core.command_input import ResolvedCommandInput, admit_command_input
@@ -190,7 +191,7 @@ async def resolve_session_creation_identity(
         identity = get_identity_resolver().resolve(origin, cmd.origin_metadata)
         human_email = human_email or identity.person_email
 
-    principal: str | None = None
+    principal: str | None = SYSTEM_OPERATOR_PRINCIPAL if cmd.operator else None
     if parent_session:
         human_email = human_email or parent_session.human_email
         principal = identity_for_session(parent_session).principal
@@ -214,7 +215,7 @@ async def resolve_session_creation_identity(
         initiator_session_id = initiator_computer = None
         human_email = human_role = principal = None
 
-    if not human_role and not cmd_role and principal != SYSTEM_DAEMON_PRINCIPAL:
+    if not human_role and not cmd_role and principal not in (SYSTEM_DAEMON_PRINCIPAL, SYSTEM_OPERATOR_PRINCIPAL):
         raise SessionCreationRefused(_NO_SESSION_IDENTITY_REFUSED_TEMPLATE.format(origin=origin))
 
     if cmd.endpoint is not None and cmd.endpoint.is_help_desk:

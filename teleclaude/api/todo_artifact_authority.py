@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
+from teleclaude.constants import SYSTEM_OPERATOR_PRINCIPAL
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase, is_work_lifecycle_phase
 from teleclaude.core.next_machine.runtime.sessions import claim_is_held
@@ -87,10 +88,11 @@ async def refuse_foreign_claim(todos_db: WorkflowStore, identity: CallerIdentity
     claiming group is the holder plus every session it dispatched, transitively
     through ``initiator_session_id`` (`session_in_claiming_group`). A slug with
     no live holder carries no claim gate. A direct human-identity caller — no
-    agent session id — is never gated by the claim (UC-WAV16, UC-WAV23). This
-    check consults ``active_runner`` but never sets it.
+    agent session id — is never gated by the claim (UC-WAV16, UC-WAV23); the
+    computer's operator outside a session belongs to no claiming group and is
+    gated by it (UC-WAV28). This check consults ``active_runner`` but never sets it.
     """
-    if not identity.session_id:
+    if not identity.session_id and identity.principal != SYSTEM_OPERATOR_PRINCIPAL:
         return
     holder = await _foreign_live_claim_holder(todos_db, identity.session_id, slug)
     if holder is None:
@@ -106,8 +108,11 @@ async def refuse_todo_update_outside_claiming_group(
     identity: CallerIdentity,
     slug: str,
 ) -> None:
-    """Refuse an agent update from outside a slug's live claiming group."""
-    if not identity.session_id and identity.role is None:
+    """Refuse an agent update from outside a slug's live claiming group.
+
+    The computer's operator outside a session belongs to no claiming group.
+    """
+    if not identity.session_id and identity.role is None and identity.principal != SYSTEM_OPERATOR_PRINCIPAL:
         return
     holder = await _foreign_live_claim_holder(todos_db, identity.session_id, slug)
     if holder is None:

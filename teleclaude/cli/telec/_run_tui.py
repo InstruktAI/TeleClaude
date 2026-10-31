@@ -12,7 +12,6 @@ from typing import Any
 
 from teleclaude.cli.session_auth import TUI_CARRIED_IDENTITY_ENV_KEY, read_current_session_email
 from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME
-from teleclaude.cli.telec.handlers.auth_cmds import _requires_tui_login
 from teleclaude.cli.tui.processes import deregister_tui
 from teleclaude.config.machine import config
 from teleclaude.constants import ENV_ENABLE
@@ -45,10 +44,6 @@ def start_tui() -> None:
 def _exec_tmux_tui() -> None:
     invocation_dir = resolve_invocation_roots().invocation_dir
     terminal_email = read_current_session_email()
-    if _requires_tui_login() and not terminal_email:
-        print("Error: telec auth login is required before starting the TUI in multi-user mode.")
-        print("Run: telec auth login <email>")
-        raise SystemExit(1)
 
     tmux = config.computer.tmux_binary
     result = subprocess.run([tmux, "has-session", "-t", TUI_SESSION_NAME], capture_output=True, check=False)
