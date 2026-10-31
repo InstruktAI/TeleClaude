@@ -97,8 +97,6 @@ Scenario Outline: Restart failure reaches the operator
 
 #### UC-AR12: Maintenance restoration wakes the resumed agent without foregrounding the continuation
 
-<!-- planned:restart-relaunch-fuses-shell-line -->
-
 #### UC-AR21: Restart relaunches cleanly over unsubmitted shell input
 
 ```
@@ -108,8 +106,6 @@ Then the same session continues from its native conversation exactly as the rest
 And the relaunched agent runs under the launch identity the restart registered for it
 And the unsubmitted text never reaches the agent
 ```
-
-<!-- /planned:restart-relaunch-fuses-shell-line -->
 
 ### Cross-context references
 
