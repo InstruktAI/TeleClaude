@@ -11,6 +11,7 @@ already-checked-out files that are still unexpanded.
 """
 
 import re
+import stat
 from enum import StrEnum
 from pathlib import Path
 
@@ -112,6 +113,12 @@ def _force_resmudge(repo: Repo, project_root: Path) -> int:
     keep the token (``-filter`` overrides) are left alone. Locally modified files
     are skipped to avoid clobbering edits. Deleting and re-checking out the rest
     re-runs the smudge filter.
+
+    A failed checkout (for example Git refusing an occupied ``index.lock``) leaves
+    the candidates as they were: every candidate the checkout did not recreate is
+    written back with its prior bytes and file mode, and the checkout error then
+    propagates unchanged. The next convergence selects the still-unexpanded files
+    again.
     """
     token_files = _files_with_token(repo)
     if not token_files:
@@ -122,10 +129,28 @@ def _force_resmudge(repo: Repo, project_root: Path) -> int:
     if not stale:
         return 0
 
+    preimages: dict[str, tuple[bytes, int]] = {}
+    for relative_path in stale:
+        target = project_root / relative_path
+        preimages[relative_path] = (target.read_bytes(), stat.S_IMODE(target.stat().st_mode))
     for relative_path in stale:
         (project_root / relative_path).unlink()
-    repo.git.checkout("--", *stale)
+    try:
+        repo.git.checkout("--", *stale)
+    except GitCommandError:
+        _restore_preimages(project_root, preimages)
+        raise
     return len(stale)
+
+
+def _restore_preimages(project_root: Path, preimages: dict[str, tuple[bytes, int]]) -> None:
+    """Write back each removed file the failed checkout did not recreate."""
+    for relative_path, (content, mode) in preimages.items():
+        target = project_root / relative_path
+        if target.exists():
+            continue
+        target.write_bytes(content)
+        target.chmod(mode)
 
 
 def _reconcile_filter_residue(repo: Repo, project_root: Path) -> int:
