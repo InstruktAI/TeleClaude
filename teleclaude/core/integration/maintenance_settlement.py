@@ -11,7 +11,7 @@ downstream and two projects activating one revision never share an id.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
@@ -19,7 +19,6 @@ from typing import Final
 from instrukt_ai_logging import get_logger
 
 from teleclaude.checkpoint_model import ActivationRange
-from teleclaude.constants import RESTART_MAINTENANCE_ACTION_ID
 from teleclaude.core.integration._maintenance_records import (
     FailedAction,
     MaintenanceActionRecord,
@@ -63,27 +62,12 @@ class SettlementWatch:
     """Tracks the commit activations a drain has seen owing work and records each one's settlement.
 
     An activation is watched from the moment a read shows it still owing an action, so a stale failure from an
-    earlier drain is never announced again. It settles when no action of it is pending or running and its
-    restart obligation, when held, belongs to a window this drain verified: it failed when a failure stays
-    recorded, otherwise it succeeded. A held restart that no drain verified is unexecuted work, so its
-    activation stays unsettled and unannounced.
+    earlier drain is never announced again. It settles when no action of it is pending or running: it failed
+    when a failure stays recorded, otherwise it succeeded.
     """
 
     replay_command: ReplayCommand
     watched: set[ActivationRange] = field(default_factory=set)
-    verified_windows: set[ActivationRange] = field(default_factory=set)
-
-    def note_verified_window(self, activations: Iterable[MaintenanceActivation]) -> None:
-        """Remember the commit activations a stopped-daemon window covered and whose start verified."""
-        self.verified_windows.update(item for item in activations if isinstance(item, ActivationRange))
-
-    def _owes_work(self, activation: ActivationRange, record: MaintenanceActionRecord) -> bool:
-        """Whether the record is an obligation this drain has not carried out."""
-        if record.state in _OPEN_STATES:
-            return True
-        if record.state is not MaintenanceRecordState.HELD:
-            return False
-        return not (record.action_id == RESTART_MAINTENANCE_ACTION_ID and activation in self.verified_windows)
 
     def record_settled(self, project_root: Path, records: tuple[MaintenanceActionRecord, ...]) -> None:
         """Record the announcement of every watched activation whose last owed action reached a terminal outcome."""
@@ -92,11 +76,11 @@ class SettlementWatch:
             if isinstance(record.activation, ActivationRange):
                 by_activation.setdefault(record.activation, []).append(record)
         for activation, held in by_activation.items():
-            if any(self._owes_work(activation, record) for record in held):
+            if any(record.state in _OPEN_STATES for record in held):
                 self.watched.add(activation)
         for activation in tuple(self.watched):
             held = by_activation.get(activation, [])
-            if any(self._owes_work(activation, record) for record in held):
+            if any(record.state in _OPEN_STATES for record in held):
                 continue
             failed = tuple(
                 FailedAction(record.action_id, self.replay_command(record.activation, record.action_id))

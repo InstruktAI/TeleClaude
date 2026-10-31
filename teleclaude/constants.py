@@ -574,7 +574,6 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
 
 
 BLUEPRINT_MAINTENANCE_ACTION_ID: Final[str] = "blueprint"
-RESTART_MAINTENANCE_ACTION_ID: Final[str] = "restart"
 
 
 CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {

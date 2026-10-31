@@ -145,7 +145,6 @@ class MaintenanceRecordState(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     FAILED = "failed"
-    HELD = "held"
 
 
 @dataclass(frozen=True)
