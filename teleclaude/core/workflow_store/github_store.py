@@ -94,8 +94,9 @@ _EMPTY = ""
 _QUESTION_LINE_BREAK = "\n"
 _MIGRATION_RECORD_ID = "github-store-switch:{}:{}"
 _ITEM_ID_BY_SLUG = "SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug"
-_LIVE_ITEM_ID_BY_SLUG = (
-    f"SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug AND status IN ('{TodoStatus.ACTIVE}', '{TodoStatus.ICEBOX}')"
+_ITEM_ID_FOR_SLUG = (
+    "SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug "
+    f"ORDER BY status IN ('{TodoStatus.ACTIVE}', '{TodoStatus.ICEBOX}') DESC, created_at DESC LIMIT 1"
 )
 _ITEM_SLUG_BY_ID = "SELECT slug FROM todo WHERE CAST(id AS TEXT) = :item_id"
 _ITEM_STATE_BY_ID = "SELECT state FROM todo_state WHERE CAST(id AS TEXT) = :item_id"
@@ -224,10 +225,10 @@ class GitHubWorkflowStore(TodosDb):
         """Populate a newly created working copy from the repository before serving it."""
         await self._sync.rebuild()
 
-    async def awaiting_republication(self, slug: str) -> bool:
+    async def awaiting_republication(self, *, slug: str | None = None, todo_id: str | None = None) -> bool:
         """Whether the item's record still predates native artifacts, so its writes are refused until it is republished."""
         async with self._session() as session:
-            return await session.run_sync(_slug_awaits_republication, slug)
+            return await session.run_sync(_awaits_republication, slug, todo_id)
 
     async def refresh_working_copy(self, *, republish: bool = False) -> int:
         """Adopt committed changes made by another computer and repair owed reflections.
@@ -734,15 +735,16 @@ def resolve_github_store_selection(
     return identity.project_path, identity, assignment
 
 
-async def refuse_if_awaiting_republication(store: WorkflowStore, slug: str) -> None:
-    """Refuse a write to an item awaiting republication with the retryable cause, where its state is unavailable."""
-    if isinstance(store, GitHubWorkflowStore) and await store.awaiting_republication(slug):
-        raise GitHubIORefused(GitHubIOFailure.AWAITING_REPUBLICATION)
+def _awaits_republication(session: SyncSession, slug: str | None, todo_id: str | None) -> bool:
+    """Whether the item a request addresses is in the pending set, resolving its identity once.
 
-
-def _slug_awaits_republication(session: SyncSession, slug: str) -> bool:
-    item_id = session.execute(text(_LIVE_ITEM_ID_BY_SLUG), {_SLUG: slug}).scalar_one_or_none()
-    return item_id is not None and republication_pending(session, str(item_id))
+    A slug addresses its live (active or icebox) item, as a state read does, and otherwise the newest retained one,
+    so a removed row sharing the slug never makes the answer ambiguous. An id addresses its item exactly.
+    """
+    if todo_id is None and slug is not None:
+        found = session.execute(text(_ITEM_ID_FOR_SLUG), {_SLUG: slug}).scalar_one_or_none()
+        todo_id = str(found) if found is not None else None
+    return todo_id is not None and republication_pending(session, todo_id)
 
 
 def _probe_target(session: SyncSession) -> tuple[ArtifactFact | None, int | None]:

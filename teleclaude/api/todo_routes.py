@@ -37,6 +37,7 @@ from teleclaude.api.todo_update_support import (
     validate_kind_for_update,
     validate_update_request,
 )
+from teleclaude.api.todo_write_admission import admit_item_write
 from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api.working_copy_request import working_copy_request_deadline
 from teleclaude.api_models import TodoDumpRequest
@@ -86,7 +87,6 @@ from teleclaude.core.todos_db._exceptions import (
     OperationFailure,
 )
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
-from teleclaude.core.workflow_store.github_store import refuse_if_awaiting_republication
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.slug import validate_slug
 from teleclaude.types.creation_record import EntryPoint
@@ -99,7 +99,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/todos", tags=["todos"], dependencies=[Depends(working_copy_request_deadline)])
+router = APIRouter(
+    prefix="/todos", tags=["todos"], dependencies=[Depends(working_copy_request_deadline), Depends(admit_item_write)]
+)
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 _CLAIMED_HOLD_WARNING = (
@@ -473,7 +475,6 @@ def _validate_slug_for_create(slug: str, *, field_name: str) -> None:
 async def _todo_build_started(todos_db: WorkflowStore, slug: str) -> bool:
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
-        await refuse_if_awaiting_republication(todos_db, slug)
         raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
     writer = StateWriter(raw_state)
     phase = writer.state.lifecycle_phase

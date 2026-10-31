@@ -32,7 +32,6 @@ from teleclaude.core.todos_db._errors import (
     HolderReconciliationRefused,
     HolderTransitionRefused,
 )
-from teleclaude.core.workflow_store.github_store import refuse_if_awaiting_republication
 from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS
 from teleclaude.types.todos import HoldAuditSource
@@ -232,7 +231,6 @@ async def apply_hold_update(
         return None
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
-        await refuse_if_awaiting_republication(todos_db, slug)
         raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
     writer = StateWriter(raw_state)
     if release and writer.state.hold_audit.source == HoldAuditSource.TASK_ERROR:

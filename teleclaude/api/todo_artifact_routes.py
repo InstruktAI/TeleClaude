@@ -24,6 +24,7 @@ from teleclaude.api.todo_artifact_authority import (
 )
 from teleclaude.api.todo_routes import _default_cwd, _get_workflow_store_from_cwd
 from teleclaude.api.todo_update_support import require_slug_in_todo
+from teleclaude.api.todo_write_admission import admit_item_write
 from teleclaude.api.working_copy_request import working_copy_request_deadline
 from teleclaude.constants import (
     ARTIFACT_INPUT,
@@ -46,7 +47,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/todos", tags=["todos"], dependencies=[Depends(working_copy_request_deadline)])
+router = APIRouter(
+    prefix="/todos", tags=["todos"], dependencies=[Depends(working_copy_request_deadline), Depends(admit_item_write)]
+)
 
 # ── Response models ─────────────────────────────────────────────────────────
 
