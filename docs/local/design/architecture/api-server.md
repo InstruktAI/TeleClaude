@@ -169,14 +169,10 @@ consumer has completed a separate computer-resource request.
 - Cache, cluster, command, and MCP recovery retain their owning contracts;
   opening a UI connection adds no recovery authority or peer-polling loop.
 
-<!-- planned:api-hang-dumps-show-where-requests-wait -->
-
 - A request held past the API watch's in-flight threshold, or event-loop lag
   past its lag threshold, makes the watch write a hang dump, as
   `local/projects/teleclaude/spec/feature/agent_runtime/request-stall-diagnostics`
   states.
-
-<!-- /planned:api-hang-dumps-show-where-requests-wait -->
 
 ## See Also
 

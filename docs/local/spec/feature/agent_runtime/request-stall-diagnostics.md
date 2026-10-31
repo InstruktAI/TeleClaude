@@ -1,7 +1,7 @@
 ---
-description: Where an agent finds what the service process was doing when a request stalled or its event loop lagged — one hang dump per watch firing, complete, named in the daemon log, durable once written and bounded on disk.
-delivered_by:
-  - api-hang-dumps-show-where-requests-wait
+description: Where an agent finds what the service process was doing when a request
+  stalled or its event loop lagged — one hang dump per watch firing, complete, named
+  in the daemon log, durable once written and bounded on disk.
 ---
 
 # Request Stall Diagnostics — Spec
