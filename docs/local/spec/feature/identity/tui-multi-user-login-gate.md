@@ -61,6 +61,10 @@ Scenario: A solo terminal opens without another login step
 
 - The launch identity is resolved once, at startup. A login made or removed while the TUI is running does not change the identity it carries — the next TUI launch resolves again.
 - The launcher does not re-validate a carried email against the live `people` list before opening the TUI — the identity context does that lookup on each protected call. A stale auth document whose email was removed from `people` carries that email into the TUI, and its protected calls fail as an unresolved login; it never becomes the operator.
-- Launching without a login carries the operator's authority. The TUI is no security boundary between people sharing one operating-system account; such an installation needs a separate operating-system user per person (`docs/local/adr/0152-an-unidentified-local-caller-is-the-computers-operator.md`).
+- Launching without a login carries the operator's authority. The TUI is no security boundary between people sharing one operating-system account; such an installation needs a separate operating-system user per person.
 - The launcher kills any existing `tc_tui` tmux session before spawning a new one. This is intentional (only one trusted TUI per host at a time) but means a concurrent invocation will displace an in-progress operator session without warning.
 - Environment forwarding into the new tmux session is fail-closed. Only platform-owned TUI runtime keys are propagated; arbitrary shell variables and secrets are never forwarded by configuration.
+
+## See Also
+
+- docs/local/adr/0152-an-unidentified-local-caller-is-the-computers-operator.md — why a local caller with no identity acts as the computer's operator.
