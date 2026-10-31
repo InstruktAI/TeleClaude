@@ -66,10 +66,24 @@ For a project on the GitHub workflow store, every computer holding a checkout
 sees the same todos, and one todo has at most one live orchestrator across all
 of them.
 
+<!-- planned-change:event-driven-lifecycle-runner -->
+
 - The project names one active computer in a variable on its GitHub
   repository. `telec projects active-computer set`, run deliberately, names it;
   nothing names it automatically. It acts on the project of the directory it
   runs in, or on the one `--project-root` names, so it can be run from anywhere.
+
+<!-- change:event-driven-lifecycle-runner -->
+
+- The project names one active computer in a variable on its GitHub
+  repository. `telec projects active-computer set`, run deliberately, names it;
+  nothing names it automatically. It acts on the project of the directory it
+  runs in, or on the one `--project-root` names, so it can be run from anywhere.
+  Naming a computer tells that computer, whose pickup then evaluates the
+  project's work (`local/projects/teleclaude/spec/feature/workflow/work-pickup`).
+
+<!-- /planned-change:event-driven-lifecycle-runner -->
+
 - Only the active computer admits a start of the project's todos and writes
   their claims. A start on another computer is refused naming the active
   computer, and creates or claims nothing; working on another computer means
@@ -84,11 +98,28 @@ of them.
   hold the todo; a computer that does not answer leaves the claim held.
 - A computer treats a claim for a session it never ran as held, and never
   clears it.
+
+<!-- planned-change:event-driven-lifecycle-runner -->
+
 - Another computer asks the active computer to release a claim for a session it
   ran, and the active computer clears claims it judges ended in its lifecycle
   runner passes. Making a different computer active does not move a running
   orchestrator: its claim stays with its session's computer until that session
   ends. Reactivating a removed todo restores the claim its removal set aside.
+
+<!-- change:event-driven-lifecycle-runner -->
+
+- Another computer asks the active computer to release a claim for a session it
+  ran, and asks again within a minute for as long as the active computer does
+  not answer; when it starts, it asks again for every claim of a session it ran
+  that has ended. The active computer clears claims it judges ended in its
+  lifecycle runner passes. Making a different computer active does not move a
+  running orchestrator: its claim stays with its session's computer until that
+  session ends. Reactivating a removed todo restores the claim its removal set
+  aside.
+
+<!-- /planned-change:event-driven-lifecycle-runner -->
+
 - A start that finds the todo held is refused with the driver-start conflict
   naming the holding session and the computer running it, or the computers that
   did not answer, and creates or claims nothing.

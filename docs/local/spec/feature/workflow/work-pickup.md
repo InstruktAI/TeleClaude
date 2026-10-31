@@ -65,9 +65,13 @@ Pickup evaluates a project when one of these happens:
   longer drives the todo: the claim is cleared and the todo evaluated, without
   waiting for another change to it.
 
-Pickup evaluates the project as soon as its change is known on this computer.
-Work that became startable while the daemon was stopping, stopped or starting
-is taken up once the daemon runs again.
+Pickup evaluates the project within seconds of its change being known on this
+computer, and a change made elsewhere is known on the active computer within
+seconds of GitHub delivering its webhook. That evaluation starts each todo it
+finds ready that the project's capacity and driver admission let it start; a
+todo they hold back waits for the change that frees it, and a start that fails
+is retried as above. Work that became startable while the daemon was stopping,
+stopped or starting is taken up once the daemon runs again.
 
 ### What does not wake pickup
 

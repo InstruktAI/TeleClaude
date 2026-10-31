@@ -387,6 +387,8 @@ master admits each conversation request before sending it:
   derived from means the item changed on another computer: the write is
   refused, the item is refreshed from GitHub, and the caller may retry.
 
+<!-- planned-change:event-driven-lifecycle-runner -->
+
 - **Rebuild and refresh.** A working copy that is absent is rebuilt from the
   repository before first use: every issue the platform App created that
   carries a platform record of repository work, and the ledger. A record's
@@ -398,6 +400,32 @@ master admits each conversation request before sending it:
   questions their asking sessions have answered, and rewrites owed
   reflections. Neither adopts a record whose item is not repository work.
   Rebuild and refresh write the working copy without pushing records back.
+
+<!-- change:event-driven-lifecycle-runner -->
+
+- **Rebuild and refresh.** A working copy that is absent is rebuilt from the
+  repository before first use: every issue the platform App created that
+  carries a platform record of repository work, and the ledger. A record's
+  pending revision is taken only when the ledger holds its transaction's
+  commit entry. The daemon refreshes each GitHub-backed project it serves at
+  start and periodically, and the project's active computer refreshes it when
+  GitHub delivers a write the platform App made to the project's repository:
+  it applies items whose effective GitHub revision is newer than the working
+  copy's, including every item a new commit entry lists whether or not its
+  issue changed since the last refresh, closes the questions their asking
+  sessions have answered, and rewrites owed reflections. Neither adopts a
+  record whose item is not repository work. Rebuild and refresh write the
+  working copy without pushing records back.
+- **Refresh on delivery.** Deliveries that arrive while a refresh of the
+  project runs yield one more refresh after it. A delivery-triggered refresh
+  that the republication throttle holds runs once the throttle ends.
+- **Adoption wakes pickup.** A refresh that adopts an item emits the
+  todo-updated event for it on the refreshing computer, so the project's
+  pickup evaluates it
+  (`local/projects/teleclaude/design/architecture/work-pickup`).
+
+<!-- /planned-change:event-driven-lifecycle-runner -->
+
 - **Projection repair.** The working copy records which projection its
   repository was last brought to. A refresh that finds an older one owes a
   reflection for every item it holds, sets the repository's platform labels

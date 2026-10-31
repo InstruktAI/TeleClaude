@@ -136,8 +136,18 @@ concerned:
   origin;
 - deployment events: the deployed project's deployment, one thing across all
   its deployments, with the deployed project as origin;
+
+<!-- planned-change:event-driven-lifecycle-runner -->
+
 - the schedule clock's minute tick: the computer whose clock ticked, with no
   origin.
+
+<!-- change:event-driven-lifecycle-runner -->
+
+- the active-computer-named event: the project's GitHub workflow store, with
+  the project as origin.
+
+<!-- /planned-change:event-driven-lifecycle-runner -->
 
 ### Governing designs and decisions
 
@@ -147,6 +157,14 @@ concerned:
 - `local/projects/teleclaude/design/architecture/prepare-flow` — the prepare phase from intent to prepared
 - `local/projects/teleclaude/design/architecture/work-state-machine` — build, review, fix and finalize routing
 - `local/projects/teleclaude/design/architecture/workflow-store` — the workflow store port and its local and GitHub adapters
+
+<!-- planned:event-driven-lifecycle-runner -->
+
+- `local/projects/teleclaude/design/architecture/work-pickup` — how the lifecycle runner is woken
+- `local/projects/teleclaude/adr/0153-pickup-is-woken-by-changes-and-its-own-timers-with-no-periodic-resync` — pickup woken by changes and its own timers, with no periodic resync
+
+<!-- /planned:event-driven-lifecycle-runner -->
+
 - `local/projects/teleclaude/adr/0001-git-stash-prevention` — keeping test runs from leaving git stash entries
 - `local/projects/teleclaude/adr/0015-kind-as-lifecycle-entry-point` — a kind as the lifecycle entry point
 - `local/projects/teleclaude/adr/0017-review-lanes-as-dod-anchored-shared-group` — review lanes as one shared catalog
