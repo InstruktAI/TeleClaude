@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from teleclaude.core.degradation import Degradation, DegradedComponent
 from teleclaude.core.shutdown_drain import DrainObservation, DrainPhase
 
 
@@ -43,11 +44,32 @@ class PreparationObservationDTO(BaseModel):
         )
 
 
+class DegradationDTO(BaseModel):
+    """One optional component, or one subject of it, that is not serving, why, and since when."""
+
+    model_config = ConfigDict(frozen=True)
+
+    component: DegradedComponent
+    subject: str | None = None
+    reason: str
+    since: datetime
+
+    @classmethod
+    def from_degradation(cls, degradation: Degradation) -> "DegradationDTO":
+        return cls(
+            component=degradation.component,
+            subject=degradation.subject,
+            reason=degradation.reason,
+            since=degradation.since,
+        )
+
+
 class HealthDTO(BaseModel):
     """Liveness of the daemon, the commit its code checkout stood on at start, and its preparation state.
 
-    The preparation observation and the configuration migration reach, the newest configuration
-    document version the process reads, are served on the local API socket only.
+    The preparation observation, the configuration migration reach (the newest configuration
+    document version the process reads) and the optional components currently degraded are
+    served on the local API socket only.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -56,3 +78,4 @@ class HealthDTO(BaseModel):
     start_commit: str | None = None
     preparation: PreparationObservationDTO | None = None
     config_migration_reach: int | None = None
+    degraded: tuple[DegradationDTO, ...] | None = None

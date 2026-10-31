@@ -691,10 +691,22 @@ sequenceDiagram
   project declaration whose `todos.app` to fix; a refused App credential, at
   identity read or at GitHub I/O, names that declaration and points to the
   App's profile in the global configuration, the environment variable holding
-  its private key, and its installation on the repository; a rate limit, an
-  unavailable provider or any other GitHub I/O refusal says the GitHub store
+  its private key, and its installation on the repository; a repository that
+  does not serve issue artifacts names that declaration and points to the
+  organization serving issue artifacts and the App installation's repository
+  permissions, and says the store probes again on its next use; a rate limit,
+  an unavailable provider or any other GitHub I/O refusal says the GitHub store
   could not be reached and points to a retry or `telec app status`; any other
-  identity refusal names its reason.
+  identity refusal names its reason. The daemon names the same cause and door
+  when it refuses a project.
+- One project's store refusal or failure refuses that project alone. The
+  daemon's project listing, which startup, the API, peer digests and the
+  worktree reconciler share, lists that project without todos, logs the cause
+  and its door once when it starts or changes, and records the project's
+  workflow store as degraded until a later listing resolves it, so
+  `telec app status` reports it
+  (`local/projects/teleclaude/policy/daemon-availability`); every other project
+  is listed as usual.
 
 - A GitHub write before the commit point that fails, is refused by a rate
   limit, or meets a newer record revision aborts the local commit and refuses

@@ -26,6 +26,19 @@ in frontmatter. It is keyed by its path-derived ID, carries an authored
 or Markdown link it was distilled from. Its `id` and `scope` are derived from
 the path.
 
+<!-- planned:third-party-docs-bypass-publication -->
+
+The third-party listing and retrieval read two indexes: the global index of the
+deployed documentation's `third-party/` root, whose entries carry scope
+`global`, and the index of the landed project's own `docs/third-party/`, whose
+entries carry scope `project`. The mother project's `docs/third-party/` is the
+source of the global set
+(`local/projects/teleclaude/spec/feature/context/agent-runtime-deployment`), so
+inside the mother project it is read only through its published form and is not
+loaded a second time as project documentation.
+
+<!-- /planned:third-party-docs-bypass-publication -->
+
 ## Canonical fields
 
 ### Use cases
@@ -49,6 +62,21 @@ Scenario: Browse external references
   Then they can distinguish those references from taxonomy documentation
   And each listed reference is described well enough to choose what to retrieve
 ```
+
+<!-- planned:third-party-docs-bypass-publication -->
+
+#### UC-TPSC3: Share a sourced vendor reference with every project
+
+```gherkin
+Scenario: Reuse a curated reference across projects
+  Given a maintainer curated a vendor reference for reuse across projects in the mother project
+  And the reference is committed there
+  When the committed documentation is published
+  Then the reference is listed as global and retrievable from any project and from outside every project
+  And retrieving it does not depend on which platform release or checkout the reader runs
+```
+
+<!-- /planned:third-party-docs-bypass-publication -->
 
 ### Cross-context references
 

@@ -8,7 +8,8 @@ caller acts only on a successful outcome. A window that expires on an instance t
 completes its own shutdown is a deferral, not a failure: the draining daemon finishes
 the restart once its accepted work settles.
 
-The read-only `status` verb reports the same observation for `make status`.
+The read-only `status` verb reports the same observation for `make status`, and the read-only
+`degraded` verb the optional components the daemon serves without.
 
 Maintenance callers that must not store configuration documents past what the running daemon reads
 ask `read_migration_reach` for the migration reach the daemon reports.
@@ -54,6 +55,8 @@ _STATUS_FIELD = "status"
 _PREPARATION_FIELD = "preparation"
 _MIGRATION_REACH_FIELD = "config_migration_reach"
 _MIGRATION_REACH_MALFORMED = "migration reach is malformed"
+_DEGRADED_FIELD = "degraded"
+_DEGRADED_MALFORMED = "degraded components are malformed"
 _STARTED_AT_FIELD = "preparation_started_at"
 _HELD_LABELS_FIELD = "held_labels"
 _GRACE_FIELD = "termination_grace_seconds"
@@ -79,6 +82,7 @@ class ControlOutcome(IntEnum):
     INSTANCE_REPLACED = 14
     DEFERRED = 15
     ADMISSION_CLOSED = 16
+    DEGRADED = 17
     LEGACY_NOT_IDENTIFIED = 20
     LEGACY_SUPPORTS_PREPARATION = 21
     LEGACY_RESIDUAL_WORK = 22
@@ -101,6 +105,7 @@ _OUTCOME_MESSAGES: dict[ControlOutcome, str] = {
         " once its accepted work settles: {detail}"
     ),
     ControlOutcome.ADMISSION_CLOSED: "the daemon is not accepting new work: {detail}",
+    ControlOutcome.DEGRADED: "the daemon serves without some optional components: {detail}",
     ControlOutcome.LEGACY_NOT_IDENTIFIED: "the running daemon is not positively identified as the legacy runtime: {detail}",
     ControlOutcome.LEGACY_SUPPORTS_PREPARATION: "the running daemon supports preparation; legacy activation is refused",
     ControlOutcome.LEGACY_RESIDUAL_WORK: "unfinished durable work remains: {detail}",
@@ -145,6 +150,7 @@ class HealthObservation:
     fields: frozenset[str]
     preparation: PreparationObservation | None
     migration_reach: int | None = None
+    degraded: tuple[str, ...] | None = None
 
 
 class _UnixSocketConnection(http.client.HTTPConnection):
@@ -187,7 +193,26 @@ def read_health(socket_path: str) -> HealthObservation:
         fields=frozenset(document),
         preparation=_parse_preparation(raw_preparation) if raw_preparation is not None else None,
         migration_reach=_parse_migration_reach(document.get(_MIGRATION_REACH_FIELD)),
+        degraded=_parse_degraded(document.get(_DEGRADED_FIELD)),
     )
+
+
+def _parse_degraded(raw: object) -> tuple[str, ...] | None:
+    """One line per degraded component: what, for which subject, since when, and why."""
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ControlRefusal(ControlOutcome.UNREADABLE, _DEGRADED_MALFORMED)
+    lines: list[str] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise ControlRefusal(ControlOutcome.UNREADABLE, _DEGRADED_MALFORMED)
+        component, subject, reason, since = (entry.get(key) for key in ("component", "subject", "reason", "since"))
+        if not isinstance(component, str) or not isinstance(reason, str) or not isinstance(since, str):
+            raise ControlRefusal(ControlOutcome.UNREADABLE, _DEGRADED_MALFORMED)
+        scope = f"{component} ({subject})" if isinstance(subject, str) else component
+        lines.append(f"{scope} since {since}: {reason}")
+    return tuple(lines)
 
 
 def _parse_migration_reach(raw: object) -> int | None:
@@ -311,6 +336,16 @@ def report_admission(socket_path: str) -> int:
     return int(ControlOutcome.ADMISSION_CLOSED)
 
 
+def report_degraded(socket_path: str) -> int:
+    """Print each optional component the daemon serves without; exit OK only when there is none."""
+    degraded = read_health(socket_path).degraded
+    if degraded is None:
+        raise ControlRefusal(ControlOutcome.UNSUPPORTED)
+    for line in degraded:
+        print(line)
+    return int(ControlOutcome.DEGRADED) if degraded else int(ControlOutcome.OK)
+
+
 def quiesce_legacy(socket_path: str, manager_pid: int, pid_file: str | None) -> int:
     """Return the pid of the positively identified legacy daemon whose durable work is quiescent."""
     pid = _identify_legacy(socket_path, manager_pid, pid_file)
@@ -374,6 +409,7 @@ class _Verb(StrEnum):
     PREPARE = "prepare"
     LEGACY = "legacy"
     STATUS = "status"
+    DEGRADED = "degraded"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -384,11 +420,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--manager-pid", type=int)
     parser.add_argument("--pid-file")
     args = parser.parse_args(argv)
-    if args.verb != _Verb.STATUS and args.manager_pid is None:
+    if args.verb not in (_Verb.STATUS, _Verb.DEGRADED) and args.manager_pid is None:
         parser.error(_MANAGER_PID_REQUIRED.format(verb=args.verb))
     try:
         if args.verb == _Verb.STATUS:
             return report_admission(args.socket)
+        if args.verb == _Verb.DEGRADED:
+            return report_degraded(args.socket)
         if args.verb == _Verb.PREPARE:
             pid = prepare(args.socket, args.manager_pid)
         else:

@@ -21,6 +21,10 @@ visibility: 'public'
 
 - Daemon health (API socket, API health/read endpoints, adapters, preparation phase) is verified by `telec app status`, a separate invocation that is never part of `telec app restart`. A daemon whose admission is closed is reported as draining — its phase, when preparation began, and the accepted work it still holds — and never as healthy. `telec app status` also names the active release, and the reason and time an install last refused to stop the daemon, left it stopped, or left it without a verified start, until a later start verifies. After an install, the standing integrator's log judgment establishes whether the runtime behaves correctly on the installed release.
 
+- Only a core dependency stops the daemon; which startup dependencies are core is owned by `local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`. An optional component that fails — one project's workflow store, a UI adapter, chiptunes — is logged as an error and left out, and the daemon keeps serving everything else. While it lasts, `telec app status` reports the daemon degraded and names each such component, its subject and the reason with the act that resolves it.
+
+- A daemon that cannot start ends its process with a non-zero status once its stop has run, whatever worker threads remain, so the service manager observes the failure and relaunches it at its own pace. A process without its request surface never stays alive.
+
 - If Redis is configured for the event platform, startup must expose Redis reachability and pending recovery progress through daemon state or structured logs before continuing degraded; a silent healthy-but-no-Streams state is forbidden.
 
 - `telec app stop` and `telec app restart` bring down the daemon and its managed launchd units only; they never signal an agent session, the tmux server, the local Redis, or a spawn-registry lease-holder. Sessions and leased detached workers (e.g. the chiptunes worker) outlive the daemon by design: sessions end only through the caller-driven path (see `general/principle/session-lifecycle`); leased workers are re-adopted via adopt-or-kill on the next start (see `local/projects/teleclaude/design/process-lifecycle`).
@@ -35,6 +39,8 @@ visibility: 'public'
 ## Rationale
 
 - Users rely on the service continuously; unplanned downtime breaks active sessions and automation.
+- An optional component's failure denies only what that component serves. Letting it stop the daemon turns one project's refusal into an outage of every session, hook, wake and relay on the computer.
+- A failed daemon that stays alive is worse than one that exits: the service manager relaunches only a process that ended, and nothing reports the outage while the process lives.
 - Explicit restart + separate verification is the safest minimal-downtime path.
 - A restart can terminate the process that requested it, and a daemon in its first seconds is at its busiest. A check inside the restart measures that warm-up rather than whether the restart happened, and turns a successful restart into a failed maintenance record that holds up delivery.
 
@@ -57,6 +63,8 @@ visibility: 'public'
 - A `telec app stop` that leaves a prepared daemon or a managed launchd unit alive past 30 seconds after preparation completed, that forcibly terminates a daemon whose preparation has not completed, or that signals a session, tmux, or spawn-registry lease-holder pid, is a defect.
 
 - A daemon alive with admission closed after its accepted work has settled and its termination grace has passed is a defect.
+
+- A startup that aborts on an optional component's failure, and a daemon process alive without its request surface after a failed start, are defects.
 
 ## Exceptions
 
