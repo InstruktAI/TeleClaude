@@ -79,11 +79,12 @@ of them.
   repository. `telec projects active-computer set`, run deliberately, names it;
   nothing names it automatically. It acts on the project of the directory it
   runs in, or on the one `--project-root` names, so it can be run from anywhere.
-  Naming a computer tells that computer, whose pickup then evaluates the
-  project's work (`local/projects/teleclaude/spec/feature/workflow/work-pickup`).
-  The naming succeeds only once that computer has been told; a naming whose
-  notice could not be sent is reported as failed, and running it again is
-  safe.
+  Naming a computer tells that computer before the variable is written, so a
+  naming whose notice cannot be sent changes nothing and is reported as
+  failed. The told computer's pickup evaluates the project's work once the
+  variable names it: when the notice arrives, and once more when the naming's
+  write can no longer be under way
+  (`local/projects/teleclaude/spec/feature/workflow/work-pickup`).
 
 <!-- /planned-change:event-driven-lifecycle-runner -->
 

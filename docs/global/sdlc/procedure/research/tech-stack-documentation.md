@@ -12,18 +12,6 @@ Capture authoritative documentation for project dependencies and store concise i
 
 ## Preconditions
 
-<!-- planned-change:third-party-docs-bypass-publication -->
-
-- One upstream party is specified. An upstream party is one independently
-  versioned project, product, protocol, library, framework, or tool with its
-  own release lifecycle or governing source.
-- At least one authoritative source is available or discoverable.
-- Target scope is determined:
-  - **Default**: `~/.teleclaude/docs/third-party/<upstream-party>/` (global, shared across projects).
-  - **Project-only** (explicit user request): `docs/third-party/<upstream-party>/` within the current repo.
-
-<!-- change:third-party-docs-bypass-publication -->
-
 - One upstream party is specified. An upstream party is one independently
   versioned project, product, protocol, library, framework, or tool with its
   own release lifecycle or governing source.
@@ -41,8 +29,6 @@ Capture authoritative documentation for project dependencies and store concise i
     project-only placement: a project-only request there is not written to
     global storage; report that no project-only placement exists and let the
     requester decide whether the finding is global.
-
-<!-- /planned-change:third-party-docs-bypass-publication -->
 
 ## Steps
 

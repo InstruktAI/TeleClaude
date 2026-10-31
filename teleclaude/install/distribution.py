@@ -37,6 +37,7 @@ from teleclaude.constants import ArtifactKind
 from teleclaude.core.reconciliation.platform_repository import platform_scope_key
 from teleclaude.core.reconciliation.template_installation import template_tree_root
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
+from teleclaude.docs_index import write_third_party_index_yaml
 from teleclaude.docs_publication import publish_generation
 from teleclaude.docs_publishers import (
     DocsPublisherResolutionError,
@@ -118,6 +119,7 @@ _MCP_INDEX_ENTRY_WITHOUT_TRIGGER_TEMPLATE = "- `{slug}`"
 SOURCE_PROJECT_KEY = "source_project"
 _SNIPPETS_TREE_NAME = "snippets"
 _SNIPPETS_TREE_PATH = Path(_SNIPPETS_TREE_NAME)
+_THIRD_PARTY_TREE_NAME = "third-party"
 INDEX_FILE_NAME = "index.yaml"
 INDEX_SNIPPETS_KEY = "snippets"
 _INDEX_ID_KEY = "id"
@@ -1468,6 +1470,28 @@ def materialize_global_snippets(mother: Publisher | None, staged_root: Path) -> 
         shutil.copytree(source, staged_root / "snippets", symlinks=False)
 
 
+def materialize_global_third_party(mother: Publisher | None, staged_root: Path, deployed_root: Path) -> None:
+    """Replace the staged generation's Mother-owned ``third-party/`` root with the mother's committed set.
+
+    The root holds every global third-party document and its index. The index names
+    the root's address in ``deployed_root``, where the staged generation is exchanged
+    into place, so readers resolve the entries from the deployed documentation.
+    A mother without a third-party set leaves the generation without the root.
+    """
+    if mother is None:
+        return
+    staged = staged_root / _THIRD_PARTY_TREE_NAME
+    if staged.is_dir():
+        shutil.rmtree(staged)
+    source = mother.docs_global.parent / _THIRD_PARTY_TREE_NAME
+    if not source.is_dir():
+        return
+    shutil.copytree(source, staged, symlinks=False)
+    write_third_party_index_yaml(
+        staged, scope=SnippetScope.GLOBAL.value, published_root=deployed_root / _THIRD_PARTY_TREE_NAME
+    )
+
+
 def index_entry_sort_key(entry: object) -> str:
     """Return a stable identifier key for either a decoded row or opaque entry."""
     if not isinstance(entry, Mapping):
@@ -1601,6 +1625,7 @@ def deploy_documentation(
                 else:
                     materialize_docs_root(owner_by_domain, staged_root)
                     materialize_global_snippets(mother, staged_root)
+                    materialize_global_third_party(mother, staged_root, target)
                     write_merged_index(publishers, staged_root)
                     generate_domain_baselines(owner_by_domain, staged_root, project_root, observation)
                 previous_root = publish_generation(staged_root, target)
@@ -1682,6 +1707,7 @@ def _materialize_committed_owner(
         source_snippets = current.docs_global / _SNIPPETS_TREE_PATH
         if source_snippets.is_dir():
             shutil.copytree(source_snippets, staged_snippets, symlinks=False)
+        materialize_global_third_party(current, staged_root, deployed_root)
     source_index = current.docs_global / INDEX_FILE_NAME
     source_payload = yaml.safe_load(source_index.read_text(encoding=UTF8)) if source_index.is_file() else {}
     source_entries = source_payload.get(INDEX_SNIPPETS_KEY, []) if isinstance(source_payload, dict) else []

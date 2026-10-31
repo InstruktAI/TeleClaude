@@ -105,13 +105,6 @@ needs the generated bundle names it as an explicit Required Read. The transpiler
 expands that bundle into the consuming artifact; SessionStart does not select or
 inject command-domain baseline context.
 
-<!-- planned-change:third-party-docs-bypass-publication -->
-
-Global third-party docs are read from the mother repo source (`docs/third-party/`),
-not from under the docs tree.
-
-<!-- change:third-party-docs-bypass-publication -->
-
 Global third-party docs are a Mother-owned contribution to the same staged
 generation. The mother's publication replaces the generation's `third-party/`
 root with the committed `docs/third-party/` of its recorded commit and writes
@@ -121,8 +114,6 @@ carries the root forward unchanged. Readers resolve global third-party docs
 from the deployed `third-party/` root only, never from a release's or a
 checkout's source tree, so `~/.teleclaude/docs/third-party/` is where
 `general/spec/third-party-docs` places them.
-
-<!-- /planned-change:third-party-docs-bypass-publication -->
 
 When the distribution step is invoked directly in no-deploy mode, agent
 artifacts are emitted to `project_root/dist/global` and
