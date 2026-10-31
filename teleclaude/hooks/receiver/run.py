@@ -32,11 +32,10 @@ from teleclaude.core.control_delivery import IDLE_WAKE_TEXT
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.events import (
     AGENT_STATUS_REASON_FIELD,
-    CHECKPOINT_RELAY_BODY_FIELD,
-    CHECKPOINT_RELAY_INGRESS_FIELD,
     RECEIVER_HANDLED_HOOK_EVENTS,
     AgentHookEvents,
     AgentHookEventType,
+    CheckpointRelayField,
 )
 from teleclaude.core.hook_delivery import (
     HookResponseFlushError,
@@ -1519,8 +1518,8 @@ def _maybe_emit_boundary_response(
             session_id,
             AgentHookEvents.CHECKPOINT_RELAY,
             {
-                CHECKPOINT_RELAY_BODY_FIELD: checkpoint_body,
-                CHECKPOINT_RELAY_INGRESS_FIELD: receiver_ingress_id,
+                CheckpointRelayField.BODY: checkpoint_body,
+                CheckpointRelayField.RECEIVER_INGRESS_ID: receiver_ingress_id,
             },
             outbox_db=context.outbox_db,
         )

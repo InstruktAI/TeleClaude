@@ -37,6 +37,13 @@ class AgentHookEvents(StrEnum):
 AgentHookEventType = AgentHookEvents
 
 
+class CheckpointRelayField(StrEnum):
+    """Payload fields of a checkpoint-relay outbox entry."""
+
+    BODY = "checkpoint_body"
+    RECEIVER_INGRESS_ID = "receiver_ingress_id"
+
+
 ALL_AGENT_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(AgentHookEvents)
 _DISTRESS_REASON_FIELD = "reason"
 _DISTRESS_NOTIFICATION_TYPE_FIELD = "notification_type"
@@ -49,8 +56,6 @@ _ATTENTION_DETAILS_FIELD = "native_event_details"
 _ATTENTION_OBSERVED_AT_FIELD = "received_at"
 _ATTENTION_INGRESS_ID_FIELD = "receiver_ingress_id"
 AGENT_STATUS_REASON_FIELD = "agent_status_reason"
-CHECKPOINT_RELAY_BODY_FIELD = "checkpoint_body"
-CHECKPOINT_RELAY_INGRESS_FIELD = "receiver_ingress_id"
 TOOL_CALL_ID_FIELD = "tool_call_id"
 TOOL_BATCH_RESOLVED_FIELD = "tool_batch_resolved"
 RECEIVER_HANDLED_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(

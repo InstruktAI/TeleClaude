@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Protocol
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handoff_control_payload
-from teleclaude.core.events import CHECKPOINT_RELAY_BODY_FIELD, CHECKPOINT_RELAY_INGRESS_FIELD
+from teleclaude.core.events import CheckpointRelayField
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.injected_text import checkpoint_envelope
 from teleclaude.core.models import Session
@@ -58,8 +58,8 @@ async def handle_checkpoint_relay(
     completion never advanced. A session that cannot be woken keeps the payload pending for its
     next boundary. Any other failure propagates so the outbox retries the entry.
     """
-    body = optional_payload_str_value(payload, CHECKPOINT_RELAY_BODY_FIELD)
-    receiver_ingress_id = optional_payload_str_value(payload, CHECKPOINT_RELAY_INGRESS_FIELD)
+    body = optional_payload_str_value(payload, CheckpointRelayField.BODY)
+    receiver_ingress_id = optional_payload_str_value(payload, CheckpointRelayField.RECEIVER_INGRESS_ID)
     if body is None or receiver_ingress_id is None:
         logger.error("Checkpoint relay entry is missing its body or ingress id; dropping", session_id=session_id)
         return
