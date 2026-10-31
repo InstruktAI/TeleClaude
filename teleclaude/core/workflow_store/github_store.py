@@ -94,6 +94,9 @@ _EMPTY = ""
 _QUESTION_LINE_BREAK = "\n"
 _MIGRATION_RECORD_ID = "github-store-switch:{}:{}"
 _ITEM_ID_BY_SLUG = "SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug"
+_LIVE_ITEM_ID_BY_SLUG = (
+    f"SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug AND status IN ('{TodoStatus.ACTIVE}', '{TodoStatus.ICEBOX}')"
+)
 _ITEM_SLUG_BY_ID = "SELECT slug FROM todo WHERE CAST(id AS TEXT) = :item_id"
 _ITEM_STATE_BY_ID = "SELECT state FROM todo_state WHERE CAST(id AS TEXT) = :item_id"
 _LIVE_ITEM_ISSUE_NUMBER = (
@@ -738,7 +741,7 @@ async def refuse_if_awaiting_republication(store: WorkflowStore, slug: str) -> N
 
 
 def _slug_awaits_republication(session: SyncSession, slug: str) -> bool:
-    item_id = session.execute(text(_ITEM_ID_BY_SLUG), {_SLUG: slug}).scalar_one_or_none()
+    item_id = session.execute(text(_LIVE_ITEM_ID_BY_SLUG), {_SLUG: slug}).scalar_one_or_none()
     return item_id is not None and republication_pending(session, str(item_id))
 
 
