@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from teleclaude.core.events import AgentHookEventType
+from teleclaude.core.models import JsonDict
 
 _EMPTY_CONTEXT_ERROR = "Hook context must be non-empty"
 _EMPTY_REASON_ERROR = "Hook continuation reason must be non-empty"
-_EMPTY_TOOL_DENIAL_REASON_ERROR = "Native tool denial reason must be non-empty"
 _EMPTY_EMISSION_ERROR = "Hook emission payload must be non-empty"
 
 
@@ -45,18 +45,12 @@ class HookResponseKind(StrEnum):
     STARTUP_CONTEXT = "startup_context"
     STOP_ALLOW = "stop_allow"
     TOOL_ALLOW = "tool_allow"
-    TOOL_DENY = "tool_deny"
-
-
-class NativeToolIntent(StrEnum):
-    """Provider-independent native-tool intents declared by adapters."""
-
-    DENY_NATIVE_SUBAGENT = "deny_native_subagent"
 
 
 class SubagentDropReason(StrEnum):
     """Closed reasons for discarding a hook that comes from a provider-native subagent."""
 
+    ANTIGRAVITY_SUBAGENT = "antigravity_subagent"
     CODEX_SUBAGENT = "codex_subagent"
 
 
@@ -65,6 +59,20 @@ class SubagentDrop:
     """The adapter's declaration that a hook comes from a provider-native subagent and is discarded."""
 
     reason: SubagentDropReason
+
+
+@dataclass(frozen=True)
+class SubagentCompletion:
+    """The adapter's declaration that a subagent's idle stop is its root conversation's turn completion.
+
+    ``payload`` is the hook payload re-addressed to the root conversation: it carries
+    the root's identity and transcript and nothing of the subagent's.
+    """
+
+    payload: JsonDict
+
+
+type SubagentDisposition = SubagentDrop | SubagentCompletion
 
 
 @dataclass(frozen=True)
@@ -99,17 +107,6 @@ class ContinueWithReason:
 
 
 type HookResponseIntent = DeliverContext | ContinueWithReason
-
-
-@dataclass(frozen=True)
-class NativeToolDenial:
-    """One receiver-authorized native tool denial for a provider adapter to render."""
-
-    reason: str
-
-    def __post_init__(self) -> None:
-        if not self.reason.strip():
-            raise ValueError(_EMPTY_TOOL_DENIAL_REASON_ERROR)
 
 
 @dataclass(frozen=True)

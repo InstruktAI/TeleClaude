@@ -10,6 +10,7 @@ from types import MappingProxyType
 
 from teleclaude.core.events import AgentHookEvents
 from teleclaude.core.models import JsonDict
+from teleclaude.hooks.adapters.agy_conversation import read_subagent_origin
 from teleclaude.hooks.adapters.base import (
     HookAdapter,
     HookEventNormalization,
@@ -26,8 +27,10 @@ from teleclaude.hooks.adapters.contracts import (
     HookResponseIntent,
     HookResponseKind,
     NativeHookSpec,
-    NativeToolDenial,
-    NativeToolIntent,
+    SubagentCompletion,
+    SubagentDisposition,
+    SubagentDrop,
+    SubagentDropReason,
 )
 
 _INVOCATION_NUM_FIELD = "invocationNum"
@@ -49,7 +52,10 @@ _INVALID_INVOCATION_NUM = "Antigravity PreInvocation requires a non-negative int
 _INVALID_FULLY_IDLE = "Antigravity Stop requires a boolean fullyIdle"
 _UNSUPPORTED_DELIVERY_EVENT = "Antigravity event does not support control delivery"
 _CONTINUATION_EVENT_REQUIRED = "Antigravity continuation requires a Stop event"
-_TOOL_DENIAL_EVENT_REQUIRED = "Antigravity tool denial requires a PreToolUse event"
+_CONVERSATION_ID_FIELD = "conversationId"
+_SESSION_ID_FIELD = "session_id"
+_TRANSCRIPT_PATH_FIELD = "transcript_path"
+_NATIVE_TRANSCRIPT_PATH_FIELD = "transcriptPath"
 
 
 class AgyHookEvent(StrEnum):
@@ -67,7 +73,6 @@ class AgyDecision(StrEnum):
 
     ALLOW = "allow"
     CONTINUE = "continue"
-    DENY = "deny"
 
 
 class AgyToolCallField(StrEnum):
@@ -76,12 +81,6 @@ class AgyToolCallField(StrEnum):
     ARGS = "args"
     NAME = "name"
     TOOL_CALL = "toolCall"
-
-
-class AgyToolName(StrEnum):
-    """Antigravity tool names with TeleClaude-owned behavior."""
-
-    INVOKE_SUBAGENT = "invoke_subagent"
 
 
 class AgyInvocationKind(StrEnum):
@@ -111,6 +110,15 @@ def _latest_transcript_role(transcript_path: str) -> str | None:
             role = entry.get("role")
         if isinstance(role, str):
             return role
+    return None
+
+
+def _hook_transcript_path(data: JsonDict) -> str | None:
+    """Return the transcript path a hook carries, in either its native or its normalized field."""
+    for field in (_TRANSCRIPT_PATH_FIELD, _NATIVE_TRANSCRIPT_PATH_FIELD):
+        value = data.get(field)
+        if isinstance(value, str) and value:
+            return value
     return None
 
 
@@ -160,14 +168,14 @@ class AgyAdapter(HookAdapter):
         content is sourced from the transcript by the projection layer.
         """
         normalized = dict(data)
-        if "session_id" not in normalized:
-            conversation_id = normalized.get("conversationId")
+        if _SESSION_ID_FIELD not in normalized:
+            conversation_id = normalized.get(_CONVERSATION_ID_FIELD)
             if isinstance(conversation_id, str) and conversation_id:
-                normalized["session_id"] = conversation_id
-        if "transcript_path" not in normalized:
-            transcript_path = normalized.get("transcriptPath")
+                normalized[_SESSION_ID_FIELD] = conversation_id
+        if _TRANSCRIPT_PATH_FIELD not in normalized:
+            transcript_path = normalized.get(_NATIVE_TRANSCRIPT_PATH_FIELD)
             if isinstance(transcript_path, str) and transcript_path:
-                normalized["transcript_path"] = transcript_path
+                normalized[_TRANSCRIPT_PATH_FIELD] = transcript_path
         tool_call = normalized.get(AgyToolCallField.TOOL_CALL)
         if isinstance(tool_call, dict):
             tool_name = tool_call.get(AgyToolCallField.NAME)
@@ -189,24 +197,28 @@ class AgyAdapter(HookAdapter):
         role = _latest_transcript_role(transcript_path)
         return AgyInvocationKind.PROMPT_ACCEPTED if role == "user" else AgyInvocationKind.MID_TURN
 
-    def native_tool_intent(self, raw_event_type: str, data: JsonDict) -> NativeToolIntent | None:
-        """Declare native subagent invocation intent from structured tool fields."""
-        if raw_event_type != _PRE_TOOL_USE_EVENT:
-            return None
-        tool_call = data.get(AgyToolCallField.TOOL_CALL)
-        if not isinstance(tool_call, dict):
-            return None
-        tool_name = tool_call.get(AgyToolCallField.NAME)
-        if isinstance(tool_name, str) and tool_name == AgyToolName.INVOKE_SUBAGENT:
-            return NativeToolIntent.DENY_NATIVE_SUBAGENT
-        return None
+    def subagent_disposition(self, raw_event_type: str, data: JsonDict) -> SubagentDisposition | None:
+        """Declare what the receiver does with a hook from a native subagent's execution.
 
-    def render_tool_denial(self, raw_event_type: str, denial: NativeToolDenial) -> HookEmission:
-        """Render one native tool denial at Antigravity's PreToolUse boundary."""
-        if raw_event_type != _PRE_TOOL_USE_EVENT:
-            raise ValueError(_TOOL_DENIAL_EVENT_REQUIRED)
-        payload = json.dumps({_DECISION_FIELD: AgyDecision.DENY, _REASON_FIELD: denial.reason})
-        return HookEmission(payload, HookResponseKind.TOOL_DENY, HookResponseFormat.JSON)
+        The subagent is recognized from the origin record in its own conversation store;
+        no hook payload field carries that ancestry. A subagent's idle ``Stop`` is its
+        root conversation's turn completion, because the parent's last ``Stop`` reports
+        the process busy while the subagent still runs and the parent never stops again.
+        Every other subagent hook is discarded.
+        """
+        transcript_path = _hook_transcript_path(data)
+        origin = read_subagent_origin(transcript_path) if transcript_path else None
+        if origin is None:
+            return None
+        if raw_event_type == _STOP_EVENT and data.get(_FULLY_IDLE_FIELD) is True:
+            payload = dict(data)
+            payload.pop(_ERROR_FIELD, None)
+            payload[_SESSION_ID_FIELD] = origin.root_conversation_id
+            payload[_CONVERSATION_ID_FIELD] = origin.root_conversation_id
+            payload[_TRANSCRIPT_PATH_FIELD] = origin.root_transcript_path
+            payload[_NATIVE_TRANSCRIPT_PATH_FIELD] = origin.root_transcript_path
+            return SubagentCompletion(payload)
+        return SubagentDrop(SubagentDropReason.ANTIGRAVITY_SUBAGENT)
 
     def normalize_event(self, raw_event_type: str, data: JsonDict) -> HookEventNormalization:
         """Apply Antigravity lifecycle predicates before shared receiver work."""
@@ -224,6 +236,8 @@ class AgyAdapter(HookAdapter):
         if raw_event_type == _STOP_EVENT:
             error = data.get(_ERROR_FIELD)
             if isinstance(error, str) and error:
+                if isinstance(self.subagent_disposition(raw_event_type, data), SubagentCompletion):
+                    return HookEventNormalization(AgentHookEvents.AGENT_STOP, HookNormalizationReason.MAPPED_EVENT)
                 return HookEventNormalization(AgentHookEvents.AGENT_TURN_FAILED, HookNormalizationReason.MAPPED_EVENT)
             fully_idle = data.get(_FULLY_IDLE_FIELD)
             if not isinstance(fully_idle, bool):

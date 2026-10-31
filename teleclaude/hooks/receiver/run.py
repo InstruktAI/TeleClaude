@@ -55,12 +55,18 @@ from teleclaude.core.session_ended import is_conversation_session
 from teleclaude.core.session_status import AgentStatusReason
 from teleclaude.git import GitCommandError
 from teleclaude.hooks.adapters import get_adapter
-from teleclaude.hooks.adapters.base import HookAdapter, HookNormalizationReason, read_stdin_payload
+from teleclaude.hooks.adapters.base import (
+    HookAdapter,
+    HookEventNormalization,
+    HookNormalizationReason,
+    read_stdin_payload,
+)
 from teleclaude.hooks.adapters.contracts import (
     ContinueWithReason,
     HookEmission,
     HookResponseFormat,
     HookResponseKind,
+    SubagentCompletion,
     SubagentDrop,
 )
 from teleclaude.hooks.checkpoint import get_checkpoint_content
@@ -76,7 +82,6 @@ from teleclaude.hooks.edit_declarations import (
     settle_certain_edit,
 )
 from teleclaude.hooks.receiver._command_shell import host_shell_context
-from teleclaude.hooks.receiver._tool_admission import native_tool_denial_for_source
 from teleclaude.hooks.receiver_args import parse_receiver_args
 from teleclaude.hooks.session_map import (
     _SESSION_EXPORTS,
@@ -251,7 +256,6 @@ class ReceiverDropReason(StrEnum):
     """Receiver-owned reasons for drops after provider normalization."""
 
     MANAGED_DESCENDANT_SESSION_START = "managed_descendant_session_start"
-    NATIVE_SUBAGENT_DENIED = "native_subagent_denied"
     SYSTEM_INJECTED_PROMPT = "system_injected_prompt"
     UNHANDLED_EVENT = "unhandled_event"
 
@@ -1109,44 +1113,6 @@ def _emit_hook_emission(
     )
 
 
-def _handle_native_tool_admission(
-    *,
-    adapter: HookAdapter,
-    raw_event_type: str,
-    data: JsonDict,
-    provider: str,
-    receiver_ingress_id: str,
-    native_session_id: str | None,
-) -> bool:
-    """Deny declared native-tool intents on managed sources before resolution."""
-    intent = adapter.native_tool_intent(raw_event_type, data)
-    if intent is None:
-        return False
-    marker_state, _ = inspect_session_identity_marker()
-    source_kind = _classify_hook_source(marker_state, _in_own_tmux_pane())
-    denial = native_tool_denial_for_source(intent, source_kind)
-    if denial is None:
-        return False
-
-    _log_normalization_decision(
-        receiver_ingress_id=receiver_ingress_id,
-        provider=provider,
-        raw_event_type=raw_event_type,
-        outcome=HookNormalizationOutcome.DROPPED,
-        reason=ReceiverDropReason.NATIVE_SUBAGENT_DENIED,
-        event_type=None,
-        native_session_id=native_session_id,
-    )
-    _emit_hook_emission(
-        adapter.render_tool_denial(raw_event_type, denial),
-        provider=provider,
-        raw_event_type=raw_event_type,
-        receiver_ingress_id=receiver_ingress_id,
-        session_id=None,
-    )
-    return True
-
-
 def _success_response_kind(
     event_type: str | None,
     reason: HookNormalizationReason,
@@ -1687,16 +1653,6 @@ def main() -> None:
         )
         sys.exit(1)
 
-    if _handle_native_tool_admission(
-        adapter=adapter,
-        raw_event_type=raw_event_type,
-        data=data,
-        provider=args.agent,
-        receiver_ingress_id=receiver_ingress_id,
-        native_session_id=raw_native_session_id,
-    ):
-        return
-
     event_type = normalization.event_type
     if event_type is None:
         _log_normalization_decision(
@@ -1765,7 +1721,25 @@ def main() -> None:
             event_type=None,
             native_session_id=raw_native_session_id,
         )
+        # A provider that fails or times out a hook blocks the call it guards, so every
+        # discarded hook still receives the provider's success response.
+        _emit_success_response_if_supported(
+            adapter=adapter,
+            raw_event_type=raw_event_type,
+            event_type=event_type,
+            reason=normalization.reason,
+            provider=args.agent,
+            receiver_ingress_id=receiver_ingress_id,
+            session_id=None,
+        )
         return
+    if isinstance(disposition, SubagentCompletion):
+        # The subagent's idle stop completes its root conversation's turn: continue as that
+        # conversation's own stop, carrying its identity and none of the subagent's.
+        data = disposition.payload
+        raw_native_session_id, raw_native_log_file = _extract_native_hook_fields(data)
+        normalization = HookEventNormalization(event_type, HookNormalizationReason.SUBAGENT_COMPLETION)
+        execution_kind = adapter.classify_execution_kind(data)
 
     if event_type not in _DEFERRED_FORWARD_LOG_EVENTS:
         _log_normalization_decision(

@@ -17,9 +17,7 @@ from teleclaude.hooks.adapters.contracts import (
     HookPurpose,
     HookResponseIntent,
     NativeHookSpec,
-    NativeToolDenial,
-    NativeToolIntent,
-    SubagentDrop,
+    SubagentDisposition,
 )
 
 
@@ -85,6 +83,7 @@ class HookNormalizationReason(StrEnum):
     UNHANDLED_EVENT = "unhandled_event"
     NOT_ADMITTED = "not_admitted"
     USAGE_LIMIT_WAIT = "usage_limit_wait"
+    SUBAGENT_COMPLETION = "subagent_completion"
 
 
 @dataclass(frozen=True)
@@ -154,17 +153,7 @@ class HookAdapter:
         del data
         return None
 
-    def native_tool_intent(self, raw_event_type: str, data: JsonDict) -> NativeToolIntent | None:
-        """Declare a provider-independent intent for one native tool call, if any."""
-        del raw_event_type, data
-        return None
-
-    def render_tool_denial(self, raw_event_type: str, denial: NativeToolDenial) -> HookEmission:
-        """Render a typed native-tool denial in the provider's wire format."""
-        del raw_event_type, denial
-        raise NotImplementedError
-
-    def subagent_disposition(self, raw_event_type: str, data: JsonDict) -> SubagentDrop | None:
+    def subagent_disposition(self, raw_event_type: str, data: JsonDict) -> SubagentDisposition | None:
         """Declare what the receiver does with a hook from a provider-native subagent.
 
         ``None`` means the hook belongs to a primary conversation. The receiver applies
