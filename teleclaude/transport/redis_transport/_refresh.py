@@ -64,6 +64,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         task_registry: TaskRegistry
         computer_name: str
         heartbeat_interval: int
+        heartbeat_ttl: int
         _running: bool
         _refresh_last: dict[str, float]
         _refresh_tasks: dict[str, asyncio.Task[object]]
@@ -118,7 +119,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                 is_master=peer.is_master,
                 conversation_adapters=peer.conversation_adapters,
             )
-            self.cache.update_computer(computer_info)
+            self.cache.update_computer(computer_info, self.heartbeat_ttl)
 
         for peer in peers:
             try:
@@ -296,7 +297,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                     # An unrecognized interpretation failure skips this record, never the pass.
                     logger.exception(_PEER_RECORD_FAILED_EVENT, heartbeat_key=key)
                     continue
-                self.cache.update_computer(computer_info)
+                self.cache.update_computer(computer_info, self.heartbeat_ttl)
 
                 advertised_digest = info.get(PROJECTS_DIGEST_FIELD)
                 advertises_digest = isinstance(advertised_digest, str) and bool(advertised_digest)

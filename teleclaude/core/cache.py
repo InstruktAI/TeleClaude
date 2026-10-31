@@ -118,6 +118,7 @@ class DaemonCache:
 
         # Computer cache: key = computer name
         self._computers: dict[str, CachedItem[ComputerInfo]] = {}
+        self._computer_expiry: dict[str, asyncio.TimerHandle] = {}
 
         # Project cache: key = f"{computer}:{path}"
         self._projects: dict[str, CachedItem[ProjectInfo]] = {}
@@ -197,6 +198,9 @@ class DaemonCache:
             key: Cache key to invalidate
         """
         # Remove from all caches
+        expiry = self._computer_expiry.pop(key, None)
+        if expiry is not None:
+            expiry.cancel()
         self._computers.pop(key, None)
         self._projects.pop(key, None)
         self._sessions.pop(key, None)
@@ -205,6 +209,9 @@ class DaemonCache:
 
     def invalidate_all(self) -> None:
         """Clear all cached data."""
+        for expiry in self._computer_expiry.values():
+            expiry.cancel()
+        self._computer_expiry.clear()
         self._computers.clear()
         self._projects.clear()
         self._sessions.clear()
@@ -412,18 +419,37 @@ class DaemonCache:
 
     # ==================== Data Updates ====================
 
-    def update_computer(self, computer: ComputerInfo) -> None:
+    def update_computer(self, computer: ComputerInfo, heartbeat_ttl: float) -> None:
         """Update computer info in cache.
 
         Args:
             computer: Computer info object
+            heartbeat_ttl: Seconds to retain this heartbeat observation
         """
+        loop = asyncio.get_running_loop()
         name = computer.name
         digest = self._computer_fingerprint(computer)
         existing = self._computers.get(name)
         attachment_inputs_changed = existing is None or (
             existing.data.user != computer.user or existing.data.host != computer.host
         )
+
+        def expire() -> None:
+            if self._computer_expiry.get(name) is not handle:
+                return
+            self._computer_expiry.pop(name)
+            self._computers.pop(name, None)
+            self._computers_digest.pop(name, None)
+            self._notify(
+                CacheEvent.COMPUTER_UPDATED.value,
+                ComputerUpdatedNotification(computer_name=name, attachment_inputs_changed=True),
+            )
+
+        handle = loop.call_later(heartbeat_ttl, expire)
+        previous = self._computer_expiry.get(name)
+        self._computer_expiry[name] = handle
+        if previous is not None:
+            previous.cancel()
         if existing and self._computers_digest.get(name) == digest:
             # Refresh timestamp without spamming change notifications.
             existing.data = computer
