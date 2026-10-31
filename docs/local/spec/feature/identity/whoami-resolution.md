@@ -12,7 +12,7 @@ visibility: 'public'
 
 ## What it is
 
-`telec auth whoami` is the operator-facing question "who does the system think I am?". The CLI answers it in its own process from the identity context's shared caller resolution (`local/projects/teleclaude/spec/identity-and-auth` §6) — the same resolution every caller-dependent command applies — and sends no request to the daemon. Inside a session — one whose TMPDIR holds a session identity document — it prints the Principal and Role the session's record resolves to, and never reads the terminal login; a document that is present but identifies no open session on this computer is reported as carrying no usable identity. Outside any session it prints the Email and Role of the person the terminal's login names, followed by the TTY and the login document's path. The Role is the one that authorizes the caller: a person's effective role at the scope of the project the command runs in (`local/projects/teleclaude/design/architecture/scoped-roles`), or a system caller's system role as derived from its session record. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
+`telec auth whoami` is the operator-facing question "who does the system think I am?". The CLI answers it in its own process from the identity context's shared caller resolution (`local/projects/teleclaude/spec/identity-and-auth` §6) — the same resolution every caller-dependent command applies — and sends no request to the daemon. Inside a session — one whose TMPDIR holds a session identity document — it prints the Principal and Role the session's record resolves to, and never reads the terminal login; a document that is present but identifies no open session on this computer is reported as carrying no usable identity. Outside any session it prints the Email and Role of the person the terminal's login names, followed by the TTY and the login document's path. A caller outside any session for which no login names anyone is the computer's operator (`local/projects/teleclaude/spec/identity-and-auth` §2): whoami prints its Principal, `system:operator`, with no Role, TTY or login document, and succeeds with or without a terminal. The Role is the one that authorizes the caller: a person's effective role at the scope of the project the command runs in (`local/projects/teleclaude/design/architecture/scoped-roles`), or a system caller's system role as derived from its session record. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
 
 The identity context's whoami capability answers the same question for clients of the daemon's API. It answers from the identity the request carries. The daemon has no invocation directory, so it reads a person's Role for the project of the caller's session, and at platform scope for a caller with no session (`local/projects/teleclaude/design/architecture/scoped-roles`). Its answer therefore agrees with the CLI's for a session invoking inside its own project and for a terminal outside any registered project. The API response includes email for a resolved person and `session_id` only for a session caller; it also carries the resolved `person_slug` used by the TUI to scope person configuration and the recorded `config_subject` when available. An unidentifiable caller has no principal, role, or email.
 
@@ -38,15 +38,16 @@ Scenario: An unrecognized terminal is told how to establish identity
   Then the command reports that no identity is established for the current TTY and tells the operator to log in
   And the command exits successfully
 
-Scenario: No terminal or session is a refusal
-  Given the operator has no session and the command has no detectable TTY
+Scenario: A caller nothing identifies is reported as the computer's operator
+  Given the caller has no session and no terminal login names anyone, with or without a terminal
   When they run `telec auth whoami`
-  Then the command reports that no terminal session was detected and exits with failure
+  Then the command reports the operator's principal and names no person
+  And the command exits successfully
 ```
 
 #### UC-WHO3: An unidentified terminal is told how to log in
 
-#### UC-WHO4: No terminal and no session is an error
+#### UC-WHO4: No session and no login is the computer's operator
 
 #### UC-WHO-SESSION-CARRIED: Inside a session, whoami reports the identity the session carries
 
@@ -77,4 +78,5 @@ Scenario: No terminal or session is a refusal
 - The conversational alias is strict: it matches exactly the three tokens `who`, `am`, `i` (the third with optional trailing `?`). Punctuation or different ordering misses and falls through to the unknown-subcommand branch.
 - A session whose record is closed or absent is reported as carrying no usable identity, not as a friendly "logged out" message. An open record the identity document names is admitted on that naming alone; resolving it never reads the machine configuration.
 
-- The session path prints `Principal`, `Role`, and `Company`. The terminal path prints `Email`, `Role`, `TTY`, and `Session auth file`. The two outputs are intentionally different shapes because they answer different questions about Resolution.
+- The session path prints `Principal`, `Role`, and `Company`. The terminal path prints `Email`, `Role`, `TTY`, and `Session auth file`. The operator path prints `Principal` only. The outputs are intentionally different shapes because they answer different questions about Resolution.
+- A terminal login naming an email no registered person holds is not the operator: whoami reports that no identity is established for the TTY. A session identity document that identifies no open session is reported as carrying no usable identity, never as the operator.
