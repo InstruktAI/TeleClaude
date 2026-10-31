@@ -697,6 +697,10 @@ class GitHubWorkflowPush:
         if session.info.pop(_NOT_SERVED_KEY, False):
             self._write_out_of_band(((_NOT_SERVED_SQL, (ArtifactFact.NOT_SERVED.value,)),))
 
+    def request_republication(self, item_id: str) -> None:
+        """Record that a write to the item was refused, moving it to the front of republication."""
+        self._write_out_of_band(((_REQUESTED_SQL, (item_id,)),))
+
     def _write_out_of_band(self, statements: tuple[tuple[str, tuple[str, ...]], ...]) -> None:
         """Run bookkeeping writes on a connection of their own, bounded by the writer admission budget."""
         threading.Thread(target=self._run_out_of_band, args=(statements,), daemon=True).start()
