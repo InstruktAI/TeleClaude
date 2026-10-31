@@ -60,7 +60,7 @@ from teleclaude.services.discord import (
 from teleclaude.services.email import send_email
 from teleclaude.services.telegram import send_telegram_dm
 from teleclaude.services.whatsapp import send_whatsapp_message
-from teleclaude.types.commands import RelayedResponse
+from teleclaude.types.relayed_response import RelayedResponse
 
 logger = get_logger(__name__)
 

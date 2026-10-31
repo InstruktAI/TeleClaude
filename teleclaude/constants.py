@@ -79,6 +79,8 @@ class SessionTarget(StrEnum):
 
 
 SYSTEM_DAEMON_PRINCIPAL = "system:daemon"
+# The computer's operator: a local caller no session, terminal login or carried identity names.
+SYSTEM_OPERATOR_PRINCIPAL = "system:operator"
 
 # The branch a project's revisions are admitted on: CI outcomes of this branch decide a revision's green.
 MAIN_BRANCH = "main"

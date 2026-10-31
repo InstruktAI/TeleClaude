@@ -14,7 +14,7 @@ from teleclaude.api_models import TodoDTO
 from teleclaude.config.machine import config
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL, SYSTEM_OPERATOR_PRINCIPAL
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import (
@@ -369,7 +369,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     # todo's persisted owner so the resolved principal is the owning human, not
     # the daemon principal. Audit-only: role (the authorization band) is left
     # untouched, and a manual start (human_email already set) is never overridden.
-    if not human_email and working_slug:
+    if not human_email and working_slug and principal != SYSTEM_OPERATOR_PRINCIPAL:
         owner_principal = await read_todo_owner_principal(project_path, working_slug)
         if owner_principal and owner_principal.startswith("human:"):
             principal = owner_principal

@@ -9,6 +9,7 @@ from __future__ import annotations
 from types import MappingProxyType
 
 from teleclaude.cli.session_auth import ResolvedCliIdentity, read_current_session_email
+from teleclaude.constants import SYSTEM_OPERATOR_PRINCIPAL
 from teleclaude.core.agents import AgentName
 from teleclaude.core.identity import NoIdentityCliCaller, PersonCliCaller, human_principal_for_email
 from teleclaude.core.session_identity_facts import read_session_active_agent
@@ -118,11 +119,18 @@ def _resolve_agent_session_commit_identity(session_id: str) -> tuple[str, str]:
 
 
 def resolve_commit_identity_from_caller(identity: ResolvedCliIdentity) -> tuple[str | None, str | None]:
-    """Map the resolved local caller to the sealed commit author."""
+    """Map the resolved local caller to the sealed commit author.
+
+    An agent session commits as its agent's bot identity. A person resolved at a
+    terminal, and the computer's operator outside any session, commit under git's
+    own ambient identity: the repository's configured author.
+    """
     if isinstance(identity.caller, NoIdentityCliCaller) or identity.principal is None:
         raise CommitIdentityUnresolvable(_ERR_NO_CALLER_PRINCIPAL)
     if identity.session_id:
         return _resolve_agent_session_commit_identity(identity.session_id)
+    if identity.principal == SYSTEM_OPERATOR_PRINCIPAL:
+        return None, None
     if (
         isinstance(identity.caller, PersonCliCaller)
         and identity.caller.email is not None

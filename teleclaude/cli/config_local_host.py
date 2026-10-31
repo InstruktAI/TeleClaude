@@ -47,7 +47,7 @@ def run_locally_blocking(request: ConfigRequest) -> ConfigOutcome:
 
 def _standing_of(identity: ResolvedCliIdentity) -> ConfigurationStanding:
     carried = caller_identity_of(CarriedIdentity.from_cli_identity(identity))
-    return standing_for_caller(caller_for_role_resolution(carried))
+    return standing_for_caller(caller_for_role_resolution(carried), carried.principal)
 
 
 class LocalConfigHost:

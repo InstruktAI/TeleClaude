@@ -55,18 +55,6 @@ Within a single context root, and outside any nested root, the scope remains tra
 
 On the repo-root `main` branch, a non-integrator agent invoking `telec repo commit` without `--approved` surfaces the **commit-first and review-routing gate** and does not commit. A bare invocation (no message) is discovery and **exits 0** — serving the gate is the successful outcome; an invocation that carries a message but omits `--approved` means the gate was forgotten and **exits non-zero**. `--approved` is the agent-owned sealed-gate acknowledgment that lets the commit proceed; it is not human approval. On a worktree or integrator role, `--approved` is still required but the gate surfacing is bypassed.
 
-<!-- planned-change:local-operator-identity -->
-
-A caller whose identity cannot be resolved to an agent session or verified
-terminal person receives an identity-resolution diagnostic and no commit is
-produced. An explicitly declared commit path that cannot be matched to
-repository state is rejected before staging or commit; the diagnostic names
-each invalid declaration and the whole commit is refused. If the partial-staging
-gate cannot verify staged/working-tree overlap, it fails closed rather than
-allowing the commit.
-
-<!-- change:local-operator-identity -->
-
 A caller outside any agent session for which no session, terminal login or
 carried identity resolves is the computer's operator
 (`local/projects/teleclaude/spec/identity-and-auth` §2): its commit is authored
@@ -80,8 +68,6 @@ commit path that cannot be matched to repository state is rejected before
 staging or commit; the diagnostic names each invalid declaration and the whole
 commit is refused. If the partial-staging gate cannot verify staged/working-tree
 overlap, it fails closed rather than allowing the commit.
-
-<!-- /planned-change:local-operator-identity -->
 
 ## Canonical fields
 
@@ -208,15 +194,7 @@ Then git's own ambient identity resolves the author
 And the message carries no Session: trailer
 ```
 
-<!-- planned-change:local-operator-identity -->
-
-#### UC-CGIP-18 — A caller the platform cannot identify fails the commit loudly
-
-<!-- change:local-operator-identity -->
-
 #### UC-CGIP-18 — A caller whose session identity names no admissible session fails the commit loudly
-
-<!-- /planned-change:local-operator-identity -->
 
 #### UC-CGIP-47 — Commit attribution resolves from the carried identity
 
@@ -357,8 +335,6 @@ Then the todo's branch is published to the project's origin
 
 #### UC-CGIP-56 — A worktree checked out on another branch publishes nothing
 
-<!-- planned:local-operator-identity -->
-
 #### UC-CGIP-57 — The computer's operator commits under the repository's git identity
 
 ```gherkin
@@ -375,8 +351,6 @@ Given a session the platform keeps for an agent it did not launch, under the com
 When the agent commits through telec repo commit inside that session
 Then the commit lands with the same scope and gates as any agent session's commit
 ```
-
-<!-- /planned:local-operator-identity -->
 
 ## See also
 
