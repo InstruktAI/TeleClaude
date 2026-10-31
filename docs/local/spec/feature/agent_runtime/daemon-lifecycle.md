@@ -40,6 +40,14 @@ is owned by `local/projects/teleclaude/policy/daemon-availability`.
 A startup that ends runs the ordinary stop, releases the lock, and then ends
 the process with a non-zero status without waiting for worker threads.
 
+<!-- planned:daemon-drain-ends-after-grace-window -->
+
+An ordinary stop ends the process once its teardown completes or its teardown
+bound expires, without waiting for worker threads: a worker thread blocked
+inside unsettled work never keeps a stopped daemon alive
+(`local/projects/teleclaude/policy/daemon-availability`).
+<!-- /planned:daemon-drain-ends-after-grace-window -->
+
 A failure resuming a prior session startup is recorded for that session and
 does not block recovery of other sessions or daemon startup completion.
 
@@ -94,12 +102,26 @@ lifecycle's configured observations. These readiness boundaries follow
 
 #### An operator can stop the daemon without losing accepted work
 
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 ```gherkin
 Given a human operator needs to stop or restart the daemon while acknowledged work is active
 When ordinary shutdown begins
 Then new work is refused and acknowledged work settles or reaches a durable recovery boundary before its required dependencies stop
 And independently running agent turns continue without being terminated
 ```
+
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+```gherkin
+Given a human operator needs to stop or restart the daemon while acknowledged work is active
+When ordinary shutdown begins
+Then new work is refused and acknowledged work that settles within the grace window settles before its required dependencies stop
+And work still unsettled when the grace window ends is never reported as successful
+And independently running agent turns continue without being terminated
+```
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
 
 #### UC-DL4: Shutdown without active playback avoids invalid cancellation
 
@@ -189,6 +211,8 @@ And status reads and completions belonging to already acknowledged work remain a
 
 #### UC-DL11: An acknowledged mutation settles before its dependencies stop
 
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 ```gherkin
 Given an agent caller has an acknowledged removal or another daemon-owned mutation in progress
 When a human operator requests ordinary daemon shutdown
@@ -208,6 +232,32 @@ And the running daemon retains its draining state and the unfinished work's requ
 And the host service is neither forcibly terminated nor replaced by that request
 And once that work settles the prepared daemon completes its own shutdown
 ```
+
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+```gherkin
+Given an agent caller has an acknowledged removal or another daemon-owned mutation in progress
+When a human operator requests ordinary daemon shutdown
+And the mutation settles within the grace window
+Then the mutation completes or reports its established failure after required compensation
+And its durable outcome is settled before its storage, locks or completion dependencies are released
+And shutdown does not cancel an active external effect and leave it running after its owner exits
+```
+
+#### UC-DL12: A stop or restart completes when accepted work does not settle
+
+```gherkin
+Given an operator or the install act requests an ordinary stop or restart
+And acknowledged work has not settled when the grace window ends
+When the window ends
+Then the daemon stops waiting for that work and ends
+And the stop or restart completes and names the work the daemon interrupted
+And the interrupted work is never reported as successful and is never replayed
+And each operation the cutoff interrupted reaches its caller as interrupted once the daemon runs again
+And agent sessions keep running
+```
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
 
 #### UC-DL13: Preparation belongs to the observed process
 
@@ -303,6 +353,8 @@ Completion ingress is admitted only for work that already holds that ownership;
 daemon credentials alone confer no exemption. A refusal leaves an unaccepted
 command either unconsumed or explicitly answered as refused.
 
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 The preparation observation window bounds the host caller's wait. Its expiry
 neither releases a mutating worker's ownership nor turns an unfinished action into
 success. The running service remains draining until acknowledged work reaches a
@@ -311,6 +363,28 @@ not its caller is still observing it: a prepared process never stays alive close
 to business work. Existing restart recovery remains authoritative for a forced
 termination or abrupt loss; an unfinished operation is not described as resumable
 merely because it has a durable receipt.
+
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+The grace window bounds settlement. It opens when admission closes and lasts at
+least the longest request deadline the daemon enforces plus a margin, so ordinary
+in-flight requests settle inside it; every completion dependency keeps running
+through it. Accepted work that settles inside the window settles before its
+dependencies stop, and the drained process then completes its shutdown whether
+or not its caller is still observing it: a prepared process never stays alive
+closed to business work. When the window ends with work still held, the daemon
+logs the work it holds, stops waiting for it and ends; the host caller learns
+which work was interrupted. The cutoff neither turns an unfinished action into
+success nor replays it. Existing restart recovery owns interrupted work as it
+owns any forced termination or abrupt loss: an operation still unfinished is
+recorded stale with its reason when the daemon starts again, and its outcome is
+delivered to its caller (UC-DL5). An unfinished operation is not described as
+resumable merely because it has a durable receipt. A host stop or restart
+terminates a daemon that has not ended within the grace window and its teardown
+bound, so the stop or restart completes even when the daemon cannot end itself
+(`local/projects/teleclaude/policy/daemon-availability`).
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
 
 This ownership boundary preserves the no-interference invariant
 (`general/principle/trust-and-guardrails`); recorded outcomes retain their
@@ -338,7 +412,15 @@ evidence requirement (`general/principle/grounding`).
 - **Background workers are started outside the lifecycle.** Lifecycle startup does NOT launch periodic cleanup, poller watch, the hook-outbox worker, the mirror worker, or the v2 bridges — those are launched by the service's start sequence after lifecycle startup returns. The split is deliberate: lifecycle owns the deterministic boot prefix; the service owns the steady-state worker set.
 - **Chiptunes worker survives service restart, within bounds.** Its registry is persisted at the platform home so a surviving worker can be found after restart. Only a same-user Chiptunes worker is eligible for reattachment; a process that merely mentions the worker module is ignored. The service reattaches to a reachable worker and does not spawn a duplicate. An unreachable worker is terminated before at most one replacement is started. A worker with no daemon client past the idle-lease window exits on its own. Music continuity is bounded by worker reachability and that lease.
 
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 - **A timed-out stop ends in a relaunched daemon.** The service manager relaunches a daemon that completes its own shutdown, and the prepared process carries no record of whether its caller asked for a stop or a restart. Keeping the daemon down after a stop whose preparation timed out takes another `make stop` once it is back.
+
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+- **A cutoff can interrupt an effect that already reached its recipient.** Work interrupted at the end of the grace window may have delivered part of its effect, such as a chat message sent before its outcome was recorded. Its owner's restart recovery reports it as interrupted rather than repeating it, so a recipient can hold an effect whose owner records it unfinished.
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
 
 - **Post-settlement teardown is best-effort.** An ordinary task or component
   failure is reported with its identifier and traceback and does not prevent

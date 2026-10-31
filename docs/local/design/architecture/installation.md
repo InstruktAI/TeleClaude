@@ -341,9 +341,20 @@ checkout stays a registered project.
 - **Preparation fails** (fetch, worktree, build): nothing has stopped; the
   active release keeps serving and the failure is recorded.
 - **Older target**: refused before anything is prepared.
+
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 - **Stop withheld** (preparation incomplete or withheld): no migration runs;
   the lifecycle contract's outcome is reported and the active release stays
   active.
+
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+- **Stop withheld** (preparation refused or withheld): no migration runs;
+  the lifecycle contract's outcome is reported and the active release stays
+  active.
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
 
 - **A failure after the stop before any migration started** — including a
   start that does not verify after an install in which no migration started:
@@ -352,6 +363,9 @@ checkout stays a registered project.
   the daemon can be prepared or has exited. Then `current` returns to the
   previously active release, the daemon is started on it and verified, and the
   failure is recorded.
+
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 - **The attempted daemon cannot be stopped** — its stop stays withheld past
   that bound, or is withheld while it answers: `current` stays on the attempted
   release and its daemon is left running, because a daemon whose preparation is
@@ -359,6 +373,18 @@ checkout stays a registered project.
   (`local/projects/teleclaude/policy/agent-service-control`). The failure is
   recorded where `telec app status` shows it. While no migration has started,
   rollback returns the platform once that daemon can be stopped.
+
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+- **The attempted daemon cannot be stopped** — its stop stays withheld past
+  that bound, or is withheld while it answers: `current` stays on the attempted
+  release and its daemon is left running, because a process not identified as
+  the daemon the lifecycle prepared is never terminated
+  (`local/projects/teleclaude/policy/agent-service-control`). The failure is
+  recorded where `telec app status` shows it. While no migration has started,
+  rollback returns the platform once that daemon can be stopped.
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
 
 - **A failure after a migration started**: `current`
   is left where the failure found it and the daemon stays stopped, because

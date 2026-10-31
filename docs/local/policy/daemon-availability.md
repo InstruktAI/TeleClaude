@@ -13,7 +13,15 @@ visibility: 'public'
 
 - `telec app start` and `telec app restart` first establish that the machine configuration loads; when it does not, they refuse with its finding and leave a running daemon running, because the daemon cannot boot on it.
 
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 - `telec app restart` prepares the running daemon before the service-manager action (`local/projects/teleclaude/policy/agent-service-control`) and ends when the service manager accepts the restart. Nothing follows the service-manager action inside the command: no wait, check, or other step runs after it there. Its outcome records that acceptance, the refused machine configuration or refused preparation that withheld the service-manager action, or a restart deferred to the daemon. A preparation that does not complete within its observation window is a deferred restart: the draining daemon completes the restart itself once its accepted work settles (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`), so a deferred restart is a successful outcome that owes no retry.
+
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+- `telec app restart` prepares the running daemon before the service-manager action (`local/projects/teleclaude/policy/agent-service-control`) and ends when the service manager accepts the restart. Nothing follows the service-manager action inside the command: no wait, check, or other step runs after it there. Its outcome records that acceptance, or the refused machine configuration or refused preparation that withheld the service-manager action. Preparation ends with the daemon's grace window at the latest: accepted work still unsettled then is interrupted, the restart names it and proceeds, and a prepared daemon that does not end within its teardown bound is terminated (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
 
 - An install replaces the daemon through a prepared stop and a verified start, never through a restart; an agent does not repeat a completed install. Agent-operated recovery outside an install uses `telec app restart`.
 
@@ -27,9 +35,25 @@ visibility: 'public'
 
 - `telec app stop` and `telec app restart` bring down the daemon and its managed launchd units only; they never signal an agent session, the tmux server, the local Redis, or a spawn-registry lease-holder. Sessions and leased detached workers (e.g. the chiptunes worker) outlive the daemon by design: sessions end only through the caller-driven path (see `general/principle/session-lifecycle`); leased workers are re-adopted via adopt-or-kill on the next start (see `local/projects/teleclaude/design/process-lifecycle`).
 
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 - `telec app stop` prepares the running daemon before stopping it. A preparation that does not complete within its observation window is reported and leaves the daemon running and draining; it is never forcibly terminated by that stop, and once its accepted work settles the daemon completes its own shutdown and the service manager relaunches it. Once the daemon is prepared, the stop is bounded and verified: SIGTERM the daemon, confirm exit within 30 seconds, then SIGKILL it if it has not exited. Termination targets the daemon and managed-unit pids only, never a process-group sweep.
 
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+- `telec app stop` prepares the running daemon before stopping it. Preparation ends with the daemon's grace window at the latest; accepted work still unsettled then is interrupted, and the stop names it. Once preparation has ended, the stop is bounded and verified: SIGTERM the daemon, confirm exit within 30 seconds, then SIGKILL it if it has not exited. A prepared daemon that answers neither with an acknowledgment nor by ending within its grace window and teardown bound is terminated the same way. Termination targets the daemon and managed-unit pids only, never a process-group sweep.
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
+
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 - `telec app stop` records its outcome where a caller names a location for it, so a caller never infers the daemon's state from an exit status: stopped, meaning no daemon process remains and its service manager will not relaunch it, whether or not this stop had to terminate it; stopped with a managed-unit cleanup failure; withheld while the daemon drains; or withheld, with its reason. The record states the daemon's state after the stop, so a caller acts on that state rather than on the command's exit status. Once preparation allows it, `telec app stop` issues its service manager's stop whatever state the daemon starts from.
+
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+- `telec app stop` records its outcome where a caller names a location for it, so a caller never infers the daemon's state from an exit status: stopped, meaning no daemon process remains and its service manager will not relaunch it, whether or not this stop had to terminate it; stopped with a managed-unit cleanup failure; or withheld, with its reason. The record states the daemon's state after the stop, so a caller acts on that state rather than on the command's exit status. Once preparation allows it, `telec app stop` issues its service manager's stop whatever state the daemon starts from.
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
 
 - A leaked daemon-bound process — one with no live session and no registry lease — is reaped by the in-daemon janitor on the next start, never left to accumulate (see `local/projects/teleclaude/design/process-lifecycle`).
 - Every TeleClaude-installed launchd unit is in the managed set, except the units that outlive the daemon by design: the tmux server and the local Redis, whose unit the installation deploys and which commands and periodic jobs publish to while the daemon is down; no monitoring or helper unit runs independently of the installation's lifecycle.
@@ -48,9 +72,26 @@ visibility: 'public'
 
 - A service manager that relaunches the daemon on exit keeps doing so for a unit that is merely disabled; only its explicit stop cancels a relaunch it has scheduled. A stop that skipped that call for an already-disabled unit could report a stopped daemon while a relaunch was pending, and an install would then migrate under a daemon about to come back.
 
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 - Stopping a daemon while acknowledged work is still effecting leaves that work half-done with its owner gone. Preparation settles that work first, and a daemon whose preparation has not completed is safer left draining than forced down (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).
 
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+- Stopping a daemon while acknowledged work is still effecting leaves that work half-done with its owner gone, so preparation gives that work a grace window to settle first. Work still unsettled after every request deadline the daemon enforces has passed is not finishing on its way out; holding the daemon for it makes every stop and restart wait on its slowest stuck unit, and a hang then leaves the computer with no ordinary way back. Restart recovery already owns work an abrupt loss interrupts, so ending at the window records that work as interrupted instead of giving up the computer's availability for it (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
+
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 - A drained daemon that waits for its caller to return is an outage nobody owns: callers time out, crash or move on, and a prepared process never reopens admission. Completing its own shutdown once its work has settled keeps the guarantee that unsettled work is never forced down without making availability depend on a caller coming back. A health check that reports such a daemon as healthy hides that outage from everyone who could end it.
+
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+- A drained daemon that waits for its caller to return is an outage nobody owns: callers time out, crash or move on, and a prepared process never reopens admission. Completing its own shutdown once its work has settled or its grace window has ended keeps availability from depending on a caller coming back, and a host stop or restart that terminates a daemon unable to end itself keeps it from depending on the daemon. A health check that reports such a daemon as healthy hides that outage from everyone who could end it.
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
+
 - A start failure's message can carry the adapter's configured credential, so health and status, which reach callers beyond the operator, show only its type.
 
 ## Scope
@@ -59,9 +100,25 @@ visibility: 'public'
 
 ## Enforcement
 
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 - A `telec app stop` that leaves a prepared daemon or a managed launchd unit alive past 30 seconds after preparation completed, that forcibly terminates a daemon whose preparation has not completed, or that signals a session, tmux, or spawn-registry lease-holder pid, is a defect.
 
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+- A `telec app stop` or `telec app restart` that leaves a daemon alive past its grace window, its teardown bound and the stop's bounded exit wait, that terminates a daemon before its grace window has ended, or that signals a session, tmux, or spawn-registry lease-holder pid, is a defect.
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
+
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 - A daemon alive with admission closed after its accepted work has settled and its termination grace has passed is a defect.
+
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+- A daemon alive with admission closed after its accepted work has settled or its grace window has ended, and its termination grace has passed, is a defect.
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
 
 - The installation inspector's post-install log judgment catches a startup that aborted on an optional component's failure and a process left alive without its request surface after a failed start; either is a defect.
 

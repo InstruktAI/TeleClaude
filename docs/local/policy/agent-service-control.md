@@ -19,6 +19,8 @@ visibility: 'public'
 
 ### Graceful lifecycle operations
 
+<!-- planned-change:daemon-drain-ends-after-grace-window -->
+
 - **Ordinary stop and restart prepare the observed daemon before replacing it.**
   `telec app stop` and `telec app restart` implement the accepted-work settlement contract
   (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`). They
@@ -30,6 +32,24 @@ visibility: 'public'
   owes no further call. A timed-out stop is relaunched the same way, and
   keeping the daemon down then takes another `telec app stop`. Forced termination
   remains an explicitly selected recovery action through `make kill`, which acts on the installation's daemon.
+
+<!-- change:daemon-drain-ends-after-grace-window -->
+
+- **Ordinary stop and restart prepare the observed daemon, then always complete.**
+  `telec app stop` and `telec app restart` implement the accepted-work settlement contract
+  (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`). They
+  require positive preparation support and identify the process instance they
+  prepare before any service-manager action. The daemon settles accepted work
+  within its grace window and then ends, naming the work it interrupted; the
+  stop or restart reports that work and continues to its service-manager action.
+  A prepared instance that has neither acknowledged nor ended within the grace
+  window and its teardown bound is terminated, and killed when termination does
+  not end it, so neither verb leaves a daemon draining behind it. A stop keeps
+  the daemon down; a restart starts it on the installed code. `make kill`
+  remains the explicitly selected immediate forced termination, without a grace
+  window, and acts on the installation's daemon.
+
+<!-- /planned-change:daemon-drain-ends-after-grace-window -->
 
 - **Initial activation of a legacy runtime is explicit.** A daemon without the
   preparation protocol is reported as unsupported by ordinary stop/restart.
