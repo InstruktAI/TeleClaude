@@ -5,8 +5,20 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Protocol
 
+from instrukt_ai_logging import get_logger
+
+from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handoff_control_payload
+from teleclaude.core.events import CHECKPOINT_RELAY_BODY_FIELD, CHECKPOINT_RELAY_INGRESS_FIELD
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.injected_text import checkpoint_envelope
 from teleclaude.core.models import Session
 from teleclaude.core.session_transcript_chain import native_log_binding_updates
+
+logger = get_logger(__name__)
+
+_CHECKPOINT_RELAY_SOURCE_KEY_TEMPLATE = "checkpoint-relay:{receiver_ingress_id}"
+_CHECKPOINT_RELAY_INCOMPLETE_LOG = "Checkpoint relay entry is missing its body or ingress id; dropping"
+_CHECKPOINT_RELAY_WAKE_REJECTED_LOG = "Checkpoint relay payload stays pending; the session cannot be woken"
 
 if TYPE_CHECKING:
 
@@ -36,6 +48,36 @@ async def handle_checkpoint_seen(
     checkpoint_at = optional_payload_str_value(payload, "checkpoint_at")
     if checkpoint_at:
         await db_handle.update_session(session_id, last_checkpoint_at=checkpoint_at)
+
+
+async def handle_checkpoint_relay(
+    *,
+    session_id: str,
+    payload: Mapping[str, object],
+) -> None:
+    """Hand a relayed checkpoint to control delivery for the session whose turn it belongs to.
+
+    The producing hook already completed the session's turn, so the session is idle: the
+    observed-idle wake decision wakes it rather than the turn timestamps, which the suppressed
+    completion never advanced. A session that cannot be woken keeps the payload pending for its
+    next boundary. Any other failure propagates so the outbox retries the entry.
+    """
+    body = optional_payload_str_value(payload, CHECKPOINT_RELAY_BODY_FIELD)
+    receiver_ingress_id = optional_payload_str_value(payload, CHECKPOINT_RELAY_INGRESS_FIELD)
+    if body is None or receiver_ingress_id is None:
+        logger.error(_CHECKPOINT_RELAY_INCOMPLETE_LOG, session_id=session_id)
+        return
+    envelope = checkpoint_envelope(body)
+    try:
+        await handoff_control_payload(
+            session_id=session_id,
+            body=envelope.body,
+            source_key=_CHECKPOINT_RELAY_SOURCE_KEY_TEMPLATE.format(receiver_ingress_id=receiver_ingress_id),
+            envelope=envelope,
+            wake_decision=ControlDeliveryWakeDecision.OBSERVED_IDLE,
+        )
+    except SessionMessageRejectedError as exc:
+        logger.info(_CHECKPOINT_RELAY_WAKE_REJECTED_LOG, session_id=session_id, reason=exc.reason.value)
 
 
 async def handle_native_metadata_update(

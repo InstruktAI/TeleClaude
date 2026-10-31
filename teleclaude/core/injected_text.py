@@ -860,9 +860,14 @@ def is_peer_opening(text: str) -> bool:
     return pattern is not None and pattern.fullmatch(text) is not None
 
 
+def checkpoint_envelope(body: str = _CHECKPOINT_BODY) -> SemanticEnvelope:
+    """Build the semantic checkpoint envelope whose body a checkpoint producer composed."""
+    return _platform_semantic_envelope(PlatformTextLabel.CHECKPOINT, body)
+
+
 def checkpoint_text(body: str = _CHECKPOINT_BODY) -> str:
     """Render the registry-owned XML checkpoint envelope at the hook boundary."""
-    return render_xml_envelope(_platform_semantic_envelope(PlatformTextLabel.CHECKPOINT, body))
+    return render_xml_envelope(checkpoint_envelope(body))
 
 
 def is_checkpoint_text(text: str) -> bool:
@@ -934,6 +939,7 @@ __all__ = [
     "TranscriptEntryKind",
     "TranscriptTextClassification",
     "caller_occurrence_key",
+    "checkpoint_envelope",
     "checkpoint_text",
     "classify_transcript_text",
     "cut_transcript_entry",

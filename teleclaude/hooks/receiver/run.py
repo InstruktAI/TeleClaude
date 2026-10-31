@@ -32,6 +32,8 @@ from teleclaude.core.control_delivery import IDLE_WAKE_TEXT
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.events import (
     AGENT_STATUS_REASON_FIELD,
+    CHECKPOINT_RELAY_BODY_FIELD,
+    CHECKPOINT_RELAY_INGRESS_FIELD,
     RECEIVER_HANDLED_HOOK_EVENTS,
     AgentHookEvents,
     AgentHookEventType,
@@ -45,6 +47,7 @@ from teleclaude.core.hook_delivery import (
 from teleclaude.core.identity import NoIdentityCliCaller, derive_identity_key, memory_person_reach
 from teleclaude.core.injected_text import (
     TranscriptEntryKind,
+    checkpoint_text,
     recognize_delivered_text,
     visible_user_segments,
     wake_occurrence_key,
@@ -605,9 +608,10 @@ def _maybe_checkpoint_output(
 ) -> str | None:
     """Evaluate whether to block an agent_stop with a checkpoint instruction.
 
-    Returns the checkpoint reason string if a checkpoint is warranted, or None
-    to let the stop pass through to the normal enqueue path. The caller is
-    responsible for formatting the reason into agent-specific JSON via the adapter.
+    Returns the checkpoint body if a checkpoint is warranted, or None to let the
+    stop pass through to the normal enqueue path. The caller delivers the body: it
+    renders the checkpoint envelope into agent-specific JSON via the adapter, or
+    relays it to control delivery.
     """
     # Turn-scoped manual clear: while the marker exists, skip checkpoints for this turn.
     if is_checkpoint_disabled(session_id):
@@ -1483,9 +1487,15 @@ def _maybe_emit_boundary_response(
     additional_context: str | None,
     initial_procedure_entry_id: str | None,
     procedure_wake_occurrence_id: str | None,
+    relay_checkpoint: bool,
 ) -> bool:
-    """Emit checkpoint continuations independently of control delivery."""
-    checkpoint_reason = _maybe_emit_checkpoint_response(
+    """Emit checkpoint continuations independently of control delivery.
+
+    A checkpoint owed to a turn whose completion arrived on another conversation's hook
+    (``relay_checkpoint``) is never answered on that hook: it is relayed through the
+    hook outbox to control delivery, and the hook receives the provider's success response.
+    """
+    checkpoint_body = _maybe_emit_checkpoint_response(
         event_type=event_type,
         adapter=adapter,
         session_id=session_id,
@@ -1504,8 +1514,35 @@ def _maybe_emit_boundary_response(
             session_id=session_id,
         )
 
-    if checkpoint_reason is not None:
-        write_emission(adapter.render_response(raw_event_type, ContinueWithReason(checkpoint_reason)))
+    if checkpoint_body is not None and relay_checkpoint:
+        enqueue_hook_event(
+            session_id,
+            AgentHookEvents.CHECKPOINT_RELAY,
+            {
+                CHECKPOINT_RELAY_BODY_FIELD: checkpoint_body,
+                CHECKPOINT_RELAY_INGRESS_FIELD: receiver_ingress_id,
+            },
+            outbox_db=context.outbox_db,
+        )
+        logger.info(
+            "Checkpoint relayed to control delivery",
+            receiver_ingress_id=receiver_ingress_id,
+            session_id=session_id,
+            agent=context.agent,
+        )
+        _emit_success_response_if_supported(
+            adapter=adapter,
+            raw_event_type=raw_event_type,
+            event_type=event_type,
+            reason=HookNormalizationReason.SUBAGENT_COMPLETION,
+            provider=context.agent,
+            receiver_ingress_id=receiver_ingress_id,
+            session_id=session_id,
+        )
+        return True
+
+    if checkpoint_body is not None:
+        write_emission(adapter.render_response(raw_event_type, ContinueWithReason(checkpoint_text(checkpoint_body))))
         return True
 
     return emit_pending_control_payloads(
@@ -1535,6 +1572,7 @@ def _run_ordinary_hook_effects(
     cwd: str | None,
     outbox_context: _ReceiverOutboxContext,
     raw_event_type: str,
+    relay_checkpoint: bool,
 ) -> tuple[bool, bool]:
     """Return whether processing stops and whether a provider response was emitted."""
     if launch_context is not None:
@@ -1587,6 +1625,7 @@ def _run_ordinary_hook_effects(
         additional_context=additional_context,
         initial_procedure_entry_id=initial_procedure_entry_id,
         procedure_wake_occurrence_id=procedure_wake_occurrence_id,
+        relay_checkpoint=relay_checkpoint,
     )
     # Context augments the original event; it does not consume the human prompt.
     # Checkpoint/control-only responses retain their existing terminal behavior.
@@ -1885,6 +1924,7 @@ def main() -> None:
         cwd=args.cwd,
         outbox_context=outbox_context,
         raw_event_type=raw_event_type,
+        relay_checkpoint=normalization.reason is HookNormalizationReason.SUBAGENT_COMPLETION,
     )
     if stop_processing:
         return

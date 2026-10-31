@@ -29,6 +29,7 @@ from teleclaude.core.events import (
     build_agent_payload,
 )
 from teleclaude.core.hook_outbox_handlers import (
+    handle_checkpoint_relay,
     handle_checkpoint_seen,
     handle_native_metadata_update,
     handle_native_session_refresh,
@@ -93,6 +94,7 @@ HOOK_EVENT_STALENESS_EXEMPT: frozenset[str] = frozenset(
         AgentHookEvents.AGENT_IDLE,
         AgentHookEvents.AGENT_TURN_FAILED,
         AgentHookEvents.AGENT_ERROR,
+        AgentHookEvents.CHECKPOINT_RELAY,
     }
 )
 
@@ -107,6 +109,7 @@ HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(
         AgentHookEvents.AGENT_IDLE,
         AgentHookEvents.AGENT_TURN_FAILED,
         AgentHookEvents.AGENT_ERROR,
+        AgentHookEvents.CHECKPOINT_RELAY,
         AgentHookEvents.CHECKPOINT_SEEN,
         AgentHookEvents.NATIVE_METADATA_UPDATE,
         AgentHookEvents.NATIVE_SESSION_REFRESH,
@@ -518,6 +521,11 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 session_id=session_id,
                 event_type=event_type,
             )
+            return
+
+        if event_type == AgentHookEvents.CHECKPOINT_RELAY:
+            # Settles only once control delivery has accepted the handoff; a refused handoff retries.
+            await handle_checkpoint_relay(session_id=session_id, payload=data)
             return
 
         transcript_path = data.get("transcript_path")
