@@ -49,10 +49,12 @@ claim clearing, the pass log line — and the project's re-armed timer.
   by the daemon-start pass.
 - **Each project has at most one timer**, set to its next due instant. Every
   pass recomputes it from what the pass found: the earliest next occurrence of
-  a scheduled task it held back as not yet due, and, when a start failed for a
-  reason that can clear by itself, a retry within a minute. A pass that finds
-  neither clears the timer. The timer is derived state, kept in process memory
-  and rebuilt by the daemon-start pass from the project's work record.
+  a scheduled task it held back as not yet due, and a retry within a minute
+  when a start failed for a reason that can clear by itself, when a claim is
+  held only because a computer did not answer its judgment, or when the pass
+  itself failed. A pass that finds none of these clears the timer. The timer
+  is derived state, kept in process memory and rebuilt by the daemon-start
+  pass from the project's work record.
 - **A refusal that names another computer is no failed start.** A start
   refused because another computer is the project's active computer, or
   because the project names no active computer, arms no retry: the change
@@ -114,9 +116,15 @@ sequenceDiagram
     participant Named as Named computer
 
     Caller->>GH: write the active-computer variable
-    Caller-->>Named: active-computer-named event (cluster)
+    Caller->>Caller: publish active-computer-named event (cluster), awaited
+    Caller-->>Caller: naming reported done only once published
     Named->>Named: request pass for its checkout of the project
 ```
+
+The caller holds the obligation to tell the named computer: the naming is
+reported done only once the event is in the cluster stream, a failure after the
+variable write is reported as a failed naming, and naming again repeats both
+steps harmlessly.
 
 ## Failure modes
 
@@ -129,10 +137,18 @@ sequenceDiagram
 - **The named computer is not running** when it is named active. The event
   waits in the cluster stream for its consumer, and the computer's
   daemon-start pass evaluates the project anyway.
-- **A claim whose computer never answers again.** A claim whose session's
-  computer has left the fleet is judged when the active computer next starts,
-  or when a start of that todo is next decided
+- **A claim whose computer does not answer.** The active computer's pickup
+  judges it again within a minute, for as long as the computer stays silent;
+  the claim stays held meanwhile
   (`local/projects/teleclaude/spec/feature/workflow/driver-admission`).
+- **The naming notice is not published** after the variable was written: the
+  naming is reported as failed, and naming again tells the named computer.
+- **GitHub holds the project's requests back** after a rate limit. A
+  delivery-triggered refresh waits for GitHub's stated time, because GitHub
+  forbids requests before it; the delivered change is adopted when it passes
+  (`local/projects/teleclaude/design/architecture/workflow-store`).
+- **A pass fails.** Its failure is logged and the project's timer retries
+  within a minute; the wake that requested it was already handled.
 - **A start keeps failing** for a reason that can clear by itself, such as
   GitHub not answering: pickup retries it within a minute for as long as the
   todo stays startable, each retry a pass of its project.

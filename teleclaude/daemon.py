@@ -37,8 +37,6 @@ _EVENT_DB_SHUTDOWN_COMPONENT = "event_db"
 _EVENT_REDIS_SHUTDOWN_COMPONENT = "event_platform_redis"
 _TTS_SHUTDOWN_COMPONENT = "tts_manager"
 _CHIPTUNES_SHUTDOWN_COMPONENT = "chiptunes_manager"
-_CHIPTUNES_PROVISION_TASK = "chiptunes-provision-watch"
-_CHIPTUNES_FAILED = "{error}; it is retried when the chiptunes configuration is applied again"
 _REGISTRY_SHUTDOWN_COMPONENT = "task_registry"
 _LIFECYCLE_SHUTDOWN_COMPONENT = "lifecycle"
 _PREPARED_EXIT_WARNING = "No termination arrived within the grace after drained; completing own shutdown"
@@ -1108,7 +1106,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         if provisioning is None:
             self._clear_chiptunes_degraded()
             return
-        self.task_registry.spawn(self._watch_chiptunes_provisioning(provisioning), name=_CHIPTUNES_PROVISION_TASK)
+        self.task_registry.spawn(self._watch_chiptunes_provisioning(provisioning), name="chiptunes-provision-watch")
 
     async def _watch_chiptunes_provisioning(self, provisioning: asyncio.Task[None]) -> None:
         """Settle the chiptunes degradation by the outcome of its deferred corpus provisioning."""
@@ -1120,7 +1118,9 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._clear_chiptunes_degraded()
 
     def _mark_chiptunes_degraded(self, exc: BaseException) -> None:
-        if self.degradations.mark(DegradedComponent.CHIPTUNES, _CHIPTUNES_FAILED.format(error=exc)):
+        if self.degradations.mark(
+            DegradedComponent.CHIPTUNES, f"{exc}; it is retried when the chiptunes configuration is applied again"
+        ):
             logger.error("Chiptunes failed; the daemon continues and reports it degraded", exc_info=exc)
 
     def _clear_chiptunes_degraded(self) -> None:

@@ -12,6 +12,9 @@ description: A maintenance run that replaces the daemon stops it first, performs
 Superseded in part by ADR-0127: actions the maintenance registry declares to
 run while the daemon serves run after the window's verified start.
 
+Superseded in part by ADR-0130: a commit changes nothing live, so neither
+commit-boundary nor on-demand maintenance replaces the daemon.
+
 ## Context
 
 Commit-boundary and release maintenance ran while the daemon process kept

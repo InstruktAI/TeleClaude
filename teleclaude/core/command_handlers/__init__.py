@@ -29,7 +29,7 @@ from ._message import (
     notify_delivery_exhausted,
     process_message,
 )
-from ._projects import list_projects, list_projects_with_todos, list_todos, registered_projects_by_path
+from ._projects import list_projects, list_projects_with_todos, list_todos
 from ._restart import agent_restart
 from ._session import (
     close_session,
@@ -81,7 +81,6 @@ __all__ = [
     "list_todos",
     "notify_delivery_exhausted",
     "process_message",
-    "registered_projects_by_path",
     "resolve_working_slug_from_subdir",
     "resume_agent",
     "run_agent_command",

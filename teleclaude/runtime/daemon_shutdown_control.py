@@ -8,8 +8,7 @@ caller acts only on a successful outcome. A window that expires on an instance t
 completes its own shutdown is a deferral, not a failure: the draining daemon finishes
 the restart once its accepted work settles.
 
-The read-only `status` verb reports the same observation for `make status`, the read-only
-`degraded` verb the optional components the daemon serves without, and the read-only `ready` verb
+The read-only `status` verb reports the same observation for `make status`, and the read-only `ready` verb
 the event Redis scopes the daemon's readiness answer names as not answering.
 
 Maintenance callers that must not store configuration documents past what the running daemon reads
@@ -33,7 +32,7 @@ import sqlite3
 import stat
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum, StrEnum
@@ -170,11 +169,11 @@ class _UnixSocketConnection(http.client.HTTPConnection):
         self.sock.connect(self._socket_path)
 
 
-def _read_document(socket_path: str, path: str, name: str) -> object:
+def _read_document(socket_path: str, path: str, name: str, headers: Mapping[str, str] | None = None) -> object:
     """GET one JSON document from the daemon's API socket; anything but a 200 JSON answer is unreadable."""
     connection = _UnixSocketConnection(socket_path, _HEALTH_TIMEOUT_S)
     try:
-        connection.request("GET", path)
+        connection.request("GET", path, headers=dict(headers or {}))
         response = connection.getresponse()
         body = response.read()
         status = response.status
@@ -192,9 +191,12 @@ def _read_document(socket_path: str, path: str, name: str) -> object:
         raise ControlRefusal(ControlOutcome.UNREADABLE, f"{name} answer is not JSON") from exc
 
 
-def read_health(socket_path: str) -> HealthObservation:
-    """Read and validate the daemon's health answer; any malformed answer is unreadable."""
-    document = _read_document(socket_path, _HEALTH_PATH, "health")
+def read_health(socket_path: str, headers: Mapping[str, str] | None = None) -> HealthObservation:
+    """Read and validate the daemon's health answer; any malformed answer is unreadable.
+
+    `headers` carry the caller's identity when the answer depends on it, as its degraded projects do.
+    """
+    document = _read_document(socket_path, _HEALTH_PATH, "health", headers)
     if not isinstance(document, dict) or document.get(_STATUS_FIELD) != _HEALTH_STATUS_OK:
         raise ControlRefusal(ControlOutcome.UNREADABLE, "health answer is not an ok document")
     raw_preparation = document.get(_PREPARATION_FIELD)
@@ -345,16 +347,6 @@ def report_admission(socket_path: str) -> int:
     return int(ControlOutcome.ADMISSION_CLOSED)
 
 
-def report_degraded(socket_path: str) -> int:
-    """Print each optional component the daemon serves without; exit OK only when there is none."""
-    degraded = read_health(socket_path).degraded
-    if degraded is None:
-        raise ControlRefusal(ControlOutcome.UNSUPPORTED)
-    for line in degraded:
-        print(line)
-    return int(ControlOutcome.DEGRADED) if degraded else int(ControlOutcome.OK)
-
-
 def report_readiness(socket_path: str) -> int:
     """Print each event Redis scope the daemon's readiness answer names as not answering; OK only when none."""
     document = _read_document(socket_path, _READY_PATH, "readiness")
@@ -437,7 +429,6 @@ class _Verb(StrEnum):
     PREPARE = "prepare"
     LEGACY = "legacy"
     STATUS = "status"
-    DEGRADED = "degraded"
     READY = "ready"
 
 
@@ -449,13 +440,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--manager-pid", type=int)
     parser.add_argument("--pid-file")
     args = parser.parse_args(argv)
-    if args.verb not in (_Verb.STATUS, _Verb.DEGRADED, _Verb.READY) and args.manager_pid is None:
+    if args.verb not in (_Verb.STATUS, _Verb.READY) and args.manager_pid is None:
         parser.error(_MANAGER_PID_REQUIRED.format(verb=args.verb))
     try:
         if args.verb == _Verb.STATUS:
             return report_admission(args.socket)
-        if args.verb == _Verb.DEGRADED:
-            return report_degraded(args.socket)
         if args.verb == _Verb.READY:
             return report_readiness(args.socket)
         if args.verb == _Verb.PREPARE:

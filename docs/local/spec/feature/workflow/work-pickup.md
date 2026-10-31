@@ -80,6 +80,9 @@ no project's work.
 
 ## Known caveats
 
+- While GitHub holds a project's requests back after a rate limit, a delivered
+  change is adopted, and its work evaluated, only when GitHub's stated time has
+  passed (`local/projects/teleclaude/design/architecture/workflow-store`).
 - A change made elsewhere that GitHub does not deliver reaches the active
   computer only when its copy of the record is next brought up to date by
   another delivery or by the store's own refresh; pickup does not look for it.

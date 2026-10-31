@@ -39,7 +39,6 @@ logger = get_logger(__name__)
 # other UiAdapter/BaseAdapter method dispatched through _route_to_ui stays
 # session-addressed. See local/projects/teleclaude/design/architecture/adapter-client
 # (Destination-Addressed Seam invariant).
-_ADAPTER_START_FAILED = "failed to start: {error}; it stays down until the daemon restarts"
 _DESTINATION_ADDRESSED_METHODS = frozenset({"send_message", "edit_message", "delete_message", "send_file"})
 
 
@@ -209,9 +208,12 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             except Exception as exc:
                 logger.error("Adapter %s is configured but failed to start: %s", name, exc)
                 self.adapter_status[name] = AdapterStatusReport(AdapterStatus.ERROR, error=str(exc))
+                # The reason names the failure's type, never its message: a provider's start error can carry
+                # the configured credential. The message stays in the daemon log.
                 self.degradations.mark(
                     DegradedComponent.UI_ADAPTER,
-                    _ADAPTER_START_FAILED.format(error=exc),
+                    f"failed to start ({type(exc).__name__}); see the daemon log for the cause; it stays down"
+                    " until the daemon restarts",
                     subject=name,
                 )
                 continue
