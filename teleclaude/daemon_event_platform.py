@@ -132,11 +132,6 @@ _DUPLICATE_RUNTIME_CONSUMER_NAMES_ERROR = "runtime and platform event consumers 
 _DISCORD_VOICE_ADAPTER_REQUIRED = "Discord runtime voice consumer has no active adapter capability"
 _DISCORD_ADAPTER_KEY = "discord"
 _RUNTIME_EVENT_PRODUCER_CONFIGURED_EVENT = "Internal runtime EventProducer configured"
-_EVENT_PLATFORM_ATTACH_TASK_NAME = "event-platform-attach"
-_EVENT_PLATFORM_ATTACH_FAILED_EVENT = "event_platform_attach_failed"
-_EVENT_PLATFORM_ATTACH_END_REASON = "event-platform-attach-failed"
-_EVENT_PLATFORM_ATTACH_STALLED_ERROR = "Event platform steps remain while every event Redis answers"
-_EVENT_PLATFORM_DEGRADED_EVENT = "event_platform_redis_unreachable: startup continues degraded"
 
 
 class _RecoveryProgress(StrEnum):
@@ -464,14 +459,14 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                     advanced_without_waiting = False
                 elif advanced_without_waiting:
                     # A pass that found every Redis answering left steps undone: nothing is left to wait for.
-                    raise RuntimeError(_EVENT_PLATFORM_ATTACH_STALLED_ERROR)
+                    raise RuntimeError("Event platform steps remain while every event Redis answers")
                 else:
                     # A Redis that answered again before this task began holds nothing back; its steps are due now.
                     advanced_without_waiting = True
                 await self._advance_event_platform_steps()
         except Exception:
-            logger.error(_EVENT_PLATFORM_ATTACH_FAILED_EVENT, exc_info=True)
-            self.request_shutdown(_EVENT_PLATFORM_ATTACH_END_REASON)
+            logger.error("event_platform_attach_failed", exc_info=True)
+            self.request_shutdown("event-platform-attach-failed")
             return
         self._note_event_platform_attached()
 
@@ -649,7 +644,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             self._event_platform_status.redis_reachable = False
             self._event_platform_status.pending_recovery_progress = _RecoveryProgress.BLOCKED_REDIS_UNREACHABLE
             logger.warning(
-                _EVENT_PLATFORM_DEGRADED_EVENT,
+                "event_platform_redis_unreachable: startup continues degraded",
                 scopes=[scope.value for scope in unanswering],
                 redis_configured=redis_configured,
             )
@@ -697,7 +692,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._start_assessment_announcer(event_producer)
         self._start_installation_source_reader(event_producer)
         if self._event_platform_steps_remaining():
-            self.task_registry.spawn(self._attach_event_platform(), name=_EVENT_PLATFORM_ATTACH_TASK_NAME)
+            self.task_registry.spawn(self._attach_event_platform(), name="event-platform-attach")
             return
         self._note_event_platform_attached()
 

@@ -30,8 +30,6 @@ PING_INTERVAL_S: Final = 5.0
 #: How long one startup or attach operation on a Redis may take before that Redis counts as not answering.
 OPERATION_DEADLINE_S: Final = 10.0
 
-_LOST_EVENT: Final = "event_redis_unreachable"
-_ANSWERING_EVENT: Final = "event_redis_answering"
 _STATE_KEY: Final = "daemon"
 _STATE: dict[str, RedisReachability] = {}
 
@@ -135,7 +133,7 @@ class RedisReachability:
                 continue
             record.answering.clear()
             logger.warning(
-                _LOST_EVENT,
+                "event_redis_unreachable",
                 scopes=[scope.value for scope in record.scopes],
                 error_class=_error_class(error),
             )
@@ -156,7 +154,7 @@ class RedisReachability:
                 if is_redis_unreachable(error):
                     continue
             record.answering.set()
-            logger.info(_ANSWERING_EVENT, scopes=[scope.value for scope in record.scopes])
+            logger.info("event_redis_answering", scopes=[scope.value for scope in record.scopes])
             return
 
     async def until_answering(self, *clients: object) -> bool:
