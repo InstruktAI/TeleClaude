@@ -107,7 +107,7 @@ optional handler field, not a documented wake-up or model-injection mechanism.
 
 `permission_mode` is also present on `SessionStart`, `SubagentStart`,
 `PreToolUse`, `PermissionRequest`, `PostToolUse`, `UserPromptSubmit`,
-`SubagentStop`, and `Stop`. Its values are `default`, `acceptEdits`, `plan`,
+`SubagentStop`, `Stop`, and `Interrupt`. Its values are `default`, `acceptEdits`, `plan`,
 `dontAsk`, and `bypassPermissions`.
 
 The event table below lists every event-specific field. `turn_id` is present on
@@ -220,20 +220,20 @@ stop hooks: the error branches in `codex-rs/core/src/session/turn.rs` call
 `emit_turn_error_lifecycle`, send an `Error` event and leave the turn loop,
 while `run_turn_stop_hooks` runs only on the successful no-follow-up path. Such
 a turn fires no `Stop`, no `Interrupt` and no legacy `notify`
-(`agent-turn-complete`); upstream tracks this as open bug
-[`openai/codex#54884`](https://github.com/openai/codex/issues/54884), reproduced
-on 0.163.0. The Codex TUI itself shows the error and emits
+(`agent-turn-complete`). Upstream tracks this as an open bug, reproduced on
+0.163.0 (see Sources). The Codex TUI itself shows the error and emits
 `OSC 7501;state=idle:app=codex`. A killed process also emits nothing.
 
-`Interrupt` adds `turn_id` and `permission_mode`. Upstream discussion
-(`openai/codex#45977`) describes it as covering an Esc interrupt; its trigger
-points are not verified here.
+`Interrupt` adds `turn_id` and `permission_mode`. Upstream discussion describes
+it as covering an Esc interrupt; its trigger points are not verified here.
 
 `PreModelRequest` and `PostModelRequest` are observation-only: their output
-cannot veto a request or alter model context
-([`openai/codex#55144`](https://github.com/openai/codex/pull/55144)). Both fire
-around every model request attempt, retries included, and add `turn_id` and,
-for a subagent, `agent_id` and `agent_type`. `PostModelRequest` also carries:
+cannot veto a request or alter model context. Both fire around every sampling
+request attempt of a turn, retries included (`run_model_request_hooks` in
+`codex-rs/core/src/session/turn.rs`), and add `turn_id` and, for a subagent,
+`agent_id` and `agent_type`. Compaction's own model requests
+(`codex-rs/core/src/compact.rs`) run without these hooks. `PostModelRequest`
+also carries:
 
 ```json
 {
@@ -243,11 +243,12 @@ for a subagent, `agent_id` and `agent_type`. `PostModelRequest` also carries:
 }
 ```
 
-A provider error therefore surfaces as `PostModelRequest` with
-`status: "failed"` and the error text. Because a retried attempt fires its own
+A provider error on a sampling request therefore surfaces as `PostModelRequest`
+with `status: "failed"` and the error text; a provider error during compaction
+surfaces through no hook. Because a retried attempt fires its own
 `PreModelRequest`, a failed attempt is not by itself the end of the turn: a turn
-that died on a provider error is a failed `PostModelRequest` that no further
-attempt follows. No hook states that the turn ended.
+that died on a sampling-request error is a failed `PostModelRequest` that no
+further attempt follows. No hook states that the turn ended.
 
 `SessionEnd` adds `reason: "other"`. It has no `turn_id`, does not run for
 subagents, and is advisory: its output cannot steer Codex or keep the session
@@ -282,6 +283,9 @@ position; it is not a streaming-output signal.
 | `UserPromptSubmit`  | `turn_id`, `prompt`, `permission_mode`                                                                                        | **Yes:** plain stdout or `hookSpecificOutput.additionalContext`, added as extra developer context before the model processes the user prompt.                                          | User-input signal, not an agent-output or state-change signal.                   | The payload has no counter or idle flag. A configured matcher is ignored.                                                           |
 | `SubagentStop`      | `turn_id`, `agent_id`, `agent_type`, `agent_transcript_path`, `stop_hook_active`, `last_assistant_message`, `permission_mode` | No. `decision: "block"` with `reason` requests subagent continuation instead.                                                                                                          | Subagent-stop signal; `last_assistant_message` may carry its latest output.      | `stop_hook_active` distinguishes a stop already continued by this hook. It is not an idle flag or a sequence counter.               |
 | `Stop`              | `turn_id`, `stop_hook_active`, `last_assistant_message`, `permission_mode`                                                    | **No.** There is no `hookSpecificOutput.additionalContext` field. `decision: "block"` plus `reason` creates a new continuation user prompt; it is not injection into the running turn. | Main-agent stop signal; `last_assistant_message` may carry the completed output. | `stop_hook_active` distinguishes a turn already continued by `Stop`. It is not an idle flag or a sequence counter.                  |
+| `Interrupt`         | `turn_id`, `permission_mode`                                                                                                  | Not verified here.                                                                                                                                                                     | Interrupted-turn signal.                                                         | Trigger points are not verified here; no counter or idle flag is provided.                                                          |
+| `PreModelRequest`   | `turn_id`; `agent_id`, `agent_type` for a subagent                                                                            | No; observation-only.                                                                                                                                                                  | Sampling-request attempt starting; compaction requests excluded.                 | Fires per attempt, so retries repeat it within one turn.                                                                            |
+| `PostModelRequest`  | `turn_id`, `status` (`completed`, `failed`, `cancelled`), `error`, `token_usage`; `agent_id`, `agent_type` for a subagent     | No; observation-only.                                                                                                                                                                  | Sampling-request attempt finished; compaction requests excluded.                 | `status` distinguishes completion, failure and cancellation per attempt; a failed attempt may be followed by a retry.               |
 
 Codex exposes no generic per-message activity counter, idle indicator, or
 streaming-text delta. For cadence, `PreToolUse` and `PostToolUse` are the only
@@ -429,6 +433,7 @@ normalized hook identity. Codex's algorithm
 - https://github.com/openai/codex/blob/rust-v0.157.1/codex-rs/core/src/tools/hook_names.rs
 - https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/protocol/src/protocol.rs
 - https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/session/turn.rs
+- https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/compact.rs
 - https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/hooks/src/schema.rs
 - https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/hooks/schema/generated/model-request.command.input.schema.json
 - https://github.com/openai/codex/pull/55144
