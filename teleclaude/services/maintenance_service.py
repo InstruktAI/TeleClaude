@@ -527,8 +527,8 @@ class MaintenanceService:
                 await db.cleanup_stale_voice_assignments()
                 await db.cleanup_terminal_voice_transcriptions(runtime_cutoff_iso)
                 await _cleanup_orphan_voice_audio_files(now=now)
-                # Binding-aware: rows with no durable accepted-turn binding survive
-                # the sweep regardless of age — see db.cleanup_inbound.
+                # Binding-aware: a delivered row with no binding or disposition survives
+                # the sweep while its session is retained — see db.cleanup_inbound.
                 await db.cleanup_inbound(runtime_cutoff_iso)
                 await db.cleanup_orphan_inbound(now_iso)
                 await db.cleanup_terminal_operations(runtime_cutoff_iso)

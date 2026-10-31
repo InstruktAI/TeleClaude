@@ -20,6 +20,7 @@ from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
 from teleclaude.core.endpoints import tenant_desk_for_folder
 from teleclaude.core.models import HelpDeskKind
 from teleclaude.core.organization import OrganizationalMembership, company_project_slugs, resolve_organization
+from teleclaude.core.reconciliation.platform_repository import is_platform_repository
 from teleclaude.doc_body import (
     INLINE_REF_RE,
     apply_planned_change_sections,
@@ -40,7 +41,7 @@ from teleclaude.docs_subscriptions import (
 from teleclaude.domains import publishes_for_root, valid_domains
 from teleclaude.entry_declarations import NO_ENTRY_DECLARATIONS, EntryParse, parse_entry_declarations
 from teleclaude.identity_reach import Reach, resolve_reach
-from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, REPO_ROOT, TELECLAUDE_HOME
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, TELECLAUDE_HOME
 from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import normalize_slug
@@ -1577,15 +1578,18 @@ def _load_reached_snippets(
 
 
 def _load_third_party_entries(project_root: Path) -> list[ThirdPartyMeta]:
-    """Load the mother's and the landed project's third-party indexes (outside the taxonomy).
+    """Load the global and the landed project's third-party indexes (outside the taxonomy).
 
-    Global third-party docs live in the mother repo's source tree
-    (``<repo>/docs/third-party``), not under the deployed docs root. In the
-    mother repo both indexes are the same file, so it is loaded once.
+    Global third-party docs are read from the deployed documentation root, where
+    the mother's publication places them. The mother's own ``docs/third-party``
+    is that same set, so a landed project that belongs to the platform repository
+    contributes no project index; any other project contributes its own.
     """
-    project_third_party_index = project_root / "docs" / "third-party" / _INDEX_FILENAME
-    global_third_party_index = REPO_ROOT / "docs" / "third-party" / _INDEX_FILENAME
+    global_third_party_index = GLOBAL_DOCS_DIR / "third-party" / _INDEX_FILENAME
     entries = list(load_third_party_index(global_third_party_index))
+    project_third_party_index = project_root / "docs" / "third-party" / _INDEX_FILENAME
+    if is_platform_repository(project_root):
+        return entries
     if project_third_party_index.resolve() != global_third_party_index.resolve():
         entries.extend(load_third_party_index(project_third_party_index))
     return entries

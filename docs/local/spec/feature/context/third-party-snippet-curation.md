@@ -26,8 +26,6 @@ in frontmatter. It is keyed by its path-derived ID, carries an authored
 or Markdown link it was distilled from. Its `id` and `scope` are derived from
 the path.
 
-<!-- planned:third-party-docs-bypass-publication -->
-
 The third-party listing and retrieval read two indexes: the global index of the
 deployed documentation's `third-party/` root, whose entries carry scope
 `global`, and the index of the landed project's own `docs/third-party/`, whose
@@ -36,8 +34,6 @@ source of the global set
 (`local/projects/teleclaude/spec/feature/context/agent-runtime-deployment`), so
 inside the mother project it is read only through its published form and is not
 loaded a second time as project documentation.
-
-<!-- /planned:third-party-docs-bypass-publication -->
 
 ## Canonical fields
 
@@ -63,8 +59,6 @@ Scenario: Browse external references
   And each listed reference is described well enough to choose what to retrieve
 ```
 
-<!-- planned:third-party-docs-bypass-publication -->
-
 #### UC-TPSC3: Share a sourced vendor reference with every project
 
 ```gherkin
@@ -75,8 +69,6 @@ Scenario: Reuse a curated reference across projects
   Then the reference is listed as global and retrievable from any project and from outside every project
   And retrieving it does not depend on which platform release or checkout the reader runs
 ```
-
-<!-- /planned:third-party-docs-bypass-publication -->
 
 ### Cross-context references
 

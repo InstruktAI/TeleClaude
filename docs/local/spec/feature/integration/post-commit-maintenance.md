@@ -675,13 +675,6 @@ And an agent running make status sees the stop's reason and when it was recorded
 
 #### UC-PCM29: An installation-only advancement stops the daemon
 
-```gherkin
-Given a canonical-main commit in the platform's checkout changing only installation templates
-When its maintenance runs
-Then the daemon has stopped before the installation step begins
-And the daemon is started and verified after it
-```
-
 #### UC-PCM30: Installation inside a window leaves sessions running
 
 ```gherkin
@@ -746,6 +739,40 @@ And replaying either of them after a failure leaves the daemon serving
 ```
 
 <!-- change:commit-maintenance-sheds-platform-work -->
+
+#### UC-PCM19: A restart owed by an integration does not close admission on that integration
+
+#### UC-PCM20: Steps that change what the daemon runs on run against a stopped daemon
+
+#### UC-PCM21: Unsettled work keeps the window waiting, not the steps running
+
+#### UC-PCM22: A failed step still ends with the daemon started and verified
+
+#### UC-PCM23: A start that does not verify leaves its reason where an agent looks first
+
+#### UC-PCM24: A refused stop performs no step
+
+#### UC-PCM25: Replaying a failed step of a restart-owing activation stops the daemon again
+
+#### UC-PCM26: A documentation-only advancement leaves the daemon serving
+
+#### UC-PCM27: Advancements recorded during a window share it
+
+#### UC-PCM28: A stop that does not establish a stopped daemon leaves it untouched with its reason
+
+#### UC-PCM29: An installation-only advancement stops the daemon
+
+#### UC-PCM30: Installation inside a window leaves sessions running
+
+#### UC-PCM31: A stop that stopped the daemon but failed a unit cleanup still opens the window
+
+#### UC-PCM32: An advancement still registering when the window's last step ends shares the window
+
+#### UC-PCM33: A start overtaken by a further advancement is stopped again before that advancement runs
+
+#### UC-PCM34: A tip whose owed actions cannot be recorded leaves the daemon stopped with its reason
+
+#### UC-PCM35: A code commit keeps the daemon down only for the steps that need it stopped
 
 <!-- /planned-change:commit-maintenance-sheds-platform-work -->
 

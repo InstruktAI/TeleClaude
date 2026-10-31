@@ -33,15 +33,6 @@ framework, or tool with its own release lifecycle or governing source.
 
 ## Allowed values
 
-<!-- planned-change:third-party-docs-bypass-publication -->
-
-- `docs/third-party/<upstream-party>/...` for project-specific third-party summaries.
-- `~/.teleclaude/docs/third-party/<upstream-party>/...` for reusable third-party summaries.
-- `id`: `third-party/<upstream-party>/<slug>`.
-- `scope`: `project` or `global`.
-
-<!-- change:third-party-docs-bypass-publication -->
-
 - `docs/third-party/<upstream-party>/...` for project-specific third-party
   summaries, in every project except the mother.
 - `~/.teleclaude/docs/third-party/<upstream-party>/...` for reusable
@@ -52,8 +43,6 @@ framework, or tool with its own release lifecycle or governing source.
   directly.
 - `id`: `third-party/<upstream-party>/<slug>`.
 - `scope`: `project` or `global`.
-
-<!-- /planned-change:third-party-docs-bypass-publication -->
 
 ## Known caveats
 
