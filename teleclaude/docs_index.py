@@ -239,12 +239,16 @@ def _extract_description_from_md(file_path: Path) -> str:
     return file_path.stem
 
 
-def write_third_party_index_yaml(third_party_root: Path, scope: str) -> Path | None:
+def write_third_party_index_yaml(
+    third_party_root: Path, scope: str, *, published_root: Path | None = None
+) -> Path | None:
     """Generate index.yaml for third-party docs.
 
     Args:
         third_party_root: Path to third-party directory (e.g., docs/third-party or ~/.teleclaude/docs/third-party)
         scope: Either "project" or "global"
+        published_root: Address readers resolve the entries under when the index is written
+            before the directory is exchanged into place; defaults to ``third_party_root``.
 
     Returns:
         Path to the generated index.yaml, or None if no docs found.
@@ -288,7 +292,7 @@ def write_third_party_index_yaml(third_party_root: Path, scope: str) -> Path | N
         return None
 
     # Build payload
-    root_str = _display_home_path(third_party_root)
+    root_str = _display_home_path(published_root if published_root is not None else third_party_root)
 
     payload: ThirdPartyIndexPayload = {
         "snippets_root": root_str,
