@@ -225,8 +225,8 @@ Each state machine has its own design document with full state diagrams, sequenc
 
 <!-- change:event-driven-lifecycle-runner -->
 
-- **Admission answered but the start failed**: a start that cannot create or claim its session after asking — refused, out of budget, or interrupted by its computer's restart — creates nothing; a claim recorded for it is cleared by the start's release request, which its computer repeats until the active computer answers, or by a pass of the active computer's lifecycle runner, once the session's computer answers that it does not drive the todo — whether or not the session is still open — or every computer answers that the session is not its own.
-- **Release does not reach the active computer**: a claim for a session that ended on another computer stays held until that computer's repeated release reaches the active computer, or a pass of the active computer's lifecycle runner judges it ended; while it is unreachable the claim stays held.
+- **Admission answered but the start failed**: a start that cannot create or claim its session after asking — refused, out of budget, or interrupted by its computer's restart — creates nothing; a claim recorded for it is released and judged as driver admission states for claims across computers (`local/projects/teleclaude/spec/feature/workflow/driver-admission`).
+- **Release does not reach the active computer**: a claim for a session that ended on another computer stays held until its release or the active computer's judgment clears it, as driver admission states (`local/projects/teleclaude/spec/feature/workflow/driver-admission`).
 
 <!-- /planned-change:event-driven-lifecycle-runner -->
 

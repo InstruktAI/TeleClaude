@@ -81,6 +81,9 @@ of them.
   runs in, or on the one `--project-root` names, so it can be run from anywhere.
   Naming a computer tells that computer, whose pickup then evaluates the
   project's work (`local/projects/teleclaude/spec/feature/workflow/work-pickup`).
+  The naming succeeds only once that computer has been told; a naming whose
+  notice could not be sent is reported as failed, and running it again is
+  safe.
 
 <!-- /planned-change:event-driven-lifecycle-runner -->
 
@@ -113,8 +116,10 @@ of them.
   ran, and asks again within a minute for as long as the active computer does
   not answer; when it starts, it asks again for every claim of a session it ran
   that has ended. The active computer clears claims it judges ended in its
-  lifecycle runner passes. Making a different computer active does not move a
-  running orchestrator: its claim stays with its session's computer until that
+  lifecycle runner passes, and judges again within a minute a claim it holds
+  only because a computer did not answer, for as long as that computer does
+  not answer. Making a different computer active does not move a running
+  orchestrator: its claim stays with its session's computer until that
   session ends. Reactivating a removed todo restores the claim its removal set
   aside.
 

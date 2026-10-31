@@ -65,11 +65,24 @@ progress when it runs again, for as long as the stream retains those events. A
 consumer that runs for the first time starts with the events emitted from then
 on; it does not replay the stream's history.
 
+<!-- planned-change:event-driven-lifecycle-runner -->
+
 The platform's own reactions — waking the lifecycle runner, spawning the
 integrator, correlating failures into degradation events, and telling people
 about events — are consumers. Each acts only on events its own computer emitted,
 so a failure is correlated, a degradation announced, and a person told, once, by
 the computer it happened on.
+<!-- change:event-driven-lifecycle-runner -->
+
+The platform's own reactions — waking the lifecycle runner, spawning the
+integrator, correlating failures into degradation events, and telling people
+about events — are consumers. Each acts only on events its own computer emitted,
+so a failure is correlated, a degradation announced, and a person told, once, by
+the computer it happened on. One reaction acts on another computer's event: the
+named computer's pickup acts on the event naming it a project's active
+computer, whichever computer emitted it
+(`local/projects/teleclaude/design/architecture/work-pickup`).
+<!-- /planned-change:event-driven-lifecycle-runner -->
 
 Maintenance a project binds to its own events is a platform reaction that acts
 on every computer, whichever computer emitted the event: each computer holding
