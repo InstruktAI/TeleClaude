@@ -216,15 +216,16 @@ type _Reader = EventProcessor[StreamEvent] | SharedLiveFeed | RetainedHandover
 
 @dataclass(frozen=True)
 class _Runner:
-    """One reader, with the Redis clients it reads: it runs only while every one of them answers."""
+    """One reader, with the Redis clients its preparation touches and the clients its run reads."""
 
     name: str
     processor: _Reader
-    clients: tuple[Any, ...]
+    prepares_on: tuple[Any, ...]
+    reads: tuple[Any, ...]
 
 
-def _answers_all(runner: _Runner, answering: Collection[object] | None) -> bool:
-    return answering is None or all(any(client is known for known in answering) for client in runner.clients)
+def _answers_all(clients: tuple[Any, ...], answering: Collection[object] | None) -> bool:
+    return answering is None or all(any(client is known for known in answering) for client in clients)
 
 
 class ConsumerRuntime:
@@ -284,11 +285,12 @@ class ConsumerRuntime:
                     reader = RetainedHandover(drain, local_reader)
                     read = (client, redis_clients.cluster)
                 name = _SCOPED_NAME_TEMPLATE.format(name=consumer.name, scope=scope.value)
-                self._runners.append(_Runner(name, reader, read))
+                # A handover reader's position is taken on its local Redis alone; its run also drains the cluster's.
+                self._runners.append(_Runner(name, reader, (client,), read))
         for scope, views in live_views.items():
             feed = SharedLiveFeed(cast(LiveStreamClient, live_clients[scope]), stream=stream, readers=views)
             name = _SCOPED_NAME_TEMPLATE.format(name=_LIVE_FEED_NAME, scope=scope.value)
-            self._runners.append(_Runner(name, feed, (live_clients[scope],)))
+            self._runners.append(_Runner(name, feed, (live_clients[scope],), (live_clients[scope],)))
 
     def unattached(self) -> bool:
         """Whether some reader has no position yet or does not run yet."""
@@ -297,19 +299,19 @@ class ConsumerRuntime:
     async def prepare_group_positions(self, answering: Collection[object] | None = None) -> None:
         """Prepare retained positions and live boundaries before any handler executes.
 
-        Acts only on readers not yet prepared whose every Redis is among the answering clients (all, by default);
-        a reader whose Redis does not answer stays unprepared for a later call.
+        Acts only on readers not yet prepared whose preparation Redis answers (every reader, by default); a reader
+        whose Redis does not answer stays unprepared for a later call.
         """
         await asyncio.gather(
             *(
                 self._prepare_one(runner)
                 for runner in self._runners
-                if runner.name not in self._prepared and _answers_all(runner, answering)
+                if runner.name not in self._prepared and _answers_all(runner.prepares_on, answering)
             )
         )
 
     async def _prepare_one(self, runner: _Runner) -> None:
-        if await self._reachability.attempt(runner.clients, runner.processor.prepare_group_position):
+        if await self._reachability.attempt(runner.prepares_on, runner.processor.prepare_group_position):
             self._prepared.add(runner.name)
 
     def supervise(
@@ -320,13 +322,15 @@ class ConsumerRuntime:
     ) -> tuple[SupervisedTask, ...]:
         """Run each prepared consumer until shutdown as its own supervised task: one that ends is replaced alone.
 
-        Acts only on prepared readers not yet running whose every Redis is among the answering clients (all, by
+        Acts only on prepared readers not yet running whose every read Redis is among the answering clients (all, by
         default), so a later call starts exactly the remainder.
         """
         started = [
             runner
             for runner in self._runners
-            if runner.name in self._prepared and runner.name not in self._supervised and _answers_all(runner, answering)
+            if runner.name in self._prepared
+            and runner.name not in self._supervised
+            and _answers_all(runner.reads, answering)
         ]
         self._supervised.update(runner.name for runner in started)
         return tuple(
@@ -344,7 +348,7 @@ class ConsumerRuntime:
             # A live feed contains its own read errors and recovers its source.
             await runner.processor.start(shutdown_event)
             return
-        await self._run_retained(runner.processor, runner.clients, shutdown_event)
+        await self._run_retained(runner.processor, runner.reads, shutdown_event)
 
     async def _run_retained(
         self,
