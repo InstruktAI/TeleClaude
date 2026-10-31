@@ -333,12 +333,96 @@ workflow.
 **Conversation.** The adapter module publishes the completed turns of the
 sessions working a repository work item on the pull request the item had open
 when each turn completed, otherwise on its issue, as the role Apps, sent by
-the fleet's master
-(`local/projects/teleclaude/design/architecture/work-item-conversation`).
-The conversation store of the computer hosting a session, a store of its own
-apart from the working copy, holds that session's captured turns, protected
-and split, until they are on GitHub, and never raw transcript content; the
-working copy, the record and the workflow state are unchanged.
+the fleet's master. How the capturing computers, the master and the runtime
+relate is `local/projects/teleclaude/design/architecture/work-item-conversation`;
+what a reader sees is
+`local/projects/teleclaude/spec/feature/workflow/github-work-record`
+(Conversation). The record and the workflow state are unchanged. The adapter
+module decides publication as follows.
+
+- **Eligibility.** A session's turn belongs to an item when all hold: the
+  session's project selects the GitHub store; its working item slug names an
+  item of that project that is repository work; its role is one of
+  `prepare-orchestrator`, `work-orchestrator`, `intaker`, `architect`,
+  `planner`, `prd-reviewer`, `architecture-reviewer`, `plan-reviewer`,
+  `build-reviewer`, `builder`, `finalizer`, `diagnoser`, `drift-analyzer` and
+  `deferrer`; and the turn completed at or after the project's conversation
+  start. A session with no role, any other role, or no working item is never
+  published.
+- **Conversation start.** A computer that runs the publisher for a project
+  whose ledger issue holds no conversation-start entry appends one, as the
+  platform App, carrying that moment: a platform comment of its own kind,
+  appended and never edited, opening with
+  `[action:conversation-start at:<time>]`, with no ledger marker, which
+  stores without this capability read past. The entry the ledger issue's
+  comment order puts first is the project's conversation start, on every
+  computer and after every rebuild, and the lower bound of eligibility. A
+  project without a ledger issue publishes nothing until the store opens one.
+- **Destination.** A turn goes on the item's pull request when the item had
+  an open pull request at the turn's completion: opened at or before it and
+  not closed by then. Every other turn goes on the item's issue, including a
+  turn completed during the build before a delayed reflection opened the pull
+  request. The destination is decided once, when the turn is captured, from
+  the opening and closing times GitHub reports for the pull request, which a
+  rebuilt working copy finds again with the pull request itself, and it never
+  changes when the pull request opens or closes before the turn is posted.
+- **Identity.** A review role, resolved through its composite role, posts as
+  the App `github.roles` maps for `reviewer`. Every other eligible role posts
+  as the App mapped for that role when one is, and otherwise as the App
+  mapped for `builder`, the author identity. The App the project's store
+  declaration names never posts a turn.
+- **Input parts.** Each authored input part is written under its author: a
+  person's comment that comment routing delivered from GitHub
+  (`local/projects/teleclaude/spec/feature/integration/github-comment-routing`)
+  in full, quoted under that person's login with its link; a peer session's
+  message under that session's id and role; platform and runtime content
+  under the platform. A message a person gave the session through any other
+  channel is not written; the turn states that the person spoke.
+- **Protection.** Every turn passes the same established-library
+  data-protection transform before it is captured; the transform never
+  decides whether a turn is published or anything about what it means. It:
+  - masks every resolved value of a sensitive declaration, App private keys
+    in their encoded and decoded forms included;
+  - replaces each credential detect-secrets recognizes, run locally with
+    verification off so no candidate leaves the computer, without its
+    hexadecimal high-entropy plugin;
+  - replaces each entity Presidio's analyzer recognizes with its English
+    small model, for the person, email, phone, location, nationality, credit
+    card, IBAN, crypto wallet, IP address, MAC address and medical licence
+    entities, with that entity's label. Dates, URLs and UUIDs are not
+    replaced.
+
+  A turn whose sensitive values cannot be resolved, or whose detection
+  raises, is captured as a withheld turn and nothing of its content leaves
+  the computer.
+
+**GitHub conversation store.** Each computer keeps a store of its own in the
+daemon's store registry
+(`local/projects/teleclaude/design/architecture/database`), apart from the
+working copy (`sdlc/policy/state-storage`), which only its daemon writes. On
+every computer it holds the turns the computer captured from the sessions it
+hosts, protected and split, never raw transcript content, with which of their
+comments are on GitHub, and for each session the last turn taken from the
+runtime. On the master it also holds each turn handed over to it that it has
+begun and not finished posting, with its comments not yet on GitHub, and the
+request budget state below. A captured turn leaves the store once its last
+comment is on GitHub; on the master, a handed-over turn leaves it at the same
+point. A session's last-taken turn leaves it once the session has been closed
+longer than the runtime retention window and none of its turns remains. An
+append time leaves it once older than the longest budget window, a pause once
+it has ended, and a notice once delivered or past its time. A lost store is
+recovered from GitHub and the runtime
+(`local/projects/teleclaude/design/architecture/work-item-conversation`,
+Recovering position).
+
+**GitHub limit notice store.** Each computer keeps a second store of its own
+in the daemon's store registry, written only by the command-line and
+integration processes that make GitHub requests on that computer. Such a
+process that receives a rate-limit response records it there with the time
+it names; a notice past its time is removed by the next process that writes.
+The daemon reads the notice store at start and before each conversation
+request it admits or notice it delivers, never writes it, and records in its
+conversation store each notice it has taken.
 
 **GitHub request budget.** Every GitHub request the adapter module makes runs
 on its one I/O runtime. Record work, meaning the write path, reflections,
@@ -346,9 +430,8 @@ questions, reviews, rebuild and refresh, is never held by the conversation's
 budget and keeps its own refusal and retry contract. Conversation requests,
 the reads and appends for turns, are sent only by the fleet's master computer
 (`local/projects/teleclaude/spec/teleclaude-config`, `computer.is_master`),
-which every other computer hands its captured turns to
-(`local/projects/teleclaude/design/architecture/work-item-conversation`). The
-master admits each conversation request before sending it:
+which every other computer hands its captured turns to. The master admits
+each conversation request before sending it:
 
 - **Never the record's identity.** Turn comments and the reads for them go
   out only as role Apps, never as the platform App every refusable record
@@ -361,30 +444,25 @@ master admits each conversation request before sending it:
 - **One share for the fleet.** The master counts the conversation appends it
   sent over the last minute and the last hour and admits an append only while
   that count stays within half of GitHub's documented content-creation limits.
-  Because the master sends every conversation request, its count is the
-  fleet's.
 - **A limit response stops the conversation.** A rate-limit response that
-  reaches the master, from its own request or passed on by another computer,
-  pauses every conversation request until the time the response names,
-  however far off, or a minute when it names none, doubling on each repeated
-  unnamed limit up to an hour. A computer other than the master that
-  receives one tells the master over the same relay, with that time, keeps
+  reaches the master, from its own request, from a notice in its notice
+  store, or passed on by another computer, pauses every conversation request
+  until the time the response names, however far off, or a minute when it
+  names none, doubling on each repeated unnamed limit up to an hour. A
+  computer other than the master that receives one, in its daemon or in its
+  notice store, tells the master over the same relay, with that time, keeps
   the notice durably while the master cannot be reached, and delivers it once
   the relay answers, unless its time has passed by then. A turn handed over
   during the pause is answered deferred until its end.
-- **The budget survives a restart.** The master's request runtime records the
-  time of each conversation append it sends within the last hour, the end of
-  any pause and the length of the last unnamed pause, and reloads them before
-  it admits a conversation request after it starts. A computer other than the
-  master records the notice it has not yet delivered. Each computer keeps
-  these in one state file of the request runtime in the TeleClaude home,
-  written whole and replaced atomically, apart from every database
-  (`sdlc/policy/state-storage`, The medium follows the state's shape).
+- **The budget survives a restart.** The master records the time of each
+  conversation append it sends, the end of any pause and the length of the
+  last unnamed pause in its conversation store, and reads them before it
+  admits each conversation request.
 - **A master without a record waits out the window.** A computer that
   becomes the master holds none of its predecessor's record, and a master
-  whose state file is missing holds none of its own, so it admits no
-  conversation request until an hour after it became master or found the file
-  missing, the longest budget window; a pause still running after that
+  whose conversation store is lost holds none of its own, so it admits no
+  conversation request until an hour after it became master or opened a new
+  store, the longest budget window; a pause still running after that
   reaches it as the response to its first request.
 
 <!-- /planned:github-turn-mirror -->

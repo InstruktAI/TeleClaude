@@ -139,17 +139,21 @@ starts the daemon on it, under the guarantees of
 
 <!-- change:commit-maintenance-sheds-platform-work -->
 
-- **Publication and fleet convergence follow the install.** Publishing the
-  installed release's configuration schemas
+- **Publication and fleet convergence follow the install.** A completed
+  install runs the installed release's own post-install step. That step
+  publishes the release's configuration schemas
   (`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`)
   and, where the machine holds no project checkout of the platform to publish
   them, its documentation and agent artifacts
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`),
-  then converging every registered root and the platform home to the installed
-  release's templates
-  (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`),
-  follows a completed install. A failure of either is reported and replayed;
-  it never changes which release is active.
+  then converges every registered root and the platform home to the release's
+  templates
+  (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
+  The installed release decides what that step does, and the step is entered
+  where every earlier release's installer already enters it, so an install that
+  an earlier release performs completes it as the installed release defines it
+  (`local/projects/teleclaude/design/architecture/installation`). A failure is
+  reported and replayed; it never changes which release is active.
 
 <!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
