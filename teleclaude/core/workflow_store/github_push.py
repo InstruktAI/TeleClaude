@@ -474,7 +474,6 @@ class GitHubWorkflowPush:
                 raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
             record = records.get(name)
             artifact = None
-            recreated = False
             if record is not None and record.present:
                 try:
                     artifact = _io_call(
@@ -483,12 +482,11 @@ class GitHubWorkflowPush:
                 except GitHubIORefused as refused:
                     if refused.reason is not GitHubIOFailure.NOT_FOUND:
                         raise
-                    recreated = True
             if artifact is None:
                 artifact = _io_call(
                     session, self.io, GitHubOperation.CREATE_ARTIFACT, issue_number, artifact_type(name), name, content
                 )
-            records[name] = append_entry(record, artifact.number, version, recreated=recreated)
+            records[name] = append_entry(record, artifact.number, version)
         if snapshot.versions and issue_artifacts_fact(session) is not ArtifactFact.SERVED:
             save_issue_artifacts_fact(session, ArtifactFact.SERVED)
         return records
@@ -507,13 +505,7 @@ class GitHubWorkflowPush:
             progress = saved.get(version_id) if version_id is not None else None
             if name is None or progress is None or progress.name != name:
                 raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-            named = records.get(name)
-            records[name] = append_entry(
-                named,
-                progress.artifact_number,
-                version,
-                recreated=named is not None and named.artifact_number != progress.artifact_number,
-            )
+            records[name] = append_entry(records.get(name), progress.artifact_number, version)
         return records
 
     def _discover_ledger(self, session: Session, cached_issue_number: int | None) -> int | None:

@@ -94,10 +94,7 @@ _EMPTY = ""
 _QUESTION_LINE_BREAK = "\n"
 _MIGRATION_RECORD_ID = "github-store-switch:{}:{}"
 _ITEM_ID_BY_SLUG = "SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug"
-_RETAINED_ITEM_ID_BY_SLUG = (
-    "SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug "
-    f"ORDER BY status IN ('{TodoStatus.ACTIVE}', '{TodoStatus.ICEBOX}') DESC, created_at DESC LIMIT 1"
-)
+_REMOVED_ITEM_IDS_BY_SLUG = f"SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug AND status = '{TodoStatus.REMOVED}'"
 _LIVE_ITEM_ID_BY_SLUG = (
     f"SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug AND status IN ('{TodoStatus.ACTIVE}', '{TodoStatus.ICEBOX}')"
 )
@@ -752,13 +749,17 @@ def _pending_item(session: SyncSession, slug: str | None, todo_id: str | None, r
     """The addressed item's id when it is in the pending set, resolving its identity once.
 
     A slug addresses its live (active or icebox) item, as a state read does: a slug no live item bears is a
-    creation key or an unknown name. A request that addresses a removed item (`retained`) falls back to the
-    newest retained row. An id addresses its item exactly.
+    creation key or an unknown name. A request that addresses a removed item (`retained`) addresses the slug's
+    removed item, the one its reactivation acts on, and none when more than one is removed. An id addresses its
+    item exactly.
     """
     if todo_id is None and slug is not None:
-        query = _RETAINED_ITEM_ID_BY_SLUG if retained else _LIVE_ITEM_ID_BY_SLUG
-        found = session.execute(text(query), {_SLUG: slug}).scalar_one_or_none()
-        todo_id = str(found) if found is not None else None
+        if retained:
+            removed = session.execute(text(_REMOVED_ITEM_IDS_BY_SLUG), {_SLUG: slug}).scalars().all()
+            todo_id = str(removed[0]) if len(removed) == 1 else None
+        else:
+            found = session.execute(text(_LIVE_ITEM_ID_BY_SLUG), {_SLUG: slug}).scalar_one_or_none()
+            todo_id = str(found) if found is not None else None
     return todo_id if todo_id is not None and republication_pending(session, todo_id) else None
 
 

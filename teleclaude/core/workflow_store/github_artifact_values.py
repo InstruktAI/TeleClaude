@@ -50,17 +50,14 @@ def append_entry(
     record: ArtifactRecord | None,
     artifact_number: int,
     entry_row: Mapping[str, object],
-    *,
-    recreated: bool = False,
 ) -> ArtifactRecord:
     """The artifact's record after one more saved version: the next ordinal, the window of the newest entries.
 
-    A recreated artifact starts a history of its own but keeps counting from the ordinal it replaces, so the
-    versions the copy already named stay distinct from the new ones.
+    A recreated artifact keeps the entries of the address it replaces: the copy still holds those versions as
+    saved, even though GitHub no longer serves them.
     """
-    named: Sequence[ArtifactVersionEntry] = record.entries if record is not None and record.present else ()
-    entries = () if recreated else named
-    ordinal = (named[-1].ordinal if named else 0) + 1
+    entries: Sequence[ArtifactVersionEntry] = record.entries if record is not None and record.present else ()
+    ordinal = (entries[-1].ordinal if entries else 0) + 1
     entry = version_entry_from_row(ordinal, entry_row)
     return ArtifactRecord(artifact_number=artifact_number, entries=[*entries, entry][-ENTRY_WINDOW:])
 
