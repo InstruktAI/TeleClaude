@@ -202,6 +202,23 @@ async def _send_keys_tmux(
     timeout: float = SUBPROCESS_TIMEOUT_QUICK,
 ) -> bool:
     """Send keys to tmux (session must already exist)."""
+    if not await _leave_pane_mode(session_name=session_name, timeout=timeout):
+        return False
+
+    return await _paste_text_tmux(
+        session_name=session_name,
+        text=text,
+        timeout=timeout,
+        submit=True,
+    )
+
+
+async def _leave_pane_mode(*, session_name: str, timeout: float) -> bool:
+    """Leave any active pane mode so discrete keys reach the program in the pane.
+
+    Returns True when the pane is in normal mode afterwards, False when the mode
+    could not be probed or cancelled.
+    """
     # Copy-mode consumes the discrete C-m submit in its own key table, so leave
     # any active mode before the paste-and-submit pipeline starts.
     mode_probe_cmd = [
@@ -270,13 +287,37 @@ async def _send_keys_tmux(
             mode_value=mode_value,
         )
         return False
+    return True
 
-    return await _paste_text_tmux(
-        session_name=session_name,
-        text=text,
-        timeout=timeout,
-        submit=True,
-    )
+
+async def discard_shell_input(session_name: str) -> bool:
+    """Discard the pending editing-buffer input of the shell in a tmux pane.
+
+    A foreground interactive shell drops its editing buffer on an interrupt key,
+    so the next text it reads starts a fresh command line. The interrupt travels
+    through tmux's key table, which copy mode consumes, so the pane mode is left
+    first. Returns False when either step fails; never raises.
+    """
+    try:
+        if not await _leave_pane_mode(session_name=session_name, timeout=SUBPROCESS_TIMEOUT_QUICK):
+            return False
+    except SubprocessTimeoutError as e:
+        logger.error(
+            "tmux input discard timed out",
+            session=session_name,
+            reason="timeout",
+            timeout_s=e.timeout,
+        )
+        return False
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.exception(
+            "tmux input discard subprocess error",
+            session=session_name,
+            reason="subprocess_error",
+            error_class=type(e).__name__,
+        )
+        return False
+    return await send_signal(session_name, SIGINT)
 
 
 async def _paste_text_tmux(
