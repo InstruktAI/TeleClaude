@@ -445,12 +445,19 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         ordinary shutdown, as the same failure does in a start where every Redis answers.
         """
         try:
+            advanced_without_waiting = False
             while self._event_platform_steps_remaining():
                 waiting = self._reachability().unanswering_clients()
-                if not waiting:
+                if waiting:
+                    if not await self._reachability().until_any_answers(waiting):
+                        return
+                    advanced_without_waiting = False
+                elif advanced_without_waiting:
+                    # A pass that found every Redis answering left steps undone: nothing is left to wait for.
                     raise RuntimeError(_EVENT_PLATFORM_ATTACH_STALLED_ERROR)
-                if not await self._reachability().until_any_answers(waiting):
-                    return
+                else:
+                    # A Redis that answered again before this task began holds nothing back; its steps are due now.
+                    advanced_without_waiting = True
                 await self._advance_event_platform_steps()
         except Exception:
             logger.error(_EVENT_PLATFORM_ATTACH_FAILED_EVENT, exc_info=True)
