@@ -35,7 +35,10 @@ Capture authoritative documentation for project dependencies and store concise i
     into that deployed root. Working in another project, hand the content to
     a session in the mother project through the cross-project documentation
     route (`general/policy/documentation-discipline`).
-  - **Project-only** (explicit user request): `docs/third-party/<upstream-party>/` within the current repo.
+  - **Project-only** (explicit user request): `docs/third-party/<upstream-party>/`
+    within the current repo, in any project except the mother. The mother's
+    `docs/third-party/` is published globally, so the mother has no
+    project-only placement and its findings take the default.
 
 <!-- /planned-change:third-party-docs-bypass-publication -->
 
