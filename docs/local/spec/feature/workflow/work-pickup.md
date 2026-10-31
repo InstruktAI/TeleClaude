@@ -67,8 +67,9 @@ Pickup evaluates a project when one of these happens:
 
 Pickup evaluates the project within seconds of its change being known on this
 computer, and a change made elsewhere is known on the active computer within
-seconds of GitHub delivering its webhook. Work that becomes startable waits no
-longer than a minute for pickup to evaluate it. Work that became startable
+seconds of GitHub delivering its webhook. Pickup starts work that becomes
+startable within a minute of the change that made it startable; a start that
+fails is tried again within a minute of failing. Work that became startable
 while the daemon was stopping, stopped or starting is taken up once the daemon
 runs again.
 
