@@ -47,7 +47,6 @@ _CHECKOUT_PUBLISHES_LINE = (
 )
 _FAILED_EXIT_CODE = 1
 _SUCCEEDED_EXIT_CODE = 0
-_PART_FAILED = "Post-install step failed at {part}."
 _OUTCOME_LINES = {
     HomePublicationOutcome.PUBLISHED: _PUBLISHED_HOME_LINE,
     HomePublicationOutcome.UNCHANGED: _UNCHANGED_HOME_LINE,
@@ -117,7 +116,7 @@ def run_post_install_step(release_root: Path) -> int:
     for part, run in parts:
         if run() != _SUCCEEDED_EXIT_CODE:
             sys.stderr.flush()
-            print(_PART_FAILED.format(part=part.value), flush=True)
+            print(f"Post-install step failed at {part.value}.", flush=True)
             return _FAILED_EXIT_CODE
     return _SUCCEEDED_EXIT_CODE
 
