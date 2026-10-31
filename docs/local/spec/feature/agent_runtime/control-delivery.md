@@ -8,17 +8,6 @@ description: Durable per-session control-payload delivery into running agent tur
 
 ## What it is
 
-<!-- planned-change:antigravity-native-subagents-allowed -->
-
-The control-delivery surface carries platform-authored control payloads —
-reminder firings and other non-conversational control traffic — into an agent
-session. A payload reaches the agent at the first moment the session offers:
-the next natural boundary of the agent's work while one is certain to follow,
-otherwise a wake that produces one. A pending payload for a session that can be
-woken never waits on input that is not certain to arrive.
-
-<!-- change:antigravity-native-subagents-allowed -->
-
 The control-delivery surface carries platform-authored control payloads —
 reminder firings, checkpoints relayed from a hook that cannot continue the
 conversation owning the turn
@@ -27,8 +16,6 @@ non-conversational control traffic — into an agent session. A payload reaches 
 the next natural boundary of the agent's work while one is certain to follow,
 otherwise a wake that produces one. A pending payload for a session that can be
 woken never waits on input that is not certain to arrive.
-
-<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 Inside a running turn the payload is delivered at its next supported mid-turn boundary,
 with no terminal write. When the platform holds a pending payload and knows no

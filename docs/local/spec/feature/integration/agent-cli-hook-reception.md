@@ -127,20 +127,10 @@ And the session is not reported complete while provider work remains active
 - Consumes session-map state owned by the `agent_runtime` context
   (sessions and native-session-id mapping).
 
-<!-- planned-change:antigravity-native-subagents-allowed -->
-
-- Emits checkpoint-seen, native-metadata-update, native-session-refresh,
-  agent-session-start, user-prompt-submit, tool-use, agent-stop, agent-idle,
-  and agent-error entries into the hook outbox (see `hook-event-outbox`).
-
-<!-- change:antigravity-native-subagents-allowed -->
-
 - Emits checkpoint-seen, checkpoint-relay, native-metadata-update,
   native-session-refresh, agent-session-start, user-prompt-submit, tool-use,
   agent-stop, agent-idle, and agent-error entries into the hook outbox (see
   `hook-event-outbox`).
-
-<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 ## Known caveats
 
@@ -167,14 +157,6 @@ And the session is not reported complete while provider work remains active
   session mapping; a child native session id is never associated with its
   managed parent.
 
-<!-- planned-change:antigravity-native-subagents-allowed -->
-
-- Managed Antigravity sessions deny provider-native subagent invocations before
-  child execution. Work requiring a child remains available through an
-  explicitly dispatched TeleClaude worker.
-
-<!-- change:antigravity-native-subagents-allowed -->
-
 - Antigravity hooks from a provider-native subagent's execution are discarded
   before session mapping on every hook source, and the subagent invocation
   itself runs unhindered. A subagent's events never take over the session of
@@ -194,8 +176,6 @@ And the session is not reported complete while provider work remains active
   before the subagent's first hook, and Antigravity documents neither the record
   nor its timing. A subagent hook that arrives before its record is handled as
   a primary conversation's.
-
-<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 - All four adapters support hook checkpoints. The continuation response
   differs per provider:
@@ -223,10 +203,6 @@ And the session is not reported complete while provider work remains active
 - The receiver swallows persistence errors during native-metadata
   writes with a warning log; the hook event itself is still enqueued.
 
-<!-- planned:antigravity-native-subagents-allowed -->
-
 ## See Also
 
 - docs/third-party/antigravity-cli/sub-agents.md — the Antigravity subagent origin record and its observed timing.
-
-<!-- /planned:antigravity-native-subagents-allowed -->

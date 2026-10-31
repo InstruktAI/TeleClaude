@@ -54,8 +54,6 @@ Confirmed coverage reports readiness even when no text rewrite was needed.
 Later successful reconciliation can satisfy pending closure work. A failed or
 partial read preserves stored conversation and reports its incomplete coverage.
 
-<!-- planned:antigravity-native-subagents-allowed -->
-
 ### Subagent exclusion
 
 A transcript the per-runtime subagent rule recognizes is never a candidate. It
@@ -73,8 +71,6 @@ counter excludes it. The rule per runtime:
 
 A subagent transcript mirrored under an earlier rule is removed by store
 convergence and never refreshed by a pass.
-
-<!-- /planned:antigravity-native-subagents-allowed -->
 
 ### Use cases
 
@@ -191,26 +187,7 @@ And the mirror keeps its stored conversation text indefinitely
 And the mirror remains the durable copy of that conversation
 ```
 
-<!-- planned-change:antigravity-native-subagents-allowed -->
-
 #### UC-MRL-12: Subagent transcripts are never candidates
-
-```
-Given the per-agent session roots hold transcripts written by subagents a session spawned
-When a reconciliation pass enumerates candidates
-Then a transcript the per-runtime subagent rule recognizes is dropped before identity, project, or content is read from it
-And for claude the rule matches a transcript filename beginning with agent- or a subagents path segment
-And for codex the rule matches a session header whose spawn source names a parent thread
-And for deepseek the rule matches a session entry carrying parentSession
-And the discovered counter excludes dropped transcripts
-And a subagent transcript mirrored under an earlier rule is removed by store convergence, never refreshed by a pass
-```
-
-<!-- change:antigravity-native-subagents-allowed -->
-
-#### UC-MRL-12: Subagent transcripts are never candidates
-
-<!-- /planned-change:antigravity-native-subagents-allowed -->
 
 #### UC-MRL-13: Headless one-shot invocations are never candidates
 
@@ -266,11 +243,7 @@ And a session already recorded as closed is not written again
   so nothing recomputes the row's fields from it. A row whose transcript still
   exists is re-derived through the full extraction path, which is exact.
 
-<!-- planned:antigravity-native-subagents-allowed -->
-
 - Antigravity subagent transcripts mirrored before the Antigravity subagent
   rule existed are not removed: the store convergence that sheds subagent
   mirrors already ran on every existing store, and no pass refreshes them
   again because their transcripts no longer change.
-
-<!-- /planned:antigravity-native-subagents-allowed -->
