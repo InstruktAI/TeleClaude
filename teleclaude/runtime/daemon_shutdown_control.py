@@ -44,7 +44,6 @@ from teleclaude.core.shutdown_drain import PREPARATION_PROTOCOL_VERSION, DrainPh
 from teleclaude.paths import MAIN_DB_PATH
 
 _HEALTH_PATH = "/health"
-_READY_PATH = "/ready"
 _HEALTH_TIMEOUT_S = 2.0
 _POLL_INTERVAL_S = 0.5
 # Bounds how long a listening daemon may stay silent before its migration reach is treated as unanswered.
@@ -59,7 +58,6 @@ _MIGRATION_REACH_MALFORMED = "migration reach is malformed"
 _DEGRADED_FIELD = "degraded"
 _DEGRADED_MALFORMED = "degraded components are malformed"
 _READY_MALFORMED = "readiness answer is malformed"
-_SCOPE_FIELD = "scope"
 _STARTED_AT_FIELD = "preparation_started_at"
 _HELD_LABELS_FIELD = "held_labels"
 _GRACE_FIELD = "termination_grace_seconds"
@@ -349,7 +347,7 @@ def report_admission(socket_path: str) -> int:
 
 def report_readiness(socket_path: str) -> int:
     """Print each event Redis scope the daemon's readiness answer names as not answering; OK only when none."""
-    document = _read_document(socket_path, _READY_PATH, "readiness")
+    document = _read_document(socket_path, "/ready", "readiness")
     if not isinstance(document, dict):
         raise ControlRefusal(ControlOutcome.UNREADABLE, _READY_MALFORMED)
     entries = document.get(_DEGRADED_FIELD, [])
@@ -357,7 +355,7 @@ def report_readiness(socket_path: str) -> int:
         raise ControlRefusal(ControlOutcome.UNREADABLE, _READY_MALFORMED)
     scopes: list[str] = []
     for entry in entries:
-        scope = entry.get(_SCOPE_FIELD) if isinstance(entry, dict) else None
+        scope = entry.get("scope") if isinstance(entry, dict) else None
         if not isinstance(scope, str):
             raise ControlRefusal(ControlOutcome.UNREADABLE, _READY_MALFORMED)
         scopes.append(scope)
