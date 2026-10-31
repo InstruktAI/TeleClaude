@@ -335,9 +335,10 @@ sessions working a repository work item on the pull request the item had open
 when each turn completed, otherwise on its issue, as the role Apps, sent by
 the fleet's master
 (`local/projects/teleclaude/design/architecture/work-item-conversation`).
-The working copy of the computer hosting a session holds that session's
-captured turns, protected and split, until they are on GitHub, and never raw
-transcript content; the record and the workflow state are unchanged.
+The conversation store of the computer hosting a session, a store of its own
+apart from the working copy, holds that session's captured turns, protected
+and split, until they are on GitHub, and never raw transcript content; the
+working copy, the record and the workflow state are unchanged.
 
 **GitHub request budget.** Every GitHub request the adapter module makes runs
 on its one I/O runtime. Record work, meaning the write path, reflections,
@@ -372,13 +373,19 @@ master admits each conversation request before sending it:
   the relay answers, unless its time has passed by then. A turn handed over
   during the pause is answered deferred until its end.
 - **The budget survives a restart.** The master's request runtime records the
-  time of each conversation append it sends within the last hour and the end
-  of any pause in the daemon's operational database, and reloads both
-  before it admits a conversation request after it starts. A computer that
-  becomes the master holds none of its predecessor's record, so it admits no
-  conversation request until an hour after it became master, the longest
-  budget window; a pause of its predecessor still running after that reaches
-  it as the response to its first request.
+  time of each conversation append it sends within the last hour, the end of
+  any pause and the length of the last unnamed pause, and reloads them before
+  it admits a conversation request after it starts. A computer other than the
+  master records the notice it has not yet delivered. Each computer keeps
+  these in one state file of the request runtime in the TeleClaude home,
+  written whole and replaced atomically, apart from every database
+  (`sdlc/policy/state-storage`, The medium follows the state's shape).
+- **A master without a record waits out the window.** A computer that
+  becomes the master holds none of its predecessor's record, and a master
+  whose state file is missing holds none of its own, so it admits no
+  conversation request until an hour after it became master or found the file
+  missing, the longest budget window; a pause still running after that
+  reaches it as the response to its first request.
 
 <!-- /planned:github-turn-mirror -->
 

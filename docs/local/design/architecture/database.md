@@ -15,7 +15,15 @@ visibility: public
 
 ## Invariants
 
+<!-- planned-change:github-turn-mirror -->
+
 - **Database Location**: All databases live in the TeleClaude home, one file per owner, each its own write-isolation unit (`sdlc/policy/state-storage`). The home and the main, events and mirrors files are declared in `teleclaude/paths.py`, the hook outbox file in `teleclaude/core/db/connection_factory.py`, and the output, operations and reminders files in the daemon's store registry. Output streaming, operations and reminders each have their own file. State that session creation or control delivery writes in one transaction with sessions — startup handovers, procedure event delivery, the control outbox and the inbound queue with its turn bindings — stays in the main database.
+
+<!-- change:github-turn-mirror -->
+
+- **Database Location**: All databases live in the TeleClaude home, one file per owner, each its own write-isolation unit (`sdlc/policy/state-storage`). The home and the main, events and mirrors files are declared in `teleclaude/paths.py`, the hook outbox file in `teleclaude/core/db/connection_factory.py`, and the output, operations, reminders and GitHub conversation files in the daemon's store registry. Output streaming, operations, reminders and the GitHub conversation each have their own file. The output file also holds each session's turn ordinals, which the completed-turns read records (`local/projects/teleclaude/spec/feature/agent_runtime/session-transcript-retrieval`); the GitHub conversation file holds what this computer captured of its sessions' turns until they are on GitHub (`local/projects/teleclaude/design/architecture/work-item-conversation`). State that session creation or control delivery writes in one transaction with sessions — startup handovers, procedure event delivery, the control outbox and the inbound queue with its turn bindings — stays in the main database.
+
+<!-- /planned-change:github-turn-mirror -->
 
 - **Fail Before Serve**: Migrations run before interfaces are considered ready.
 - **Headless Compatibility**: Sessions may have `tmux_session_name = NULL` and still be valid (`lifecycle_status='headless'`).
@@ -27,7 +35,16 @@ visibility: public
 
 - **Durable History Exclusion**: `mirrors.db`, memory tables, todo/project artifact databases, and other history domains are not pruned by runtime maintenance.
 
+<!-- planned-change:github-turn-mirror -->
+
 - **Session-Scoped Retention**: A session's latest output generation, its consumer cursors and receipts, and its reminder entries are live state while the session is open. They are pruned once the session has been closed for longer than the runtime retention window; superseded generations and receipts, terminal Discord send intents, terminal control payloads and failed procedure events are pruned once older than the window, and delivered procedure events once their assigned session has been closed for longer than it. Session startup handovers are never pruned by retention.
+
+<!-- change:github-turn-mirror -->
+
+- **Session-Scoped Retention**: A session's latest output generation, its consumer cursors and receipts, its turn ordinals and its reminder entries are live state while the session is open. They are pruned once the session has been closed for longer than the runtime retention window; superseded generations and receipts, terminal Discord send intents, terminal control payloads and failed procedure events are pruned once older than the window, and delivered procedure events once their assigned session has been closed for longer than it. Session startup handovers are never pruned by retention.
+
+<!-- /planned-change:github-turn-mirror -->
+
 - **Maintenance Does Not Stall Writers**: Runtime maintenance holds a store's write lock only for short statements. The periodic WAL checkpoint is passive and never waits on readers, retention deletes run per store, and compaction (`VACUUM`) runs only while the daemon opens its stores, before it serves (`sdlc/policy/state-storage`, Write isolation follows contention).
 
 - Each store reaches its current schema through its own schema file and migration ledger (`local/projects/teleclaude/policy/schema-and-migrations`).

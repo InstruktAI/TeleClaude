@@ -66,11 +66,24 @@ whole fleet has one request budget and one stop.
 - One or more conversation comments per completed turn, on the destination
   the turn's completion time decides, in the shape the work record specifies,
   posted by the master as the App chosen below.
-- The capturer's bookkeeping in the working copy of the computer hosting the
-  session: each captured turn, already protected and split into its comments,
-  with its repository, destination, App and completion time, and which of its
-  comments are on GitHub. The master keeps no turn: it keeps only its budget
+- The capturer's bookkeeping in the conversation store of the computer
+  hosting the session: each captured turn, already protected and split into
+  its comments, with its repository, destination, App and completion time, and
+  which of its comments are on GitHub, and for each session the last turn
+  taken from the runtime. The master keeps no turn: it keeps only its budget
   state, durably (workflow-store design, GitHub request budget).
+
+**Conversation store.** The capturer's bookkeeping is external bookkeeping
+for comments on GitHub and the recorded intent of each post, kept in a daemon
+store of its own on the capturing computer
+(`local/projects/teleclaude/design/architecture/database`), never in the
+working copy, which is rebuilt from GitHub and whose writer record writes wait
+for (`sdlc/policy/state-storage`). Only the capturer writes it; the master's
+answers reach it through the capturer. A turn leaves it once its last comment
+is on GitHub; a session's last-taken turn leaves it once the session has been
+closed longer than the runtime retention window and none of its turns remains.
+Losing the store costs reading each destination's comments from GitHub and
+capturing the remaining turns again from the runtime (Recovering position).
 
 **Eligibility.** A session's turn belongs to an item when all hold: the
 session's project selects the GitHub store; its working item slug names an
@@ -169,7 +182,7 @@ sequenceDiagram
     participant EC as Event consumer runtime
     participant P as Conversation publisher
     participant AR as agent_runtime (completed turns read)
-    participant WC as Working copy bookkeeping
+    participant WC as Conversation store
     participant M as Poster on the master (GitHub request runtime)
     participant GH as Issue or pull request
     EC->>P: agent stop on this computer (session)
@@ -209,15 +222,15 @@ Conversation).
 
 ### Recovering position
 
-Bookkeeping lives in the capturing computer's working copy. Before the master
-posts a turn the capturer marks as possibly sent before, after an interrupted
-hand-over, a lost reply or a rebuilt working copy, it reads the destination's
+Bookkeeping lives in the capturing computer's conversation store. Before the
+master posts a turn the capturer marks as possibly sent before, after an
+interrupted hand-over, a lost reply or a lost conversation store, it reads the destination's
 comments by the turn's App from GitHub and takes each turn whose envelope names
 its session and ordinal as posted; a turn found partly posted is
 completed from its next missing part, from the protected parts it captured. A
 create whose reply was lost is found the same way before anything is posted
-again. After a rebuild, turns are captured again from the runtime from the
-first turn of each eligible session missing from GitHub.
+again. After a lost conversation store, turns are captured again from the
+runtime from the first turn of each eligible session missing from GitHub.
 
 ## Failure modes
 
@@ -244,8 +257,10 @@ first turn of each eligible session missing from GitHub.
   (`local/projects/teleclaude/spec/feature/agent_runtime/session-transcript-retrieval`,
   Completed turns read). The conversation shows nothing for a missing file,
   and a failed read leaves the session's capture for the next pass.
-- **A lost working copy.** Captured turns not yet on GitHub are captured again
-  from the runtime.
+- **A lost conversation store.** Captured turns not yet on GitHub are
+  captured again from the runtime, and each destination's position is read
+  back from GitHub. A rebuilt working copy leaves the conversation store as it
+  is.
 - **A computer that does not hold the project.** It publishes nothing for its
   sessions on that project's items.
 - **A record write GitHub refuses.** GitHub's secondary limits change without
@@ -256,10 +271,9 @@ first turn of each eligible session missing from GitHub.
   reach the master it keeps the notice and delivers it when the relay
   answers; meanwhile the master learns of a limit shared with its own
   requests from the response to its next request.
-- **A new master.** A computer that becomes the master posts nothing for an
-  hour after it does, so no budget window of its predecessor is still
-  running; a longer pause of its predecessor stops it at the response to its
-  first request.
+- **A new master, or a master that lost its budget record.** It posts
+  nothing for an hour, so no budget window it cannot see is still running; a
+  longer pause stops it at the response to its first request.
 
 ## See Also
 
