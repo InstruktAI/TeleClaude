@@ -526,15 +526,6 @@ But maintenance completion sends no prompt to the committer
 
 #### UC-PCM15: The standing integrator owns maintenance observation
 
-```gherkin
-Given a canonical-main change owes publication maintenance
-When Git returns before that maintenance finishes
-Then the regular committer has no maintenance log-check obligation
-And the standing integrator observes the owed action and judges its result after completion
-And later anomalies remain discoverable by the log bug hunter
-But maintenance completion sends no prompt to the committer
-```
-
 <!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 #### UC-PCM16: Direct main commits reach the integrator through their settlement

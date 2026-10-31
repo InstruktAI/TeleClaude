@@ -25,16 +25,6 @@ the rows mean.
 
 ### Accepted-turn binding state
 
-<!-- planned-change:accepted-turn-bindings-never-form -->
-
-Caller-origin conversational rows carry a closed binding disposition with two
-terminal values: `legacy_pre_cutover` for delivered rows that predate the
-binding cutover and cannot be reconstructed truthfully, and `input_conflict`
-when one accepted occurrence cannot be correlated to exactly one native entry.
-Absence means the row remains eligible to bind.
-
-<!-- change:accepted-turn-bindings-never-form -->
-
 The accepted-turn binding covers the delivered rows of the classes this section
 names as binding. A caller-origin conversational row is one: a row accepted from
 a caller send whose text is a keyed caller-origin identity envelope carrying its
@@ -46,8 +36,6 @@ carries a closed binding disposition with two terminal values:
 cannot be reconstructed truthfully, and `input_conflict` when one accepted
 occurrence cannot be correlated to exactly one native entry. Absence means the
 row remains eligible to bind.
-
-<!-- /planned-change:accepted-turn-bindings-never-form -->
 
 The accepted-turn binding aggregate persists one runtime-qualified native-entry
 root, its ordered authored parts, and the accepted receipt envelopes correlated
@@ -172,17 +160,6 @@ Adapters that provide stable message IDs (Discord, Telegram, WhatsApp) must pass
 
 ### Cleanup
 
-<!-- planned-change:accepted-turn-bindings-never-form -->
-
-`cleanup_inbound(older_than_iso)` deletes expired rows older than the threshold.
-A delivered row becomes cleanup-eligible only after its accepted occurrence is
-bound to a runtime-qualified native entry or it carries a terminal binding
-disposition. Delivered post-cutover rows with neither survive cleanup so later
-projection or recovery can bind them. The maintenance service schedules the
-cleanup periodically.
-
-<!-- change:accepted-turn-bindings-never-form -->
-
 `cleanup_inbound(older_than_iso)` deletes terminal rows older than the
 threshold. A delivered row that is neither bound nor terminally dispositioned
 survives the threshold while its target session is retained under
@@ -192,8 +169,6 @@ accepted-turn binding covers can still be bound by that session's projection.
 Once the session's retention ends, its unbound delivered rows are pruned with
 the rest of its runtime state. The maintenance service schedules the cleanup
 periodically.
-
-<!-- /planned-change:accepted-turn-bindings-never-form -->
 
 ### Adapter Contract
 
