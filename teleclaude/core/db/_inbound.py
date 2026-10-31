@@ -8,6 +8,7 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import delete, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from .. import db_models
 from ..dates import parse_iso_datetime
@@ -27,6 +28,8 @@ _DELIVERED_STATUS = "delivered"
 _FAILED_STATUS = "failed"
 _PENDING_STATUS = "pending"
 _PROCESSING_STATUS = "processing"
+_REJECTED_RECEIPT_LIMIT = 1024
+_REJECTED_RECEIPT_IDS: set[int] = set()
 
 
 def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
@@ -78,6 +81,39 @@ class NativeReference:
     runtime: str
     native_session_id: str
     entry_id: str
+
+
+async def _binding_already_recorded(
+    db_session: AsyncSession, inbound_queue_id: int, native_reference: NativeReference
+) -> bool:
+    """Whether the receipt's row or the native entry is already bound: the replay a concurrent binder leaves."""
+    receipt_bound = await db_session.exec(
+        select(db_models.TurnReceiptEnvelopeRow.inbound_queue_id).where(
+            db_models.TurnReceiptEnvelopeRow.inbound_queue_id == inbound_queue_id
+        )
+    )
+    if receipt_bound.first() is not None:
+        return True
+    entry_bound = await db_session.exec(
+        select(db_models.AcceptedTurnBindingRow.binding_id)
+        .where(db_models.AcceptedTurnBindingRow.native_runtime == native_reference.runtime)
+        .where(db_models.AcceptedTurnBindingRow.native_session_id == native_reference.native_session_id)
+        .where(db_models.AcceptedTurnBindingRow.native_entry_id == native_reference.entry_id)
+    )
+    return entry_bound.first() is not None
+
+
+def _report_binding_rejection(binding_id: str, inbound_queue_id: int) -> None:
+    """Record a constraint rejection that is not a replay, once per receipt row for the life of the process.
+
+    Projection retries an eligible row on every pass, so an unreported defect would repeat for each pass.
+    """
+    if inbound_queue_id in _REJECTED_RECEIPT_IDS:
+        return
+    if len(_REJECTED_RECEIPT_IDS) >= _REJECTED_RECEIPT_LIMIT:
+        _REJECTED_RECEIPT_IDS.clear()
+    _REJECTED_RECEIPT_IDS.add(inbound_queue_id)
+    logger.error("turn_binding_rejected", binding_id=binding_id, inbound_queue_id=inbound_queue_id)
 
 
 @dataclass(frozen=True)
@@ -564,6 +600,8 @@ class DbInboundMixin:
                 await db_session.commit()
             except IntegrityError:
                 await db_session.rollback()
+                if not await _binding_already_recorded(db_session, receipt.inbound_queue_id, native_reference):
+                    _report_binding_rejection(binding_id, receipt.inbound_queue_id)
                 return False
             return True
 
