@@ -28,17 +28,6 @@ agent_runtime; session-lifecycle owns the child's stored initiator and principal
 
 ### Roleless platform caller
 
-<!-- planned-change:local-operator-identity -->
-
-A caller whose resolved principal is `system:daemon` and whose resolved system
-role is absent is admitted to every declared command. A caller with a system
-role retains that role's existing command restrictions, including when its
-principal is `system:daemon`. Person callers and unidentified callers retain
-their existing clearance rules. Object ownership and valid operation targets
-remain with their owning contracts (`general/principle/trust-and-guardrails`).
-
-<!-- change:local-operator-identity -->
-
 A caller whose resolved principal is `system:daemon` or `system:operator` and
 whose resolved system role is absent is admitted to every declared command, by
 the computer that executes it: locally, and on a computer that receives the
@@ -54,11 +43,7 @@ and valid operation targets remain with their owning contracts
 (`general/principle/trust-and-guardrails`), and a person-bound service acts for
 no system principal (`local/projects/teleclaude/spec/identity-and-auth` §8).
 
-<!-- /planned-change:local-operator-identity -->
-
 #### UC-CCRD1: Platform authority without a system role
-
-<!-- planned:local-operator-identity -->
 
 #### UC-CCRD2: The computer's operator works without a login
 
@@ -69,8 +54,6 @@ When the agent runs a telec command on this computer or addressed to another com
 Then the command is cleared as the computer's operator
 And a caller whose session identity names no admissible session is refused
 ```
-
-<!-- /planned:local-operator-identity -->
 
 ### Use cases
 
@@ -120,15 +103,7 @@ And a person holding the member role in that company is refused the same revive
 
 The claim gate is the claiming-group predicate governing artifact writes (`feature/workflow/artifact-versioning`, Write authority). A todo whose `active_runner` names a live session is claimed; its claiming group is the holding session plus every session it dispatched, transitively through `initiator_session_id`. The gate admits a caller inside the claiming group, and admits any caller on an unclaimed todo — no `active_runner`, or one naming a session that is no longer live. It refuses a caller outside a live claim's group with the claim-conflict shape naming the holding session: the caller's door is that session. The todo state is unchanged by a refused update.
 
-<!-- planned-change:local-operator-identity -->
-
-A direct human-identity caller — a login-resolved human principal carrying no agent session id and no system role — is not a session, is not gated by the claim, and is evaluated against the verb's human band; it is the caller class the artifact-write claim gate exempts (`feature/workflow/artifact-versioning`, UC-WAV16, UC-WAV23). Any other caller carrying no agent session id, such as the daemon's own credential, belongs to no claiming group and is refused on a live claim.
-
-<!-- change:local-operator-identity -->
-
 A direct human-identity caller — a login-resolved human principal carrying no agent session id and no system role — is not a session, is not gated by the claim, and is evaluated against the verb's human band; it is the caller class the artifact-write claim gate exempts (`feature/workflow/artifact-versioning`, UC-WAV16, UC-WAV23). Any other caller carrying no agent session id, such as the daemon's own credential or the computer's operator outside a session, belongs to no claiming group and is refused on a live claim.
-
-<!-- /planned-change:local-operator-identity -->
 
 The `--unclaim` leg releases only the caller's own claim or the caller's own binding to the todo; it never clears another session's claim. A claiming-group member other than the holder passes the gate, and `--unclaim` then releases at most its own binding, leaving the holder's claim in place. The build-started freeze on slug/kind mutation is a phase invariant owned by the todo-management contract, orthogonal to this gate.
 
@@ -253,15 +228,7 @@ The installation verbs are declared for the machine's own account (`local/projec
 
 ### Local read clearance
 
-<!-- planned-change:local-operator-identity -->
-
-The read commands `telec todo list`, `telec todo show`, `telec todo artifacts list`, `telec todo artifacts read`, `telec todo artifacts diff`, `telec bugs list`, and `telec bugs suppressions`, and a `telec history search` or `telec history show` that reads this computer's mirrors, are cleared in the process that runs them, against the same verb allowlist. The caller is the one the identity context's shared caller resolution yields (`local/projects/teleclaude/spec/identity-and-auth` §6): inside a session, the session record its identity document names; outside any session, the person the terminal's login names. The caller's system role is derived from that record by the identity context's system-role derivation, and its person role is the role the people registry holds for its principal when the command runs. A caller that resolves to no person and no system principal is refused before any content is read. A role outside the verb's band is refused with the not-permitted failure naming the role and verb. The gate sends no request to the daemon, so these reads answer while the daemon is not running.
-
-<!-- change:local-operator-identity -->
-
 The read commands `telec todo list`, `telec todo show`, `telec todo artifacts list`, `telec todo artifacts read`, `telec todo artifacts diff`, `telec bugs list`, and `telec bugs suppressions`, and a `telec history search` or `telec history show` that reads this computer's mirrors, are cleared in the process that runs them, against the same verb allowlist. The caller is the one the identity context's shared caller resolution yields (`local/projects/teleclaude/spec/identity-and-auth` §6): inside a session, the session record its identity document names; outside any session, the person the terminal's login names, or the computer's operator, `system:operator`, when nothing resolves an identity (`local/projects/teleclaude/spec/identity-and-auth` §2). The caller's system role is derived from that record by the identity context's system-role derivation, and its person role is the role the people registry holds for its principal when the command runs. The operator is cleared as the roleless platform caller above. A caller whose session identity document names no admissible session is refused before any content is read. A role outside the verb's band is refused with the not-permitted failure naming the role and verb. The gate sends no request to the daemon, so these reads answer while the daemon is not running.
-
-<!-- /planned-change:local-operator-identity -->
 
 #### UC-CCL1: A project maintainer reads their todo list while the daemon is unavailable
 
@@ -280,15 +247,7 @@ Then the project's current todo list is displayed
 
 ### Clearance of commands that ask the daemon to act
 
-<!-- planned-change:local-operator-identity -->
-
-For a command that runs locally, the CLI gate preceding its handler applies the command's verb allowlist with the caller the shared identity resolution yields (`local/projects/teleclaude/spec/identity-and-auth` §6). The same gate authenticates a caller addressing another computer and relays the request without applying a sender-side role band. The owning computer authorizes the command from the relayed principal and its own records (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). This applies equally to terminal callers, roleless sessions, and sessions carrying any system role. A protected command with no usable caller identity is refused before any request is sent. Explicit local targets and commands naming no computer retain local clearance.
-
-<!-- change:local-operator-identity -->
-
 For a command that runs locally, the CLI gate preceding its handler applies the command's verb allowlist with the caller the shared identity resolution yields (`local/projects/teleclaude/spec/identity-and-auth` §6). The same gate authenticates a caller addressing another computer and relays the request without applying a sender-side role band. The owning computer authorizes the command from the relayed principal and its own records (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). This applies equally to terminal callers, roleless sessions, and sessions carrying any system role. A local caller for which nothing resolves an identity is the computer's operator and is cleared as the roleless platform caller above, here and on a computer its command is relayed to. A protected command whose caller's session identity document names no admissible session is refused before any request is sent. Explicit local targets and commands naming no computer retain local clearance.
-
-<!-- /planned-change:local-operator-identity -->
 
 The TUI clears each action it performs before sending it, against the verb of the command that action performs, with the identity it was launched with; an action on an object another computer holds is cleared as that command is. An action that performs no `telec` command, or one whose command no gate clears, is not cleared.
 

@@ -146,15 +146,6 @@ or liveness fallback. Every accepted write follows the ordinary version-append,
 `updated_by`, provenance, and digest-bound invalidation consequences while
 leaving `active_runner` unchanged.
 
-<!-- planned-change:local-operator-identity -->
-
-The write path resolves the caller's identity, with parity to the stamp and
-artifact-remove boundaries, and records the writing session's id as `updated_by`.
-A caller that is no session authors under no session and records nothing there;
-an unidentified caller may not write at all.
-
-<!-- change:local-operator-identity -->
-
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the writing session's id as `updated_by`.
 A caller that is no session, the computer's operator `system:operator` included
@@ -163,22 +154,6 @@ and records nothing there; unlike a direct human-identity writer, the operator
 is gated by the claim. A session the platform keeps for the operator's agent
 writes as that session. A caller whose session identity document names no
 admissible session may not write at all.
-
-<!-- /planned-change:local-operator-identity -->
-
-<!-- planned-change:local-operator-identity -->
-
-Independently of which session is driving the slug, a prepare artifact is writable
-only by a prepare-phase writer: a caller whose reach, as the role catalog resolves
-it (`local/projects/teleclaude/spec/feature/identity/agent-roles`), includes the
-`prepare-artifact-write` capability, or a direct human-identity writer, which
-carries no session. A session the catalog does not admit is refused with HTTP 403;
-the refusal names the recorded role and the capability, and states that a focused
-session's write belongs to the session that dispatched it. The write boundary keeps
-no role list of its own. An unregistered session id is an unknown caller and is
-refused with HTTP 403.
-
-<!-- change:local-operator-identity -->
 
 Independently of which session is driving the slug, a prepare artifact is writable
 only by a prepare-phase writer: a caller whose reach, as the role catalog resolves
@@ -190,8 +165,6 @@ the refusal names the recorded role and the capability, and states that a focuse
 session's write belongs to the session that dispatched it. The write boundary keeps
 no role list of its own. An unregistered session id is an unknown caller and is
 refused with HTTP 403.
-
-<!-- /planned-change:local-operator-identity -->
 
 A prepare artifact of a todo whose contract is under execution — its lifecycle phase
 is one of the work lane's, from build started through finalize ready — is writable
@@ -316,8 +289,6 @@ And records no updated_by, the writer being no session
 And the slug's active-runner is unchanged
 ```
 
-<!-- planned:local-operator-identity -->
-
 #### UC-WAV28: The computer's operator writes artifacts as a direct human writer may, within the claim
 
 ```gherkin
@@ -326,8 +297,6 @@ When it writes a prepare artifact of an unclaimed todo in the prepare stage
 Then the write is accepted and its new version names no session as its writer
 And the same write to a todo another live session has claimed is refused as a claim conflict naming the holding session
 ```
-
-<!-- /planned:local-operator-identity -->
 
 ### Cross-context references
 

@@ -7,24 +7,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:local-operator-identity -->
-
-The hook outbox dispatcher's explicitly authorized, just-in-time session
-creation path. The receiver authorizes bootstrap only after proving that the
-hook has neither a TeleClaude session identity marker nor tmux attachment. When
-the dispatcher claims such an agent-session-start entry and the sessions store
-does not contain its TeleClaude id, it synthesizes a create-session command from
-the hook payload and creates the session record before continuing dispatch.
-An unknown session-start without receiver-owned headless authorization is
-dropped rather than interpreted as permission to create a row.
-An event other than an authorized agent-session-start never creates an unknown
-session; it is ignored without dispatch.
-Session identity follows the terminal-resolved caller: a registered person keeps
-their current identity and role; when no person resolves, the new session has
-the customer role.
-
-<!-- change:local-operator-identity -->
-
 The hook outbox dispatcher's explicitly authorized, just-in-time session
 creation path. The receiver authorizes bootstrap only after proving that the
 hook has neither a TeleClaude session identity marker nor tmux attachment. When
@@ -40,8 +22,6 @@ their current identity and role; when no person resolves, the new session runs
 under the computer's operator, `system:operator`, with no person role
 (`local/projects/teleclaude/spec/identity-and-auth` §3). What that session may
 run is decided by `local/projects/teleclaude/spec/feature/identity/command-clearance`.
-
-<!-- /planned-change:local-operator-identity -->
 
 The bootstrap is "headless" because the resulting session has no live
 supervised process — only a record. The agent CLI was already running
@@ -90,8 +70,6 @@ And project-scoped behavior does not apply to it
 
 #### UC-HB8: Unknown managed-descendant start cannot bootstrap
 
-<!-- planned:local-operator-identity -->
-
 #### UC-HB9: An agent another application started works under the computer's operator
 
 ```gherkin
@@ -100,8 +78,6 @@ Scenario: Recognize an agent another application started
   When TeleClaude recognizes the running agent
   Then a session for that agent appears in TeleClaude under the computer's operator
 ```
-
-<!-- /planned:local-operator-identity -->
 
 ### Cross-context references
 
@@ -122,23 +98,11 @@ Scenario: Recognize an agent another application started
 - Codex sub-agent transcripts are filtered earlier (the receiver drops
   subagent events pre-resolution); they never reach this bootstrap.
 
-<!-- planned-change:local-operator-identity -->
-
-- Caller email resolves from the live per-TTY login of the process's own
-  terminal, else of its nearest terminal-bearing ancestor, else — while
-  exactly one person is registered — from that person. When none of these
-  answers, email resolution returns nothing and the bootstrap builds the
-  command with the customer human role.
-
-<!-- change:local-operator-identity -->
-
 - Caller email resolves from the live per-TTY login of the process's own
   terminal, else of its nearest terminal-bearing ancestor, else — while
   exactly one person is registered — from that person. When none of these
   answers, the bootstrap builds the command under the operator principal with
   no human role.
-
-<!-- /planned-change:local-operator-identity -->
 
 - The headless project-context resolver returns (none, none) for any
   cwd not under a project registry entry; the session is still

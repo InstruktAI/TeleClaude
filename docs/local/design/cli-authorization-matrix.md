@@ -76,15 +76,7 @@ Each command keeps a person band of its own in the CLI surface schema, evaluated
 - **Member** — works on projects and manages sessions; no infrastructure acts such as reviving sessions, setting agent status, or reading and writing the machine environment.
 - **Customer** — reaches only the allow-list in invariant 6.
 
-<!-- planned-change:local-operator-identity -->
-
-`todo sync` and `todo switch-to-github` declare no command capability (invariant 2) and have the admin person band: an admin at a terminal, or a session an admin started without an agent role, is admitted, while every session carrying a role is refused. A caller with the platform principal and no resolved role is admitted by the roleless platform exception in `local/projects/teleclaude/spec/feature/identity/command-clearance`.
-
-<!-- change:local-operator-identity -->
-
 `todo sync` and `todo switch-to-github` declare no command capability (invariant 2) and have the admin person band: an admin at a terminal, or a session an admin started without an agent role, is admitted, while every session carrying a role is refused. A caller with a system principal — the platform's `system:daemon` or the computer's operator, `system:operator` — and no resolved role is admitted by the roleless platform exception in `local/projects/teleclaude/spec/feature/identity/command-clearance`.
-
-<!-- /planned-change:local-operator-identity -->
 
 ### Commands that do not depend on the caller
 
@@ -96,20 +88,6 @@ The installation verbs `app status`, `app start`, `app stop`, `app restart`, `ap
 
 ## Failure modes
 
-<!-- planned-change:local-operator-identity -->
-
-| Scenario                                                                                   | Behavior                                                                                                                                                                                                             |
-| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A command carries no declaration                                                           | Refused for every caller: an undeclared command fails closed.                                                                                                                                                        |
-| The caller resolves to no identity                                                         | Refused before the handler runs, naming the missing login or session identity, unless the command does not depend on its caller, or is declared for the machine's own account and the caller is outside any session. |
-| A session's identity document names no usable session                                      | Refused as a session, never admitted as the machine's own account.                                                                                                                                                   |
-| A role's set lacks the command's capability and the catalog does not give it to every role | Refused with the not-permitted failure naming the role and the command; for a focused session, the work belongs to the session that dispatched it.                                                                   |
-| A recorded role the catalog does not name                                                  | Refused with the not-permitted failure naming the role; the refusal is logged as a platform defect.                                                                                                                  |
-| A person is removed from the registry or demoted                                           | The change takes effect on that person's next command.                                                                                                                                                               |
-| A new agent role is introduced                                                             | It reaches exactly the commands its catalog entry composes plus those whose capability the catalog gives every role, and no command admits it by name.                                                               |
-
-<!-- change:local-operator-identity -->
-
 | Scenario                                                                                   | Behavior                                                                                                                                                                                                                   |
 | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A command carries no declaration                                                           | Refused for every caller: an undeclared command fails closed.                                                                                                                                                              |
@@ -119,5 +97,3 @@ The installation verbs `app status`, `app start`, `app stop`, `app restart`, `ap
 | A recorded role the catalog does not name                                                  | Refused with the not-permitted failure naming the role; the refusal is logged as a platform defect.                                                                                                                        |
 | A person is removed from the registry or demoted                                           | The change takes effect on that person's next command.                                                                                                                                                                     |
 | A new agent role is introduced                                                             | It reaches exactly the commands its catalog entry composes plus those whose capability the catalog gives every role, and no command admits it by name.                                                                     |
-
-<!-- /planned-change:local-operator-identity -->
