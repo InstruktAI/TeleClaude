@@ -294,7 +294,7 @@ def reenvelope_record_comment(
 def parse_record_comment(body: str) -> WorkflowRecord:
     """Decode one platform record from its marker and validate its closed schema.
 
-    A schema-1 record parses with its content pointers dropped: its item is not yet republished.
+    A record that predates native artifacts parses with its content pointers dropped: its item is not yet republished.
     """
     values = json.loads(_marker_payload(body, _RECORD_MARKER))
     if isinstance(values, dict) and values.get(_SCHEMA_VERSION) == _LEGACY_SCHEMA:

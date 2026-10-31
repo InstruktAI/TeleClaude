@@ -15,7 +15,6 @@ __all__ = ["ArtifactContentUnavailable", "snapshot_from_revision"]
 _EMPTY = ""
 _STATE_INCOMPLETE = "state is incomplete"
 _CONTENT_INCOMPLETE = "content is incomplete"
-_CONTENT_UNVERIFIABLE = "content is unverifiable"
 
 
 class ArtifactContentUnavailable(RuntimeError):
@@ -33,9 +32,10 @@ async def snapshot_from_revision(
 ) -> WorkingCopyItemSnapshot:
     """The working-copy rows a committed revision names: its current content, read from the issue's artifacts.
 
-    One list call returns every artifact's current body. A committed version that is not the artifact's current
+    One list call downloads every artifact's current body. A committed version that is not the artifact's current
     one, or whose current version a person saved, takes one single-artifact read of the versions GitHub serves.
-    Earlier versions the record lists are not read; they come on first use. `names` limits the artifacts read. A record that
+    Earlier versions the record lists are not read; they come on first use. `names` limits which artifacts the
+    snapshot restores from what the list returned, not what the list downloads. A record that
     predates native artifacts names no content: its item is restored without the state it kept in comments.
     """
     todo = dict(revision.todo)
@@ -118,5 +118,5 @@ async def _committed_content(
         raise
     content = served_version_content(history.versions, bot_id, digest)
     if content is None:
-        raise ArtifactContentUnavailable(_CONTENT_UNVERIFIABLE)
+        raise ArtifactContentUnavailable("content is unverifiable")
     return content

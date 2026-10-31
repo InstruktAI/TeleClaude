@@ -792,11 +792,12 @@ def _find_record(
     comments: Sequence[GitHubComment], bot_login: str, issue_number: int
 ) -> tuple[WorkflowRecord | None, GitHubComment | None]:
     matches: list[tuple[WorkflowRecord, GitHubComment]] = []
+    unverifiable_platform_comment = False
     for comment in comments:
         trusted = trusted_body(comment, bot_login)
         if trusted is None:
-            if comment.author == bot_login and has_record_marker(comment.body):
-                raise GitHubWorkflowSyncRefused(_ITEM_UNVERIFIABLE.format(issue_number))
+            if comment.author == bot_login:
+                unverifiable_platform_comment = True
             continue
         if not has_record_marker(trusted):
             continue
@@ -806,6 +807,8 @@ def _find_record(
             raise GitHubWorkflowSyncRefused(_ITEM_INVALID.format(issue_number)) from None
     if len(matches) > 1:
         raise GitHubWorkflowSyncRefused(_ITEM_MULTIPLE_RECORDS.format(issue_number))
+    if not matches and unverifiable_platform_comment:
+        raise GitHubWorkflowSyncRefused(_ITEM_UNVERIFIABLE.format(issue_number))
     return matches[0] if matches else (None, None)
 
 

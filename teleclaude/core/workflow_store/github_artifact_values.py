@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping, Sequence
 
+from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_TASK_PLAN
 from teleclaude.core.workflow_store.github_io_models import GitHubArtifact, GitHubArtifactType, GitHubArtifactVersion
 from teleclaude.core.workflow_store.github_record import ArtifactRecord, ArtifactVersionEntry, WorkflowField
 
@@ -20,8 +21,7 @@ __all__ = [
 
 # GitHub serves only the newest versions of an artifact; a record names no more than that.
 ENTRY_WINDOW = 30
-_ENCODING = "utf-8"
-_PLAN_ARTIFACTS = frozenset({"implementation-plan", "task-plan"})
+_PLAN_ARTIFACTS = frozenset({ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_TASK_PLAN})
 
 
 def artifact_type(name: str) -> GitHubArtifactType:
@@ -30,7 +30,7 @@ def artifact_type(name: str) -> GitHubArtifactType:
 
 
 def content_digest(content: str) -> str:
-    return hashlib.sha256(content.encode(_ENCODING)).hexdigest()
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def version_entry_from_row(ordinal: int, row: Mapping[str, object]) -> ArtifactVersionEntry:

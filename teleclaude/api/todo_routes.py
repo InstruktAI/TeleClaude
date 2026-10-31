@@ -37,7 +37,7 @@ from teleclaude.api.todo_update_support import (
     validate_kind_for_update,
     validate_update_request,
 )
-from teleclaude.api.todo_write_admission import admit_item_write
+from teleclaude.api.todo_write_admission import admit_item_write, admit_retained_item_write
 from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api.working_copy_request import working_copy_request_deadline
 from teleclaude.api_models import TodoDumpRequest
@@ -804,7 +804,7 @@ async def todo_board_repair(
     )
 
 
-@router.post("/{slug}/reactivate")
+@router.post("/{slug}/reactivate", dependencies=[Depends(admit_retained_item_write)])
 async def todo_reactivate(
     slug: str,
     cwd: Annotated[str | None, Body(embed=True)] = None,

@@ -159,7 +159,7 @@ class GitHubTransport:
 
 
 def _resume_time(error: RequestFailed) -> datetime | None:
-    """When GitHub says requests may resume: `retry-after`, else the reset time of an exhausted limit, else never."""
+    """When GitHub says requests may resume: the delay it names, else the reset time of an exhausted limit, else never."""
     headers = error.response.headers
     retry_after = headers.get(_RETRY_AFTER_HEADER)
     if retry_after is not None:

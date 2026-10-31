@@ -41,7 +41,7 @@ def find_ledger(
         return None, entries
     ledger_number = next(iter(ledger_numbers))
     for comment in comments_by_issue[ledger_number]:
-        if comment.author == bot_login and trusted_body(comment, bot_login) is None and has_ledger_marker(comment.body):
+        if comment.author == bot_login and trusted_body(comment, bot_login) is None:
             raise GitHubLedgerRefused(_LEDGER_UNVERIFIABLE.format(ledger_number))
     return issues_by_number.get(ledger_number), entries
 

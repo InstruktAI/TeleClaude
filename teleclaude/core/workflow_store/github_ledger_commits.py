@@ -37,7 +37,7 @@ def ledger_entries(comments: tuple[GitHubComment, ...], bot_login: str) -> list[
             bot_login=bot_login,
         )
         if trusted is None:
-            if comment.author == bot_login and has_ledger_marker(comment.body):
+            if comment.author == bot_login:
                 raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
             continue
         if not has_ledger_marker(trusted):

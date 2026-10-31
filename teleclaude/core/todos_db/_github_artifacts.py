@@ -357,7 +357,7 @@ def mark_republication_requested(session: Session, item_id: str) -> None:
 
 
 def clear_republication_item(session: Session, item_id: str) -> None:
-    """Leave the pending set: the item's schema-2 record is committed, so its save progress is spent."""
+    """Leave the pending set: the item's native record is committed, so its save progress is spent."""
     session.execute(text(_Sql.CLEAR_PENDING), {_Field.ITEM_ID: item_id})
     session.execute(text(_Sql.CLEAR_PROGRESS), {_Field.ITEM_ID: item_id})
 

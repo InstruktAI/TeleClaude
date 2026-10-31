@@ -507,7 +507,13 @@ class GitHubWorkflowPush:
             progress = saved.get(version_id) if version_id is not None else None
             if name is None or progress is None or progress.name != name:
                 raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-            records[name] = append_entry(records.get(name), progress.artifact_number, version)
+            named = records.get(name)
+            records[name] = append_entry(
+                named,
+                progress.artifact_number,
+                version,
+                recreated=named is not None and named.artifact_number != progress.artifact_number,
+            )
         return records
 
     def _discover_ledger(self, session: Session, cached_issue_number: int | None) -> int | None:
@@ -564,7 +570,16 @@ class GitHubWorkflowPush:
         digest = content_digest(content)
         if prior is not None and prior.entries and prior.entries[-1].digest == digest:
             return prior
-        if prior is None:
+        artifact = None
+        if prior is not None:
+            try:
+                artifact = _io_call(
+                    session, self.io, GitHubOperation.UPDATE_ARTIFACT, issue_number, prior.artifact_number, content
+                )
+            except GitHubIORefused as refused:
+                if refused.reason is not GitHubIOFailure.NOT_FOUND:
+                    raise
+        if artifact is None:
             artifact = _io_call(
                 session,
                 self.io,
@@ -573,10 +588,6 @@ class GitHubWorkflowPush:
                 artifact_type(STATE_ARTIFACT_NAME),
                 STATE_ARTIFACT_NAME,
                 content,
-            )
-        else:
-            artifact = _io_call(
-                session, self.io, GitHubOperation.UPDATE_ARTIFACT, issue_number, prior.artifact_number, content
             )
         return ArtifactRecord(
             artifact_number=artifact.number, entries=[ArtifactVersionEntry(ordinal=revision, digest=digest)]

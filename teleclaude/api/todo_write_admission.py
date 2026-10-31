@@ -11,8 +11,6 @@ from fastapi import Depends, Request
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.config.machine import config
-from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure, GitHubIORefused
-from teleclaude.core.workflow_store.github_store import GitHubWorkflowStore
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.project_root import resolve_project_root
 
@@ -24,14 +22,23 @@ _PROJECT_PATH: Final = "project_path"
 
 
 async def admit_item_write(request: Request, _identity: CallerIdentity = Depends(carried_caller)) -> None:
-    """Refuse a write to an item the GitHub store still awaits republication for, ahead of every other answer.
+    """Admit a write to the live item the request addresses, ahead of every other answer of its route.
 
     Router dependency of every todo write route. The item is the slug or id the request addresses, in its path or
     JSON body; the project is the request's `cwd` or `project_path`, or the computer's default working directory.
-    The store resolves the live item once and records its write as requested, so a route's own missing-item or
-    missing-state answer never precedes the retryable refusal. A slug no live item bears is a creation key or an
-    unknown name, and a project outside the GitHub store has no such state: both pass unchanged.
+    The store decides, once, and a store that cannot take the write yet refuses it with its retryable cause, so a
+    route's own missing-item or missing-state answer never precedes it. A slug no live item bears is a creation key
+    or an unknown name and passes unchanged.
     """
+    await _admit(request, retained=False)
+
+
+async def admit_retained_item_write(request: Request, _identity: CallerIdentity = Depends(carried_caller)) -> None:
+    """The same admission for a route that addresses a removed item by its slug, such as its reactivation."""
+    await _admit(request, retained=True)
+
+
+async def _admit(request: Request, *, retained: bool) -> None:
     if request.method in _READ_METHODS:
         return
     body_slug, body_cwd = await _body_address(request)
@@ -45,12 +52,11 @@ async def admit_item_write(request: Request, _identity: CallerIdentity = Depends
     except FileNotFoundError:
         return
     store = await get_workflow_store(project_root)
-    if not isinstance(store, GitHubWorkflowStore):
-        return
-    if await store.admit_write(
-        slug=slug if isinstance(slug, str) else None, todo_id=todo_id if isinstance(todo_id, str) else None
-    ):
-        raise GitHubIORefused(GitHubIOFailure.AWAITING_REPUBLICATION)
+    await store.admit_item_write(
+        slug=slug if isinstance(slug, str) else None,
+        todo_id=todo_id if isinstance(todo_id, str) else None,
+        retained=retained,
+    )
 
 
 async def _body_address(request: Request) -> tuple[str | None, str | None]:

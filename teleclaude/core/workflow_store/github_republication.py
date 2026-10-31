@@ -48,7 +48,7 @@ logger = get_logger(__name__)
 
 
 class GitHubRepublication:
-    """Publish pending items' versions as native issue-artifact versions and commit their schema-2 records."""
+    """Publish pending items' versions as native issue-artifact versions and commit their native records."""
 
     def __init__(
         self,
@@ -68,12 +68,10 @@ class GitHubRepublication:
         A throttle records the wait it implies and propagates, ending the enclosing refresh; any other
         refusal ends the pass and the next refresh retries.
         """
-        async with self.store._session() as session:
-            order = await session.run_sync(republication_order)
-        if not order:
-            return
         async with self.io.paced_mutations(lifts_push_deadline=False) as pacing:
-            for item_id in order:
+            taken: set[str] = set()
+            while (item_id := await self._next_item(taken)) is not None:
+                taken.add(item_id)
                 try:
                     await self._republish(item_id)
                 except GitHubIORefused as refused:
@@ -83,6 +81,12 @@ class GitHubRepublication:
                     logger.warning("github_store_republication_refused", item_id=item_id, reason=refused.reason.value)
                     return
                 await pacing.wait_between_items()
+
+    async def _next_item(self, taken: set[str]) -> str | None:
+        """The pending item to republish next by the priority in force now, so a request made mid-pass is honored."""
+        async with self.store._session() as session:
+            order = await session.run_sync(republication_order)
+        return next((item_id for item_id in order if item_id not in taken), None)
 
     async def _republish(self, item_id: str) -> None:
         async with self.store._session() as session:
@@ -107,15 +111,20 @@ class GitHubRepublication:
             if version_id in saved:
                 continue
             number = numbers.get(name)
-            if number is None:
+            artifact = None
+            if number is not None:
+                try:
+                    artifact = await self.io.async_update_artifact(issue_number, number, content)
+                except GitHubIORefused as refused:
+                    if refused.reason is not GitHubIOFailure.NOT_FOUND:
+                        raise
+            if artifact is None:
                 artifact = await self.io.async_create_artifact(issue_number, artifact_type(name), name, content)
-            else:
-                artifact = await self.io.async_update_artifact(issue_number, number, content)
             numbers[name] = artifact.number
             if not await self._transaction(_record_save, item_id, name, version_id, digest, artifact.number):
                 return
         await self._finalize(item_id)
-        logger.debug("github_store_item_republished", item_id=item_id, issue_number=issue_number)
+        logger.info("github_store_item_republished", item_id=item_id, issue_number=issue_number)
 
     async def _finalize(self, item_id: str) -> None:
         """Commit the item's record through the ordinary push, marked as the item's republication."""

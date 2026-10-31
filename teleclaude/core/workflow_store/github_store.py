@@ -94,6 +94,10 @@ _EMPTY = ""
 _QUESTION_LINE_BREAK = "\n"
 _MIGRATION_RECORD_ID = "github-store-switch:{}:{}"
 _ITEM_ID_BY_SLUG = "SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug"
+_RETAINED_ITEM_ID_BY_SLUG = (
+    "SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug "
+    f"ORDER BY status IN ('{TodoStatus.ACTIVE}', '{TodoStatus.ICEBOX}') DESC, created_at DESC LIMIT 1"
+)
 _LIVE_ITEM_ID_BY_SLUG = (
     f"SELECT CAST(id AS TEXT) FROM todo WHERE slug = :slug AND status IN ('{TodoStatus.ACTIVE}', '{TodoStatus.ICEBOX}')"
 )
@@ -224,18 +228,20 @@ class GitHubWorkflowStore(TodosDb):
         """Populate a newly created working copy from the repository before serving it."""
         await self._sync.rebuild()
 
-    async def admit_write(self, *, slug: str | None = None, todo_id: str | None = None) -> bool:
-        """Whether the addressed item awaits republication, so its write is refused; the refusal marks it requested.
+    async def admit_item_write(
+        self, *, slug: str | None = None, todo_id: str | None = None, retained: bool = False
+    ) -> None:
+        """Refuse the write of an item that awaits republication, and mark it requested.
 
         The mark moves the item to the front of republication on the computer that holds its content, written from
         a thread no request depends on, as a refused push does.
         """
         async with self._session() as session:
-            item_id = await session.run_sync(_pending_item, slug, todo_id)
+            item_id = await session.run_sync(_pending_item, slug, todo_id, retained)
         if item_id is None:
-            return False
+            return
         self._push.request_republication(item_id)
-        return True
+        raise GitHubIORefused(GitHubIOFailure.AWAITING_REPUBLICATION)
 
     async def refresh_working_copy(self, *, republish: bool = False) -> int:
         """Adopt committed changes made by another computer and repair owed reflections.
@@ -247,8 +253,8 @@ class GitHubWorkflowStore(TodosDb):
     async def ensure_issue_artifacts(self) -> None:
         """Establish that the repository serves issue artifacts, refusing with the distinct cause when it does not.
 
-        While the recorded fact is unknown or not-served, one `link`-filtered list on a platform issue answers it:
-        the platform creates no `link` artifacts, so the answer carries no workflow body. A served repository
+        While the recorded fact is unknown or not-served, one list on a platform issue, filtered to a type the platform
+        never creates, answers it and so carries no workflow body. A served repository
         needs no request. With no platform issue to ask, the first artifact request establishes the fact.
         """
         async with self._session() as session:
@@ -742,14 +748,16 @@ def resolve_github_store_selection(
     return identity.project_path, identity, assignment
 
 
-def _pending_item(session: SyncSession, slug: str | None, todo_id: str | None) -> str | None:
+def _pending_item(session: SyncSession, slug: str | None, todo_id: str | None, retained: bool) -> str | None:
     """The addressed item's id when it is in the pending set, resolving its identity once.
 
     A slug addresses its live (active or icebox) item, as a state read does: a slug no live item bears is a
-    creation key or an unknown name. An id addresses its item exactly.
+    creation key or an unknown name. A request that addresses a removed item (`retained`) falls back to the
+    newest retained row. An id addresses its item exactly.
     """
     if todo_id is None and slug is not None:
-        found = session.execute(text(_LIVE_ITEM_ID_BY_SLUG), {_SLUG: slug}).scalar_one_or_none()
+        query = _RETAINED_ITEM_ID_BY_SLUG if retained else _LIVE_ITEM_ID_BY_SLUG
+        found = session.execute(text(query), {_SLUG: slug}).scalar_one_or_none()
         todo_id = str(found) if found is not None else None
     return todo_id if todo_id is not None and republication_pending(session, todo_id) else None
 
