@@ -45,9 +45,9 @@ API_SOCKET="/tmp/teleclaude-api.sock"
 # Startup soft warning threshold in seconds. Startup keeps waiting past this
 # threshold and emits warnings instead of failing hard.
 STARTUP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STARTUP_WAIT_S:-15}"
-# Bounded window for the configured Redis to connect at least once. A reachable
-# Redis connects sub-second; exceeding this window means REDIS_CLUSTER_URL is misconfigured
-# or the server is unreachable, and `make start` reports failure.
+# Bounded window for the daemon to answer /ready once its API socket is bound. A daemon whose
+# Redis does not answer still answers /ready and serves degraded; exceeding this window means
+# the daemon never served, and `make start` reports failure.
 REDIS_READY_WAIT_SECONDS="${TELECLAUDE_DAEMON_REDIS_READY_WAIT_S:-15}"
 STOP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STOP_WAIT_S:-25}"
 STOP_KILL_WAIT_SECONDS="${TELECLAUDE_DAEMON_STOP_KILL_WAIT_S:-5}"
@@ -547,9 +547,45 @@ except Exception:
 PY
 }
 
-# Poll the readiness endpoint until Redis has connected at least once, or a bounded
-# window elapses. Returns 0 on ready, 1 on timeout. The daemon is left running
-# (the reconnect loop keeps retrying) — only the start invocation reports failure.
+# Report the daemon's readiness for start and status, from the /ready body:
+#   ok                    ready, and no Redis is named as not answering
+#   degraded:<scopes>     ready and serving, with the comma-separated scopes whose Redis does not answer
+#   unready               not ready, or the body cannot be read
+# The body names scopes only; it never carries a Redis URL or credential.
+ready_state() {
+    python3 - "$API_SOCKET" <<'PY' 2>/dev/null || echo "unready"
+import json
+import socket
+import sys
+
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(1.0)
+    s.connect(sys.argv[1])
+    s.sendall(b"GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+    data = b""
+    while True:
+        chunk = s.recv(4096)
+        if not chunk:
+            break
+        data += chunk
+    s.close()
+    head, _, body = data.partition(b"\r\n\r\n")
+    parts = head.split(b"\r\n", 1)[0].decode("utf-8", "ignore").split()
+    if len(parts) < 2 or parts[1] != "200":
+        print("unready")
+    else:
+        scopes = [entry["scope"] for entry in json.loads(body).get("degraded", [])]
+        print("degraded:" + ",".join(scopes) if scopes else "ok")
+except Exception:
+    print("unready")
+PY
+}
+
+# Poll the readiness endpoint until the daemon answers /ready, or a bounded window
+# elapses. Returns 0 once the daemon serves (degraded or not), 1 on timeout. A daemon
+# whose Redis does not answer serves degraded and attaches that Redis's readers when
+# it answers, so only a daemon that never serves fails the start.
 #
 # On Linux the API socket binds well after wait_for_daemon returns (which gates on
 # PID liveness alone), so socket-appearance must be folded into the wait: the
@@ -568,7 +604,7 @@ wait_for_redis_ready() {
         sleep 1
     done
 
-    # Phase 2: socket is up — poll /ready until Redis connects or the window elapses.
+    # Phase 2: socket is up — poll /ready until it answers or the window elapses.
     # Without curl/python3 the probe can never report ok, so the window elapses to a
     # failure (fail-closed) rather than silently passing.
     local ready_deadline=$((SECONDS + REDIS_READY_WAIT_SECONDS))
@@ -640,10 +676,16 @@ start_daemon() {
     if wait_for_daemon; then
         if ! wait_for_redis_ready; then
             stop_startup_log_stream
-            log_error "Redis is unreachable: the daemon started but never connected to Redis within ${REDIS_READY_WAIT_SECONDS}s"
-            log_error "Redis is a hard dependency. Verify REDIS_CLUSTER_URL points to a reachable server, then re-run 'make start' (see 'telec config wizard')"
+            log_error "The daemon started but never answered /ready within ${REDIS_READY_WAIT_SECONDS}s"
+            log_error "Check logs: instrukt-ai-logs teleclaude --since 5m (see 'telec config wizard' for the Redis settings)"
             return 1
         fi
+        READY_STATE=$(ready_state)
+        case "$READY_STATE" in
+            degraded:*)
+                log_warn "Event Redis not answering (${READY_STATE#degraded:}): the daemon serves degraded and attaches those readers when it answers"
+                ;;
+        esac
         if [ "$PLATFORM" != "macos" ]; then
             if ! _tc_sudo "enable and start the periodic job timer" systemctl enable --now "$CRON_TIMER_UNIT"; then
                 stop_startup_log_stream
@@ -1051,6 +1093,20 @@ PY
             if [ "$API_HEALTH" = "ok" ]; then
                 log_info "API /health: OK"
                 report_admission_state || overall_ok=1
+                READY_STATE=$(ready_state)
+                case "$READY_STATE" in
+                    ok)
+                        log_info "Event Redis: answering"
+                        ;;
+                    degraded:*)
+                        log_warn "Event Redis: NOT ANSWERING (${READY_STATE#degraded:}); the daemon serves degraded"
+                        overall_ok=1
+                        ;;
+                    *)
+                        log_warn "Event Redis: readiness UNREADABLE (/ready is not ready)"
+                        overall_ok=1
+                        ;;
+                esac
             else
                 log_warn "API /health: FAIL"
                 overall_ok=1
