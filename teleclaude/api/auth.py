@@ -10,9 +10,11 @@ from fastapi import Depends, Header, HTTPException
 from starlette.requests import HTTPConnection
 
 from teleclaude.caller_identity import (
+    OWNER_COMMAND_ADMISSION_SCOPE_KEY,
     CarriedIdentity,
     CliCaller,
     NoIdentityCliCaller,
+    OwnerCommandAdmission,
     Person,
     PersonCliCaller,
     Platform,
@@ -177,10 +179,22 @@ def carried_caller_session_id(request: HTTPConnection) -> str | None:
     return carried_caller_of(request).session_id or None
 
 
-def require_clearance(command_path: str) -> Callable[..., CallerIdentity]:
-    """Return a route dependency enforcing the CLI verb's declared caller clearance."""
+def _consume_owner_admission(request: HTTPConnection, command_path: str) -> bool:
+    """Consume a matching owner decision, or leave an ordinary local request to clearance."""
+    if OWNER_COMMAND_ADMISSION_SCOPE_KEY not in request.scope:
+        return False
+    admission = request.scope[OWNER_COMMAND_ADMISSION_SCOPE_KEY]
+    if not isinstance(admission, OwnerCommandAdmission) or admission.command != command_path:
+        raise HTTPException(status_code=403, detail=_CLEARANCE_REFUSAL.format(command_path=command_path))
+    return True
 
-    def _require(identity: CallerIdentity = Depends(carried_caller)) -> CallerIdentity:
+
+def require_clearance(command_path: str) -> Callable[..., CallerIdentity]:
+    """Consume owner admission or enforce the CLI verb's local caller clearance."""
+
+    def _require(request: HTTPConnection, identity: CallerIdentity = Depends(carried_caller)) -> CallerIdentity:
+        if _consume_owner_admission(request, command_path):
+            return identity
         if is_roleless_platform_caller(identity.principal, identity.role):
             return identity
         role = resolve_session_role(identity.role, identity.session_id)
@@ -192,14 +206,16 @@ def require_clearance(command_path: str) -> Callable[..., CallerIdentity]:
 
 
 def require_clearance_at_caller_person(command_path: str) -> Callable[..., CallerIdentity]:
-    """Return a route dependency enforcing a verb's band judged at the caller's own person scope.
+    """Consume owner admission or judge the local caller at their own person scope.
 
     ``require_clearance`` is scope-blind: it judges the carried platform role, which refuses a
     registered person who holds none. A verb declared at the caller-person scope is judged by the
     role that person holds at themselves, as the CLI judges it.
     """
 
-    def _require(identity: CallerIdentity = Depends(carried_caller)) -> CallerIdentity:
+    def _require(request: HTTPConnection, identity: CallerIdentity = Depends(carried_caller)) -> CallerIdentity:
+        if _consume_owner_admission(request, command_path):
+            return identity
         if is_roleless_platform_caller(identity.principal, identity.role):
             return identity
         role = resolve_session_role(identity.role, identity.session_id)
