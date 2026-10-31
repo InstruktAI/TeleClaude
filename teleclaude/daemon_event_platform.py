@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
@@ -58,9 +58,10 @@ from teleclaude.events.envelope import EventHomeMarker, ReceivedEvent, occurrenc
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
 from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
 from teleclaude.events.processor import STREAM_NAME as PLATFORM_STREAM_NAME
+from teleclaude.events.redis_reachability import RedisReachability, configure_reachability
 from teleclaude.events.references import ComputerRef
 from teleclaude.events.schemas.system import DaemonRestarted, DaemonRestartedData, RuntimeSessionStatusData
-from teleclaude.events.scope import ScopedClients
+from teleclaude.events.scope import ScopedClients, scope_of
 from teleclaude.events.scoped_redis import close_scoped_clients, local_redis_configured, scoped_redis_clients
 from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, LegacyFacts
 from teleclaude.hooks.dispatcher import HookDispatcher
@@ -102,12 +103,6 @@ _REDIS_UNCONFIGURED_ERROR = "Event platform startup failed: config.redis.cluster
 _LOCAL_REDIS_UNCONFIGURED_EVENT = "local_redis_unconfigured_local_events_on_cluster"
 
 
-async def _ping_both(clients: ScopedClients[Any]) -> None:
-    """Confirm each scope's Redis answers before any reader or producer relies on it."""
-    for client in clients.distinct():
-        await client.ping()
-
-
 async def _close_both(clients: ScopedClients[Any]) -> None:
     """Close each scope's client and its owned pool."""
     await close_scoped_clients(clients)
@@ -136,6 +131,12 @@ _DUPLICATE_RUNTIME_CONSUMER_NAMES_ERROR = "runtime and platform event consumers 
 _DISCORD_VOICE_ADAPTER_REQUIRED = "Discord runtime voice consumer has no active adapter capability"
 _DISCORD_ADAPTER_KEY = "discord"
 _RUNTIME_EVENT_PRODUCER_CONFIGURED_EVENT = "Internal runtime EventProducer configured"
+_EVENT_PLATFORM_ATTACH_TASK_NAME = "event-platform-attach"
+_EVENT_PLATFORM_ATTACH_FAILED_EVENT = "event_platform_attach_failed"
+_EVENT_PLATFORM_ATTACH_END_REASON = "event-platform-attach-failed"
+_EVENT_PLATFORM_ATTACH_STALLED_ERROR = "Event platform steps remain while every event Redis answers"
+_EVENT_PLATFORM_BLOCKED_PROGRESS = "blocked_redis_unreachable"
+_EVENT_PLATFORM_DEGRADED_EVENT = "event_platform_redis_unreachable: startup continues degraded"
 
 
 @dataclass
@@ -143,6 +144,16 @@ class _EventPlatformStatus:
     redis_configured: bool
     redis_reachable: bool | None = None
     pending_recovery_progress: str = "not_started"
+
+
+@dataclass
+class _EventPlatformSteps:
+    """The startup steps that need a Redis; each is done once, as soon as its Redis answers."""
+
+    handover_consumers: list[Consumer] = field(default_factory=list[Consumer])
+    handover_prepared: bool = False
+    retired_group_destroyed: bool = False
+    restarted_published: bool = False
 
 
 class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
@@ -157,7 +168,9 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _event_catalog: EventCatalog | None
         _event_producer: EventProducer | None
         _event_redis_client: ScopedClients[Any] | None
+        _event_reachability: RedisReachability | None
         _event_platform_status: _EventPlatformStatus
+        _event_platform_steps: _EventPlatformSteps
         task_registry: TaskRegistry
         _event_consumer_tasks: tuple[SupervisedTask, ...]
         _relay_delivery_task: SupervisedTask | None
@@ -178,37 +191,47 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
         async def _handle_error(self, context: ErrorEventContext) -> None: ...
 
+        def request_shutdown(self, reason: str) -> None: ...
+
     async def _init_event_db_storage(self) -> None:
         """Initialize event storage."""
         self._event_db = await get_event_db()
         logger.info("EventDB initialized")
 
     async def _open_event_redis_client(self) -> ScopedClients[Any]:
-        """Open the event platform's owned clients of both scopes' Redis independently of adapter startup."""
+        """Open the event platform's owned clients of both scopes' Redis independently of adapter startup.
+
+        A Redis that does not answer within the probe deadline is recorded as unreachable and startup continues; a
+        rejected credential still ends startup.
+        """
         if not config.redis.cluster.url:
             raise RuntimeError(_REDIS_UNCONFIGURED_ERROR)
         if not local_redis_configured():
             logger.warning(_LOCAL_REDIS_UNCONFIGURED_EVENT, computer=config.computer.name)
-        if self._event_redis_client is not None:
-            clients = self._event_redis_client
-            try:
-                await _ping_both(clients)
-            except Exception:
-                await _close_both(clients)
-                self._event_redis_client = None
-                raise
-            return clients
-        clients = scoped_redis_clients()
+        previous = self._event_reachability
+        if previous is not None:
+            await previous.aclose()
+        clients = self._event_redis_client or scoped_redis_clients()
+        reachability = RedisReachability(clients, self.shutdown_event)
         try:
-            await _ping_both(clients)
+            await reachability.probe()
         except Exception:
+            await reachability.aclose()
             await _close_both(clients)
+            self._event_redis_client = None
+            self._event_reachability = None
             raise
         self._event_redis_client = clients
+        self._event_reachability = reachability
+        configure_reachability(reachability)
         return clients
 
     async def _close_event_platform_redis(self) -> None:
         """Close the event platform's owned Redis pools after every consumer has settled."""
+        reachability = self._event_reachability
+        self._event_reachability = None
+        if reachability is not None:
+            await reachability.aclose()
         clients = self._event_redis_client
         self._event_redis_client = None
         if clients is not None:
@@ -270,8 +293,18 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             return
         logger.info(_RETIRED_GROUP_DESTROYED_EVENT, group=group)
 
+    def _reachability(self) -> RedisReachability:
+        reachability = self._event_reachability
+        assert reachability is not None  # opened by _start_event_platform_prepare
+        return reachability
+
+    def _cluster_answers(self) -> bool:
+        clients = self._event_redis_client
+        assert clients is not None  # opened by _start_event_platform_prepare
+        return any(clients.cluster is answering for answering in self._reachability().answering_clients())
+
     async def _prepare_event_consumer_runtimes(self, redis_clients: ScopedClients[Any]) -> None:
-        """Build and prepare both source sets without allowing a handler to execute."""
+        """Build both source sets and prepare the positions whose Redis answers, without allowing a handler to execute."""
         assert self._event_db is not None  # initialized by _start_event_platform_prepare
         platform_consumers = self._event_consumers()
         runtime_consumers = build_runtime_event_consumers(
@@ -287,47 +320,153 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         names = [consumer.name for consumer in (*platform_consumers, *runtime_consumers)]
         if len(names) != len(set(names)):
             raise ValueError(_DUPLICATE_RUNTIME_CONSUMER_NAMES_ERROR)
-        await prepare_internal_event_handover(
-            redis_clients.cluster,
-            stream=INTERNAL_RUNTIME_EVENT_STREAM,
-            computer=config.computer.name,
-            consumers=[consumer for consumer in runtime_consumers if consumer.delivery is ConsumerDelivery.RETAINED],
-            event_db=self._event_db,
-        )
-        platform_runtime = ConsumerRuntime(
+        self._event_platform_steps.handover_consumers = [
+            consumer for consumer in runtime_consumers if consumer.delivery is ConsumerDelivery.RETAINED
+        ]
+        self._platform_consumer_runtime = ConsumerRuntime(
             platform_consumers,
             redis_clients=redis_clients,
+            reachability=self._reachability(),
             db=self._event_db,
             computer=config.computer.name,
         )
-        runtime_runtime = ConsumerRuntime(
+        self._runtime_consumer_runtime = ConsumerRuntime(
             runtime_consumers,
             redis_clients=redis_clients,
+            reachability=self._reachability(),
             db=self._event_db,
             computer=config.computer.name,
             stream=INTERNAL_RUNTIME_EVENT_STREAM,
             codec=internal_event_entry_codec(),
         )
-        await platform_runtime.prepare_group_positions()
-        await runtime_runtime.prepare_group_positions()
-        self._platform_consumer_runtime = platform_runtime
-        self._runtime_consumer_runtime = runtime_runtime
+        await self._prepare_internal_handover()
+        await self._prepare_consumer_positions()
         logger.info(
             "event_consumer_positions_prepared",
             consumers=[consumer.name for consumer in (*platform_consumers, *runtime_consumers)],
+            awaiting_redis=[scope.value for scope in self._reachability().unanswering_scopes()],
         )
 
-    def _start_event_consumers_runtime(self) -> None:
-        """Execute the prepared source sets after their request surface and adapters are bound."""
+    async def _prepare_internal_handover(self) -> None:
+        """Hand the retained runtime consumers' cluster groups over to their local readers, once the cluster answers."""
+        steps = self._event_platform_steps
+        clients = self._event_redis_client
+        assert clients is not None  # opened by _start_event_platform_prepare
+        assert self._event_db is not None  # initialized by _start_event_platform_prepare
+        if steps.handover_prepared or not self._cluster_answers():
+            return
+        steps.handover_prepared = await self._reachability().attempt(
+            (clients.cluster,),
+            partial(
+                prepare_internal_event_handover,
+                clients.cluster,
+                stream=INTERNAL_RUNTIME_EVENT_STREAM,
+                computer=config.computer.name,
+                consumers=steps.handover_consumers,
+                event_db=self._event_db,
+            ),
+        )
+
+    async def _prepare_consumer_positions(self) -> None:
+        """Take the positions of the readers whose Redis answers now; the others wait for a later attach."""
+        for runtime in (self._platform_consumer_runtime, self._runtime_consumer_runtime):
+            if runtime is not None:
+                await runtime.prepare_group_positions(self._reachability().answering_clients())
+
+    async def _destroy_retired_group_when_cluster_answers(self) -> None:
+        steps = self._event_platform_steps
+        clients = self._event_redis_client
+        assert clients is not None  # opened by _start_event_platform_prepare
+        if steps.retired_group_destroyed or not self._cluster_answers():
+            return
+        # The retired pipeline's group is on the cluster Redis.
+        steps.retired_group_destroyed = await self._reachability().attempt(
+            (clients.cluster,), partial(self._destroy_retired_system_group, clients.cluster)
+        )
+
+    def _supervise_prepared_event_readers(self) -> None:
+        """Execute the prepared readers whose Redis answers after their request surface and adapters are bound."""
         platform_runtime = self._platform_consumer_runtime
         runtime_runtime = self._runtime_consumer_runtime
         if platform_runtime is None or runtime_runtime is None:
             raise RuntimeError("Event consumer positions must be prepared before execution")
-        self._event_consumer_tasks = (
-            *platform_runtime.supervise(self.task_registry, self.shutdown_event),
-            *runtime_runtime.supervise(self.task_registry, self.shutdown_event),
+        answering = self._reachability().answering_clients()
+        started = (
+            *platform_runtime.supervise(self.task_registry, self.shutdown_event, answering),
+            *runtime_runtime.supervise(self.task_registry, self.shutdown_event, answering),
         )
-        logger.info(_EVENT_CONSUMERS_STARTED_EVENT)
+        self._event_consumer_tasks = (*self._event_consumer_tasks, *started)
+        if started:
+            logger.info(_EVENT_CONSUMERS_STARTED_EVENT, readers=len(started))
+        if self._relay_delivery_processor is not None and self._relay_delivery_task is None and self._cluster_answers():
+            self._start_relay_delivery_consumer()
+
+    async def _publish_daemon_restarted_when_its_redis_answers(self) -> None:
+        steps = self._event_platform_steps
+        clients = self._event_redis_client
+        event_producer = self._event_producer
+        assert clients is not None  # opened by _start_event_platform_prepare
+        assert event_producer is not None  # built by _start_event_platform_prepare
+        client = clients.for_scope(scope_of(DaemonRestarted.type_name()))
+        if steps.restarted_published or not any(
+            client is answering for answering in self._reachability().answering_clients()
+        ):
+            return
+        steps.restarted_published = await self._reachability().attempt(
+            (client,), partial(self._emit_daemon_restarted_event, event_producer, config.computer.name)
+        )
+
+    def _event_platform_steps_remaining(self) -> bool:
+        """Whether a step that needs a Redis is still undone."""
+        steps = self._event_platform_steps
+        runtimes = (self._platform_consumer_runtime, self._runtime_consumer_runtime)
+        relay_owed = self._hook_dispatcher is not None and (
+            self._relay_delivery_processor is None or self._relay_delivery_task is None
+        )
+        return (
+            not (steps.handover_prepared and steps.retired_group_destroyed and steps.restarted_published)
+            or any(runtime is not None and runtime.unattached() for runtime in runtimes)
+            or relay_owed
+        )
+
+    async def _advance_event_platform_steps(self) -> None:
+        """Do every undone step the answering Redis now allow, in startup order."""
+        await self._prepare_internal_handover()
+        await self._destroy_retired_group_when_cluster_answers()
+        await self._attach_relay_position()
+        await self._prepare_consumer_positions()
+        self._supervise_prepared_event_readers()
+        await self._publish_daemon_restarted_when_its_redis_answers()
+
+    async def _attach_event_platform(self) -> None:
+        """Complete the startup steps a Redis that did not answer held back, as each Redis answers.
+
+        A Redis that stops answering again returns the task to waiting; any other failure requests the daemon's
+        ordinary shutdown, as the same failure does in a start where every Redis answers.
+        """
+        try:
+            while self._event_platform_steps_remaining():
+                waiting = self._reachability().unanswering_clients()
+                if not waiting:
+                    raise RuntimeError(_EVENT_PLATFORM_ATTACH_STALLED_ERROR)
+                if not await self._reachability().until_any_answers(waiting):
+                    return
+                await self._advance_event_platform_steps()
+        except Exception:
+            logger.error(_EVENT_PLATFORM_ATTACH_FAILED_EVENT, exc_info=True)
+            self.request_shutdown(_EVENT_PLATFORM_ATTACH_END_REASON)
+            return
+        self._note_event_platform_attached()
+
+    def _note_event_platform_attached(self) -> None:
+        self._event_platform_status.redis_reachable = True
+        self._event_platform_status.pending_recovery_progress = "processor_started"
+        logger.info(
+            "event_platform_redis_available: pending recovery scheduled",
+            redis_configured=self._event_platform_status.redis_configured,
+            redis_reachable=True,
+            pending_recovery_progress=self._event_platform_status.pending_recovery_progress,
+        )
 
     async def _recover_discord_runtime_status(self) -> None:
         """Recover voice focus through Discord's owner-local source query."""
@@ -373,6 +512,18 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                 await self.client.dispatch_system_command(context)
             return
         logger.debug("No active reaction for retained internal event", event_name=data.event_name, event_id=event.id)
+
+    async def _attach_relay_position(self) -> None:
+        """Prepare the relay reader's position once the cluster Redis answers; a no-op when done or without webhooks."""
+        dispatcher = self._hook_dispatcher
+        clients = self._event_redis_client
+        if dispatcher is None or clients is None or self._relay_delivery_processor is not None:
+            return
+        if not self._cluster_answers():
+            return
+        await self._reachability().attempt(
+            (clients.cluster,), partial(self._prepare_relay_delivery_consumer, dispatcher)
+        )
 
     async def _prepare_relay_delivery_consumer(self, dispatcher: HookDispatcher) -> None:
         """Prepare this computer's relay reader position on the cluster event stream."""
@@ -455,14 +606,17 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         logger.info(_SOURCE_READER_STARTED_EVENT)
 
     async def _start_event_platform_prepare(self) -> None:
-        """Prepare the owned producer and both reader positions before startup producers run."""
+        """Prepare the owned producer and the reader positions whose Redis answers before startup producers run.
+
+        A Redis that does not answer neither stops startup nor holds it: its readers are attached when it answers.
+        """
         redis_configured = bool(config.redis.cluster.url)
         self._event_platform_status = _EventPlatformStatus(redis_configured=redis_configured)
+        self._event_platform_steps = _EventPlatformSteps()
         await self._init_event_db_storage()
         event_catalog = build_default_catalog()
         self._event_platform_status.pending_recovery_progress = "reader_positions_preparing"
         redis_clients = await self._open_event_redis_client()
-        self._event_platform_status.redis_reachable = True
         event_producer = self._configure_event_producer(redis_clients)
         self._event_catalog = event_catalog
         self._event_producer = event_producer
@@ -473,6 +627,17 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             self._hook_dispatcher = None
             self._relay_delivery_processor = None
             logger.error("Webhook service initialization failed, continuing without webhooks", exc_info=True)
+        unanswering = self._reachability().unanswering_scopes()
+        if unanswering:
+            self._event_platform_status.redis_reachable = False
+            self._event_platform_status.pending_recovery_progress = _EVENT_PLATFORM_BLOCKED_PROGRESS
+            logger.warning(
+                _EVENT_PLATFORM_DEGRADED_EVENT,
+                scopes=[scope.value for scope in unanswering],
+                redis_configured=redis_configured,
+            )
+            return
+        self._event_platform_status.redis_reachable = True
         self._event_platform_status.pending_recovery_progress = "reader_positions_prepared"
 
     async def _end_for_memory_transition(self, session_id: str) -> bool:
@@ -500,28 +665,24 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         task.add_done_callback(self._log_background_task_exception(_MEMORY_TRANSITION_LOG_TASK_NAME))
 
     async def _start_event_consumers(self) -> None:
-        """Start the event platform's consumer tasks after the API socket is bound."""
-        clients = self._event_redis_client
+        """Start the event platform's consumer tasks after the API socket is bound.
+
+        Readers whose Redis does not answer are attached by one tracked task as that Redis answers.
+        """
+        assert self._event_producer is not None  # built by _start_event_platform_prepare
         event_producer = self._event_producer
-        assert event_producer is not None  # built by _start_event_platform_prepare
-        assert clients is not None  # opened by _start_event_platform_prepare
-        # The retired pipeline's group is on the cluster Redis.
-        await self._destroy_retired_system_group(clients.cluster)
-        computer_label = config.computer.name
+        self._event_consumer_tasks = ()
+        await self._destroy_retired_group_when_cluster_answers()
         await self._run_conversation_memory_transition()
-        self._start_event_consumers_runtime()
-        self._start_relay_delivery_consumer()
-        self._event_platform_status.pending_recovery_progress = "processor_started"
-        logger.info(
-            "event_platform_redis_available: pending recovery scheduled",
-            redis_configured=self._event_platform_status.redis_configured,
-            redis_reachable=True,
-            pending_recovery_progress=self._event_platform_status.pending_recovery_progress,
-        )
-        await self._emit_daemon_restarted_event(event_producer, computer_label)
+        self._supervise_prepared_event_readers()
+        await self._publish_daemon_restarted_when_its_redis_answers()
         self._start_task_schedule_clock(event_producer)
         self._start_assessment_announcer(event_producer)
         self._start_installation_source_reader(event_producer)
+        if self._event_platform_steps_remaining():
+            self.task_registry.spawn(self._attach_event_platform(), name=_EVENT_PLATFORM_ATTACH_TASK_NAME)
+            return
+        self._note_event_platform_attached()
 
     async def _init_webhook_service(self) -> None:
         """Prepare the hook dispatcher and its relay reader position before startup producers run."""
@@ -553,7 +714,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             )
         )
 
-        await self._prepare_relay_delivery_consumer(dispatcher)
+        await self._attach_relay_position()
         self._install_inbound_routes()
 
         logger.info("Webhook service initialized")

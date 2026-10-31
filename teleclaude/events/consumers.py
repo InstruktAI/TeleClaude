@@ -9,7 +9,7 @@ attributes, and handlers receive the event rather than its transport state.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -22,6 +22,7 @@ from teleclaude.events.db import EventDB
 from teleclaude.events.envelope import EventHomeKind, EventHomeRef, ReceivedEvent
 from teleclaude.events.live_reader import LiveEventReader, LiveStreamClient, SharedLiveFeed, SourceRecovery
 from teleclaude.events.processor import STREAM_NAME, EventProcessor
+from teleclaude.events.redis_reachability import RedisReachability, is_redis_unreachable
 from teleclaude.events.references import ReferenceKind
 from teleclaude.events.scope import EventScope, ScopedClients, scopes_of_interest
 from teleclaude.events.type_pattern import TypePattern
@@ -210,14 +211,35 @@ class RetainedHandover:
             await self._local.start(shutdown_event)
 
 
+type _Reader = EventProcessor[StreamEvent] | SharedLiveFeed | RetainedHandover
+
+
+@dataclass(frozen=True)
+class _Runner:
+    """One reader, with the Redis clients it reads: it runs only while every one of them answers."""
+
+    name: str
+    processor: _Reader
+    clients: tuple[Any, ...]
+
+
+def _answers_all(runner: _Runner, answering: Collection[object] | None) -> bool:
+    return answering is None or all(any(client is known for known in answering) for client in runner.clients)
+
+
 class ConsumerRuntime:
-    """Compose independent retained and live readers on one computer, each on the Redis of a scope it reads."""
+    """Compose independent retained and live readers on one computer, each on the Redis of a scope it reads.
+
+    A reader waits for the Redis it reads: its position is taken and its run starts only while that Redis answers,
+    and a retained reader whose Redis stops answering waits for it and resumes from its group.
+    """
 
     def __init__(
         self,
         consumers: Sequence[Consumer],
         *,
         redis_clients: ScopedClients[Any],
+        reachability: RedisReachability,
         db: EventDB,
         computer: str,
         stream: str = STREAM_NAME,
@@ -227,7 +249,10 @@ class ConsumerRuntime:
         repeated = sorted({name for name in names if names.count(name) > 1})
         if repeated:
             raise ValueError(_DUPLICATE_NAMES_ERROR.format(names=_NAME_SEPARATOR.join(repeated)))
-        self._processors: list[tuple[str, EventProcessor[StreamEvent] | SharedLiveFeed | RetainedHandover]] = []
+        self._reachability = reachability
+        self._runners: list[_Runner] = []
+        self._prepared: set[str] = set()
+        self._supervised: set[str] = set()
         live_views: dict[EventScope, list[LiveEventReader]] = {}
         live_clients: dict[EventScope, Any] = {}
         for consumer in consumers:
@@ -253,38 +278,91 @@ class ConsumerRuntime:
                     continue
                 local_reader = _retained_reader(consumer, pipeline, client, computer, stream, codec)
                 reader: EventProcessor[StreamEvent] | RetainedHandover = local_reader
+                read: tuple[Any, ...] = (client,)
                 if hands_over:
                     drain = _retained_reader(consumer, pipeline, redis_clients.cluster, computer, stream, codec)
                     reader = RetainedHandover(drain, local_reader)
-                self._processors.append((_SCOPED_NAME_TEMPLATE.format(name=consumer.name, scope=scope.value), reader))
+                    read = (client, redis_clients.cluster)
+                name = _SCOPED_NAME_TEMPLATE.format(name=consumer.name, scope=scope.value)
+                self._runners.append(_Runner(name, reader, read))
         for scope, views in live_views.items():
-            self._processors.append(
-                (
-                    _SCOPED_NAME_TEMPLATE.format(name=_LIVE_FEED_NAME, scope=scope.value),
-                    SharedLiveFeed(cast(LiveStreamClient, live_clients[scope]), stream=stream, readers=views),
-                )
-            )
+            feed = SharedLiveFeed(cast(LiveStreamClient, live_clients[scope]), stream=stream, readers=views)
+            name = _SCOPED_NAME_TEMPLATE.format(name=_LIVE_FEED_NAME, scope=scope.value)
+            self._runners.append(_Runner(name, feed, (live_clients[scope],)))
 
-    async def prepare_group_positions(self) -> None:
-        """Prepare retained positions and live boundaries before any handler executes."""
-        await asyncio.gather(*(processor.prepare_group_position() for _name, processor in self._processors))
+    def unattached(self) -> bool:
+        """Whether some reader has no position yet or does not run yet."""
+        return len(self._supervised) < len(self._runners)
 
-    def supervise(self, registry: TaskRegistry, shutdown_event: asyncio.Event) -> tuple[SupervisedTask, ...]:
-        """Run every consumer until shutdown as its own supervised task: one that ends is replaced alone."""
-        return tuple(
-            registry.supervise(
-                _CONSUMER_TASK_TEMPLATE.format(name=name),
-                partial(self._run_one, name, processor, shutdown_event),
-                restart=True,
+    async def prepare_group_positions(self, answering: Collection[object] | None = None) -> None:
+        """Prepare retained positions and live boundaries before any handler executes.
+
+        Acts only on readers not yet prepared whose every Redis is among the answering clients (all, by default);
+        a reader whose Redis does not answer stays unprepared for a later call.
+        """
+        await asyncio.gather(
+            *(
+                self._prepare_one(runner)
+                for runner in self._runners
+                if runner.name not in self._prepared and _answers_all(runner, answering)
             )
-            for name, processor in self._processors
         )
 
-    async def _run_one(
+    async def _prepare_one(self, runner: _Runner) -> None:
+        if await self._reachability.attempt(runner.clients, runner.processor.prepare_group_position):
+            self._prepared.add(runner.name)
+
+    def supervise(
         self,
-        name: str,
-        processor: EventProcessor[StreamEvent] | SharedLiveFeed | RetainedHandover,
+        registry: TaskRegistry,
+        shutdown_event: asyncio.Event,
+        answering: Collection[object] | None = None,
+    ) -> tuple[SupervisedTask, ...]:
+        """Run each prepared consumer until shutdown as its own supervised task: one that ends is replaced alone.
+
+        Acts only on prepared readers not yet running whose every Redis is among the answering clients (all, by
+        default), so a later call starts exactly the remainder.
+        """
+        started = [
+            runner
+            for runner in self._runners
+            if runner.name in self._prepared and runner.name not in self._supervised and _answers_all(runner, answering)
+        ]
+        self._supervised.update(runner.name for runner in started)
+        return tuple(
+            registry.supervise(
+                _CONSUMER_TASK_TEMPLATE.format(name=runner.name),
+                partial(self._run_one, runner, shutdown_event),
+                restart=True,
+            )
+            for runner in started
+        )
+
+    async def _run_one(self, runner: _Runner, shutdown_event: asyncio.Event) -> None:
+        logger.info(_CONSUMER_STARTED_EVENT, consumer=runner.name)
+        if isinstance(runner.processor, SharedLiveFeed):
+            # A live feed contains its own read errors and recovers its source.
+            await runner.processor.start(shutdown_event)
+            return
+        await self._run_retained(runner.processor, runner.clients, shutdown_event)
+
+    async def _run_retained(
+        self,
+        processor: EventProcessor[StreamEvent] | RetainedHandover,
+        clients: tuple[Any, ...],
         shutdown_event: asyncio.Event,
     ) -> None:
-        logger.info(_CONSUMER_STARTED_EVENT, consumer=name)
-        await processor.start(shutdown_event)
+        """Run a retained reader until shutdown, waiting out its Redis whenever it stops answering.
+
+        Re-entering `start` resumes from the consumer group: pending entries first and in order, then new ones.
+        Every failure that is not the Redis not answering ends the run for its supervisor.
+        """
+        while await self._reachability.until_answering(*clients):
+            try:
+                await processor.start(shutdown_event)
+            except Exception as error:
+                if not is_redis_unreachable(error):
+                    raise
+                self._reachability.mark_lost(clients, error)
+                continue
+            return
