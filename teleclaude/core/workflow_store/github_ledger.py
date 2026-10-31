@@ -8,7 +8,6 @@ from teleclaude.core.workflow_store.github_io import GitHubComment, GitHubIssue
 from teleclaude.core.workflow_store.github_record import (
     LedgerCommit,
     has_ledger_marker,
-    is_content_comment,
     parse_ledger_commit,
     trusted_comment_body,
 )
@@ -42,11 +41,7 @@ def find_ledger(
         return None, entries
     ledger_number = next(iter(ledger_numbers))
     for comment in comments_by_issue[ledger_number]:
-        if (
-            comment.author == bot_login
-            and trusted_body(comment, bot_login) is None
-            and not is_content_comment(comment.body)
-        ):
+        if comment.author == bot_login and trusted_body(comment, bot_login) is None:
             raise GitHubLedgerRefused(_LEDGER_UNVERIFIABLE.format(ledger_number))
     return issues_by_number.get(ledger_number), entries
 
@@ -55,10 +50,10 @@ def parse_ledger_comment(comment: GitHubComment, bot_login: str, issue_number: i
     """Parse a ledger entry only from its latest recoverable platform-authored body."""
     body = trusted_body(comment, bot_login)
     if body is None:
-        if comment.author == bot_login and not is_content_comment(comment.body) and has_ledger_marker(comment.body):
+        if comment.author == bot_login and has_ledger_marker(comment.body):
             raise GitHubLedgerRefused(_LEDGER_UNVERIFIABLE.format(issue_number))
         return None
-    if is_content_comment(body) or not has_ledger_marker(body):
+    if not has_ledger_marker(body):
         return None
     try:
         return parse_ledger_commit(body)

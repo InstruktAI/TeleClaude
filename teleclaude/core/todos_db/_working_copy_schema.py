@@ -7,6 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from teleclaude.core.migration_signal import MigrationStore, signal_migration_started
+from teleclaude.core.todos_db._github_artifacts import initialize_artifact_bookkeeping
 from teleclaude.core.todos_db._github_board import initialize_board_bookkeeping
 from teleclaude.core.todos_db._github_pull_requests import initialize_pull_request_bookkeeping
 from teleclaude.core.todos_db._github_questions import initialize_question_bookkeeping
@@ -17,9 +18,6 @@ _BOOKKEEPING_DDL = (
     "CREATE TABLE IF NOT EXISTS github_item (item_id TEXT PRIMARY KEY, issue_number INTEGER, node_id TEXT, "
     "issue_id INTEGER, record_comment_id TEXT, revision INTEGER NOT NULL DEFAULT 0, base_revision INTEGER NOT NULL DEFAULT 0, "
     "projection_digest TEXT)",
-    "CREATE TABLE IF NOT EXISTS github_artifact_content (item_id TEXT NOT NULL, version_id INTEGER NOT NULL, "
-    "remote_version_id TEXT, digest TEXT, comment_ids TEXT NOT NULL, PRIMARY KEY(item_id, version_id), "
-    "UNIQUE(item_id, remote_version_id))",
     "CREATE TABLE IF NOT EXISTS github_project_record (table_name TEXT NOT NULL, row_id INTEGER NOT NULL, "
     "remote_record_id TEXT, comment_id TEXT, PRIMARY KEY(table_name, row_id), "
     "UNIQUE(table_name, remote_record_id))",
@@ -29,7 +27,7 @@ _BOOKKEEPING_DDL = (
     "CREATE TABLE IF NOT EXISTS github_repository (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), "
     "ledger_issue_number INTEGER, ledger_node_id TEXT, issue_watermark TEXT, ledger_watermark TEXT, "
     "initialized INTEGER NOT NULL DEFAULT 0, projection_version INTEGER NOT NULL DEFAULT 0, "
-    "projection_repair_after_issue INTEGER NOT NULL DEFAULT 0)",
+    "projection_repair_after_issue INTEGER NOT NULL DEFAULT 0, issue_artifacts TEXT, republication_not_before TEXT, republication_backoff INTEGER NOT NULL DEFAULT 0)",
     "CREATE TABLE IF NOT EXISTS working_copy_pending_item (item_id TEXT PRIMARY KEY)",
     "CREATE TABLE IF NOT EXISTS working_copy_pending_project (table_name TEXT NOT NULL, row_id INTEGER NOT NULL, "
     "PRIMARY KEY(table_name, row_id))",
@@ -87,8 +85,6 @@ class TriggerRow(StrEnum):
 
 
 _WORKING_COPY_COLUMN_MIGRATIONS = (
-    (WorkingCopyTable.GITHUB_ARTIFACT_CONTENT, WorkingCopyField.REMOTE_VERSION_ID, "TEXT"),
-    (WorkingCopyTable.GITHUB_ARTIFACT_CONTENT, WorkingCopyField.DIGEST, "TEXT"),
     (WorkingCopyTable.GITHUB_PROJECT_RECORD, WorkingCopyField.REMOTE_RECORD_ID, "TEXT"),
     (WorkingCopyTable.GITHUB_ITEM, WorkingCopyField.ISSUE_ID, "INTEGER"),
     (WorkingCopyTable.GITHUB_ITEM, WorkingCopyField.PROJECTION_DIGEST, "TEXT"),
@@ -99,6 +95,9 @@ _WORKING_COPY_COLUMN_MIGRATIONS = (
         "INTEGER NOT NULL DEFAULT 0",
     ),
     (WorkingCopyTable.GITHUB_REPOSITORY, LedgerKnowledgeField.THROUGH, "TEXT"),
+    (WorkingCopyTable.GITHUB_REPOSITORY, WorkingCopyField.ISSUE_ARTIFACTS, "TEXT"),
+    (WorkingCopyTable.GITHUB_REPOSITORY, WorkingCopyField.REPUBLICATION_NOT_BEFORE, "TEXT"),
+    (WorkingCopyTable.GITHUB_REPOSITORY, WorkingCopyField.REPUBLICATION_BACKOFF, "INTEGER NOT NULL DEFAULT 0"),
 )
 
 
@@ -128,6 +127,7 @@ def initialize_working_copy(path: str | Path) -> None:
             if connection.execute(presence_sql).fetchone() is None:
                 connection.execute(seed_sql)
         initialize_question_bookkeeping(connection)
+        initialize_artifact_bookkeeping(connection)
         initialize_pull_request_bookkeeping(connection)
         initialize_board_bookkeeping(connection)
         repository_columns = {str(row[1]) for row in connection.execute(_REPOSITORY_COLUMNS_SQL)}
