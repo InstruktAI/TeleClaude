@@ -24,6 +24,7 @@ from teleclaude.core.codex_transcript import (
     read_codex_transcript_meta,
 )
 from teleclaude.core.models import JsonDict
+from teleclaude.hooks.agy_conversation import parent_conversation_id
 
 __all__ = [
     "SessionId",
@@ -156,11 +157,17 @@ def is_subagent_transcript(path: Path, agent: AgentName) -> bool:
     another session's turn. One rule per runtime, applied identically at
     discovery and at the fanout, so a subagent transcript can never surface as
     an ordinary conversation from either door.
+
+    Antigravity transcripts carry no marker of their own: the conversation's
+    store records a subagent-invocation origin when it is a subagent's, and the
+    reader that owns that determination answers here.
     """
     if agent == AgentName.CLAUDE:
         return path.stem.startswith(_CLAUDE_SUBAGENT_PREFIX) or _CLAUDE_SUBAGENT_DIR in path.parts
     if agent == AgentName.CODEX:
         return is_codex_subagent_transcript(str(path))
+    if agent == AgentName.GEMINI:
+        return parent_conversation_id(str(path)) is not None
     if agent == AgentName.DEEPSEEK:
         return _is_deepseek_delegated_session(_read_deepseek_first_entry(path))
     return False

@@ -1,8 +1,10 @@
-"""Render a checkpoint result into the agent-facing checkpoint text, or return silence when nothing is to be enforced."""
+"""Compose a checkpoint result into its semantic body, or return silence when nothing is to be enforced.
+
+The body is unrendered: the delivery path that reaches the agent wraps it in the checkpoint envelope.
+"""
 
 import shlex
 
-from teleclaude.core.injected_text import checkpoint_text
 from teleclaude.hooks.checkpoint._directives import _ESCAPE_HATCH, _RESPONSE_POLICY
 from teleclaude.hooks.checkpoint._git import _is_docs_only
 from teleclaude.hooks.checkpoint._models import CheckpointResult
@@ -39,12 +41,12 @@ def _undeclared_write_question(paths: tuple[str, ...]) -> str:
 
 
 def _question_checkpoint(lead: str, question: str) -> str:
-    """Wrap a silent-branch lead and the advisory question in the checkpoint contract."""
-    return checkpoint_text(_CHECKPOINT_SECTION_SEPARATOR.join((lead, question, _RESPONSE_POLICY, _ESCAPE_HATCH)))
+    """Join a silent-branch lead and the advisory question with the checkpoint contract."""
+    return _CHECKPOINT_SECTION_SEPARATOR.join((lead, question, _RESPONSE_POLICY, _ESCAPE_HATCH))
 
 
 def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str | None:
-    """Compose checkpoint text, or silence when there is nothing to enforce."""
+    """Compose the checkpoint body, or silence when there is nothing to enforce."""
     commit_line = _commit_instruction()
     commit_lines = [commit_line] if result.commit_action_required else []
     question = _undeclared_write_question(result.undeclared_candidates) if result.undeclared_candidates else _EMPTY_TEXT
@@ -60,7 +62,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
                 _CHECKPOINT_LINE_SEPARATOR.join(part for part in (lead, body) if part), question
             )
         body = " ".join(commit_lines)
-        return checkpoint_text(f"{_NO_CODE_CHANGES}\n{body}\n\n{_RESPONSE_POLICY}\n\n{_ESCAPE_HATCH}")
+        return f"{_NO_CODE_CHANGES}\n{body}\n\n{_RESPONSE_POLICY}\n\n{_ESCAPE_HATCH}"
 
     # Special case: all clear
     if result.is_all_clear:
@@ -70,7 +72,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
             body = " ".join((_ALL_CLEAR_MESSAGE, *commit_lines))
             return _question_checkpoint(body or _CHECKPOINT_TITLE, question)
         body = " ".join((_ALL_CLEAR_MESSAGE, *commit_lines))
-        return checkpoint_text(f"{body}\n\n{_RESPONSE_POLICY}\n\n{_ESCAPE_HATCH}")
+        return f"{body}\n\n{_RESPONSE_POLICY}\n\n{_ESCAPE_HATCH}"
 
     lines: list[str] = [_CHECKPOINT_TITLE]
 
@@ -112,4 +114,4 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     lines.append("")
     lines.append(_ESCAPE_HATCH)
 
-    return checkpoint_text("\n".join(lines))
+    return "\n".join(lines)

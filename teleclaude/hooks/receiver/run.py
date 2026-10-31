@@ -28,7 +28,6 @@ from teleclaude.config.loader import load_company_config_for_slug, load_global_c
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS, HeadlessBootstrapField, HookSourceKind
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
-from teleclaude.core.codex_transcript import is_codex_subagent_transcript
 from teleclaude.core.control_delivery import IDLE_WAKE_TEXT
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.events import (
@@ -36,6 +35,7 @@ from teleclaude.core.events import (
     RECEIVER_HANDLED_HOOK_EVENTS,
     AgentHookEvents,
     AgentHookEventType,
+    CheckpointRelayField,
 )
 from teleclaude.core.hook_delivery import (
     HookResponseFlushError,
@@ -46,6 +46,7 @@ from teleclaude.core.hook_delivery import (
 from teleclaude.core.identity import NoIdentityCliCaller, derive_identity_key, memory_person_reach
 from teleclaude.core.injected_text import (
     TranscriptEntryKind,
+    checkpoint_text,
     recognize_delivered_text,
     visible_user_segments,
     wake_occurrence_key,
@@ -56,12 +57,20 @@ from teleclaude.core.session_ended import is_conversation_session
 from teleclaude.core.session_status import AgentStatusReason
 from teleclaude.git import GitCommandError
 from teleclaude.hooks.adapters import get_adapter
-from teleclaude.hooks.adapters.base import HookAdapter, HookNormalizationReason, read_stdin_payload
+from teleclaude.hooks.adapters.base import (
+    HookAdapter,
+    HookEventNormalization,
+    HookNormalizationReason,
+    read_stdin_payload,
+)
 from teleclaude.hooks.adapters.contracts import (
     ContinueWithReason,
     HookEmission,
     HookResponseFormat,
     HookResponseKind,
+    NormalizedHookField,
+    SubagentCompletion,
+    SubagentDrop,
 )
 from teleclaude.hooks.checkpoint import get_checkpoint_content
 from teleclaude.hooks.checkpoint_flags import (
@@ -76,7 +85,6 @@ from teleclaude.hooks.edit_declarations import (
     settle_certain_edit,
 )
 from teleclaude.hooks.receiver._command_shell import host_shell_context
-from teleclaude.hooks.receiver._tool_admission import native_tool_denial_for_source
 from teleclaude.hooks.receiver_args import parse_receiver_args
 from teleclaude.hooks.session_map import (
     _SESSION_EXPORTS,
@@ -250,9 +258,7 @@ class HookNormalizationOutcome(StrEnum):
 class ReceiverDropReason(StrEnum):
     """Receiver-owned reasons for drops after provider normalization."""
 
-    CODEX_SUBAGENT = "codex_subagent"
     MANAGED_DESCENDANT_SESSION_START = "managed_descendant_session_start"
-    NATIVE_SUBAGENT_DENIED = "native_subagent_denied"
     SYSTEM_INJECTED_PROMPT = "system_injected_prompt"
     UNHANDLED_EVENT = "unhandled_event"
 
@@ -602,9 +608,10 @@ def _maybe_checkpoint_output(
 ) -> str | None:
     """Evaluate whether to block an agent_stop with a checkpoint instruction.
 
-    Returns the checkpoint reason string if a checkpoint is warranted, or None
-    to let the stop pass through to the normal enqueue path. The caller is
-    responsible for formatting the reason into agent-specific JSON via the adapter.
+    Returns the checkpoint body if a checkpoint is warranted, or None to let the
+    stop pass through to the normal enqueue path. The caller delivers the body: it
+    renders the checkpoint envelope into agent-specific JSON via the adapter, or
+    relays it to control delivery.
     """
     # Turn-scoped manual clear: while the marker exists, skip checkpoints for this turn.
     if is_checkpoint_disabled(session_id):
@@ -1110,44 +1117,6 @@ def _emit_hook_emission(
     )
 
 
-def _handle_native_tool_admission(
-    *,
-    adapter: HookAdapter,
-    raw_event_type: str,
-    data: JsonDict,
-    provider: str,
-    receiver_ingress_id: str,
-    native_session_id: str | None,
-) -> bool:
-    """Deny declared native-tool intents on managed sources before resolution."""
-    intent = adapter.native_tool_intent(raw_event_type, data)
-    if intent is None:
-        return False
-    marker_state, _ = inspect_session_identity_marker()
-    source_kind = _classify_hook_source(marker_state, _in_own_tmux_pane())
-    denial = native_tool_denial_for_source(intent, source_kind)
-    if denial is None:
-        return False
-
-    _log_normalization_decision(
-        receiver_ingress_id=receiver_ingress_id,
-        provider=provider,
-        raw_event_type=raw_event_type,
-        outcome=HookNormalizationOutcome.DROPPED,
-        reason=ReceiverDropReason.NATIVE_SUBAGENT_DENIED,
-        event_type=None,
-        native_session_id=native_session_id,
-    )
-    _emit_hook_emission(
-        adapter.render_tool_denial(raw_event_type, denial),
-        provider=provider,
-        raw_event_type=raw_event_type,
-        receiver_ingress_id=receiver_ingress_id,
-        session_id=None,
-    )
-    return True
-
-
 def _success_response_kind(
     event_type: str | None,
     reason: HookNormalizationReason,
@@ -1188,12 +1157,12 @@ def _emit_success_response_if_supported(
 
 def _extract_native_hook_fields(data: JsonDict) -> tuple[str | None, str | None]:
     raw_native_session_id: str | None = None
-    raw_id = data.get("session_id")
+    raw_id = data.get(NormalizedHookField.SESSION_ID)
     if isinstance(raw_id, str):
         raw_native_session_id = raw_id
 
     raw_native_log_file: str | None = None
-    raw_log = data.get("transcript_path")
+    raw_log = data.get(NormalizedHookField.TRANSCRIPT_PATH)
     if isinstance(raw_log, str):
         raw_native_log_file = raw_log
     return raw_native_session_id, raw_native_log_file
@@ -1518,9 +1487,15 @@ def _maybe_emit_boundary_response(
     additional_context: str | None,
     initial_procedure_entry_id: str | None,
     procedure_wake_occurrence_id: str | None,
+    relay_checkpoint: bool,
 ) -> bool:
-    """Emit checkpoint continuations independently of control delivery."""
-    checkpoint_reason = _maybe_emit_checkpoint_response(
+    """Emit checkpoint continuations independently of control delivery.
+
+    A checkpoint owed to a turn whose completion arrived on another conversation's hook
+    (``relay_checkpoint``) is never answered on that hook: it is relayed through the
+    hook outbox to control delivery, and the hook receives the provider's success response.
+    """
+    checkpoint_body = _maybe_emit_checkpoint_response(
         event_type=event_type,
         adapter=adapter,
         session_id=session_id,
@@ -1539,8 +1514,35 @@ def _maybe_emit_boundary_response(
             session_id=session_id,
         )
 
-    if checkpoint_reason is not None:
-        write_emission(adapter.render_response(raw_event_type, ContinueWithReason(checkpoint_reason)))
+    if checkpoint_body is not None and relay_checkpoint:
+        enqueue_hook_event(
+            session_id,
+            AgentHookEvents.CHECKPOINT_RELAY,
+            {
+                CheckpointRelayField.BODY: checkpoint_body,
+                CheckpointRelayField.RECEIVER_INGRESS_ID: receiver_ingress_id,
+            },
+            outbox_db=context.outbox_db,
+        )
+        logger.info(
+            "Checkpoint relayed to control delivery",
+            receiver_ingress_id=receiver_ingress_id,
+            session_id=session_id,
+            agent=context.agent,
+        )
+        _emit_success_response_if_supported(
+            adapter=adapter,
+            raw_event_type=raw_event_type,
+            event_type=event_type,
+            reason=HookNormalizationReason.SUBAGENT_COMPLETION,
+            provider=context.agent,
+            receiver_ingress_id=receiver_ingress_id,
+            session_id=session_id,
+        )
+        return True
+
+    if checkpoint_body is not None:
+        write_emission(adapter.render_response(raw_event_type, ContinueWithReason(checkpoint_text(checkpoint_body))))
         return True
 
     return emit_pending_control_payloads(
@@ -1570,6 +1572,7 @@ def _run_ordinary_hook_effects(
     cwd: str | None,
     outbox_context: _ReceiverOutboxContext,
     raw_event_type: str,
+    relay_checkpoint: bool,
 ) -> tuple[bool, bool]:
     """Return whether processing stops and whether a provider response was emitted."""
     if launch_context is not None:
@@ -1622,6 +1625,7 @@ def _run_ordinary_hook_effects(
         additional_context=additional_context,
         initial_procedure_entry_id=initial_procedure_entry_id,
         procedure_wake_occurrence_id=procedure_wake_occurrence_id,
+        relay_checkpoint=relay_checkpoint,
     )
     # Context augments the original event; it does not consume the human prompt.
     # Checkpoint/control-only responses retain their existing terminal behavior.
@@ -1688,16 +1692,6 @@ def main() -> None:
         )
         sys.exit(1)
 
-    if _handle_native_tool_admission(
-        adapter=adapter,
-        raw_event_type=raw_event_type,
-        data=data,
-        provider=args.agent,
-        receiver_ingress_id=receiver_ingress_id,
-        native_session_id=raw_native_session_id,
-    ):
-        return
-
     event_type = normalization.event_type
     if event_type is None:
         _log_normalization_decision(
@@ -1743,11 +1737,12 @@ def main() -> None:
     )
     execution_kind = adapter.classify_execution_kind(data)
 
-    # Drop Codex subagent events BEFORE session resolution. Session resolution
-    # persists `codex:<native_id> -> <teleclaude_session>` to the session map,
-    # which for a subagent native id would silently bind it to the parent
-    # session — violating the Session Identity Truth Spec.
-    if args.agent == AgentName.CODEX.value and is_codex_subagent_transcript(raw_native_log_file):
+    # Apply the adapter's subagent disposition BEFORE session resolution.
+    # Session resolution persists `<agent>:<native_id> -> <teleclaude_session>`
+    # to the session map, which for a subagent native id would silently bind it
+    # to the parent session — violating the Session Identity Truth Spec.
+    disposition = adapter.subagent_disposition(raw_event_type, data)
+    if isinstance(disposition, SubagentDrop):
         logger.debug(
             "subagent_drop",
             session_id="",
@@ -1761,11 +1756,29 @@ def main() -> None:
             provider=args.agent,
             raw_event_type=raw_event_type,
             outcome=HookNormalizationOutcome.DROPPED,
-            reason=ReceiverDropReason.CODEX_SUBAGENT,
+            reason=disposition.reason,
             event_type=None,
             native_session_id=raw_native_session_id,
         )
+        # A provider that fails or times out a hook blocks the call it guards, so every
+        # discarded hook still receives the provider's success response.
+        _emit_success_response_if_supported(
+            adapter=adapter,
+            raw_event_type=raw_event_type,
+            event_type=event_type,
+            reason=normalization.reason,
+            provider=args.agent,
+            receiver_ingress_id=receiver_ingress_id,
+            session_id=None,
+        )
         return
+    if isinstance(disposition, SubagentCompletion):
+        # The subagent's idle stop completes its root conversation's turn: continue as that
+        # conversation's own stop, carrying its identity and none of the subagent's.
+        data = disposition.payload
+        raw_native_session_id, raw_native_log_file = _extract_native_hook_fields(data)
+        normalization = HookEventNormalization(event_type, HookNormalizationReason.SUBAGENT_COMPLETION)
+        execution_kind = adapter.classify_execution_kind(data)
 
     if event_type not in _DEFERRED_FORWARD_LOG_EVENTS:
         _log_normalization_decision(
@@ -1911,6 +1924,7 @@ def main() -> None:
         cwd=args.cwd,
         outbox_context=outbox_context,
         raw_event_type=raw_event_type,
+        relay_checkpoint=normalization.reason is HookNormalizationReason.SUBAGENT_COMPLETION,
     )
     if stop_processing:
         return
