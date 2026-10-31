@@ -1,4 +1,4 @@
-"""Retire the maintenance action serving-tolerance field: a commit no longer replaces the daemon, so nothing reads it."""
+"""Remove the serving-tolerance field from every maintenance action a project declares."""
 
 from __future__ import annotations
 
