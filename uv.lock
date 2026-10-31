@@ -938,7 +938,7 @@ wheels = [
 
 [[package]]
 name = "githubkit"
-version = "0.16.1"
+version = "0.17.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -948,9 +948,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/a8/ebfcbddccb3e813837600f4cdb79fc462fd284c1db03abc1ad31072d0757/githubkit-0.16.1.tar.gz", hash = "sha256:f56ea4e796f169773d114c7f39089790f99443f1d05871d594d6bdca7928945c", size = 36999, upload-time = "2026-08-14T07:46:05.363Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7d/45/5f1fddc86cf2a9e9cdc6aa63e43bad3f8e230ba739f474604f984531ff9d/githubkit-0.17.0.tar.gz", hash = "sha256:ccedcd9f2fc3fa270e126d468a61bdecf9a7f9b1dbc43fb0eef74cf5060203d7", size = 39896, upload-time = "2026-10-28T17:29:25.089Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/eb/ee6424e6d257433a8a62e86016cdbce6efdbd26d7db5735c5c099da85e44/githubkit-0.16.1-py3-none-any.whl", hash = "sha256:a791e0eb57ec80824a711321376c5816aa1cd204e6982e4ad5ddce6c87490863", size = 42935, upload-time = "2026-08-14T07:46:04.167Z" },
+    { url = "https://files.pythonhosted.org/packages/37/5f/ba187d5d1da0b29599e9617fe20bed22ad2eca0d10611a4d1907ae63a2de/githubkit-0.17.0-py3-none-any.whl", hash = "sha256:3439e35462044142aa21c01d00102d8c03cb2b98f1aa354c2a83cb026c9af249", size = 43922, upload-time = "2026-10-28T17:29:24.15Z" },
 ]
 
 [package.optional-dependencies]
@@ -3271,7 +3271,7 @@ requires-dist = [
     { name = "discord-py", specifier = ">=2.4.0" },
     { name = "elevenlabs", marker = "extra == 'tts'", specifier = ">=2.31.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "githubkit", extras = ["auth-app"], specifier = "==0.16.1" },
+    { name = "githubkit", extras = ["auth-app"], specifier = "==0.17.0" },
     { name = "gitpython", specifier = ">=3.1.0" },
     { name = "greenlet", specifier = ">=3.3.0" },
     { name = "httpx", specifier = ">=0.28.0" },
@@ -3298,7 +3298,7 @@ requires-dist = [
     { name = "sounddevice", specifier = ">=0.5.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
     { name = "sqlmodel", specifier = ">=0.0.16" },
-    { name = "telegramify-markdown", specifier = "==1.4.1" },
+    { name = "telegramify-markdown", specifier = "==1.4.2" },
     { name = "textual", specifier = ">=1.0.0" },
     { name = "uvicorn", specifier = ">=0.34.0" },
     { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.21.0" },
@@ -3320,14 +3320,14 @@ dev = [
 
 [[package]]
 name = "telegramify-markdown"
-version = "1.4.1"
+version = "1.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyromark" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cf/78/a6b5bef18146174244bce11477c3a51a1bee0d920780aa27ccd5b59352d3/telegramify_markdown-1.4.1.tar.gz", hash = "sha256:ef89d40e5f5c20a8d95e2a9f72522a0426af7000e425b4cce1fa62389678277c", size = 105349, upload-time = "2026-10-20T02:14:53.012Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3a/97/e9a2c14a40fa6a6f57b205ffca9e6caaaabca4c6ef9b16361d3074056fa2/telegramify_markdown-1.4.2.tar.gz", hash = "sha256:02546f785020ac0b897eb0b139f9d42c530f1053b0a34418e973e0eab01fbf5d", size = 106632, upload-time = "2026-10-30T12:06:55.219Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/82/542670d4edabd7c3e2510529cad3c120daf6e7834d651075a859bd832559/telegramify_markdown-1.4.1-py3-none-any.whl", hash = "sha256:beb5bdcd405217123795ae2a1b54a65842bf3cc78c37ba4c9bf0c09023f7b734", size = 69490, upload-time = "2026-10-20T02:14:51.788Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/6a/fdec8e4f5a7cd8640de7c61f3a502a66a7ac76cbf745e609eeebe7eb30db/telegramify_markdown-1.4.2-py3-none-any.whl", hash = "sha256:590001fe4da043a7d3c4907541279e4e389bf9412762ac5d996145ce1fbdda1a", size = 69570, upload-time = "2026-10-30T12:06:54.24Z" },
 ]
 
 [[package]]
