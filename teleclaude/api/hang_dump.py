@@ -44,8 +44,6 @@ INFLIGHT_REQUEST: ContextVar[int | None] = ContextVar("api_inflight_request", de
 # Number of dump files retained in the dump directory.
 KEEP = 20
 
-_UNKNOWN_THREAD = "<unknown>"
-
 _persist_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="hang-dump")
 
 
@@ -156,7 +154,7 @@ def _capture_threads() -> tuple[ThreadStack, ...]:
         thread = known.get(ident)
         stacks.append(
             ThreadStack(
-                name=thread.name if thread is not None else _UNKNOWN_THREAD,
+                name=thread.name if thread is not None else "<unknown>",
                 ident=ident,
                 daemon=thread.daemon if thread is not None else None,
                 frames=_thread_frames(frame),
