@@ -94,10 +94,10 @@ class WorkingCopySql(StrEnum):
     ARTIFACTS_BY_ITEM = "SELECT * FROM todo_artifacts WHERE id = :item_id ORDER BY name"
     VERSIONS_BY_ITEM = "SELECT * FROM todo_artifact_versions WHERE id = :item_id"
     UNPUSHED_VERSION_FILTER = (
-        " AND NOT EXISTS (SELECT 1 FROM github_artifact_entry AS named "
-        "WHERE named.item_id = todo_artifact_versions.id "
-        "AND named.version_id = todo_artifact_versions.version_id "
-        "AND named.digest = todo_artifact_versions.digest)"
+        " AND NOT EXISTS (SELECT 1 FROM github_saved_version AS pushed "
+        "WHERE pushed.item_id = todo_artifact_versions.id "
+        "AND pushed.version_id = todo_artifact_versions.version_id "
+        "AND pushed.digest = todo_artifact_versions.digest)"
         " AND NOT EXISTS (SELECT 1 FROM github_republication_progress AS saved "
         "WHERE saved.item_id = todo_artifact_versions.id "
         "AND saved.version_id = todo_artifact_versions.version_id "
@@ -225,6 +225,7 @@ _CLEAR_ARTIFACT_BOOKKEEPING = (
     "DELETE FROM github_artifact_address WHERE item_id = :item_id",
     "DELETE FROM github_artifact_entry WHERE item_id = :item_id",
     "DELETE FROM github_republication_progress WHERE item_id = :item_id",
+    "DELETE FROM github_saved_version WHERE item_id = :item_id",
     "DELETE FROM github_republication_pending WHERE item_id = :item_id",
 )
 _PROJECT_TABLES = (WorkingCopyTable.COMMIT_REVIEW, WorkingCopyTable.DOCUMENTATION_TRANSFER)

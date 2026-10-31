@@ -20,7 +20,8 @@ from teleclaude.core.todos_db._github_artifacts import (
     ArtifactFact,
     clear_republication_item,
     issue_artifacts_fact,
-    keep_acknowledged_versions,
+    mark_progress_saved,
+    mark_versions_saved,
     queue_artifact_deletion,
     republication_pending,
     republication_progress,
@@ -285,6 +286,7 @@ class GitHubWorkflowPush:
             ledger_comment_id = ledger_comment.database_id
             record_ledger_commits(session, [(transaction_id, ledger_comment.database_id)])
 
+        saved_versions = {snapshot.item_id: _version_identities(snapshot) for snapshot, *_rest in snapshots}
         for item_id, issue_number, issue_id, node_id, record_comment_id, committed_revision in record_ids:
             save_item_bookkeeping(
                 session,
@@ -297,8 +299,9 @@ class GitHubWorkflowPush:
                 base_revision=committed_revision.revision,
             )
             save_committed_artifacts(session, item_id, committed_artifacts(committed_revision))
+            mark_versions_saved(session, item_id, saved_versions.get(item_id, ()))
             if session.info.get(REPUBLICATION_FINALIZING_KEY) == item_id:
-                keep_acknowledged_versions(session, item_id)
+                mark_progress_saved(session, item_id)
                 clear_republication_item(session, item_id)
         if ledger_comment_id is not None:
             for table, row_id in changes.project_records:
@@ -498,7 +501,10 @@ class GitHubWorkflowPush:
     def _records_from_progress(
         self, session: Session, item_id: str, records: dict[str, ArtifactRecord]
     ) -> dict[str, ArtifactRecord]:
-        """Name every version the republication saved: the finalizing record carries entries built from its progress."""
+        """Name the republication's saved versions at their artifact's current address, built from its progress.
+
+        A version saved at an address since replaced is not served, so the record leaves it out; it is still
+        saved, and finalization records it as such."""
         complete = item_snapshot(session, item_id)
         if complete is None:
             raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
@@ -808,6 +814,17 @@ _SYNC_IO: dict[GitHubOperation, Callable[..., Any]] = {
     GitHubOperation.CREATE_ARTIFACT: GitHubWorkflowIO.create_artifact,
     GitHubOperation.UPDATE_ARTIFACT: GitHubWorkflowIO.update_artifact,
 }
+
+
+def _version_identities(snapshot: WorkingCopyItemSnapshot) -> tuple[tuple[int, str], ...]:
+    """The (version id, digest) of every version this push saved: the unpushed versions its snapshot carried."""
+    identities: list[tuple[int, str]] = []
+    for version in snapshot.versions:
+        version_id = _int_or_none(version.get(WorkflowField.VERSION_ID))
+        digest = _string_or_none(version.get(WorkflowField.DIGEST))
+        if version_id is not None and digest is not None:
+            identities.append((version_id, digest))
+    return tuple(identities)
 
 
 def _state_text(state: Mapping[str, object] | None) -> str | None:

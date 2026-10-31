@@ -36,12 +36,13 @@ __all__ = [
     "foreign_pending_items",
     "initialize_artifact_bookkeeping",
     "issue_artifacts_fact",
-    "keep_acknowledged_versions",
     "keep_hydrated_version",
     "local_republication_pending",
     "mark_foreign_pending",
     "mark_pending_item",
+    "mark_progress_saved",
     "mark_republication_requested",
+    "mark_versions_saved",
     "owed_artifact_deletions",
     "queue_artifact_deletion",
     "read_republication_wait",
@@ -77,6 +78,10 @@ _PROGRESS_DDL = (
     "CREATE TABLE IF NOT EXISTS github_republication_progress (item_id TEXT NOT NULL, name TEXT NOT NULL, "
     "version_id INTEGER NOT NULL, digest TEXT NOT NULL, artifact_number INTEGER NOT NULL, "
     "PRIMARY KEY(item_id, name, version_id))"
+)
+_SAVED_DDL = (
+    "CREATE TABLE IF NOT EXISTS github_saved_version (item_id TEXT NOT NULL, version_id INTEGER NOT NULL, "
+    "digest TEXT NOT NULL, PRIMARY KEY(item_id, version_id))"
 )
 _DELETION_DDL = (
     "CREATE TABLE IF NOT EXISTS github_artifact_deletion (issue_number INTEGER NOT NULL, "
@@ -120,14 +125,9 @@ class _Field(StrEnum):
 
 class _Sql(StrEnum):
     DELETE_ADDRESSES = "DELETE FROM github_artifact_address WHERE item_id = :item_id"
-    DELETE_ENTRIES = "DELETE FROM github_artifact_entry WHERE item_id = :item_id AND name = :name"
     ADDRESS = (
         "INSERT INTO github_artifact_address(item_id, name, artifact_number) VALUES (:item_id, :name, :artifact_number) "
         "ON CONFLICT(item_id, name) DO UPDATE SET artifact_number = excluded.artifact_number"
-    )
-    KEEP_ENTRIES = (
-        "DELETE FROM github_artifact_entry WHERE item_id = :item_id AND name NOT IN "
-        "(SELECT name FROM github_artifact_address WHERE item_id = :item_id)"
     )
     ENTRY = (
         "INSERT INTO github_artifact_entry(item_id, name, ordinal, digest, updated_by, created_at, version_id) "
@@ -135,9 +135,7 @@ class _Sql(StrEnum):
         "(SELECT version_id FROM todo_artifact_versions WHERE id = :item_id AND name = :name AND digest = :digest "
         "AND created_at IS :created_at ORDER BY version_id DESC LIMIT 1)) "
         "ON CONFLICT(item_id, name, ordinal) DO UPDATE SET digest = excluded.digest, "
-        "updated_by = excluded.updated_by, created_at = excluded.created_at, "
-        "version_id = COALESCE(excluded.version_id, "
-        "CASE WHEN github_artifact_entry.digest = excluded.digest THEN github_artifact_entry.version_id END)"
+        "updated_by = excluded.updated_by, created_at = excluded.created_at, version_id = excluded.version_id"
     )
     ADDRESS_OF = "SELECT artifact_number FROM github_artifact_address WHERE item_id = :item_id AND name = :name"
     ENTRIES = (
@@ -160,13 +158,25 @@ class _Sql(StrEnum):
     FOREIGN_PENDING = (
         "INSERT OR IGNORE INTO github_republication_pending(item_id, requested, local_content) VALUES (:item_id, 0, 0)"
     )
-    KEEP_ACKNOWLEDGED = (
-        "INSERT OR IGNORE INTO github_artifact_entry(item_id, name, ordinal, digest, updated_by, created_at, version_id) "
-        "SELECT p.item_id, p.name, -p.version_id, p.digest, v.updated_by, v.created_at, p.version_id "
-        "FROM github_republication_progress AS p JOIN todo_artifact_versions AS v "
-        "ON v.version_id = p.version_id AND v.id = p.item_id WHERE p.item_id = :item_id AND NOT EXISTS ("
-        "SELECT 1 FROM github_artifact_entry AS e WHERE e.item_id = p.item_id AND e.version_id = p.version_id)"
+    MARK_SAVED = (
+        "INSERT OR IGNORE INTO github_saved_version(item_id, version_id, digest) "
+        "VALUES (:item_id, :version_id, :digest)"
     )
+    MARK_PROGRESS_SAVED = (
+        "INSERT OR IGNORE INTO github_saved_version(item_id, version_id, digest) "
+        "SELECT item_id, version_id, digest FROM github_republication_progress WHERE item_id = :item_id"
+    )
+    MARK_LINKED_SAVED = (
+        "INSERT OR IGNORE INTO github_saved_version(item_id, version_id, digest) "
+        "SELECT item_id, version_id, digest FROM github_artifact_entry "
+        "WHERE item_id = :item_id AND version_id IS NOT NULL"
+    )
+    FORGET_SAVED_MISSING = (
+        "DELETE FROM github_saved_version WHERE item_id = :item_id AND NOT EXISTS ("
+        "SELECT 1 FROM todo_artifact_versions AS v WHERE v.id = github_saved_version.item_id "
+        "AND v.version_id = github_saved_version.version_id AND v.digest = github_saved_version.digest)"
+    )
+    DELETE_ENTRIES_OF_ITEM = "DELETE FROM github_artifact_entry WHERE item_id = :item_id"
     ENTRY_LINKED = (
         "SELECT version_id FROM github_artifact_entry WHERE item_id = :item_id AND name = :name AND ordinal = :ordinal "
         "AND digest = :digest AND created_at IS :created_at"
@@ -260,19 +270,28 @@ class ProgressRow:
 def initialize_artifact_bookkeeping(connection: sqlite3.Connection) -> None:
     """Install artifact bookkeeping; a copy that held items before it existed owes each of them republication."""
     seed = connection.execute(_PENDING_PRESENT_SQL).fetchone() is None
-    for statement in (_ADDRESS_DDL, _ENTRY_DDL, _PENDING_DDL, _PROGRESS_DDL, _DELETION_DDL, _RETIRED_CONTENT_TABLE_SQL):
+    for statement in (
+        _ADDRESS_DDL,
+        _ENTRY_DDL,
+        _PENDING_DDL,
+        _PROGRESS_DDL,
+        _SAVED_DDL,
+        _DELETION_DDL,
+        _RETIRED_CONTENT_TABLE_SQL,
+    ):
         connection.execute(statement)
     if seed:
         connection.execute(_SEED_PENDING_SQL)
 
 
 def save_committed_artifacts(session: Session, item_id: str, artifacts: Iterable[CommittedArtifact]) -> None:
-    """Mirror a committed record: addresses, and every version it names linked to the local row holding its content.
+    """Mirror a committed record: its addresses, and the versions it names linked to the rows holding their content.
 
-    Entries the record has dropped (GitHub serves only the newest versions) stay while their artifact lives, so a
-    version the copy still holds is never taken for unsaved. An artifact the record no longer names loses its rows.
+    The mirror is exactly the record's served window. A version the copy holds that the record names is saved,
+    whoever restored or hydrated it.
     """
     session.execute(text(_Sql.DELETE_ADDRESSES), {_Field.ITEM_ID: item_id})
+    session.execute(text(_Sql.DELETE_ENTRIES_OF_ITEM), {_Field.ITEM_ID: item_id})
     for artifact in artifacts:
         session.execute(
             text(_Sql.ADDRESS),
@@ -290,7 +309,24 @@ def save_committed_artifacts(session: Session, item_id: str, artifacts: Iterable
                     _Field.CREATED_AT: entry.created_at,
                 },
             )
-    session.execute(text(_Sql.KEEP_ENTRIES), {_Field.ITEM_ID: item_id})
+    session.execute(text(_Sql.MARK_LINKED_SAVED), {_Field.ITEM_ID: item_id})
+
+
+def mark_versions_saved(session: Session, item_id: str, versions: Iterable[tuple[int, str]]) -> None:
+    """Record that a commit saved these local versions, as (version id, digest), whatever its record names.
+
+    This is the one push-state a version has: set in the transaction that commits the save, it never depends on
+    the served window the record keeps.
+    """
+    for version_id, digest in versions:
+        session.execute(
+            text(_Sql.MARK_SAVED), {_Field.ITEM_ID: item_id, _Field.VERSION_ID: version_id, _Field.DIGEST: digest}
+        )
+
+
+def mark_progress_saved(session: Session, item_id: str) -> None:
+    """Record every version a republication saved as saved: its finalizing commit carries them all."""
+    session.execute(text(_Sql.MARK_PROGRESS_SAVED), {_Field.ITEM_ID: item_id})
 
 
 def artifact_address(session: Session, item_id: str, name: str) -> int | None:
@@ -300,7 +336,7 @@ def artifact_address(session: Session, item_id: str, name: str) -> int | None:
 
 
 def committed_entries(session: Session, item_id: str) -> tuple[EntryRow, ...]:
-    """Every version of the item a committed record names, grouped by artifact and oldest first."""
+    """Every version the item's committed record names, grouped by artifact and oldest first."""
     rows = session.execute(text(_Sql.ENTRIES), {_Field.ITEM_ID: item_id}).mappings().all()
     return tuple(_entry_row(dict(row)) for row in rows)
 
@@ -318,6 +354,7 @@ def version_entry(session: Session, item_id: str, name: str, digest: str) -> Ent
 def unlink_missing_versions(session: Session, item_id: str) -> None:
     """Forget the local row of a named version the workflow deleted; the record still names the version."""
     session.execute(text(_Sql.UNLINK_MISSING), {_Field.ITEM_ID: item_id})
+    session.execute(text(_Sql.FORGET_SAVED_MISSING), {_Field.ITEM_ID: item_id})
 
 
 def republication_pending(session: Session, item_id: str) -> bool:
@@ -362,16 +399,6 @@ def republication_order(session: Session) -> tuple[str, ...]:
 def mark_republication_requested(session: Session, item_id: str) -> None:
     """Record that a write to the item was refused, moving it to the front of republication."""
     session.execute(text(_Sql.REQUESTED), {_Field.ITEM_ID: item_id})
-
-
-def keep_acknowledged_versions(session: Session, item_id: str) -> None:
-    """Keep the link of every version a republication saved that the committed record does not name.
-
-    A version saved at an address that was later replaced is no longer served, so the record leaves it out; the
-    copy still holds it as saved. Its link carries a negative ordinal, which no record entry can have, and keeps
-    a later write from saving it again as new.
-    """
-    session.execute(text(_Sql.KEEP_ACKNOWLEDGED), {_Field.ITEM_ID: item_id})
 
 
 def clear_republication_item(session: Session, item_id: str) -> None:
@@ -506,6 +533,7 @@ def keep_hydrated_version(session: Session, item_id: str, entry: EntryRow, conte
             _Field.ORDINAL: entry.ordinal,
         },
     )
+    mark_versions_saved(session, item_id, [(version_id, entry.digest)])
 
 
 def mark_pending_item(session: Session, item_id: str) -> None:
