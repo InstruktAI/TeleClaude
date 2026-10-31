@@ -9,13 +9,11 @@ and routes write requests through AdapterClient.
 from __future__ import annotations
 
 import asyncio
-import faulthandler
 import os
-import tempfile
 import time
 import traceback as _tb
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import nullcontext
 from enum import StrEnum
 from pathlib import Path
@@ -55,6 +53,15 @@ from teleclaude.api.bugs_routes import router as bugs_router
 from teleclaude.api.commit_review_stamp_routes import router as commit_review_stamp_router
 from teleclaude.api.config_routes import router as config_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
+from teleclaude.api.hang_dump import (
+    INFLIGHT_REQUEST,
+    HangDumpResult,
+    HangSnapshot,
+    OverdueRequest,
+    capture_hang_state,
+    hang_dump_dir,
+    write_hang_dump,
+)
 from teleclaude.api.health_degradations import degradations_within_reach
 from teleclaude.api.ingress_listener import WebhookIngressListener
 from teleclaude.api.operations_routes import router as operations_router
@@ -152,6 +159,44 @@ _METRICS_SAMPLE_FAILED_LOG = "API server metrics sample failed"
 _METRICS_TASK = "api-metrics"
 _WATCH_TASK = "api-watch-loop"
 _MCP_REAPER_TASK = "api-mcp-reaper"
+
+
+async def _write_outcome(directory: Path, snapshot: HangSnapshot) -> HangDumpResult | OSError:
+    """Persist a snapshot and return the filesystem failure instead of raising it."""
+    try:
+        return await write_hang_dump(directory, snapshot)
+    except OSError as exc:
+        return exc
+
+
+def _log_dump_outcome(
+    reason: str,
+    overdue: int,
+    directory: Path,
+    started: float,
+    captured: float,
+    outcome: HangDumpResult | OSError,
+) -> None:
+    """Log where a published dump is, or why none could be written."""
+    if isinstance(outcome, OSError):
+        logger.error(
+            "API watch dump failed",
+            error_type=type(outcome).__name__,
+            errno=outcome.errno,
+            error=str(outcome),
+            path=str(outcome.filename or directory),
+        )
+        return
+    logger.error(
+        "API HANG_DUMP",
+        reason=reason,
+        path=str(outcome.path),
+        overdue=overdue,
+        threads=outcome.threads,
+        tasks=outcome.tasks,
+        capture_ms=round((captured - started) * 1000.0, 1),
+        dump_ms=round((time.monotonic() - started) * 1000.0, 1),
+    )
 
 
 class RequestSurface(StrEnum):
@@ -254,7 +299,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._metrics_task: SupervisedTask | None = None
         self._watch_task: SupervisedTask | None = None
         self._mcp_reaper_task: SupervisedTask | None = None
-        self._inflight_requests: dict[int, tuple[str, float]] = {}
+        self._inflight_requests: dict[int, tuple[str, str, float]] = {}
         self._request_seq = 0
         self._last_watch_tick = 0.0
         self._last_dump_at = 0.0
@@ -506,7 +551,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 return shutdown_refusal_response(refusal)
             self._request_seq += 1
             req_id = self._request_seq
-            self._inflight_requests[req_id] = (request.url.path, time.monotonic())
+            self._inflight_requests[req_id] = (request.method, request.url.path, time.monotonic())
             if request.url.path == "/reminders" or request.url.path.startswith("/reminders/"):
                 reminder_request_id = str(uuid.uuid4())
                 request.state.reminder_request_id = reminder_request_id
@@ -524,11 +569,14 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             # Inbound external requests authenticate by signature alone and carry no caller identity.
             carries_caller = not request.url.path.startswith(INBOUND_PATH_PREFIX)
             caller_token = set_caller_session_id(carried_caller_session_id(request) if carries_caller else None)
+            # The downstream handler runs in a child task that copies this context, which links it to the request.
+            inflight_token = INFLIGHT_REQUEST.set(req_id)
             try:
                 with continuation.bound() if continuation is not None else nullcontext():
                     return await call_next(request)
             finally:
                 self._inflight_requests.pop(req_id, None)
+                INFLIGHT_REQUEST.reset(inflight_token)
                 reset_caller_session_id(caller_token)
 
         @self.app.get("/health", response_model_exclude_none=True)
@@ -680,20 +728,40 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         await self._watch_task.cancel()
         self._watch_task = None
 
-    def _dump_stacks(self, reason: str) -> None:
-        now = time.monotonic()
-        if (now - self._last_dump_at) < API_WATCH_DUMP_COOLDOWN_S:
-            return
-        self._last_dump_at = now
+    def _overdue_requests(self) -> list[OverdueRequest]:
+        """Return every request in flight past the threshold, oldest first."""
+        now_mono = time.monotonic()
+        overdue = [
+            OverdueRequest(request_id=req_id, method=method, path=path, age_s=now_mono - started_at)
+            for req_id, (method, path, started_at) in self._inflight_requests.items()
+            if now_mono - started_at >= API_WATCH_INFLIGHT_THRESHOLD_S
+        ]
+        overdue.sort(key=lambda request: request.age_s, reverse=True)
+        return overdue
+
+    async def _dump_stacks(self, reason: str, overdue: Sequence[OverdueRequest]) -> bool:
+        """Write a hang dump file and log where it is; return whether a dump was attempted.
+
+        Runs on the event-loop thread: the snapshot of threads and tasks is read
+        there, and only the file work is awaited on the dump worker, so requests
+        keep being served while the dump persists.
+        """
+        started = time.monotonic()
+        if (started - self._last_dump_at) < API_WATCH_DUMP_COOLDOWN_S:
+            return False
+        self._last_dump_at = started
+        directory = hang_dump_dir()
+        snapshot = capture_hang_state(reason, overdue)
+        captured = time.monotonic()
+        # Shielded: cancelling the watch (shutdown) must not leave a dump that is published without its record.
+        persist = asyncio.ensure_future(_write_outcome(directory, snapshot))
         try:
-            with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as buf:
-                faulthandler.dump_traceback(file=buf, all_threads=True)
-                buf.seek(0)
-                dump = buf.read()
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.error("API watch dump failed: %s", exc)
-            return
-        logger.error("API HANG_DUMP reason=%s\n%s", reason, dump)
+            outcome = await asyncio.shield(persist)
+        except asyncio.CancelledError:
+            _log_dump_outcome(reason, len(overdue), directory, started, captured, await persist)
+            raise
+        _log_dump_outcome(reason, len(overdue), directory, started, captured, outcome)
+        return True
 
     async def _watch_loop(self) -> None:
         """Detect API stalls (loop lag or long in-flight requests)."""
@@ -703,32 +771,23 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             now = loop.time()
             lag_ms = max(0.0, (now - self._last_watch_tick - API_WATCH_INTERVAL_S) * 1000.0)
             self._last_watch_tick = now
+            overdue = self._overdue_requests()
             if lag_ms >= API_WATCH_LAG_THRESHOLD_MS:
                 logger.warning("API watch: loop lag detected (%.1fms)", lag_ms)
-                self._dump_stacks(f"loop_lag_{lag_ms:.1f}ms")
+                if await self._dump_stacks(f"loop_lag_{lag_ms:.1f}ms", overdue):
+                    # The dump's own duration is not event-loop lag.
+                    self._last_watch_tick = loop.time()
 
-            if not self._inflight_requests:
+            if not overdue:
                 continue
             try:
-                inflight = []
-                now_mono = time.monotonic()
-                for path, started_at in self._inflight_requests.values():
-                    age = now_mono - started_at
-                    if age >= API_WATCH_INFLIGHT_THRESHOLD_S:
-                        inflight.append((path, age))
-                if inflight:
-
-                    def _sort_key(item: tuple[str, float]) -> float:
-                        return item[1]
-
-                    inflight.sort(key=_sort_key, reverse=True)
-                    top = ", ".join(f"{path}:{age:.2f}s" for path, age in inflight[:5])
-                    logger.warning("API watch: slow requests detected (%s)", top)
+                top = ", ".join(f"{request.path}:{request.age_s:.2f}s" for request in overdue[:5])
+                logger.warning("API watch: slow requests detected (%s)", top)
             except Exception:
                 logger.exception(_WATCH_INFLIGHT_REPORT_FAILED_LOG)
                 continue
-            if inflight:
-                self._dump_stacks("slow_requests")
+            if await self._dump_stacks("slow_requests", overdue):
+                self._last_watch_tick = loop.time()
 
     async def _start_server(self) -> None:
         """Start the Unix API server."""
