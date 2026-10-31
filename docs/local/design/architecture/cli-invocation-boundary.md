@@ -31,8 +31,11 @@ design owns only the path that connects them.
 
 **Outputs**
 
-- The pre-dispatch gate refuses an unidentified caller or a role outside a band
-  it can decide before dispatch.
+- The pre-dispatch gate refuses a caller whose session identity names no
+  admissible session, or a role outside a band it can decide before dispatch. A
+  local caller with no identity is the operator and is cleared as the operator
+  (`local/projects/teleclaude/spec/identity-and-auth` §2).
+
 - A handler whose target is already known runs with full command clearance.
 - A handler that resolves a trusted-directory name runs with caller and agent
   admission, then either completes person-band clearance on the selected

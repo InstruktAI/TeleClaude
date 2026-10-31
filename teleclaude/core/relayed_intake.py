@@ -23,6 +23,7 @@ from teleclaude.caller_identity import (
     SystemCliCaller,
     ThisComputer,
     caller_from_principal,
+    is_operator_principal,
 )
 from teleclaude.cli.telec.auth import is_command_allowed
 from teleclaude.config.machine import config
@@ -204,6 +205,9 @@ async def dispatch_relayed_command(
     session, target = await _command_target(command, act)
     role = _authorize(caller, act, target, resolver)
     _apply_resolved_person(command, caller, session, role)
+    if isinstance(command, CreateSessionCommand):
+        # Only the relayed principal decides the operator here; the flag the sender serialized is never trusted.
+        command.operator = is_operator_principal(principal)
     return await execute_command_envelope(command, source_computer=source_computer)
 
 

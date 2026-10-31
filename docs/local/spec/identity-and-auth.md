@@ -95,6 +95,14 @@ ambient state deep inside the platform attributes work to whoever last
 authenticated on the host rather than to whoever it belongs to, and in a
 multi-person installation that is one identity standing in for all of them.
 
+A caller on this computer for which nothing above resolves an identity — no
+session, no live terminal login, no identity carried into the TUI — is the
+computer's operator: the operating-system user the installation runs as. It
+resolves to the system principal `system:operator`. That principal names no
+person, so the operator's work is attributed to no human and no person-bound
+service acts for it (§8). A session identity document that names no admissible
+session is not the operator; that caller stays without identity (§6).
+
 ### 3) System-principal sessions
 
 A session with no human origin carries the system principal `system:daemon`, told
@@ -102,6 +110,13 @@ apart from other such sessions by its session id. It is identified exactly like 
 human-rooted session: by the session record its identity document names, resolved
 in the client (§6), and the daemon consumes the identity the request carries (§2).
 No token is issued, stored or presented for any session.
+
+A session the platform keeps for an agent it did not launch carries
+`system:operator` and no person role when no terminal login names a person for
+it. It is cleared as the operator, it is a session the system started when it
+ends, and no person's conversation memory is drawn from it. How the operator's
+commits are attributed is owned by
+`local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`.
 
 **`telec auth whoami`:**
 Inside a session and at a terminal alike, `whoami` resolves its caller in the CLI process
@@ -122,10 +137,11 @@ without listing people; it is absent for any other caller.
 
 **Principal types:**
 
-| Format          | When set                                                          | Credential                                                         |
-| --------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `human:<email>` | Session created with a human identity (human_email set)           | None                                                               |
-| `system:daemon` | The daemon process itself, and every session with no human origin | Process-local daemon credential for the daemon; none for a session |
+| Format            | When set                                                                                                 | Credential                                                         |
+| ----------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `human:<email>`   | Session created with a human identity (human_email set)                                                  | None                                                               |
+| `system:daemon`   | The daemon process itself, and every session with no human origin                                        | Process-local daemon credential for the daemon; none for a session |
+| `system:operator` | A local caller with no other identity (§2), and a session kept for an agent with no person resolved (§3) | None                                                               |
 
 ### 4) Terminal + TUI authentication
 
@@ -144,23 +160,14 @@ without listing people; it is absent for any other caller.
 
 - If `people` contains more than one registered person:
   - a terminal that carries no login document of its own presents no terminal-email
-    signal, so a person opening a fresh terminal authenticates on it before any
-    identity-bearing command succeeds,
-  - TUI launch requires prior `telec auth login`,
-  - a client refuses a caller that has neither a session identity nor a terminal
-    login naming a registered person, before it sends any request, except for a
-    command declared for the machine's own account.
+    signal, so its caller is the operator (§2) until a person logs in on it,
+  - a TUI launched without a login carries the operator.
 - If `people` has zero/one person, the legacy fallback role is still allowed for
   tmux callers without session identity, and with exactly one person that person
   answers a terminal that has no document of its own.
 - Whichever mode is in force, a login already bound to a live terminal keeps
   answering for that terminal. One person authenticating never unbinds another
   person's open terminals; only the terminal's own disappearance does.
-- Whichever mode is in force, a caller outside any session needs no login for a
-  command declared for the machine's own account — the installation verbs
-  (`local/projects/teleclaude/design/cli-authorization-matrix`), whose caller
-  there is the operating-system account the installation belongs to
-  (`general/principle/trust-and-guardrails`).
 
 ### 6) Authorization
 
@@ -195,10 +202,11 @@ the client sends any request:
   The TUI follows the same boundary for each action
   (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
 
-- a caller that resolves to no person and no system principal is refused before
-  any request is sent, unless it is outside any session and the command is
-  declared for the machine's own account (§5); a role outside the band is refused
-  with the not-permitted failure naming the role and the verb,
+- a local caller that resolves to no person and no system principal is the
+  operator (§2) and is cleared as `system:operator` is cleared, with every band
+  admitting it; a caller whose session identity document names no admissible
+  session is refused before any request is sent; a role outside the band is
+  refused with the not-permitted failure naming the role and the verb,
 - the client carries the identity it resolved on every request (§2); the daemon
   verifies no caller and applies no verb band of its own to a request from its
   own clients; a daemon deciding an act another computer relays to it resolves
@@ -243,3 +251,5 @@ The protected edge translates `CallerIdentity` into a typed service invocation c
 ## See Also
 
 - docs/local/adr/0101-clients-authorize-and-the-daemon-trusts-carried-identity.md — why clients authorize and the daemon trusts the identity a request carries.
+
+- docs/local/adr/0152-an-unidentified-local-caller-is-the-computers-operator.md — why a local caller with no identity acts as the computer's operator.

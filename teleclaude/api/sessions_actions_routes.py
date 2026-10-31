@@ -59,6 +59,7 @@ from teleclaude.api_models import (
     SessionMessagesDTO,
 )
 from teleclaude.api_session_actions_models import AgentRestartRequest, AgentRestartResponseDTO, EscalateRequest
+from teleclaude.caller_identity import is_operator_principal
 from teleclaude.config.machine import config
 from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.registered_homes import project_folder
@@ -226,6 +227,7 @@ async def _resolve_revive_session_id(
         initiator_session_id=identity.session_id or None,
         initiator_computer=config.computer.name if identity.session_id else None,
         origin_metadata=TerminalOriginMetadata(email=identity.email) if identity.email else None,
+        operator=is_operator_principal(identity.principal),
         launch_intent=SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT,
             agent=agent,

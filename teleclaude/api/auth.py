@@ -21,6 +21,7 @@ from teleclaude.caller_identity import (
     SystemCliCaller,
     caller_from_principal,
     human_principal_for_email,
+    is_roleless_platform_caller,
 )
 from teleclaude.cli.telec.auth import is_command_allowed_for
 from teleclaude.config.machine import config
@@ -180,6 +181,8 @@ def require_clearance(command_path: str) -> Callable[..., CallerIdentity]:
     """Return a route dependency enforcing the CLI verb's declared caller clearance."""
 
     def _require(identity: CallerIdentity = Depends(carried_caller)) -> CallerIdentity:
+        if is_roleless_platform_caller(identity.principal, identity.role):
+            return identity
         role = resolve_session_role(identity.role, identity.session_id)
         if not is_command_allowed_for(command_path, role, identity.human_role):
             raise HTTPException(status_code=403, detail=_CLEARANCE_REFUSAL.format(command_path=command_path))
@@ -197,6 +200,8 @@ def require_clearance_at_caller_person(command_path: str) -> Callable[..., Calle
     """
 
     def _require(identity: CallerIdentity = Depends(carried_caller)) -> CallerIdentity:
+        if is_roleless_platform_caller(identity.principal, identity.role):
+            return identity
         role = resolve_session_role(identity.role, identity.session_id)
         if not is_command_allowed_for(command_path, role, caller_role_at_own_person_scope(identity)):
             raise HTTPException(status_code=403, detail=_CLEARANCE_REFUSAL.format(command_path=command_path))

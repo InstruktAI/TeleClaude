@@ -17,6 +17,7 @@ from teleclaude.constants import (
     HUMAN_ROLE_MEMBER,
     HUMAN_ROLES,
     SYSTEM_DAEMON_PRINCIPAL,
+    SYSTEM_OPERATOR_PRINCIPAL,
 )
 from teleclaude.core.roles import Role, RoleClass, resolve_role
 from teleclaude.services.project_catalog.ownership import ProjectOwnershipIndex, load_project_ownership_index
@@ -596,6 +597,31 @@ def caller_from_principal(principal: str | None) -> CliCaller:
     if principal.startswith(SYSTEM_PRINCIPAL_PREFIX) and principal.removeprefix(SYSTEM_PRINCIPAL_PREFIX):
         return SystemCliCaller()
     return NoIdentityCliCaller()
+
+
+def is_roleless_platform_caller(principal: str | None, role: str | None) -> bool:
+    """Whether a caller is the platform's own daemon or the computer's operator, acting with no system role.
+
+    Such a caller is admitted to every declared command; a system role keeps that role's restrictions.
+    """
+    return role is None and principal in (SYSTEM_DAEMON_PRINCIPAL, SYSTEM_OPERATOR_PRINCIPAL)
+
+
+def is_operator_principal(principal: str | None) -> bool:
+    """Whether a resolved principal is the computer's operator."""
+    return principal == SYSTEM_OPERATOR_PRINCIPAL
+
+
+def local_caller_principal(email: str | None) -> str | None:
+    """The principal a local caller outside any session resolves to from its terminal evidence.
+
+    A login naming a registered person resolves to that person. No login at all is
+    the computer's operator. A login naming no registered person resolves to nothing.
+    """
+    if not email:
+        return SYSTEM_OPERATOR_PRINCIPAL
+    person = person_entry_for_email(email)
+    return human_principal_for_email(person.email) if person is not None else None
 
 
 def _normalize_human_role(role: str | None) -> str:

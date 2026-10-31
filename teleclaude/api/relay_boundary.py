@@ -45,7 +45,8 @@ from teleclaude.core.command_dispatch import (
 from teleclaude.core.inbound.fleet import known_computer_names
 from teleclaude.core.operation_caller_identity import get_relayed_caller
 from teleclaude.core.relay_carrier import carry_request
-from teleclaude.types.commands import CommandType, RelayedResponse
+from teleclaude.types.commands import CommandType
+from teleclaude.types.relayed_response import RelayedResponse
 
 if TYPE_CHECKING:
     pass

@@ -89,6 +89,9 @@ For this invocation:
   these reads can carry a peer's relayed text, so attribute words to the human
   only where the conversation establishes it. A commit without a `Session:`
   trailer, such as a human's terminal commit, keeps the intent basis above.
+  A transcript that cannot be read is handled as
+  `sdlc/procedure/lifecycle/review` Step 0 states; its absence alone is not a
+  material authority gap.
 - Check material claims in the authored message against the diff and resulting
   behavior. Classify any contradiction under the governing contract; message
   consistency does not establish intent authority.

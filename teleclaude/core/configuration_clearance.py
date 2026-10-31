@@ -25,7 +25,7 @@ from teleclaude.caller_identity import (
 from teleclaude.cli.session_auth import ResolvedCliIdentity
 from teleclaude.config.loader import company_memberships
 from teleclaude.config_subjects import ConfigSubjectKind
-from teleclaude.constants import HUMAN_ROLE_MEMBER
+from teleclaude.constants import HUMAN_ROLE_MEMBER, SYSTEM_OPERATOR_PRINCIPAL
 
 logger = get_logger(__name__)
 
@@ -126,16 +126,21 @@ class ClearanceDecision:
 
 def standing_for(identity: ResolvedCliIdentity) -> ConfigurationStanding:
     """Resolve one caller's target standing from the gate's carried identity."""
-    return standing_for_caller(identity.caller)
+    return standing_for_caller(identity.caller, identity.principal)
 
 
-def standing_for_caller(caller: CliCaller) -> ConfigurationStanding:
+def standing_for_caller(caller: CliCaller, principal: str | None) -> ConfigurationStanding:
     """Resolve a caller's target standing, for any entry that has resolved its caller.
 
-    Uses the exact-one identity lookup: an email mapping to zero or several
-    registered people carries no person standing, even though the ordinary CLI
-    identity retains its caller identity for other commands.
+    The computer's operator holds platform-administrator standing while naming
+    no person. Uses the exact-one identity lookup: an email mapping to zero or
+    several registered people carries no person standing, even though the
+    ordinary CLI identity retains its caller identity for other commands.
     """
+    if caller.kind is CliCallerKind.SYSTEM and principal == SYSTEM_OPERATOR_PRINCIPAL:
+        return ConfigurationStanding(
+            person_slug=None, platform_role=_ADMIN_ROLE, principal_kind=caller.kind, role_resolver=RoleResolver()
+        )
     if caller.kind is not CliCallerKind.PERSON:
         return ConfigurationStanding(
             person_slug=None, platform_role=None, principal_kind=caller.kind, role_resolver=RoleResolver()
@@ -203,7 +208,7 @@ def _decide_company(standing: ConfigurationStanding, target: ConfigurationTarget
 
 def _effective_role(standing: ConfigurationStanding, target: Company | Project) -> str:
     if standing.person_slug is None:
-        return "customer"
+        return _ADMIN_ROLE if is_administrator(standing) else "customer"
     caller = PersonCliCaller(person_slug=standing.person_slug, human_role=standing.platform_role)
     return standing.role_resolver.role_for(caller, target)
 

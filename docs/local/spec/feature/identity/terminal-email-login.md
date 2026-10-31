@@ -12,7 +12,7 @@ visibility: 'public'
 
 ## What it is
 
-The v1 surface that lets a human authenticate to TeleClaude from an interactive terminal — outside of any agent session — by binding an email address to the controlling TTY. `telec auth login <email>` writes a small structured document scoped to the current TTY, and nothing else: there is no machine-global login record. Subsequent `telec` invocations from the same TTY — or from a process with no terminal of its own whose nearest terminal-bearing ancestor runs on that TTY — read the document, and the client resolves the email against the configured `people` list to derive the caller's Principal and role; the resolved person is the identity the client clears and carries on its requests (`local/projects/teleclaude/spec/identity-and-auth` §6). While exactly one person is registered, a terminal with no document of its own resolves to that person. A process inside a session — one whose session identity document is present — reads no terminal login at all: a session carries its own identity, and the terminal login serves only callers arriving from outside. Logout removes the per-TTY document. A successful login also prunes records for terminal devices that have disappeared while leaving live terminals' bindings untouched, including other people's bindings. This is the v1 binding between a real person at a real terminal and the identity context's authorization model. The per-TTY login document is replaced atomically and is intended to remain private to its owner.
+The v1 surface that lets a human authenticate to TeleClaude from an interactive terminal — outside of any agent session — by binding an email address to the controlling TTY. `telec auth login <email>` writes a small structured document scoped to the current TTY, and nothing else: there is no machine-global login record. Subsequent `telec` invocations from the same TTY — or from a process with no terminal of its own whose nearest terminal-bearing ancestor runs on that TTY — read the document, and the client resolves the email against the configured `people` list to derive the caller's Principal and role; the resolved person is the identity the client clears and carries on its requests (`local/projects/teleclaude/spec/identity-and-auth` §6). While exactly one person is registered, a terminal with no document of its own resolves to that person. A process inside a session — one whose session identity document is present — reads no terminal login at all: a session carries its own identity, and the terminal login serves only callers arriving from outside. Logout removes the per-TTY document. A successful login also prunes records for terminal devices that have disappeared while leaving live terminals' bindings untouched, including other people's bindings. A terminal that presents no email binds no person; its caller is the computer's operator, whose admission belongs to `local/projects/teleclaude/spec/feature/identity/command-clearance` (`local/projects/teleclaude/spec/identity-and-auth` §2), not to this binding. This is the v1 binding between a real person at a real terminal and the identity context's authorization model. The per-TTY login document is replaced atomically and is intended to remain private to its owner.
 
 ## Canonical fields
 
@@ -62,14 +62,14 @@ Scenario: No registered person supplies no terminal identity
   Then no person identity is assigned to the terminal
 ```
 
-#### UC-TEL6: A fresh terminal asks which registered person is using it
+#### UC-TEL6: A fresh terminal selects no registered person
 
 ```gherkin
-Scenario: Choose an identity before protected work
+Scenario: A fresh multi-user terminal works as no person until a login selects one
   Given more than one person is registered and the terminal has no saved login
-  When the operator starts a protected TeleClaude command there
+  When the operator starts a TeleClaude command there
   Then no person identity is selected
-  And the operator is told to log in before continuing
+  And the command is decided for a caller that names no person
 ```
 
 #### UC-TEL7: A process with no terminal presents no human identity
@@ -90,7 +90,7 @@ Scenario: Sign out one terminal
 
 - Consumes `config.people` (transitively, via the role lookup) to display the matched role at login time. Caller resolution from the login happens in the client that serves the caller — see `local/projects/teleclaude/spec/identity-and-auth` §6.
 - Writes operator-local filesystem state under the session-auth directory. No identity-context state is touched by login itself.
-- Coordinates with the TUI launcher: a successful login is the precondition for `feature/identity/tui-multi-user-login-gate` when more than one person is configured.
+- Coordinates with the TUI launcher (`feature/identity/tui-multi-user-login-gate`): the person this login names is the identity a launched TUI carries; a TUI launched without one carries no person.
 - The TUI launcher carries the identity it resolved in the outer terminal into the `tc_tui` tmux session alongside the TUI runtime marker, and the reader honours that carried identity only where the marker is present. The marker reaches that session and no other: it is absent from the environment filters that build agent sessions.
 - No v1 domain event is emitted by login. In v2 the equivalent action remains a local terminal binding and does not produce an identity event; only `identity.principal.created` is emitted (when a new person is added through config, not at login time).
 
@@ -100,7 +100,7 @@ Scenario: Sign out one terminal
 - A process with no terminal of its own borrows the terminal of its nearest terminal-bearing ancestor. An agent CLI started from a terminal runs its tool shells detached from that terminal, yet it acts for the person who started it, so it inherits that terminal's login and loses it when the terminal closes. The daemon itself is rooted in the service manager and has no terminal-bearing ancestor. A session the daemon spawns runs in a tmux pane, which is a terminal, but no process inside a session reads a terminal login: the session carries its identity, so the pane's terminal never answers for it (UC-TEL8). A process that the daemon's own launcher started from a terminal in the foreground would inherit that operator's login; that is the operator at their own keyboard.
 - A terminal's login survives another person logging in, because release is keyed on the device rather than on who logged in last. It does not survive the terminal closing: the device node goes with it, and a later terminal that reuses the same name carries a different allocation token and is treated as unauthenticated.
 - The terminal-device allocation token is the recycling discriminator, and it is platform-specific because each platform keeps a different attribute stable for exactly one allocation. On macOS it is the device node's inode: devfs issues a fresh inode each time a pty is allocated, while the node's ctime moves on every write to the terminal and so cannot identify an allocation. On Linux it is the device node's ctime: devpts derives the inode from the pty index, so a reused terminal keeps it, while terminal I/O leaves ctime untouched. On Linux, anything that touches the device node's metadata — `mesg y`, for instance — moves ctime; the cost is one re-login on a terminal that is still open. The alternative discriminators require holding the device open, which the release sweep cannot do for terminals it does not own.
-- A non-interactive remote invocation (`ssh <host> '<command>'`) has no terminal and therefore no identity. It is not a supported way to run an identity-bearing command.
+- A non-interactive remote invocation (`ssh <host> '<command>'`) has no terminal and therefore presents no person identity. Whether it may run a command is decided for the caller it resolves to (`local/projects/teleclaude/spec/identity-and-auth` §2), never by this binding.
 
 - A document that records no device allocation token cannot satisfy the liveness condition and is treated as no document at all. Recording the device's present allocation token instead would bless a terminal that may already have been recycled, so the document is rejected rather than migrated, and every terminal authenticated before that condition existed authenticates once more.
 - Login validation is shallow — empty input and missing `@` are rejected but no RFC-level email validation is performed. A typo'd address is accepted at write time and only surfaces as an unresolved principal when the client tries to match it against `people`.

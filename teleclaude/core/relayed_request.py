@@ -50,7 +50,8 @@ from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core.db import db
 from teleclaude.core.models import JsonDict
 from teleclaude.core.operation_caller_identity import RelayedCaller, reset_relayed_caller, set_relayed_caller
-from teleclaude.types.commands import RelayedResponse, RelayRequestCommand
+from teleclaude.types.commands import RelayRequestCommand
+from teleclaude.types.relayed_response import RelayedResponse
 
 logger = get_logger(__name__)
 

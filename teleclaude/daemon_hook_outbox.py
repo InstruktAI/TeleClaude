@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from instrukt_ai_logging import get_logger
 from pydantic import JsonValue
 
+from teleclaude.caller_identity import is_operator_principal, local_caller_principal
 from teleclaude.config.machine import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HeadlessBootstrapField
 from teleclaude.core import polling_coordinator
@@ -394,6 +395,14 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         identity = (
             get_identity_resolver().resolve(InputOrigin.TERMINAL.value, origin_metadata) if origin_metadata else None
         )
+        operator = is_operator_principal(local_caller_principal(caller_email))
+        if operator:
+            logger.info(
+                "headless_session_bootstrapped_under_operator",
+                session_id=session_id,
+                native_session_id=native_session_id or "",
+                project_path=project_path or "",
+            )
         cmd = CreateSessionCommand(
             session_id=session_id,
             headless=True,
@@ -403,7 +412,8 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             subdir=subdir,
             origin=InputOrigin.TERMINAL.value,
             origin_metadata=origin_metadata,
-            human_role=None if identity and identity.person_role else HUMAN_ROLE_CUSTOMER,
+            human_role=None if operator or (identity and identity.person_role) else HUMAN_ROLE_CUSTOMER,
+            operator=operator,
             launch_intent=SessionLaunchIntent(
                 kind=SessionLaunchKind.AGENT,
                 agent=agent_str,

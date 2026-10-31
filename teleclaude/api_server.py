@@ -565,7 +565,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 email=email,
                 session_id=identity.session_id or None,
                 config_subject=session.config_subject if session is not None else None,
-                person_slug=standing_for_caller(caller).person_slug,
+                person_slug=standing_for_caller(caller, identity.principal).person_slug,
             )
 
         @self.app.websocket("/ws")

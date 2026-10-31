@@ -28,6 +28,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.session_auth import resolve_cli_identity
 from teleclaude.commit_identity import CommitIdentityUnresolvable, resolve_commit_identity_from_caller
+from teleclaude.constants import SYSTEM_OPERATOR_PRINCIPAL
 from teleclaude.docs_layout import (
     LayoutCommitRefused,
     LayoutConvergenceOutcome,
@@ -258,8 +259,16 @@ def bounded_fetcher(repository: Repo) -> bool:
 
 
 def _has_attributable_party() -> bool:
+    """Whether an agent session or a person resolved at a terminal runs this convergence.
+
+    The computer's operator outside any session is not such a party: a run with
+    neither defers its roots to a later attributable run.
+    """
+    identity = resolve_cli_identity()
+    if identity.session_id is None and identity.principal == SYSTEM_OPERATOR_PRINCIPAL:
+        return False
     try:
-        resolve_commit_identity_from_caller(resolve_cli_identity())
+        resolve_commit_identity_from_caller(identity)
     except CommitIdentityUnresolvable:
         return False
     return True

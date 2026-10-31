@@ -241,7 +241,7 @@ async def add_project(
     is refused.
     """
     clearance = decide(
-        standing_for_caller(caller_for_role_resolution(identity)),
+        standing_for_caller(caller_for_role_resolution(identity), identity.principal),
         ConfigurationTarget(
             kind=ConfigSubjectKind.PROJECT,
             instance=None,

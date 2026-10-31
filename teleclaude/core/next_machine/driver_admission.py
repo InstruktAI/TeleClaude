@@ -60,7 +60,7 @@ from teleclaude.core.workflow_store.github_active_computer import read_active_co
 from teleclaude.core.workflow_store.github_io_transport import GitHubIORefused
 from teleclaude.core.workflow_store.github_store import GitHubStoreSelectionRefused, refresh_github_workflow_store
 from teleclaude.core.workflow_store.store import get_workflow_store
-from teleclaude.types.commands import RelayedResponse
+from teleclaude.types.relayed_response import RelayedResponse
 from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, ClaimStatus
 
 logger = get_logger(__name__)

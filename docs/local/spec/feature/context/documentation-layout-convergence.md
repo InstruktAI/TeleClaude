@@ -38,8 +38,10 @@ Convergence is a documentation-owned maintenance operation. It walks the
 project registry, and for each available root it either finds the root current,
 converges it with one commit in that root's own repository, or leaves it
 unchanged and reports why. A convergence commit is always attributable: a run
-with no attributable commit party — no agent session and no terminal login —
-changes no root and defers every root that would converge. The checkout is its
+with no attributable commit party — no agent session and no terminal login, the
+computer's operator outside a session included
+(`local/projects/teleclaude/spec/identity-and-auth` §2) — changes no root and
+defers every root that would converge. The checkout is its
 own completion record: a root with neither `docs/project` nor `agents/project`,
 whose tracked Markdown names no project-local identity without its `local/`
 prefix, is current, so every run is idempotent and a convergence that arrived by
