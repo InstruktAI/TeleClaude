@@ -29,7 +29,7 @@ visibility: public
 
 <!-- change:accepted-turn-bindings-never-form -->
 
-- **Bound Turn Continuity**: Accepted input, its runtime-qualified native transcript binding, per-adapter output generation, conversation cursor disposition, and unresolved Discord send intent are durable operational state. While its session is retained, an inbound row the accepted-turn binding covers (`local/projects/teleclaude/spec/inbound-queue`) is pruned only after one of two exits: its binding is durable, so the binding identifies the turn once the row is gone, or it carries a terminal binding disposition, which records that no truthful binding exists for it. Once the session's retention ends, its unbound rows are pruned with the rest of its runtime state.
+- **Bound Turn Continuity**: Accepted input, its runtime-qualified native transcript binding, per-adapter output generation, conversation cursor disposition, and unresolved Discord send intent are durable operational state. Cleanup never removes an accepted inbound row that its session's projection can still bind before that binding is durable; which rows that protects, and for how long, is the inbound queue's Cleanup (`local/projects/teleclaude/spec/inbound-queue`).
 
 <!-- /planned-change:accepted-turn-bindings-never-form -->
 
