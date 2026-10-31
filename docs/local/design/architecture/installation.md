@@ -284,10 +284,16 @@ sequenceDiagram
   install leaves it in place.
 - **The installed release owns its post-install step.** The act that runs is
   the active release's, so it names the installed release's post-install step
-  and none of the parts inside it. An install an older release's installer
-  performs then completes every part the installed release owes, the way the
-  stopped window's migration step records the owed assessment (Assessment
-  after an install).
+  and none of the parts inside it. The step keeps the entry point through which
+  every earlier release's installer already publishes documentation after a
+  completed install, so an install an older release's installer performs
+  reaches every part the installed release owes, the way the stopped window's
+  migration step records the owed assessment (Assessment after an install).
+  That older installer then also runs the installed release's schema
+  publication on its own, which finds the schemas current; when the step
+  fails, it records the failure owed and stops before that call. The owed
+  failure is replayed by the next install of the active revision, which the
+  installed release's own act performs.
 
 <!-- /planned-change:commit-maintenance-sheds-platform-work -->
 

@@ -149,8 +149,9 @@ starts the daemon on it, under the guarantees of
   then converges every registered root and the platform home to the release's
   templates
   (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
-  The installed release decides what that step does, so an install that an
-  earlier release performs completes it as the installed release defines it
+  The installed release decides what that step does, and the step is entered
+  where every earlier release's installer already enters it, so an install that
+  an earlier release performs completes it as the installed release defines it
   (`local/projects/teleclaude/design/architecture/installation`). A failure is
   reported and replayed; it never changes which release is active.
 
