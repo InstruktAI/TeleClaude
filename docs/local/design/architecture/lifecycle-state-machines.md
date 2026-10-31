@@ -217,8 +217,19 @@ Each state machine has its own design document with full state diagrams, sequenc
 
 - **Holder's computer does not answer**: while the computer running a claimed session, or any computer when none answers for it, does not answer the active computer, the claim stays held and a start of that todo is refused naming the session and the computer running it, or the computers that did not answer; the todo can be started again once the claim is shown ended.
 - **No active computer to admit a start**: while the project names no active computer, or its variable cannot be read from GitHub, every start of a GitHub-backed todo is refused naming why and creates nothing, and lifecycle runner passes skip those todos; no computer decides the start by its own registry instead.
+
+<!-- planned-change:event-driven-lifecycle-runner -->
+
 - **Admission answered but the start failed**: a start that cannot create or claim its session after asking — refused, out of budget, or interrupted by its computer's restart — creates nothing; a claim recorded for it is cleared by the start's release request or by the active computer's next runner pass, once the session's computer answers that it does not drive the todo — whether or not the session is still open — or every computer answers that the session is not its own.
 - **Release does not reach the active computer**: a claim for a session that ended on another computer stays held until the active computer's next runner pass judges it ended; while it is unreachable the claim stays held.
+
+<!-- change:event-driven-lifecycle-runner -->
+
+- **Admission answered but the start failed**: a start that cannot create or claim its session after asking — refused, out of budget, or interrupted by its computer's restart — creates nothing; a claim recorded for it is cleared by the start's release request, which its computer repeats until the active computer answers, or by a pass of the active computer's lifecycle runner, once the session's computer answers that it does not drive the todo — whether or not the session is still open — or every computer answers that the session is not its own.
+- **Release does not reach the active computer**: a claim for a session that ended on another computer stays held until that computer's repeated release reaches the active computer, or a pass of the active computer's lifecycle runner judges it ended; while it is unreachable the claim stays held.
+
+<!-- /planned-change:event-driven-lifecycle-runner -->
+
 - **Removal while a driver runs on another computer**: a removal that a caller forces sets the todo's claim aside; reactivating the todo restores it, so the active computer judges it before admitting a start.
 - **Computer on an older release**: a computer that does not run cross-computer admission still judges claims by its own registry and can start a second orchestrator until it is updated; one that still asks the fleet's master to admit its starts is refused by every computer but the active one.
 

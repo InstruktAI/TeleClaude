@@ -30,6 +30,7 @@ from teleclaude.core.configuration_clearance import (
     decide,
     standing_for_caller,
 )
+from teleclaude.core.degradation import DegradationRecord
 from teleclaude.core.events import ProjectRefreshTrigger
 from teleclaude.core.inbound.fleet import known_computer_names
 from teleclaude.core.models import ProjectInfo
@@ -62,6 +63,7 @@ _PROJECT_PATH_FILE_WORK_FEEDBACK = "Project adoption needs a directory; choose a
 _PROJECT_IDENTITY_CONFLICT_WORK_FEEDBACK = "Another registered project already owns this project identity; use its existing entry or choose a different folder."
 _PROJECT_PATH_CREATE_FAILED = "project folder could not be created"
 _PROJECT_REFRESH_UNAVAILABLE = "project refresh is not configured"
+_PROJECT_DEGRADATIONS_UNAVAILABLE = "project listing is not configured with the daemon's degradation record"
 _PROJECT_ADOPTION_FAILED = "project adoption failed: {reason}"
 _PROJECT_ADOPTION_INTERNAL_FAILED = "project adoption failed"
 _PROJECT_ENTRY_MISSING = "adopted project is missing from the refreshed registry"
@@ -71,6 +73,7 @@ _PROJECT_ADOPTION_LOG = "Project adoption failed"
 _CACHE: dict[str, DaemonCache | None] = {"value": None}
 ProjectRefresh = Callable[[ProjectRefreshTrigger], Awaitable[None]]
 _REFRESH: dict[str, ProjectRefresh | None] = {"value": None}
+_DEGRADATIONS: dict[str, DegradationRecord | None] = {"value": None}
 
 router = APIRouter()
 
@@ -93,9 +96,15 @@ class ActiveComputerDTO(BaseModel):
     computer: str | None
 
 
-def configure(cache: DaemonCache | None, refresh_local_projects: ProjectRefresh | None = None) -> None:
-    """Wire cache; called from APIServer."""
+def configure(
+    cache: DaemonCache | None,
+    refresh_local_projects: ProjectRefresh | None = None,
+    degradations: DegradationRecord | None = None,
+) -> None:
+    """Wire cache and, when given, the daemon's degradation record and project refresh; called from APIServer."""
     _CACHE["value"] = cache
+    if degradations is not None:
+        _DEGRADATIONS["value"] = degradations
     if refresh_local_projects is not None:
         _REFRESH["value"] = refresh_local_projects
 
@@ -152,7 +161,10 @@ async def list_projects(
 
             if cached_local is None:
                 logger.info("GET /projects: cache MISS, reading filesystem")
-                raw_projects = await command_handlers.list_projects_with_todos()
+                degradations = _DEGRADATIONS["value"]
+                if degradations is None:
+                    raise RuntimeError(_PROJECT_DEGRADATIONS_UNAVAILABLE)
+                raw_projects = await command_handlers.list_projects_with_todos(degradations)
                 if cache:
                     cache.apply_projects_snapshot(computer_name, raw_projects)
                     todos_by_project = _build_todos_snapshot(raw_projects)

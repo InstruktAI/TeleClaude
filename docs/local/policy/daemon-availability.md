@@ -21,9 +21,7 @@ visibility: 'public'
 
 - Daemon health (API socket, API health/read endpoints, adapters, preparation phase) is verified by `telec app status`, a separate invocation that is never part of `telec app restart`. A daemon whose admission is closed is reported as draining — its phase, when preparation began, and the accepted work it still holds — and never as healthy. `telec app status` also names the active release, and the reason and time an install last refused to stop the daemon, left it stopped, or left it without a verified start, until a later start verifies. After an install, the standing integrator's log judgment establishes whether the runtime behaves correctly on the installed release.
 
-- Only a core dependency stops the daemon; which startup dependencies are core is owned by `local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`. An optional component that fails — one project's workflow store, a UI adapter, chiptunes — is logged as an error and left out, and the daemon keeps serving everything else. While it lasts, `telec app status` reports the daemon degraded and names each such component, its subject and the reason with the act that resolves it.
-
-- A daemon that cannot start ends its process with a non-zero status once its stop has run, whatever worker threads remain, so the service manager observes the failure and relaunches it at its own pace. A process without its request surface never stays alive.
+- Only a core dependency stops the daemon; which dependencies are core, and how a failed start ends the process, are owned by `local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`. An optional component that fails — one project's workflow store, a UI adapter, chiptunes — is logged as an error and left out. Until it serves again, `telec app status` reports the daemon degraded and names each such component with its reason; a component that cannot recover while the daemon runs stays reported until the daemon restarts, and chiptunes stays reported through a deferred provisioning until that provisioning succeeds. A project's own details — its path and the cause of its refusal — are shown to a caller whose reach admits that project (`local/projects/teleclaude/spec/feature/identity/data-visibility`); any other caller sees the component reported degraded without them.
 
 - If Redis is configured for the event platform, startup must expose Redis reachability and pending recovery progress through daemon state or structured logs before continuing degraded; a silent healthy-but-no-Streams state is forbidden.
 
@@ -64,7 +62,7 @@ visibility: 'public'
 
 - A daemon alive with admission closed after its accepted work has settled and its termination grace has passed is a defect.
 
-- A startup that aborts on an optional component's failure, and a daemon process alive without its request surface after a failed start, are defects.
+- The installation inspector's post-install log judgment catches a startup that aborted on an optional component's failure and a process left alive without its request surface after a failed start; either is a defect.
 
 ## Exceptions
 
