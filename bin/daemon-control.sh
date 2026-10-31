@@ -563,11 +563,11 @@ report_event_redis() {
             log_info "Event Redis: answering"
             ;;
         "$DEGRADED_EXIT")
-            log_warn "Event Redis not answering ($(echo "$output" | paste -sd, -)): the daemon serves degraded and attaches those readers when it answers"
+            log_warn "event=event_redis_not_answering scopes=$(echo "$output" | paste -sd, -) | the daemon serves degraded and attaches those readers when it answers"
             return 1
             ;;
         *)
-            log_warn "Event Redis: readiness UNREADABLE ($output)"
+            log_warn "event=event_redis_readiness_unreadable detail=\"$output\" | the daemon's /ready answer could not be read"
             return 1
             ;;
     esac
@@ -667,7 +667,7 @@ start_daemon() {
     if wait_for_daemon; then
         if ! wait_for_redis_ready; then
             stop_startup_log_stream
-            log_error "The daemon started but never answered /ready within ${REDIS_READY_WAIT_SECONDS}s"
+            log_error "event=daemon_ready_timeout window_s=${REDIS_READY_WAIT_SECONDS} | the daemon started but never answered /ready"
             log_error "Check logs: instrukt-ai-logs teleclaude --since 5m (see 'telec config wizard' for the Redis settings)"
             return 1
         fi
