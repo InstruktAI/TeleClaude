@@ -16,10 +16,6 @@ from teleclaude.core.session_transcript_chain import native_log_binding_updates
 
 logger = get_logger(__name__)
 
-_CHECKPOINT_RELAY_SOURCE_KEY_TEMPLATE = "checkpoint-relay:{receiver_ingress_id}"
-_CHECKPOINT_RELAY_INCOMPLETE_LOG = "Checkpoint relay entry is missing its body or ingress id; dropping"
-_CHECKPOINT_RELAY_WAKE_REJECTED_LOG = "Checkpoint relay payload stays pending; the session cannot be woken"
-
 if TYPE_CHECKING:
 
     class SessionMutationDb(Protocol):
@@ -65,19 +61,23 @@ async def handle_checkpoint_relay(
     body = optional_payload_str_value(payload, CHECKPOINT_RELAY_BODY_FIELD)
     receiver_ingress_id = optional_payload_str_value(payload, CHECKPOINT_RELAY_INGRESS_FIELD)
     if body is None or receiver_ingress_id is None:
-        logger.error(_CHECKPOINT_RELAY_INCOMPLETE_LOG, session_id=session_id)
+        logger.error("Checkpoint relay entry is missing its body or ingress id; dropping", session_id=session_id)
         return
     envelope = checkpoint_envelope(body)
     try:
         await handoff_control_payload(
             session_id=session_id,
             body=envelope.body,
-            source_key=_CHECKPOINT_RELAY_SOURCE_KEY_TEMPLATE.format(receiver_ingress_id=receiver_ingress_id),
+            source_key=f"checkpoint-relay:{receiver_ingress_id}",
             envelope=envelope,
             wake_decision=ControlDeliveryWakeDecision.OBSERVED_IDLE,
         )
     except SessionMessageRejectedError as exc:
-        logger.info(_CHECKPOINT_RELAY_WAKE_REJECTED_LOG, session_id=session_id, reason=exc.reason.value)
+        logger.info(
+            "Checkpoint relay payload stays pending; the session cannot be woken",
+            session_id=session_id,
+            reason=exc.reason.value,
+        )
 
 
 async def handle_native_metadata_update(
