@@ -279,9 +279,8 @@ And the same holds for a project that subscribes neither code nor docs
 - A changed hook template reaches a machine's registered roots when the
   release that carries it is installed on that machine, so installed plumbing
   lags only between a template change and that install; a machine that has not
-  installed it has nothing newer to converge to. The capability declaration
-  itself needs no reinstallation to take effect, because the installed plumbing
-  reads it on each invocation.
+  installed it has nothing newer to converge to. A capability declaration
+  change takes effect without a reinstallation.
 
 <!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
