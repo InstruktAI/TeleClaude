@@ -52,6 +52,19 @@ contract establishes a concrete contradiction, missing requirement or invalid
 premise. Apply the finding-validity and convergence rules below; a different
 preferred classification or design alone does not reopen a decision.
 
+Where a procedure has you read the conversation that produced the work — a
+session transcript named by an artifact's writers or a commit's `Session:`
+trailer — that reading corroborates the authorized basis and never gates the
+work. Read it when it can be read. When it cannot — the computer holding the
+transcript is unreachable, the writer has no recorded session, or the
+transcript no longer exists — record what you tried and why it failed, and
+proceed on the artifact or commit as the authorized basis, with its governing
+contracts. Do not wait for that computer, and do not block or refuse on that
+absence alone: durable authority lives in the artifact
+(`general/policy/leadership`). The absence supplies no intent either; nothing
+is inferred in its place, and an authority gap the artifact or commit leaves on
+its own is judged exactly as it is when the conversation is read.
+
 ### 1. Execute every applicable review lane
 
 **Build the lane set.** It has two sources, and every entry in it receives a
@@ -347,4 +360,5 @@ Verdict: APPROVE | REQUEST CHANGES
 
 If the target, applicable contract, or required evidence cannot be resolved,
 report the blocker to the invoking procedure and stop. Do not narrow the review
-to what happens to be available.
+to what happens to be available. A producing conversation that cannot be read
+is not such a blocker; Step 0 governs it.
