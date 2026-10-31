@@ -446,24 +446,20 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
     async def _attach_event_platform(self) -> None:
         """Complete the startup steps a Redis that did not answer held back, as each Redis answers.
 
-        A Redis that stops answering again returns the task to waiting; any other failure requests the daemon's
-        ordinary shutdown, as the same failure does in a start where every Redis answers.
+        A Redis that stops answering returns the task to waiting. A pass that leaves steps due while every Redis
+        answers means one was lost and returned during the pass, so the next pass is paced, never fatal. Any other
+        failure requests the daemon's ordinary shutdown, as the same failure does in a start where every Redis answers.
         """
         try:
-            advanced_without_waiting = False
             while self._event_platform_steps_remaining():
                 waiting = self._reachability().unanswering_clients()
-                if waiting:
-                    if not await self._reachability().until_any_answers(waiting):
-                        return
-                    advanced_without_waiting = False
-                elif advanced_without_waiting:
-                    # A pass that found every Redis answering left steps undone: nothing is left to wait for.
-                    raise RuntimeError("Event platform steps remain while every event Redis answers")
-                else:
-                    # A Redis that answered again before this task began holds nothing back; its steps are due now.
-                    advanced_without_waiting = True
+                if waiting and not await self._reachability().until_any_answers(waiting):
+                    return
                 await self._advance_event_platform_steps()
+                if self._event_platform_steps_remaining() and not self._reachability().unanswering_clients():
+                    logger.warning("event_platform_attach_pending: steps due again, retrying after a pause")
+                    if not await self._reachability().pause():
+                        return
         except Exception:
             logger.error("event_platform_attach_failed", exc_info=True)
             self.request_shutdown("event-platform-attach-failed")

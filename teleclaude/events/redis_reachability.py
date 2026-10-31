@@ -139,12 +139,14 @@ class RedisReachability:
             )
             record.ping_loop = asyncio.create_task(self._ping_until_answering(record))
 
+    async def pause(self) -> bool:
+        """Wait one ping interval; False when shutdown comes first."""
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(self._shutdown.wait(), PING_INTERVAL_S)
+        return not self._shutdown.is_set()
+
     async def _ping_until_answering(self, record: _Record) -> None:
-        while not self._shutdown.is_set():
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._shutdown.wait(), PING_INTERVAL_S)
-            if self._shutdown.is_set():
-                return
+        while await self.pause():
             try:
                 await asyncio.wait_for(record.client.ping(), PING_DEADLINE_S)
             except TimeoutError:
