@@ -456,8 +456,7 @@ class MaintenanceAction:
 
     ``on_demand`` tells a manual run whether to perform the action or only report
     whether it is owed; ``owed_probe`` is the command that answers that question
-    for a deferred action. ``runs_while_serving`` declares whether it is safe to
-    run while the daemon serves.
+    for a deferred action.
     """
 
     id: str
@@ -466,7 +465,6 @@ class MaintenanceAction:
     precedence: int = 0
     on_demand: OnDemandDisposition = OnDemandDisposition.RUN
     owed_probe: tuple[str, ...] | None = None
-    runs_while_serving: bool = False
 
 
 @dataclass(frozen=True)
@@ -604,7 +602,6 @@ CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
         ),
         main_only=True,
         precedence=55,
-        runs_while_serving=True,
     ),
     BLUEPRINT_MAINTENANCE_ACTION_ID: MaintenanceAction(
         id=BLUEPRINT_MAINTENANCE_ACTION_ID,
@@ -617,7 +614,6 @@ CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
         ),
         main_only=True,
         precedence=50,
-        runs_while_serving=True,
     ),
 }
 
